@@ -129,8 +129,13 @@ LAN address of the docker host — the one deployment variable. It drives
 LiveKit's advertised media address, the URL browsers connect to, and the
 station webhook callback.
 
-Open port 8100, add an API key in the settings panel, run the pipeline
-check, press Call.
+**Open `https://<HOST_IP>:8443`** — the bundled Caddy serves the widget and
+LiveKit signalling over TLS, because browsers only allow the microphone on
+HTTPS origins. First visit shows the standard self-signed-certificate
+screen (Advanced → Proceed) once per browser, like any self-hosted admin
+UI; after that the normal mic permission popup appears. Add an API key in
+the settings panel, run the pipeline check, press Call. (Plain
+`http://<HOST_IP>:8100` still works for everything except placing calls.)
 
 **Yes, `.env` is required** (compose refuses to start without it), but only
 the LiveKit entries genuinely need editing: `LIVEKIT_API_KEY` /
@@ -190,11 +195,9 @@ its failure messages name the fix. The classics:
   check the host firewall allows UDP 50000–50100 and TCP 7881.
 - **Call connects and instantly hangs up** — the page is on a plain
   `http://<lan-ip>` origin, where browsers refuse microphone capture
-  (localhost is exempt, which is why local dev works). The *Microphone*
-  stage catches this. Real fix: a TLS reverse proxy in front of the widget
-  (and `wss://` in `LIVEKIT_PUBLIC_URL`). For LAN testing only:
-  `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add the
-  widget origin, relaunch.
+  (localhost is exempt, which is why local dev works). Use the bundled TLS
+  port instead: `https://<HOST_IP>:8443`. The *Microphone* pipeline stage
+  catches this.
 - **Station admin returns 429** — the station's login rate limiter, usually
   after repeated credential tests. Wait ~15 minutes (or restart the station
   container); it does not mean the credentials are wrong. The *Test admin

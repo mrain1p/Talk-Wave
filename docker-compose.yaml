@@ -92,7 +92,9 @@ services:
       - LIVEKIT_URL=ws://livekit-server:7880
       # Browsers connect here; station webhooks call back here. Both derive
       # from HOST_IP so one variable configures the whole deployment.
-      - LIVEKIT_PUBLIC_URL=ws://${HOST_IP:-localhost}:7880
+      # LiveKit signalling goes through the caddy TLS port — same origin as
+      # the page, so the one-time self-signed acceptance covers it.
+      - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443
       - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station
       - LOG_TO_FILE=0
     volumes:
@@ -103,6 +105,29 @@ services:
       - livekit-server
     networks:
       - callin-net
+
+  # TLS front door. Browsers only allow the microphone on HTTPS origins, so
+  # the widget MUST be opened via https://<HOST_IP>:8443 — the plain :8100
+  # port stays for same-machine dev and the station webhook callback.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - token-server
+      - livekit-server
+    networks:
+      - callin-net
+
+volumes:
+  caddy-data:
 
 networks:
   callin-net:
