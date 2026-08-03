@@ -16,6 +16,12 @@ decides to act, through an allowlisted tool surface.
                                           SUB/WAVE MCP (allowlisted)
 ```
 
+![A live call: the DJ mid-sentence, level meters running, live captions — including a library search happening in-conversation](docs/call.png)
+
+▶ **[Watch a real call (2 min)](docs/wavetalk-call.mp4)** — in-persona
+pickup, back-and-forth, and a Beatles request resolved against the live
+library.
+
 ## Features
 
 **The call**
@@ -147,6 +153,8 @@ prompt once one is set; the login persists on that browser until Sign out).
 Changes apply to the **next caller** — no restarts. Precedence: panel →
 `.env` → built-in defaults; clearing a field falls through to the layer
 below. Every field carries its own help text in the panel; this is the map:
+
+<img src="docs/settings.png" alt="The settings panel, folded: every section header summarises its own state" width="420" />
 
 | Section | What it controls |
 |---|---|
