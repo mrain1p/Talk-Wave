@@ -24,7 +24,12 @@ x-logging: &default-logging
 services:
   livekit-server:
     image: livekit/livekit-server:v1.13.5
-    command: --config /etc/livekit.yaml
+    # IMPORTANT when running in docker on a LAN: --node-ip must be the HOST's
+    # LAN address, or LiveKit advertises its container IP as the media
+    # address — browsers then connect signalling fine but audio never flows
+    # (the call hangs on "Ringing"). The pipeline check's "Browser media
+    # path" stage catches this.
+    command: --config /etc/livekit.yaml --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

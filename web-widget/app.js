@@ -244,6 +244,14 @@
     const chip = $('stateChip');
     chip.dataset.state = state || 'idle';
     $('stateText').textContent = STATE_TEXT[state] || 'Idle';
+    // The first time the DJ actually speaks, the call is properly underway:
+    // the button flips from Answering to a green On the line for the rest
+    // of the call.
+    if (state === 'speaking' && room && !callBtn.classList.contains('live')) {
+      callBtn.classList.remove('ringing', 'answering');
+      callBtn.classList.add('live');
+      callBtn.textContent = 'On the line';
+    }
   }
 
   function watchAgentState(r) {
@@ -332,6 +340,8 @@
 
   async function startCall() {
     callBtn.disabled = true;
+    callBtn.textContent = 'Ringing…';
+    callBtn.classList.add('ringing');
     $('rig').classList.add('on');
     $('stateChip').hidden = false;
     setAgentState('initializing');
@@ -356,6 +366,8 @@
         $('stateChip').hidden = true;
         stopTimer();
         capBox.classList.remove('on');
+        callBtn.classList.remove('ringing', 'answering');
+        callBtn.textContent = 'Call the DJ';
         callBtn.disabled = false;
         room = null;
         return;
@@ -370,6 +382,11 @@
         if (track.kind !== 'audio') return;
         stopRinging();
         playSound('pickup');
+        // Line picked up; the DJ hasn't spoken yet. setAgentState flips this
+        // to the green "On the line" at its first spoken word.
+        callBtn.classList.remove('ringing');
+        callBtn.classList.add('answering');
+        callBtn.textContent = 'Answering…';
         djEl = track.attach();
         djEl.volume = Math.min(1, volume / 100);
         djEl.play?.();
@@ -395,8 +412,8 @@
         LivekitClient.Track.Source.Microphone);
       anYou = analyserFor(mic?.track?.mediaStreamTrack);
 
-      callBtn.textContent = 'On the line';
-      callBtn.classList.add('live');
+      // Button stays on Ringing/Answering; setAgentState flips it to the
+      // green On the line at the DJ's first word.
       document.querySelector('.card').classList.add('oncall');
       if (!rafId) tick();
       setStatus('Connected — waiting for the DJ…', 'connected');
@@ -415,6 +432,8 @@
       $('stateChip').hidden = true;
       stopTimer();
       capBox.classList.remove('on');
+      callBtn.classList.remove('ringing', 'answering');
+      callBtn.textContent = 'Call the DJ';
       callBtn.disabled = false;
       room = null;
     }
@@ -474,7 +493,7 @@
     setAgentState('idle');
     collapseTranscript();
     callBtn.textContent = 'Call the DJ';
-    callBtn.classList.remove('live');
+    callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
     document.querySelector('.card').classList.remove('oncall');
     muteBtn.textContent = 'Mute';
