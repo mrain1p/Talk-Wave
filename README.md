@@ -56,12 +56,9 @@ decides to act, through an allowlisted tool surface.
 - API keys are entered in the panel and stored server-side; key material
   never travels back to the browser. Blank fields mean "unchanged", clearing
   is explicit, values are never logged.
-- Test buttons exercise the real code paths: synthesize a line and hear it,
-  check the model actually emits tool calls, list the exact tools a caller
-  gets, and a full pipeline check that walks every leg in call order and
-  reports the first thing that would break — plus a per-turn speed test.
-- A prompt preview shows the exact system prompt the next caller's DJ will
-  receive, with a token budget readout.
+- Test buttons exercise the real code paths — green means the call will
+  work, not "the URL responded". The pipeline check walks every leg in call
+  order and its failure messages name the fix.
 
 **Safety & limits**
 - Usage controls: max concurrent calls, calls per hour, per-caller redial
@@ -88,11 +85,6 @@ OpenRouter, Ollama), STT (Deepgram, OpenAI, Google, or in-process
 faster-whisper on CPU — no key, no network), TTS (any OpenAI-compatible
 endpoint, local or cloud, described by a small JSON adapter config — a new
 backend is a config file, not code).
-
-**Configuration precedence**: settings panel → `.env` → built-in defaults.
-Clearing a panel field falls through to the layer below. Panel state
-persists in `data/settings.json`; keys in `data/secrets.json` (plaintext on
-disk — see Security).
 
 **Performance posture**: the station's slow lazy-cache endpoint is kept warm
 by a background ping; per-call reads are one concurrent snapshot; a
@@ -125,23 +117,17 @@ docker compose up -d
 ```
 
 **Set `HOST_IP`** (in `.env` or your stack GUI's environment panel) to the
-LAN address of the docker host — the one deployment variable. It drives
-LiveKit's advertised media address, the URL browsers connect to, and the
-station webhook callback.
+LAN address of the docker host — the one deployment variable; it drives
+LiveKit's advertised media address, the browser URL and the webhook
+callback. Beyond that, `.env` only genuinely needs the LiveKit keypair
+(matching `livekit.yaml`) — everything else can be set in the panel.
 
-**Open `https://<HOST_IP>:8443`** — the bundled Caddy serves the widget and
-LiveKit signalling over TLS, because browsers only allow the microphone on
-HTTPS origins. First visit shows the standard self-signed-certificate
-screen (Advanced → Proceed) once per browser, like any self-hosted admin
-UI; after that the normal mic permission popup appears. Add an API key in
-the settings panel, run the pipeline check, press Call. (Plain
-`http://<HOST_IP>:8100` still works for everything except placing calls.)
-
-**Yes, `.env` is required** (compose refuses to start without it), but only
-the LiveKit entries genuinely need editing: `LIVEKIT_API_KEY` /
-`LIVEKIT_API_SECRET` (matching `livekit.yaml`) and `LIVEKIT_PUBLIC_URL`
-(what the *browser* reaches). Everything else — station URL, provider keys,
-models — can be configured in the panel afterwards.
+**Open `https://<HOST_IP>:8443`** — the bundled Caddy TLS front door.
+Browsers only allow the microphone on HTTPS origins; the first visit shows
+a one-time self-signed-certificate screen (Advanced → Proceed), then the
+normal mic permission popup. Add an API key in the panel, run the pipeline
+check, press Call. Plain `http://<HOST_IP>:8100` works for everything
+except placing calls.
 
 ### Local, no Docker (Windows)
 
@@ -209,29 +195,18 @@ restart the app to clear bans. Until a password is set, the panel shows a
 standing nudge and stays open — fine on a trusted LAN, a choice you should
 make deliberately.
 
-**HTTP vs HTTPS.** Running on plain `http://` on your LAN is a fine default —
-everything works except one thing: browsers refuse the *microphone* on
-insecure origins, so calls can't be placed from other machines. The widget
-detects this and shows a link to the fix instead of failing cryptically.
-Your two options, in order of preference:
-- **HTTPS front door** (bundled): open `https://<HOST_IP>:8443`, accept the
-  one-time certificate screen. Best for anything other people use.
-- **Browser flag** (single-machine testing only):
-  `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add your
-  widget origin, relaunch.
-Note that a panel password sent over plain http is readable on the wire —
-another reason the front door matters once you leave your own LAN.
+The password travels with each request, so beyond your own LAN use the
+HTTPS front door — over plain http it's readable on the wire.
 
 Before exposing beyond your LAN:
 
 1. `CALLIN_ALLOWED_ORIGINS` — set to your real origins (`*` lets any page
    read config endpoints and mint call tokens).
-2. **Set the panel password** (above) — or `CALLIN_ADMIN_KEY` in the
-   environment; either gates all settings/secrets/test access.
-3. Fresh LiveKit keypair; `use_external_ip: true`; open the UDP range; put
-   the browser-reachable `wss://` origin in `LIVEKIT_PUBLIC_URL`.
-4. TLS reverse proxy in front of port 8100 (the mic requires a secure
-   context off-localhost anyway).
+2. **Set the panel password** (above).
+3. Fresh LiveKit keypair; `use_external_ip: true` and the UDP range open
+   for off-LAN callers.
+4. Real TLS on the front door (a proper certificate instead of the
+   self-signed one, e.g. via your own domain) so visitors see no warnings.
 5. Keep usage limits non-zero — every call spends real API money.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted
    (0600 where the OS honours it). Protect the volume; never commit `.env`
@@ -244,9 +219,10 @@ its failure messages name the fix. The classics:
 
 - **Call hangs at "Ringing" while every server check passes** — LiveKit in
   docker is advertising its container IP as the media address. Set `HOST_IP`
-  (which feeds `--node-ip`) and recreate the livekit container. The
-  *Browser media path* stage exists precisely for this. If it still fails,
-  check the host firewall allows UDP 50000–50100 and TCP 7881.
+  (which feeds `--node-ip`) and recreate the livekit container; the same
+  cause shows up as webhooks registered to a `172.x` address. The *Browser
+  media path* stage exists precisely for this. If it still fails, check the
+  host firewall allows UDP 50000–50100 and TCP 7881.
 - **"This page can't use the microphone"** — the page is on a plain
   `http://<lan-ip>` origin, where browsers refuse microphone capture
   (localhost is exempt, which is why local dev works). The widget shows this
@@ -260,8 +236,6 @@ its failure messages name the fix. The classics:
   after repeated credential tests. Wait ~15 minutes (or restart the station
   container); it does not mean the credentials are wrong. The *Test admin
   access* button distinguishes the two.
-- **Webhooks registered to a `172.x` address** — same container-IP problem
-  as above; `HOST_IP` fixes the callback URL too.
 - **Voice test 400s on a local TTS backend** — the voice id doesn't exist on
   that server (cloud names and local sample ids aren't interchangeable), or
   no voice is configured anywhere; *Reload voice list* after switching
@@ -282,5 +256,6 @@ version.
 cd agent-worker && python -m unittest test_sidecar
 ```
 
-covers the speech filter, settings precedence, secrets handling, tool
-allowlists, and prompt assembly.
+covers the speech filter, settings precedence, secrets and password
+handling, the lockout ladder, usage limits, tool allowlists, and prompt
+assembly.
