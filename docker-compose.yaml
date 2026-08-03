@@ -2,6 +2,10 @@
 # and the token/widget server. For local dev on Windows use run-local.ps1
 # instead — no Docker needed.
 #
+# The two python services share ONE image, published as
+# ghcr.io/mrainone7p/wave-talk:latest. With a source checkout,
+# `docker compose up -d --build` builds it locally instead of pulling.
+#
 # Before first deploy:
 #   - copy livekit.example.yaml -> livekit.yaml with a FRESH keypair, set
 #     use_external_ip: true, and open the UDP range on the router
@@ -35,7 +39,10 @@ services:
       - callin-net
 
   agent-worker:
-    build: ./agent-worker
+    image: ghcr.io/mrainone7p/wave-talk:latest
+    build:
+      context: .
+      dockerfile: agent-worker/Dockerfile
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -54,15 +61,18 @@ services:
       # services must see the same directory, or panel changes never reach
       # the worker — and they must survive a rebuild.
       - ./data:/data
-      # Adapter configs editable without a rebuild.
-      - ./agent-worker/tts-adapters:/app/tts-adapters
+      # Optional: uncomment to edit TTS adapter configs without a rebuild.
+      # - ./agent-worker/tts-adapters:/app/tts-adapters
     depends_on:
       - livekit-server
     networks:
       - callin-net
 
   token-server:
-    build: ./agent-worker
+    image: ghcr.io/mrainone7p/wave-talk:latest
+    build:
+      context: .
+      dockerfile: agent-worker/Dockerfile
     command: ["python", "token_server.py"]
     restart: unless-stopped
     security_opt:
@@ -70,11 +80,9 @@ services:
     logging: *default-logging
     env_file: .env
     environment:
-      - WIDGET_DIR=/widget
       - LOG_TO_FILE=0
     volumes:
       - ./data:/data
-      - ./web-widget:/widget:ro
     ports:
       - "8100:8100"     # widget + token mint; put a reverse proxy in front
     depends_on:

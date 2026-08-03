@@ -461,8 +461,14 @@ plain API key. That fallback is what made the first end-to-end call possible.
 ```bash
 cp .env.example .env                     # fill in your station URL etc.
 cp livekit.example.yaml livekit.yaml     # fresh keypair, use_external_ip: true
-docker compose up -d --build
+docker compose up -d                     # pulls ghcr.io/mrainone7p/wave-talk:latest
 ```
+
+`docker compose up -d --build` builds from source instead of pulling. Images
+are published by CI: `:latest` tracks `main`, `:beta` tracks a `beta` branch,
+and `v*` git tags produce version tags. The image is fully self-contained
+(widget included) — a deploy needs only the compose file, `.env`,
+`livekit.yaml` and a `data/` directory.
 
 Settings and API keys entered in the panel persist in `./data/` (mounted
 into both containers — the worker and the panel must share it). The first
