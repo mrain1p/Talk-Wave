@@ -26,9 +26,18 @@ FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
 def setup(process_name: str) -> None:
-    """Call once at process start, before any logging happens."""
-    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    """Call once at process start, before any logging happens.
+
+    Idempotent: the token server's test endpoints import main.py, whose
+    module-level setup("worker") call would otherwise add a second handler
+    and double every subsequent log line.
+    """
     root = logging.getLogger()
+    if getattr(root, "_callin_log_setup", False):
+        return
+    root._callin_log_setup = True
+
+    level = os.environ.get("LOG_LEVEL", "INFO").upper()
     root.setLevel(level)
 
     console = logging.StreamHandler()

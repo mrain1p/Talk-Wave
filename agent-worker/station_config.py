@@ -44,6 +44,12 @@ _MODEL_KEYS = ("llmModel", "llm_model", "model", "ollamaModel", "chatModel", "dj
 _LLM_URL_KEYS = ("llmBaseUrl", "llm_base_url", "ollamaUrl", "ollama_url", "llmUrl")
 
 
+# Subtrees that carry model NAMES which are not the DJ's chat model — the
+# embedding/search/tagger configs all have "model" keys, and a blind DFS was
+# observed reporting the station's embedding model as its DJ model.
+_SKIP_SUBTREES = ("embed", "search", "tagger", "tts")
+
+
 def _find_first(node: Any, keys: tuple[str, ...]) -> str | None:
     """Depth-first search for the first non-empty string under any of `keys`.
     The station's settings shape isn't documented, so this looks for the value
@@ -53,7 +59,9 @@ def _find_first(node: Any, keys: tuple[str, ...]) -> str | None:
             value = node.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
-        for value in node.values():
+        for name, value in node.items():
+            if any(s in str(name).lower() for s in _SKIP_SUBTREES):
+                continue
             found = _find_first(value, keys)
             if found:
                 return found
