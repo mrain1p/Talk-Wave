@@ -30,8 +30,9 @@ from prompts import _demojibake
 from station import StationClient
 from station_config import StationConfig
 
-# Reported on /health so a deployed instance can say what it is.
-APP_VERSION = "1.0.0-rc1"
+# Reported on /health so a deployed instance can say what it is. Keep in
+# step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
+APP_VERSION = "0.9.0"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
