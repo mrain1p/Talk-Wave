@@ -115,6 +115,14 @@ def _find_voice(node: Any) -> str | None:
         value = node.get(key)
         if isinstance(value, str) and value:
             return value
+    # SUB/WAVE nests it one level down: personas[].tts.voice — checking only
+    # the top level made mirroring silently find nothing.
+    sub = node.get("tts")
+    if isinstance(sub, dict):
+        for key in _VOICE_KEYS:
+            value = sub.get(key)
+            if isinstance(value, str) and value:
+                return value
     return None
 
 

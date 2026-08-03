@@ -220,6 +220,28 @@ class TestPromptAssembly(_TempStores):
         self.assertIn("Keep the call moving", text)
 
 
+class TestStationConfig(unittest.TestCase):
+    def test_extracts_nested_persona_voice_shape(self):
+        # SUB/WAVE publishes voices at values.personas[].tts.voice — nested
+        # one level below the persona object. The extractor missing that
+        # made mirroring silently return nothing.
+        import station_config
+
+        payload = {
+            "values": {
+                "personas": [
+                    {"id": "p_abc123", "name": "A", "tts": {"voice": "-VoiceA"}},
+                    {"id": "p_def456", "name": "B", "voice": "-VoiceB"},
+                    {"id": "p_empty0", "name": "C", "tts": {"voice": ""}},
+                ]
+            }
+        }
+        m = station_config._extract_persona_voices(payload)
+        self.assertEqual(m.get("p_abc123"), "-VoiceA")
+        self.assertEqual(m.get("p_def456"), "-VoiceB")
+        self.assertNotIn("p_empty0", m)
+
+
 class TestMainToolLogic(_TempStores):
     """Imports main.py (heavy: LiveKit plugins) — kept in one class so the
     cost is paid once and the rest of the suite stays fast."""
