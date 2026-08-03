@@ -32,7 +32,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.5"
+APP_VERSION = "0.9.6"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -153,14 +153,28 @@ async def handle_token(request: web.Request) -> web.Response:
             web.json_response({"error": "LiveKit credentials not configured"}, status=500),
         )
 
+    # The pipeline check's media-path stage mints a real token and connects a
+    # real room from the browser — the only way to prove the WebRTC leg the
+    # server cannot see (e.g. LiveKit in docker advertising its container IP).
+    # Probe rooms are skipped by the worker and bypass the usage limits, so
+    # minting one is gated the same as every other test endpoint.
+    try:
+        body = await request.json() if request.can_read_body else {}
+    except Exception:
+        body = {}
+    probe = bool(isinstance(body, dict) and body.get("probe"))
+    if probe and not _write_allowed(request):
+        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+
     cfg = settings_store.load()
-    refusal = _check_usage(request, cfg)
-    if refusal:
-        log.info("call refused by usage controls: %s", refusal)
-        return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
+    if not probe:
+        refusal = _check_usage(request, cfg)
+        if refusal:
+            log.info("call refused by usage controls: %s", refusal)
+            return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
 
     # One room per call keeps callers from ever landing in each other's audio.
-    room = f"callin-{uuid.uuid4().hex[:12]}"
+    room = f"{'probe' if probe else 'callin'}-{uuid.uuid4().hex[:12]}"
     identity = f"caller-{uuid.uuid4().hex[:8]}"
 
     token = (
@@ -181,13 +195,15 @@ async def handle_token(request: web.Request) -> web.Response:
 
     import time as _time
 
-    now = _time.time()
-    _recent_mints.append(now)
-    _caller_last[_caller_key(request)] = now
-    _live_calls[room] = now
+    if not probe:
+        now = _time.time()
+        _recent_mints.append(now)
+        _caller_last[_caller_key(request)] = now
+        _live_calls[room] = now
 
     log.info(
-        "minted token for room=%s identity=%s (%d live, %d this hour)",
+        "minted %s token for room=%s identity=%s (%d live, %d this hour)",
+        "probe" if probe else "call",
         room, identity, len(_live_calls), len(_recent_mints),
     )
     return _cors(

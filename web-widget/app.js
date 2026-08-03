@@ -1356,6 +1356,45 @@
         return { status: 'pass', detail: d.voice + ' · ' + d.firstAudioMs + 'ms · ' + rtf + '× realtime' };
       },
     },
+    {
+      // The one leg no server-side test can see: THIS browser establishing a
+      // real WebRTC connection. Every other stage can pass while this fails —
+      // classically when LiveKit runs in docker and advertises its container
+      // IP as the media address. Uses a probe room the worker ignores; costs
+      // nothing and doesn't count against usage limits.
+      key: 'media', name: 'Browser media path',
+      run: async () => {
+        const res = await fetch('/token', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ probe: true }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          return { status: 'fail', detail: d.error || ('token mint failed (HTTP ' + res.status + ')') };
+        }
+        const { token, url, room: roomName } = await res.json();
+        const r = new LivekitClient.Room();
+        try {
+          await Promise.race([
+            r.connect(url, token),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('no media connection within 10s')), 10000)),
+          ]);
+          return { status: 'pass', detail: 'this browser connected to ' + url + ' — signalling and media both OK' };
+        } catch (e) {
+          return { status: 'fail',
+            detail: 'browser could not establish media with ' + url + ' — '
+              + 'if LiveKit runs in docker, set rtc.node_ip to the host’s LAN IP '
+              + 'in livekit.yaml and check UDP 50000–50100 is open. ('
+              + ((e && e.message) || e) + ')' };
+        } finally {
+          try { r.disconnect(); } catch (e2) {}
+          fetch('/call-ended', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room: roomName }), keepalive: true,
+          }).catch(() => {});
+        }
+      },
+    },
   ];
 
   const ICON = { pending: '·', running: '◌', pass: '✓', warn: '!', fail: '✕', skip: '–' };

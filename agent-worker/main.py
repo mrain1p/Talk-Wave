@@ -439,6 +439,12 @@ def prewarm(proc: JobProcess) -> None:
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
 
+    # Media-path probes from the pipeline check are real rooms, but answering
+    # one with a full agent session would spend an LLM+TTS round on nothing.
+    if ctx.room.name.startswith("probe-"):
+        log.info("media-path probe %s — not starting an agent session", ctx.room.name)
+        return
+
     # Keys entered in the settings page live in their own store; push them into
     # the environment before building providers, since the SDKs read env.
     secrets_store.apply_to_env()
