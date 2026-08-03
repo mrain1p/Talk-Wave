@@ -1639,10 +1639,11 @@
   }
 
   // Stage-by-stage timing, and what they compound to for one turn.
+  // The speed test writes to its OWN box so running it never wipes the
+  // pipeline results — both stay visible side by side.
   $('speedBtn').onclick = async () => {
-    const btn = $('speedBtn'), out = $('allResult');
+    const btn = $('speedBtn'), out = $('speedResult');
     btn.disabled = true;
-    $('stages').classList.remove('on');
     out.className = 'result on'; out.textContent = 'Timing every stage…';
     try {
       const d = await afetch('/test/speed', {

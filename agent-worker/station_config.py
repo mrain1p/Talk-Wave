@@ -147,14 +147,22 @@ def _extract_persona_voices(settings: dict) -> dict[str, str]:
                 if isinstance(item, dict):
                     pid = item.get("id") or item.get("personaId")
                     voice = _find_voice(item)
-                    if isinstance(pid, str) and pid.startswith("p_") and voice:
+                    if (isinstance(pid, str) and pid.startswith("p_")
+                            and voice and pid not in found):
                         found[pid] = voice
                 walk(item)
         elif isinstance(node, dict):
             for key, value in node.items():
+                # The settings payload carries a `defaults` subtree with the
+                # FACTORY voices (kokoro ids like bm_daniel). Walking into it
+                # let them clobber the operator's real choices — observed as
+                # Brock mirroring bm_daniel instead of his configured
+                # -Brock1, which the local TTS then 400s on.
+                if str(key).lower() == "defaults":
+                    continue
                 if key.startswith("p_") and isinstance(value, (dict, str)):
                     voice = value if isinstance(value, str) else _find_voice(value)
-                    if voice:
+                    if voice and key not in found:
                         found[key] = voice
                 walk(value)
 

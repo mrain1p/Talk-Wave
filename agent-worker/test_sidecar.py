@@ -346,7 +346,14 @@ class TestStationConfig(unittest.TestCase):
                     {"id": "p_def456", "name": "B", "voice": "-VoiceB"},
                     {"id": "p_empty0", "name": "C", "tts": {"voice": ""}},
                 ]
-            }
+            },
+            # Factory defaults must NEVER shadow the operator's real config —
+            # this exact shape once made Brock mirror bm_daniel.
+            "defaults": {
+                "personas": [
+                    {"id": "p_abc123", "name": "A", "tts": {"voice": "bm_daniel"}},
+                ]
+            },
         }
         m = station_config._extract_persona_voices(payload)
         self.assertEqual(m.get("p_abc123"), "-VoiceA")
