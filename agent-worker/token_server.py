@@ -32,7 +32,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.9.1"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -391,6 +391,7 @@ async def handle_post_secrets(request: web.Request) -> web.Response:
     # registration needs them — try again now rather than waiting for a
     # restart.
     if not _hook_state.get("registered"):
+        _hook_state.pop("gave_up", None)  # new credentials earn a fresh attempt
         asyncio.create_task(register_station_webhook())
     return _cors(request, web.json_response({"secrets": status}))
 
@@ -1336,6 +1337,10 @@ async def register_station_webhook() -> None:
                     log.info("station webhook registered -> %s", url)
                     return
 
+            # A schema rejection is permanent for this station version —
+            # retrying every warm tick just rate-limits us against the
+            # station. Stand down until a restart or a credentials change.
+            _hook_state["gave_up"] = True
             _hook_state["detail"] = "station did not accept either registration shape"
             log.warning("webhook registration failed: %s", _hook_state["detail"])
     except Exception as e:
@@ -1373,7 +1378,7 @@ async def keep_station_warm(app: web.Application) -> None:
                 # startup — a station that was down at that moment, or admin
                 # credentials added later, left it unregistered until a
                 # restart. Piggyback on the warm tick until it sticks.
-                if not _hook_state.get("registered"):
+                if not _hook_state.get("registered") and not _hook_state.get("gave_up"):
                     await register_station_webhook()
             except Exception as e:
                 log.debug("warm ping failed: %s", e)
