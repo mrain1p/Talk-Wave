@@ -154,6 +154,36 @@ copy livekit.example.yaml livekit.yaml
 .\run-local.ps1        # stop with .\run-local.ps1 -Stop
 ```
 
+## Settings reference
+
+Everything lives in the panel behind the gear on the call page (password
+prompt once one is set; the login persists on that browser until Sign out).
+Changes apply to the **next caller** — no restarts. Precedence: panel →
+`.env` → built-in defaults; clearing a field falls through to the layer
+below. Every field carries its own help text in the panel; this is the map:
+
+| Section | What it controls |
+|---|---|
+| **Station** | Which SUB/WAVE this answers for (everything else is discovered from it), the MCP endpoint, and the station admin credentials — with save/test buttons |
+| **Security** | The panel password: set/change, sign out. `CALLIN_ADMIN_KEY` env is the recovery override |
+| **API keys** | Provider keys (OpenAI, Google, Anthropic, OpenRouter, Deepgram, TTS), stored server-side, never shown back |
+| **Brains** | LLM provider/model (lists read live from each provider) and speech-to-text, incl. the in-process local Whisper |
+| **Voice** | TTS backend (cloud/local), server URL, voice (default: mirrored per-persona from the station), adapter config |
+| **Caller permissions** | What a stranger on the line may trigger: requests, library search, announcements, station segments — plus on-air overlap protection |
+| **Usage controls** | Concurrent calls, calls per hour, per-caller redial wait — the guard on API spend |
+| **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
+| **Call behaviour** | Persona pinning, greeting style, time limits, idle check-ins, tuning the caller into the stream |
+| **Station awareness** | How much live context (recent tracks, queue, on-air chatter) the DJ carries — each item costs latency every turn |
+| **House style** | Light steers on answering/sign-off, layered on the persona; prompt preview with token budget |
+| **Back to air** | The one-line on-air mention after a call ends |
+| **Call sounds** | Ring/pickup/hang-up tones, custom files, default volume |
+| **What callers can ask** | Live reference derived from the permissions above |
+| **Embed** | Copyable iframe snippet + compact preview |
+
+At the bottom: **Run full pipeline check** (11 stages in call order — each
+failure message names its fix) and **Speed test** (per-turn latency
+breakdown), with the running version stamped underneath.
+
 ## Embedding
 
 ```html
@@ -170,7 +200,8 @@ settings panel never ships inside an embed.
 
 **Panel password.** Set one in the settings panel (Security section). It
 protects the panel, API keys and test buttons — the call card and embed stay
-public, guarded by the usage limits instead. Stored as a salted PBKDF2 hash.
+public, guarded by the usage limits instead. The login persists per browser
+until Sign out (Security section). Stored as a salted PBKDF2 hash.
 Wrong-password lockout: 5 failures per address → 5-minute cooldown; a second
 round → banned until the app restarts. Locked out yourself? Set
 `CALLIN_ADMIN_KEY` in the environment (always accepted, break-glass) or

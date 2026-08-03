@@ -581,11 +581,12 @@
   // =================================================== settings (full page)
   if (compact) return;
 
-  // Every admin request carries the panel password (kept per-tab in
-  // sessionStorage) as the X-Admin-Key header. Public endpoints — /live,
-  // call tokens, /call-ended, /health — never use this.
+  // Every admin request carries the panel password (kept in localStorage so
+  // the login persists across visits, until Sign out) as the X-Admin-Key
+  // header. Public endpoints — /live, call tokens, /call-ended, /health —
+  // never use this.
   function afetch(url, opts) {
-    const key = sessionStorage.getItem('callinAdminKey');
+    const key = localStorage.getItem('callinAdminKey');
     if (key) {
       opts = Object.assign({}, opts);
       opts.headers = Object.assign({}, opts.headers, { 'X-Admin-Key': key });
@@ -979,6 +980,7 @@
     $('tagSecurity').textContent = authConfigured ? 'password set' : 'open — no password';
     $('curPwRow').style.display = authConfigured ? '' : 'none';
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
+    $('logoutBtn').hidden = !authConfigured;
 
     let nudge = $('pwNudge');
     if (authConfigured) { if (nudge) nudge.remove(); return; }
@@ -993,6 +995,13 @@
       + 'change settings and spend your API keys. Set one under Security before '
       + 'exposing this beyond your own machine.';
   }
+
+  // Signing out only forgets the password on THIS browser — the panel
+  // itself stays protected everywhere.
+  $('logoutBtn').onclick = () => {
+    localStorage.removeItem('callinAdminKey');
+    location.reload();
+  };
 
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');
@@ -1009,12 +1018,12 @@
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { showResult(out, false, d.error || 'failed'); return; }
-      sessionStorage.setItem('callinAdminKey', newPw);
+      localStorage.setItem('callinAdminKey', newPw);
       authConfigured = true;
       $('sec_current_pw').value = ''; $('sec_new_pw').value = '';
       paintSecurity();
-      showResult(out, true, 'Password saved. This tab stays signed in; other '
-        + 'tabs and devices will be asked for it.');
+      showResult(out, true, 'Password saved. This browser stays signed in '
+        + 'until you sign out; other browsers and devices will be asked.');
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
@@ -1122,7 +1131,7 @@
   async function tryUnlock() {
     const pw = $('loginPw').value;
     if (!pw) return;
-    sessionStorage.setItem('callinAdminKey', pw);
+    localStorage.setItem('callinAdminKey', pw);
     $('loginMsg').textContent = 'Checking…';
     try {
       // Single probe first: loadSettings fires two requests in parallel, and
@@ -1140,7 +1149,7 @@
       $('loginPw').value = '';
       $('loginMsg').textContent = '';
     } catch (e) {
-      sessionStorage.removeItem('callinAdminKey');
+      localStorage.removeItem('callinAdminKey');
       $('loginMsg').textContent = (e && e.body && e.body.error) || 'wrong password';
     }
   }
