@@ -94,6 +94,14 @@
           <label for="station_mcp_url">MCP endpoint</label>
           <input type="text" id="station_mcp_url" placeholder="derived: {Station API}/mcp" />
         </div>
+        <div id="stationSecretRows"></div>
+        <p class="hint wide">Admin credentials unlock library search, on-air
+          announcements, the back-to-air mention, and mirroring each persona's
+          voice from the station. Stored server-side, never shown back.</p>
+        <div class="testrow">
+          <button id="saveAdminBtn">Save credentials</button>
+          <button id="testAdminBtn">Test admin access</button>
+        </div>
         <div class="testrow">
           <button id="testStationBtn">Test station + tools</button>
           <button id="reloadStationBtn">Reload from station</button>

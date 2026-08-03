@@ -895,10 +895,26 @@
     }
   }
 
+  // Station admin credentials belong with the station they unlock, not in
+  // the generic key list.
+  const STATION_SECRETS = ['subwave_admin_user', 'subwave_admin_pass'];
+
   function paintSecrets() {
     const host = $('secretRows');
+    const stationHost = $('stationSecretRows');
     host.innerHTML = '';
+    if (stationHost) stationHost.innerHTML = '';
     Object.keys(secrets).forEach((field) => {
+      if (STATION_SECRETS.includes(field) && stationHost) {
+        paintSecretRow(stationHost, field);
+        return;
+      }
+      paintSecretRow(host, field);
+    });
+  }
+
+  function paintSecretRow(host, field) {
+    {
       const s = secrets[field];
       const row = document.createElement('div');
       row.className = 'row';
@@ -926,7 +942,7 @@
 
       row.append(label, input, clear);
       host.appendChild(row);
-    });
+    }
   }
 
   async function postSecrets(set, clear) {
@@ -1142,6 +1158,47 @@
     if ($('station_mcp_url').value) q.set('station_mcp_url', $('station_mcp_url').value);
     return q.toString() ? '?' + q.toString() : '';
   }
+
+  $('saveAdminBtn').onclick = async () => {
+    const out = $('stationResult');
+    const set = {};
+    STATION_SECRETS.forEach((f) => {
+      const el = $('sec_' + f);
+      if (el && el.value.trim()) set[f] = el.value.trim();
+    });
+    if (!Object.keys(set).length) {
+      out.className = 'result on';
+      out.textContent = 'Nothing to save — blank fields keep their current value.';
+      return;
+    }
+    const btn = $('saveAdminBtn'); btn.disabled = true;
+    try {
+      await postSecrets(set, []);
+      STATION_SECRETS.forEach((f) => { const el = $('sec_' + f); if (el) el.value = ''; });
+      showResult(out, true, 'Credentials saved — applies to the next caller and the tests.');
+    } finally { btn.disabled = false; }
+  };
+
+  // Tests the DRAFT values if the fields hold anything, otherwise whatever
+  // is stored — so a credential can be checked before committing to it.
+  $('testAdminBtn').onclick = async () => {
+    const btn = $('testAdminBtn'), out = $('stationResult');
+    btn.disabled = true;
+    out.className = 'result on'; out.textContent = 'Checking admin access…';
+    const body = {};
+    STATION_SECRETS.forEach((f) => {
+      const el = $('sec_' + f);
+      if (el && el.value.trim()) body[f] = el.value.trim();
+    });
+    try {
+      const d = await fetch('/test/admin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+      showResult(out, !!d.ok, d.detail || d.error || 'no answer');
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
 
   $('testStationBtn').onclick = async () => {
     const btn = $('testStationBtn'), out = $('stationResult');

@@ -32,7 +32,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.3"
+APP_VERSION = "0.9.4"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -1183,6 +1183,51 @@ async def handle_test_env(request: web.Request) -> web.Response:
     return _cors(request, web.json_response(result))
 
 
+async def handle_test_admin(request: web.Request) -> web.Response:
+    """Prove the station admin credentials work, without running the whole
+    pipeline. Accepts draft values in the body so a credential can be tested
+    BEFORE saving it; falls back to the stored/env ones. Probes /listeners —
+    admin-gated, read-only, side-effect free."""
+    if not _write_allowed(request):
+        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+
+    body = await request.json() if request.can_read_body else {}
+    from station_config import admin_credentials
+
+    user = str((body or {}).get("subwave_admin_user") or "").strip()
+    password = str((body or {}).get("subwave_admin_pass") or "").strip()
+    draft = bool(user or password)
+    if not (user and password):
+        stored_user, stored_pass = admin_credentials()
+        user = user or stored_user
+        password = password or stored_pass
+    if not (user and password):
+        return _cors(request, web.json_response(
+            {"ok": False, "detail": "no credentials to test — fill in both fields"}
+        ))
+
+    base = settings_store.station_base_url()
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(f"{base}/listeners", auth=httpx.BasicAuth(user, password))
+        if r.status_code == 401:
+            detail = "station rejected these credentials"
+            ok = False
+        elif r.status_code == 429:
+            detail = ("station login rate limiter is active — wait 15 minutes "
+                      "(or restart the station) and test again; this does not "
+                      "mean the credentials are wrong")
+            ok = False
+        else:
+            r.raise_for_status()
+            detail = ("accepted by the station"
+                      + (" (draft — remember to save)" if draft else ""))
+            ok = True
+        return _cors(request, web.json_response({"ok": ok, "detail": detail}))
+    except Exception as e:
+        return _cors(request, web.json_response({"ok": False, "detail": str(e)[:140]}))
+
+
 async def handle_test_station(request: web.Request) -> web.Response:
     """Station reachable, and how many MCP tools survive the allowlist."""
     # Same gate as every other test endpoint: without an admin key, a foreign
@@ -1427,6 +1472,8 @@ def build_app() -> web.Application:
     app.router.add_post("/test/llm", handle_test_llm)
     app.router.add_options("/test/llm", handle_options)
     app.router.add_get("/test/station", handle_test_station)
+    app.router.add_post("/test/admin", handle_test_admin)
+    app.router.add_options("/test/admin", handle_options)
     app.router.add_get("/prompt", handle_prompt_preview)
     app.router.add_post("/test/env", handle_test_env)
     app.router.add_post("/test/speed", handle_speed_test)
