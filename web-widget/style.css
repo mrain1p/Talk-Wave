@@ -276,7 +276,9 @@
   }
   #themeBtn { right: 50px; }
   .gear:hover { background: var(--line); color: var(--text); }
-  body.compact #themeBtn { display: none; }
+  /* Embeds keep the theme toggle (it hides itself when the host page forces
+     a theme via data-theme). */
+  body.compact #themeBtn { right: 10px; width: 26px; height: 26px; }
 
   /* --- settings --- */
   .panel {
@@ -408,8 +410,18 @@
   body.compact .avatar { width: 46px; height: 46px; }
   body.compact .dj { font-size: 17px; }
   body.compact .who-row { gap: 11px; }
-  body.compact .tagline, body.compact .track, body.compact .gear { display: none; }
+  /* Compact drops the tagline, track and SETTINGS gear — the theme toggle
+     stays (and hides itself when the host forces data-theme). */
+  body.compact .tagline, body.compact .track, body.compact #gearBtn { display: none; }
   body.compact .captions { max-height: 104px; font-size: 11.5px; }
+  /* Ticker: the latest spoken line only, fading out after a few seconds —
+     keeps embeds short wherever they're dropped. */
+  .ticker { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--dim);
+            opacity: 0; transition: opacity .5s ease; }
+  .ticker.show { opacity: 1; }
+  .ticker .who { color: var(--accent); font-weight: 700; font-size: 10px;
+                 letter-spacing: .08em; text-transform: uppercase; margin-right: 7px; }
+  body.compact .ticker { font-size: 11.5px; margin-top: 8px; }
   body.compact .cap { grid-template-columns: 32px 1fr; gap: 7px; }
   body.compact .meters { margin: 10px 0 2px; }
   body.compact .callrow { gap: 10px; }

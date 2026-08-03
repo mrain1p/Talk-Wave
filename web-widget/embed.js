@@ -27,20 +27,28 @@
 
     var origin = el.getAttribute("data-origin") || DEFAULT_ORIGIN;
     var compact = el.getAttribute("data-compact") !== "false";
-    // data-theme="light"|"dark" forwards to the page's ?theme= so the widget
-    // matches the host page instead of the viewer's OS setting.
+    // data-theme="light"|"dark" forces a theme to match the host page and
+    // hides the widget's own toggle. Omit it for auto: the viewer's OS
+    // preference, with the in-widget toggle available.
     var theme = el.getAttribute("data-theme") || "";
+    // data-captions="ticker"|"full"|"off". Embeds default to the ticker —
+    // only the latest spoken line, fading after a few seconds — so the
+    // widget stays short wherever it's dropped.
+    var captions = el.getAttribute("data-captions") || "";
+    // data-height="260px" overrides the frame height for tight layouts.
+    var height = el.getAttribute("data-height") || "";
 
     var iframe = document.createElement("iframe");
     iframe.src = origin + "/?compact=" + (compact ? "1" : "0")
-      + (theme ? "&theme=" + encodeURIComponent(theme) : "");
+      + (theme ? "&theme=" + encodeURIComponent(theme) : "")
+      + (captions ? "&captions=" + encodeURIComponent(captions) : "");
     iframe.setAttribute("allow", "microphone");
     iframe.setAttribute("title", "Call the SUB/WAVE DJ");
     iframe.style.border = "none";
     iframe.style.width = "100%";
-    iframe.style.height = compact ? "190px" : "420px";
+    iframe.style.height = height || (compact ? "190px" : "420px");
     iframe.style.borderRadius = "14px";
-    iframe.style.colorScheme = theme || "dark";
+    if (theme) iframe.style.colorScheme = theme;
 
     el.appendChild(iframe);
   });

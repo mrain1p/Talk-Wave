@@ -5,6 +5,12 @@
   const compact = params.get('compact') === '1';
   if (compact) document.body.classList.add('compact');
 
+  // How speech is shown: 'full' = the scrolling transcript, 'ticker' = only
+  // the latest line, fading out after a few seconds, 'off' = nothing.
+  // Embeds default to the ticker so the widget stays small wherever it's
+  // dropped; the full page keeps the transcript.
+  const captionsMode = params.get('captions') || (compact ? 'ticker' : 'full');
+
   const $ = (id) => document.getElementById(id);
 
   // Theme: an explicit choice is remembered and beats the OS setting. Embeds
@@ -17,6 +23,9 @@
     }
     const btn = document.getElementById('themeBtn');
     if (!btn) return;
+    // A host page that forces a theme has decided — no toggle. Otherwise the
+    // toggle is available, embeds included.
+    if (forced) { btn.style.display = 'none'; return; }
     btn.onclick = () => {
       const now = document.documentElement.getAttribute('data-theme')
         || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
@@ -300,8 +309,24 @@
   const capNodes = new Map();
   const lastByWho = {};   // { who: {node, text, at} }
 
+  let tickerTimer = null;
+  function showTicker(who, text) {
+    const t = $('ticker');
+    if (!t) return;
+    t.querySelector('.who').textContent = who === 'dj' ? 'DJ' : 'You';
+    t.querySelector('.line').textContent = text;
+    t.hidden = false;
+    t.classList.add('show');
+    if (tickerTimer) clearTimeout(tickerTimer);
+    tickerTimer = setTimeout(() => t.classList.remove('show'), 6000);
+  }
+
   function addCaption(id, who, text, final) {
     if (!text) return;
+    if (captionsMode !== 'full') {
+      if (captionsMode === 'ticker') showTicker(who, text);
+      return;
+    }
     capBox.classList.add('on');
     const empty = capBox.querySelector('.capempty');
     if (empty) empty.remove();
@@ -390,8 +415,10 @@
     setStatus('Connecting…', 'connecting');
     $('endedBar').hidden = true;
     capNodes.clear();
-    capBox.classList.add('on');
-    capBox.innerHTML = '<p class="capempty">Captions will appear here as you talk…</p>';
+    if (captionsMode === 'full') {
+      capBox.classList.add('on');
+      capBox.innerHTML = '<p class="capempty">Captions will appear here as you talk…</p>';
+    }
 
     ctx();          // unlock audio inside the click gesture
     startRinging();
@@ -532,6 +559,8 @@
     $('stateChip').hidden = true;
     stopTimer();
     setAgentState('idle');
+    const ticker = $('ticker');
+    if (ticker) { ticker.classList.remove('show'); ticker.hidden = true; }
     collapseTranscript();
     callBtn.textContent = 'Call the DJ';
     callBtn.classList.remove('live', 'ringing', 'answering');

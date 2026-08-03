@@ -189,9 +189,16 @@ breakdown), with the running version stamped underneath.
 ```
 
 Renders the compact card in an iframe with `allow="microphone"` set (its
-absence is the classic silent embed failure). Optional attributes:
-`data-origin`, `data-theme="light|dark"`, `data-compact="false"`. The
-settings panel never ships inside an embed.
+absence is the classic silent embed failure). The settings panel never
+ships inside an embed. Optional attributes:
+
+| Attribute | Effect |
+|---|---|
+| `data-theme="light\|dark"` | Force a theme to match the host page (hides the widget's toggle). Omit for auto: viewer's OS preference + in-widget toggle |
+| `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — only the latest spoken line, fading after a few seconds, so the widget stays short. `full` restores the scrolling transcript |
+| `data-height="260px"` | Frame height for tight layouts |
+| `data-compact="false"` | Full card instead of the compact one |
+| `data-origin` | Widget origin when the script is served from elsewhere |
 
 ## Security
 
