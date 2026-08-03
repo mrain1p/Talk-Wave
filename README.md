@@ -124,6 +124,11 @@ cp livekit.example.yaml livekit.yaml   # generate a fresh secret for it
 docker compose up -d
 ```
 
+**Set `HOST_IP`** (in `.env` or your stack GUI's environment panel) to the
+LAN address of the docker host — the one deployment variable. It drives
+LiveKit's advertised media address, the URL browsers connect to, and the
+station webhook callback.
+
 Open port 8100, add an API key in the settings panel, run the pipeline
 check, press Call.
 
@@ -172,6 +177,31 @@ Local-dev defaults are deliberately open. Before exposing beyond your LAN:
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted
    (0600 where the OS honours it). Protect the volume; never commit `.env`
    or `data/`.
+
+## Troubleshooting
+
+Run the **full pipeline check** first — it walks every leg in call order and
+its failure messages name the fix. The classics:
+
+- **Call hangs at "Ringing" while every server check passes** — LiveKit in
+  docker is advertising its container IP as the media address. Set `HOST_IP`
+  (which feeds `--node-ip`) and recreate the livekit container. The
+  *Browser media path* stage exists precisely for this. If it still fails,
+  check the host firewall allows UDP 50000–50100 and TCP 7881.
+- **Station admin returns 429** — the station's login rate limiter, usually
+  after repeated credential tests. Wait ~15 minutes (or restart the station
+  container); it does not mean the credentials are wrong. The *Test admin
+  access* button distinguishes the two.
+- **Webhooks registered to a `172.x` address** — same container-IP problem
+  as above; `HOST_IP` fixes the callback URL too.
+- **Voice test 400s on a local TTS backend** — the voice id doesn't exist on
+  that server (cloud names and local sample ids aren't interchangeable), or
+  no voice is configured anywhere; *Reload voice list* after switching
+  backend. With station admin credentials set, per-persona voices mirror
+  from the station automatically.
+- **Audio gaps on local TTS** — generation slower than playback. The voice
+  test reports the realtime factor; above ~1.0, lower your TTS engine's
+  inference steps or use cloud for the live leg.
 
 ## Logs & tests
 

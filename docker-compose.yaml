@@ -22,14 +22,16 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
+  # ONE deployment variable: HOST_IP — the LAN address of the machine running
+  # this stack. It drives the LiveKit media address, the URL browsers connect
+  # to, and the webhook callback. Set it in .env or your stack GUI's
+  # environment panel; every service below derives from it.
   livekit-server:
     image: livekit/livekit-server:v1.13.5
-    # IMPORTANT when running in docker on a LAN: --node-ip must be the HOST's
-    # LAN address, or LiveKit advertises its container IP as the media
-    # address — browsers then connect signalling fine but audio never flows
-    # (the call hangs on "Ringing"). The pipeline check's "Browser media
-    # path" stage catches this.
-    command: --config /etc/livekit.yaml --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
+    # Without --node-ip a containerized LiveKit advertises its CONTAINER IP
+    # as the media address — signalling works, audio never flows, calls hang
+    # at "Ringing". The pipeline's "Browser media path" stage catches this.
+    command: --config /etc/livekit.yaml --node-ip ${HOST_IP:-127.0.0.1}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -88,6 +90,10 @@ services:
       # Inside a container "localhost" is the container itself — the env
       # file's dev default would make the LiveKit health check fail.
       - LIVEKIT_URL=ws://livekit-server:7880
+      # Browsers connect here; station webhooks call back here. Both derive
+      # from HOST_IP so one variable configures the whole deployment.
+      - LIVEKIT_PUBLIC_URL=ws://${HOST_IP:-localhost}:7880
+      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station
       - LOG_TO_FILE=0
     volumes:
       - ./data:/data
