@@ -1414,6 +1414,20 @@
           ]);
           return { status: 'pass', detail: 'this browser connected to ' + url + ' — signalling and media both OK' };
         } catch (e) {
+          // A wss endpoint on a different origin than this page usually
+          // means a self-signed certificate the browser has never accepted —
+          // and there is no popup for that, only visiting the https origin.
+          if (url && url.indexOf('wss://') === 0) {
+            const httpsOrigin = 'https://' + url.slice('wss://'.length).replace(/\/.*$/, '');
+            if (location.origin !== httpsOrigin) {
+              return { status: 'fail',
+                detail: 'this page (' + location.origin + ') is not the TLS front '
+                  + 'door — open ' + httpsOrigin + ', accept the certificate '
+                  + 'screen once, and use THAT page for calls. Signalling at '
+                  + url + ' can only be trusted from its own origin. ('
+                  + ((e && e.message) || e) + ')' };
+            }
+          }
           return { status: 'fail',
             detail: 'browser could not establish media with ' + url + ' — '
               + 'if LiveKit runs in docker, set rtc.node_ip to the host’s LAN IP '
