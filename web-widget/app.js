@@ -339,6 +339,15 @@
   $('volSlider').oninput = (e) => { volume = +e.target.value; applyVolume(); };
 
   async function startCall() {
+    // Browsers only allow microphone capture on HTTPS or localhost. On a
+    // plain http:// LAN address the call would connect and then immediately
+    // hang up when mic capture fails — say why up front instead.
+    if (!window.isSecureContext || !navigator.mediaDevices
+        || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Mic needs HTTPS or localhost — ' + location.origin
+        + ' can\'t capture audio (see README → Troubleshooting)', 'error');
+      return;
+    }
     callBtn.disabled = true;
     callBtn.textContent = 'Ringing…';
     callBtn.classList.add('ringing');
@@ -1412,6 +1421,29 @@
             body: JSON.stringify({ room: roomName }), keepalive: true,
           }).catch(() => {});
         }
+      },
+    },
+    {
+      // Browsers only allow mic capture on HTTPS or localhost. Everything
+      // else can pass while a call on a plain http:// LAN address connects
+      // and instantly hangs up when capture fails.
+      key: 'mic', name: 'Microphone',
+      run: async () => {
+        if (!window.isSecureContext) {
+          return { status: 'fail',
+            detail: location.origin + ' is not a secure context — browsers '
+              + 'only allow the microphone on HTTPS or localhost. Put a TLS '
+              + 'reverse proxy in front for real use; for testing, Chrome\'s '
+              + '"insecure origins treated as secure" flag works.' };
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+          return { status: 'fail', detail: 'this browser exposes no media devices API' };
+        }
+        const mics = (await navigator.mediaDevices.enumerateDevices())
+          .filter((d) => d.kind === 'audioinput');
+        if (!mics.length) return { status: 'fail', detail: 'no microphone found on this device' };
+        return { status: 'pass',
+          detail: mics.length + ' microphone(s) · permission is asked when a call starts' };
       },
     },
   ];

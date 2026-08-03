@@ -188,6 +188,13 @@ its failure messages name the fix. The classics:
   (which feeds `--node-ip`) and recreate the livekit container. The
   *Browser media path* stage exists precisely for this. If it still fails,
   check the host firewall allows UDP 50000–50100 and TCP 7881.
+- **Call connects and instantly hangs up** — the page is on a plain
+  `http://<lan-ip>` origin, where browsers refuse microphone capture
+  (localhost is exempt, which is why local dev works). The *Microphone*
+  stage catches this. Real fix: a TLS reverse proxy in front of the widget
+  (and `wss://` in `LIVEKIT_PUBLIC_URL`). For LAN testing only:
+  `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add the
+  widget origin, relaunch.
 - **Station admin returns 429** — the station's login rate limiter, usually
   after repeated credential tests. Wait ~15 minutes (or restart the station
   container); it does not mean the credentials are wrong. The *Test admin
