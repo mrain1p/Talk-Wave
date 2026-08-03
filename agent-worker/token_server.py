@@ -32,7 +32,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.2"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -391,7 +391,8 @@ async def handle_post_secrets(request: web.Request) -> web.Response:
     # registration needs them — try again now rather than waiting for a
     # restart.
     if not _hook_state.get("registered"):
-        _hook_state.pop("gave_up", None)  # new credentials earn a fresh attempt
+        _hook_state.pop("gave_up", None)   # new credentials earn a fresh attempt
+        _hook_state.pop("attempts", None)
         asyncio.create_task(register_station_webhook())
     return _cors(request, web.json_response({"secrets": status}))
 
@@ -1346,6 +1347,17 @@ async def register_station_webhook() -> None:
     except Exception as e:
         _hook_state["detail"] = str(e)[:120]
         log.warning("webhook registration failed: %s", e)
+        # Every attempt carries the admin credentials; unbounded retries have
+        # been observed tripping a station's LOGIN rate limiter and locking
+        # the operator out of their own admin UI. Stand down after a few
+        # failures; a restart or a credentials change re-arms it.
+        _hook_state["attempts"] = _hook_state.get("attempts", 0) + 1
+        if _hook_state["attempts"] >= 5:
+            _hook_state["gave_up"] = True
+            log.warning(
+                "webhook registration standing down after %d failed attempts",
+                _hook_state["attempts"],
+            )
 
 
 async def keep_station_warm(app: web.Application) -> None:
