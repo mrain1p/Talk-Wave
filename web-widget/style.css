@@ -182,6 +182,11 @@
   .controls button.on { background: var(--accent); color: #fff; }
 
   #status { display: inline-flex; align-items: center; font-size: 11.5px; color: var(--dimmer); }
+  /* Version footer in the settings panel — which build am I looking at,
+     for tracking changes and troubleshooting over time. */
+  .versionline { margin-top: 16px; font-size: 10.5px; color: var(--dimmer);
+                 text-align: right; }
+
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dimmer); margin-right: 6px; vertical-align: middle; }
   .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
   .dot.connected { background: var(--ok); }

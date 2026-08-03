@@ -1000,6 +1000,11 @@
     options = o; overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
     adoptSchema(s.schema);
     paint(); paintSecrets();
+    // Which build is this? Anchors every bug report and change over time.
+    fetch('/health').then((r) => r.json()).then((h) => {
+      $('versionLine').textContent = 'Wave Talk v' + (h.version || '?')
+        + ' · ' + location.host;
+    }).catch(() => {});
   }
 
   // Unsaved-change tracking, so Save says whether there's anything to do.
