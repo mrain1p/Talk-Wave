@@ -49,6 +49,8 @@
       <div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
     </div>
 
+    <div class="michelp" id="micHelp" hidden></div>
+
     <div class="rig" id="rig">
       <div class="meters">
         <div class="meter you" id="meterYou">
@@ -83,6 +85,15 @@
     <p class="sub">Applies to the next caller — no restart. Leave a field on
       “Default” to fall through to the environment config.</p>
 
+    <div class="banner" id="loginGate" hidden>
+      <strong>Panel locked.</strong>
+      <span class="loginrow">
+        <input type="password" id="loginPw" placeholder="panel password" autocomplete="off" />
+        <button id="loginBtn">Unlock</button>
+      </span>
+      <span id="loginMsg"></span>
+    </div>
+
     <details data-group="station" class="sec">
       <summary><span class="chev">▶</span>Station<span class="tag" id="tagStation"></span></summary>
       <div class="body">
@@ -107,6 +118,29 @@
           <button id="reloadStationBtn">Reload from station</button>
         </div>
         <div class="result" id="stationResult"></div>
+      </div>
+    </details>
+    <details data-group="security" class="sec">
+      <summary><span class="chev">▶</span>Security<span class="tag" id="tagSecurity"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The password protects this
+          panel, the keys and the test buttons. The call card and embed stay
+          public — they're guarded by the usage limits instead. Stored as a
+          salted hash, never plaintext. Locked out? Set
+          <code>CALLIN_ADMIN_KEY</code> in the environment as a recovery
+          override; restarting the app clears IP bans.</p>
+        <div class="row" id="curPwRow">
+          <label for="sec_current_pw">Current password</label>
+          <input type="password" id="sec_current_pw" autocomplete="off" />
+        </div>
+        <div class="row">
+          <label for="sec_new_pw">New password</label>
+          <input type="password" id="sec_new_pw" autocomplete="off" placeholder="at least 8 characters" />
+        </div>
+        <div class="testrow">
+          <button id="setPwBtn">Set password</button>
+        </div>
+        <div class="result" id="pwResult"></div>
       </div>
     </details>
     <details data-group="keys" class="sec">

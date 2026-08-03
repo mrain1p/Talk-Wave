@@ -13,8 +13,10 @@ Run: python token_server.py   (or via run-local.ps1)
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from aiohttp import web
 from dotenv import load_dotenv
 from livekit import api
 
+import admin_auth
 import secrets_store
 import settings as settings_store
 import station as station_mod
@@ -32,7 +35,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.11"
+APP_VERSION = "0.9.12"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -164,7 +167,11 @@ async def handle_token(request: web.Request) -> web.Response:
         body = {}
     probe = bool(isinstance(body, dict) and body.get("probe"))
     if probe and not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
 
     cfg = settings_store.load()
     if not probe:
@@ -229,6 +236,15 @@ _live_cache: dict = {"at": 0.0, "data": None}
 _LIVE_TTL = 30.0
 
 
+def _secure_origin() -> str:
+    """Where the HTTPS front door lives, if one is configured. wss signalling
+    and the https widget share an origin by design (the Caddyfile routes
+    both), so the wss public URL doubles as the pointer."""
+    if LIVEKIT_PUBLIC_URL.startswith("wss://"):
+        return "https://" + LIVEKIT_PUBLIC_URL[len("wss://"):].split("/", 1)[0]
+    return ""
+
+
 async def handle_live(request: web.Request) -> web.Response:
     """Who's on air, proxied so the widget doesn't depend on the station
     sending CORS headers to whatever origin the widget is embedded on."""
@@ -260,6 +276,11 @@ async def handle_live(request: web.Request) -> web.Response:
                     # the card can say "station struggling" instead of the
                     # prompt just silently thinning.
                     "degraded": station_mod.degraded(),
+                    # The TLS front door, derived from LIVEKIT_PUBLIC_URL.
+                    # When this page is on plain http (where browsers refuse
+                    # the microphone), the widget links the caller here
+                    # instead of failing cryptically.
+                    "secureOrigin": _secure_origin(),
                     # The station's own audio stream, so the caller can be
                     # counted as a listener while on the line.
                     "stream": {
@@ -334,24 +355,99 @@ async def handle_index(request: web.Request) -> web.FileResponse:
 
 ADMIN_KEY = os.environ.get("CALLIN_ADMIN_KEY", "")
 
+# --- panel password + brute-force lockout ---------------------------------
+# 5 wrong passwords from one address -> 5-minute cooldown; a second full
+# round of failures bans the address until the app restarts. In-memory on
+# purpose: `docker restart` (or any redeploy) is the un-ban, and setting
+# CALLIN_ADMIN_KEY in the environment is the break-glass password.
+_AUTH_MAX_FAILS = 5
+_AUTH_COOLDOWN_SECS = 300.0
+_AUTH_STRIKES_TO_BAN = 2
+_auth_state: dict[str, dict] = {}   # ip -> {fails, strikes, cooldown_until, banned}
 
-def _admin_ok(request: web.Request) -> bool:
-    if not ADMIN_KEY:
+
+def _auth_configured() -> bool:
+    return bool(ADMIN_KEY) or admin_auth.is_set()
+
+
+def _auth_gate(ip: str) -> str | None:
+    """A reason this address may not even ATTEMPT a password, or None."""
+    st = _auth_state.get(ip)
+    if not st:
+        return None
+    if st.get("banned"):
+        return ("too many failed attempts — this address is blocked until "
+                "the app restarts")
+    wait = st.get("cooldown_until", 0) - time.time()
+    if wait > 0:
+        return f"too many failed attempts — try again in {int(wait) + 1}s"
+    return None
+
+
+def _auth_fail(ip: str) -> str:
+    """Record a wrong password; returns the caller-facing message."""
+    st = _auth_state.setdefault(ip, {"fails": 0, "strikes": 0})
+    st["fails"] += 1
+    if st["fails"] >= _AUTH_MAX_FAILS:
+        st["fails"] = 0
+        st["strikes"] = st.get("strikes", 0) + 1
+        if st["strikes"] >= _AUTH_STRIKES_TO_BAN:
+            st["banned"] = True
+            log.warning("auth: %s banned until restart after repeated failures", ip)
+            return ("too many failed attempts — this address is blocked until "
+                    "the app restarts")
+        st["cooldown_until"] = time.time() + _AUTH_COOLDOWN_SECS
+        log.warning("auth: %s in cooldown after %d failures", ip, _AUTH_MAX_FAILS)
+        return f"too many failed attempts — try again in {int(_AUTH_COOLDOWN_SECS)}s"
+    left = _AUTH_MAX_FAILS - st["fails"]
+    return f"wrong password ({left} tr{'y' if left == 1 else 'ies'} left before a cooldown)"
+
+
+def _auth_clear(ip: str) -> None:
+    _auth_state.pop(ip, None)
+
+
+def _key_valid(key: str) -> bool:
+    if not key:
+        return False
+    if ADMIN_KEY and hmac.compare_digest(key, ADMIN_KEY):
         return True
-    return request.headers.get("X-Admin-Key", "") == ADMIN_KEY
+    return admin_auth.verify(key)
+
+
+def _check_admin(request: web.Request) -> bool:
+    """Password check with lockout, once a password is configured. Stores a
+    caller-facing reason on the request for the shared 401 payload."""
+    ip = _caller_key(request)
+    gate = _auth_gate(ip)
+    if gate:
+        request["auth_error"] = gate
+        request["auth_required"] = True
+        return False
+    key = request.headers.get("X-Admin-Key", "")
+    if _key_valid(key):
+        _auth_clear(ip)
+        return True
+    # An absent key is a login prompt, not a brute-force attempt — only a
+    # WRONG key counts toward the lockout.
+    request["auth_error"] = _auth_fail(ip) if key else "password required"
+    request["auth_required"] = True
+    return False
 
 
 def _write_allowed(request: web.Request) -> bool:
-    """Gate for anything that changes state or costs money.
+    """Gate for the panel: anything that reads config, changes state or
+    costs money.
 
-    With an admin key set, the key decides. Without one (the local-dev
-    default), refuse cross-site browser calls: any random web page you visit
-    can POST to localhost, and browsers always attach an Origin header to
-    cross-origin requests — so a foreign origin is the tell. Same-origin
-    pages and plain tools like curl (no Origin) stay allowed.
+    With a password (or CALLIN_ADMIN_KEY) configured, the password decides —
+    with per-IP lockout. Without one (first-run), refuse cross-site browser
+    calls: any random web page you visit can POST to localhost, and browsers
+    always attach an Origin header to cross-origin requests — so a foreign
+    origin is the tell. Same-origin pages and plain tools like curl (no
+    Origin) stay allowed.
     """
-    if ADMIN_KEY:
-        return _admin_ok(request)
+    if _auth_configured():
+        return _check_admin(request)
 
     origin = request.headers.get("Origin", "")
     if not origin:
@@ -364,10 +460,19 @@ def _write_allowed(request: web.Request) -> bool:
     if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
         return True
     log.warning("blocked cross-origin write from %s", origin)
+    request["auth_error"] = "cross-origin request blocked"
     return False
 
 
 async def handle_get_settings(request: web.Request) -> web.Response:
+    # Config is operator-only once a password exists; before one is set
+    # (first-run) it stays open so the panel can render and nudge.
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     # `secrets` is status only — set/unset, source, masked tail. Key material
     # never travels back to the browser.
     return _cors(
@@ -380,17 +485,56 @@ async def handle_get_settings(request: web.Request) -> web.Response:
                 # Field metadata (labels, help, grouping, dependencies) so the
                 # page doesn't keep its own parallel copy of the schema.
                 "schema": settings_store.schema_payload(),
-                "adminRequired": bool(ADMIN_KEY),
+                "authConfigured": _auth_configured(),
             }
         ),
     )
+
+
+async def handle_set_password(request: web.Request) -> web.Response:
+    """Set or change the panel password. First-run set is open (same-origin
+    only); changing requires the current password, with the same lockout as
+    every other attempt."""
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(request, web.json_response({"error": "invalid JSON"}, status=400))
+
+    new = str((body or {}).get("new") or "")
+    if len(new) < 8:
+        return _cors(request, web.json_response(
+            {"error": "use at least 8 characters"}, status=400))
+
+    if _auth_configured():
+        ip = _caller_key(request)
+        gate = _auth_gate(ip)
+        if gate:
+            return _cors(request, web.json_response(
+                {"error": gate, "authRequired": True}, status=401))
+        current = str((body or {}).get("current")
+                      or request.headers.get("X-Admin-Key", ""))
+        if not _key_valid(current):
+            err = _auth_fail(ip) if current else "current password required"
+            return _cors(request, web.json_response(
+                {"error": err, "authRequired": True}, status=401))
+        _auth_clear(ip)
+    elif not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed"}, status=401))
+
+    admin_auth.set_password(new)
+    return _cors(request, web.json_response({"ok": True}))
 
 
 async def handle_post_secrets(request: web.Request) -> web.Response:
     """Set or clear API keys. Blank values mean 'unchanged' — the panel shows
     masked placeholders, so an untouched field must not wipe a working key."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     try:
         body = await request.json()
     except Exception:
@@ -415,7 +559,11 @@ async def handle_post_secrets(request: web.Request) -> web.Response:
 
 async def handle_post_settings(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     try:
         patch = await request.json()
     except Exception:
@@ -572,6 +720,12 @@ _options_cache: dict = {"at": 0.0, "data": None}
 async def handle_settings_options(request: web.Request) -> web.Response:
     """Everything the settings UI needs to populate its dropdowns, read live
     rather than hardcoded in the page."""
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     import time as _time
     secrets_store.apply_to_env()
 
@@ -673,7 +827,11 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     live call. The realtime factor is the number that matters: above 1.0 the
     buffer starves and playback gaps."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -762,7 +920,11 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     actually emits a tool call — plenty of local models answer fluently but
     never call tools, which shows up as a DJ that never submits a request."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -830,7 +992,11 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
     style you've set.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
 
     import prompts as prompts_mod
     from main import effective_tools
@@ -872,7 +1038,11 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     paths, not a synthetic benchmark.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
 
     import time as _time
 
@@ -1075,7 +1245,11 @@ async def handle_test_env(request: web.Request) -> web.Response:
     so this at least catches a missing key or a bad provider/model combination
     before a caller discovers it."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
 
     secrets_store.apply_to_env()
     body = await request.json() if request.can_read_body else {}
@@ -1205,7 +1379,11 @@ async def handle_test_admin(request: web.Request) -> web.Response:
     BEFORE saving it; falls back to the stored/env ones. Probes /listeners —
     admin-gated, read-only, side-effect free."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
 
     body = await request.json() if request.can_read_body else {}
     from station_config import admin_credentials
@@ -1249,7 +1427,11 @@ async def handle_test_station(request: web.Request) -> web.Response:
     # Same gate as every other test endpoint: without an admin key, a foreign
     # origin must not be able to read the station URL and tool list.
     if not _write_allowed(request):
-        return _cors(request, web.json_response({"error": "admin key required"}, status=403))
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
 
     from livekit.agents import mcp as lk_mcp
 
@@ -1355,6 +1537,13 @@ async def handle_station_hook(request: web.Request) -> web.Response:
 
 
 async def handle_hooks_recent(request: web.Request) -> web.Response:
+    # Operator debugging surface — same gate as the rest of the panel.
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
     return _cors(request, web.json_response(
         {"registered": _hook_state, "events": list(_hook_events)[-15:]}
     ))
@@ -1481,6 +1670,8 @@ def build_app() -> web.Application:
     app.router.add_options("/settings", handle_options)
     app.router.add_post("/settings/secrets", handle_post_secrets)
     app.router.add_options("/settings/secrets", handle_options)
+    app.router.add_post("/auth/password", handle_set_password)
+    app.router.add_options("/auth/password", handle_options)
     app.router.add_get("/settings/options", handle_settings_options)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
     app.router.add_post("/test/tts", handle_test_tts)

@@ -118,6 +118,37 @@
     if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
   }
 
+  // Browsers only allow the microphone on HTTPS or localhost. When this page
+  // can't capture audio, say so IN PLACE with a clickable way out, instead of
+  // a call that dies cryptically. The server tells us where the TLS front
+  // door is (live.secureOrigin, derived from its own config).
+  function updateMicHelp() {
+    const el = $('micHelp');
+    if (!el) return;
+    const micBlocked = !window.isSecureContext || !navigator.mediaDevices
+      || !navigator.mediaDevices.getUserMedia;
+    if (!micBlocked) { el.hidden = true; return; }
+    const so = (live && live.secureOrigin) || '';
+    el.innerHTML = '';
+    if (so && so !== location.origin) {
+      el.append('Calls need microphone access, which browsers only allow on a secure page. ');
+      const a = document.createElement('a');
+      a.href = so; a.target = '_top';
+      a.textContent = 'Open the secure page: ' + so;
+      el.appendChild(a);
+      const alt = document.createElement('span');
+      alt.className = 'alt';
+      alt.textContent = 'First visit shows a one-time certificate screen (Advanced → Proceed). '
+        + 'LAN testing alternative: chrome://flags → “Insecure origins treated as secure” → add '
+        + location.origin + '.';
+      el.appendChild(alt);
+    } else {
+      el.append('Calls need microphone access, which browsers only allow on HTTPS or localhost — '
+        + 'this page (' + location.origin + ') has neither. See README → Troubleshooting.');
+    }
+    el.hidden = false;
+  }
+
   // ------------------------------------------------------------- on air card
   function paintOffAir(reason) {
     $('eyebrow').className = 'eyebrow off';
@@ -166,6 +197,7 @@
       } else { img.classList.add('hidden'); }
 
       if (!room) { callBtn.disabled = false; callBtn.textContent = 'Call the DJ'; }
+      updateMicHelp();
 
       // Several station reads in a row have failed server-side: the card
       // still paints from cache, but the operator should see it's limping
@@ -344,8 +376,8 @@
     // hang up when mic capture fails — say why up front instead.
     if (!window.isSecureContext || !navigator.mediaDevices
         || !navigator.mediaDevices.getUserMedia) {
-      setStatus('Mic needs HTTPS or localhost — ' + location.origin
-        + ' can\'t capture audio (see README → Troubleshooting)', 'error');
+      setStatus('This page can\'t use the microphone — see the note below', 'error');
+      updateMicHelp();
       return;
     }
     callBtn.disabled = true;
@@ -548,6 +580,18 @@
 
   // =================================================== settings (full page)
   if (compact) return;
+
+  // Every admin request carries the panel password (kept per-tab in
+  // sessionStorage) as the X-Admin-Key header. Public endpoints — /live,
+  // call tokens, /call-ended, /health — never use this.
+  function afetch(url, opts) {
+    const key = sessionStorage.getItem('callinAdminKey');
+    if (key) {
+      opts = Object.assign({}, opts);
+      opts.headers = Object.assign({}, opts.headers, { 'X-Admin-Key': key });
+    }
+    return fetch(url, opts);
+  }
 
   // Field lists come from the server's schema — settings.py is the single
   // source of truth. These start empty and are filled on load.
@@ -906,6 +950,7 @@
     paintAsks();
     paintTags();
     paintFirstRun();
+    paintSecurity();
     markClean();
 
     const src = options.voiceSource, banner = $('mirrorBanner');
@@ -926,6 +971,53 @@
   // Station admin credentials belong with the station they unlock, not in
   // the generic key list.
   const STATION_SECRETS = ['subwave_admin_user', 'subwave_admin_pass'];
+
+  // Security section: set/change the panel password, and nudge loudly while
+  // none exists — an open panel is fine on a trusted LAN but should be a
+  // choice, not an accident.
+  function paintSecurity() {
+    $('tagSecurity').textContent = authConfigured ? 'password set' : 'open — no password';
+    $('curPwRow').style.display = authConfigured ? '' : 'none';
+    $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
+
+    let nudge = $('pwNudge');
+    if (authConfigured) { if (nudge) nudge.remove(); return; }
+    if (!nudge) {
+      nudge = document.createElement('div');
+      nudge.id = 'pwNudge';
+      nudge.className = 'banner';
+      const sub = document.querySelector('#panel .sub');
+      (sub || $('panel').firstElementChild).insertAdjacentElement('afterend', nudge);
+    }
+    nudge.textContent = 'No panel password set — anyone who can reach this page can '
+      + 'change settings and spend your API keys. Set one under Security before '
+      + 'exposing this beyond your own machine.';
+  }
+
+  $('setPwBtn').onclick = async () => {
+    const out = $('pwResult');
+    const newPw = $('sec_new_pw').value;
+    if (newPw.length < 8) {
+      showResult(out, false, 'Use at least 8 characters.');
+      return;
+    }
+    const btn = $('setPwBtn'); btn.disabled = true;
+    try {
+      const r = await afetch('/auth/password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current: $('sec_current_pw').value, new: newPw }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { showResult(out, false, d.error || 'failed'); return; }
+      sessionStorage.setItem('callinAdminKey', newPw);
+      authConfigured = true;
+      $('sec_current_pw').value = ''; $('sec_new_pw').value = '';
+      paintSecurity();
+      showResult(out, true, 'Password saved. This tab stays signed in; other '
+        + 'tabs and devices will be asked for it.');
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
 
   function paintSecrets() {
     const host = $('secretRows');
@@ -977,7 +1069,7 @@
     const out = $('keysResult');
     out.className = 'result on'; out.textContent = 'Saving…';
     try {
-      const r = await fetch('/settings/secrets', {
+      const r = await afetch('/settings/secrets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ set, clear }),
       });
@@ -992,12 +1084,24 @@
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
   }
 
+  let authConfigured = false;
+
   async function loadSettings() {
-    const [o, s] = await Promise.all([
-      fetch('/settings/options').then((r) => r.json()),
-      fetch('/settings').then((r) => r.json()),
+    const [ro, rs] = await Promise.all([
+      afetch('/settings/options'),
+      afetch('/settings'),
     ]);
+    // A 401 means the panel is password-protected and this tab isn't in yet.
+    const denied = [rs, ro].find((r) => r.status === 401);
+    if (denied) {
+      const body = await denied.json().catch(() => ({}));
+      const err = new Error(body.error || 'locked');
+      err.auth = true; err.body = body;
+      throw err;
+    }
+    const o = await ro.json(); const s = await rs.json();
     options = o; overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
+    authConfigured = !!s.authConfigured;
     adoptSchema(s.schema);
     paint(); paintSecrets();
     // Which build is this? Anchors every bug report and change over time.
@@ -1006,6 +1110,42 @@
         + ' · ' + location.host;
     }).catch(() => {});
   }
+
+  function showLoginGate(body) {
+    $('panel').classList.add('locked');
+    $('loginGate').hidden = false;
+    const msg = body && body.error;
+    $('loginMsg').textContent = (msg && msg !== 'password required') ? msg : '';
+    $('loginPw').focus();
+  }
+
+  async function tryUnlock() {
+    const pw = $('loginPw').value;
+    if (!pw) return;
+    sessionStorage.setItem('callinAdminKey', pw);
+    $('loginMsg').textContent = 'Checking…';
+    try {
+      // Single probe first: loadSettings fires two requests in parallel, and
+      // a wrong password would count twice against the five-try lockout.
+      const probe = await afetch('/settings');
+      if (probe.status === 401) {
+        const body = await probe.json().catch(() => ({}));
+        const err = new Error(body.error || 'wrong password');
+        err.auth = true; err.body = body;
+        throw err;
+      }
+      await loadSettings();
+      $('panel').classList.remove('locked');
+      $('loginGate').hidden = true;
+      $('loginPw').value = '';
+      $('loginMsg').textContent = '';
+    } catch (e) {
+      sessionStorage.removeItem('callinAdminKey');
+      $('loginMsg').textContent = (e && e.body && e.body.error) || 'wrong password';
+    }
+  }
+  $('loginBtn').onclick = tryUnlock;
+  $('loginPw').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
 
   // Unsaved-change tracking, so Save says whether there's anything to do.
   function pendingPatch() {
@@ -1063,7 +1203,7 @@
 
   async function saveSettings(patch) {
     $('saveMsg').textContent = 'Saving…';
-    const r = await fetch('/settings', {
+    const r = await afetch('/settings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
@@ -1072,7 +1212,7 @@
       $('saveMsg').textContent = e.error || 'Save failed';
       return;
     }
-    const fresh = await fetch('/settings').then((x) => x.json());
+    const fresh = await afetch('/settings').then((x) => x.json());
     resolved = fresh.resolved; overrides = fresh.overrides;
     paint();
     await refreshLive();   // sound + volume settings feed the card
@@ -1108,7 +1248,7 @@
 
   async function reloadVoices() {
     const url = $('tts_base_url').value;
-    const o = await fetch('/settings/options?fresh=1'
+    const o = await afetch('/settings/options?fresh=1'
       + (url ? '&tts_base_url=' + encodeURIComponent(url) : '')).then((r) => r.json());
     options.voices = o.voices;
     const keep = $('tts_voice').value;
@@ -1140,7 +1280,7 @@
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Synthesizing…';
     try {
-      const d = await fetch('/test/tts', {
+      const d = await afetch('/test/tts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
@@ -1164,7 +1304,7 @@
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Asking the model…';
     try {
-      const d = await fetch('/test/llm', {
+      const d = await afetch('/test/llm', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
@@ -1224,7 +1364,7 @@
       if (el && el.value.trim()) body[f] = el.value.trim();
     });
     try {
-      const d = await fetch('/test/admin', {
+      const d = await afetch('/test/admin', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       }).then((r) => r.json());
@@ -1238,7 +1378,7 @@
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Checking station…';
     try {
-      const d = await fetch('/test/station' + stationQuery()).then((r) => r.json());
+      const d = await afetch('/test/station' + stationQuery()).then((r) => r.json());
       if (!d.ok) { showResult(out, false, 'Failed: ' + (d.error || 'unreachable')); return; }
       showResult(out, true,
         d.stationUrl + '\nreachable, live DJ: ' + d.liveDj +
@@ -1255,7 +1395,7 @@
       const q = new URLSearchParams({ fresh: '1' });
       if ($('station_base_url').value) q.set('station_base_url', $('station_base_url').value);
       if ($('tts_base_url').value) q.set('tts_base_url', $('tts_base_url').value);
-      const o = await fetch('/settings/options?' + q.toString()).then((r) => r.json());
+      const o = await afetch('/settings/options?' + q.toString()).then((r) => r.json());
       options = o;
       const keepPersona = $('persona_override').value;
       const names = {};
@@ -1276,7 +1416,7 @@
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Reading model lists…';
     try {
-      const o = await fetch('/settings/options?fresh=1').then((r) => r.json());
+      const o = await afetch('/settings/options?fresh=1').then((r) => r.json());
       options = o; syncModels();
       const liveL = Object.keys(o.modelsDiscovered || {}).filter((p) => o.modelsDiscovered[p]);
       showResult(out, liveL.length > 0, liveL.length
@@ -1306,7 +1446,7 @@
     {
       key: 'station', name: 'Station + tools',
       run: async () => {
-        const d = await fetch('/test/station' + stationQuery()).then((r) => r.json());
+        const d = await afetch('/test/station' + stationQuery()).then((r) => r.json());
         if (!d.ok) return { status: 'fail', detail: d.error || 'unreachable' };
         return { status: 'pass', detail: d.liveDj + ' live · ' + d.toolCount + ' tools' };
       },
@@ -1357,7 +1497,7 @@
     {
       key: 'llm', name: 'Model + tools',
       run: async () => {
-        const d = await fetch('/test/llm', {
+        const d = await afetch('/test/llm', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(draft()),
         }).then((r) => r.json());
@@ -1376,7 +1516,7 @@
     {
       key: 'tts', name: 'Voice synthesis',
       run: async () => {
-        const d = await fetch('/test/tts', {
+        const d = await afetch('/test/tts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(draft()),
         }).then((r) => r.json());
@@ -1397,7 +1537,7 @@
       // nothing and doesn't count against usage limits.
       key: 'media', name: 'Browser media path',
       run: async () => {
-        const res = await fetch('/token', {
+        const res = await afetch('/token', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ probe: true }),
         });
@@ -1449,11 +1589,16 @@
       key: 'mic', name: 'Microphone',
       run: async () => {
         if (!window.isSecureContext) {
+          const so = (live && live.secureOrigin) || '';
           return { status: 'fail',
             detail: location.origin + ' is not a secure context — browsers '
-              + 'only allow the microphone on HTTPS or localhost. Put a TLS '
-              + 'reverse proxy in front for real use; for testing, Chrome\'s '
-              + '"insecure origins treated as secure" flag works.' };
+              + 'only allow the microphone on HTTPS or localhost. '
+              + (so && so !== location.origin
+                  ? 'Use the secure page instead: ' + so
+                    + ' (one-time certificate approval on first visit).'
+                  : 'Put a TLS front door in front (see README), or for LAN '
+                    + 'testing use Chrome\'s "insecure origins treated as '
+                    + 'secure" flag.') };
         }
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
           return { status: 'fail', detail: 'this browser exposes no media devices API' };
@@ -1491,7 +1636,7 @@
     $('stages').classList.remove('on');
     out.className = 'result on'; out.textContent = 'Timing every stage…';
     try {
-      const d = await fetch('/test/speed', {
+      const d = await afetch('/test/speed', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
@@ -1524,7 +1669,7 @@
     // /test/env answers three of the stages in one round trip.
     let env = {};
     try {
-      env = await fetch('/test/env', {
+      env = await afetch('/test/env', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
@@ -1600,7 +1745,7 @@
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Assembling…';
     try {
-      const d = await fetch('/prompt').then((r) => r.json());
+      const d = await afetch('/prompt').then((r) => r.json());
       if (d.error) { showResult(out, false, d.error); return; }
       // Soft budget: past ~1,800 tokens the per-turn latency starts to show.
       // Keep growth visible so it never creeps silently again.
@@ -1632,7 +1777,10 @@
     $('saveMsg').textContent = 'Loading from station, TTS server and Ollama…';
     $('saveBtn').disabled = true;
     try { await loadSettings(); $('saveMsg').textContent = ''; }
-    catch (e) { $('saveMsg').textContent = 'Could not load settings — ' + e.message; }
+    catch (e) {
+      if (e && e.auth) { showLoginGate(e.body); $('saveMsg').textContent = ''; }
+      else $('saveMsg').textContent = 'Could not load settings — ' + e.message;
+    }
     finally { loading = false; $('saveBtn').disabled = false; }
   };
 

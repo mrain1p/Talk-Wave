@@ -168,12 +168,35 @@ settings panel never ships inside an embed.
 
 ## Security
 
-Local-dev defaults are deliberately open. Before exposing beyond your LAN:
+**Panel password.** Set one in the settings panel (Security section). It
+protects the panel, API keys and test buttons — the call card and embed stay
+public, guarded by the usage limits instead. Stored as a salted PBKDF2 hash.
+Wrong-password lockout: 5 failures per address → 5-minute cooldown; a second
+round → banned until the app restarts. Locked out yourself? Set
+`CALLIN_ADMIN_KEY` in the environment (always accepted, break-glass) or
+restart the app to clear bans. Until a password is set, the panel shows a
+standing nudge and stays open — fine on a trusted LAN, a choice you should
+make deliberately.
+
+**HTTP vs HTTPS.** Running on plain `http://` on your LAN is a fine default —
+everything works except one thing: browsers refuse the *microphone* on
+insecure origins, so calls can't be placed from other machines. The widget
+detects this and shows a link to the fix instead of failing cryptically.
+Your two options, in order of preference:
+- **HTTPS front door** (bundled): open `https://<HOST_IP>:8443`, accept the
+  one-time certificate screen. Best for anything other people use.
+- **Browser flag** (single-machine testing only):
+  `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add your
+  widget origin, relaunch.
+Note that a panel password sent over plain http is readable on the wire —
+another reason the front door matters once you leave your own LAN.
+
+Before exposing beyond your LAN:
 
 1. `CALLIN_ALLOWED_ORIGINS` — set to your real origins (`*` lets any page
    read config endpoints and mint call tokens).
-2. `CALLIN_ADMIN_KEY` — set it; all settings/secrets/test writes then
-   require the `X-Admin-Key` header.
+2. **Set the panel password** (above) — or `CALLIN_ADMIN_KEY` in the
+   environment; either gates all settings/secrets/test access.
 3. Fresh LiveKit keypair; `use_external_ip: true`; open the UDP range; put
    the browser-reachable `wss://` origin in `LIVEKIT_PUBLIC_URL`.
 4. TLS reverse proxy in front of port 8100 (the mic requires a secure
@@ -193,11 +216,15 @@ its failure messages name the fix. The classics:
   (which feeds `--node-ip`) and recreate the livekit container. The
   *Browser media path* stage exists precisely for this. If it still fails,
   check the host firewall allows UDP 50000–50100 and TCP 7881.
-- **Call connects and instantly hangs up** — the page is on a plain
+- **"This page can't use the microphone"** — the page is on a plain
   `http://<lan-ip>` origin, where browsers refuse microphone capture
-  (localhost is exempt, which is why local dev works). Use the bundled TLS
-  port instead: `https://<HOST_IP>:8443`. The *Microphone* pipeline stage
-  catches this.
+  (localhost is exempt, which is why local dev works). The widget shows this
+  guidance itself, with a link to the bundled TLS page
+  (`https://<HOST_IP>:8443`) — or use the Chrome flag for single-machine
+  testing. The *Microphone* pipeline stage reports the same thing.
+- **Locked out of the settings panel** — set `CALLIN_ADMIN_KEY` in the
+  environment (always accepted) or restart the app (clears IP bans). To
+  remove the password entirely, delete `data/admin-auth.json` and restart.
 - **Station admin returns 429** — the station's login rate limiter, usually
   after repeated credential tests. Wait ~15 minutes (or restart the station
   container); it does not mean the credentials are wrong. The *Test admin

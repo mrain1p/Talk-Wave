@@ -183,6 +183,7 @@ SUPERGROUPS = [
 # markup carries a matching data-group attribute.
 GROUPS = [
     ("station",  "config",  "Station",            "Which SUB/WAVE this answers for."),
+    ("security", "config",  "Security",           "Who can open this panel."),
     ("keys",     "config",  "API keys",           "Credentials, stored server-side."),
     ("brains",   "config",  "Brains",             "The models that listen and think."),
     ("voice",    "config",  "Voice",              "How the DJ sounds."),

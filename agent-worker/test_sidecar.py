@@ -220,6 +220,61 @@ class TestPromptAssembly(_TempStores):
         self.assertIn("Keep the call moving", text)
 
 
+class TestAdminAuth(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        import admin_auth
+        self.auth = admin_auth
+        self._old_path = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+
+    def tearDown(self):
+        self.auth.AUTH_PATH = self._old_path
+        self._tmp.cleanup()
+
+    def test_set_verify_and_change(self):
+        self.assertFalse(self.auth.is_set())
+        self.auth.set_password("correct horse battery")
+        self.assertTrue(self.auth.is_set())
+        self.assertTrue(self.auth.verify("correct horse battery"))
+        self.assertFalse(self.auth.verify("wrong"))
+        self.assertFalse(self.auth.verify(""))
+        self.auth.set_password("new password here")
+        self.assertFalse(self.auth.verify("correct horse battery"))
+        self.assertTrue(self.auth.verify("new password here"))
+
+    def test_no_plaintext_on_disk(self):
+        self.auth.set_password("do-not-store-me")
+        raw = self.auth.AUTH_PATH.read_text()
+        self.assertNotIn("do-not-store-me", raw)
+
+    def test_lockout_cooldown_then_ban(self):
+        # 5 wrong tries -> cooldown; a second round of 5 -> banned until
+        # restart. Uses the token server's pure helpers with a fake IP.
+        import token_server as ts
+
+        ip = "test-ip-1"
+        ts._auth_state.pop(ip, None)
+        for _ in range(4):
+            msg = ts._auth_fail(ip)
+            self.assertIn("tr", msg)          # "N tries left"
+        msg = ts._auth_fail(ip)               # 5th -> cooldown starts
+        self.assertIn("try again", msg)
+        self.assertIsNotNone(ts._auth_gate(ip))
+
+        # Simulate the cooldown expiring, then a second round of failures.
+        ts._auth_state[ip]["cooldown_until"] = 0
+        self.assertIsNone(ts._auth_gate(ip))
+        for _ in range(5):
+            msg = ts._auth_fail(ip)
+        self.assertIn("blocked until the app restarts", msg)
+        self.assertIn("blocked", ts._auth_gate(ip))
+
+        # Success clears everything (and "restart" == fresh state).
+        ts._auth_clear(ip)
+        self.assertIsNone(ts._auth_gate(ip))
+
+
 class TestStationConfig(unittest.TestCase):
     def test_extracts_nested_persona_voice_shape(self):
         # SUB/WAVE publishes voices at values.personas[].tts.voice — nested
