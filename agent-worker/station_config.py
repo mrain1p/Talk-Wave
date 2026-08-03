@@ -250,11 +250,43 @@ class StationConfig:
 
     async def voice_for(self, persona_id: str) -> str:
         voices = await self.persona_voices()
-        if persona_id in voices:
+        if voices.get(persona_id):
             return voices[persona_id]
 
-        fallback = _fallback_voices()["default"]
         import settings as settings_store
 
         mode = settings_store.tts_mode()
-        return fallback["local_voice" if mode == "local" else "cloud_voice"]
+        fallback = _fallback_voices().get("default", {})
+        voice = str(fallback.get("local_voice" if mode == "local" else "cloud_voice") or "")
+        if voice:
+            return voice
+
+        # Fresh deployment, local TTS, no voice configured anywhere: sending
+        # an empty voice just 400s on every call. Ask the TTS server what it
+        # actually has and use its first voice — a clean install must speak.
+        if mode == "local":
+            cfg = settings_store.load()
+            base = str(cfg.get("tts_base_url") or "").rstrip("/")
+            if base:
+                try:
+                    # Fresh client: self._client carries the station's Basic
+                    # auth, which must not be sent to the TTS host.
+                    async with httpx.AsyncClient(timeout=6.0) as c:
+                        r = await c.get(f"{base}/v1/audio/voices")
+                    r.raise_for_status()
+                    ids = sorted(
+                        v.get("id") for v in r.json().get("data", []) if v.get("id")
+                    )
+                    if ids:
+                        log.warning(
+                            "no persona voice configured — falling back to the "
+                            "TTS server's first voice '%s'; set one in the panel "
+                            "or add station admin credentials to mirror voices",
+                            ids[0],
+                        )
+                        return ids[0]
+                except Exception as e:
+                    log.warning("voice-list fallback failed: %s", e)
+            return ""
+
+        return "alloy"
