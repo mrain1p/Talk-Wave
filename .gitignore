@@ -1,0 +1,25 @@
+# --- Operator-local state: NEVER commit -----------------------------------
+# Real keys, station URLs and admin credentials.
+.env
+# Panel-written settings, API keys (plaintext!), and logs.
+data/
+# Contains your real LiveKit keypair (copy from livekit.example.yaml).
+livekit.yaml
+# Names your personas and voice samples (copy from persona-voices.example.json).
+agent-worker/persona-voices.json
+
+# --- Binaries and environments ---------------------------------------------
+.venv/
+bin/
+__pycache__/
+*.pyc
+
+# --- Internal working notes, not part of the release -----------------------
+AUDIT.md
+REVIEW.md
+RELEASE-REVIEW-1.0.md
+BUILD-INSTRUCTIONS.md
+subwave-openapi.json
+
+*.log
+.claude/

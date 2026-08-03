@@ -1,0 +1,55 @@
+"""
+One logging setup for both processes: console (as before) plus a rotating
+file per process under data/logs/, with timestamps.
+
+Why: locally the stack runs as console windows, and closing one (or a crash)
+threw the only copy of the logs away — reviewing yesterday's bad call was
+impossible. Files rotate so they can be left on forever, and each process
+writes its own file because two Windows processes rotating one file fight
+over the lock.
+
+Env knobs:
+    LOG_LEVEL    level for both sinks (default INFO)
+    LOG_DIR      where files go (default <repo>/data/logs)
+    LOG_TO_FILE  set to 0/false to go console-only (e.g. under docker,
+                 where stdout is already captured)
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+
+
+def setup(process_name: str) -> None:
+    """Call once at process start, before any logging happens."""
+    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter(FORMAT))
+    root.addHandler(console)
+
+    if os.environ.get("LOG_TO_FILE", "1").strip().lower() in ("0", "false", "no"):
+        return
+
+    # A blank LOG_DIR= in .env arrives as empty string, not unset.
+    log_dir = Path(
+        os.environ.get("LOG_DIR") or Path(__file__).parent.parent / "data" / "logs"
+    )
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            log_dir / f"{process_name}.log",
+            maxBytes=2_000_000, backupCount=3, encoding="utf-8",
+        )
+        file_handler.setFormatter(logging.Formatter(FORMAT))
+        root.addHandler(file_handler)
+    except OSError as e:
+        # A read-only volume must not stop the app — console still works.
+        root.warning("file logging disabled (%s)", e)

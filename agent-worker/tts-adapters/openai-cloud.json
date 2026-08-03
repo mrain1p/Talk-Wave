@@ -1,0 +1,23 @@
+{
+  "_comment": "Identity mapping for any real OpenAI-compatible /v1/audio/speech endpoint (OpenAI itself, or a compatible provider). Set TTS_BASE_URL + TTS_API_KEY. Streams PCM so time-to-first-audio stays low on a live call.",
+  "endpoint_path": "/v1/audio/speech",
+  "method": "POST",
+  "default_model": "gpt-4o-mini-tts",
+  "request_field_map": {
+    "text": "input",
+    "voice": "voice",
+    "model": "model"
+  },
+  "static_fields": {
+    "response_format": "pcm",
+    "stream": true
+  },
+  "auth": { "type": "bearer" },
+  "response": { "type": "raw_audio" },
+  "audio": {
+    "encoding": "pcm",
+    "mime_type": "audio/pcm",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
+}

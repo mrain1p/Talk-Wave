@@ -1,0 +1,13 @@
+{
+  "_comment": "Template for wiring up a new TTS backend without touching tts_client.py. Copy this file, fill in the real values, point TTS_ADAPTER_CONFIG at it.",
+  "endpoint_path": "/replace-with-real-path",
+  "method": "POST",
+  "request_field_map": {
+    "text": "replace-with-backend-field-name-for-text",
+    "voice": "replace-with-backend-field-name-for-voice",
+    "model": null
+  },
+  "static_fields": {},
+  "auth": { "type": "none" },
+  "response": { "type": "raw_audio" }
+}

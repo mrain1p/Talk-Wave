@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Call In — SUB/WAVE</title>
+<!--
+  The call surface. Loads directly, or inside an <iframe> via embed.js.
+
+  ?compact=1 renders the embeddable card. The settings panel is FULL-PAGE
+  ONLY — it never ships inside an embed, so a host page can't expose station
+  controls by dropping the widget in.
+
+  Live feedback comes from real signals, not guesses:
+    - agent state  -> the `lk.agent.state` participant attribute the Agents
+                      SDK publishes (initializing/idle/listening/thinking/speaking)
+    - levels       -> WebAudio AnalyserNode on the actual mic and DJ tracks
+    - captions     -> the transcription text stream both sides publish
+
+  Embedding note: the host page MUST set <iframe allow="microphone"> or
+  getUserMedia fails silently. embed.js does this already.
+-->
+<!-- Pinned exactly: a floating @2 tag means a breaking client release lands
+     silently on every visitor. Bump deliberately, test a call, then ship. -->
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.min.js"></script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="card">
+    <button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark">&#9681;</button>
+    <button class="gear" id="gearBtn" title="Settings" aria-label="Settings">&#9881;</button>
+
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span></div>
+
+    <div class="who-row">
+      <img class="avatar hidden" id="djAvatar" alt="" />
+      <div class="meta">
+        <h1 class="dj" id="djName">…</h1>
+        <p class="show" id="djShow"></p>
+        <p class="tagline" id="djTagline"></p>
+      </div>
+      <p class="track" id="npTrack"></p>
+    </div>
+
+    <div class="actionrow">
+      <button id="callBtn" disabled>Call the DJ</button>
+      <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+      <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+      <div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
+    </div>
+
+    <div class="rig" id="rig">
+      <div class="meters">
+        <div class="meter you" id="meterYou">
+          <div class="mlabel" id="youLabel">You</div>
+          <div class="bars" id="barsYou"></div>
+        </div>
+        <div class="meter dj" id="meterDj">
+          <div class="mlabel" id="djLabel">DJ</div>
+          <div class="bars" id="barsDj"></div>
+        </div>
+      </div>
+
+      <div class="callrow">
+        <div class="vol">
+          <label for="volSlider">Vol</label>
+          <input type="range" id="volSlider" min="0" max="100" value="100" />
+          <span class="pct" id="volPct">100%</span>
+        </div>
+        <div class="controls">
+          <button id="muteBtn">Mute</button>
+          <button id="hangBtn">Hang up</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="callended" id="endedBar" hidden></button>
+    <div class="captions" id="captions"></div>
+  </div>
+
+  <section class="panel" id="panel">
+    <h2>Call-in settings</h2>
+    <p class="sub">Applies to the next caller — no restart. Leave a field on
+      “Default” to fall through to the environment config.</p>
+
+    <details data-group="station" class="sec">
+      <summary><span class="chev">▶</span>Station<span class="tag" id="tagStation"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="station_base_url">Station API</label>
+          <input type="text" id="station_base_url" placeholder="http://your-station:7700/api" />
+        </div>
+        <div class="row">
+          <label for="station_mcp_url">MCP endpoint</label>
+          <input type="text" id="station_mcp_url" placeholder="derived: {Station API}/mcp" />
+        </div>
+        <div class="testrow">
+          <button id="testStationBtn">Test station + tools</button>
+          <button id="reloadStationBtn">Reload from station</button>
+        </div>
+        <div class="result" id="stationResult"></div>
+      </div>
+    </details>
+    <details data-group="keys" class="sec">
+      <summary><span class="chev">▶</span>API keys<span class="tag" id="tagKeys"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Stored server-side in
+          <code>data/secrets.json</code> and never sent back to this page — only
+          whether each is set and its last four characters. Leave a field blank
+          to keep the current value.</p>
+        <div id="secretRows"></div>
+        <div class="testrow">
+          <button id="saveKeysBtn">Save keys</button>
+          <button id="refreshModelsBtn">Reload model lists</button>
+        </div>
+        <div class="result" id="keysResult"></div>
+      </div>
+    </details>
+    <details data-group="brains" class="sec">
+      <summary><span class="chev">▶</span>Brains<span class="tag" id="tagBrains"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="llm_provider">LLM provider</label>
+          <select id="llm_provider"></select>
+        </div>
+        <div class="row">
+          <label for="llm_model">Model</label>
+          <select id="llm_model"></select>
+        </div>
+        <div class="row">
+          <label for="llm_base_url">LLM URL</label>
+          <input type="text" id="llm_base_url" placeholder="only for Ollama / compatible endpoints" />
+        </div>
+        <div class="row">
+          <label for="llm_temperature">Temperature</label>
+          <input type="number" id="llm_temperature" min="0" max="2" step="0.1" />
+        </div>
+        <div class="row">
+          <label for="stt_provider">Speech-to-text</label>
+          <select id="stt_provider"></select>
+        </div>
+        <div class="row">
+          <label for="stt_model">STT model</label>
+          <select id="stt_model"></select>
+        </div>
+        <p class="hint wide" id="modelSourceNote"></p>
+        <div class="testrow">
+          <button id="testLlmBtn">Test model + tool calling</button>
+        </div>
+        <p class="hint wide">Runs one real completion on your key — costs a
+          fraction of a cent on hosted providers, free on Ollama.</p>
+        <div class="result" id="llmResult"></div>
+      </div>
+    </details>
+    <details data-group="voice" class="sec">
+      <summary><span class="chev">▶</span>Voice<span class="tag" id="tagVoice"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="tts_mode">TTS backend</label>
+          <select id="tts_mode"></select>
+        </div>
+        <div class="row">
+          <label for="tts_base_url">Server URL</label>
+          <input type="text" id="tts_base_url" />
+        </div>
+        <div class="row">
+          <label for="tts_voice">Voice</label>
+          <select id="tts_voice"></select>
+        </div>
+        <div class="row">
+          <label for="tts_model">TTS model</label>
+          <input type="text" id="tts_model" placeholder="adapter default" />
+        </div>
+        <div class="row">
+          <label for="tts_adapter">Adapter</label>
+          <select id="tts_adapter"></select>
+        </div>
+        <div class="testrow">
+          <button id="testTtsBtn">Test voice</button>
+          <button id="refreshVoicesBtn">Reload voice list</button>
+        </div>
+        <p class="hint wide">Synthesizes one real line — a fraction of a cent
+          on cloud TTS, free on a local backend.</p>
+        <div class="result" id="ttsResult"></div>
+      </div>
+    </details>
+    <details data-group="perms" class="sec">
+      <summary><span class="chev">▶</span>Caller permissions<span class="tag" id="tagPerms"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="allow_requests" /> Take song requests</label>
+        <label class="check"><input type="checkbox" id="confirm_requests" /> Confirm requests before sending</label>
+        <label class="check"><input type="checkbox" id="allow_library_search" /> Search the music library</label>
+        <label class="check"><input type="checkbox" id="allow_announcements" /> Hand messages to the on-air DJ</label>
+        <label class="check"><input type="checkbox" id="allow_skills" /> Run station segments (weather, news, dedications, story time…)</label>
+        <p class="hint wide">Segments put audio on air on a caller’s say-so, so
+          they’re off by default. Track skipping, sound effects and direct
+          queueing are never available to callers, regardless of settings —
+          use “Test station + tools” to see the exact list.</p>
+      </div>
+    </details>
+    <details data-group="usage" class="sec">
+      <summary><span class="chev">▶</span>Usage controls<span class="tag" id="tagUsage"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Every call costs model time and
+          airtime, so these stop runaway use — one open tab could otherwise dial in
+          a loop. Defaults are generous; set any to <strong>0</strong> to turn it off.
+          Callers see a friendly “lines are busy” message, never an error code.</p>
+        <div class="row">
+          <label for="max_concurrent_calls">At once</label>
+          <input type="number" id="max_concurrent_calls" min="0" max="20" step="1" />
+        </div>
+        <div class="row">
+          <label for="calls_per_hour">Per hour</label>
+          <input type="number" id="calls_per_hour" min="0" max="500" step="5" />
+        </div>
+        <div class="row">
+          <label for="caller_cooldown_secs">Redial wait</label>
+          <input type="number" id="caller_cooldown_secs" min="0" max="600" step="15" />
+        </div>
+      </div>
+    </details>
+    <details data-group="speech" class="sec">
+      <summary><span class="chev">▶</span>Speech hygiene<span class="tag" id="tagHygiene"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Applied to every spoken line on its
+          way to the voice, so it holds regardless of which model or provider is in
+          use — and regardless of whether the prompt was obeyed.</p>
+        <label class="check"><input type="checkbox" id="strip_stage_directions" /> Strip stage directions (<em>*shuffles records*</em>, <em>(laughs)</em>, <em>[pause]</em>)</label>
+        <div class="row">
+          <label for="profanity_mode">Expletives</label>
+          <select id="profanity_mode">
+            <option value="mask">Mask them (s—)</option>
+            <option value="drop">Remove them</option>
+            <option value="off">Leave them alone</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="profanity_words">Word list</label>
+          <input type="text" id="profanity_words" placeholder="comma-separated; blank = built-in list" />
+        </div>
+      </div>
+    </details>
+    <details data-group="call" class="sec">
+      <summary><span class="chev">▶</span>Call behaviour<span class="tag" id="tagCall"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="persona_override">Force persona</label>
+          <select id="persona_override"></select>
+        </div>
+        <label class="check"><input type="checkbox" id="ask_caller_name" /> Let the DJ ask the caller’s name for song requests</label>
+        <p class="hint wide">Off by default — being asked your name just to request
+          a song is friction. A name the caller volunteers is still used to credit
+          the request on air either way.</p>
+
+        <label class="check"><input type="checkbox" id="tune_in_on_call" /> Tune the caller into the station during the call</label>
+        <p class="hint wide">The station refuses song requests when nobody is
+          listening — and a caller on the line isn’t pulling the stream, so they
+          don’t count. This tunes their browser in for the duration of the call
+          so requests are accepted. Volume 0 keeps it silent behind the DJ.</p>
+        <div class="row">
+          <label for="tune_in_volume">Station volume</label>
+          <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
+        </div>
+        <div class="row">
+          <label for="max_call_seconds">Hang up after (s)</label>
+          <input type="number" id="max_call_seconds" min="30" step="30" />
+        </div>
+        <div class="row">
+          <label for="idle_prompt_secs">Check in after (s)</label>
+          <input type="number" id="idle_prompt_secs" min="0" max="180" step="5" />
+        </div>
+        <div class="row">
+          <label for="idle_max_nudges">Check-ins before hanging up</label>
+          <input type="number" id="idle_max_nudges" min="0" max="5" step="1" />
+        </div>
+        <div class="row">
+          <label for="greeting_style">Greeting style</label>
+          <select id="greeting_style">
+            <option value="inviting">Warm ask — what's on your mind?</option>
+            <option value="in-world">Mid-world — no question</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="greeting">Opening line</label>
+          <input type="text" id="greeting" placeholder="default: greet in character, ask what they want to hear" />
+        </div>
+      </div>
+    </details>
+    <details data-group="context" class="sec">
+      <summary><span class="chev">▶</span>Station awareness<span class="tag" id="tagContext"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">What the DJ is told about the
+          station before the call. Each item costs time-to-first-token on
+          <em>every</em> turn, not just at the start — so more context means a
+          slightly slower reply. Set a count to 0 to leave it out.</p>
+        <div class="row">
+          <label for="context_recent_tracks">Recently played</label>
+          <input type="number" id="context_recent_tracks" min="0" max="10" step="1" />
+        </div>
+        <div class="row">
+          <label for="context_upcoming">Coming up</label>
+          <input type="number" id="context_upcoming" min="0" max="10" step="1" />
+        </div>
+        <div class="row">
+          <label for="context_booth_lines">On-air chatter</label>
+          <input type="number" id="context_booth_lines" min="0" max="10" step="1" />
+        </div>
+        <label class="check"><input type="checkbox" id="context_schedule" /> Include the rest of the schedule</label>
+        <p class="hint wide">The music library is <em>not</em> preloaded — the DJ
+          searches it on demand with a tool, so it always reflects what you
+          actually have. That needs the station admin credentials.</p>
+      </div>
+    </details>
+    <details data-group="style" class="sec">
+      <summary><span class="chev">▶</span>House style<span class="tag" id="tagStyle"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Small steers layered on top of the
+          persona — not a replacement for it. The DJ keeps its own voice and applies
+          these lightly. Leave blank and the persona alone decides.</p>
+        <div class="row">
+          <label for="style_answering">Answering</label>
+          <input type="text" id="style_answering" placeholder="e.g. keep answers to two sentences; never repeat the caller's question back" />
+        </div>
+        <div class="row">
+          <label for="style_signoff">Signing off</label>
+          <input type="text" id="style_signoff" placeholder="e.g. always thank them by name and mention what's coming up next" />
+        </div>
+
+        <div class="testrow" style="margin-top:12px">
+          <button id="viewPromptBtn">View the assembled prompt</button>
+        </div>
+        <div class="result" id="promptResult" style="max-height:340px;overflow:auto"></div>
+      </div>
+    </details>
+    <details data-group="callback" class="sec">
+      <summary><span class="chev">▶</span>Back to air<span class="tag" id="tagCallback"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">After the caller hangs up, the DJ
+          can mention the call on air — “just had someone on about…”. It’s one
+          passing line between tracks, not a recap, and the station re-voices it
+          in the persona. Needs the station admin credentials.</p>
+        <label class="check"><input type="checkbox" id="callback_enabled" /> Mention the call on air afterwards</label>
+        <div class="row">
+          <label for="callback_max_words">Length (words)</label>
+          <input type="number" id="callback_max_words" min="10" max="80" step="5" />
+        </div>
+        <div class="row">
+          <label for="callback_min_turns">Min caller turns</label>
+          <input type="number" id="callback_min_turns" min="1" max="10" step="1" />
+        </div>
+        <div class="row">
+          <label for="callback_instructions">Extra steer</label>
+          <input type="text" id="callback_instructions" placeholder="e.g. never name the caller; tie it back to the current track" />
+        </div>
+      </div>
+    </details>
+    <details data-group="sounds" class="sec">
+      <summary><span class="chev">▶</span>Call sounds<span class="tag" id="tagSounds"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="call_sounds" /> Play ring / pickup / hang-up sounds</label>
+        <p class="hint wide">Leave a URL blank to use the built-in synthesized tone —
+          no audio file needed. Point at your own file to replace it.</p>
+        <div class="row">
+          <label for="sound_ring">Ring</label>
+          <input type="text" id="sound_ring" placeholder="built-in ringback" />
+        </div>
+        <div class="row">
+          <label for="sound_pickup">Pick up</label>
+          <input type="text" id="sound_pickup" placeholder="built-in click" />
+        </div>
+        <div class="row">
+          <label for="sound_hangup">Hang up</label>
+          <input type="text" id="sound_hangup" placeholder="built-in tone" />
+        </div>
+        <div class="row">
+          <label for="call_volume">Default volume</label>
+          <input type="number" id="call_volume" min="0" max="100" step="5" />
+        </div>
+        <div class="testrow">
+          <button id="testRingBtn">Preview ring</button>
+          <button id="testPickupBtn">Preview pickup</button>
+          <button id="testHangupBtn">Preview hang-up</button>
+        </div>
+        <div class="result" id="soundResult"></div>
+      </div>
+    </details>
+    <details data-group="ask" class="sec">
+      <summary><span class="chev">▶</span>What callers can ask<span class="tag" id="tagAsk"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Live reference — reflects the
+          permissions you've enabled above. Anything greyed out is currently off.</p>
+        <ul class="asklist" id="askList"></ul>
+      </div>
+    </details>
+    <details data-group="embed" class="sec">
+      <summary><span class="chev">▶</span>Embed on another page</summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Drops an iframe into the target div.
+          <code>allow="microphone"</code> is set for you — without it the mic silently
+          fails inside a frame.</p>
+        <textarea class="snippet" id="embedSnippet" readonly rows="3"></textarea>
+        <div class="testrow" style="margin-top:9px">
+          <button id="copyEmbedBtn">Copy snippet</button>
+          <button id="previewEmbedBtn">Preview compact widget</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button id="saveBtn" class="clean">Save</button>
+      <button id="resetBtn">Reset to defaults</button>
+      <span id="saveMsg"></span>
+    </div>
+
+    <div class="runall">
+      <button id="runAllBtn">Run full pipeline check</button>
+      <button id="speedBtn">Speed test</button>
+      <span class="hint wide" style="margin:0">Walks every leg a real call
+        depends on and reports the first thing that would break. The model and
+        voice stages each make one real (sub-cent) API call.</span>
+      <ol class="stages" id="stages"></ol>
+      <div class="result" id="allResult"></div>
+    </div>
+  </section>
+
+<script src="/app.js"></script>
+</body>
+</html>

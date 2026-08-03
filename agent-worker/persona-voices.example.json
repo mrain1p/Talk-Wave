@@ -1,0 +1,7 @@
+{
+  "_comment": "Fallback persona->voice map, used only when the station's own voice config is unreadable (no admin credentials, or the station doesn't expose a mapping). Copy to persona-voices.json and fill in your own persona ids (from GET /personas) and voice ids. `local_voice` is a voice registered on your local TTS server (GET /v1/audio/voices); `cloud_voice` is a stock voice id on your cloud TTS (alloy, onyx, nova, ...). The `default` entry answers for any persona not listed.",
+
+  "p_example1": { "name": "Example DJ", "local_voice": "MyVoiceSample", "cloud_voice": "onyx" },
+
+  "default":    { "name": "Station DJ", "local_voice": "", "cloud_voice": "alloy" }
+}

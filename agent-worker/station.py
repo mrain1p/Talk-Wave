@@ -1,0 +1,290 @@
+"""
+Slim read-only client for the SUB/WAVE controller REST API.
+
+Scope note: the agent's *actions* during a call go through the station's MCP
+server (see main.py) rather than through here — MCP already exposes those as
+tool-calling-ready definitions with descriptions and schemas, so hand-rolling
+them again would be duplicate surface. What's left for this module is the
+handful of reads used to assemble the system prompt before the call starts.
+
+All endpoints used here are public reads; no auth needed.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+
+import httpx
+
+import settings as settings_store
+
+log = logging.getLogger("callin.station")
+
+# Consecutive failed reads across every client in this process, so the token
+# server can tell the card "the station is struggling" instead of silently
+# serving thin prompts. Any successful read resets it.
+_read_stats = {"consecutive_failures": 0}
+_DEGRADED_AFTER = 3
+
+
+def degraded() -> bool:
+    return _read_stats["consecutive_failures"] >= _DEGRADED_AFTER
+
+# Last-known-good persona, shared across calls in this process.
+#
+# Why: GET /dj is lazily cached on the station side. Warm it answers in ~15ms,
+# but the first read after a quiet spell has been measured at 19.5s — which
+# would otherwise sit in front of every call as dead air while the caller
+# listens to ringing. A slightly stale persona is far better than a caller
+# waiting, so a slow read falls back to the last one that worked.
+_persona_cache: dict = {"value": None, "at": 0.0}
+_PERSONA_TTL = 300.0
+
+
+class StationClient:
+    def __init__(self, base_url: str | None = None, timeout: float = 8.0) -> None:
+        # Which station this points at is a setting, so it can be re-homed
+        # from the settings page without a restart.
+        self._client = httpx.AsyncClient(
+            base_url=base_url or settings_store.station_base_url(), timeout=timeout
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def _get(self, path: str, retries: int = 0) -> dict:
+        """Reads are best-effort — a call should still connect if the station
+        is mid-restart, just with a thinner prompt."""
+        for attempt in range(retries + 1):
+            try:
+                r = await self._client.get(path)
+                r.raise_for_status()
+                _read_stats["consecutive_failures"] = 0
+                return r.json()
+            except Exception as e:
+                if attempt < retries:
+                    log.info("station read %s failed (%s) — retrying", path, e)
+                    continue
+                _read_stats["consecutive_failures"] += 1
+                log.warning("station read %s failed: %s", path, e)
+                return {}
+        return {}
+
+    async def health(self) -> dict:
+        return await self._get("/health")
+
+    async def now_playing(self) -> dict:
+        return await self._get("/now-playing")
+
+    async def live_dj(self) -> dict:
+        """Who is on air right now — name, tagline, and `soul` (the DJ Card).
+
+        The one known-slow endpoint (lazy cache on the station side), so it
+        gets the one retry. Everything else answers in ~20ms or is down.
+        """
+        return await self._get("/dj", retries=1)
+
+    async def personas(self) -> list[dict]:
+        return (await self._get("/personas")).get("personas", [])
+
+    async def schedule(self) -> dict:
+        return await self._get("/schedule")
+
+    async def state(self) -> dict:
+        return await self._get("/state")
+
+    async def session(self) -> dict:
+        return await self._get("/session")
+
+    async def snapshot(self) -> dict:
+        """Everything the prompt needs, fetched concurrently.
+
+        Serially these cost ~1s on a good day and far more when the station's
+        persona cache is cold; the caller hears all of it as ringing.
+        """
+        dj, personas, now, state, session, schedule = await asyncio.gather(
+            self.live_dj(), self.personas(), self.now_playing(),
+            self.state(), self.session(), self.schedule(),
+        )
+        return {
+            "dj": dj, "personas": personas, "now_playing": now,
+            "state": state, "session": session, "schedule": schedule,
+        }
+
+    def persona_from(self, dj: dict, personas: list[dict]) -> dict:
+        """Resolve the on-air persona from an already-fetched snapshot."""
+        name = dj.get("name")
+        persona_id = dj.get("id") or dj.get("personaId")
+
+        if not persona_id and name:
+            for p in personas:
+                if p.get("name") == name:
+                    persona_id = p.get("id")
+                    break
+
+        resolved = {
+            "id": persona_id or "default",
+            "name": name or "the DJ",
+            "soul": dj.get("soul", ""),
+            "tagline": dj.get("tagline", ""),
+        }
+
+        if name:
+            _persona_cache["value"] = resolved
+            _persona_cache["at"] = time.time()
+        elif _persona_cache["value"] and (time.time() - _persona_cache["at"]) < _PERSONA_TTL:
+            log.warning("station /dj was slow or empty — using the last known persona")
+            return _persona_cache["value"]
+
+        return resolved
+
+    async def resolve_live_persona(self) -> dict:
+        """Resolve the on-air persona to {id, name, soul, tagline}.
+
+        `GET /dj` returns the live persona but not always its id, so match it
+        back against `GET /personas` by name to recover the id that
+        persona-voices.json is keyed on.
+        """
+        dj = await self.live_dj()
+        personas = await self.personas() if not (dj.get("id") or dj.get("personaId")) else []
+        return self.persona_from(dj, personas)
+
+    # djLog kinds that mean the on-air DJ is actually making sound. Everything
+    # else in that log (picker, queued, scheduler, mix…) is bookkeeping.
+    ON_AIR_SPEECH_KINDS = {
+        "link", "dj-speak", "station-id", "sfx", "hourly", "segment", "skill",
+    }
+
+    async def seconds_since_on_air_speech(self, state: dict | None = None) -> float | None:
+        """How long since the on-air DJ last said something, in seconds.
+
+        Used to avoid the same persona talking on air and on the call at the
+        same time. Returns None if it can't tell.
+        """
+        from datetime import datetime, timezone
+
+        st = state if state is not None else await self.state()
+        newest = None
+        for entry in (st.get("djLog") or []):
+            kind = str(entry.get("kind") or "")
+            # Skill segments are logged under their own name, so treat anything
+            # that isn't recognisably bookkeeping as speech.
+            speechy = kind in self.ON_AIR_SPEECH_KINDS or kind.startswith(("dj", "seg"))
+            if not speechy:
+                continue
+            raw = entry.get("t")
+            if not raw:
+                continue
+            try:
+                when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if newest is None or when > newest:
+                newest = when
+
+        if newest is None:
+            return None
+        return max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
+
+    async def dj_say(self, text: str, mode: str = "styled", kind: str = "callin") -> dict:
+        """Hand a line to the on-air DJ. `styled` lets the station rewrite it in
+        the persona's own voice before speaking it, so the call-in agent's
+        phrasing doesn't have to match the broadcast voice exactly.
+
+        Admin-only (the endpoint 401s without credentials).
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            log.info("skipping on-air handoff — no station admin credentials")
+            return {}
+
+        try:
+            r = await self._client.post(
+                "/dj/say",
+                json={"text": text, "mode": mode, "kind": kind},
+                auth=httpx.BasicAuth(user, password),
+            )
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            log.warning("on-air handoff failed: %s", e)
+            return {}
+
+    async def search_library(self, q: str) -> list[dict]:
+        """Term search over the library. Admin-gated; empty list on failure."""
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get(
+                "/dj/search", params={"q": q}, auth=httpx.BasicAuth(user, password)
+            )
+            r.raise_for_status()
+            d = r.json()
+            items = d if isinstance(d, list) else (d.get("results") or d.get("tracks") or [])
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            log.warning("library search failed: %s", e)
+            return []
+
+    async def submit_request(self, text: str, name: str = "") -> dict:
+        """Public request endpoint — the same path the station's own request
+        slip uses."""
+        try:
+            payload: dict = {"text": text}
+            if name:
+                payload["name"] = name
+            r = await self._client.post("/request", json=payload)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            log.warning("request submit failed: %s", e)
+            return {"error": str(e)[:140]}
+
+    async def request_status(self, request_id: str) -> dict:
+        try:
+            r = await self._client.get(f"/request/{request_id}")
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {}
+
+    async def run_skill(self, name: str) -> dict:
+        """Fire one of the station's own segments. Admin-only."""
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"error": "no station admin credentials"}
+        try:
+            r = await self._client.post(
+                "/dj/skill", json={"name": name}, auth=httpx.BasicAuth(user, password)
+            )
+            r.raise_for_status()
+            return {"ok": True, **(r.json() if r.content else {})}
+        except Exception as e:
+            log.warning("skill %s failed: %s", name, e)
+            return {"error": str(e)[:120]}
+
+    async def active_show(self, now_playing: dict | None = None) -> dict:
+        """The show currently on air, with its `topic` (the Show Card).
+
+        Accepts an already-fetched /now-playing payload so prompt assembly
+        doesn't request it twice per call.
+        """
+        np = now_playing if now_playing is not None else await self.now_playing()
+        active = (np.get("context") or {}).get("activeShow") or {}
+        show_id = active.get("id")
+        if not show_id:
+            return active
+
+        for show in (await self.schedule()).get("shows", []):
+            if show.get("id") == show_id:
+                return show
+        return active

@@ -1,0 +1,368 @@
+/* SUB/WAVE call-in widget styles. Served by token_server as /style.css. */
+  :root {
+    color-scheme: light dark;
+    /* Dark is the default look — it's a late-night radio booth. Light mode
+       exists for embedding on pages that aren't. */
+    --bg: #0b0b0c; --panel: #111113; --line: #26262a; --line2: #2b2b31;
+    --text: #f2f0ec; --dim: #9a9aa2; --dimmer: #6f6f78;
+    --accent: #e0533d; --ok: #47b877; --warn: #d8a13a; --cool: #4a8b8d;
+    --shadow: none;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f5f3; --panel: #ffffff; --line: #e3e0db; --line2: #d5d1ca;
+      --text: #1b1a18; --dim: #5f5c57; --dimmer: #86827b;
+      --accent: #c2402b; --ok: #2f7d4f; --warn: #9a6b16; --cool: #2f6f72;
+      --shadow: 0 1px 2px rgba(0,0,0,.05);
+    }
+  }
+  /* Explicit choice always wins over the OS. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0b0b0c; --panel: #111113; --line: #26262a; --line2: #2b2b31;
+    --text: #f2f0ec; --dim: #9a9aa2; --dimmer: #6f6f78;
+    --accent: #e0533d; --ok: #47b877; --warn: #d8a13a; --cool: #4a8b8d;
+    --shadow: none;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f6f5f3; --panel: #ffffff; --line: #e3e0db; --line2: #d5d1ca;
+    --text: #1b1a18; --dim: #5f5c57; --dimmer: #86827b;
+    --accent: #c2402b; --ok: #2f7d4f; --warn: #9a6b16; --cool: #2f6f72;
+    --shadow: 0 1px 2px rgba(0,0,0,.05);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 24px 16px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  /* Card and settings panel share a width so the page reads as one column. */
+  .card {
+    width: min(620px, 100%); padding: 22px 24px; position: relative;
+    border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+  /* Avatar beside the text rather than stacked above it — the stacked version
+     wasted vertical space and pushed the captions off screen. */
+  .who-row {
+    display: flex; align-items: center; gap: 15px; text-align: left;
+    padding-bottom: 14px; border-bottom: 1px solid var(--line);
+  }
+  .who-row .meta { min-width: 0; flex: 1; }
+
+  /* --- status --- */
+  .eyebrow {
+    font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+    font-weight: 700; margin-bottom: 13px; color: var(--accent);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .eyebrow .pip {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(224,83,61,.6); animation: live 2s infinite;
+  }
+  @keyframes live { 70% { box-shadow: 0 0 0 7px rgba(224,83,61,0); } 100% { box-shadow: 0 0 0 0 rgba(224,83,61,0); } }
+  .eyebrow.off { color: var(--dimmer); }
+  .eyebrow.off .pip { background: var(--dimmer); animation: none; }
+
+  .avatar {
+    width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
+    border: 2px solid var(--line); background: var(--line); display: block;
+    transition: border-color .25s ease, box-shadow .25s ease;
+  }
+  .avatar.hidden { display: none; }
+  .avatar.talking { border-color: var(--accent); box-shadow: 0 0 0 5px rgba(224,83,61,.12); }
+  .dj {
+    font-size: 21px; font-weight: 700; margin: 0 0 2px; letter-spacing: -.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .show {
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    color: #8a8a93; font-weight: 600; margin: 0 0 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tagline {
+    font-size: 12.5px; color: var(--dim); margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Now-playing sits in the spare space to the right of the DJ block. */
+  .track {
+    font-size: 11.5px; color: var(--dimmer); margin: 0 0 0 auto;
+    padding-left: 14px; max-width: 42%; text-align: right; align-self: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  button {
+    font: inherit; font-weight: 650; font-size: 15px;
+    padding: 14px 20px; border-radius: 999px; border: none; cursor: pointer;
+    transition: filter .15s ease, opacity .15s ease;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:disabled { opacity: .5; cursor: default; }
+  /* Sized to the action, not the card — a full-width slab read as the page's
+     main event when it's really just "start". */
+  #callBtn {
+    background: var(--accent); color: #fff;
+    padding: 10px 22px; font-size: 13.5px; min-width: 140px;
+  }
+  #callBtn.live { background: #2b2b31; color: var(--text); }
+
+  /* --- in-call rig --- */
+  .rig { display: none; margin-top: 14px; }
+  .rig.on { display: block; }
+
+  /* Button, state pill, timer and the idle status line all share this one
+     row — every status lives beside the action, never below it. */
+  .actionrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px;
+    padding: 0 11px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--line2); color: var(--dim);
+    font-size: 10px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700;
+    transition: color .2s, border-color .2s;
+  }
+  .pill[hidden] { display: none; }
+  .timechip {
+    text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .timechip .tmax { color: var(--dimmer); font-weight: 400; font-size: 10.5px; margin-left: 2px; }
+  .timechip.warn { color: var(--warn); border-color: var(--warn); }
+  .timechip.urgent { color: var(--accent); border-color: var(--accent); }
+  .statechip .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .statechip[data-state="listening"] { color: var(--ok); border-color: var(--ok); }
+  .statechip[data-state="thinking"]  { color: var(--warn); border-color: var(--warn); }
+  .statechip[data-state="thinking"] .sdot { animation: blink .7s infinite; }
+  .statechip[data-state="speaking"]  { color: var(--accent); border-color: var(--accent); }
+  .statechip[data-state="reconnecting"] { color: var(--warn); border-color: var(--warn); }
+  .statechip[data-state="reconnecting"] .sdot { animation: blink .7s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* While a call is live the pills are the status — the bottom line would
+     just say the same thing twice. */
+  .card.oncall #status { display: none; }
+
+  .meters { display: flex; gap: 14px; margin: 13px 0 4px; }
+  .meter { flex: 1; text-align: left; }
+  .meter .mlabel {
+    font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
+    font-weight: 700; color: var(--dimmer); margin-bottom: 5px;
+  }
+  .bars { display: flex; gap: 2px; align-items: flex-end; height: 26px; }
+  .bars i {
+    flex: 1; background: var(--line2); border-radius: 1px; height: 12%;
+    transition: height .07s linear, background .15s;
+  }
+  .meter.you .bars i.hot { background: var(--cool); }
+  .meter.dj .bars i.hot { background: var(--accent); }
+  .meter.muted .mlabel { color: var(--accent); }
+
+  /* Volume and the call buttons share a row — at full card width they fit
+     side by side, which keeps the captions higher up the page. */
+  .callrow { display: flex; align-items: center; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .vol { display: flex; align-items: center; gap: 9px; flex: 1 1 190px; min-width: 0; }
+  .vol label { font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--dimmer); font-weight: 700; }
+  .vol input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .vol .pct { font-size: 11px; color: var(--dimmer); width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; gap: 8px; flex: 0 0 auto; }
+  .controls button { background: var(--line2); color: var(--text); font-size: 13px; padding: 10px 18px; }
+  .controls button.on { background: var(--accent); color: #fff; }
+
+  #status { display: inline-flex; align-items: center; font-size: 11.5px; color: var(--dimmer); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dimmer); margin-right: 6px; vertical-align: middle; }
+  .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
+  .dot.connected { background: var(--ok); }
+  .dot.error { background: var(--accent); }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  /* Once a call ends the transcript collapses to a single row — still there
+     if you want it, not taking up the card if you don't. */
+  .callended {
+    display: none; width: 100%; margin-top: 12px; padding: 9px 12px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--dim); font-size: 12px; font-weight: 600; text-align: left;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .callended[hidden] { display: none; }
+  .callended:hover { border-color: var(--line2); color: var(--text); }
+  .callended .chev { font-size: 9px; transition: transform .18s ease; }
+  .callended.open .chev { transform: rotate(90deg); }
+  .callended .when { margin-left: auto; font-weight: 500; color: var(--dimmer); font-size: 11px; }
+
+  /* --- captions --- */
+  /* Captions: speaker in a narrow left column so the transcript reads as a
+     script. Previously the label sat on its own line above each turn, which
+     at 13px in a 430px card meant a few words per line and constant scrolling. */
+  .captions {
+    display: none; margin-top: 13px; padding: 11px 13px; text-align: left;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 11px;
+    max-height: 210px; overflow-y: auto; overflow-x: hidden; font-size: 12px;
+    line-height: 1.45; scrollbar-width: thin; scrollbar-color: var(--line2) transparent;
+  }
+  .captions.on { display: block; }
+  .captions::-webkit-scrollbar { width: 8px; }
+  .captions::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 4px; }
+  .cap {
+    display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 9px;
+    margin: 0 0 5px; align-items: baseline;
+    /* minmax(0,1fr) plus the min-width/white-space below is what actually
+       stops a long turn from pushing the grid wider than its container. */
+    max-width: 100%;
+  }
+  .cap:last-child { margin-bottom: 0; }
+  .cap .who {
+    font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+    font-weight: 700; text-align: right; padding-top: 1px;
+    white-space: nowrap;
+  }
+  .cap.dj .who { color: var(--accent); }
+  .cap.you .who { color: var(--cool); }
+  .cap .said {
+    color: var(--text); min-width: 0; max-width: 100%;
+    white-space: normal; overflow-wrap: break-word; word-break: break-word;
+    font-size: 12px; font-weight: 400; line-height: 1.45;
+  }
+  .cap.dj .said { color: var(--text); }
+  .cap.interim .said { color: #7a7a83; font-style: italic; }
+  .capempty { color: var(--dimmer); font-size: 11.5px; font-style: italic; }
+
+  .gear {
+    position: absolute; top: 14px; right: 14px;
+    width: 32px; height: 32px; padding: 0; border-radius: 8px;
+    background: transparent; color: var(--dimmer); font-size: 15px; line-height: 1;
+  }
+  #themeBtn { right: 50px; }
+  .gear:hover { background: var(--line); color: var(--text); }
+  body.compact #themeBtn { display: none; }
+
+  /* --- settings --- */
+  .panel {
+    width: min(620px, 100%); margin-top: 14px; display: none;
+    border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    padding: 20px; text-align: left;
+  }
+  .panel.open { display: block; }
+  .panel h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; }
+  .panel .sub { margin: 0 0 16px; font-size: 12px; color: var(--dimmer); line-height: 1.5; }
+
+  .supergroup {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    margin: 15px 0 1px; padding-top: 11px; border-top: 2px solid var(--line2);
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    font-weight: 700; color: var(--text);
+  }
+  .supergroup:first-of-type { margin-top: 6px; border-top: none; padding-top: 0; }
+  .supergroup em {
+    font-style: normal; text-transform: none; letter-spacing: 0;
+    font-size: 11.5px; font-weight: 400; color: var(--dimmer);
+  }
+  details.sec { border-top: 1px solid var(--line); }
+  details.sec > summary {
+    list-style: none; cursor: pointer; padding: 9px 2px;
+    font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--dimmer); font-weight: 700;
+    display: flex; align-items: center; gap: 9px; user-select: none;
+  }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details.sec > summary:hover { color: var(--text); }
+  details.sec > summary .chev { transition: transform .18s ease; font-size: 9px; }
+  details.sec[open] > summary .chev { transform: rotate(90deg); }
+  details.sec > summary .tag {
+    margin-left: auto; font-size: 9.5px; letter-spacing: .02em; text-transform: none;
+    color: var(--dimmer); font-weight: 500; opacity: .85;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
+  }
+  details.sec > .body { padding: 2px 0 12px; }
+
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .row label { flex: 0 0 128px; font-size: 12.5px; color: var(--dim); }
+  .row select, .row input[type=text], .row input[type=number], .row input[type=password] {
+    flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+    padding: 6px 9px; border-radius: 7px;
+    border: 1px solid var(--line2); background: var(--bg); color: var(--text);
+  }
+  .row select:focus, .row input:focus { outline: none; border-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12.5px; color: var(--text); }
+  .check input { width: 15px; height: 15px; accent-color: var(--accent); }
+  .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 138px; line-height: 1.4; }
+  .hint.wide { margin-left: 0; }
+  .banner {
+    font-size: 12px; padding: 10px 12px; border-radius: 9px; line-height: 1.5;
+    background: #1a1512; border: 1px solid #3a2a1e; color: #d0a882; margin-bottom: 14px;
+  }
+  .banner.ok { background: #101a14; border-color: #1e3a28; color: #7fc79b; }
+  .testrow { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .testrow button { background: var(--line2); color: var(--text); font-size: 12.5px; padding: 9px 15px; }
+  .result {
+    font-size: 12px; line-height: 1.55; padding: 10px 12px; border-radius: 9px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--dim);
+    white-space: pre-wrap; display: none; font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+  .result.on { display: block; }
+  .result.good { border-color: #1e3a28; color: #7fc79b; }
+  .result.bad { border-color: #4a2620; color: #e08b7d; }
+  .actions {
+    display: flex; gap: 10px; align-items: center; margin-top: 16px;
+    padding-top: 16px; border-top: 1px solid var(--line);
+  }
+  .actions button { flex: 0 0 auto; font-size: 13.5px; padding: 11px 20px; }
+  #saveBtn { background: var(--accent); color: #fff; }
+  #saveBtn.clean { background: var(--line2); color: var(--dim); }
+  #resetBtn { background: var(--line2); color: var(--text); }
+  #saveMsg { font-size: 12px; color: var(--dimmer); }
+  /* "What callers can ask" reference */
+  .asklist { list-style: none; margin: 0; padding: 0; }
+  .asklist li {
+    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+    display: grid; grid-template-columns: 16px 1fr; gap: 9px; align-items: baseline;
+  }
+  .asklist li:last-child { border-bottom: none; }
+  .asklist .mark { color: var(--ok); font-size: 11px; }
+  .asklist li.off { opacity: .4; }
+  .asklist li.off .mark { color: var(--dimmer); }
+  .asklist .say { color: var(--text); font-style: italic; }
+  .asklist .why { color: var(--dimmer); display: block; font-style: normal; font-size: 11.5px; margin-top: 2px; }
+
+  /* Run-all pipeline check */
+  .runall { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  #runAllBtn, #speedBtn { background: var(--line2); color: var(--text); font-size: 13.5px; padding: 11px 20px; }
+  #speedBtn { margin-left: 8px; }
+  #runAllBtn.running { opacity: .6; }
+  .stages { list-style: none; margin: 13px 0 0; padding: 0; display: none; }
+  .stages.on { display: block; }
+  .stages li {
+    display: grid; grid-template-columns: 18px 132px 1fr; gap: 10px;
+    align-items: baseline; padding: 6px 0; font-size: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .stages li:last-child { border-bottom: none; }
+  .stages .icon { text-align: center; font-size: 12px; }
+  .stages .nm { color: var(--dim); font-weight: 600; }
+  .stages .dt { color: var(--dimmer); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+  .stages li.pending .icon { color: var(--dimmer); }
+  .stages li.running .icon { color: var(--warn); }
+  .stages li.pass .icon { color: var(--ok); }
+  .stages li.warn .icon { color: var(--warn); }
+  .stages li.fail .icon { color: var(--accent); }
+  .stages li.fail .dt { color: #e08b7d; }
+  .stages li.warn .dt { color: #d0a882; }
+  .stages li.skip { opacity: .45; }
+
+  .snippet {
+    width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;
+    padding: 11px; border-radius: 9px; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text); resize: vertical; min-height: 70px; line-height: 1.5;
+  }
+
+  body.compact { padding: 0; min-height: 0; }
+  body.compact .card { border: none; padding: 13px; background: transparent; width: 100%; }
+  body.compact .avatar { width: 46px; height: 46px; }
+  body.compact .dj { font-size: 17px; }
+  body.compact .who-row { gap: 11px; }
+  body.compact .tagline, body.compact .track, body.compact .gear { display: none; }
+  body.compact .captions { max-height: 104px; font-size: 11.5px; }
+  body.compact .cap { grid-template-columns: 32px 1fr; gap: 7px; }
+  body.compact .meters { margin: 10px 0 2px; }
+  body.compact .callrow { gap: 10px; }

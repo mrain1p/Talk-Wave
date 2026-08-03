@@ -1,0 +1,23 @@
+{
+  "_comment": "For a local VibeVoice server (vibevoice-fastapi), which is already OpenAI-compatible — set the TTS Server URL to its host:port. Streaming PCM keeps time-to-first-audio low. NOTE: on modest GPUs this backend generates near or below 1x realtime and can starve a live call; use the Test voice button to check the realtime factor, and prefer cloud for the live leg if it warns.",
+  "endpoint_path": "/v1/audio/speech",
+  "method": "POST",
+  "default_model": "tts-1",
+  "request_field_map": {
+    "text": "input",
+    "voice": "voice",
+    "model": "model"
+  },
+  "static_fields": {
+    "response_format": "pcm",
+    "stream": true
+  },
+  "auth": { "type": "none" },
+  "response": { "type": "raw_audio" },
+  "audio": {
+    "encoding": "pcm",
+    "mime_type": "audio/pcm",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
+}

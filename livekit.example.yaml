@@ -1,0 +1,23 @@
+# Self-hosted LiveKit config. Copy to livekit.yaml and generate your own
+# keypair — NEVER deploy with a published example key:
+#
+#   python -c "import secrets; print('devkey:', secrets.token_urlsafe(36))"
+#
+# The key name/secret here must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+# in .env.
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # false is for local dev (browser and server on the same host). Set true —
+  # and open the UDP range on your router/firewall — when callers connect
+  # from other machines.
+  use_external_ip: false
+
+logging:
+  level: info
+
+keys:
+  devkey: REPLACE_WITH_A_FRESH_SECRET

@@ -1,0 +1,87 @@
+# Deploys the whole call-in stack: LiveKit media server, the agent worker,
+# and the token/widget server. For local dev on Windows use run-local.ps1
+# instead — no Docker needed.
+#
+# Before first deploy:
+#   - copy livekit.example.yaml -> livekit.yaml with a FRESH keypair, set
+#     use_external_ip: true, and open the UDP range on the router
+#   - copy .env.example -> .env; LIVEKIT_PUBLIC_URL must be what the BROWSER
+#     reaches (wss://... via your reverse proxy), not the internal name
+#   - put a reverse proxy (Caddy/Traefik/nginx) in front of port 8100, set
+#     CALLIN_ALLOWED_ORIGINS to your real origins and CALLIN_ADMIN_KEY to a
+#     secret before this is reachable beyond your LAN
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  livekit-server:
+    image: livekit/livekit-server:v1.13.5
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    ports:
+      - "7880:7880"                     # HTTP/WebSocket signaling
+      - "7881:7881"                     # RTC TCP fallback
+      - "50000-50100:50000-50100/udp"   # RTC media
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    networks:
+      - callin-net
+
+  agent-worker:
+    build: ./agent-worker
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    env_file: .env
+    environment:
+      - LIVEKIT_URL=ws://livekit-server:7880
+      # The worker releases call slots by calling the token server.
+      - CALLIN_INTERNAL_URL=http://token-server:8100
+      # Container stdout is already captured by docker; file logs would just
+      # duplicate it. The shared data volume below is still needed for
+      # settings/secrets.
+      - LOG_TO_FILE=0
+    volumes:
+      # Settings and API keys entered in the panel live here. BOTH python
+      # services must see the same directory, or panel changes never reach
+      # the worker — and they must survive a rebuild.
+      - ./data:/data
+      # Adapter configs editable without a rebuild.
+      - ./agent-worker/tts-adapters:/app/tts-adapters
+    depends_on:
+      - livekit-server
+    networks:
+      - callin-net
+
+  token-server:
+    build: ./agent-worker
+    command: ["python", "token_server.py"]
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    env_file: .env
+    environment:
+      - WIDGET_DIR=/widget
+      - LOG_TO_FILE=0
+    volumes:
+      - ./data:/data
+      - ./web-widget:/widget:ro
+    ports:
+      - "8100:8100"     # widget + token mint; put a reverse proxy in front
+    depends_on:
+      - livekit-server
+    networks:
+      - callin-net
+
+networks:
+  callin-net:
+    driver: bridge
