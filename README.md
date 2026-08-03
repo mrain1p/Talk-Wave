@@ -9,18 +9,23 @@ The call is not the station speaking: it's this sidecar's own realtime voice
 agent wearing the live persona. The station only gets touched when the agent
 decides to act, through an allowlisted tool surface.
 
+<table>
+<tr>
+<td valign="top"><img src="docs/call.png" width="430" alt="A live call: the DJ mid-sentence, level meters running, live captions — including a library search happening in-conversation" /></td>
+<td valign="top"><img src="docs/settings.png" width="210" alt="The settings panel, folded: every section header summarises its own state" /></td>
+</tr>
+</table>
+
+▶ **[Watch a real call (2 min)](docs/wavetalk-call.mp4)** — in-persona
+pickup, back-and-forth, and a Beatles request resolved against the live
+library.
+
 ```
 [browser mic] --WebRTC--> [livekit-server] --> [agent-worker]
                                                 STT -> LLM -> TTS
                                                      |
                                           SUB/WAVE MCP (allowlisted)
 ```
-
-![A live call: the DJ mid-sentence, level meters running, live captions — including a library search happening in-conversation](docs/call.png)
-
-▶ **[Watch a real call (2 min)](docs/wavetalk-call.mp4)** — in-persona
-pickup, back-and-forth, and a Beatles request resolved against the live
-library.
 
 ## Features
 
@@ -153,8 +158,6 @@ prompt once one is set; the login persists on that browser until Sign out).
 Changes apply to the **next caller** — no restarts. Precedence: panel →
 `.env` → built-in defaults; clearing a field falls through to the layer
 below. Every field carries its own help text in the panel; this is the map:
-
-<img src="docs/settings.png" alt="The settings panel, folded: every section header summarises its own state" width="420" />
 
 | Section | What it controls |
 |---|---|
