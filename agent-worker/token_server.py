@@ -35,7 +35,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.12"
+APP_VERSION = "0.9.13"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -1655,8 +1655,21 @@ async def keep_station_warm(app: web.Application) -> None:
         task.cancel()
 
 
+@web.middleware
+async def _no_stale_assets(request: web.Request, handler):
+    """Browsers heuristically cache the widget's html/js/css, so after an
+    image update people saw the OLD interface until a hard refresh — and
+    nothing told them why. no-cache forces revalidation; unchanged files
+    still answer 304, so the cost is one conditional request."""
+    resp = await handler(request)
+    # Path-based: a FileResponse only learns its content type at send time.
+    if request.path == "/" or request.path.endswith((".html", ".js", ".css")):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 def build_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[_no_stale_assets])
     app.router.add_post("/token", handle_token)
     app.router.add_post("/call-ended", handle_call_ended)
     app.router.add_post("/hooks/station", handle_station_hook)

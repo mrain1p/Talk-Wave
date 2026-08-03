@@ -737,14 +737,14 @@
     if (!row) return;
     const link = document.createElement('button');
     link.textContent = 'Add ' + (secrets[field] ? secrets[field].label : field) + ' key';
-    link.style.cssText = 'display:block;margin-top:9px;background:#e0533d;color:#fff;'
-      + 'font-size:12.5px;padding:8px 14px';
+    link.className = 'btnaccent';
+    link.style.cssText = 'display:block;margin-top:9px;font-size:12.5px;padding:8px 14px';
     link.onclick = () => {
       const sec = row.closest('details');
       if (sec) sec.open = true;
       row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       row.focus();
-      row.style.borderColor = '#e0533d';
+      row.style.borderColor = 'var(--accent)';
       setTimeout(() => { row.style.borderColor = ''; }, 2500);
     };
     container.appendChild(link);
@@ -1054,7 +1054,7 @@
 
       const clear = document.createElement('button');
       clear.textContent = 'Clear';
-      clear.style.cssText = 'flex:0 0 auto;background:#2b2b31;color:#9a9aa2;font-size:12px;padding:8px 12px';
+      clear.className = 'btnquiet';
       clear.disabled = s.source !== 'settings';
       clear.title = s.source === 'settings'
         ? 'Remove the stored key (falls back to .env)' : 'Nothing stored for this key';

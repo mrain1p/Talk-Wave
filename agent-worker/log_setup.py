@@ -44,6 +44,19 @@ def setup(process_name: str) -> None:
     console.setFormatter(logging.Formatter(FORMAT))
     root.addHandler(console)
 
+    # Third-party chatter drowns the lines that matter. httpx logs every
+    # single station request at INFO (the keep-warm loop alone is dozens a
+    # minute), and the access log repeats the widget's 20-second /live poll
+    # forever. Real events — calls, settings changes, failures — stay.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    class _DropPollNoise(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            return "GET /live " not in msg and "GET /health " not in msg
+
+    logging.getLogger("aiohttp.access").addFilter(_DropPollNoise())
+
     if os.environ.get("LOG_TO_FILE", "1").strip().lower() in ("0", "false", "no"):
         return
 

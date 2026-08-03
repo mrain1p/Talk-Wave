@@ -275,6 +275,63 @@ class TestAdminAuth(unittest.TestCase):
         self.assertIsNone(ts._auth_gate(ip))
 
 
+class _FakeRequest:
+    """Just enough of an aiohttp request for _caller_key/_check_usage."""
+
+    def __init__(self, ip="1.2.3.4", fwd=""):
+        self.headers = {"X-Forwarded-For": fwd} if fwd else {}
+        self.remote = ip
+
+
+class TestUsageControls(unittest.TestCase):
+    """The guard against runaway spend — every refusal must fire, phrased
+    in-world, and 0 must mean unlimited."""
+
+    def setUp(self):
+        import token_server as ts
+        self.ts = ts
+        ts._recent_mints[:] = []
+        ts._caller_last.clear()
+        ts._live_calls.clear()
+
+    tearDown = setUp  # leave module state clean either way
+
+    def test_concurrent_limit(self):
+        import time
+        self.ts._live_calls.update({"room-a": time.time(), "room-b": time.time()})
+        msg = self.ts._check_usage(_FakeRequest(), {"max_concurrent_calls": 2})
+        self.assertIn("lines are busy", msg)
+        self.assertIsNone(
+            self.ts._check_usage(_FakeRequest(), {"max_concurrent_calls": 0}))
+
+    def test_per_hour_limit(self):
+        import time
+        self.ts._recent_mints.extend([time.time()] * 3)
+        msg = self.ts._check_usage(_FakeRequest(), {"calls_per_hour": 3})
+        self.assertIn("busy this hour", msg)
+        self.assertIsNone(self.ts._check_usage(_FakeRequest(), {"calls_per_hour": 0}))
+
+    def test_redial_cooldown_is_per_caller(self):
+        import time
+        self.ts._caller_last["1.2.3.4"] = time.time()
+        msg = self.ts._check_usage(
+            _FakeRequest("1.2.3.4"), {"caller_cooldown_secs": 45})
+        self.assertIn("only just hung up", msg)
+        # A different caller is unaffected.
+        self.assertIsNone(self.ts._check_usage(
+            _FakeRequest("5.6.7.8"), {"caller_cooldown_secs": 45}))
+
+    def test_secure_origin_derivation(self):
+        old = self.ts.LIVEKIT_PUBLIC_URL
+        try:
+            self.ts.LIVEKIT_PUBLIC_URL = "wss://192.168.1.245:8443"
+            self.assertEqual(self.ts._secure_origin(), "https://192.168.1.245:8443")
+            self.ts.LIVEKIT_PUBLIC_URL = "ws://localhost:7880"
+            self.assertEqual(self.ts._secure_origin(), "")
+        finally:
+            self.ts.LIVEKIT_PUBLIC_URL = old
+
+
 class TestStationConfig(unittest.TestCase):
     def test_extracts_nested_persona_voice_shape(self):
         # SUB/WAVE publishes voices at values.personas[].tts.voice — nested
