@@ -470,6 +470,15 @@
       <div class="result" id="speedResult" style="margin-top:8px"></div>
     </div>
 
+    <div class="testrow" style="margin-top:14px">
+      <button id="viewLogsBtn">View server logs</button>
+    </div>
+    <p class="hint wide">Recent activity of the web service — settings
+      changes, call tokens, station reads, webhooks. The call agent's own
+      logs (what it heard, check-ins, call summaries) live in its container:
+      <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
+    <div class="result" id="logsResult"></div>
+
     <p class="versionline" id="versionLine"></p>
   </section>
 

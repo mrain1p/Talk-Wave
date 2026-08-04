@@ -564,9 +564,15 @@ async def entrypoint(ctx: JobContext) -> None:
     # "the DJ didn't answer me" report is undiagnosable: a missing heard:
     # line means STT/VAD never caught the words; a heard: line with no
     # reply following points at the LLM/TTS leg.
+    import time as _clock
+
+    call_t0 = _clock.time()
+    heard_count = {"n": 0}
+
     def _log_heard(ev) -> None:
         text = str(getattr(ev, "transcript", "") or "").strip()
         if text and getattr(ev, "is_final", True):
+            heard_count["n"] += 1
             log.info("heard: %s", text[:160])
 
     session.on("user_input_transcribed", _log_heard)
@@ -656,6 +662,14 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # Runs after the caller hangs up, so the station reflects the call.
     async def _on_shutdown() -> None:
+        # One greppable line per call: what happened, at a glance.
+        log.info(
+            "call ended room=%s persona=%s duration=%.0fs caller_turns=%d "
+            "llm=%s/%s tts=%s",
+            ctx.room.name, persona.get("name"), _clock.time() - call_t0,
+            heard_count["n"], cfg.get("llm_provider"), cfg.get("llm_model"),
+            cfg.get("tts_mode"),
+        )
         await release_call_slot(ctx.room.name)
         await send_on_air_callback(session, station, persona, cfg)
 

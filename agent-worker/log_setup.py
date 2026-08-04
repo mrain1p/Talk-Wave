@@ -24,6 +24,25 @@ from pathlib import Path
 
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
+# Last few hundred formatted lines, kept in memory regardless of file/stdout
+# settings — this is what the settings panel's log viewer reads, so an
+# operator can check "what just happened" without docker access.
+from collections import deque
+
+RECENT: deque = deque(maxlen=500)
+
+
+class _RingHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            RECENT.append(self.format(record))
+        except Exception:
+            pass
+
+
+def recent_lines(n: int = 300) -> list[str]:
+    return list(RECENT)[-n:]
+
 
 def setup(process_name: str) -> None:
     """Call once at process start, before any logging happens.
@@ -43,6 +62,10 @@ def setup(process_name: str) -> None:
     console = logging.StreamHandler()
     console.setFormatter(logging.Formatter(FORMAT))
     root.addHandler(console)
+
+    ring = _RingHandler()
+    ring.setFormatter(logging.Formatter(FORMAT))
+    root.addHandler(ring)
 
     # Third-party chatter drowns the lines that matter. httpx logs every
     # single station request at INFO (the keep-warm loop alone is dozens a

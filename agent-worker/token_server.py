@@ -35,7 +35,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.24"
+APP_VERSION = "0.9.25"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -1538,6 +1538,22 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def handle_logs(request: web.Request) -> web.Response:
+    """The web service's recent log lines, for the panel's log viewer —
+    settings changes, tokens minted, station reads, webhook events. The
+    call agent runs in its own container; its logs need
+    `docker logs <worker container>`."""
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
+    import log_setup
+
+    return _cors(request, web.json_response({"lines": log_setup.recent_lines(300)}))
+
+
 async def handle_hooks_recent(request: web.Request) -> web.Response:
     # Operator debugging surface — same gate as the rest of the panel.
     if not _write_allowed(request):
@@ -1676,6 +1692,7 @@ def build_app() -> web.Application:
     app.router.add_post("/call-ended", handle_call_ended)
     app.router.add_post("/hooks/station", handle_station_hook)
     app.router.add_get("/hooks/recent", handle_hooks_recent)
+    app.router.add_get("/logs", handle_logs)
     app.router.add_options("/call-ended", handle_options)
     app.router.add_options("/token", handle_options)
     app.router.add_get("/health", handle_health)

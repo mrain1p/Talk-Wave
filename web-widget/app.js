@@ -1799,6 +1799,20 @@
     finally { btn.disabled = false; }
   };
 
+  $('viewLogsBtn').onclick = async () => {
+    const btn = $('viewLogsBtn'), out = $('logsResult');
+    btn.disabled = true;
+    out.className = 'result on'; out.textContent = 'Fetching…';
+    try {
+      const d = await afetch('/logs').then((r) => r.json());
+      if (d.error) { showResult(out, false, d.error); return; }
+      out.className = 'result on';
+      out.textContent = (d.lines || []).join('\n') || 'No log lines yet.';
+      out.scrollTop = out.scrollHeight;
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
+
   $('copyEmbedBtn').onclick = async () => {
     const btn = $('copyEmbedBtn');
     try { await navigator.clipboard.writeText($('embedSnippet').value); btn.textContent = 'Copied'; }
