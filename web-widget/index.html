@@ -552,31 +552,60 @@
       <span id="saveMsg"></span>
     </div>
 
-    <div class="runall">
-      <button id="runAllBtn">Run full pipeline check</button>
-      <button id="speedBtn">Speed test</button>
-      <span class="hint wide" style="margin:0">Walks every leg a real call
-        depends on and reports the first thing that would break. The model and
-        voice stages each make one real (sub-cent) API call.</span>
-      <ol class="stages" id="stages"></ol>
-      <div class="result" id="allResult"></div>
-      <div class="result" id="speedResult" style="margin-top:8px"></div>
+    <!-- Diagnostics. Four collapsed rows, each with its own run button in the
+         header — they were four buttons and four result panes stacked open,
+         which made the bottom of the panel longer than everything above it. -->
+    <div class="supergroup" data-static="1">
+      <span>Diagnostics</span><em>Check it works, and read what happened.</em>
     </div>
 
-    <div class="testrow" style="margin-top:14px">
-      <button id="viewCallsBtn">Recent calls</button>
-      <button id="viewLogsBtn" class="btnquiet">View server logs</button>
-    </div>
-    <p class="hint wide">Both sides of the last few conversations, with the
-      tools the DJ used and anything that went wrong — written by the call
-      agent as each call ends. This is the thing to read when a call didn't go
-      the way you expected.</p>
-    <div class="result" id="callsResult" style="max-height:420px;overflow:auto"></div>
-    <p class="hint wide">Recent activity of the web service — settings
-      changes, call tokens, station reads, webhooks. The call agent's own
-      logs (what it heard, check-ins, call summaries) live in its container:
-      <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
-    <div class="result" id="logsResult"></div>
+    <details class="sec diag" data-diag="pipeline">
+      <summary><span class="chev">▶</span>Full pipeline check<span class="tag">every leg of a call</span>
+        <button class="runbtn" id="runAllBtn">Run</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Walks every leg a real call
+          depends on, in call order, and reports the first thing that would
+          break. The model and voice stages each make one real (sub-cent) API
+          call.</p>
+        <ol class="stages" id="stages"></ol>
+        <div class="result" id="allResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="speed">
+      <summary><span class="chev">▶</span>Speed test<span class="tag">time to first word</span>
+        <button class="runbtn" id="speedBtn">Run</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">How long each leg takes to
+          produce its first audio. Anything over about 1.5s to first token
+          sounds laggy on a call.</p>
+        <div class="result" id="speedResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="calls">
+      <summary><span class="chev">▶</span>Recent calls<span class="tag">what was actually said</span>
+        <button class="runbtn" id="viewCallsBtn">Load</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Both sides of the last few
+          conversations, with the tools the DJ used and anything that went
+          wrong — written by the call agent as each call ends. This is the
+          thing to read when a call didn't go the way you expected.</p>
+        <div class="result scrolly" id="callsResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="logs">
+      <summary><span class="chev">▶</span>Server logs<span class="tag">this service</span>
+        <button class="runbtn" id="viewLogsBtn">Load</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Recent activity of the web
+          service — settings changes, call tokens, station reads, webhooks. The
+          call agent's own logs live in its container:
+          <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
+        <div class="result scrolly" id="logsResult"></div>
+      </div>
+    </details>
 
     <p class="versionline" id="versionLine"></p>
   </section>

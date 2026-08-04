@@ -40,6 +40,20 @@ def build_on_air_tools(
     """
     from livekit.agents import llm as lk_llm
 
+    def speaking_secs(spoken: str, fallback: int) -> int:
+        """How long the station will be talking, from the words it told us.
+
+        A fixed hold was the wrong shape: an announcement is a sentence and a
+        segment can run a minute or more, so one number either reopens the
+        gate mid-delivery or gags the DJ long after the air is clear. Both
+        /dj/say and /dj/skill return the text they are about to speak, so
+        count it — about 2.4 words a second, plus a beat either side.
+        """
+        words = len(str(spoken or "").split())
+        if not words:
+            return fallback
+        return max(12, min(180, int(words / 2.4) + 4))
+
     async def wait_for_clear_air() -> float:
         """Block until the on-air DJ stops. One source of truth (the guard),
         so a tool can't decide the air is clear while the reply gate thinks
@@ -49,7 +63,9 @@ def build_on_air_tools(
             return 0.0
         return await guard.wait_until_clear(timeout=20.0)
 
-    def after_action(what: str, waited: float, unconfirmed: bool = False) -> str:
+    def after_action(
+        what: str, waited: float, unconfirmed: bool = False, secs: int = 25
+    ) -> str:
         note = f"Waited {waited:.0f}s for the air to clear. " if waited >= 2 else ""
         # A slow confirmation is not a failure: the station took the action,
         # it just hadn't finished answering. Say it went through.
@@ -62,7 +78,7 @@ def build_on_air_tools(
             )
         return (
             f"{note}{what} is going out on air now, in your own voice, and it runs "
-            "roughly twenty seconds. You cannot be in two places at once: tell the "
+            f"about {secs} seconds. You cannot be in two places at once: tell the "
             "caller briefly that you're on air for a moment, then stay quiet until "
             "it's done — do not talk over yourself. When it finishes, come back to "
             "them and pick the conversation up where you left it."
@@ -86,9 +102,12 @@ def build_on_air_tools(
                     "Tell the caller plainly — do not claim it worked."
                 )
             actions.note("announcement", message[:120])
-            # The gate closes now, not when the station log catches up.
-            guard.mark_on_air()
-            return after_action("Your announcement", waited, result.get("unconfirmed"))
+            # The gate closes now, not when the station log catches up — and
+            # stays closed for as long as the station will actually be talking.
+            secs = speaking_secs(result.get("spoken") or message, 25)
+            guard.mark_on_air(secs)
+            return after_action(
+                "Your announcement", waited, result.get("unconfirmed"), secs)
 
         tools.append(announce)
 
@@ -108,8 +127,14 @@ def build_on_air_tools(
                     "Tell the caller plainly — do not claim it worked."
                 )
             actions.note("skill", name)
-            guard.mark_on_air()
-            return after_action(f"The {name} segment", waited, result.get("unconfirmed"))
+            # Segments run far longer than an announcement — a fixed 25s hold
+            # reopened the gate mid-delivery and the DJ talked over its own
+            # voice on the broadcast. 60s is the fallback when the station
+            # doesn't tell us what it said.
+            secs = speaking_secs(result.get("spoken"), 60)
+            guard.mark_on_air(secs)
+            return after_action(
+                f"The {name} segment", waited, result.get("unconfirmed"), secs)
 
         tools.append(run_skill)
 

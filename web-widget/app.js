@@ -928,11 +928,16 @@
     const anchor = document.querySelector('#panel .actions');
     if (!panel || !anchor || !SCHEMA.groups || !SCHEMA.groups.length) return;
 
-    panel.querySelectorAll('.supergroup').forEach((h) => h.remove());
+    // Only the schema-driven headers are rebuilt. The diagnostics header is
+    // written into the markup and stays put — it has no settings behind it.
+    panel.querySelectorAll('.supergroup:not([data-static])').forEach((h) => h.remove());
 
     const supers = SCHEMA.supergroups || [];
     const byId = {};
-    panel.querySelectorAll('details.sec').forEach((sec) => {
+    // [data-group] on purpose: the diagnostics rows are details.sec too, and
+    // without the filter they all collapse onto the key `undefined` and one of
+    // them gets relocated into the settings list.
+    panel.querySelectorAll('details.sec[data-group]').forEach((sec) => {
       byId[sec.dataset.group] = sec;
     });
 
@@ -2347,6 +2352,18 @@
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
+
+  // A run button lives inside its row's <summary>, so a click would toggle the
+  // row as well as run the thing. Swallow the toggle, and open the row on the
+  // way so the output is visible when it arrives.
+  document.querySelectorAll('details.diag .runbtn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const row = btn.closest('details');
+      if (row) row.open = true;
+    });
+  });
 
   // Renders a call as a call: who said what, in order, with the tools the DJ
   // reached for shown inline where they happened. Reading a raw JSON dump to

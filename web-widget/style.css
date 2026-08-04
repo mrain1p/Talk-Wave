@@ -244,7 +244,7 @@
 
   /* Locked panel: the login banner is the only thing shown. */
   #panel.locked details.sec, #panel.locked .supergroup,
-  #panel.locked .actions, #panel.locked .runall,
+  #panel.locked .actions, #panel.locked details.diag,
   #panel.locked .versionline { display: none; }
   #loginGate .loginrow { display: inline-flex; gap: 8px; margin: 0 8px; }
   #loginGate input { width: 180px; }
@@ -379,6 +379,23 @@
   }
   details.sec > .body { padding: 2px 0 12px; }
 
+  /* Diagnostics rows: same folded look as a settings section, but the action
+     lives in the header so a check can be run without opening anything. The
+     tag gives up its auto-margin to the button. */
+  details.diag > summary .tag { margin-left: auto; max-width: 38%; }
+  .runbtn {
+    flex: 0 0 auto; margin-left: 10px;
+    background: var(--line2); color: var(--text);
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    font-weight: 700; padding: 5px 13px; border-radius: 7px;
+  }
+  .runbtn:hover { background: var(--accent); color: #fff; }
+  .runbtn.running { opacity: .55; }
+  /* Results in a diagnostics row scroll rather than growing the page. */
+  .result.scrolly { max-height: 300px; overflow: auto; }
+  details.diag .result { font-size: 11px; line-height: 1.5; }
+  details.diag .stages { font-size: 11.5px; }
+
   .row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
   .row label { flex: 0 0 128px; font-size: 12.5px; color: var(--dim); }
   .row select, .row input[type=text], .row input[type=number], .row input[type=password] {
@@ -495,7 +512,6 @@
   .asklist .why { color: var(--dimmer); display: block; font-style: normal; font-size: 11.5px; margin-top: 2px; }
 
   /* Run-all pipeline check */
-  .runall { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
   #runAllBtn, #speedBtn { background: var(--line2); color: var(--text); font-size: 13.5px; padding: 11px 20px; }
   #speedBtn { margin-left: 8px; }
   #runAllBtn.running { opacity: .6; }
