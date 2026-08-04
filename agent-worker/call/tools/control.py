@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Callable
 
 from livekit.agents import JobContext
 
@@ -18,13 +19,19 @@ def _clock_start() -> float:
     return time.time()
 
 
-def build_call_control_tools(ctx: JobContext, session_ref: dict, started_at: float) -> list:
+def build_call_control_tools(
+    ctx: JobContext, get_session: Callable[[], object], started_at: float
+) -> list:
     """Lets the DJ hang up, the way a presenter closes a call.
 
     Until now a finished conversation just sat there: the caller had said
     goodbye, the DJ had said goodbye, and the line stayed open until the idle
     watcher nudged twice or the hard limit hit. A real DJ says "anything else
     before I let you go?" and then ends it.
+
+    `get_session` is a callable rather than the session itself because tools
+    are built before the AgentSession exists — the tool needs to read it at
+    call time, not at build time.
 
     Two guards, because a model that decides to hang up early is worse than
     one that lingers:
@@ -56,7 +63,7 @@ def build_call_control_tools(ctx: JobContext, session_ref: dict, started_at: flo
         ending["done"] = True
 
         async def _close() -> None:
-            session = session_ref.get("session")
+            session = get_session()
             # Let the sign-off play out. Poll rather than guess a duration: a
             # fixed sleep either clips a warm goodbye or leaves dead air after
             # a curt one.

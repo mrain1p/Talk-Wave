@@ -1182,7 +1182,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
 
     from livekit.agents import llm as lk_llm
 
-    from main import build_llm
+    from call.providers import build_llm
 
     try:
         model = build_llm(cfg)
@@ -1331,7 +1331,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     stt_index = len(stages)
     stt_provider_name, stt_model_name = "", ""
     try:
-        from main import build_stt, effective_stt
+        from call.providers import build_stt, effective_stt
 
         stt_provider_name, stt_model_name, _ = effective_stt(cfg)
         build_stt(cfg)
@@ -1348,7 +1348,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     try:
         from livekit.agents import llm as lk_llm
 
-        from main import build_llm
+        from call.providers import build_llm
 
         model_obj = build_llm(cfg)
         ctx = lk_llm.ChatContext.empty()
@@ -1537,7 +1537,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
 
     # --- STT constructible with the configured provider/key ---
     try:
-        from main import build_stt, effective_stt
+        from call.providers import build_stt, effective_stt
 
         provider, model, note = effective_stt(cfg)
         build_stt(cfg)  # surfaces missing credentials

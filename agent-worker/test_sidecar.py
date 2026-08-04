@@ -689,6 +689,63 @@ class TestUsageControls(unittest.TestCase):
             self.ts.LIVEKIT_PUBLIC_URL = old
 
 
+class TestCallStructure(unittest.TestCase):
+    """The call is an object with phases, not a 334-line function. These pin
+    the seams so a future edit can't quietly put the call back in one place."""
+
+    @classmethod
+    def setUpClass(cls):
+        from call import lifecycle
+        from call.session import CallSession
+
+        cls.CallSession = CallSession
+        cls.lifecycle = lifecycle
+
+    def test_entrypoint_only_decides_whether_to_answer(self):
+        # main.py's job is wiring. If this grows again, the call has started
+        # leaking back out of CallSession.
+        import inspect
+
+        import main
+
+        body = inspect.getsource(main.entrypoint)
+        self.assertLess(len(body.splitlines()), 30)
+        self.assertIn("probe-", body)          # still refuses probe rooms
+        for phase in ("prepare()", "start()", "greet()"):
+            self.assertIn(phase, body)
+
+    def test_every_lifecycle_hook_is_registered(self):
+        # Each of these was a closure in the old entrypoint. Losing one in the
+        # move would be silent: the call still connects, it just stops doing
+        # something (checking in on a quiet caller, enforcing the time limit).
+        import inspect
+
+        src = inspect.getsource(self.CallSession)
+        for hook in ("station.aclose", "station_cfg.aclose", "air.watch",
+                     "attach_error_recovery", "attach_heard_logging",
+                     "attach_idle_watch", "attach_time_limit", "_on_shutdown"):
+            self.assertIn(hook, src, hook)
+
+    def test_the_hangup_tool_reads_the_session_late(self):
+        # Tools are built before the AgentSession exists. Handing the tool a
+        # callable rather than the session is what makes that safe; passing
+        # the value directly would capture None for the life of the call.
+        import inspect
+
+        from call.tools.control import build_call_control_tools
+
+        params = inspect.signature(build_call_control_tools).parameters
+        self.assertIn("get_session", params)
+
+    def test_idle_watch_and_time_limit_are_opt_out_by_setting(self):
+        # Both used to be `if` blocks inside entrypoint; as functions they must
+        # still no-op on 0 rather than starting a task that never fires.
+        self.assertIsNone(self.lifecycle.attach_idle_watch(
+            None, None, {"idle_prompt_secs": 0}))
+        self.assertIsNone(self.lifecycle.attach_time_limit(
+            None, None, {"max_call_seconds": 0}))
+
+
 class TestStationActionResults(unittest.TestCase):
     """A station action that WORKED must never be reported to the caller as a
     failure. Both halves of that were live bugs: a segment takes longer than a
@@ -760,9 +817,11 @@ class TestMainToolLogic(_TempStores):
     def setUpClass(cls):
         import main  # noqa: F401  (import cost only)
         from call import actions, air
+        from call import providers
         from call.tools import control, music, registry
 
         cls.main = main
+        cls.providers = providers
         cls.actions = actions
         cls.air = air
         cls.music = music
@@ -1027,7 +1086,7 @@ class TestMainToolLogic(_TempStores):
         # lingers, so this floor is enforced in code, not asked for in a prompt.
         import asyncio, time
 
-        tools = self.control.build_call_control_tools(None, {}, time.time())
+        tools = self.control.build_call_control_tools(None, lambda: None, time.time())
         end_call = tools[0]
         self.assertEqual(end_call.info.name, "end_call")
         out = asyncio.run(end_call(reason="done"))
@@ -1038,7 +1097,7 @@ class TestMainToolLogic(_TempStores):
 
         # A call that has been running a while: the tool arms the close and
         # asks for a sign-off rather than cutting the audio dead.
-        tools = self.control.build_call_control_tools(None, {}, time.time() - 600)
+        tools = self.control.build_call_control_tools(None, lambda: None, time.time() - 600)
         end_call = tools[0]
         first = asyncio.run(end_call(reason="caller said goodbye"))
         self.assertIn("say your goodbye", first.lower())
@@ -1094,16 +1153,16 @@ class TestMainToolLogic(_TempStores):
         self.assertNotIn("x1", self.music._fmt_track({"title": "T", "artist": "A", "id": "x1"}))
 
     def test_effective_stt_falls_back_without_keys(self):
-        provider, model, note = self.main.effective_stt({"stt_provider": "deepgram"})
+        provider, model, note = self.providers.effective_stt({"stt_provider": "deepgram"})
         self.assertEqual(provider, "google")  # no deepgram or openai key set
         self.assertIn("falling back", note)
         os.environ["OPENAI_API_KEY"] = "sk-x"
-        provider, model, note = self.main.effective_stt({"stt_provider": "deepgram"})
+        provider, model, note = self.providers.effective_stt({"stt_provider": "deepgram"})
         self.assertEqual(provider, "openai")
         self.assertEqual(model, "gpt-4o-mini-transcribe")
 
     def test_effective_stt_rejects_cross_provider_model(self):
-        provider, model, _ = self.main.effective_stt(
+        provider, model, _ = self.providers.effective_stt(
             {"stt_provider": "local", "stt_model": "nova-3"}
         )
         self.assertEqual(provider, "local")
