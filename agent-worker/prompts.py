@@ -360,6 +360,28 @@ async def build_system_prompt(
             "  your own words."
         )
 
+    # What to do with "something fun". Either act on it, or come back with
+    # real options first — but never both, and never an open question, which
+    # is how a caller ends up being asked what kind of fun they meant twice.
+    if cfg.get("shape_vague_requests"):
+        vague_rule = (
+            "  When the ask is a FEELING rather than a track — \"something fun\",\n"
+            "  \"a bit of energy\" — don't send it straight through. Come back with\n"
+            "  two or three real directions and let them pick: named artists or\n"
+            "  tracks you have actually found, or genuine angles on it (\"Motown\n"
+            "  fun, or eighties-cheese fun?\"). Concrete options, in one breath —\n"
+            "  never an open \"what kind of fun?\", which puts the work back on\n"
+            "  them. Search first if you need to; don't invent names. ONE round:\n"
+            "  whatever they say next, act on it and put the request in."
+        )
+    else:
+        vague_rule = (
+            "  And don't interrogate them about it. One vibe is enough to act on:\n"
+            "  put it in, say what you did, and let the station choose. Asking\n"
+            "  \"what kind of fun?\" twice is worse than picking something and\n"
+            "  being wrong."
+        )
+
     # The DJ can be allowed to volunteer a station segment when it suits the
     # conversation — an invitation, never a sales pitch.
     offer_rule = ""
@@ -494,9 +516,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
   look like you're reading an index. If a name search comes back with results
   that are obviously just the word in a title, you used the wrong tool — put
   the request in instead.
-  And don't interrogate them about it. One vibe is enough to act on: put it
-  in, say what you did, and let the station choose. Asking "what kind of fun?"
-  twice is worse than picking something and being wrong.
+{vague_rule}
 - **Put things on air** — shoutouts, dedications, a good bit. Hand the on-air
   DJ a finished line in your voice and tell the caller you're passing it on.
 {offer_rule}- **Check what's playing / coming up** rather than guessing.

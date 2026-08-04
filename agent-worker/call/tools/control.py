@@ -10,7 +10,12 @@ from typing import Callable
 from livekit.agents import JobContext
 
 from ..background import spawn
-from ..hangup import end_call
+# Imported under a different name on purpose: the tool below is itself called
+# end_call, and the closure shadowed this import — so the DJ's sign-off raised
+# TypeError inside a background task and the line never actually closed. The
+# call then ran on until the idle watcher gave up, which looks like the DJ
+# saying goodbye and then refusing to hang up.
+from ..hangup import end_call as hang_up
 
 log = logging.getLogger("callin.agent")
 
@@ -74,7 +79,7 @@ def build_call_control_tools(
                     break
                 await asyncio.sleep(0.5)
             await asyncio.sleep(0.8)      # a beat after the last word
-            await end_call(ctx, f"the DJ wrapped up the call ({reason or 'done'})")
+            await hang_up(ctx, f"the DJ wrapped up the call ({reason or 'done'})")
 
         spawn(_close())
         return (

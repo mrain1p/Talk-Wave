@@ -69,6 +69,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Requests are irreversible — the station has no cancel endpoint — so the
     # cheap protection is confirming the track before it's submitted.
     "confirm_requests":   (None, True),
+    # A mood ("something fun") is enough to act on, and the station's picker
+    # resolves it — but sending it straight through means the caller never got
+    # a say in WHICH fun. With this on, the DJ comes back with two or three
+    # real options first. Costs one extra turn; makes the call a conversation
+    # rather than a form.
+    "shape_vague_requests": (None, False),
     "allow_announcements": (None, True),
     "allow_library_search": (None, True),
     # Let a caller who has picked a track out of the search results have THAT
@@ -297,6 +303,16 @@ SCHEMA: dict[str, dict] = {
         help="The DJ says the track back and gets a quick yes before submitting. "
              "Worth keeping on: the station has no way to cancel a request once "
              "it's in — a changed mind before the confirm costs nothing."),
+    "shape_vague_requests": dict(group="perms", kind="check",
+        label="Offer options for a mood request",
+        needs=("allow_requests", True),
+        help="When a caller asks for a feeling rather than a track — \"something "
+             "fun\", \"a bit of energy\" — the DJ comes back with two or three real "
+             "directions before putting anything in: named artists or tracks it "
+             "actually found, not an open \"what kind of fun?\". Off by default, "
+             "because the fastest answer is to just play something; on, because "
+             "letting the caller pick is what makes it a conversation. One round "
+             "only either way — the DJ never asks twice."),
     "allow_library_search": dict(group="perms", kind="check", label="Search the music library",
         help="Lets the DJ check a track really exists before promising it, and correct "
              "a caller who has the artist wrong. Works without station credentials; "

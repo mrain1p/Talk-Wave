@@ -491,6 +491,23 @@ class TestCallPrivacy(_TempStores):
         self.assertIn("nothing good about a short", text)
         self.assertIn("never end a call because it's gone quiet", text.lower())
 
+    def test_a_mood_request_either_ships_or_offers_options_never_both(self):
+        # The two rules contradict each other, so exactly one must be in the
+        # prompt. Shipping both is how a caller gets asked what kind of fun
+        # they meant AND has something submitted anyway.
+        off = self._prompt({})
+        self.assertIn("don't interrogate them", off)
+        self.assertNotIn("two or three real directions", off)
+
+        settings_store.save({"shape_vague_requests": True})
+        on = self._prompt({})
+        self.assertIn("two or three real directions", on)
+        self.assertNotIn("don't interrogate them", on)
+        # Concrete options, never an open question, and only one round.
+        self.assertIn("never an open", on)
+        self.assertIn("ONE round", on)
+        self.assertIn("don't invent names", on)
+
     def test_prompt_carries_a_triage_guide(self):
         text = self._prompt({})
         self.assertIn("Running the call", text)
@@ -1133,6 +1150,41 @@ class TestMainToolLogic(_TempStores):
         # A second call must not stack another close task.
         second = asyncio.run(end_call(reason="again"))
         self.assertIn("Already wrapping up", second)
+
+    def test_the_wrap_up_actually_hangs_up(self):
+        """Shipped broken: the tool is named end_call, which shadowed the
+        imported end_call helper, so the close raised TypeError inside a
+        background task. The DJ said goodbye and the line stayed open until the
+        idle watcher gave up. Nothing surfaced it — the exception died in a
+        task nobody awaited."""
+        import asyncio, time
+
+        deleted = {}
+
+        class FakeRoomApi:
+            async def delete_room(self, req):
+                deleted["room"] = getattr(req, "room", "?")
+
+        class FakeCtx:
+            room = type("R", (), {"name": "callin-test"})()
+            api = type("A", (), {"room": FakeRoomApi()})()
+            def shutdown(self, reason=""):
+                deleted["shutdown"] = reason
+
+        async def run():
+            tools = self.control.build_call_control_tools(
+                FakeCtx(), lambda: None, time.time() - 600)
+            said = await tools[0](reason="caller said goodbye")
+            self.assertIn("say your goodbye", said.lower())
+            # The close runs in the background; give it room to finish.
+            for _ in range(60):
+                await asyncio.sleep(0.1)
+                if "shutdown" in deleted:
+                    break
+
+        asyncio.run(run())
+        self.assertEqual(deleted.get("room"), "callin-test", "the room was never deleted")
+        self.assertIn("wrapped up", deleted.get("shutdown", ""))
 
     def test_queue_position_becomes_something_a_dj_can_say(self):
         # Without this the DJ could only say "soon", which is how a caller
