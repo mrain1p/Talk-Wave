@@ -218,6 +218,12 @@ class TestPromptAssembly(_TempStores):
         text = asyncio.run(build())
         self.assertIn("keep answers to two sentences", text)
         self.assertIn("Keep the call moving", text)
+        # Offering segments is opt-in and needs skills enabled too.
+        self.assertNotIn("Offering a segment", text)
+        settings_store.save({"allow_skills": True, "offer_skills": True})
+        self.assertIn("Offering a segment", asyncio.run(build()))
+        settings_store.save({"offer_skills": ""})
+        self.assertNotIn("Offering a segment", asyncio.run(build()))
 
 
 class TestAdminAuth(unittest.TestCase):

@@ -75,6 +75,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # considered and deliberately not offered — stingers on a caller's
     # say-so add nothing to a call.)
     "allow_skills":       (None, False),
+    # With skills on, the DJ may also OFFER one when the moment fits ("want
+    # me to spin you a story?") instead of waiting to be asked.
+    "offer_skills":       (None, False),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -258,6 +261,11 @@ SCHEMA: dict[str, dict] = {
     "allow_skills": dict(group="perms", kind="check", label="Run station segments",
         help="Weather, news, dedications, story time. The station rate-limits each one "
              "(25–60 min), so callers can't spam them."),
+    "offer_skills": dict(group="perms", kind="check", label="Let the DJ offer segments",
+        needs=("allow_skills", True),
+        help="When the moment genuinely fits, the DJ may suggest one itself — "
+             "\"want me to spin you a story?\" — instead of waiting to be asked. "
+             "Occasional by design, never a menu."),
 
     # --- call behaviour ---
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
@@ -300,12 +308,12 @@ SCHEMA: dict[str, dict] = {
         help="An instruction to the DJ, not a script it reads out."),
 
     # --- usage ---
-    "max_concurrent_calls": dict(group="usage", kind="number", label="At once",
-        help="Callers on the line simultaneously. Each is a separate model session. 0 = no limit."),
-    "calls_per_hour": dict(group="usage", kind="number", label="Per hour",
-        help="Across everybody — the main guard against a runaway loop. 0 = no limit."),
-    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait",
-        help="How long one caller waits before calling back. Set 0 while testing."),
+    "max_concurrent_calls": dict(group="usage", kind="number", label="Simultaneous calls",
+        help="Callers on the line at the same time. Each is a separate model session. 0 = no limit."),
+    "calls_per_hour": dict(group="usage", kind="number", label="Calls per hour",
+        help="Total calls per hour across everybody — the main guard against a runaway loop. 0 = no limit."),
+    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait (seconds)",
+        help="How many seconds one caller waits before calling back. Set 0 while testing."),
 
     # --- speech hygiene ---
     "strip_stage_directions": dict(group="speech", kind="check", label="Strip stage directions",

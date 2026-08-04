@@ -259,6 +259,16 @@ its failure messages name the fix. The classics:
   no voice is configured anywhere; *Reload voice list* after switching
   backend. With station admin credentials set, per-persona voices mirror
   from the station automatically.
+- **Calls work on the LAN but not from outside** — signalling rides your
+  reverse proxy, but *media* is a direct UDP connection to the address
+  LiveKit advertises, which by default is your LAN IP. For outside callers:
+  set `use_external_ip: true` in `livekit.yaml`, run the livekit service
+  with `network_mode: host` (drop its `ports:` and `--node-ip`; point
+  `LIVEKIT_URL` at the host's LAN IP), and forward **UDP 50000–50100** and
+  **TCP 7881** on your router. Related: Chrome may ask LAN visitors to
+  "connect to devices on your local network" — that's the browser's Private
+  Network Access guard for a public page reaching a private IP; one-time
+  and harmless.
 - **Audio gaps on local TTS** — generation slower than playback. The voice
   test reports the realtime factor; above ~1.0, lower your TTS engine's
   inference steps or use cloud for the live leg.

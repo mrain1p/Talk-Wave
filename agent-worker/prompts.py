@@ -269,6 +269,19 @@ async def build_system_prompt(
             "  your own words."
         )
 
+    # The DJ can be allowed to volunteer a station segment when it suits the
+    # conversation — an invitation, never a sales pitch.
+    offer_rule = ""
+    if cfg.get("allow_skills") and cfg.get("offer_skills"):
+        offer_rule = (
+            "- **Offering a segment.** The station's segments (story time,\n"
+            "  weather, news…) are yours to suggest as well as to run. When the\n"
+            "  moment genuinely fits — a lull, a caller who'd clearly enjoy it —\n"
+            "  you may offer one in your own voice (\"want me to spin you a\n"
+            "  story?\"). Do it occasionally at most, never as a list, and only\n"
+            "  offer what your tools actually show is available.\n"
+        )
+
     # Asking a caller their name just to take a request is friction, so it's
     # opt-in. A name they volunteer is still used either way.
     if cfg.get("ask_caller_name"):
@@ -327,7 +340,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
   track is missing from one search.
 - **Put things on air** — shoutouts, dedications, a good bit. Hand the on-air
   DJ a finished line in your voice and tell the caller you're passing it on.
-- **Check what's playing / coming up** rather than guessing.
+{offer_rule}- **Check what's playing / coming up** rather than guessing.
 
 Talk while you work ("alright, putting that in") — never silent, never
 mechanical. Exception: when something goes out ON AIR it's your own voice on
