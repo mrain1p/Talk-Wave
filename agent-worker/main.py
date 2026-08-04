@@ -140,6 +140,20 @@ def build_allowed_tools(cfg: dict, *, guarded: bool = False) -> list[str]:
     return [t for t in allowed if t not in wrapped and t not in ON_AIR_TOOLS]
 
 
+# Fire-and-forget tasks need a strong reference held somewhere, or the event
+# loop's weak reference is the only one and the task can be garbage-collected
+# mid-execution. For us that means an action card or an on-air state change
+# that goes missing at random, which is worse than one that never existed.
+_background: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return task
+
+
 class CallActions:
     """Per-call record of what the caller actually made happen.
 
@@ -196,7 +210,7 @@ class CallActions:
             }).encode()
             # Fire-and-forget: a caption card is never worth delaying a tool
             # return (and so never worth failing the action over).
-            asyncio.create_task(
+            _spawn(
                 self._room.local_participant.publish_data(
                     payload, reliable=True, topic="wavetalk.action"
                 )
@@ -238,7 +252,7 @@ class OnAirGuard:
         if self.room is None:
             return
         try:
-            asyncio.create_task(
+            _spawn(
                 self.room.local_participant.set_attributes(
                     {"wavetalk.onair": "1" if on_air else ""}
                 )
@@ -876,7 +890,7 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception:
                 pass  # if the voice is what failed, silence is unavoidable
 
-        asyncio.create_task(_apologise())
+        _spawn(_apologise())
 
     session.on("error", _on_session_error)
 

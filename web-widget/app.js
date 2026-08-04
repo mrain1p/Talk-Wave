@@ -70,6 +70,38 @@
     dot.className = 'dot' + (state ? ' ' + state : '');
   }
 
+  // ------------------------------------------------------- embed height
+  // A host page sizes its iframe before the widget knows whether it has to
+  // ask for a door code, warn about the microphone, or open captions — so a
+  // fixed height clips all three. We report our real height and embed.js
+  // follows it (unless the host pinned one).
+  //
+  // Called explicitly from everything that changes the card's height rather
+  // than left to the ResizeObserver alone: observer callbacks ride animation
+  // frames, which don't run in a background tab, so an embed the visitor
+  // isn't looking at would size itself late.
+  const framed = window.parent !== window;
+  let lastPosted = 0;
+
+  function notifyHeight() {
+    if (!framed) return;
+    const card = document.querySelector('.card');
+    if (!card) return;
+    const h = Math.ceil(card.getBoundingClientRect().height);
+    if (h > 0 && h !== lastPosted) {
+      lastPosted = h;
+      window.parent.postMessage({ type: 'subwave-callin:height', px: h }, '*');
+    }
+  }
+
+  if (framed) {
+    if (window.ResizeObserver) {
+      new ResizeObserver(notifyHeight).observe(document.querySelector('.card'));
+    }
+    addEventListener('load', notifyHeight);
+    notifyHeight();
+  }
+
   // ---------------------------------------------------------------- sounds
   // Defaults are synthesized so the widget ships with no audio assets; a
   // configured URL replaces them.
@@ -211,6 +243,7 @@
         + 'this page (' + location.origin + ') has neither. See README → Troubleshooting.');
     }
     el.hidden = false;
+    notifyHeight();
   }
 
   // ------------------------------------------------------------- on air card
@@ -309,6 +342,7 @@
   function paintGuestGate() {
     const box = $('guestGate');
     if (box) box.hidden = !(live && live.guestRequired && !callKey());
+    notifyHeight();
   }
 
   async function submitGuestCode() {
@@ -599,6 +633,7 @@
     $('stateChip').hidden = false;
     setAgentState('initializing');
     startTimer();
+    notifyHeight();
     setStatus('Connecting…', 'connecting');
     $('endedBar').hidden = true;
     capNodes.clear();
@@ -777,6 +812,7 @@
     muteBtn.classList.remove('on');
     $('meterYou').classList.remove('muted');
     setStatus('Call ended');
+    notifyHeight();
   }
 
   // Keep the transcript after the call, but out of the way.
@@ -790,6 +826,7 @@
     const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     bar.innerHTML = '<span class="chev">▶</span><span>Call ended · ' + lines
       + ' line' + (lines === 1 ? '' : 's') + '</span><span class="when">' + t + '</span>';
+    notifyHeight();
   }
 
   $('endedBar').onclick = () => {
@@ -797,6 +834,7 @@
     const open = !capBox.classList.contains('on');
     capBox.classList.toggle('on', open);
     bar.classList.toggle('open', open);
+    notifyHeight();
   };
 
   callBtn.onclick = () => { if (!room) startCall(); };

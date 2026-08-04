@@ -81,5 +81,21 @@
     if (theme) iframe.style.colorScheme = theme;
 
     el.appendChild(iframe);
+
+    // Unless the host pinned a height, follow the widget's own. A fixed
+    // height is a guess made before the widget knows whether it has to ask
+    // for a door code, show a microphone warning, or open captions — and the
+    // guess clips all three.
+    if (!height) {
+      window.addEventListener("message", function (e) {
+        if (e.source !== iframe.contentWindow) return;
+        var msg = e.data;
+        if (!msg || msg.type !== "subwave-callin:height") return;
+        var px = Number(msg.px);
+        // Bounded on purpose: a frame must never be able to take over the
+        // host page's layout.
+        if (px > 80 && px < 2000) iframe.style.height = px + "px";
+      });
+    }
   });
 })();

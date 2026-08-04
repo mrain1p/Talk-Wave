@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Embed harness — SUB/WAVE call-in</title>
+<!--
+  Not shipped to users; a bench for the embed path, which is otherwise only
+  testable by dropping the widget on a real third-party page.
+
+  Covers the three things that actually break:
+    * data-theme="inherit" reading the HOST page's background
+    * the frame following the widget's height instead of a fixed guess
+    * a pinned data-height still winning
+
+  Serve it from the widget origin:  http://localhost:8100/embed-test.html
+-->
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; padding: 24px; }
+  section { max-width: 460px; margin: 0 0 28px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+       color: #888; margin: 0 0 8px; }
+  .dark  { background: #101014; color: #eee; }
+  .light { background: #fbfbf9; color: #222; }
+  .pad   { padding: 20px; border-radius: 12px; }
+  code { font-size: 12px; opacity: .7; }
+</style>
+</head>
+<body class="light">
+
+<section>
+  <h2>1 — auto height, theme inherit, on a DARK panel</h2>
+  <div class="dark pad">
+    <div id="subwave-callin-a" data-theme="inherit"></div>
+  </div>
+  <code>data-theme="inherit" — should resolve to dark</code>
+</section>
+
+<section>
+  <h2>2 — auto height, theme inherit, on a LIGHT panel</h2>
+  <div class="light pad" style="border:1px solid #ddd">
+    <div id="subwave-callin-b" data-theme="inherit"></div>
+  </div>
+  <code>data-theme="inherit" — should resolve to light</code>
+</section>
+
+<section>
+  <h2>3 — pinned height (must NOT auto-resize)</h2>
+  <div class="dark pad">
+    <div id="subwave-callin-c" data-theme="dark" data-height="150px"></div>
+  </div>
+  <code>data-height="150px" — stays 150px whatever the widget reports</code>
+</section>
+
+<script src="/embed.js"></script>
+</body>
+</html>

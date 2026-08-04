@@ -583,3 +583,13 @@
   body.compact .cap { grid-template-columns: 32px 1fr; gap: 7px; }
   body.compact .meters { margin: 10px 0 2px; }
   body.compact .callrow { gap: 10px; }
+  /* The door code has to fit an embed too. A compact frame is ~190px tall,
+     and the full-size gate (label above, input and button below) alone eats
+     most of that — so drop the label and put the row on one line. */
+  body.compact .guestgate {
+    margin: 9px 0 2px; padding: 8px 9px; border-radius: 9px;
+  }
+  body.compact .guestgate .glabel { display: none; }
+  body.compact .guestgate input { padding: 6px 8px; font-size: 12px; }
+  body.compact .guestgate button { font-size: 12px; padding: 6px 11px; }
+  body.compact .guestgate .grow { flex-wrap: nowrap; }
