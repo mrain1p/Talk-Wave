@@ -148,7 +148,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # likely to make one. Tuning the caller's own browser in fixes that.
     # Volume 0 keeps the station out of the way of the DJ's voice.
     "tune_in_on_call":  (None, True),
-    "tune_in_volume":   (None, 0),
+    # 10%: audible enough that the caller can tell they're through to a live
+    # station, quiet enough that it never competes with the DJ's voice — and,
+    # on speakers, quiet enough not to bleed into the caller's own microphone
+    # and be transcribed as if they had said it. Anything near 50 does both.
+    "tune_in_volume":   (None, 10),
 
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
@@ -344,10 +348,12 @@ SCHEMA: dict[str, dict] = {
              "broadcast running quietly behind the conversation. Recommended."),
     "tune_in_volume": dict(group="call", kind="number", label="Station volume",
         needs=("tune_in_on_call", True),
-        help="How loud the broadcast sits behind the call, as a percentage. 0 keeps "
-             "it silent — the caller still counts as a listener, they just don't "
-             "hear it. 10–20 gives that on-the-phone-to-the-station feel without "
-             "competing with the DJ's voice."),
+        help="How loud the broadcast sits behind the call, as a percentage. 10 is "
+             "the default: enough to feel like a live station behind the DJ, not "
+             "enough to fight with the voice. 0 keeps it silent — the caller still "
+             "counts as a listener, they just don't hear it. Much above 20 and, on "
+             "speakers, it bleeds into the caller's microphone and gets transcribed "
+             "as though they had said it."),
     "avoid_on_air_overlap": dict(group="perms", kind="check", label="Pause the call while on air",
         help="The call DJ and the on-air DJ are the same voice. With this on, anything "
              "sent to air waits for the broadcast to go quiet, and the DJ steps back "

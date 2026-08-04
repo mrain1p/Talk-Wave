@@ -166,7 +166,16 @@ class CallSession:
             vad=self.ctx.proc.userdata["vad"],
             mcp_servers=[station_tools],
             tools=local_tools or NOT_GIVEN,
-            preemptive_generation=True,
+            # preemptive_generation is OFF deliberately. It starts a reply from
+            # a PARTIAL transcript, and when that speculative turn contains a
+            # tool call the final user turn lands after it — leaving a function
+            # call followed by a user turn, which Gemini rejects outright:
+            #   "Please ensure that function call turn comes immediately after
+            #    a user turn or after a function response turn." (400)
+            # The call then dies mid-conversation. It only started happening
+            # once the station tools were reachable and the DJ began actually
+            # calling them. It is also deprecated in this SDK.
+            preemptive_generation=False,
         )
 
         await self.session.start(

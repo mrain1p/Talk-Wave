@@ -51,7 +51,12 @@ def attach_error_recovery(session: AgentSession) -> None:
             try:
                 await session.say(
                     "The line's giving me trouble on my end — hang tight a "
-                    "second, or try me again in a minute."
+                    "second, or try me again in a minute.",
+                    # Kept out of the history: this is a canned apology for a
+                    # provider failure, not something the DJ decided to say,
+                    # and a stray model turn is what makes Gemini reject the
+                    # next request that contains a tool call.
+                    add_to_chat_ctx=False,
                 )
             except Exception:
                 pass  # if the voice is what failed, silence is unavoidable

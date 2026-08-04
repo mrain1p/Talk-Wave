@@ -110,6 +110,10 @@ class OnAirGuard:
                             session.say(
                                 "Hold on a second — let me let that go out on air first.",
                                 allow_interruptions=False,
+                                # Not conversation, and an extra model turn in
+                                # the history is what Gemini 400s on when a
+                                # tool call follows it.
+                                add_to_chat_ctx=False,
                             )
                         except Exception as e:
                             log.debug("could not hand over to air cleanly: %s", e)
