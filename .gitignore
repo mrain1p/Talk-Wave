@@ -15,6 +15,7 @@ __pycache__/
 *.pyc
 
 # --- Internal working notes, not part of the release -----------------------
+MASTER-PLAN.md
 AUDIT.md
 REVIEW.md
 RELEASE-REVIEW-1.0.md
