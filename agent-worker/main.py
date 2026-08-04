@@ -530,6 +530,17 @@ async def entrypoint(ctx: JobContext) -> None:
         room_input_options=RoomInputOptions(close_on_disconnect=True),
     )
 
+    # Every finalized caller utterance goes in the log. Without this, a
+    # "the DJ didn't answer me" report is undiagnosable: a missing heard:
+    # line means STT/VAD never caught the words; a heard: line with no
+    # reply following points at the LLM/TTS leg.
+    def _log_heard(ev) -> None:
+        text = str(getattr(ev, "transcript", "") or "").strip()
+        if text and getattr(ev, "is_final", True):
+            log.info("heard: %s", text[:160])
+
+    session.on("user_input_transcribed", _log_heard)
+
     # --- silence handling -------------------------------------------------
     # A caller who goes quiet gets checked on in character, then let go. Dead
     # air on a phone call is worse than a graceful goodbye, and an abandoned
