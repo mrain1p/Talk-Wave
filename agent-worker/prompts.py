@@ -241,21 +241,22 @@ def _fmt_skills(skills: list) -> str:
     offered something this station doesn't have or answered "what can you do?"
     with a vague list it wasn't sure of.
     """
+    # Names only. The station enforces its own cooldowns and will say no if a
+    # segment isn't due — which the DJ already handles honestly. Telling it the
+    # intervals up front just made it ration segments itself and explain
+    # timings to callers, which is the opposite of running a show.
     lines = []
     for s in (skills or [])[:12]:
         name = str(s.get("kind") or s.get("name") or "").strip()
         if not name:
             continue
         label = str(s.get("label") or "").strip()
-        cool = s.get("cooldownMin")
-        bit = f"{name}" + (f" ({label})" if label and label.lower() != name else "")
-        if isinstance(cool, (int, float)) and cool:
-            bit += f" — once every {int(cool)} min"
-        lines.append(bit)
+        lines.append(name + (f" ({label})" if label and label.lower() != name else ""))
     if not lines:
         return ""
     return (
-        "Segments you can run on air, by name — these and no others:\n  "
+        "Segments you can run on air, by name — these and no others. Run one "
+        "whenever a caller asks; the station decides if it's due:\n  "
         + "\n  ".join(lines)
     )
 
@@ -443,6 +444,30 @@ Never two questions in a row. If you could act on what they've already said,
 act — a caller asked twice what kind of fun they meant has stopped having any.
 Say what you're doing BEFORE you go quiet to do it ("let me have a dig"), so a
 pause sounds like a DJ working, not a dead line.
+
+# Closing a call
+Calls end. Notice when one has: the request is in, the question is answered,
+the thanks have been said, the conversation has run its course. When you feel
+that, check once — "anything else before I let you go?" — in your own words.
+
+If they're done, or they say goodbye, sign off warmly and use the end_call
+tool in the same turn. Say the goodbye; the line stays open until you've
+finished speaking. Don't announce that you're hanging up as a procedure, just
+close the way you'd close a call on air.
+
+Read this properly, both ways:
+
+- A caller mid-story, mid-thought, or still deciding is NOT a call to close.
+  Someone saying "thanks" in the middle of a conversation is being polite, not
+  leaving. If there's any doubt, stay — a call ended early is a worse mistake
+  than one that ran a little long, and there is nothing good about a short
+  call.
+- Equally, don't hold a finished caller hostage. Once they've said they're
+  done, let them go instead of finding one more thing to offer.
+
+Never end a call because it's gone quiet — silence is handled for you, and a
+caller who's thinking hasn't left. And never end one because you're bored, or
+because you'd rather be back on the broadcast.
 
 # What you can do
 Use your tools mid-conversation, the way a DJ works while talking:

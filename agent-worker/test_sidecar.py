@@ -437,8 +437,30 @@ class TestCallPrivacy(_TempStores):
         text = build()
         self.assertIn("weather", text)
         self.assertIn("storytime", text)
-        self.assertIn("once every 60 min", text)   # cooldown, so it won't over-promise
         self.assertIn("these and no others", text)
+
+    def test_segment_list_names_only_no_cooldowns(self):
+        # Telling the DJ the intervals made it ration segments itself and
+        # explain timings to callers. The station decides if one is due.
+        out = prompts._fmt_skills([
+            {"kind": "weather", "label": "Weather", "cooldownMin": 60},
+            {"kind": "storytime", "label": "Story time", "cooldownMin": 45},
+        ])
+        self.assertIn("weather", out)
+        self.assertIn("storytime", out)
+        self.assertNotIn("60", out)
+        self.assertNotIn("min", out)
+        self.assertIn("the station decides if it's due", out)
+
+    def test_prompt_tells_the_dj_how_to_close_a_call(self):
+        text = self._prompt({})
+        self.assertIn("Closing a call", text)
+        self.assertIn("anything else before I let you go?", text)
+        self.assertIn("end_call", text)
+        # And the guard against closing early, which is the real risk.
+        self.assertIn("is NOT a call to close", text)
+        self.assertIn("nothing good about a short", text)
+        self.assertIn("never end a call because it's gone quiet", text.lower())
 
     def test_prompt_carries_a_triage_guide(self):
         text = self._prompt({})
@@ -953,6 +975,30 @@ class TestMainToolLogic(_TempStores):
         self.assertIn("high energy", out)
         # And stays clean when the station sends nothing.
         self.assertNotIn("energy", self.main._fmt_track({"title": "T", "artist": "A"}))
+
+    def test_the_dj_cannot_hang_up_in_the_first_minute(self):
+        # A model that decides to end the call early is worse than one that
+        # lingers, so this floor is enforced in code, not asked for in a prompt.
+        import asyncio, time
+
+        tools = self.main.build_call_control_tools(None, {}, time.time())
+        end_call = tools[0]
+        self.assertEqual(end_call.info.name, "end_call")
+        out = asyncio.run(end_call(reason="done"))
+        self.assertIn("Too early", out)
+
+    def test_ending_a_settled_call_is_allowed_once(self):
+        import asyncio, time
+
+        # A call that has been running a while: the tool arms the close and
+        # asks for a sign-off rather than cutting the audio dead.
+        tools = self.main.build_call_control_tools(None, {}, time.time() - 600)
+        end_call = tools[0]
+        first = asyncio.run(end_call(reason="caller said goodbye"))
+        self.assertIn("say your goodbye", first.lower())
+        # A second call must not stack another close task.
+        second = asyncio.run(end_call(reason="again"))
+        self.assertIn("Already wrapping up", second)
 
     def test_queue_position_becomes_something_a_dj_can_say(self):
         # Without this the DJ could only say "soon", which is how a caller
