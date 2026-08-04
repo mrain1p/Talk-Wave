@@ -868,6 +868,13 @@ class TestMainToolLogic(_TempStores):
                   "anything happy"):
             self.assertTrue(self.main.looks_like_a_vibe(q), q)
 
+    def test_the_stations_own_request_slip_phrases_route_to_the_picker(self):
+        # The station's request drawer offers these as one-tap examples, so a
+        # caller will say them out loud. They must not become name searches.
+        for q in ("sustained energy vibes", "surprise me", "more like this",
+                  "something calm for a rainy evening"):
+            self.assertTrue(self.main.looks_like_a_vibe(q), q)
+
     def test_real_track_names_are_never_mistaken_for_a_vibe(self):
         # Conservative on purpose — a false positive here refuses a search the
         # caller actually wanted.

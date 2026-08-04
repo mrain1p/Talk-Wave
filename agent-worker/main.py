@@ -465,6 +465,11 @@ _VIBE_WORDS = {
     "night", "nighttime", "morning", "driving", "workout", "study", "sleep",
     "groovy", "funky", "smooth", "heavy", "light", "epic", "emotional", "vibe",
     "vibes", "mood", "something", "anything", "good", "nice", "cool",
+    # The station's own request-slip vocabulary, so the two agree on what
+    # counts as a description.
+    "sustained", "surprise", "random", "afternoon", "evening", "late-night",
+    "latenight", "upbeat", "downbeat", "banger", "bangers", "classic",
+    "classics", "oldies", "newer", "older", "similar", "this", "that",
 }
 # Filler that shouldn't count either way when judging a query.
 _VIBE_FILLER = {"a", "an", "the", "some", "me", "for", "and", "or", "of", "to",
@@ -582,9 +587,25 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
                     more = f" …and {len(items) - 8} more" if len(items) > 8 else ""
                     joined = "\n".join(lines)
                     return f"{len(items)} result(s){note}:\n" + joined + more
+            # The catch-all for everything the vibe word list above misses —
+            # and it misses plenty, because no list covers "sustained energy
+            # vibes" or "something for late-night driving". A description
+            # almost never matches a title literally, so an empty result on a
+            # multi-word query is itself the signal that this was never a
+            # name search. Deterministic, where a word list is a guess.
+            hint = ""
+            if len(q.split()) > 1 or looks_like_a_vibe(q):
+                hint = (
+                    " If that was a description rather than a title — a mood, an "
+                    "era, an occasion, 'more like this' — then this was the wrong "
+                    "tool and nothing is wrong with the library. Put it in as a "
+                    "request with subwave_request_song, in the caller's own words, "
+                    "and let the station pick. Do NOT tell the caller you couldn't "
+                    "find anything."
+                )
             return (
-                "Nothing found for that, even after loosening the phrasing. "
-                "Try the title alone, a different spelling, or the artist alone."
+                "No track or artist by that name, even after loosening the "
+                "phrasing." + hint
             )
 
         tools.append(search_library)
