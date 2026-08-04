@@ -594,17 +594,19 @@ async def entrypoint(ctx: JobContext) -> None:
                 state["last_words"] = _time.time()
                 state["nudges"] = 0
 
-        def _on_agent_state(ev) -> None:
-            # Count silence from the moment it's the caller's turn again.
-            if getattr(ev, "new_state", None) == "listening":
-                state["last_words"] = _time.time()
-
         session.on("user_input_transcribed", _on_transcript)
-        session.on("agent_state_changed", _on_agent_state)
 
         async def _idle_watch() -> None:
             while True:
                 await asyncio.sleep(1.0)
+                # The clock only runs while the DJ is actually LISTENING.
+                # Pinning it during speaking/thinking means the count always
+                # starts fresh the moment the DJ stops talking — a long
+                # monologue can never expire the timer mid-sentence, which
+                # used to fire a check-in on the heels of the DJ's own turn.
+                if getattr(session, "agent_state", None) != "listening":
+                    state["last_words"] = _time.time()
+                    continue
                 if _time.time() - state["last_words"] < idle_secs:
                     continue
                 if state["nudges"] >= max_nudges:
