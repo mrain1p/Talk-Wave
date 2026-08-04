@@ -59,7 +59,8 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Blank = use the per-persona mapping in persona-voices.json.
     "tts_voice":        (None, ""),
 
-    # Blank = whoever is live on air (the normal case).
+    # Blank = whoever is live on air (the normal case). A persona id pins every
+    # call to that DJ; RANDOM_PERSONA rolls one per call.
     "persona_override": (None, ""),
 
     # Tool permissions for the caller-facing agent. Reads are always on.
@@ -87,6 +88,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 
     # Free-text house style, layered on top of the persona rather than
     # replacing it. Blank means the persona alone decides.
+    # `style_conversation` steers the call as a whole — pacing, initiative,
+    # how the unexpected is handled — where the other two only shape the
+    # answers and the exit.
+    "style_conversation": (None, ""),
     "style_answering":    (None, ""),
     "style_signoff":      (None, ""),
 
@@ -108,8 +113,16 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # limit, one open tab can mint tokens in a loop. These are deliberately
     # generous — the aim is to stop runaway use, not to ration callers.
     "calls_per_hour":       (None, 30),   # across everyone; 0 = unlimited
+    "calls_per_day":        (None, 100),  # the hard wallet ceiling
     "caller_cooldown_secs": (None, 45),   # per caller, between calls
     "max_concurrent_calls": (None, 2),    # simultaneous live calls
+    # Instant kill switch: the card still shows who's on air, but nobody
+    # can start a call.
+    "calls_paused":         (None, False),
+    # How much one caller may set in motion in a single call — requests,
+    # on-air messages and segments together. Stops one call filling the
+    # queue; 0 = no cap.
+    "max_actions_per_call": (None, 5),
 
     # Whether the DJ may ask the caller's name so the station can credit the
     # request on air. Off by default — being asked your name to request a song
@@ -168,6 +181,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 #   kind      text | number | check | select  (drives the input and the diff)
 #   needs     (field, value) this depends on; hidden when unmet. `True` means
 #             "any truthy value"
+#   placeholder  what happens if the box is left EMPTY. Every free-text field
+#             should say this — "blank" is a real setting with real behaviour,
+#             and an empty box that doesn't explain itself reads as unfinished.
 # ---------------------------------------------------------------------------
 
 # Super-groups, in display order. The page renders these headers and orders
@@ -226,11 +242,13 @@ SCHEMA: dict[str, dict] = {
     "llm_temperature": dict(group="brains", kind="number", label="Temperature",
         help="Higher is more freewheeling. 0.8 suits a DJ; below 0.5 sounds clipped."),
     "stt_provider": dict(group="brains", kind="select", label="Speech-to-text",
-        help="'local' runs in this process — no key, no container, no network. "
-             "Cloud options give live word-by-word captions; local does not."),
+        help="Nothing to set up: 'local' is included in this container and runs "
+             "in-process — no key, no extra service, no network — so calls work out "
+             "of the box. Switch to a cloud provider only if you want live "
+             "word-by-word captions or better accuracy on names; those need a key."),
     "stt_model": dict(group="brains", kind="select", label="STT model",
-        help="For local: base.en is the sensible default, tiny.en is faster, "
-             "small.en is more accurate on names."),
+        help="Leave it alone unless you have a reason. For local: base.en is the "
+             "sensible default, tiny.en is faster, small.en is more accurate on names."),
 
     # --- voice ---
     "tts_mode": dict(group="voice", kind="select", label="TTS backend",
@@ -258,14 +276,21 @@ SCHEMA: dict[str, dict] = {
         help="Lets the DJ check a track exists before promising it. Needs admin credentials."),
     "allow_announcements": dict(group="perms", kind="check", label="Put messages on air",
         help="Hands a line to the on-air DJ to read in persona. Needs admin credentials."),
-    "allow_skills": dict(group="perms", kind="check", label="Run station segments",
-        help="Weather, news, dedications, story time. The station rate-limits each one "
-             "(25–60 min), so callers can't spam them."),
-    "offer_skills": dict(group="perms", kind="check", label="Let the DJ offer segments",
+    # These two read as the same switch until you see them side by side. They
+    # are not: one is about what a caller may ASK FOR, the other about whether
+    # the DJ may BRING IT UP first.
+    "allow_skills": dict(group="perms", kind="check", label="Run segments when asked",
+        help="Weather, news, dedications, story time. The caller asks — \"what's the "
+             "weather doing?\" — and the DJ runs the station's real segment on air. "
+             "With this off the DJ has no way to run one at all. The station "
+             "rate-limits each segment (25–60 min), so callers can't spam them."),
+    "offer_skills": dict(group="perms", kind="check", label="…and let the DJ offer one",
         needs=("allow_skills", True),
-        help="When the moment genuinely fits, the DJ may suggest one itself — "
-             "\"want me to spin you a story?\" — instead of waiting to be asked. "
-             "Occasional by design, never a menu."),
+        help="The other half: whether the DJ may raise a segment ITSELF when the "
+             "moment fits — \"want me to spin you a story?\" — instead of only "
+             "answering a request. With this off the DJ runs segments but never "
+             "brings them up. Occasional by design, never a menu, and never a list "
+             "of what's on offer."),
 
     # --- call behaviour ---
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
@@ -303,9 +328,13 @@ SCHEMA: dict[str, dict] = {
              "mind, or something they'd like to hear. 'Mid-world' just answers the "
              "phone in character and lets the caller lead. Both carry the show; "
              "neither reads out a menu."),
-    "persona_override": dict(group="call", kind="select", label="Force persona",
-        help="For testing. Default is whoever is actually live."),
+    "persona_override": dict(group="call", kind="select", label="Who answers",
+        help="Default is whoever is actually live on air — the honest answer, and "
+             "what a listener expects. Pin one DJ to force every call to them "
+             "(useful for testing a persona), or pick 'Random each call' to have a "
+             "different DJ from the roster pick up each time."),
     "greeting": dict(group="call", kind="text", label="Opening line",
+        placeholder="default: picks up in character and follows the greeting style above",
         help="An instruction to the DJ, not a script it reads out."),
 
     # --- usage ---
@@ -313,6 +342,17 @@ SCHEMA: dict[str, dict] = {
         help="Callers on the line at the same time. Each is a separate model session. 0 = no limit."),
     "calls_per_hour": dict(group="usage", kind="number", label="Calls per hour",
         help="Total calls per hour across everybody — the main guard against a runaway loop. 0 = no limit."),
+    "calls_per_day": dict(group="usage", kind="number", label="Calls per day",
+        help="The hard ceiling on what a day can cost. Set this if the page is "
+             "reachable from the internet — the hourly limit alone still allows "
+             "24x that in a day. 0 = no limit."),
+    "calls_paused": dict(group="usage", kind="check", label="Pause all calls",
+        help="Kill switch: the card still shows who's on air, but nobody can "
+             "start a call. Takes effect immediately."),
+    "max_actions_per_call": dict(group="usage", kind="number", label="Actions per call",
+        help="How much one caller can set in motion in a single call — requests, "
+             "on-air messages and segments together. At the limit the DJ says so "
+             "warmly and keeps talking; it never sounds like an error. 0 = no cap."),
     "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait (seconds)",
         help="How many seconds one caller waits before calling back. Set 0 while testing."),
 
@@ -323,12 +363,20 @@ SCHEMA: dict[str, dict] = {
     "profanity_mode": dict(group="speech", kind="select", label="Expletives",
         help="Applied to every spoken line, so it doesn't depend on the model behaving."),
     "profanity_words": dict(group="speech", kind="text", label="Word list",
+        placeholder="default: the built-in broadcast list",
         help="Comma-separated. Blank uses the built-in list."),
 
     # --- house style ---
+    "style_conversation": dict(group="style", kind="text", label="Conversation",
+        placeholder="default: the persona sets the pace, the station keeps it moving",
+        help="Steers the call as a whole — how much the DJ leads, how fast it moves, "
+             "how it handles something it wasn't expecting. The other two only shape "
+             "the answers and the exit. e.g. 'let the caller lead; don't fill silences'."),
     "style_answering": dict(group="style", kind="text", label="Answering",
+        placeholder="default: answer as the persona would, at its own length",
         help="A light steer, not a character change. e.g. 'keep answers to two sentences'."),
     "style_signoff": dict(group="style", kind="text", label="Signing off",
+        placeholder="default: wrap up in character, no fixed formula",
         help="e.g. 'mention what's coming up next before you hang up'."),
 
     # --- back to air ---
@@ -343,6 +391,7 @@ SCHEMA: dict[str, dict] = {
         help="Calls that never got going aren't worth mentioning."),
     "callback_instructions": dict(group="callback", kind="text", label="Extra steer",
         needs=("callback_enabled", True),
+        placeholder="default: one passing mention, in character, no recap",
         help="Shapes the line. e.g. 'never name the caller' or 'tie it to the current track'."),
 
     # --- station awareness ---
@@ -352,8 +401,13 @@ SCHEMA: dict[str, dict] = {
         help="Lets the DJ answer 'what's next' without guessing."),
     "context_booth_lines": dict(group="context", kind="number", label="On-air chatter",
         help="Recent lines from the on-air DJ, so the call doesn't repeat them."),
-    "context_schedule": dict(group="context", kind="check", label="Include the schedule",
-        help="The rest of the line-up. Rarely needed on a call."),
+    "context_schedule": dict(group="context", kind="check", label="Know the rest of the line-up",
+        help="Adds the names of the station's OTHER shows, so the DJ can answer "
+             "\"what's on after this?\" instead of guessing or refusing. It does not "
+             "add times, other DJs' cards, or anything about the current show — "
+             "that comes from the Show Card and is always on. Off by default because "
+             "it costs prompt weight on every turn for a question most callers "
+             "never ask."),
 
     # --- sounds ---
     "call_sounds": dict(group="sounds", kind="check", label="Play call sounds",
@@ -367,6 +421,11 @@ SCHEMA: dict[str, dict] = {
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
 }
+
+# Sentinel value for persona_override: roll a different DJ from the roster on
+# every call, rather than pinning one. Lives here so the worker and the panel
+# agree on the spelling.
+RANDOM_PERSONA = "__random__"
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
@@ -391,6 +450,7 @@ def schema_payload() -> dict:
                 "kind": meta["kind"],
                 "label": meta["label"],
                 "help": meta.get("help", ""),
+                "placeholder": meta.get("placeholder", ""),
                 "needs": list(meta["needs"]) if meta.get("needs") else None,
                 "choices": STATIC_CHOICES.get(name),
             }

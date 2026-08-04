@@ -27,11 +27,31 @@ log = logging.getLogger("callin.speech_filter")
 _ASTERISK = re.compile(r"\*[^*\n]{1,120}\*")
 # "[pause]", "[sound of rain]" — bracketed directions.
 _BRACKET = re.compile(r"\[[^\]\n]{1,120}\]")
-# "(laughs)", "(chuckles softly)" — parenthetical *actions* only. Ordinary
-# parenthetical speech is left alone, so this looks for a leading verb-ish
-# word and keeps it short.
+# Sound and action words models reach for when they narrate the scene rather
+# than speak it. Needed because a stage direction doesn't always LEAD with the
+# verb — "(Phone rings)" went out on a real call, because the older rule only
+# recognised a parenthetical whose FIRST word was a verb form.
+#
+# A closed list rather than "any word ending in -s" on purpose: the loose rule
+# also swallows ordinary speech like "(about three minutes)".
+_DIRECTION_VERBS = (
+    "rings|ringing|rang|clicks|clicking|crackles|crackling|fades|fading|"
+    "scratches|buzzes|buzzing|beeps|hums|hisses|whirs|creaks|slams|clatters|"
+    "thuds|clunks|closes|opens|starts|stops|plays|playing|dials|dialling|"
+    "dialing|laughs|laughing|chuckles|sighs|sighing|coughs|pauses|shuffles|"
+    "taps|clears|rustles|jingles|squeaks|blares|swells|cuts|continues"
+)
+
+# "(laughs)", "(chuckles softly)", "(Phone rings)" — parenthetical *actions*
+# only. Ordinary parenthetical speech is left alone: the verb-first form is
+# open-ended but must start on the verb, and the verb-last form only fires on
+# the closed list above.
 _PAREN_ACTION = re.compile(
-    r"\((?:[a-z]+(?:s|ing|ed))(?:\s+[a-z]+){0,3}\)",
+    r"\((?:"
+    r"[a-z]+(?:s|ing|ed)(?:\s+[a-z]+){0,3}"                     # "(shuffles records)"
+    r"|"
+    r"(?:[a-z]+\s+){1,3}(?:" + _DIRECTION_VERBS + r")"          # "(Phone rings)"
+    r")\)",
     re.IGNORECASE,
 )
 # Musical/emoji noise that has no spoken form.

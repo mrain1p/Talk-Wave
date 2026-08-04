@@ -40,9 +40,30 @@ class TestSpeechFilter(unittest.TestCase):
         self.assertNotIn("(laughs)", out)
         self.assertIn("Where were we?", out)
 
+    def test_strips_stage_directions_that_do_not_start_on_the_verb(self):
+        # Went out on a real call: "(Phone rings) Yeah, Cliff here." The old
+        # rule only matched a parenthetical whose FIRST word was a verb.
+        out = speech_filter.strip_stage_directions(
+            "(Phone rings) Yeah, Cliff here. We're letting the last track settle."
+        )
+        self.assertNotIn("Phone rings", out)
+        self.assertTrue(out.startswith("Yeah, Cliff here."))
+        for direction in ("(the receiver clicks)", "(static crackles)",
+                          "(sound of vinyl scratches)"):
+            self.assertNotIn(
+                direction, speech_filter.strip_stage_directions(direction + " right then")
+            )
+
     def test_keeps_ordinary_parenthetical_speech(self):
         text = "the set (which runs till two) is all vinyl"
         self.assertEqual(speech_filter.strip_stage_directions(text), text)
+
+    def test_keeps_parentheticals_that_merely_end_in_s(self):
+        # The permissive "any word ending in -s" version of the verb-last rule
+        # ate ordinary speech like this.
+        for text in ("back in (about three minutes)",
+                     "that one's from (one of my favourite albums)"):
+            self.assertEqual(speech_filter.strip_stage_directions(text), text)
 
     def test_profanity_mask_and_drop_and_off(self):
         words = ["fuck", "shit"]
@@ -226,6 +247,58 @@ class TestPromptAssembly(_TempStores):
         self.assertNotIn("Offering a segment", asyncio.run(build()))
 
 
+class TestCallPrivacy(_TempStores):
+    """Every call is a first call. The back-to-air line from the LAST caller
+    goes into the station's own chatter feed, and it was being fed straight
+    back into the next caller's prompt — so the DJ carried on where the
+    previous conversation left off, in front of a stranger."""
+
+    def _prompt(self, session: dict) -> str:
+        import asyncio
+
+        from station import StationClient
+
+        snapshot = {"dj": {}, "personas": [], "now_playing": {},
+                    "state": {}, "session": session, "schedule": {}}
+        persona = {"id": "p_test", "name": "Test DJ", "soul": "A test soul."}
+
+        async def build() -> str:
+            station = StationClient()
+            try:
+                return await prompts.build_system_prompt(
+                    station, persona, snapshot=snapshot
+                )
+            finally:
+                await station.aclose()
+
+        return asyncio.run(build())
+
+    def test_previous_call_never_reaches_the_next_caller(self):
+        session = {"messages": [
+            {"kind": "link", "text": "Back with you after that one."},
+            {"kind": "callin", "text": "Just had Sarah on the line about her divorce."},
+        ]}
+        text = self._prompt(session)
+        self.assertIn("Back with you after that one.", text)   # ordinary chatter stays
+        self.assertNotIn("Sarah", text)
+        self.assertNotIn("divorce", text)
+
+    def test_prompt_states_the_caller_is_new(self):
+        text = self._prompt({})
+        self.assertIn("This caller is NEW", text)
+
+    def test_programme_intro_is_background_not_a_topic(self):
+        session = {"messages": [
+            {"kind": "programme-intro", "text": "Welcome to the Midnight Hour."},
+        ]}
+        text = self._prompt(session)
+        # Still pinned, so the fiction holds…
+        self.assertIn("Midnight Hour", text)
+        # …but explicitly fenced off as background.
+        self.assertIn("Do NOT recap it", text)
+        self.assertIn("taking over from another DJ", text)
+
+
 class TestAdminAuth(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -306,7 +379,7 @@ class TestUsageControls(unittest.TestCase):
         import time
         self.ts._live_calls.update({"room-a": time.time(), "room-b": time.time()})
         msg = self.ts._check_usage(_FakeRequest(), {"max_concurrent_calls": 2})
-        self.assertIn("lines are busy", msg)
+        self.assertIn("tied up", msg)
         self.assertIsNone(
             self.ts._check_usage(_FakeRequest(), {"max_concurrent_calls": 0}))
 
@@ -314,8 +387,42 @@ class TestUsageControls(unittest.TestCase):
         import time
         self.ts._recent_mints.extend([time.time()] * 3)
         msg = self.ts._check_usage(_FakeRequest(), {"calls_per_hour": 3})
-        self.assertIn("busy this hour", msg)
+        self.assertIn("this hour", msg)
         self.assertIsNone(self.ts._check_usage(_FakeRequest(), {"calls_per_hour": 0}))
+
+    def test_per_day_limit_counts_beyond_the_hour(self):
+        # The hourly cap alone still permits 24x that in a day, so the daily
+        # ceiling must count calls that have already aged out of the hour.
+        import time
+        old = time.time() - 7200          # two hours ago: outside the hour
+        self.ts._recent_mints.extend([old] * 5)
+        cfg = {"calls_per_hour": 10, "calls_per_day": 5}
+        msg = self.ts._check_usage(_FakeRequest(), cfg)
+        self.assertIn("today", msg)
+        # …and the hourly limit is unaffected by those same old calls.
+        self.assertIsNone(
+            self.ts._check_usage(_FakeRequest(), {"calls_per_hour": 10}))
+        self.assertIsNone(self.ts._check_usage(_FakeRequest(), {"calls_per_day": 0}))
+
+    def test_pause_refuses_everything(self):
+        msg = self.ts._check_usage(_FakeRequest(), {"calls_paused": True})
+        self.assertIsNotNone(msg)
+        self.assertNotIn("error", msg.lower())   # in-world, never a code
+
+    def test_refusals_never_mention_the_mechanism(self):
+        # A caller pressing Call should hear a busy station, not a rate limit.
+        import time
+        self.ts._live_calls["room-a"] = time.time()
+        self.ts._recent_mints.append(time.time())
+        self.ts._caller_last["1.2.3.4"] = time.time()
+        banned = ("rate", "limit", "quota", "429", "token", "api")
+        for cfg in ({"calls_paused": True}, {"max_concurrent_calls": 1},
+                    {"calls_per_hour": 1}, {"calls_per_day": 1},
+                    {"caller_cooldown_secs": 45}):
+            msg = self.ts._check_usage(_FakeRequest(), cfg) or ""
+            self.assertTrue(msg, cfg)
+            for word in banned:
+                self.assertNotIn(word, msg.lower(), f"{cfg} -> {msg}")
 
     def test_redial_cooldown_is_per_caller(self):
         import time
@@ -336,6 +443,40 @@ class TestUsageControls(unittest.TestCase):
             self.assertEqual(self.ts._secure_origin(), "")
         finally:
             self.ts.LIVEKIT_PUBLIC_URL = old
+
+
+class TestStationActionResults(unittest.TestCase):
+    """A station action that WORKED must never be reported to the caller as a
+    failure. Both halves of that were live bugs: a segment takes longer than a
+    read timeout, and some endpoints answer 200 with no JSON."""
+
+    def setUp(self):
+        import httpx
+        import station
+        self.httpx = httpx
+        self.station = station
+
+    def test_body_survives_empty_text_and_list_payloads(self):
+        import httpx
+        make = lambda **kw: httpx.Response(200, **kw)
+        self.assertEqual(self.station._body(make(content=b"")), {})
+        self.assertEqual(self.station._body(make(text="queued")), {})
+        self.assertEqual(self.station._body(make(json={"ok": True})), {"ok": True})
+        self.assertEqual(
+            self.station._body(make(json=["a", "b"])), {"result": ["a", "b"]}
+        )
+
+    def test_read_timeout_is_unconfirmed_not_failed(self):
+        # Reached the station, answer never came back — the action has run.
+        self.assertTrue(self.station._sent_but_unconfirmed(self.httpx.ReadTimeout("x")))
+        self.assertTrue(self.station._sent_but_unconfirmed(self.httpx.PoolTimeout("x")))
+        # Never got there at all — that IS a failure.
+        self.assertFalse(
+            self.station._sent_but_unconfirmed(self.httpx.ConnectTimeout("x")))
+        self.assertFalse(self.station._sent_but_unconfirmed(ValueError("x")))
+
+    def test_action_timeout_is_well_clear_of_the_read_timeout(self):
+        self.assertGreaterEqual(self.station.ACTION_TIMEOUT, 30.0)
 
 
 class TestStationConfig(unittest.TestCase):
@@ -410,6 +551,80 @@ class TestMainToolLogic(_TempStores):
         local_names = " ".join(et["local"])
         self.assertIn("subwave_request_song", local_names)
         self.assertIn("subwave_search_library", local_names)
+
+    def test_action_ledger_caps_a_single_call(self):
+        actions = self.main.CallActions(2)
+        self.assertFalse(actions.at_limit())
+        actions.note("request", "a track")
+        self.assertFalse(actions.at_limit())
+        actions.note("skill", "weather")
+        self.assertTrue(actions.at_limit())
+        # The refusal is a steer for the DJ, not an error to read out.
+        refusal = actions.refusal()
+        self.assertNotIn("error", refusal.lower())
+        self.assertIn("ring back", refusal)
+
+    def test_action_ledger_zero_means_unlimited(self):
+        actions = self.main.CallActions(0)
+        for _ in range(20):
+            actions.note("request", "x")
+        self.assertFalse(actions.at_limit())
+
+    def test_every_action_kind_has_a_card_label(self):
+        # A new action type shipping with no label would render as a blank
+        # line in the caller's transcript.
+        for kind in ("request", "announcement", "skill"):
+            self.assertIn(kind, self.main.CallActions.LABELS)
+
+    def test_on_air_tools_are_never_served_raw_over_mcp(self):
+        # MCP's session timeout is shorter than a segment takes to run, which
+        # turned a segment that was audibly playing into "that didn't work".
+        cfg = {"allow_announcements": True, "allow_skills": True}
+        for guarded in (False, True):
+            allowed = self.main.build_allowed_tools(cfg, guarded=guarded)
+            self.assertNotIn("subwave_dj_announce", allowed)
+            self.assertNotIn("subwave_run_skill", allowed)
+            self.assertIn("subwave_list_skills", allowed)
+            local = " ".join(self.main.effective_tools(
+                {**cfg, "avoid_on_air_overlap": guarded})["local"])
+            self.assertIn("subwave_dj_announce", local)
+            self.assertIn("subwave_run_skill", local)
+
+    def test_on_air_guard_is_a_no_op_when_the_toggle_is_off(self):
+        import asyncio
+
+        guard = self.main.OnAirGuard(None, {"avoid_on_air_overlap": False,
+                                            "on_air_quiet_secs": 30})
+        guard._clear.clear()          # even with the gate shut…
+        self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
+        # …and the watcher must not poll the station at all.
+        asyncio.run(guard.watch(None))
+
+    def test_on_air_guard_releases_rather_than_holding_forever(self):
+        # A stale djLog entry must never strand a caller in silence: past the
+        # cap the call carries on, overlap or not.
+        import asyncio
+
+        guard = self.main.OnAirGuard(None, {"avoid_on_air_overlap": True,
+                                            "on_air_quiet_secs": 30})
+        guard._clear.clear()
+        waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
+        self.assertGreater(waited, 0)
+        self.assertTrue(guard._clear.is_set())
+
+    def test_on_air_guard_clear_air_costs_nothing(self):
+        import asyncio
+
+        guard = self.main.OnAirGuard(None, {"avoid_on_air_overlap": True,
+                                            "on_air_quiet_secs": 30})
+        self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
+
+    def test_random_persona_sentinel_is_shared(self):
+        # The worker and the panel must agree on the spelling or the option
+        # silently falls through to "whoever is live".
+        self.assertEqual(settings_store.RANDOM_PERSONA, "__random__")
+        self.assertNotIn(settings_store.RANDOM_PERSONA,
+                         settings_store.load()["persona_override"])
 
     def test_effective_stt_falls_back_without_keys(self):
         provider, model, note = self.main.effective_stt({"stt_provider": "deepgram"})

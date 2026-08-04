@@ -32,6 +32,35 @@ _DEGRADED_AFTER = 3
 def degraded() -> bool:
     return _read_stats["consecutive_failures"] >= _DEGRADED_AFTER
 
+
+# Reads are quick or they're broken. ACTIONS are not: /dj/skill runs a whole
+# segment (script, then speech) before it answers, and /dj/say re-voices a line
+# through the station's own TTS. Both routinely take longer than the read
+# timeout — and a timeout was being reported to the caller as "that didn't
+# work" while the segment was audibly going out on air.
+ACTION_TIMEOUT = 45.0
+
+
+def _body(r: httpx.Response) -> dict:
+    """A 2xx is the success signal, not the body's shape. Some station
+    endpoints answer with an empty body, plain text, or a bare list — calling
+    .json() blind turned those into exceptions and, one layer up, into the DJ
+    telling the caller an action had failed."""
+    try:
+        data = r.json() if r.content else {}
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {"result": data}
+
+
+def _sent_but_unconfirmed(e: Exception) -> bool:
+    """True when the request reached the station but the answer didn't come
+    back in time. The action has almost certainly run, so this must NOT be
+    reported as a failure — the honest line is "it's gone through"."""
+    return isinstance(e, httpx.TimeoutException) and not isinstance(
+        e, httpx.ConnectTimeout
+    )
+
 # Last-known-good persona, shared across calls in this process.
 #
 # Why: GET /dj is lazily cached on the station side. Warm it answers in ~15ms,
@@ -200,19 +229,23 @@ class StationClient:
         user, password = admin_credentials()
         if not (user and password):
             log.info("skipping on-air handoff — no station admin credentials")
-            return {}
+            return {"ok": False, "error": "no station admin credentials"}
 
         try:
             r = await self._client.post(
                 "/dj/say",
                 json={"text": text, "mode": mode, "kind": kind},
                 auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
             )
             r.raise_for_status()
-            return r.json()
+            return {"ok": True, **_body(r)}
         except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("on-air line slow to confirm (%s) — treating as sent", e)
+                return {"ok": True, "unconfirmed": True}
             log.warning("on-air handoff failed: %s", e)
-            return {}
+            return {"ok": False, "error": str(e)[:140]}
 
     async def search_library(self, q: str) -> list[dict]:
         """Term search over the library. Admin-gated; empty list on failure."""
@@ -240,10 +273,13 @@ class StationClient:
             payload: dict = {"text": text}
             if name:
                 payload["name"] = name
-            r = await self._client.post("/request", json=payload)
+            r = await self._client.post("/request", json=payload, timeout=ACTION_TIMEOUT)
             r.raise_for_status()
-            return r.json()
+            return _body(r)
         except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("request slow to confirm (%s) — treating as submitted", e)
+                return {"unconfirmed": True}
             log.warning("request submit failed: %s", e)
             return {"error": str(e)[:140]}
 
@@ -261,16 +297,23 @@ class StationClient:
 
         user, password = admin_credentials()
         if not (user and password):
-            return {"error": "no station admin credentials"}
+            return {"ok": False, "error": "no station admin credentials"}
         try:
             r = await self._client.post(
-                "/dj/skill", json={"name": name}, auth=httpx.BasicAuth(user, password)
+                "/dj/skill",
+                json={"name": name},
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
             )
             r.raise_for_status()
-            return {"ok": True, **(r.json() if r.content else {})}
+            # `ok` first so a station payload carrying its own verdict wins.
+            return {"ok": True, **_body(r)}
         except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("skill %s slow to confirm (%s) — treating as running", name, e)
+                return {"ok": True, "unconfirmed": True}
             log.warning("skill %s failed: %s", name, e)
-            return {"error": str(e)[:120]}
+            return {"ok": False, "error": str(e)[:120]}
 
     async def active_show(self, now_playing: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).

@@ -98,9 +98,11 @@ OPTIONAL_TOOLS = {
 }
 
 
-# Tools that make the on-air DJ produce sound. When overlap protection is on
-# these are served by local wrappers that check the air is clear first, so they
-# come off the MCP allowlist to avoid exposing an unguarded duplicate.
+# Tools that make the on-air DJ produce sound. Always served by local wrappers
+# instead of raw MCP: the wrappers hold the overlap guard, and — the reason
+# they're unconditional now — MCP's 15s session timeout turned a segment that
+# was audibly playing into "that didn't work" for the caller. Running a segment
+# legitimately takes longer than any read.
 ON_AIR_TOOLS = {"subwave_dj_announce", "subwave_run_skill"}
 
 # Served by local wrappers with retry/fallback logic (build_library_tools) —
@@ -109,17 +111,211 @@ LOCALLY_WRAPPED = {"subwave_search_library", "subwave_request_song"}
 
 
 def build_allowed_tools(cfg: dict, *, guarded: bool = False) -> list[str]:
+    """`guarded` is kept for callers that ask about the overlap guard, but the
+    on-air tools come off the MCP list either way — they are always wrapped."""
     allowed = list(READ_TOOLS)
     for flag, tools in OPTIONAL_TOOLS.items():
         if cfg.get(flag):
             allowed.extend(tools)
-    allowed = [t for t in allowed if t not in LOCALLY_WRAPPED]
-    if guarded:
-        allowed = [t for t in allowed if t not in ON_AIR_TOOLS]
-    return allowed
+    return [t for t in allowed if t not in LOCALLY_WRAPPED and t not in ON_AIR_TOOLS]
 
 
-def build_on_air_tools(cfg: dict, station: StationClient) -> list:
+class CallActions:
+    """Per-call record of what the caller actually made happen.
+
+    Two jobs, both of which need the same ledger:
+
+      * a ceiling on how much one call can set in motion, so a single caller
+        can't fill the request queue or fire segment after segment;
+      * a signal to the widget when an action really lands, so the caller sees
+        "Song scheduled" as its own line in the transcript instead of having to
+        take the DJ's word for it.
+
+    Only SUCCESSFUL actions are counted and announced. An attempt the station
+    refused costs the caller nothing and shows nothing.
+    """
+
+    # What the widget renders for each kind. Kept here rather than in the page
+    # so a new action type can't ship with no label.
+    LABELS = {
+        "request": ("🎵", "Song request scheduled"),
+        "announcement": ("📢", "Message sent to air"),
+        "skill": ("🎙", "Station segment running"),
+    }
+
+    def __init__(self, limit: int, room=None) -> None:
+        self.limit = max(0, int(limit or 0))
+        self.count = 0
+        self._room = room
+
+    def at_limit(self) -> bool:
+        return self.limit > 0 and self.count >= self.limit
+
+    def refusal(self) -> str:
+        """In-world, and explicit that this is the line's rule rather than the
+        station refusing — otherwise the DJ invents a reason."""
+        return (
+            f"You've already put {self.count} things through for this caller, which "
+            "is the limit for one call. Don't do any more of those — say warmly that "
+            "you'll have to leave it there for this call and they're welcome to ring "
+            "back. Do not blame the station or invent a technical reason."
+        )
+
+    def note(self, kind: str, detail: str = "") -> None:
+        self.count += 1
+        icon, label = self.LABELS.get(kind, ("✅", "Action completed"))
+        log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)
+        if self._room is None:
+            return
+        try:
+            import json as _json
+
+            payload = _json.dumps({
+                "type": "action", "kind": kind, "icon": icon,
+                "label": label, "detail": detail,
+            }).encode()
+            # Fire-and-forget: a caption card is never worth delaying a tool
+            # return (and so never worth failing the action over).
+            asyncio.create_task(
+                self._room.local_participant.publish_data(
+                    payload, reliable=True, topic="wavetalk.action"
+                )
+            )
+        except Exception as e:
+            log.debug("action card publish failed (harmless): %s", e)
+
+
+class OnAirGuard:
+    """Shared "is the broadcast actually talking right now" state for one call.
+
+    The call DJ and the on-air DJ are the same person. Left alone they talk
+    over each other — the caller hears two of the same voice, and so does
+    everyone listening to the station. This is the single place that decides
+    whether the air is busy; the reply gate, the on-air tools and the widget's
+    status chip all read it, so they cannot disagree with each other.
+
+    "Busy" means ACTIVELY SPEAKING — not thinking, not queued. It's derived
+    from when the station last logged on-air speech, held for
+    `on_air_quiet_secs` (roughly how long a link runs), because the station
+    tells us when a link STARTED, not when it finished.
+    """
+
+    POLL_SECS = 4.0     # a station read per call every 4s, not per turn
+    MAX_HOLD = 45.0     # never leave a caller in silence longer than this
+
+    def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
+        self.station = station
+        self.room = room
+        self.enabled = bool(cfg.get("avoid_on_air_overlap"))
+        self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
+        self.on_air = False
+        self._clear = asyncio.Event()
+        self._clear.set()
+
+    def _publish(self, on_air: bool) -> None:
+        """Tell the widget, so the caller sees "DJ is on air" rather than a
+        DJ that has mysteriously gone quiet."""
+        if self.room is None:
+            return
+        try:
+            asyncio.create_task(
+                self.room.local_participant.set_attributes(
+                    {"wavetalk.onair": "1" if on_air else ""}
+                )
+            )
+        except Exception as e:
+            log.debug("on-air state publish failed (harmless): %s", e)
+
+    async def wait_until_clear(self, timeout: float | None = None) -> float:
+        """Block until the broadcast is quiet. Returns the seconds waited, so
+        the caller can be told why there was a pause."""
+        if not self.enabled or self._clear.is_set():
+            return 0.0
+        import time as _t
+
+        started = _t.time()
+        try:
+            await asyncio.wait_for(self._clear.wait(), timeout or self.MAX_HOLD)
+        except asyncio.TimeoutError:
+            # Dead air is worse than an overlap. If the station has been
+            # "speaking" for longer than any real link, assume the log is
+            # stale and let the call carry on.
+            log.warning("air still busy after %.0fs — letting the call continue",
+                        timeout or self.MAX_HOLD)
+            self._clear.set()
+        return _t.time() - started
+
+    async def watch(self, session: AgentSession) -> None:
+        """Poll the station and flip the gate. Started as a task for the life
+        of the call."""
+        if not (self.enabled and self.quiet_secs > 0):
+            return
+        # The first pass runs immediately and silently: someone who dials in
+        # mid-link should have the gate already closed (so their first reply
+        # waits) without the greeting being cut off by a hand-over line for a
+        # broadcast that was already running when they picked up the phone.
+        first = True
+        while True:
+            try:
+                since = await self.station.seconds_since_on_air_speech()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                log.debug("on-air check failed (assuming clear): %s", e)
+                since = None
+
+            busy = since is not None and since < self.quiet_secs
+            if busy != self.on_air:
+                self.on_air = busy
+                self._publish(busy)
+                if busy:
+                    self._clear.clear()
+                    log.info("on-air DJ is speaking — holding the call DJ back")
+                    if not first:
+                        # Cut the call DJ off mid-sentence if need be: the whole
+                        # point is that the broadcast never hears itself doubled.
+                        try:
+                            session.interrupt()
+                            session.say(
+                                "Hold on a second — let me let that go out on air first.",
+                                allow_interruptions=False,
+                            )
+                        except Exception as e:
+                            log.debug("could not hand over to air cleanly: %s", e)
+                else:
+                    self._clear.set()
+                    log.info("air is clear — the call DJ has the floor again")
+            first = False
+            await asyncio.sleep(self.POLL_SECS)
+
+
+class CallAgent(Agent):
+    """The caller's DJ, with one addition: its replies wait for quiet air.
+
+    Holding here rather than dropping input is deliberate. The caller's words
+    are already transcribed and in the context by this point — only the REPLY
+    is queued, so nothing they said is lost and they never have to repeat
+    themselves just because the station was mid-link.
+    """
+
+    def __init__(self, instructions: str, guard: OnAirGuard) -> None:
+        super().__init__(instructions=instructions)
+        self._guard = guard
+
+    async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        waited = await self._guard.wait_until_clear()
+        if waited >= 2:
+            log.info("held the caller's reply %.0fs while the on-air DJ was talking",
+                     waited)
+
+
+def build_on_air_tools(
+    cfg: dict,
+    station: StationClient,
+    actions: CallActions,
+    guard: OnAirGuard,
+    guarded: bool = True,
+) -> list:
     """On-air actions that keep the call and the broadcast from colliding.
 
     The call DJ and the on-air DJ are the same persona, so the two can end up
@@ -128,27 +324,33 @@ def build_on_air_tools(cfg: dict, station: StationClient) -> list:
     fire the action, then tell the agent to step back from the call while it
     plays — with a word to the caller either side, the way a real presenter
     would say "hold on, I'm on air".
+
+    With the guard off the wrappers still stand in for the raw MCP tools —
+    they're what keeps a slow-but-successful station action from being
+    reported to the caller as a failure.
     """
     from livekit.agents import llm as lk_llm
 
-    quiet_needed = float(cfg.get("on_air_quiet_secs") or 0)
-    max_wait = 20.0   # never leave the caller hanging longer than this
-
     async def wait_for_clear_air() -> float:
-        """Block until the on-air DJ stops, up to max_wait. Returns how long
-        we waited, so the agent can explain the pause."""
-        waited = 0.0
-        while waited < max_wait:
-            since = await station.seconds_since_on_air_speech()
-            if since is None or since >= quiet_needed:
-                return waited
-            pause = min(3.0, quiet_needed - since)
-            await asyncio.sleep(pause)
-            waited += pause
-        return waited
+        """Block until the on-air DJ stops. One source of truth (the guard),
+        so a tool can't decide the air is clear while the reply gate thinks
+        it's busy. Capped shorter than the guard's own limit — a caller
+        waiting on an action they asked for needs an answer sooner."""
+        if not guarded:
+            return 0.0
+        return await guard.wait_until_clear(timeout=20.0)
 
-    def after_action(what: str, waited: float) -> str:
+    def after_action(what: str, waited: float, unconfirmed: bool = False) -> str:
         note = f"Waited {waited:.0f}s for the air to clear. " if waited >= 2 else ""
+        # A slow confirmation is not a failure: the station took the action,
+        # it just hadn't finished answering. Say it went through.
+        if unconfirmed:
+            note += "The station was slow to confirm, but it has gone through. "
+        if not guarded:
+            return (
+                f"{note}{what} is going out on air now, in your own voice. Tell "
+                "the caller it's done, in your own words."
+            )
         return (
             f"{note}{what} is going out on air now, in your own voice, and it runs "
             "roughly twenty seconds. You cannot be in two places at once: tell the "
@@ -165,11 +367,17 @@ def build_on_air_tools(cfg: dict, station: StationClient) -> list:
             """Put a short line on air, read by the on-air DJ in its own voice.
             Use for shoutouts, dedications, or anything from the call worth
             sharing with listeners."""
+            if actions.at_limit():
+                return actions.refusal()
             waited = await wait_for_clear_air()
             result = await station.dj_say(message, mode=mode, kind="callin")
-            if not result:
-                return "The station wouldn't take that just now — tell the caller plainly."
-            return after_action("Your announcement", waited)
+            if not result.get("ok"):
+                return (
+                    f"That didn't go out: {result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("announcement", message[:120])
+            return after_action("Your announcement", waited, result.get("unconfirmed"))
 
         tools.append(announce)
 
@@ -178,11 +386,18 @@ def build_on_air_tools(cfg: dict, station: StationClient) -> list:
         async def run_skill(name: str) -> str:
             """Run one of the station's own segments on air by name — for
             example weather, news, dedication, shoutout, storytime."""
+            if actions.at_limit():
+                return actions.refusal()
             waited = await wait_for_clear_air()
             result = await station.run_skill(name)
             if not result.get("ok"):
-                return (result.get("error") or "The station wouldn't run that one.")
-            return after_action(f"The {name} segment", waited)
+                return (
+                    f"That segment didn't run: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("skill", name)
+            return after_action(f"The {name} segment", waited, result.get("unconfirmed"))
 
         tools.append(run_skill)
 
@@ -210,7 +425,7 @@ def _fmt_track(t: dict) -> str:
     return bits
 
 
-def build_library_tools(cfg: dict, station: StationClient) -> list:
+def build_library_tools(cfg: dict, station: StationClient, actions: CallActions) -> list:
     """Search and request as local tools with deterministic fallbacks.
 
     Prompt guidance about query phrasing turned out to be soft — the model
@@ -252,6 +467,8 @@ def build_library_tools(cfg: dict, station: StationClient) -> list:
             """Ask the station to play something. Vague is fine ('something
             slower', 'more like this') — the station resolves it. For a
             specific track, give title and artist."""
+            if actions.at_limit():
+                return actions.refusal()
             text = request
             idx = request.lower().rfind(" by ")
             if idx > 0 and cfg.get("allow_library_search"):
@@ -268,6 +485,9 @@ def build_library_tools(cfg: dict, station: StationClient) -> list:
             if res.get("error"):
                 return f"The station couldn't take that request: {res['error']}"
 
+            # Every success path below says QUEUED, never playing. Observed on
+            # a real call: the DJ took a request and immediately introduced the
+            # track on air as though it were spinning, minutes before it was.
             rid = res.get("requestId") or res.get("id")
             if rid:
                 await asyncio.sleep(2.0)
@@ -275,11 +495,21 @@ def build_library_tools(cfg: dict, station: StationClient) -> list:
                 track = st.get("track") or st.get("matched") or {}
                 ack = st.get("ack") or st.get("message") or st.get("reply") or ""
                 if isinstance(track, dict) and track.get("title"):
-                    out = f"Queued: {_fmt_track(track)}."
+                    actions.note("request", _fmt_track(track))
+                    out = (
+                        f"Added to the queue: {_fmt_track(track)}. It is NOT playing "
+                        "yet — it comes up later in the running order, after what's "
+                        "on now. Tell the caller it's lined up, not that it's on."
+                    )
                     return out + (f" Station says: {ack}" if ack else "")
                 if ack:
-                    return f"Station says: {ack}"
-            return "Request is in — the station is lining something up."
+                    actions.note("request", text[:120])
+                    return f"It's in the queue, not on air yet. Station says: {ack}"
+            actions.note("request", text[:120])
+            return (
+                "Request is in — the station is lining something up. It plays later "
+                "in the running order, not now."
+            )
 
         tools.append(request_song)
 
@@ -468,8 +698,13 @@ async def entrypoint(ctx: JobContext) -> None:
     snap = await station.snapshot()
 
     override = str(cfg.get("persona_override") or "").strip()
-    roster = {p.get("id"): p for p in snap["personas"]}
-    if override and override in roster:
+    roster = {p.get("id"): p for p in snap["personas"] if p.get("id")}
+    if override == settings_store.RANDOM_PERSONA and roster:
+        import random
+
+        persona = roster[random.choice(list(roster))]
+        log.info("persona rolled for this call: %s (%s)", persona.get("name"), persona.get("id"))
+    elif override and override in roster:
         persona = roster[override]
         log.info("persona pinned by settings: %s", override)
     else:
@@ -480,12 +715,14 @@ async def entrypoint(ctx: JobContext) -> None:
 
     instructions = await prompts.build_system_prompt(station, persona, snapshot=snap)
 
-    # With overlap protection on, on-air actions are served by local wrappers
-    # that check the broadcast is quiet first, so they come off the MCP list.
+    # On-air actions and library actions are always served by local wrappers;
+    # the overlap guard only decides whether they wait for quiet air first.
     guard_overlap = bool(cfg.get("avoid_on_air_overlap"))
+    actions = CallActions(cfg.get("max_actions_per_call"), room=ctx.room)
+    air = OnAirGuard(station, cfg, room=ctx.room)
     allowed_tools = build_allowed_tools(cfg, guarded=guard_overlap)
-    local_tools = build_on_air_tools(cfg, station) if guard_overlap else []
-    local_tools += build_library_tools(cfg, station)
+    local_tools = build_on_air_tools(cfg, station, actions, air, guarded=guard_overlap)
+    local_tools += build_library_tools(cfg, station, actions)
 
     log.info(
         "call starting room=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
@@ -525,10 +762,15 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     await session.start(
-        agent=Agent(instructions=instructions),
+        agent=CallAgent(instructions, air),
         room=ctx.room,
         room_input_options=RoomInputOptions(close_on_disconnect=True),
     )
+
+    # The broadcast hierarchy: while the on-air DJ has the microphone, the
+    # call DJ waits. Started after the session so the watcher can interrupt it.
+    air_task = asyncio.create_task(air.watch(session))
+    ctx.add_shutdown_callback(lambda: _cancel(air_task))
 
     # When a provider gives up after all its retries (observed: Gemini
     # flash-lite 503ing under load), the caller must never get dead air.
@@ -788,16 +1030,16 @@ def effective_tools(cfg: dict) -> dict:
     wrappers. Previews that report only build_allowed_tools() show a list that
     is neither what MCP serves nor what the model sees."""
     guard = bool(cfg.get("avoid_on_air_overlap"))
+    waits = "waits for clear air" if guard else "no overlap guard"
     local = []
     if cfg.get("allow_library_search"):
         local.append("subwave_search_library (local: retry fallback)")
     if cfg.get("allow_requests"):
         local.append("subwave_request_song (local: pre-flight + status)")
-    if guard:
-        if cfg.get("allow_announcements"):
-            local.append("subwave_dj_announce (local: waits for clear air)")
-        if cfg.get("allow_skills"):
-            local.append("subwave_run_skill (local: waits for clear air)")
+    if cfg.get("allow_announcements"):
+        local.append(f"subwave_dj_announce (local: {waits})")
+    if cfg.get("allow_skills"):
+        local.append(f"subwave_run_skill (local: {waits})")
     return {"mcp": build_allowed_tools(cfg, guarded=guard), "local": local}
 
 

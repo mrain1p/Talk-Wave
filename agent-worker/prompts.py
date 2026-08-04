@@ -135,6 +135,13 @@ def _is_show_announcement(text: str, show_name: str, show_topic: str) -> bool:
 _BOOKKEEPING_KINDS = {"scenario", "pick", "play", "queue", "system"}
 _BOOKKEEPING_ROLES = {"event", "track"}
 
+# Lines the station spoke ABOUT a previous call — our own back-to-air handoff
+# goes out with kind "callin". Two reasons they must never reach the next
+# caller's prompt: privacy (the last caller's business is not this caller's),
+# and continuity (with them in, the DJ picks up where the LAST call left off
+# and greets a stranger as though the conversation were still running).
+_PRIVATE_KINDS = {"callin", "caller", "call"}
+
 
 def _is_spoken(m: dict) -> bool:
     """Only actual DJ speech belongs in "things you said on air" — scenario
@@ -169,8 +176,13 @@ def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str =
         text = m.get("text") or m.get("content") or ""
         if not text or not _is_spoken(m):
             continue
+        kind = str(m.get("kind") or "").lower()
         # The programme intro is pinned separately — keep it out of here.
-        if str(m.get("kind") or "").lower() == "programme-intro":
+        if kind == "programme-intro":
+            continue
+        # Anything the station said about an earlier CALL stays out: every
+        # call starts fresh, and the last caller's business isn't this one's.
+        if kind in _PRIVATE_KINDS:
             continue
         # Pattern fallback for payloads without kind fields.
         if _is_show_announcement(text, show_name, show_topic):
@@ -232,17 +244,29 @@ async def build_system_prompt(
     show_block = ""
     if show_name or show_card:
         show_block = f"\n# The show you're hosting: {show_name}\n{show_card}\n"
-        intro = latest_programme_intro(session)
-        if intro:
-            show_block += (
-                "\nHow you opened the show tonight, in your own words — the "
-                "world you set up is still running:\n  " + intro + "\n"
-            )
+
+    # The programme intro is pinned independently of the Show Card. It used to
+    # hang off the show block, so a station that couldn't resolve the active
+    # show dropped the DJ's own framing of the night entirely — the one piece
+    # of show context that's always available, because the DJ said it.
+    intro = latest_programme_intro(session)
+    if intro:
+        # Background, not material. Observed on real calls: the DJ treated it
+        # as a topic and opened call after call by re-announcing the show and
+        # the handover from the last DJ.
+        show_block += (
+            "\nHow you opened the show tonight — background only, so your world "
+            "stays consistent. Do NOT recap it, re-announce the show, or bring up "
+            "taking over from another DJ. The caller tuned in already:\n  "
+            + intro + "\n"
+        )
 
     # House style sits on top of the persona, not in place of it — small
     # steers about how to answer and how to close, without rewriting who the
     # DJ is. Left blank, the persona alone decides.
     style_bits = []
+    if str(cfg.get("style_conversation") or "").strip():
+        style_bits.append("How to run the call: " + cfg["style_conversation"].strip())
     if str(cfg.get("style_answering") or "").strip():
         style_bits.append("How to handle answers: " + cfg["style_answering"].strip())
     if str(cfg.get("style_signoff") or "").strip():
@@ -313,6 +337,13 @@ Tonight's broadcast is live material: stories, running bits, booth trouble —
 carry it into the call, even into how you pick up. Answer questions about
 yourself from who you are. Music is home ground; drift back when it fits,
 never force it.
+
+This caller is NEW. You have not spoken to them before, whatever else has
+happened tonight, and nothing from an earlier call carries over. Two things
+in particular are not conversation: the show's own intro, and any handover
+from another DJ. They're your footing, not your subject — don't explain the
+programme, don't narrate whose shift it is, and don't open on either. If the
+caller asks, answer in a line and move on.
 
 # How to talk
 A live phone call, not a monologue: short turns, a sentence or two, let them

@@ -102,15 +102,18 @@ def _check_usage(request: web.Request, cfg: dict) -> str | None:
     """Returns a caller-facing reason to refuse, or None to allow.
 
     Wording is deliberately in-world — someone pressing Call shouldn't be told
-    about rate limits.
+    about rate limits. These read as the station being busy, because from the
+    caller's side that's exactly what it is.
     """
     import time as _time
 
     now = _time.time()
 
-    # Expire anything stale before deciding.
-    cutoff = now - 3600
-    _recent_mints[:] = [t for t in _recent_mints if t > cutoff]
+    # Expire anything stale before deciding. The mint log keeps a full day so
+    # the daily ceiling has something to count; the hourly figure is a slice
+    # of the same list.
+    _recent_mints[:] = [t for t in _recent_mints if t > now - 86400]
+    this_hour = sum(1 for t in _recent_mints if t > now - 3600)
     for room, started in list(_live_calls.items()):
         if now - started > _CALL_ASSUMED_MAX:
             _live_calls.pop(room, None)
@@ -120,20 +123,28 @@ def _check_usage(request: web.Request, cfg: dict) -> str | None:
         if now - at > 3600:
             _caller_last.pop(key, None)
 
+    if cfg.get("calls_paused"):
+        return "The booth isn't taking calls at the moment — the line's closed for now."
+
     concurrent = int(cfg.get("max_concurrent_calls") or 0)
     if concurrent > 0 and len(_live_calls) >= concurrent:
-        return "All the lines are busy right now — give it a minute and try again."
+        return "The booth line is tied up with another caller. Give it a minute and try again."
+
+    per_day = int(cfg.get("calls_per_day") or 0)
+    if per_day > 0 and len(_recent_mints) >= per_day:
+        return ("The booth has had a lot of attention today and the phone's been "
+                "unplugged for the night. Try again tomorrow.")
 
     per_hour = int(cfg.get("calls_per_hour") or 0)
-    if per_hour > 0 and len(_recent_mints) >= per_hour:
-        return "The phones have been busy this hour. Try again a little later."
+    if per_hour > 0 and this_hour >= per_hour:
+        return "The switchboard has been lit up this hour. Try the booth again a little later."
 
     cooldown = int(cfg.get("caller_cooldown_secs") or 0)
     if cooldown > 0:
         last = _caller_last.get(_caller_key(request))
         if last and (now - last) < cooldown:
             wait = int(cooldown - (now - last))
-            return f"You've only just hung up — give it {wait}s before calling back."
+            return f"You've only just hung up — give it {wait}s before ringing back."
 
     return None
 
