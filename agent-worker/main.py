@@ -512,8 +512,6 @@ async def entrypoint(ctx: JobContext) -> None:
         client_session_timeout_seconds=15,
     )
 
-    # The SDK already tracks whether the caller has gone quiet; reuse that
-    # rather than running a second timer alongside it.
     idle_secs = int(cfg.get("idle_prompt_secs") or 0)
 
     session = AgentSession(
@@ -524,7 +522,6 @@ async def entrypoint(ctx: JobContext) -> None:
         mcp_servers=[station_tools],
         tools=local_tools or NOT_GIVEN,
         preemptive_generation=True,
-        user_away_timeout=float(idle_secs) if idle_secs > 0 else None,
     )
 
     await session.start(
@@ -537,24 +534,47 @@ async def entrypoint(ctx: JobContext) -> None:
     # A caller who goes quiet gets checked on in character, then let go. Dead
     # air on a phone call is worse than a graceful goodbye, and an abandoned
     # tab would otherwise hold a line open until the hard time limit.
+    #
+    # Silence means NO DISCERNIBLE LANGUAGE, deliberately not "no sound":
+    # the SDK's away-state rides the VAD, and background noise — a TV, the
+    # station bleeding in, room hiss — kept resetting it, so the check-in
+    # never fired in any real room. Only a transcript with actual words
+    # counts as the caller being present; the clock starts each time the
+    # DJ finishes talking (a caller quietly listening isn't idle).
     if idle_secs > 0:
+        import time as _time
+
         max_nudges = int(cfg.get("idle_max_nudges") or 0)
-        nudges = {"count": 0}
+        state = {"last_words": _time.time(), "nudges": 0}
 
-        def _on_user_state(ev) -> None:
-            if getattr(ev, "new_state", None) != "away":
-                return
-            if nudges["count"] >= max_nudges:
-                return
+        def _on_transcript(ev) -> None:
+            text = str(getattr(ev, "transcript", "") or "")
+            if text.strip():
+                state["last_words"] = _time.time()
+                state["nudges"] = 0
 
-            nudges["count"] += 1
-            first = nudges["count"] == 1
-            log.info("caller quiet for %ss — check-in %d/%d",
-                     idle_secs, nudges["count"], max_nudges)
+        def _on_agent_state(ev) -> None:
+            # Count silence from the moment it's the caller's turn again.
+            if getattr(ev, "new_state", None) == "listening":
+                state["last_words"] = _time.time()
 
-            async def _nudge() -> None:
+        session.on("user_input_transcribed", _on_transcript)
+        session.on("agent_state_changed", _on_agent_state)
+
+        async def _idle_watch() -> None:
+            while True:
+                await asyncio.sleep(1.0)
+                if _time.time() - state["last_words"] < idle_secs:
+                    continue
+                if state["nudges"] >= max_nudges:
+                    continue
+                state["nudges"] += 1
+                state["last_words"] = _time.time()
+                first = state["nudges"] == 1
+                log.info("no words from the caller for %ss — check-in %d/%d",
+                         idle_secs, state["nudges"], max_nudges)
                 try:
-                    if first:
+                    if first and max_nudges > 1:
                         await session.generate_reply(instructions=(
                             "The caller has gone quiet. Check they're still there — "
                             "one short line in your own voice, warm, no more than a "
@@ -568,19 +588,14 @@ async def entrypoint(ctx: JobContext) -> None:
                         ))
                         await asyncio.sleep(6)
                         ctx.shutdown(reason="caller went quiet")
+                        return
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
                     log.warning("idle check-in failed: %s", e)
 
-            asyncio.create_task(_nudge())
-
-        # Any real speech means they're back — start the count over.
-        def _on_user_speech(_ev) -> None:
-            nudges["count"] = 0
-
-        session.on("user_state_changed", _on_user_state)
-        session.on("user_input_transcribed", _on_user_speech)
+        idle_task = asyncio.create_task(_idle_watch())
+        ctx.add_shutdown_callback(lambda: _cancel(idle_task))
 
     # Runs after the caller hangs up, so the station reflects the call.
     async def _on_shutdown() -> None:

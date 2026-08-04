@@ -272,8 +272,9 @@ SCHEMA: dict[str, dict] = {
         help="Hard limit on call length. The DJ signs off in character first rather "
              "than the audio just stopping. 600 = ten minutes."),
     "idle_prompt_secs": dict(group="call", kind="number", label="Check in after (s)",
-        help="If the caller goes quiet this long, the DJ asks if they're still there. "
-             "0 never checks in and holds the line until the hard limit."),
+        help="Seconds without SPOKEN WORDS from the caller before the DJ asks if "
+             "they're still there — background noise doesn't count, and the clock "
+             "starts each time the DJ finishes talking. 0 never checks in."),
     "idle_max_nudges": dict(group="call", kind="number", label="Check-ins before hanging up",
         needs=("idle_prompt_secs", True),
         help="After this many unanswered check-ins the DJ says goodbye and gets back "
