@@ -38,6 +38,7 @@ from station_config import StationConfig
 from . import lifecycle
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
+from .record import CallRecord
 from .providers import build_llm, build_stt, build_tts
 from .tools import (
     build_call_control_tools,
@@ -68,6 +69,8 @@ class CallSession:
 
         self.started_at = time.time()
         self.heard = {"n": 0}
+        # Filled in once the persona is known — see prepare().
+        self.record: CallRecord | None = None
 
         ctx.add_shutdown_callback(self.station.aclose)
         ctx.add_shutdown_callback(self.station_cfg.aclose)
@@ -99,6 +102,7 @@ class CallSession:
         self.instructions = await prompts.build_system_prompt(
             self.station, self.persona, snapshot=snap
         )
+        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg)
 
     def _resolve_persona(self, snap: dict) -> dict:
         """One button, whoever is live answers — unless settings say otherwise."""
@@ -197,8 +201,8 @@ class CallSession:
         air_task = asyncio.create_task(self.air.watch(session))
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
 
-        lifecycle.attach_error_recovery(session)
-        lifecycle.attach_heard_logging(session, self.heard)
+        lifecycle.attach_error_recovery(session, self.record)
+        lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_idle_watch(ctx, session, cfg)
         lifecycle.attach_time_limit(ctx, session, cfg)
         ctx.add_shutdown_callback(self._on_shutdown)
@@ -218,6 +222,11 @@ class CallSession:
             self.cfg.get("llm_provider"), self.cfg.get("llm_model"),
             self.cfg.get("tts_mode"),
         )
+        # Written before the on-air handoff, which makes an LLM call and can
+        # fail — the record of the call must not depend on it succeeding.
+        if self.record:
+            self.record.write(reason=getattr(self.ctx, "shutdown_reason", "") or "")
+
         await lifecycle.release_call_slot(self.ctx.room.name)
         await lifecycle.send_on_air_callback(
             self.session, self.station, self.persona, self.cfg

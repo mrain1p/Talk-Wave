@@ -2333,6 +2333,51 @@
     finally { btn.disabled = false; }
   };
 
+  // Renders a call as a call: who said what, in order, with the tools the DJ
+  // reached for shown inline where they happened. Reading a raw JSON dump to
+  // answer "why did that call go wrong" is most of the work.
+  function renderCall(c) {
+    const when = (c.startedAt || '').replace('T', ' ').slice(0, 19);
+    const head = [
+      `${when}  ${c.persona?.name || 'DJ'}  ·  ${c.durationSecs || 0}s  ·  `
+        + `${c.callerTurns || 0} caller turn${c.callerTurns === 1 ? '' : 's'}`,
+      `  ${c.config?.llm || ''}  stt=${c.config?.stt || ''}  tts=${c.config?.tts || ''}`,
+    ];
+    if (c.endedBecause) head.push('  ended: ' + c.endedBecause);
+    if ((c.problems || []).length) {
+      head.push(...c.problems.map((p) => '  ⚠ ' + p.what));
+    }
+
+    // Merge speech and tool calls into one timeline.
+    const events = []
+      .concat((c.turns || []).map((t) => ({ t: t.t, kind: t.who, text: t.text })))
+      .concat((c.tools || []).map((t) => ({
+        t: t.t, kind: 'tool', text: t.name + (t.result ? ' → ' + t.result : ''),
+      })))
+      .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+
+    const label = { caller: 'CALLER', dj: 'DJ    ', tool: '  tool' };
+    const body = events.map((e) =>
+      `${(e.t || '').slice(11)} ${label[e.kind] || e.kind}  ${e.text}`);
+    return head.join('\n') + '\n' + (body.join('\n') || '  (no conversation)');
+  }
+
+  $('viewCallsBtn').onclick = async () => {
+    const btn = $('viewCallsBtn'), out = $('callsResult');
+    btn.disabled = true;
+    out.className = 'result on'; out.textContent = 'Fetching…';
+    try {
+      const d = await afetch('/calls').then((r) => r.json());
+      if (d.error) { showResult(out, false, d.error); return; }
+      const calls = d.calls || [];
+      out.className = 'result on';
+      out.textContent = calls.length
+        ? calls.map(renderCall).join('\n\n' + '─'.repeat(46) + '\n\n')
+        : 'No calls recorded yet. One file is written as each call ends.';
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
+
   $('viewLogsBtn').onclick = async () => {
     const btn = $('viewLogsBtn'), out = $('logsResult');
     btn.disabled = true;

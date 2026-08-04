@@ -792,6 +792,80 @@ class TestCallStructure(unittest.TestCase):
             None, None, {"max_call_seconds": 0}))
 
 
+class TestCallRecord(unittest.TestCase):
+    """Diagnosing a bad call meant reading the CALLER's half and inferring the
+    rest from tracebacks. The record is both halves plus the tools, so a call
+    can be reviewed as a call."""
+
+    def setUp(self):
+        from call import record
+
+        self.record = record
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name)
+
+    def tearDown(self):
+        self.record.CALLS_DIR = self._old
+        self._tmp.cleanup()
+
+    def _a_call(self, room="callin-abc123456789"):
+        r = self.record.CallRecord(
+            room, {"id": "p1", "name": "Wade"},
+            {"llm_provider": "google", "llm_model": "gemini-3.1-flash-lite",
+             "stt_provider": "local", "stt_model": "base.en", "tts_mode": "local",
+             "allow_requests": True, "allow_skills": False},
+        )
+        r.turn("dj", "You're through to the booth.")
+        r.turn("caller", "Can you play something fun?")
+        r.tool("subwave_request_song", "Added to the queue")
+        r.turn("dj", "That's going in.")
+        return r
+
+    def test_a_call_records_both_sides_and_the_tools(self):
+        self._a_call().write(reason="caller hung up")
+        calls = self.record.recent()
+        self.assertEqual(len(calls), 1)
+        c = calls[0]
+        self.assertEqual(c["persona"]["name"], "Wade")
+        self.assertEqual(c["callerTurns"], 1)
+        self.assertEqual(c["endedBecause"], "caller hung up")
+        self.assertEqual([t["who"] for t in c["turns"]], ["dj", "caller", "dj"])
+        self.assertEqual(c["tools"][0]["name"], "subwave_request_song")
+        # The config it ran under, so a bad call can be tied to a setting.
+        self.assertIn("gemini", c["config"]["llm"])
+        self.assertIn("allow_requests", c["config"]["permissions"])
+        self.assertNotIn("allow_skills", c["config"]["permissions"])
+
+    def test_problems_are_kept_with_the_call_that_had_them(self):
+        r = self._a_call()
+        r.problem("APIStatusError: gemini llm: client error 400")
+        r.write()
+        self.assertIn("400", self.record.recent()[0]["problems"][0]["what"])
+
+    def test_old_calls_are_pruned(self):
+        for i in range(self.record.KEEP + 8):
+            self._a_call(room=f"callin-{i:012d}").write()
+        self.assertLessEqual(
+            len(list(self.record.CALLS_DIR.glob("*.json"))), self.record.KEEP)
+
+    def test_writing_never_raises_into_the_call(self):
+        # This runs during shutdown, just before the on-air handoff. A crash
+        # here would cost that handoff for the sake of a diagnostic file.
+        self.record.CALLS_DIR = Path("/nonexistent\x00/bad")
+        self._a_call().write()          # must not raise
+
+    def test_a_runaway_call_cannot_write_an_unbounded_file(self):
+        r = self._a_call()
+        for i in range(self.record.MAX_TURNS + 200):
+            r.turn("caller", f"line {i}")
+        r.turn("caller", "x" * (self.record.MAX_TEXT + 500))
+        r.write()
+        c = self.record.recent()[0]
+        self.assertLessEqual(len(c["turns"]), self.record.MAX_TURNS)
+        self.assertTrue(all(len(t["text"]) <= self.record.MAX_TEXT for t in c["turns"]))
+
+
 class TestStationActionResults(unittest.TestCase):
     """A station action that WORKED must never be reported to the caller as a
     failure. Both halves of that were live bugs: a segment takes longer than a

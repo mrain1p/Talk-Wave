@@ -1793,6 +1793,21 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def handle_calls(request: web.Request) -> web.Response:
+    """Recent calls, both sides of each conversation.
+
+    The worker writes these; this process only reads them. Operator-only —
+    it's a transcript of what callers said.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    from call.record import recent
+
+    return _cors(request, web.json_response({"calls": recent(20)}))
+
+
 async def handle_logs(request: web.Request) -> web.Response:
     """The web service's recent log lines, for the panel's log viewer —
     settings changes, tokens minted, station reads, webhook events. The
@@ -1948,6 +1963,7 @@ def build_app() -> web.Application:
     app.router.add_post("/hooks/station", handle_station_hook)
     app.router.add_get("/hooks/recent", handle_hooks_recent)
     app.router.add_get("/logs", handle_logs)
+    app.router.add_get("/calls", handle_calls)
     app.router.add_options("/call-ended", handle_options)
     app.router.add_options("/token", handle_options)
     app.router.add_get("/health", handle_health)

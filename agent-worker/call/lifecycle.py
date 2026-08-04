@@ -31,7 +31,7 @@ async def cancel(task: asyncio.Task) -> None:
     task.cancel()
 
 
-def attach_error_recovery(session: AgentSession) -> None:
+def attach_error_recovery(session: AgentSession, record=None) -> None:
     """When a provider gives up after all its retries (observed: Gemini
     flash-lite 503ing under load), the caller must never get dead air. The DJ
     can't THINK without the LLM, but it can still SPEAK — say() drives the TTS
@@ -41,6 +41,8 @@ def attach_error_recovery(session: AgentSession) -> None:
     def _on_session_error(ev) -> None:
         err = getattr(ev, "error", None)
         log.warning("session error (source=%s): %s", getattr(ev, "source", "?"), err)
+        if record:
+            record.problem(f"{type(err).__name__ if err else 'error'}: {err}")
         if getattr(err, "recoverable", False):
             return
         if time.time() - last_sorry["t"] < 20:
@@ -66,19 +68,49 @@ def attach_error_recovery(session: AgentSession) -> None:
     session.on("error", _on_session_error)
 
 
-def attach_heard_logging(session: AgentSession, counter: dict) -> None:
-    """Every finalized caller utterance goes in the log. Without this, a "the
-    DJ didn't answer me" report is undiagnosable: a missing heard: line means
-    STT/VAD never caught the words; a heard: line with no reply following
-    points at the LLM/TTS leg."""
+def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> None:
+    """Both halves of the conversation, in the log and in the call record.
+
+    `heard:` alone was not enough. It showed the CALLER's side, so a report
+    like "he wouldn't hang up" had to be matched against tracebacks to work out
+    what the DJ had actually said or tried. `said:` and `tool:` complete it —
+    the log now reads as the call.
+    """
 
     def _log_heard(ev) -> None:
         text = str(getattr(ev, "transcript", "") or "").strip()
         if text and getattr(ev, "is_final", True):
             counter["n"] += 1
             log.info("heard: %s", text[:160])
+            if record:
+                record.turn("caller", text)
 
     session.on("user_input_transcribed", _log_heard)
+
+    def _log_said(ev) -> None:
+        item = getattr(ev, "item", None)
+        if getattr(item, "role", None) != "assistant":
+            return
+        text = str(getattr(item, "text_content", "") or "").strip()
+        if text:
+            log.info("said: %s", text[:160])
+            if record:
+                record.turn("dj", text)
+
+    session.on("conversation_item_added", _log_said)
+
+    def _log_tools(ev) -> None:
+        outputs = {}
+        for out in (getattr(ev, "function_call_outputs", None) or []):
+            outputs[getattr(out, "call_id", None)] = getattr(out, "output", "")
+        for call in (getattr(ev, "function_calls", None) or []):
+            name = getattr(call, "name", "?")
+            result = str(outputs.get(getattr(call, "call_id", None), ""))
+            log.info("tool: %s -> %s", name, result[:120].replace("\n", " "))
+            if record:
+                record.tool(name, result)
+
+    session.on("function_tools_executed", _log_tools)
 
 
 def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None:

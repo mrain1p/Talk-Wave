@@ -564,8 +564,14 @@
     </div>
 
     <div class="testrow" style="margin-top:14px">
-      <button id="viewLogsBtn">View server logs</button>
+      <button id="viewCallsBtn">Recent calls</button>
+      <button id="viewLogsBtn" class="btnquiet">View server logs</button>
     </div>
+    <p class="hint wide">Both sides of the last few conversations, with the
+      tools the DJ used and anything that went wrong — written by the call
+      agent as each call ends. This is the thing to read when a call didn't go
+      the way you expected.</p>
+    <div class="result" id="callsResult" style="max-height:420px;overflow:auto"></div>
     <p class="hint wide">Recent activity of the web service — settings
       changes, call tokens, station reads, webhooks. The call agent's own
       logs (what it heard, check-ins, call summaries) live in its container:
