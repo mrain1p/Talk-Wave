@@ -65,6 +65,63 @@ class TestSpeechFilter(unittest.TestCase):
                      "that one's from (one of my favourite albums)"):
             self.assertEqual(speech_filter.strip_stage_directions(text), text)
 
+    def test_strips_the_djs_own_name_used_as_a_script_label(self):
+        # Went out on a real call: the model slipped into screenplay format and
+        # the voice read the DJ's own name aloud at the top of every turn.
+        speech_filter.set_speaker("Francesca Hale")
+        try:
+            self.assertEqual(
+                speech_filter.strip_speaker_labels(
+                    "Francesca: Hey there, thanks for holding on."),
+                "Hey there, thanks for holding on.",
+            )
+            for variant in ("**Francesca:** right then", "Francesca Hale: right then",
+                            "DJ: right then", "HOST: right then"):
+                self.assertEqual(
+                    speech_filter.strip_speaker_labels(variant), "right then", variant)
+        finally:
+            speech_filter.set_speaker("")
+
+    def test_label_strip_leaves_a_following_stage_direction_intact(self):
+        # A greedy bold matcher ate the opening asterisk of what came next,
+        # so the direction no longer looked like one and went out on air.
+        speech_filter.set_speaker("Francesca")
+        try:
+            self.assertEqual(
+                speech_filter.clean_for_speech(
+                    "Francesca: *adjusts headphones* Loud and clear now.",
+                    profanity_mode="off"),
+                "Loud and clear now.",
+            )
+            self.assertEqual(
+                speech_filter.clean_for_speech(
+                    "**Francesca:** (Phone rings) Yeah, Cliff here.",
+                    profanity_mode="off"),
+                "Yeah, Cliff here.",
+            )
+        finally:
+            speech_filter.set_speaker("")
+
+    def test_never_eats_ordinary_speech_that_contains_a_colon(self):
+        speech_filter.set_speaker("Francesca")
+        try:
+            for text in ("Listen: this one's a classic.",
+                         "Here's the deal: we're out of time.",
+                         "One thing: it's not on the album."):
+                self.assertEqual(speech_filter.strip_speaker_labels(text), text)
+            # Another person's name is dialogue, not a label for OUR voice.
+            self.assertEqual(
+                speech_filter.strip_speaker_labels("Bowie: an underrated run"),
+                "Bowie: an underrated run",
+            )
+        finally:
+            speech_filter.set_speaker("")
+
+    def test_label_stripping_is_inert_before_a_persona_is_known(self):
+        speech_filter.set_speaker("")
+        self.assertEqual(
+            speech_filter.strip_speaker_labels("Francesca: hello"), "Francesca: hello")
+
     def test_profanity_mask_and_drop_and_off(self):
         words = ["fuck", "shit"]
         self.assertEqual(
@@ -802,6 +859,35 @@ class TestMainToolLogic(_TempStores):
                 cfg, None, self.main.CallActions(0))), 1)
         finally:
             station_config.admin_credentials = original
+
+    def test_a_described_vibe_is_not_sent_to_the_name_search(self):
+        # The call that prompted this: "find me some fun songs" was searched
+        # by name and came back with "Fun, Fun, Fun" by The Beach Boys.
+        for q in ("fun", "something fun", "find me some fun songs", "upbeat",
+                  "chilled", "something for a rainy night", "party music",
+                  "anything happy"):
+            self.assertTrue(self.main.looks_like_a_vibe(q), q)
+
+    def test_real_track_names_are_never_mistaken_for_a_vibe(self):
+        # Conservative on purpose — a false positive here refuses a search the
+        # caller actually wanted.
+        for q in ("Fun House by The Stooges", "Mr. Blue Sky", "Bowie",
+                  "Sunny Afternoon by The Kinks", "Nightcall", "Kavinsky",
+                  "Slow Hands by Interpol", "Party Hard Andrew WK"):
+            self.assertFalse(self.main.looks_like_a_vibe(q), q)
+
+    def test_search_results_carry_the_stations_mood_data(self):
+        # The station returns moods and energy on every hit; dropping them left
+        # the DJ describing a record purely from its title.
+        out = self.main._fmt_track({
+            "title": "Open Eye Signal", "artist": "Jon Hopkins",
+            "moods": ["hypnotic", "nocturnal"], "energy": 0.7,
+        })
+        self.assertIn("hypnotic", out)
+        self.assertIn("nocturnal", out)
+        self.assertIn("high energy", out)
+        # And stays clean when the station sends nothing.
+        self.assertNotIn("energy", self.main._fmt_track({"title": "T", "artist": "A"}))
 
     def test_queue_position_becomes_something_a_dj_can_say(self):
         # Without this the DJ could only say "soon", which is how a caller

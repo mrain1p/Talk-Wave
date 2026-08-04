@@ -452,10 +452,58 @@ def _query_variants(q: str) -> list[str]:
     return variants
 
 
+# Words that describe how music FEELS rather than what it's called. A caller
+# saying one of these wants the station's picker, not a title match — but the
+# model reaches for the search tool anyway, and "fun" dutifully returns
+# "Fun, Fun, Fun" by The Beach Boys. Observed on a real call.
+_VIBE_WORDS = {
+    "fun", "upbeat", "happy", "sad", "chill", "chilled", "chillout", "relaxing",
+    "calm", "mellow", "moody", "dark", "bright", "energetic", "energy", "hype",
+    "party", "dance", "dancey", "slow", "slower", "fast", "faster", "romantic",
+    "sexy", "angry", "aggressive", "soft", "loud", "quiet", "dreamy", "nostalgic",
+    "uplifting", "feelgood", "feel-good", "summery", "wintry", "rainy", "sunny",
+    "night", "nighttime", "morning", "driving", "workout", "study", "sleep",
+    "groovy", "funky", "smooth", "heavy", "light", "epic", "emotional", "vibe",
+    "vibes", "mood", "something", "anything", "good", "nice", "cool",
+}
+# Filler that shouldn't count either way when judging a query.
+_VIBE_FILLER = {"a", "an", "the", "some", "me", "for", "and", "or", "of", "to",
+                "songs", "song", "music", "track", "tracks", "tune", "tunes",
+                "play", "find", "get", "want", "like", "really", "very", "more"}
+
+
+def looks_like_a_vibe(q: str) -> bool:
+    """True when a search query describes a feeling rather than names a track.
+
+    Deliberately conservative: it only fires when EVERY meaningful word is a
+    mood word, so "Fun House by The Stooges" and "Mr. Blue Sky" are untouched.
+    """
+    import re as _re
+
+    words = [w for w in _re.findall(r"[a-z'-]+", (q or "").lower())
+             if w not in _VIBE_FILLER]
+    if not words or len(words) > 4:
+        return False
+    return all(w in _VIBE_WORDS for w in words)
+
+
 def _fmt_track(t: dict, with_id: bool = False) -> str:
     bits = f"\"{t.get('title', '?')}\" by {t.get('artist', '?')}"
     if t.get("album"):
         bits += f" ({t['album']}" + (f", {t['year']})" if t.get("year") else ")")
+    # The station stores mood tags and an energy score per track and returns
+    # them on every search hit. Dropping them left the DJ describing records it
+    # had real information about purely from the title.
+    feel = []
+    moods = t.get("moods") or []
+    if isinstance(moods, list) and moods:
+        feel.extend(str(m) for m in moods[:3])
+    energy = t.get("energy")
+    if isinstance(energy, (int, float)):
+        feel.append("high energy" if energy >= 0.66
+                    else "low energy" if energy <= 0.33 else "mid energy")
+    if feel:
+        bits += " — " + ", ".join(feel)
     # The exact-queue tool needs the id the search returned. Without it in the
     # text the model has nothing to pass and silently falls back to guessing.
     if with_id and t.get("id"):
@@ -503,9 +551,27 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
     if cfg.get("allow_library_search") and not library_search_needs_mcp():
         @lk_llm.function_tool(name="subwave_search_library")
         async def search_library(q: str) -> str:
-            """Search the station's music library by title and/or artist.
-            Returns matching tracks with album and year. Prefer the track
-            title alone; the tool handles the rest."""
+            """Look up a track BY NAME. This is a literal word match against
+            titles and artists — nothing else. It cannot find a mood, a vibe,
+            a genre or an era: searching "fun" returns songs with the word
+            "fun" in the title, which is not what a caller asking for
+            "something fun" wants. For anything descriptive use
+            subwave_request_song, which resolves it properly. Use this only
+            when the caller has named a track or an artist."""
+            # Backstop for the prompt rule above: a mood word searched by name
+            # returns titles containing that word, which reads to the caller
+            # like the DJ is flipping through an index. Refuse and redirect
+            # rather than hand back junk that looks like an answer.
+            if looks_like_a_vibe(q):
+                return (
+                    f"'{q}' describes a feeling, and this tool only matches words in "
+                    "titles and artist names — it would hand you songs with that word "
+                    "in the title, not songs that feel that way. Use "
+                    "subwave_request_song with the caller's own words instead; the "
+                    "station picks properly from the whole library. Do not tell the "
+                    "caller a search failed — nothing failed, you just used the wrong "
+                    "tool. Put the request in."
+                )
             for attempt in _query_variants(q):
                 items = await station.search_library(attempt)
                 if items:
@@ -555,9 +621,13 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
     if cfg.get("allow_requests"):
         @lk_llm.function_tool(name="subwave_request_song")
         async def request_song(request: str, requester: str = "") -> str:
-            """Ask the station to play something. Vague is fine ('something
-            slower', 'more like this') — the station resolves it. For a
-            specific track, give title and artist."""
+            """Ask the station to play something. THIS is the tool for a mood,
+            a vibe, a genre or an era — "something fun", "upbeat", "music for
+            a rainy night", "anything from the late seventies", "more like
+            this". Pass the caller's own words; the station's picker matches
+            them against the library properly, which a name search cannot do.
+            Also takes a specific track ('Let It Be by The Beatles'). When in
+            doubt between this and a name search, use this one."""
             if actions.at_limit():
                 return actions.refusal()
             text = request
@@ -801,6 +871,12 @@ async def entrypoint(ctx: JobContext) -> None:
         log.info("persona pinned by settings: %s", override)
     else:
         persona = station.persona_from(snap["dj"], snap["personas"])
+
+    # Whose voice this is, so the model writing "Francesca:" as a script label
+    # never gets read out as part of the line.
+    import speech_filter
+
+    speech_filter.set_speaker(persona.get("name", ""))
 
     persona_id = persona["id"]
     voice = str(cfg.get("tts_voice") or "").strip() or await station_cfg.voice_for(persona_id)
