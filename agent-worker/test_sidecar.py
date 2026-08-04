@@ -759,28 +759,29 @@ class TestMainToolLogic(_TempStores):
     @classmethod
     def setUpClass(cls):
         import main  # noqa: F401  (import cost only)
+        from call import actions, air
+        from call.tools import control, music, registry
+
         cls.main = main
+        cls.actions = actions
+        cls.air = air
+        cls.music = music
+        cls.control = control
+        cls.registry = registry
 
     def test_query_variants_strips_the_by_connector(self):
-        v = self.main._query_variants("Let It Be by The Beatles")
+        v = self.music._query_variants("Let It Be by The Beatles")
         self.assertEqual(v[0], "Let It Be by The Beatles")
         self.assertIn("Let It Be The Beatles", v)
         self.assertIn("Let It Be", v)
 
     def test_query_variants_keeps_titles_containing_by(self):
-        v = self.main._query_variants("Stand by Me by Ben E. King")
+        v = self.music._query_variants("Stand by Me by Ben E. King")
         self.assertIn("Stand by Me", v)  # rightmost split only
-
-    def test_sfx_never_in_any_tool_list(self):
-        cfg = {flag: True for flag in self.main.OPTIONAL_TOOLS}
-        for guarded in (False, True):
-            allowed = self.main.build_allowed_tools(cfg, guarded=guarded)
-            self.assertNotIn("subwave_play_sfx", allowed)
-            self.assertNotIn("subwave_list_sfx", allowed)
 
     def test_guarded_list_drops_on_air_tools_but_keeps_reads(self):
         cfg = {"allow_announcements": True, "allow_skills": True}
-        allowed = self.main.build_allowed_tools(cfg, guarded=True)
+        allowed = self.registry.mcp_allowlist(cfg)
         self.assertNotIn("subwave_dj_announce", allowed)
         self.assertNotIn("subwave_run_skill", allowed)
         self.assertIn("subwave_list_skills", allowed)
@@ -795,10 +796,10 @@ class TestMainToolLogic(_TempStores):
         original = station_config.admin_credentials
         try:
             station_config.admin_credentials = lambda: ("dj", "secret")
-            allowed = self.main.build_allowed_tools(cfg)
+            allowed = self.registry.mcp_allowlist(cfg)
             self.assertNotIn("subwave_request_song", allowed)
             self.assertNotIn("subwave_search_library", allowed)
-            et = self.main.effective_tools({**cfg, "avoid_on_air_overlap": True})
+            et = self.registry.effective_tools({**cfg, "avoid_on_air_overlap": True})
             local_names = " ".join(et["local"])
             self.assertIn("subwave_request_song", local_names)
             self.assertIn("subwave_search_library", local_names)
@@ -807,10 +808,10 @@ class TestMainToolLogic(_TempStores):
 
         # Requests stay wrapped with or without credentials — that wrapper
         # uses a public endpoint and works either way.
-        self.assertNotIn("subwave_request_song", self.main.build_allowed_tools(cfg))
+        self.assertNotIn("subwave_request_song", self.registry.mcp_allowlist(cfg))
 
     def test_action_ledger_caps_a_single_call(self):
-        actions = self.main.CallActions(2)
+        actions = self.actions.CallActions(2)
         self.assertFalse(actions.at_limit())
         actions.note("request", "a track")
         self.assertFalse(actions.at_limit())
@@ -822,7 +823,7 @@ class TestMainToolLogic(_TempStores):
         self.assertIn("ring back", refusal)
 
     def test_action_ledger_zero_means_unlimited(self):
-        actions = self.main.CallActions(0)
+        actions = self.actions.CallActions(0)
         for _ in range(20):
             actions.note("request", "x")
         self.assertFalse(actions.at_limit())
@@ -831,18 +832,18 @@ class TestMainToolLogic(_TempStores):
         # A new action type shipping with no label would render as a blank
         # line in the caller's transcript.
         for kind in ("request", "announcement", "skill"):
-            self.assertIn(kind, self.main.CallActions.LABELS)
+            self.assertIn(kind, self.actions.CallActions.LABELS)
 
     def test_on_air_tools_are_never_served_raw_over_mcp(self):
         # MCP's session timeout is shorter than a segment takes to run, which
         # turned a segment that was audibly playing into "that didn't work".
         cfg = {"allow_announcements": True, "allow_skills": True}
         for guarded in (False, True):
-            allowed = self.main.build_allowed_tools(cfg, guarded=guarded)
+            allowed = self.registry.mcp_allowlist(cfg)
             self.assertNotIn("subwave_dj_announce", allowed)
             self.assertNotIn("subwave_run_skill", allowed)
             self.assertIn("subwave_list_skills", allowed)
-            local = " ".join(self.main.effective_tools(
+            local = " ".join(self.registry.effective_tools(
                 {**cfg, "avoid_on_air_overlap": guarded})["local"])
             self.assertIn("subwave_dj_announce", local)
             self.assertIn("subwave_run_skill", local)
@@ -850,7 +851,7 @@ class TestMainToolLogic(_TempStores):
     def test_on_air_guard_is_a_no_op_when_the_toggle_is_off(self):
         import asyncio
 
-        guard = self.main.OnAirGuard(None, {"avoid_on_air_overlap": False,
+        guard = self.air.OnAirGuard(None, {"avoid_on_air_overlap": False,
                                             "on_air_quiet_secs": 30})
         guard._clear.clear()          # even with the gate shut…
         self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
@@ -862,7 +863,7 @@ class TestMainToolLogic(_TempStores):
         # cap the call carries on, overlap or not.
         import asyncio
 
-        guard = self.main.OnAirGuard(None, {"avoid_on_air_overlap": True,
+        guard = self.air.OnAirGuard(None, {"avoid_on_air_overlap": True,
                                             "on_air_quiet_secs": 30})
         guard._clear.clear()
         waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
@@ -872,7 +873,7 @@ class TestMainToolLogic(_TempStores):
     def test_on_air_guard_clear_air_costs_nothing(self):
         import asyncio
 
-        guard = self.main.OnAirGuard(None, {"avoid_on_air_overlap": True,
+        guard = self.air.OnAirGuard(None, {"avoid_on_air_overlap": True,
                                             "on_air_quiet_secs": 30})
         self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
 
@@ -883,38 +884,83 @@ class TestMainToolLogic(_TempStores):
         self.assertNotIn(settings_store.RANDOM_PERSONA,
                          settings_store.load()["persona_override"])
 
-    def test_tool_catalogue_matches_what_the_worker_actually_allows(self):
-        """The panel's Station tools list is only worth having if it's true.
-        Every catalogue entry must agree with the real allowlists, and every
-        tool the worker can reach must be in the catalogue."""
-        catalogue = {n: g for n, g, *_ in settings_store.MCP_TOOLS}
+    def test_blocked_tools_are_unreachable_at_every_setting(self):
+        """The claim the panel makes to the operator: these are never exposed,
+        whatever you switch on. Now enforceable directly, because one table
+        describes both the block and the allowlist."""
+        every_gate_on = {
+            t.gate: True for t in self.registry.TOOLS
+            if t.gate not in (self.registry.READ, self.registry.NEVER)
+        }
+        allowed = set(self.registry.mcp_allowlist(every_gate_on))
+        local = set(self.registry.local_tool_names(every_gate_on))
+        for name in self.registry.blocked_names():
+            self.assertNotIn(name, allowed, f"{name} is claimed to be blocked")
+            self.assertNotIn(name, local, f"{name} is claimed to be blocked")
 
-        # Reads are always on.
-        for name in self.main.READ_TOOLS:
-            self.assertEqual(catalogue.get(name), "read", name)
+    def test_the_catalogue_is_the_allowlist(self):
+        """What the panel prints and what the worker serves come from the same
+        table. This used to need a reconciliation test across two hand-kept
+        lists; now it is a property of there being one list."""
+        catalogue = {t["name"]: t["gate"] for t in self.registry.catalogue()}
+        self.assertEqual(len(catalogue), len(self.registry.TOOLS))
+        for tool in self.registry.TOOLS:
+            self.assertEqual(catalogue[tool.name], tool.gate)
+            # Every tool says something useful about itself, or the panel
+            # renders a blank row.
+            self.assertTrue(tool.what.strip(), tool.name)
+            # A tool is either served or blocked — never gated but unservable.
+            if tool.gate == self.registry.NEVER:
+                self.assertEqual(tool.served, self.registry.NONE, tool.name)
+            else:
+                self.assertIn(tool.served,
+                              (self.registry.MCP, self.registry.LOCAL), tool.name)
 
-        # Permission-gated tools are listed under the flag that gates them.
-        for flag, tools in self.main.OPTIONAL_TOOLS.items():
-            for name in tools:
-                if name in catalogue:          # speculative names may not exist
-                    self.assertEqual(catalogue[name], flag, name)
+    def test_the_panel_never_claims_a_tool_that_will_not_be_built(self):
+        # Caught by the registry refactor: without station credentials the
+        # exact-queue wrapper is never built (it needs the ids only the
+        # credentialed search returns), but the panel still listed it as
+        # available. What the panel reports and what the worker builds have to
+        # be the same set.
+        import station_config
 
-        # Nothing described as "never" may appear in any allowlist, at any
-        # setting — this is the claim the panel makes to the operator.
-        every_flag_on = {flag: True for flag in self.main.OPTIONAL_TOOLS}
-        for guarded in (False, True):
-            allowed = set(self.main.build_allowed_tools(every_flag_on, guarded=guarded))
-            for name, gate in catalogue.items():
-                if gate == "never":
-                    self.assertNotIn(name, allowed, f"{name} is claimed to be blocked")
+        cfg = {"allow_library_search": True, "allow_exact_queue": True}
+        original = station_config.admin_credentials
+        try:
+            for creds, expected in ((("dj", "s"), True), (("", ""), False)):
+                station_config.admin_credentials = lambda c=creds: c
+                reported = "subwave_queue_track" in " ".join(
+                    self.registry.effective_tools(cfg)["local"])
+                built = "subwave_queue_track" in [
+                    t.info.name for t in self.music.build_library_tools(
+                        cfg, None, self.actions.CallActions(0))]
+                self.assertEqual(reported, expected)
+                self.assertEqual(built, expected)
+                self.assertEqual(reported, built)
+        finally:
+            station_config.admin_credentials = original
 
-        # And every reachable tool is documented — an undocumented one is how
-        # the list quietly stops being the truth.
-        known = set(self.main.READ_TOOLS)
-        for tools in self.main.OPTIONAL_TOOLS.values():
-            known.update(tools)
-        undocumented = sorted(n for n in known if n not in catalogue)
-        self.assertFalse(undocumented, f"tools with no catalogue entry: {undocumented}")
+    def test_every_gate_is_a_real_setting(self):
+        # A typo in a gate name would silently disable a tool forever: the
+        # lookup just returns None and the tool never appears.
+        for tool in self.registry.TOOLS:
+            if tool.gate in (self.registry.READ, self.registry.NEVER):
+                continue
+            self.assertIn(tool.gate, settings_store.FIELDS, tool.name)
+
+    def test_reads_need_no_permission_and_locals_are_never_raw(self):
+        reads = [t.name for t in self.registry.TOOLS
+                 if t.gate == self.registry.READ]
+        allowed = self.registry.mcp_allowlist({})     # nothing switched on
+        self.assertEqual(sorted(allowed), sorted(reads))
+
+        # A locally-wrapped tool must not also be offered over MCP, or the
+        # model could reach the version without our guards and retries.
+        everything = {t.gate: True for t in self.registry.TOOLS
+                      if t.gate not in (self.registry.READ, self.registry.NEVER)}
+        served_local = set(self.registry.local_tool_names(everything))
+        served_mcp = set(self.registry.mcp_allowlist(everything))
+        self.assertFalse(served_local & served_mcp)
 
     def test_library_search_falls_back_to_mcp_without_credentials(self):
         # The local wrapper reads an admin-only endpoint, so with no station
@@ -927,16 +973,16 @@ class TestMainToolLogic(_TempStores):
         original = station_config.admin_credentials
         try:
             station_config.admin_credentials = lambda: ("", "")
-            self.assertTrue(self.main.library_search_needs_mcp())
-            self.assertIn("subwave_search_library", self.main.build_allowed_tools(cfg))
-            self.assertEqual(self.main.build_library_tools(
-                cfg, None, self.main.CallActions(0)), [])
+            self.assertTrue(self.registry.library_search_needs_mcp())
+            self.assertIn("subwave_search_library", self.registry.mcp_allowlist(cfg))
+            self.assertEqual(self.music.build_library_tools(
+                cfg, None, self.actions.CallActions(0)), [])
 
             station_config.admin_credentials = lambda: ("dj", "secret")
-            self.assertFalse(self.main.library_search_needs_mcp())
-            self.assertNotIn("subwave_search_library", self.main.build_allowed_tools(cfg))
-            self.assertEqual(len(self.main.build_library_tools(
-                cfg, None, self.main.CallActions(0))), 1)
+            self.assertFalse(self.registry.library_search_needs_mcp())
+            self.assertNotIn("subwave_search_library", self.registry.mcp_allowlist(cfg))
+            self.assertEqual(len(self.music.build_library_tools(
+                cfg, None, self.actions.CallActions(0))), 1)
         finally:
             station_config.admin_credentials = original
 
@@ -946,14 +992,14 @@ class TestMainToolLogic(_TempStores):
         for q in ("fun", "something fun", "find me some fun songs", "upbeat",
                   "chilled", "something for a rainy night", "party music",
                   "anything happy"):
-            self.assertTrue(self.main.looks_like_a_vibe(q), q)
+            self.assertTrue(self.music.looks_like_a_vibe(q), q)
 
     def test_the_stations_own_request_slip_phrases_route_to_the_picker(self):
         # The station's request drawer offers these as one-tap examples, so a
         # caller will say them out loud. They must not become name searches.
         for q in ("sustained energy vibes", "surprise me", "more like this",
                   "something calm for a rainy evening"):
-            self.assertTrue(self.main.looks_like_a_vibe(q), q)
+            self.assertTrue(self.music.looks_like_a_vibe(q), q)
 
     def test_real_track_names_are_never_mistaken_for_a_vibe(self):
         # Conservative on purpose — a false positive here refuses a search the
@@ -961,12 +1007,12 @@ class TestMainToolLogic(_TempStores):
         for q in ("Fun House by The Stooges", "Mr. Blue Sky", "Bowie",
                   "Sunny Afternoon by The Kinks", "Nightcall", "Kavinsky",
                   "Slow Hands by Interpol", "Party Hard Andrew WK"):
-            self.assertFalse(self.main.looks_like_a_vibe(q), q)
+            self.assertFalse(self.music.looks_like_a_vibe(q), q)
 
     def test_search_results_carry_the_stations_mood_data(self):
         # The station returns moods and energy on every hit; dropping them left
         # the DJ describing a record purely from its title.
-        out = self.main._fmt_track({
+        out = self.music._fmt_track({
             "title": "Open Eye Signal", "artist": "Jon Hopkins",
             "moods": ["hypnotic", "nocturnal"], "energy": 0.7,
         })
@@ -974,14 +1020,14 @@ class TestMainToolLogic(_TempStores):
         self.assertIn("nocturnal", out)
         self.assertIn("high energy", out)
         # And stays clean when the station sends nothing.
-        self.assertNotIn("energy", self.main._fmt_track({"title": "T", "artist": "A"}))
+        self.assertNotIn("energy", self.music._fmt_track({"title": "T", "artist": "A"}))
 
     def test_the_dj_cannot_hang_up_in_the_first_minute(self):
         # A model that decides to end the call early is worse than one that
         # lingers, so this floor is enforced in code, not asked for in a prompt.
         import asyncio, time
 
-        tools = self.main.build_call_control_tools(None, {}, time.time())
+        tools = self.control.build_call_control_tools(None, {}, time.time())
         end_call = tools[0]
         self.assertEqual(end_call.info.name, "end_call")
         out = asyncio.run(end_call(reason="done"))
@@ -992,7 +1038,7 @@ class TestMainToolLogic(_TempStores):
 
         # A call that has been running a while: the tool arms the close and
         # asks for a sign-off rather than cutting the audio dead.
-        tools = self.main.build_call_control_tools(None, {}, time.time() - 600)
+        tools = self.control.build_call_control_tools(None, {}, time.time() - 600)
         end_call = tools[0]
         first = asyncio.run(end_call(reason="caller said goodbye"))
         self.assertIn("say your goodbye", first.lower())
@@ -1003,14 +1049,14 @@ class TestMainToolLogic(_TempStores):
     def test_queue_position_becomes_something_a_dj_can_say(self):
         # Without this the DJ could only say "soon", which is how a caller
         # gets told their song is on when it is four tracks away.
-        self.assertIn("next up", self.main._when_it_plays(1))
-        self.assertIn("next up", self.main._when_it_plays(0))
-        third = self.main._when_it_plays(3)
+        self.assertIn("next up", self.music._when_it_plays(1))
+        self.assertIn("next up", self.music._when_it_plays(0))
+        third = self.music._when_it_plays(3)
         self.assertIn("number 3", third)
         self.assertIn("9-12 minutes", third)
         # No position from the station means no guessing.
         for missing in (None, "", "soon"):
-            self.assertIn("don't guess", self.main._when_it_plays(missing))
+            self.assertIn("don't guess", self.music._when_it_plays(missing))
 
     def test_exact_queue_needs_search_and_credentials(self):
         import station_config
@@ -1021,31 +1067,31 @@ class TestMainToolLogic(_TempStores):
             # rather than present and broken.
             station_config.admin_credentials = lambda: ("", "")
             cfg = {"allow_library_search": True, "allow_exact_queue": True}
-            names = [t.info.name for t in self.main.build_library_tools(
-                cfg, None, self.main.CallActions(0))]
+            names = [t.info.name for t in self.music.build_library_tools(
+                cfg, None, self.actions.CallActions(0))]
             self.assertNotIn("subwave_queue_track", names)
 
             station_config.admin_credentials = lambda: ("dj", "secret")
-            names = [t.info.name for t in self.main.build_library_tools(
-                cfg, None, self.main.CallActions(0))]
+            names = [t.info.name for t in self.music.build_library_tools(
+                cfg, None, self.actions.CallActions(0))]
             self.assertIn("subwave_queue_track", names)
             self.assertIn("subwave_search_library", names)
 
             # Off by default, and never served raw over MCP.
             off = {"allow_library_search": True}
-            names = [t.info.name for t in self.main.build_library_tools(
-                off, None, self.main.CallActions(0))]
+            names = [t.info.name for t in self.music.build_library_tools(
+                off, None, self.actions.CallActions(0))]
             self.assertNotIn("subwave_queue_track", names)
             self.assertNotIn("subwave_queue_track",
-                             self.main.build_allowed_tools({**cfg, "allow_requests": True}))
+                             self.registry.mcp_allowlist({**cfg, "allow_requests": True}))
         finally:
             station_config.admin_credentials = original
 
     def test_search_results_carry_ids_only_when_they_can_be_used(self):
         # The id is noise in the transcript unless something can act on it.
-        with_id = self.main._fmt_track({"title": "T", "artist": "A", "id": "x1"}, with_id=True)
+        with_id = self.music._fmt_track({"title": "T", "artist": "A", "id": "x1"}, with_id=True)
         self.assertIn("x1", with_id)
-        self.assertNotIn("x1", self.main._fmt_track({"title": "T", "artist": "A", "id": "x1"}))
+        self.assertNotIn("x1", self.music._fmt_track({"title": "T", "artist": "A", "id": "x1"}))
 
     def test_effective_stt_falls_back_without_keys(self):
         provider, model, note = self.main.effective_stt({"stt_provider": "deepgram"})

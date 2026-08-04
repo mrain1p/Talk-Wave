@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -53,6 +54,17 @@ import settings as settings_store
 import station_config as station_config_mod
 from station import StationClient
 from station_config import StationConfig
+from call.actions import CallActions
+from call.air import CallAgent, OnAirGuard
+from call.background import spawn
+from call.hangup import end_call
+from call.tools import (
+    build_call_control_tools,
+    build_library_tools,
+    build_on_air_tools,
+    library_search_needs_mcp,
+    mcp_allowlist,
+)
 from tts_adapter import AdapterTTS
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -74,704 +86,6 @@ def station_mcp_url() -> str:
     """Resolved per call, so re-homing the sidecar to another station from the
     settings page takes effect on the next caller."""
     return settings_store.station_mcp_url()
-
-# Reads are always available to the agent; writes are toggled in settings.
-READ_TOOLS = [
-    "subwave_health",
-    "subwave_now_playing",
-    "subwave_station_state",
-    "subwave_schedule",
-    "subwave_session",
-]
-
-# Deliberately never exposed on a call line, regardless of settings:
-# subwave_skip_track (a caller could cut off whatever is playing),
-# subwave_queue_track (bypasses the request queue and its rate limits),
-# subwave_play_sfx / subwave_list_sfx (stingers on a stranger's say-so),
-# subwave_dj_segment and subwave_refresh_playlist (station-level programming).
-OPTIONAL_TOOLS = {
-    "allow_requests": ["subwave_request_song", "subwave_request_status"],
-    # This list once carried four guesses at a sounds-like/semantic search
-    # tool, pre-authorised in case the station shipped one. The published MCP
-    # reference has no such tool, so they were names that could never match —
-    # and an allowlist entry that matches nothing is indistinguishable from a
-    # typo in one that should. Add it back when it actually exists.
-    "allow_library_search": ["subwave_search_library"],
-    "allow_announcements": ["subwave_dj_announce"],
-    # The station's own segments — weather, news, dedications, story time.
-    # list_skills is paired so the DJ knows what it can actually run rather
-    # than guessing at names.
-    "allow_skills": ["subwave_run_skill", "subwave_list_skills"],
-}
-
-
-# Tools that make the on-air DJ produce sound. Always served by local wrappers
-# instead of raw MCP: the wrappers hold the overlap guard, and — the reason
-# they're unconditional now — MCP's 15s session timeout turned a segment that
-# was audibly playing into "that didn't work" for the caller. Running a segment
-# legitimately takes longer than any read.
-ON_AIR_TOOLS = {"subwave_dj_announce", "subwave_run_skill"}
-
-# Served by local wrappers with retry/fallback logic (build_library_tools) —
-# never exposed raw over MCP, or the model could reach the fragile version.
-LOCALLY_WRAPPED = {"subwave_search_library", "subwave_request_song",
-                   "subwave_queue_track"}
-
-
-def library_search_needs_mcp() -> bool:
-    """Whether library search has to go over MCP rather than our wrapper.
-
-    The wrapper is better when it works — it retries with the "by" connector
-    stripped — but it reads the station's REST /dj/search, which is admin-only.
-    Without credentials it can only ever return nothing, which reaches the
-    caller as "haven't got that one in the racks" for a track the library
-    holds. The MCP tool needs no auth at all, so with no credentials the raw
-    tool is strictly better than a wrapper that cannot succeed.
-    """
-    from station_config import admin_credentials
-
-    user, password = admin_credentials()
-    return not (user and password)
-
-
-def build_allowed_tools(cfg: dict, *, guarded: bool = False) -> list[str]:
-    """`guarded` is kept for callers that ask about the overlap guard, but the
-    on-air tools come off the MCP list either way — they are always wrapped."""
-    allowed = list(READ_TOOLS)
-    for flag, tools in OPTIONAL_TOOLS.items():
-        if cfg.get(flag):
-            allowed.extend(tools)
-
-    wrapped = set(LOCALLY_WRAPPED)
-    if cfg.get("allow_library_search") and library_search_needs_mcp():
-        wrapped.discard("subwave_search_library")
-    return [t for t in allowed if t not in wrapped and t not in ON_AIR_TOOLS]
-
-
-# Fire-and-forget tasks need a strong reference held somewhere, or the event
-# loop's weak reference is the only one and the task can be garbage-collected
-# mid-execution. For us that means an action card or an on-air state change
-# that goes missing at random, which is worse than one that never existed.
-_background: set[asyncio.Task] = set()
-
-
-def _spawn(coro) -> asyncio.Task:
-    task = asyncio.create_task(coro)
-    _background.add(task)
-    task.add_done_callback(_background.discard)
-    return task
-
-
-class CallActions:
-    """Per-call record of what the caller actually made happen.
-
-    Two jobs, both of which need the same ledger:
-
-      * a ceiling on how much one call can set in motion, so a single caller
-        can't fill the request queue or fire segment after segment;
-      * a signal to the widget when an action really lands, so the caller sees
-        "Song scheduled" as its own line in the transcript instead of having to
-        take the DJ's word for it.
-
-    Only SUCCESSFUL actions are counted and announced. An attempt the station
-    refused costs the caller nothing and shows nothing.
-    """
-
-    # What the widget renders for each kind. Kept here rather than in the page
-    # so a new action type can't ship with no label.
-    LABELS = {
-        "request": ("🎵", "Song request scheduled"),
-        "announcement": ("📢", "Message sent to air"),
-        "skill": ("🎙", "Station segment running"),
-    }
-
-    def __init__(self, limit: int, room=None) -> None:
-        self.limit = max(0, int(limit or 0))
-        self.count = 0
-        self._room = room
-
-    def at_limit(self) -> bool:
-        return self.limit > 0 and self.count >= self.limit
-
-    def refusal(self) -> str:
-        """In-world, and explicit that this is the line's rule rather than the
-        station refusing — otherwise the DJ invents a reason."""
-        return (
-            f"You've already put {self.count} things through for this caller, which "
-            "is the limit for one call. Don't do any more of those — say warmly that "
-            "you'll have to leave it there for this call and they're welcome to ring "
-            "back. Do not blame the station or invent a technical reason."
-        )
-
-    def note(self, kind: str, detail: str = "") -> None:
-        self.count += 1
-        icon, label = self.LABELS.get(kind, ("✅", "Action completed"))
-        log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)
-        if self._room is None:
-            return
-        try:
-            import json as _json
-
-            payload = _json.dumps({
-                "type": "action", "kind": kind, "icon": icon,
-                "label": label, "detail": detail,
-            }).encode()
-            # Fire-and-forget: a caption card is never worth delaying a tool
-            # return (and so never worth failing the action over).
-            _spawn(
-                self._room.local_participant.publish_data(
-                    payload, reliable=True, topic="wavetalk.action"
-                )
-            )
-        except Exception as e:
-            log.debug("action card publish failed (harmless): %s", e)
-
-
-class OnAirGuard:
-    """Shared "is the broadcast actually talking right now" state for one call.
-
-    The call DJ and the on-air DJ are the same person. Left alone they talk
-    over each other — the caller hears two of the same voice, and so does
-    everyone listening to the station. This is the single place that decides
-    whether the air is busy; the reply gate, the on-air tools and the widget's
-    status chip all read it, so they cannot disagree with each other.
-
-    "Busy" means ACTIVELY SPEAKING — not thinking, not queued. It's derived
-    from when the station last logged on-air speech, held for
-    `on_air_quiet_secs` (roughly how long a link runs), because the station
-    tells us when a link STARTED, not when it finished.
-    """
-
-    POLL_SECS = 4.0     # a station read per call every 4s, not per turn
-    MAX_HOLD = 45.0     # never leave a caller in silence longer than this
-
-    def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
-        self.station = station
-        self.room = room
-        self.enabled = bool(cfg.get("avoid_on_air_overlap"))
-        self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
-        self.on_air = False
-        self._clear = asyncio.Event()
-        self._clear.set()
-
-    def _publish(self, on_air: bool) -> None:
-        """Tell the widget, so the caller sees "DJ is on air" rather than a
-        DJ that has mysteriously gone quiet."""
-        if self.room is None:
-            return
-        try:
-            _spawn(
-                self.room.local_participant.set_attributes(
-                    {"wavetalk.onair": "1" if on_air else ""}
-                )
-            )
-        except Exception as e:
-            log.debug("on-air state publish failed (harmless): %s", e)
-
-    async def wait_until_clear(self, timeout: float | None = None) -> float:
-        """Block until the broadcast is quiet. Returns the seconds waited, so
-        the caller can be told why there was a pause."""
-        if not self.enabled or self._clear.is_set():
-            return 0.0
-        import time as _t
-
-        started = _t.time()
-        try:
-            await asyncio.wait_for(self._clear.wait(), timeout or self.MAX_HOLD)
-        except asyncio.TimeoutError:
-            # Dead air is worse than an overlap. If the station has been
-            # "speaking" for longer than any real link, assume the log is
-            # stale and let the call carry on.
-            log.warning("air still busy after %.0fs — letting the call continue",
-                        timeout or self.MAX_HOLD)
-            self._clear.set()
-        return _t.time() - started
-
-    async def watch(self, session: AgentSession) -> None:
-        """Poll the station and flip the gate. Started as a task for the life
-        of the call."""
-        if not (self.enabled and self.quiet_secs > 0):
-            return
-        # The first pass runs immediately and silently: someone who dials in
-        # mid-link should have the gate already closed (so their first reply
-        # waits) without the greeting being cut off by a hand-over line for a
-        # broadcast that was already running when they picked up the phone.
-        first = True
-        while True:
-            try:
-                since = await self.station.seconds_since_on_air_speech()
-            except asyncio.CancelledError:
-                return
-            except Exception as e:
-                log.debug("on-air check failed (assuming clear): %s", e)
-                since = None
-
-            busy = since is not None and since < self.quiet_secs
-            if busy != self.on_air:
-                self.on_air = busy
-                self._publish(busy)
-                if busy:
-                    self._clear.clear()
-                    log.info("on-air DJ is speaking — holding the call DJ back")
-                    if not first:
-                        # Cut the call DJ off mid-sentence if need be: the whole
-                        # point is that the broadcast never hears itself doubled.
-                        try:
-                            session.interrupt()
-                            session.say(
-                                "Hold on a second — let me let that go out on air first.",
-                                allow_interruptions=False,
-                            )
-                        except Exception as e:
-                            log.debug("could not hand over to air cleanly: %s", e)
-                else:
-                    self._clear.set()
-                    log.info("air is clear — the call DJ has the floor again")
-            first = False
-            await asyncio.sleep(self.POLL_SECS)
-
-
-class CallAgent(Agent):
-    """The caller's DJ, with one addition: its replies wait for quiet air.
-
-    Holding here rather than dropping input is deliberate. The caller's words
-    are already transcribed and in the context by this point — only the REPLY
-    is queued, so nothing they said is lost and they never have to repeat
-    themselves just because the station was mid-link.
-    """
-
-    def __init__(self, instructions: str, guard: OnAirGuard) -> None:
-        super().__init__(instructions=instructions)
-        self._guard = guard
-
-    async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
-        waited = await self._guard.wait_until_clear()
-        if waited >= 2:
-            log.info("held the caller's reply %.0fs while the on-air DJ was talking",
-                     waited)
-
-
-def build_on_air_tools(
-    cfg: dict,
-    station: StationClient,
-    actions: CallActions,
-    guard: OnAirGuard,
-    guarded: bool = True,
-) -> list:
-    """On-air actions that keep the call and the broadcast from colliding.
-
-    The call DJ and the on-air DJ are the same persona, so the two can end up
-    talking at once. Rather than blocking the action (which just makes the DJ
-    seem broken to the caller), these wait for the air to clear if it's busy,
-    fire the action, then tell the agent to step back from the call while it
-    plays — with a word to the caller either side, the way a real presenter
-    would say "hold on, I'm on air".
-
-    With the guard off the wrappers still stand in for the raw MCP tools —
-    they're what keeps a slow-but-successful station action from being
-    reported to the caller as a failure.
-    """
-    from livekit.agents import llm as lk_llm
-
-    async def wait_for_clear_air() -> float:
-        """Block until the on-air DJ stops. One source of truth (the guard),
-        so a tool can't decide the air is clear while the reply gate thinks
-        it's busy. Capped shorter than the guard's own limit — a caller
-        waiting on an action they asked for needs an answer sooner."""
-        if not guarded:
-            return 0.0
-        return await guard.wait_until_clear(timeout=20.0)
-
-    def after_action(what: str, waited: float, unconfirmed: bool = False) -> str:
-        note = f"Waited {waited:.0f}s for the air to clear. " if waited >= 2 else ""
-        # A slow confirmation is not a failure: the station took the action,
-        # it just hadn't finished answering. Say it went through.
-        if unconfirmed:
-            note += "The station was slow to confirm, but it has gone through. "
-        if not guarded:
-            return (
-                f"{note}{what} is going out on air now, in your own voice. Tell "
-                "the caller it's done, in your own words."
-            )
-        return (
-            f"{note}{what} is going out on air now, in your own voice, and it runs "
-            "roughly twenty seconds. You cannot be in two places at once: tell the "
-            "caller briefly that you're on air for a moment, then stay quiet until "
-            "it's done — do not talk over yourself. When it finishes, come back to "
-            "them and pick the conversation up where you left it."
-        )
-
-    tools = []
-
-    if cfg.get("allow_announcements"):
-        @lk_llm.function_tool(name="subwave_dj_announce")
-        async def announce(message: str, mode: str = "styled") -> str:
-            """Put a short line on air, read by the on-air DJ in its own voice.
-            Use for shoutouts, dedications, or anything from the call worth
-            sharing with listeners."""
-            if actions.at_limit():
-                return actions.refusal()
-            waited = await wait_for_clear_air()
-            result = await station.dj_say(message, mode=mode, kind="callin")
-            if not result.get("ok"):
-                return (
-                    f"That didn't go out: {result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
-            actions.note("announcement", message[:120])
-            return after_action("Your announcement", waited, result.get("unconfirmed"))
-
-        tools.append(announce)
-
-    if cfg.get("allow_skills"):
-        @lk_llm.function_tool(name="subwave_run_skill")
-        async def run_skill(name: str) -> str:
-            """Run one of the station's own segments on air by name — for
-            example weather, news, dedication, shoutout, storytime."""
-            if actions.at_limit():
-                return actions.refusal()
-            waited = await wait_for_clear_air()
-            result = await station.run_skill(name)
-            if not result.get("ok"):
-                return (
-                    f"That segment didn't run: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
-            actions.note("skill", name)
-            return after_action(f"The {name} segment", waited, result.get("unconfirmed"))
-
-        tools.append(run_skill)
-
-    return tools
-
-
-def _query_variants(q: str) -> list[str]:
-    """The station's search requires EVERY word to match, so the natural
-    phrase "Let It Be by The Beatles" returns nothing — "by" appears in no
-    title or artist. Try as given, then with the last " by " connector
-    removed, then the left side alone. Rightmost split keeps titles that
-    themselves contain "by" ("Stand by Me by Ben E. King") intact."""
-    variants = [q]
-    idx = q.lower().rfind(" by ")
-    if idx > 0:
-        variants.append(q[:idx] + " " + q[idx + 4:])
-        variants.append(q[:idx])
-    return variants
-
-
-# Words that describe how music FEELS rather than what it's called. A caller
-# saying one of these wants the station's picker, not a title match — but the
-# model reaches for the search tool anyway, and "fun" dutifully returns
-# "Fun, Fun, Fun" by The Beach Boys. Observed on a real call.
-_VIBE_WORDS = {
-    "fun", "upbeat", "happy", "sad", "chill", "chilled", "chillout", "relaxing",
-    "calm", "mellow", "moody", "dark", "bright", "energetic", "energy", "hype",
-    "party", "dance", "dancey", "slow", "slower", "fast", "faster", "romantic",
-    "sexy", "angry", "aggressive", "soft", "loud", "quiet", "dreamy", "nostalgic",
-    "uplifting", "feelgood", "feel-good", "summery", "wintry", "rainy", "sunny",
-    "night", "nighttime", "morning", "driving", "workout", "study", "sleep",
-    "groovy", "funky", "smooth", "heavy", "light", "epic", "emotional", "vibe",
-    "vibes", "mood", "something", "anything", "good", "nice", "cool",
-    # The station's own request-slip vocabulary, so the two agree on what
-    # counts as a description.
-    "sustained", "surprise", "random", "afternoon", "evening", "late-night",
-    "latenight", "upbeat", "downbeat", "banger", "bangers", "classic",
-    "classics", "oldies", "newer", "older", "similar", "this", "that",
-}
-# Filler that shouldn't count either way when judging a query.
-_VIBE_FILLER = {"a", "an", "the", "some", "me", "for", "and", "or", "of", "to",
-                "songs", "song", "music", "track", "tracks", "tune", "tunes",
-                "play", "find", "get", "want", "like", "really", "very", "more"}
-
-
-def looks_like_a_vibe(q: str) -> bool:
-    """True when a search query describes a feeling rather than names a track.
-
-    Deliberately conservative: it only fires when EVERY meaningful word is a
-    mood word, so "Fun House by The Stooges" and "Mr. Blue Sky" are untouched.
-    """
-    import re as _re
-
-    words = [w for w in _re.findall(r"[a-z'-]+", (q or "").lower())
-             if w not in _VIBE_FILLER]
-    if not words or len(words) > 4:
-        return False
-    return all(w in _VIBE_WORDS for w in words)
-
-
-def _fmt_track(t: dict, with_id: bool = False) -> str:
-    bits = f"\"{t.get('title', '?')}\" by {t.get('artist', '?')}"
-    if t.get("album"):
-        bits += f" ({t['album']}" + (f", {t['year']})" if t.get("year") else ")")
-    # The station stores mood tags and an energy score per track and returns
-    # them on every search hit. Dropping them left the DJ describing records it
-    # had real information about purely from the title.
-    feel = []
-    moods = t.get("moods") or []
-    if isinstance(moods, list) and moods:
-        feel.extend(str(m) for m in moods[:3])
-    energy = t.get("energy")
-    if isinstance(energy, (int, float)):
-        feel.append("high energy" if energy >= 0.66
-                    else "low energy" if energy <= 0.33 else "mid energy")
-    if feel:
-        bits += " — " + ", ".join(feel)
-    # The exact-queue tool needs the id the search returned. Without it in the
-    # text the model has nothing to pass and silently falls back to guessing.
-    if with_id and t.get("id"):
-        bits += f"  [id: {t['id']}]"
-    return bits
-
-
-def _clock_start() -> float:
-    import time as _t
-
-    return _t.time()
-
-
-def build_call_control_tools(ctx: JobContext, session_ref: dict, started_at: float) -> list:
-    """Lets the DJ hang up, the way a presenter closes a call.
-
-    Until now a finished conversation just sat there: the caller had said
-    goodbye, the DJ had said goodbye, and the line stayed open until the idle
-    watcher nudged twice or the hard limit hit. A real DJ says "anything else
-    before I let you go?" and then ends it.
-
-    Two guards, because a model that decides to hang up early is worse than
-    one that lingers:
-      * nothing can end a call in its first minute, whatever the model thinks;
-      * the goodbye is allowed to finish playing before the room closes.
-    """
-    from livekit.agents import llm as lk_llm
-
-    import time as _t
-
-    MIN_CALL_SECS = 60.0
-    ending = {"done": False}
-
-    @lk_llm.function_tool(name="end_call")
-    async def end_call(reason: str = "") -> str:
-        """Hang up. Use ONLY once the caller has confirmed they're done — you
-        asked if there was anything else and they said no, or they said
-        goodbye. Say your sign-off in the same turn you call this; the line
-        stays open long enough for it to play. Never use this to cut a
-        conversation short."""
-        elapsed = _t.time() - started_at
-        if elapsed < MIN_CALL_SECS:
-            return (
-                "Too early to hang up — you've barely picked up. Stay with the "
-                "caller and see what they actually want."
-            )
-        if ending["done"]:
-            return "Already wrapping up — just finish your sign-off."
-        ending["done"] = True
-
-        async def _close() -> None:
-            session = session_ref.get("session")
-            # Let the sign-off play out. Poll rather than guess a duration: a
-            # fixed sleep either clips a warm goodbye or leaves dead air after
-            # a curt one.
-            deadline = _t.time() + 20.0
-            await asyncio.sleep(1.0)
-            while _t.time() < deadline:
-                if getattr(session, "agent_state", None) != "speaking":
-                    break
-                await asyncio.sleep(0.5)
-            await asyncio.sleep(0.8)      # a beat after the last word
-            await _end_call(ctx, f"the DJ wrapped up the call ({reason or 'done'})")
-
-        _spawn(_close())
-        return (
-            "Right — say your goodbye now, one line, in character. The line closes "
-            "as soon as you've finished speaking."
-        )
-
-    return [end_call]
-
-
-def _when_it_plays(position) -> str:
-    """Turn a queue position into something a DJ would actually say.
-
-    The station returns one; without it the DJ could only say "soon", which is
-    how a caller ends up being told their song is on when it is four tracks
-    away. A position is roughly 3-4 minutes a track.
-    """
-    try:
-        pos = int(position)
-    except (TypeError, ValueError):
-        return "You don't know how far down the queue it is, so don't guess at a time."
-    if pos <= 1:
-        return "It's next up, so it plays after the current track."
-    return (
-        f"It's number {pos} in the queue — roughly {pos * 3}-{pos * 4} minutes away. "
-        "You may tell them that."
-    )
-
-
-def build_library_tools(cfg: dict, station: StationClient, actions: CallActions) -> list:
-    """Search and request as local tools with deterministic fallbacks.
-
-    Prompt guidance about query phrasing turned out to be soft — the model
-    followed it most of the time, and a caller heard "can't pull that from
-    the racks" for a track the library holds three copies of. These wrappers
-    make good phrasing unnecessary: the tool itself retries with the "by"
-    connector stripped before ever reporting a miss.
-    """
-    from livekit.agents import llm as lk_llm
-
-    tools = []
-
-    # Exact queueing needs the ids that only the local search wrapper surfaces.
-    exact_queue = bool(cfg.get("allow_exact_queue")) and not library_search_needs_mcp()
-
-    # Without admin credentials this wrapper can only ever return nothing, so
-    # the raw MCP tool takes its place (see library_search_needs_mcp).
-    if cfg.get("allow_library_search") and not library_search_needs_mcp():
-        @lk_llm.function_tool(name="subwave_search_library")
-        async def search_library(q: str) -> str:
-            """Look up a track BY NAME. This is a literal word match against
-            titles and artists — nothing else. It cannot find a mood, a vibe,
-            a genre or an era: searching "fun" returns songs with the word
-            "fun" in the title, which is not what a caller asking for
-            "something fun" wants. For anything descriptive use
-            subwave_request_song, which resolves it properly. Use this only
-            when the caller has named a track or an artist."""
-            # Backstop for the prompt rule above: a mood word searched by name
-            # returns titles containing that word, which reads to the caller
-            # like the DJ is flipping through an index. Refuse and redirect
-            # rather than hand back junk that looks like an answer.
-            if looks_like_a_vibe(q):
-                return (
-                    f"'{q}' describes a feeling, and this tool only matches words in "
-                    "titles and artist names — it would hand you songs with that word "
-                    "in the title, not songs that feel that way. Use "
-                    "subwave_request_song with the caller's own words instead; the "
-                    "station picks properly from the whole library. Do not tell the "
-                    "caller a search failed — nothing failed, you just used the wrong "
-                    "tool. Put the request in."
-                )
-            for attempt in _query_variants(q):
-                items = await station.search_library(attempt)
-                if items:
-                    note = "" if attempt == q else (
-                        f" (matched on '{attempt}' — the library needs every word to match)"
-                    )
-                    lines = [_fmt_track(t, with_id=exact_queue) for t in items[:8]]
-                    more = f" …and {len(items) - 8} more" if len(items) > 8 else ""
-                    joined = "\n".join(lines)
-                    return f"{len(items)} result(s){note}:\n" + joined + more
-            # The catch-all for everything the vibe word list above misses —
-            # and it misses plenty, because no list covers "sustained energy
-            # vibes" or "something for late-night driving". A description
-            # almost never matches a title literally, so an empty result on a
-            # multi-word query is itself the signal that this was never a
-            # name search. Deterministic, where a word list is a guess.
-            hint = ""
-            if len(q.split()) > 1 or looks_like_a_vibe(q):
-                hint = (
-                    " If that was a description rather than a title — a mood, an "
-                    "era, an occasion, 'more like this' — then this was the wrong "
-                    "tool and nothing is wrong with the library. Put it in as a "
-                    "request with subwave_request_song, in the caller's own words, "
-                    "and let the station pick. Do NOT tell the caller you couldn't "
-                    "find anything."
-                )
-            return (
-                "No track or artist by that name, even after loosening the "
-                "phrasing." + hint
-            )
-
-        tools.append(search_library)
-
-    if exact_queue:
-        @lk_llm.function_tool(name="subwave_queue_track")
-        async def queue_track(id: str, title: str, artist: str = "") -> str:
-            """Queue THE EXACT track the caller picked from a search result.
-            Use this — not a request — once they have chosen a specific track
-            from what you found, passing the id shown beside it. Guarantees
-            they get that recording rather than a re-match."""
-            if actions.at_limit():
-                return actions.refusal()
-            res = await station.queue_track(
-                {"id": id, "title": title, "artist": artist}
-            )
-            if not res.get("ok"):
-                return (
-                    f"That didn't go into the queue: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
-            actions.note("request", _fmt_track({"title": title, "artist": artist}))
-            return (
-                f"\"{title}\" is in the queue — the exact recording they picked. It "
-                "is NOT playing yet: it comes up after what's already ahead of it. "
-                f"{_when_it_plays(res.get('queuePosition'))} "
-                "There's no auto-intro on this one, so introduce it yourself if you "
-                "want it introduced."
-            )
-
-        tools.append(queue_track)
-
-    if cfg.get("allow_requests"):
-        @lk_llm.function_tool(name="subwave_request_song")
-        async def request_song(request: str, requester: str = "") -> str:
-            """Ask the station to play something. THIS is the tool for a mood,
-            a vibe, a genre or an era — "something fun", "upbeat", "music for
-            a rainy night", "anything from the late seventies", "more like
-            this". Pass the caller's own words; the station's picker matches
-            them against the library properly, which a name search cannot do.
-            Also takes a specific track ('Let It Be by The Beatles'). When in
-            doubt between this and a name search, use this one."""
-            if actions.at_limit():
-                return actions.refusal()
-            text = request
-            idx = request.lower().rfind(" by ")
-            if idx > 0 and cfg.get("allow_library_search"):
-                # Pre-flight: if the full phrase finds nothing but the
-                # cleaned one does, submit the cleaned one — the station's
-                # own resolver trips on the same matcher and substitutes a
-                # different song rather than failing.
-                if not await station.search_library(request):
-                    cleaned = request[:idx] + " " + request[idx + 4:]
-                    if await station.search_library(cleaned):
-                        text = cleaned
-
-            res = await station.submit_request(text, requester or "")
-            if res.get("error"):
-                return f"The station couldn't take that request: {res['error']}"
-
-            # Every success path below says QUEUED, never playing. Observed on
-            # a real call: the DJ took a request and immediately introduced the
-            # track on air as though it were spinning, minutes before it was.
-            rid = res.get("requestId") or res.get("id")
-            if rid:
-                await asyncio.sleep(2.0)
-                st = await station.request_status(str(rid))
-                track = st.get("track") or st.get("matched") or {}
-                ack = st.get("ack") or st.get("message") or st.get("reply") or ""
-                if isinstance(track, dict) and track.get("title"):
-                    actions.note("request", _fmt_track(track))
-                    out = (
-                        f"Added to the queue: {_fmt_track(track)}. It is NOT playing "
-                        "yet — it comes up later in the running order, after what's "
-                        f"on now. {_when_it_plays(st.get('queuePosition'))} "
-                        "Tell the caller it's lined up, not that it's on."
-                    )
-                    return out + (f" Station says: {ack}" if ack else "")
-                if ack:
-                    actions.note("request", text[:120])
-                    return f"It's in the queue, not on air yet. Station says: {ack}"
-            actions.note("request", text[:120])
-            return (
-                "Request is in — the station is lining something up. It plays later "
-                "in the running order, not now."
-            )
-
-        tools.append(request_song)
-
-    return tools
-
 
 def model_for(provider: str, requested: str, choices: dict, default: str) -> str:
     """Model names are provider-specific and must never survive a provider
@@ -983,13 +297,13 @@ async def entrypoint(ctx: JobContext) -> None:
     guard_overlap = bool(cfg.get("avoid_on_air_overlap"))
     actions = CallActions(cfg.get("max_actions_per_call"), room=ctx.room)
     air = OnAirGuard(station, cfg, room=ctx.room)
-    allowed_tools = build_allowed_tools(cfg, guarded=guard_overlap)
+    allowed_tools = mcp_allowlist(cfg)
     local_tools = build_on_air_tools(cfg, station, actions, air, guarded=guard_overlap)
     local_tools += build_library_tools(cfg, station, actions)
     # The session doesn't exist yet — tools are built first — so the hang-up
     # tool reads it from a holder that entrypoint fills in below.
     session_ref: dict = {}
-    local_tools += build_call_control_tools(ctx, session_ref, _clock_start())
+    local_tools += build_call_control_tools(ctx, session_ref, time.time())
 
     log.info(
         "call starting room=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
@@ -1045,8 +359,6 @@ async def entrypoint(ctx: JobContext) -> None:
     # flash-lite 503ing under load), the caller must never get dead air.
     # The DJ can't THINK without the LLM, but it can still SPEAK — say()
     # drives the TTS directly, no model involved.
-    import time as _time_mod
-
     last_sorry = {"t": 0.0}
 
     def _on_session_error(ev) -> None:
@@ -1054,9 +366,9 @@ async def entrypoint(ctx: JobContext) -> None:
         log.warning("session error (source=%s): %s", getattr(ev, "source", "?"), err)
         if getattr(err, "recoverable", False):
             return
-        if _time_mod.time() - last_sorry["t"] < 20:
+        if time.time() - last_sorry["t"] < 20:
             return
-        last_sorry["t"] = _time_mod.time()
+        last_sorry["t"] = time.time()
 
         async def _apologise() -> None:
             try:
@@ -1067,7 +379,7 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception:
                 pass  # if the voice is what failed, silence is unavoidable
 
-        _spawn(_apologise())
+        spawn(_apologise())
 
     session.on("error", _on_session_error)
 
@@ -1075,9 +387,7 @@ async def entrypoint(ctx: JobContext) -> None:
     # "the DJ didn't answer me" report is undiagnosable: a missing heard:
     # line means STT/VAD never caught the words; a heard: line with no
     # reply following points at the LLM/TTS leg.
-    import time as _clock
-
-    call_t0 = _clock.time()
+    call_t0 = time.time()
     heard_count = {"n": 0}
 
     def _log_heard(ev) -> None:
@@ -1100,15 +410,13 @@ async def entrypoint(ctx: JobContext) -> None:
     # counts as the caller being present; the clock starts each time the
     # DJ finishes talking (a caller quietly listening isn't idle).
     if idle_secs > 0:
-        import time as _time
-
         max_nudges = int(cfg.get("idle_max_nudges") or 0)
-        state = {"last_words": _time.time(), "nudges": 0}
+        state = {"last_words": time.time(), "nudges": 0}
 
         def _on_transcript(ev) -> None:
             text = str(getattr(ev, "transcript", "") or "")
             if text.strip():
-                state["last_words"] = _time.time()
+                state["last_words"] = time.time()
                 state["nudges"] = 0
 
         session.on("user_input_transcribed", _on_transcript)
@@ -1122,14 +430,14 @@ async def entrypoint(ctx: JobContext) -> None:
                 # monologue can never expire the timer mid-sentence, which
                 # used to fire a check-in on the heels of the DJ's own turn.
                 if getattr(session, "agent_state", None) != "listening":
-                    state["last_words"] = _time.time()
+                    state["last_words"] = time.time()
                     continue
-                if _time.time() - state["last_words"] < idle_secs:
+                if time.time() - state["last_words"] < idle_secs:
                     continue
                 if state["nudges"] >= max_nudges:
                     continue
                 state["nudges"] += 1
-                state["last_words"] = _time.time()
+                state["last_words"] = time.time()
                 first = state["nudges"] == 1
                 log.info("no words from the caller for %ss — check-in %d/%d",
                          idle_secs, state["nudges"], max_nudges)
@@ -1165,7 +473,7 @@ async def entrypoint(ctx: JobContext) -> None:
                         except Exception:
                             pass
                     await asyncio.sleep(6)  # let the goodbye actually play
-                    await _end_call(ctx, "caller went quiet")
+                    await end_call(ctx, "caller went quiet")
                     return
 
         idle_task = asyncio.create_task(_idle_watch())
@@ -1177,7 +485,7 @@ async def entrypoint(ctx: JobContext) -> None:
         log.info(
             "call ended room=%s persona=%s duration=%.0fs caller_turns=%d "
             "llm=%s/%s tts=%s",
-            ctx.room.name, persona.get("name"), _clock.time() - call_t0,
+            ctx.room.name, persona.get("name"), time.time() - call_t0,
             heard_count["n"], cfg.get("llm_provider"), cfg.get("llm_model"),
             cfg.get("tts_mode"),
         )
@@ -1215,7 +523,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 # rather than leaving an unhandled task exception behind.
                 log.warning("sign-off before the time limit failed: %s", e)
 
-            await _end_call(ctx, "call time limit reached")
+            await end_call(ctx, "call time limit reached")
 
         timeout_task = asyncio.create_task(_end_when_over_time())
         ctx.add_shutdown_callback(lambda: _cancel(timeout_task))
@@ -1260,21 +568,6 @@ async def _cancel(task: asyncio.Task) -> None:
     task.cancel()
 
 
-async def _end_call(ctx: JobContext, reason: str) -> None:
-    """Actually hang up. ctx.shutdown() alone only ends the AGENT's job —
-    the caller would stay connected to a DJ-less room, mic hot and timer
-    running, looking 'on the line' forever. Deleting the room disconnects
-    everyone; the widget hears it as a normal remote hangup."""
-    log.info("ending call (%s)", reason)
-    try:
-        from livekit import api as lk_api
-
-        await ctx.api.room.delete_room(lk_api.DeleteRoomRequest(room=ctx.room.name))
-    except Exception as e:
-        log.warning("room delete failed (%s) — agent will still leave", e)
-    ctx.shutdown(reason=reason)
-
-
 async def release_call_slot(room: str) -> None:
     """Tell the token server this call is over so its concurrency slot frees
     immediately. The widget sends the same beacon, but a crashed tab never
@@ -1292,26 +585,6 @@ async def release_call_slot(room: str) -> None:
             await c.post(f"{base}/call-ended", json={"room": room})
     except Exception as e:
         log.debug("slot release beacon failed (harmless, will age out): %s", e)
-
-
-def effective_tools(cfg: dict) -> dict:
-    """What the caller's agent actually gets: the MCP allowlist plus the local
-    wrappers. Previews that report only build_allowed_tools() show a list that
-    is neither what MCP serves nor what the model sees."""
-    guard = bool(cfg.get("avoid_on_air_overlap"))
-    waits = "waits for clear air" if guard else "no overlap guard"
-    local = []
-    if cfg.get("allow_library_search") and not library_search_needs_mcp():
-        local.append("subwave_search_library (local: retry fallback)")
-    if cfg.get("allow_requests"):
-        local.append("subwave_request_song (local: pre-flight + status)")
-    if cfg.get("allow_exact_queue") and not library_search_needs_mcp():
-        local.append("subwave_queue_track (local: exact pick, counts against the call limit)")
-    if cfg.get("allow_announcements"):
-        local.append(f"subwave_dj_announce (local: {waits})")
-    if cfg.get("allow_skills"):
-        local.append(f"subwave_run_skill (local: {waits})")
-    return {"mcp": build_allowed_tools(cfg, guarded=guard), "local": local}
 
 
 def _transcript(session: AgentSession, limit: int = 24) -> list[tuple[str, str]]:

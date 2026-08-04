@@ -1246,7 +1246,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
         ))
 
     import prompts as prompts_mod
-    from main import effective_tools
+    from call.tools import effective_tools
 
     cfg = settings_store.load()
     station = StationClient()
@@ -1684,7 +1684,7 @@ async def handle_test_station(request: web.Request) -> web.Response:
 
     from livekit.agents import mcp as lk_mcp
 
-    from main import effective_tools
+    from call.tools import effective_tools
     secrets_store.apply_to_env()
 
     cfg = settings_store.load()

@@ -1,0 +1,241 @@
+"""The station's tool surface, described once.
+
+Before this, the same seventeen tools were described in five places: four
+allowlists in main.py (which tools exist, which a setting unlocks, which are
+served locally, which are on-air) and a separate catalogue in settings.py for
+the panel. A test reconciled them, which meant the test was load-bearing — it
+was the only thing stopping the panel from telling an operator that callers
+couldn't reach something they could.
+
+Now there is one table. The allowlists and the panel catalogue are both
+derived from it, so they cannot disagree, and adding a tool is one entry here
+plus one function in the module that serves it.
+
+Deliberately a leaf module: no imports from settings, the station client, or
+LiveKit. Everything reads it; it reads nothing.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+# How a tool reaches the model.
+MCP = "mcp"        # served by the station's MCP server, through the allowlist
+LOCAL = "local"    # served by a wrapper of ours (retries, guards, the ledger)
+NONE = "none"      # never served at all
+
+# What unlocks a tool. Anything else is a settings field name.
+READ = "read"      # always available; reads cost nothing and reveal nothing
+NEVER = "never"    # not exposed on a call line at any setting
+
+
+@dataclass(frozen=True)
+class Tool:
+    """One station tool, as the caller's agent may (or may not) see it.
+
+    `what` and `note` are operator-facing: they are what the panel's Station
+    tools section prints, so they explain the choice rather than the mechanism.
+    """
+
+    name: str
+    gate: str            # READ, NEVER, or the settings field that unlocks it
+    served: str          # MCP, LOCAL or NONE
+    what: str
+    note: str = ""
+    # True for a local wrapper that MCP can stand in for when the wrapper
+    # cannot work. Only library search: our wrapper reads an admin-only REST
+    # endpoint, so without station credentials it can only ever return
+    # nothing, while the MCP tool needs no auth at all.
+    mcp_fallback: bool = False
+    # True when the tool cannot be BUILT AT ALL without station credentials,
+    # as opposed to being built and failing honestly. Exact queueing needs the
+    # track ids that only the credentialed search returns, so without
+    # credentials there is nothing for it to queue — and the panel must not
+    # claim it is available.
+    needs_station_admin: bool = False
+
+
+TOOLS: tuple[Tool, ...] = (
+    # --- always on: reads -------------------------------------------------
+    Tool("subwave_health", READ, MCP,
+         "Is the station up and on air."),
+    Tool("subwave_now_playing", READ, MCP,
+         "The current track, station context and listener count."),
+    Tool("subwave_station_state", READ, MCP,
+         "The upcoming queue, recent history and the booth log."),
+    Tool("subwave_schedule", READ, MCP,
+         "Personas, shows and the weekly schedule.",
+         "How much of this reaches the prompt is set under Station awareness."),
+    Tool("subwave_session", READ, MCP,
+         "The DJ's live session and its recent on-air transcript."),
+
+    # --- music ------------------------------------------------------------
+    Tool("subwave_request_song", "allow_requests", LOCAL,
+         "Queues a track from a natural-language request — a title, a mood, an "
+         "era, or 'something like this'. The DJ writes a spoken intro for it.",
+         "Station limits: 1 per 20s, 8 per hour, and none while nobody is "
+         "listening. Served by a local wrapper that retries awkward phrasing "
+         "before reporting a miss."),
+    Tool("subwave_request_status", "allow_requests", MCP,
+         "Checks what the booth did with a request."),
+    Tool("subwave_search_library", "allow_library_search", LOCAL,
+         "Exact term search over the library — no LLM, no rate limit.",
+         "Needs no credentials over MCP. With station admin credentials it is "
+         "served by a local wrapper that also retries with the 'by' connector "
+         "stripped.",
+         mcp_fallback=True),
+    Tool("subwave_queue_track", "allow_exact_queue", LOCAL,
+         "Queues the exact track from a search result, by id — no re-matching, "
+         "no DJ intro.",
+         "Station admin credentials required. Off by default: it skips the "
+         "request endpoint's rate limit, so Actions per call is the only thing "
+         "pacing a caller.",
+         needs_station_admin=True),
+
+    # --- the broadcast ----------------------------------------------------
+    Tool("subwave_dj_announce", "allow_announcements", LOCAL,
+         "Puts a spoken line on air, rewritten in the persona's voice.",
+         "Station admin credentials required. Waits for quiet air when overlap "
+         "protection is on. The sound-effect stinger this tool accepts is "
+         "never used."),
+    Tool("subwave_list_skills", "allow_skills", MCP,
+         "What segments this station actually has, so the DJ doesn't guess at "
+         "names.",
+         "Station admin credentials required. Also read once at call start, so "
+         "the DJ knows its own show without spending a turn asking."),
+    Tool("subwave_run_skill", "allow_skills", LOCAL,
+         "Runs a segment on air — weather, news, dedication, story time.",
+         "Station admin credentials required. The station rate-limits each "
+         "segment, and decides whether one is due."),
+
+    # --- never on a call line ---------------------------------------------
+    Tool("subwave_skip_track", NEVER, NONE,
+         "Force-ends whatever is playing.",
+         "A stranger could cut off the track everyone else is listening to."),
+    Tool("subwave_dj_segment", NEVER, NONE,
+         "Fires a scripted segment: station ID, the hour, a link, guest banter, "
+         "a programme beat.",
+         "Station-level programming, and it bypasses the DJ's own frequency "
+         "gate. Ask if you want this opened up."),
+    Tool("subwave_refresh_playlist", NEVER, NONE,
+         "Rebuilds the fallback auto-playlist for the current mood.",
+         "Reshapes what everyone hears next, on one caller's say-so. It also "
+         "takes no parameters, so it cannot be steered by a caller's mood."),
+    Tool("subwave_list_sfx", NEVER, NONE,
+         "The sound-effects library.",
+         "Only useful for firing one."),
+    Tool("subwave_play_sfx", NEVER, NONE,
+         "Fires a stinger on air immediately, over the programme.",
+         "Nothing to add to a call, plenty to disrupt on air."),
+)
+
+BY_NAME = {t.name: t for t in TOOLS}
+
+
+def library_search_needs_mcp() -> bool:
+    """Whether library search has to go over MCP rather than our wrapper.
+
+    The wrapper is better when it works — it retries with the "by" connector
+    stripped — but it reads the station's REST /dj/search, which is admin-only.
+    Without credentials it can only ever return nothing, which reaches the
+    caller as "haven't got that one in the racks" for a track the library
+    holds. The MCP tool needs no auth at all, so with no credentials the raw
+    tool is strictly better than a wrapper that cannot succeed.
+    """
+    from station_config import admin_credentials
+
+    user, password = admin_credentials()
+    return not (user and password)
+
+
+def _unlocked(tool: Tool, cfg: dict) -> bool:
+    """Is this tool's gate satisfied by the current settings?"""
+    if tool.gate == NEVER:
+        return False
+    if tool.gate == READ:
+        return True
+    return bool(cfg.get(tool.gate))
+
+
+def mcp_allowlist(cfg: dict, *, local_search_available: bool | None = None) -> list[str]:
+    """The names handed to the MCP server.
+
+    A locally-served tool is left off deliberately: exposing an unguarded
+    duplicate would let the model reach the version without our retries, the
+    overlap guard, or the per-call action ledger. The one exception is a local
+    wrapper that cannot work — see `mcp_fallback`.
+
+    `local_search_available` is worked out from the station credentials unless
+    you say otherwise; the default is the correct answer, so a caller cannot
+    get it wrong by forgetting.
+    """
+    if local_search_available is None:
+        local_search_available = not library_search_needs_mcp()
+    names = []
+    for tool in TOOLS:
+        if not _unlocked(tool, cfg):
+            continue
+        if tool.served == MCP:
+            names.append(tool.name)
+        elif tool.served == LOCAL and tool.mcp_fallback and not local_search_available:
+            names.append(tool.name)
+    return names
+
+
+def local_tool_names(cfg: dict, *, local_search_available: bool | None = None) -> list[str]:
+    """The tools our own wrappers serve, given the current settings."""
+    if local_search_available is None:
+        local_search_available = not library_search_needs_mcp()
+    names = []
+    for tool in TOOLS:
+        if not _unlocked(tool, cfg) or tool.served != LOCAL:
+            continue
+        if tool.mcp_fallback and not local_search_available:
+            continue      # MCP is standing in for it
+        if tool.needs_station_admin and not local_search_available:
+            continue      # cannot be built at all — don't claim it exists
+        names.append(tool.name)
+    return names
+
+
+def blocked_names() -> list[str]:
+    """Tools never exposed on a call line, whatever the settings say."""
+    return [t.name for t in TOOLS if t.gate == NEVER]
+
+
+def effective_tools(cfg: dict) -> dict:
+    """What the caller's agent actually gets, for the panel's tool test.
+
+    Previews that report only the MCP allowlist show a list that is neither
+    what MCP serves nor what the model sees.
+    """
+    local_ok = not library_search_needs_mcp()
+    guard = bool(cfg.get("avoid_on_air_overlap"))
+    waits = "waits for clear air" if guard else "no overlap guard"
+    detail = {
+        "subwave_search_library": "local: retry fallback",
+        "subwave_request_song": "local: pre-flight + status",
+        "subwave_queue_track": "local: exact pick, counts against the call limit",
+        "subwave_dj_announce": f"local: {waits}",
+        "subwave_run_skill": f"local: {waits}",
+    }
+    return {
+        "mcp": mcp_allowlist(cfg, local_search_available=local_ok),
+        "local": [
+            f"{name} ({detail[name]})" if name in detail else name
+            for name in local_tool_names(cfg, local_search_available=local_ok)
+        ],
+    }
+
+
+def catalogue() -> list[dict]:
+    """The panel's Station tools reference.
+
+    Blocked tools are included on purpose: "what can a caller do" is only
+    answerable if the things they can't do are visible too. Without them the
+    permission list reads as though anything might be one toggle away.
+    """
+    return [
+        {"name": t.name, "gate": t.gate, "what": t.what, "note": t.note}
+        for t in TOOLS
+    ]

@@ -481,83 +481,14 @@ SCHEMA: dict[str, dict] = {
 # agree on the spelling.
 RANDOM_PERSONA = "__random__"
 
-# ---------------------------------------------------------------------------
-# The station's whole MCP surface, as published in the SUB/WAVE manual
-# (getsubwave.com/manual/mcp) — including the tools a caller will never get.
-#
-# Why list the blocked ones: "what can a caller do" is only answerable if the
-# things they CAN'T do are visible too. Without this the permission list reads
-# as though anything might be one toggle away, and the only way to find out
-# what's missing is to turn everything on and see.
-#
-# (name, gate, what it does, note)
-#   gate = "read"    always available, no permission needed
-#          "<field>" gated on that setting
-#          "never"   deliberately not exposed on a call line, at any setting
-# A test keeps this in step with the worker's real allowlists.
-# ---------------------------------------------------------------------------
-MCP_TOOLS = [
-    ("subwave_health", "read", "Is the station up and on air.", ""),
-    ("subwave_now_playing", "read", "The current track, station context and listener count.", ""),
-    ("subwave_station_state", "read", "The upcoming queue, recent history and the booth log.", ""),
-    ("subwave_schedule", "read", "Personas, shows and the weekly schedule.",
-     "How much of this reaches the prompt is set under Station awareness."),
-    ("subwave_session", "read", "The DJ's live session and its recent on-air transcript.", ""),
-
-    ("subwave_request_song", "allow_requests",
-     "Queues a track from a natural-language request — a title, a mood, an era, "
-     "or 'something like this'. The DJ writes a spoken intro for it.",
-     "Station limits: 1 per 20s, 8 per hour, and none while nobody is listening. "
-     "Served by a local wrapper that retries awkward phrasing before reporting a miss."),
-    ("subwave_request_status", "allow_requests",
-     "Checks what the booth did with a request.", ""),
-    ("subwave_search_library", "allow_library_search",
-     "Exact term search over the library — no LLM, no rate limit.",
-     "Needs no credentials over MCP. With station admin credentials it is served "
-     "by a local wrapper that also retries with the 'by' connector stripped."),
-    ("subwave_dj_announce", "allow_announcements",
-     "Puts a spoken line on air, rewritten in the persona's voice.",
-     "Station admin credentials required. Waits for quiet air when overlap "
-     "protection is on. The sound-effect stinger this tool accepts is never used."),
-    ("subwave_list_skills", "allow_skills",
-     "What segments this station actually has, so the DJ doesn't guess at names.",
-     "Station admin credentials required."),
-    ("subwave_run_skill", "allow_skills",
-     "Runs a segment on air — weather, news, dedication, story time.",
-     "Station admin credentials required. The station rate-limits each segment "
-     "(25–60 min), so callers can't spam them."),
-
-    ("subwave_skip_track", "never",
-     "Force-ends whatever is playing.",
-     "A stranger could cut off the track everyone else is listening to."),
-    ("subwave_queue_track", "allow_exact_queue",
-     "Queues the exact track from a search result, by id — no re-matching, no "
-     "DJ intro.",
-     "Station admin credentials required. Off by default: it skips the request "
-     "endpoint's rate limit, so Actions per call is the only thing pacing a caller."),
-    ("subwave_dj_segment", "never",
-     "Fires a scripted segment: station ID, the hour, a link, guest banter, a "
-     "programme beat.",
-     "Station-level programming. Ask if you want this opened up — it needs the "
-     "same overlap guard the other on-air actions have."),
-    ("subwave_refresh_playlist", "never",
-     "Rebuilds the fallback auto-playlist for the current mood.",
-     "Reshapes what everyone hears next, on one caller's say-so. Ask if you "
-     "want this opened up."),
-    ("subwave_list_sfx", "never", "The sound-effects library.",
-     "Only useful for firing one."),
-    ("subwave_play_sfx", "never",
-     "Fires a stinger on air immediately, over the programme.",
-     "Nothing to add to a call, plenty to disrupt on air."),
-]
-
-
+# The panel's Station tools reference comes from the tool registry — the same
+# table the worker derives its allowlists from, so the two cannot disagree
+# about what a caller can reach.
 def mcp_tools_payload() -> list[dict]:
-    """The tool catalogue for the panel's reference section."""
-    return [
-        {"name": n, "gate": g, "what": w, "note": note}
-        for n, g, w, note in MCP_TOOLS
-    ]
+    from call.tools.registry import catalogue
+
+    return catalogue()
+
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {

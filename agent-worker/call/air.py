@@ -1,0 +1,140 @@
+"""Keeping the call DJ and the on-air DJ off each other's toes.
+
+The two are the same person. Left alone they talk over each other — the caller
+hears two of the same voice, and so does everyone listening to the station.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+
+from livekit.agents import Agent, AgentSession
+
+from station import StationClient
+
+from .background import spawn
+
+log = logging.getLogger("callin.agent")
+
+
+class OnAirGuard:
+    """Shared "is the broadcast actually talking right now" state for one call.
+
+    This is the single place that decides whether the air is busy; the reply
+    gate, the on-air tools and the widget's status chip all read it, so they
+    cannot disagree with each other.
+
+    "Busy" means ACTIVELY SPEAKING — not thinking, not queued. It's derived
+    from when the station last logged on-air speech, held for
+    `on_air_quiet_secs` (roughly how long a link runs), because the station
+    tells us when a link STARTED, not when it finished.
+    """
+
+    POLL_SECS = 4.0     # a station read per call every 4s, not per turn
+    MAX_HOLD = 45.0     # never leave a caller in silence longer than this
+
+    def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
+        self.station = station
+        self.room = room
+        self.enabled = bool(cfg.get("avoid_on_air_overlap"))
+        self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
+        self.on_air = False
+        self._clear = asyncio.Event()
+        self._clear.set()
+
+    def _publish(self, on_air: bool) -> None:
+        """Tell the widget, so the caller sees "DJ is on air" rather than a
+        DJ that has mysteriously gone quiet."""
+        if self.room is None:
+            return
+        try:
+            spawn(
+                self.room.local_participant.set_attributes(
+                    {"wavetalk.onair": "1" if on_air else ""}
+                )
+            )
+        except Exception as e:
+            log.debug("on-air state publish failed (harmless): %s", e)
+
+    async def wait_until_clear(self, timeout: float | None = None) -> float:
+        """Block until the broadcast is quiet. Returns the seconds waited, so
+        the caller can be told why there was a pause."""
+        if not self.enabled or self._clear.is_set():
+            return 0.0
+
+        started = time.time()
+        try:
+            await asyncio.wait_for(self._clear.wait(), timeout or self.MAX_HOLD)
+        except asyncio.TimeoutError:
+            # Dead air is worse than an overlap. If the station has been
+            # "speaking" for longer than any real link, assume the log is
+            # stale and let the call carry on.
+            log.warning("air still busy after %.0fs — letting the call continue",
+                        timeout or self.MAX_HOLD)
+            self._clear.set()
+        return time.time() - started
+
+    async def watch(self, session: AgentSession) -> None:
+        """Poll the station and flip the gate. Started as a task for the life
+        of the call."""
+        if not (self.enabled and self.quiet_secs > 0):
+            return
+        # The first pass runs immediately and silently: someone who dials in
+        # mid-link should have the gate already closed (so their first reply
+        # waits) without the greeting being cut off by a hand-over line for a
+        # broadcast that was already running when they picked up the phone.
+        first = True
+        while True:
+            try:
+                since = await self.station.seconds_since_on_air_speech()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                log.debug("on-air check failed (assuming clear): %s", e)
+                since = None
+
+            busy = since is not None and since < self.quiet_secs
+            if busy != self.on_air:
+                self.on_air = busy
+                self._publish(busy)
+                if busy:
+                    self._clear.clear()
+                    log.info("on-air DJ is speaking — holding the call DJ back")
+                    if not first:
+                        # Cut the call DJ off mid-sentence if need be: the whole
+                        # point is that the broadcast never hears itself doubled.
+                        try:
+                            session.interrupt()
+                            session.say(
+                                "Hold on a second — let me let that go out on air first.",
+                                allow_interruptions=False,
+                            )
+                        except Exception as e:
+                            log.debug("could not hand over to air cleanly: %s", e)
+                else:
+                    self._clear.set()
+                    log.info("air is clear — the call DJ has the floor again")
+            first = False
+            await asyncio.sleep(self.POLL_SECS)
+
+
+class CallAgent(Agent):
+    """The caller's DJ, with one addition: its replies wait for quiet air.
+
+    Holding here rather than dropping input is deliberate. The caller's words
+    are already transcribed and in the context by this point — only the REPLY
+    is queued, so nothing they said is lost and they never have to repeat
+    themselves just because the station was mid-link.
+    """
+
+    def __init__(self, instructions: str, guard: OnAirGuard) -> None:
+        super().__init__(instructions=instructions)
+        self._guard = guard
+
+    async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        waited = await self._guard.wait_until_clear()
+        if waited >= 2:
+            log.info("held the caller's reply %.0fs while the on-air DJ was talking",
+                     waited)
