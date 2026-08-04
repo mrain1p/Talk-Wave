@@ -405,6 +405,32 @@
     background: var(--bg); color: var(--text); resize: vertical; min-height: 70px; line-height: 1.5;
   }
 
+  /* --- responsive: phones and tablets -----------------------------------
+     The desktop layout floats a fixed-width card in the middle of the
+     viewport; on a touch screen that reads as a small box adrift in black.
+     Anchor to the top, take the width, and size type and touch targets
+     for fingers. (Compact embeds keep their own sizing — body.compact
+     rules are more specific and win.) */
+  @media (max-width: 900px) {
+    body { justify-content: flex-start; padding: 14px 12px 24px; }
+    .card, .panel { width: 100%; }
+  }
+  @media (max-width: 600px) {
+    .card { padding: 18px 15px; }
+    .avatar { width: 78px; height: 78px; }
+    .dj { font-size: 26px; }
+    .tagline { font-size: 13px; }
+    /* Idle, the call button IS the page's action — give it the full row.
+       The in-call chip states keep their pill size. */
+    #callBtn:not(.ringing):not(.answering):not(.live) {
+      width: 100%; padding: 14px 22px; font-size: 15px;
+    }
+    .controls button { padding: 12px 20px; font-size: 14px; }
+    /* Spend the freed space where a call actually needs it. */
+    .captions { max-height: 44vh; }
+    .ticker { font-size: 13px; }
+  }
+
   body.compact { padding: 0; min-height: 0; }
   body.compact .card { border: none; padding: 13px; background: transparent; width: 100%; }
   body.compact .avatar { width: 46px; height: 46px; }
