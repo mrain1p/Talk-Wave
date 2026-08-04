@@ -616,26 +616,40 @@ async def entrypoint(ctx: JobContext) -> None:
                 first = state["nudges"] == 1
                 log.info("no words from the caller for %ss — check-in %d/%d",
                          idle_secs, state["nudges"], max_nudges)
-                try:
-                    if first and max_nudges > 1:
+                if first and max_nudges > 1:
+                    try:
                         await session.generate_reply(instructions=(
                             "The caller has gone quiet. Check they're still there — "
                             "one short line in your own voice, warm, no more than a "
                             "few words. Don't repeat yourself or start a new topic."
                         ))
-                    else:
+                    except asyncio.CancelledError:
+                        return
+                    except Exception as e:
+                        log.warning("idle check-in failed: %s", e)
+                else:
+                    # Final strike: whatever happens, the line closes. A
+                    # goodbye that fails to generate must not leave the
+                    # caller holding a dead line forever.
+                    try:
                         await session.generate_reply(instructions=(
                             "Still nothing from the caller. Say a brief goodbye in "
                             "character — you're letting them go and getting back to "
                             "the broadcast. One line, then stop."
                         ))
-                        await asyncio.sleep(6)
-                        ctx.shutdown(reason="caller went quiet")
+                    except asyncio.CancelledError:
                         return
-                except asyncio.CancelledError:
+                    except Exception as e:
+                        log.warning("idle goodbye failed: %s", e)
+                        try:
+                            await session.say(
+                                "I'll let you get back to it — call in any time."
+                            )
+                        except Exception:
+                            pass
+                    await asyncio.sleep(6)  # let the goodbye actually play
+                    await _end_call(ctx, "caller went quiet")
                     return
-                except Exception as e:
-                    log.warning("idle check-in failed: %s", e)
 
         idle_task = asyncio.create_task(_idle_watch())
         ctx.add_shutdown_callback(lambda: _cancel(idle_task))
@@ -676,7 +690,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 # rather than leaving an unhandled task exception behind.
                 log.warning("sign-off before the time limit failed: %s", e)
 
-            ctx.shutdown(reason="call time limit reached")
+            await _end_call(ctx, "call time limit reached")
 
         timeout_task = asyncio.create_task(_end_when_over_time())
         ctx.add_shutdown_callback(lambda: _cancel(timeout_task))
@@ -719,6 +733,21 @@ async def entrypoint(ctx: JobContext) -> None:
 
 async def _cancel(task: asyncio.Task) -> None:
     task.cancel()
+
+
+async def _end_call(ctx: JobContext, reason: str) -> None:
+    """Actually hang up. ctx.shutdown() alone only ends the AGENT's job —
+    the caller would stay connected to a DJ-less room, mic hot and timer
+    running, looking 'on the line' forever. Deleting the room disconnects
+    everyone; the widget hears it as a normal remote hangup."""
+    log.info("ending call (%s)", reason)
+    try:
+        from livekit import api as lk_api
+
+        await ctx.api.room.delete_room(lk_api.DeleteRoomRequest(room=ctx.room.name))
+    except Exception as e:
+        log.warning("room delete failed (%s) — agent will still leave", e)
+    ctx.shutdown(reason=reason)
 
 
 async def release_call_slot(room: str) -> None:
