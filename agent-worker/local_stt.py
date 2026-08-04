@@ -105,9 +105,12 @@ class LocalWhisperSTT(stt.STT):
     def model(self) -> str:
         return self._model_name
 
-    async def prewarm(self) -> None:
-        """Load the model before the first caller rather than during their turn."""
-        await _get_model(self._model_name, self._compute_type, self._cpu_threads)
+    def prewarm(self) -> None:
+        """Load the model before the first caller rather than during their
+        turn. Synchronous on purpose: the Agents SDK calls `stt.prewarm()`
+        without awaiting, so an async version silently never ran
+        ("coroutine was never awaited" in the worker logs)."""
+        preload_sync(self._model_name, self._compute_type, self._cpu_threads)
 
     async def _recognize_impl(
         self,

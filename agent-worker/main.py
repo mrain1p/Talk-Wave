@@ -530,6 +530,36 @@ async def entrypoint(ctx: JobContext) -> None:
         room_input_options=RoomInputOptions(close_on_disconnect=True),
     )
 
+    # When a provider gives up after all its retries (observed: Gemini
+    # flash-lite 503ing under load), the caller must never get dead air.
+    # The DJ can't THINK without the LLM, but it can still SPEAK — say()
+    # drives the TTS directly, no model involved.
+    import time as _time_mod
+
+    last_sorry = {"t": 0.0}
+
+    def _on_session_error(ev) -> None:
+        err = getattr(ev, "error", None)
+        log.warning("session error (source=%s): %s", getattr(ev, "source", "?"), err)
+        if getattr(err, "recoverable", False):
+            return
+        if _time_mod.time() - last_sorry["t"] < 20:
+            return
+        last_sorry["t"] = _time_mod.time()
+
+        async def _apologise() -> None:
+            try:
+                await session.say(
+                    "The line's giving me trouble on my end — hang tight a "
+                    "second, or try me again in a minute."
+                )
+            except Exception:
+                pass  # if the voice is what failed, silence is unavoidable
+
+        asyncio.create_task(_apologise())
+
+    session.on("error", _on_session_error)
+
     # Every finalized caller utterance goes in the log. Without this, a
     # "the DJ didn't answer me" report is undiagnosable: a missing heard:
     # line means STT/VAD never caught the words; a heard: line with no
@@ -669,7 +699,20 @@ async def entrypoint(ctx: JobContext) -> None:
             "and never a list of what you can do."
         )
     greeting = str(cfg.get("greeting") or "").strip() or default_greeting
-    await session.generate_reply(instructions=greeting)
+    try:
+        await session.generate_reply(instructions=greeting)
+    except Exception as e:
+        # A model outage at pickup used to mean the caller heard NOTHING
+        # until they gave up. A canned line through the TTS keeps the call
+        # alive — later turns may succeed once the provider recovers.
+        log.warning("greeting failed (%s) — using a canned pickup", e)
+        try:
+            await session.say(
+                "Hey — you're through to the booth. Bear with me a second, "
+                "the line's a bit rough tonight. What can I do for you?"
+            )
+        except Exception:
+            pass
 
 
 async def _cancel(task: asyncio.Task) -> None:

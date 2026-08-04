@@ -35,7 +35,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.19"
+APP_VERSION = "0.9.20"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -1184,7 +1184,9 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
             stt_obj = LocalWhisperSTT(model=stt_model_name or "base.en")
             t0 = _time.perf_counter()
-            await stt_obj.prewarm()
+            # prewarm() is synchronous (the Agents SDK calls it unawaited);
+            # keep the blocking load off this event loop.
+            await asyncio.to_thread(stt_obj.prewarm)
             load_ms = (_time.perf_counter() - t0) * 1000
 
             n = len(pcm) // 2
