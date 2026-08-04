@@ -20,7 +20,7 @@ from pathlib import Path
 from livekit.plugins import anthropic, deepgram, google, openai
 
 import settings as settings_store
-from tts_adapter import AdapterTTS
+from tts_adapter import ADAPTER_DIR, AdapterTTS
 
 log = logging.getLogger("callin.agent")
 
@@ -144,7 +144,11 @@ def build_llm(cfg: dict):
 def build_tts(cfg: dict, voice: str) -> AdapterTTS:
     adapter_path = cfg.get("tts_adapter") or None
     if adapter_path and not os.path.isabs(adapter_path):
-        candidate = Path(__file__).parent / "tts-adapters" / adapter_path
+        # ADAPTER_DIR, never Path(__file__) — this line used to live in
+        # main.py, where __file__ happened to sit beside tts-adapters/. Moving
+        # it one directory down silently stopped resolving the adapter name,
+        # and every call crashed on FileNotFoundError before the DJ spoke.
+        candidate = ADAPTER_DIR / adapter_path
         if candidate.exists():
             adapter_path = str(candidate)
 

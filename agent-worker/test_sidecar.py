@@ -1181,6 +1181,40 @@ class TestMainToolLogic(_TempStores):
         self.assertIn("x1", with_id)
         self.assertNotIn("x1", self.music._fmt_track({"title": "T", "artist": "A", "id": "x1"}))
 
+    def test_a_relative_adapter_name_resolves_from_anywhere(self):
+        """This one shipped broken and every call crashed before the DJ spoke.
+
+        build_tts resolved the adapter against Path(__file__).parent, which
+        worked only because it happened to live next to tts-adapters/. Moving
+        it into call/ during the refactor silently stopped resolving, and the
+        job died on FileNotFoundError. Nothing tested build_tts at all.
+        """
+        import tts_adapter
+
+        names = [p.name for p in tts_adapter.ADAPTER_DIR.glob("*.json")]
+        self.assertTrue(names, "no adapter configs shipped — cannot test resolution")
+
+        for name in names:
+            resolved = tts_adapter.ADAPTER_DIR / name
+            self.assertTrue(resolved.exists(), name)
+
+        # The real call path: a bare filename must become a readable file.
+        built = self.providers.build_tts(
+            {"tts_mode": "local", "tts_adapter": names[0], "tts_base_url": "http://x"},
+            "some-voice",
+        )
+        self.assertIsNotNone(built)
+
+    def test_every_shipped_adapter_config_is_loadable(self):
+        # A malformed adapter would fail the same way — at call time, in front
+        # of a caller, rather than here.
+        import tts_adapter
+
+        for path in tts_adapter.ADAPTER_DIR.glob("*.json"):
+            cfg = tts_adapter.load_adapter(str(path))
+            self.assertIn("response", cfg, path.name)
+            self.assertIn("audio", cfg, path.name)
+
     def test_effective_stt_falls_back_without_keys(self):
         provider, model, note = self.providers.effective_stt({"stt_provider": "deepgram"})
         self.assertEqual(provider, "google")  # no deepgram or openai key set

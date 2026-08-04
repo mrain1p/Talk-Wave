@@ -29,6 +29,7 @@ import admin_auth
 import secrets_store
 import settings as settings_store
 import station as station_mod
+from tts_adapter import ADAPTER_DIR
 from prompts import _demojibake
 from station import StationClient
 from station_config import StationConfig
@@ -1025,7 +1026,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
     personas = [{"id": p.get("id"), "name": p.get("name")} for p in personas_raw if p.get("id")]
 
     adapters = sorted(
-        p.name for p in (Path(__file__).parent / "tts-adapters").glob("*.json")
+        p.name for p in ADAPTER_DIR.glob("*.json")
         if not p.name.startswith("_")
     )
 
@@ -1100,7 +1101,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
     adapter_path = cfg.get("tts_adapter") or None
     if adapter_path and not os.path.isabs(adapter_path):
-        candidate = Path(__file__).parent / "tts-adapters" / adapter_path
+        candidate = ADAPTER_DIR / adapter_path
         adapter_path = str(candidate) if candidate.exists() else None
 
     voice = cfg.get("tts_voice") or ""
@@ -1384,7 +1385,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
         adapter_path = cfg.get("tts_adapter") or None
         if adapter_path and not os.path.isabs(adapter_path):
-            cand = Path(__file__).parent / "tts-adapters" / adapter_path
+            cand = ADAPTER_DIR / adapter_path
             adapter_path = str(cand) if cand.exists() else None
 
         voice = cfg.get("tts_voice") or ""
