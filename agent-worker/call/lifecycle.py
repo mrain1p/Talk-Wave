@@ -259,7 +259,21 @@ async def greet(session: AgentSession, cfg: dict) -> None:
         )
     greeting = str(cfg.get("greeting") or "").strip() or default_greeting
     try:
-        await session.generate_reply(instructions=greeting)
+        # The greeting is generated before the caller has said anything, and
+        # the DJ usually reaches for a tool while writing it ("what's playing
+        # right now?"). That leaves a function call as the FIRST turn in the
+        # conversation, and Gemini rejects the whole request outright:
+        #   "Please ensure that function call turn comes immediately after a
+        #    user turn or after a function response turn."  (400, fatal)
+        # Reproduced directly against the API: identical history with a user
+        # turn in front of it passes. So the call opens with one, describing
+        # the situation rather than putting words in the caller's mouth. It is
+        # never spoken — bracketed text is stripped on its way to the voice.
+        await session.generate_reply(
+            user_input="[Call connected. The caller is on the line and has not "
+                       "spoken yet — you speak first.]",
+            instructions=greeting,
+        )
     except Exception as e:
         # A model outage at pickup used to mean the caller heard NOTHING until
         # they gave up. A canned line through the TTS keeps the call alive —

@@ -783,6 +783,35 @@ class TestCallStructure(unittest.TestCase):
         params = inspect.signature(build_call_control_tools).parameters
         self.assertIn("get_session", params)
 
+    def test_the_greeting_opens_with_a_user_turn(self):
+        """Reproduced against the Gemini API: a function call as the FIRST
+        turn is rejected outright — "function call turn comes immediately
+        after a user turn or after a function response turn", 400, fatal. The
+        DJ routinely calls a tool while writing its greeting (checking what's
+        playing), so the conversation has to start with a user turn."""
+        import asyncio, inspect
+
+        src = inspect.getsource(self.lifecycle.greet)
+        self.assertIn("user_input=", src)
+
+        seen = {}
+
+        class FakeSession:
+            async def generate_reply(self, **kw):
+                seen.update(kw)
+            async def say(self, *a, **kw):
+                pass
+
+        asyncio.run(self.lifecycle.greet(FakeSession(), {}))
+        self.assertTrue(seen.get("user_input"), "no user turn seeded")
+        self.assertTrue(seen.get("instructions"), "the greeting itself was lost")
+
+        # It is a cue, not words put in the caller's mouth — and bracketed
+        # text can never reach the voice.
+        import speech_filter
+        self.assertEqual(
+            speech_filter.strip_stage_directions(seen["user_input"]), "")
+
     def test_idle_watch_and_time_limit_are_opt_out_by_setting(self):
         # Both used to be `if` blocks inside entrypoint; as functions they must
         # still no-op on 0 rather than starting a task that never fires.
