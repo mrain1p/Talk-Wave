@@ -72,6 +72,23 @@ def _fmt_now_playing(np: dict) -> str:
         line = f"Now playing: \"{track['title']}\""
         if track.get("artist"):
             line += f" by {track['artist']}"
+        # The station analyses tracks and publishes what it found. Without
+        # this the DJ could name the record but had nothing to SAY about it —
+        # and "what is this?" is one of the commonest things a caller asks.
+        detail = []
+        if track.get("album"):
+            detail.append(str(track["album"]))
+        if track.get("genre"):
+            detail.append(str(track["genre"]))
+        moods = track.get("moods") or []
+        if isinstance(moods, list) and moods:
+            detail.append(", ".join(str(m) for m in moods[:3]))
+        if track.get("bpm"):
+            detail.append(f"{track['bpm']} bpm")
+        if track.get("musicalKey"):
+            detail.append(str(track["musicalKey"]))
+        if detail:
+            line += " — " + "; ".join(detail)
         bits.append(line + ".")
     else:
         bits.append("Nothing is playing this second (between tracks).")
@@ -83,13 +100,31 @@ def _fmt_now_playing(np: dict) -> str:
     where = []
     if clock.get("display"):
         where.append(clock["display"])
-    if time_ctx.get("vibe"):
+    # `time` is a plain string ("evening") on some builds and an object with a
+    # `vibe` on others — take whichever this station sends.
+    if isinstance(time_ctx, dict) and time_ctx.get("vibe"):
         where.append(str(time_ctx["vibe"]))
-    if weather.get("condition"):
+    elif isinstance(time_ctx, str) and time_ctx:
+        where.append(time_ctx)
+    if isinstance(weather, dict) and weather.get("condition"):
         temp = f", {weather['temp']}{weather.get('tempUnit', '')}" if weather.get("temp") else ""
         where.append(f"{weather['condition']}{temp}")
+    elif isinstance(weather, str) and weather:
+        where.append(weather)
     if where:
         bits.append("It's " + ", ".join(where) + ".")
+
+    if ctx.get("dominantMood"):
+        bits.append(f"The room tonight is {ctx['dominantMood']}.")
+
+    # How many people are actually out there. A caller asking "is anyone even
+    # listening?" is asking a real question, and the station knows the answer.
+    listeners = np.get("listeners")
+    if isinstance(listeners, int):
+        bits.append(
+            "Nobody else is tuned in right now." if listeners <= 0
+            else f"{listeners} listener{'s' if listeners != 1 else ''} tuned in."
+        )
 
     return " ".join(bits)
 

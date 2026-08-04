@@ -266,6 +266,40 @@ class StationClient:
             log.warning("library search failed: %s", e)
             return []
 
+    async def queue_track(self, track: dict) -> dict:
+        """Push an exact track from a search result onto the queue.
+
+        Different from submit_request in ways that matter on a call: it takes
+        the id the search returned, so the station plays THAT track rather than
+        resolving the words again and possibly landing on something else — and
+        it isn't subject to the request endpoint's 1-per-20s gate. No DJ intro
+        is generated; the caller's DJ is already talking about it.
+
+        Admin-only.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not (track.get("id") and track.get("title")):
+            return {"ok": False, "error": "need the track id and title from a search"}
+        try:
+            r = await self._client.post(
+                "/dj/queue-track",
+                json={k: v for k, v in track.items() if v not in (None, "")},
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("queue-track slow to confirm (%s) — treating as queued", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("queue-track failed: %s", e)
+            return {"ok": False, "error": str(e)[:140]}
+
     async def submit_request(self, text: str, name: str = "") -> dict:
         """Public request endpoint — the same path the station's own request
         slip uses."""

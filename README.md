@@ -50,10 +50,17 @@ library.
 **Station integration**
 - Tools come from the station's own MCP server, filtered through an
   allowlist. Callers can trigger: song requests (with an optional
-  confirm-before-send step), library search, on-air announcements, and
-  station segments (weather, news, dedications). Destructive tools —
-  skip, direct queueing, SFX, programming — are never exposed, regardless
-  of settings.
+  confirm-before-send step), library search, exact queueing of a track they
+  picked out of the results (off by default), on-air announcements, and
+  station segments (weather, news, dedications). Track skipping, sound
+  effects and station programming are never exposed, regardless of settings —
+  and the panel lists all 17 of the station's tools with the status of each,
+  so the boundary is visible rather than something you discover by toggling.
+- The DJ knows what it's playing, not just its name: genre, mood tags, BPM
+  and key come through when the station has analysed the track, along with
+  the live listener count — so "what is this?" gets a real answer.
+- A queued request comes back with its queue position, so the DJ can say
+  "third up, about ten minutes" instead of implying it's on now.
 - Everything is discovered, not hardcoded: personas, DJ/Show cards, voices,
   and model lists are read live from the station and providers. Point the
   sidecar at a different SUB/WAVE instance and it re-homes itself.
@@ -199,6 +206,7 @@ Sections are grouped by the job you're doing, in the order you'd do it:
 | Call settings | **Back to air** | The one-line on-air mention after a call ends |
 | Call settings | **Call sounds** | The sound set, per-sound uploads or URLs, previews, default volume |
 | Reference | **What callers can ask** | Live reference derived from the permissions above — including what is never available, and why |
+| Reference | **Station tools** | All 17 tools the station publishes over MCP, what each does, and whether a caller can reach it. Follows the permission switches as you flip them |
 | Reference | **Embed** | Copyable iframe snippet + compact preview |
 
 At the bottom: **Run full pipeline check** (11 stages in call order — each

@@ -650,14 +650,27 @@ class TestMainToolLogic(_TempStores):
         self.assertIn("subwave_now_playing", allowed)
 
     def test_wrapped_tools_never_served_raw(self):
+        # Requests are always wrapped. Library search is wrapped only when the
+        # wrapper can actually work — see the credential test below.
+        import station_config
+
         cfg = {"allow_requests": True, "allow_library_search": True}
-        allowed = self.main.build_allowed_tools(cfg)
-        self.assertNotIn("subwave_request_song", allowed)
-        self.assertNotIn("subwave_search_library", allowed)
-        et = self.main.effective_tools({**cfg, "avoid_on_air_overlap": True})
-        local_names = " ".join(et["local"])
-        self.assertIn("subwave_request_song", local_names)
-        self.assertIn("subwave_search_library", local_names)
+        original = station_config.admin_credentials
+        try:
+            station_config.admin_credentials = lambda: ("dj", "secret")
+            allowed = self.main.build_allowed_tools(cfg)
+            self.assertNotIn("subwave_request_song", allowed)
+            self.assertNotIn("subwave_search_library", allowed)
+            et = self.main.effective_tools({**cfg, "avoid_on_air_overlap": True})
+            local_names = " ".join(et["local"])
+            self.assertIn("subwave_request_song", local_names)
+            self.assertIn("subwave_search_library", local_names)
+        finally:
+            station_config.admin_credentials = original
+
+        # Requests stay wrapped with or without credentials — that wrapper
+        # uses a public endpoint and works either way.
+        self.assertNotIn("subwave_request_song", self.main.build_allowed_tools(cfg))
 
     def test_action_ledger_caps_a_single_call(self):
         actions = self.main.CallActions(2)
@@ -732,6 +745,110 @@ class TestMainToolLogic(_TempStores):
         self.assertEqual(settings_store.RANDOM_PERSONA, "__random__")
         self.assertNotIn(settings_store.RANDOM_PERSONA,
                          settings_store.load()["persona_override"])
+
+    def test_tool_catalogue_matches_what_the_worker_actually_allows(self):
+        """The panel's Station tools list is only worth having if it's true.
+        Every catalogue entry must agree with the real allowlists, and every
+        tool the worker can reach must be in the catalogue."""
+        catalogue = {n: g for n, g, *_ in settings_store.MCP_TOOLS}
+
+        # Reads are always on.
+        for name in self.main.READ_TOOLS:
+            self.assertEqual(catalogue.get(name), "read", name)
+
+        # Permission-gated tools are listed under the flag that gates them.
+        for flag, tools in self.main.OPTIONAL_TOOLS.items():
+            for name in tools:
+                if name in catalogue:          # speculative names may not exist
+                    self.assertEqual(catalogue[name], flag, name)
+
+        # Nothing described as "never" may appear in any allowlist, at any
+        # setting — this is the claim the panel makes to the operator.
+        every_flag_on = {flag: True for flag in self.main.OPTIONAL_TOOLS}
+        for guarded in (False, True):
+            allowed = set(self.main.build_allowed_tools(every_flag_on, guarded=guarded))
+            for name, gate in catalogue.items():
+                if gate == "never":
+                    self.assertNotIn(name, allowed, f"{name} is claimed to be blocked")
+
+        # And every reachable tool is documented — an undocumented one is how
+        # the list quietly stops being the truth.
+        known = set(self.main.READ_TOOLS)
+        for tools in self.main.OPTIONAL_TOOLS.values():
+            known.update(tools)
+        undocumented = sorted(n for n in known if n not in catalogue)
+        self.assertFalse(undocumented, f"tools with no catalogue entry: {undocumented}")
+
+    def test_library_search_falls_back_to_mcp_without_credentials(self):
+        # The local wrapper reads an admin-only endpoint, so with no station
+        # credentials it can only ever return nothing — which reaches the
+        # caller as "not in the racks" for a track the library holds. The MCP
+        # tool needs no auth, so it must take over.
+        import station_config
+
+        cfg = {"allow_library_search": True}
+        original = station_config.admin_credentials
+        try:
+            station_config.admin_credentials = lambda: ("", "")
+            self.assertTrue(self.main.library_search_needs_mcp())
+            self.assertIn("subwave_search_library", self.main.build_allowed_tools(cfg))
+            self.assertEqual(self.main.build_library_tools(
+                cfg, None, self.main.CallActions(0)), [])
+
+            station_config.admin_credentials = lambda: ("dj", "secret")
+            self.assertFalse(self.main.library_search_needs_mcp())
+            self.assertNotIn("subwave_search_library", self.main.build_allowed_tools(cfg))
+            self.assertEqual(len(self.main.build_library_tools(
+                cfg, None, self.main.CallActions(0))), 1)
+        finally:
+            station_config.admin_credentials = original
+
+    def test_queue_position_becomes_something_a_dj_can_say(self):
+        # Without this the DJ could only say "soon", which is how a caller
+        # gets told their song is on when it is four tracks away.
+        self.assertIn("next up", self.main._when_it_plays(1))
+        self.assertIn("next up", self.main._when_it_plays(0))
+        third = self.main._when_it_plays(3)
+        self.assertIn("number 3", third)
+        self.assertIn("9-12 minutes", third)
+        # No position from the station means no guessing.
+        for missing in (None, "", "soon"):
+            self.assertIn("don't guess", self.main._when_it_plays(missing))
+
+    def test_exact_queue_needs_search_and_credentials(self):
+        import station_config
+
+        original = station_config.admin_credentials
+        try:
+            # No credentials: the wrapper can't read ids, so the tool is absent
+            # rather than present and broken.
+            station_config.admin_credentials = lambda: ("", "")
+            cfg = {"allow_library_search": True, "allow_exact_queue": True}
+            names = [t.info.name for t in self.main.build_library_tools(
+                cfg, None, self.main.CallActions(0))]
+            self.assertNotIn("subwave_queue_track", names)
+
+            station_config.admin_credentials = lambda: ("dj", "secret")
+            names = [t.info.name for t in self.main.build_library_tools(
+                cfg, None, self.main.CallActions(0))]
+            self.assertIn("subwave_queue_track", names)
+            self.assertIn("subwave_search_library", names)
+
+            # Off by default, and never served raw over MCP.
+            off = {"allow_library_search": True}
+            names = [t.info.name for t in self.main.build_library_tools(
+                off, None, self.main.CallActions(0))]
+            self.assertNotIn("subwave_queue_track", names)
+            self.assertNotIn("subwave_queue_track",
+                             self.main.build_allowed_tools({**cfg, "allow_requests": True}))
+        finally:
+            station_config.admin_credentials = original
+
+    def test_search_results_carry_ids_only_when_they_can_be_used(self):
+        # The id is noise in the transcript unless something can act on it.
+        with_id = self.main._fmt_track({"title": "T", "artist": "A", "id": "x1"}, with_id=True)
+        self.assertIn("x1", with_id)
+        self.assertNotIn("x1", self.main._fmt_track({"title": "T", "artist": "A", "id": "x1"}))
 
     def test_effective_stt_falls_back_without_keys(self):
         provider, model, note = self.main.effective_stt({"stt_provider": "deepgram"})

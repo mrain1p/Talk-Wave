@@ -1047,6 +1047,8 @@
       why: 'A run of requests in one mood — capped by the per-call action limit.' },
     { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
       why: 'Searches the real library before promising anything.' },
+    { need: 'allow_exact_queue', say: '“The second one — the live version.”',
+      why: 'Queues that exact recording from the search results, not a re-match.' },
     { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
       why: 'Hands a line to the on-air DJ to read in persona.' },
     { need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
@@ -1067,11 +1069,20 @@
   // this the permissions list reads as if anything might be one toggle away.
   const NEVER = [
     ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
-    ['Put a track straight into the queue', 'that bypasses the request queue and its rate limits'],
     ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
     ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
     ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
   ];
+
+  // What a permission is set to RIGHT NOW, including an unsaved tick. The
+  // reference lists are there to answer "what does this switch do" — reading
+  // only the saved value meant they didn't move until after you'd committed
+  // the change you were trying to understand.
+  function permOn(field) {
+    const el = $(field);
+    if (el && el.type === 'checkbox') return el.checked;
+    return !!resolved[field];
+  }
 
   function paintAsks() {
     const host = $('askList');
@@ -1079,7 +1090,7 @@
     host.innerHTML = '';
     let on = 0;
     ASKS.forEach((a) => {
-      const enabled = !a.need || !!resolved[a.need];
+      const enabled = !a.need || permOn(a.need);
       if (enabled) on++;
       const li = document.createElement('li');
       li.className = enabled ? '' : 'off';
@@ -1107,6 +1118,46 @@
 
     const tag = $('tagAsk');
     if (tag) tag.textContent = on + ' of ' + ASKS.length + ' available';
+  }
+
+  // The station's whole tool surface, straight from the schema so it can't
+  // drift from what the worker actually allows.
+  function paintTools() {
+    const host = $('toolList');
+    if (!host) return;
+    const tools = SCHEMA.mcpTools || [];
+    host.innerHTML = '';
+    let reachable = 0;
+    tools.forEach((t) => {
+      const on = t.gate === 'read' || (t.gate !== 'never' && permOn(t.gate));
+      if (on) reachable++;
+      const li = document.createElement('li');
+      li.className = t.gate === 'never' ? 'blocked' : (on ? '' : 'off');
+
+      const state = document.createElement('span');
+      state.className = 'tstate';
+      state.textContent = t.gate === 'never' ? 'never'
+        : (t.gate === 'read' ? 'always' : (on ? 'on' : 'off'));
+
+      const body = document.createElement('span');
+      body.className = 'tbody';
+      const name = document.createElement('code');
+      name.textContent = t.name;
+      const what = document.createElement('span');
+      what.className = 'twhat';
+      what.textContent = t.what;
+      body.append(name, what);
+      if (t.note) {
+        const note = document.createElement('span');
+        note.className = 'tnote';
+        note.textContent = t.note;
+        body.appendChild(note);
+      }
+      li.append(state, body);
+      host.appendChild(li);
+    });
+    const tag = $('tagTools');
+    if (tag) tag.textContent = reachable + ' of ' + tools.length + ' reachable';
   }
 
   // Only show configuration that applies to the current selection. A local-model
@@ -1231,6 +1282,7 @@
     applyVisibility();
     setEmbedSnippet();
     paintAsks();
+    paintTools();
     paintTags();
     paintFirstRun();
     paintSecurity();
@@ -1509,7 +1561,15 @@
     ALL_FIELDS.forEach((f) => {
       const el = $(f);
       if (!el) return;
-      const onChange = () => { markClean(); applyVisibility(); };
+      const onChange = () => {
+        markClean();
+        applyVisibility();
+        // The two reference lists describe the permissions, so they follow
+        // the switches rather than waiting for a save.
+        if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'perms') {
+          paintAsks(); paintTools();
+        }
+      };
       el.addEventListener('input', onChange);
       el.addEventListener('change', onChange);
     });

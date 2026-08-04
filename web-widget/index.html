@@ -269,6 +269,7 @@
         <label class="check"><input type="checkbox" id="allow_requests" /> Take song requests</label>
         <label class="check"><input type="checkbox" id="confirm_requests" /> Confirm requests before sending</label>
         <label class="check"><input type="checkbox" id="allow_library_search" /> Search the music library</label>
+        <label class="check"><input type="checkbox" id="allow_exact_queue" /> Queue the exact track they picked</label>
         <label class="check"><input type="checkbox" id="allow_announcements" /> Hand messages to the on-air DJ</label>
         <label class="check"><input type="checkbox" id="allow_skills" /> Run station segments when a caller asks</label>
         <label class="check"><input type="checkbox" id="offer_skills" /> …and let the DJ offer one when the moment fits</label>
@@ -517,6 +518,17 @@
         <p class="hint wide" style="margin-top:0">Live reference — reflects the
           permissions you've enabled above. Anything greyed out is currently off.</p>
         <ul class="asklist" id="askList"></ul>
+      </div>
+    </details>
+    <details data-group="tools" class="sec">
+      <summary><span class="chev">▶</span>Station tools<span class="tag" id="tagTools"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Every tool your SUB/WAVE
+          publishes over MCP, and whether a caller can reach it. The blocked
+          ones are listed too — otherwise the only way to find out what's
+          missing is to switch everything on and see. Reference only; change
+          what's reachable under <strong>Caller permissions</strong>.</p>
+        <ul class="toollist" id="toolList"></ul>
       </div>
     </details>
     <details data-group="embed" class="sec">

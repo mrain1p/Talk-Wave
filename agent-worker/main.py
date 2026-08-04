@@ -83,13 +83,12 @@ READ_TOOLS = [
 # subwave_dj_segment and subwave_refresh_playlist (station-level programming).
 OPTIONAL_TOOLS = {
     "allow_requests": ["subwave_request_song", "subwave_request_status"],
-    # The extra names are pre-authorised for when the station exposes its
-    # sounds-like/semantic search over MCP (it exists in the admin UI but
-    # isn't on the API yet) — unknown names in an allowlist are harmless,
-    # and this way it lights up for callers the moment the station ships it.
-    "allow_library_search": ["subwave_search_library", "subwave_sounds_like",
-                             "subwave_search_sounds_like", "subwave_audio_search",
-                             "subwave_semantic_search"],
+    # This list once carried four guesses at a sounds-like/semantic search
+    # tool, pre-authorised in case the station shipped one. The published MCP
+    # reference has no such tool, so they were names that could never match —
+    # and an allowlist entry that matches nothing is indistinguishable from a
+    # typo in one that should. Add it back when it actually exists.
+    "allow_library_search": ["subwave_search_library"],
     "allow_announcements": ["subwave_dj_announce"],
     # The station's own segments — weather, news, dedications, story time.
     # list_skills is paired so the DJ knows what it can actually run rather
@@ -107,7 +106,24 @@ ON_AIR_TOOLS = {"subwave_dj_announce", "subwave_run_skill"}
 
 # Served by local wrappers with retry/fallback logic (build_library_tools) —
 # never exposed raw over MCP, or the model could reach the fragile version.
-LOCALLY_WRAPPED = {"subwave_search_library", "subwave_request_song"}
+LOCALLY_WRAPPED = {"subwave_search_library", "subwave_request_song",
+                   "subwave_queue_track"}
+
+
+def library_search_needs_mcp() -> bool:
+    """Whether library search has to go over MCP rather than our wrapper.
+
+    The wrapper is better when it works — it retries with the "by" connector
+    stripped — but it reads the station's REST /dj/search, which is admin-only.
+    Without credentials it can only ever return nothing, which reaches the
+    caller as "haven't got that one in the racks" for a track the library
+    holds. The MCP tool needs no auth at all, so with no credentials the raw
+    tool is strictly better than a wrapper that cannot succeed.
+    """
+    from station_config import admin_credentials
+
+    user, password = admin_credentials()
+    return not (user and password)
 
 
 def build_allowed_tools(cfg: dict, *, guarded: bool = False) -> list[str]:
@@ -117,7 +133,11 @@ def build_allowed_tools(cfg: dict, *, guarded: bool = False) -> list[str]:
     for flag, tools in OPTIONAL_TOOLS.items():
         if cfg.get(flag):
             allowed.extend(tools)
-    return [t for t in allowed if t not in LOCALLY_WRAPPED and t not in ON_AIR_TOOLS]
+
+    wrapped = set(LOCALLY_WRAPPED)
+    if cfg.get("allow_library_search") and library_search_needs_mcp():
+        wrapped.discard("subwave_search_library")
+    return [t for t in allowed if t not in wrapped and t not in ON_AIR_TOOLS]
 
 
 class CallActions:
@@ -418,11 +438,34 @@ def _query_variants(q: str) -> list[str]:
     return variants
 
 
-def _fmt_track(t: dict) -> str:
+def _fmt_track(t: dict, with_id: bool = False) -> str:
     bits = f"\"{t.get('title', '?')}\" by {t.get('artist', '?')}"
     if t.get("album"):
         bits += f" ({t['album']}" + (f", {t['year']})" if t.get("year") else ")")
+    # The exact-queue tool needs the id the search returned. Without it in the
+    # text the model has nothing to pass and silently falls back to guessing.
+    if with_id and t.get("id"):
+        bits += f"  [id: {t['id']}]"
     return bits
+
+
+def _when_it_plays(position) -> str:
+    """Turn a queue position into something a DJ would actually say.
+
+    The station returns one; without it the DJ could only say "soon", which is
+    how a caller ends up being told their song is on when it is four tracks
+    away. A position is roughly 3-4 minutes a track.
+    """
+    try:
+        pos = int(position)
+    except (TypeError, ValueError):
+        return "You don't know how far down the queue it is, so don't guess at a time."
+    if pos <= 1:
+        return "It's next up, so it plays after the current track."
+    return (
+        f"It's number {pos} in the queue — roughly {pos * 3}-{pos * 4} minutes away. "
+        "You may tell them that."
+    )
 
 
 def build_library_tools(cfg: dict, station: StationClient, actions: CallActions) -> list:
@@ -438,7 +481,12 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
 
     tools = []
 
-    if cfg.get("allow_library_search"):
+    # Exact queueing needs the ids that only the local search wrapper surfaces.
+    exact_queue = bool(cfg.get("allow_exact_queue")) and not library_search_needs_mcp()
+
+    # Without admin credentials this wrapper can only ever return nothing, so
+    # the raw MCP tool takes its place (see library_search_needs_mcp).
+    if cfg.get("allow_library_search") and not library_search_needs_mcp():
         @lk_llm.function_tool(name="subwave_search_library")
         async def search_library(q: str) -> str:
             """Search the station's music library by title and/or artist.
@@ -450,7 +498,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
                     note = "" if attempt == q else (
                         f" (matched on '{attempt}' — the library needs every word to match)"
                     )
-                    lines = [_fmt_track(t) for t in items[:8]]
+                    lines = [_fmt_track(t, with_id=exact_queue) for t in items[:8]]
                     more = f" …and {len(items) - 8} more" if len(items) > 8 else ""
                     joined = "\n".join(lines)
                     return f"{len(items)} result(s){note}:\n" + joined + more
@@ -460,6 +508,35 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
             )
 
         tools.append(search_library)
+
+    if exact_queue:
+        @lk_llm.function_tool(name="subwave_queue_track")
+        async def queue_track(id: str, title: str, artist: str = "") -> str:
+            """Queue THE EXACT track the caller picked from a search result.
+            Use this — not a request — once they have chosen a specific track
+            from what you found, passing the id shown beside it. Guarantees
+            they get that recording rather than a re-match."""
+            if actions.at_limit():
+                return actions.refusal()
+            res = await station.queue_track(
+                {"id": id, "title": title, "artist": artist}
+            )
+            if not res.get("ok"):
+                return (
+                    f"That didn't go into the queue: "
+                    f"{res.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("request", _fmt_track({"title": title, "artist": artist}))
+            return (
+                f"\"{title}\" is in the queue — the exact recording they picked. It "
+                "is NOT playing yet: it comes up after what's already ahead of it. "
+                f"{_when_it_plays(res.get('queuePosition'))} "
+                "There's no auto-intro on this one, so introduce it yourself if you "
+                "want it introduced."
+            )
+
+        tools.append(queue_track)
 
     if cfg.get("allow_requests"):
         @lk_llm.function_tool(name="subwave_request_song")
@@ -499,7 +576,8 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
                     out = (
                         f"Added to the queue: {_fmt_track(track)}. It is NOT playing "
                         "yet — it comes up later in the running order, after what's "
-                        "on now. Tell the caller it's lined up, not that it's on."
+                        f"on now. {_when_it_plays(st.get('queuePosition'))} "
+                        "Tell the caller it's lined up, not that it's on."
                     )
                     return out + (f" Station says: {ack}" if ack else "")
                 if ack:
@@ -1032,10 +1110,12 @@ def effective_tools(cfg: dict) -> dict:
     guard = bool(cfg.get("avoid_on_air_overlap"))
     waits = "waits for clear air" if guard else "no overlap guard"
     local = []
-    if cfg.get("allow_library_search"):
+    if cfg.get("allow_library_search") and not library_search_needs_mcp():
         local.append("subwave_search_library (local: retry fallback)")
     if cfg.get("allow_requests"):
         local.append("subwave_request_song (local: pre-flight + status)")
+    if cfg.get("allow_exact_queue") and not library_search_needs_mcp():
+        local.append("subwave_queue_track (local: exact pick, counts against the call limit)")
     if cfg.get("allow_announcements"):
         local.append(f"subwave_dj_announce (local: {waits})")
     if cfg.get("allow_skills"):

@@ -422,6 +422,32 @@
   .asklist li.nevergroup .mark { color: var(--dimmer); }
   .asklist li.nevergroup .say { color: var(--dim); font-weight: 600; }
 
+  /* The station's tool surface. A fixed status column on the left so the
+     reachable / off / never split can be read down the page at a glance. */
+  .toollist { list-style: none; margin: 4px 0 0; padding: 0; }
+  .toollist li {
+    display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px;
+    padding: 8px 0; border-top: 1px solid var(--line); align-items: baseline;
+  }
+  .toollist li:first-child { border-top: none; }
+  .toollist .tstate {
+    font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase;
+    font-weight: 700; text-align: right; color: var(--ok);
+  }
+  .toollist li.off .tstate { color: var(--dimmer); }
+  .toollist li.blocked .tstate { color: var(--warn); }
+  .toollist .tbody { min-width: 0; }
+  .toollist code {
+    display: block; font-size: 11.5px; color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    overflow-wrap: break-word;
+  }
+  .toollist li.off code, .toollist li.blocked code { color: var(--dim); }
+  .toollist .twhat { display: block; font-size: 11.5px; color: var(--dim);
+                     margin-top: 2px; line-height: 1.45; }
+  .toollist .tnote { display: block; font-size: 11px; color: var(--dimmer);
+                     margin-top: 3px; line-height: 1.45; }
+
   .soundlist { list-style: none; margin: 4px 0 10px; padding: 0; }
   .soundlist li {
     display: flex; gap: 8px; align-items: center; padding: 6px 9px;
