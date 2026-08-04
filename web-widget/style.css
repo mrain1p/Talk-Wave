@@ -429,6 +429,18 @@
     /* Spend the freed space where a call actually needs it. */
     .captions { max-height: 44vh; }
     .ticker { font-size: 13px; }
+    /* Nothing gets ellipsized while most of the screen sits empty: text
+       wraps onto new lines, and the now-playing track takes a full row of
+       its own instead of a squeezed corner. */
+    .who-row { flex-wrap: wrap; }
+    .dj, .show, .tagline {
+      white-space: normal; overflow: visible; text-overflow: clip;
+    }
+    .track {
+      flex: 1 0 100%; max-width: 100%; text-align: left; padding-left: 0;
+      margin: 10px 0 0; white-space: normal; overflow: visible;
+      text-overflow: clip; font-size: 12px;
+    }
   }
 
   body.compact { padding: 0; min-height: 0; }
