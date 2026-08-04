@@ -878,7 +878,7 @@ async def entrypoint(ctx: JobContext) -> None:
     # settings, which is mainly a testing affordance.
     # One concurrent snapshot instead of six serial reads — the caller hears
     # every millisecond of this as ringing before the DJ picks up.
-    snap = await station.snapshot()
+    snap = await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
 
     override = str(cfg.get("persona_override") or "").strip()
     roster = {p.get("id"): p for p in snap["personas"] if p.get("id")}

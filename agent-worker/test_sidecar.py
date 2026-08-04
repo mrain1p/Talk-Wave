@@ -102,6 +102,23 @@ class TestSpeechFilter(unittest.TestCase):
         finally:
             speech_filter.set_speaker("")
 
+    def test_the_dj_can_still_say_its_own_name_out_loud(self):
+        # Only the SCRIPT LABEL form is a problem. Introducing yourself is
+        # what a DJ does — the fix must not cost that.
+        speech_filter.set_speaker("Wade")
+        try:
+            for kept in ("This is Wade, you're through to the booth.",
+                         "Wade here, what can I do for you?",
+                         "You're on with Wade on the late shift.",
+                         "Wade's the name, records are the game."):
+                self.assertEqual(speech_filter.strip_speaker_labels(kept), kept)
+            # …but the label form still goes.
+            self.assertEqual(
+                speech_filter.strip_speaker_labels("Wade: You're through to the booth."),
+                "You're through to the booth.")
+        finally:
+            speech_filter.set_speaker("")
+
     def test_never_eats_ordinary_speech_that_contains_a_colon(self):
         speech_filter.set_speaker("Francesca")
         try:
@@ -388,6 +405,47 @@ class TestCallPrivacy(_TempStores):
         self.assertIn("Back with you after that one.", text)   # ordinary chatter stays
         self.assertNotIn("Sarah", text)
         self.assertNotIn("divorce", text)
+
+    def test_the_dj_is_told_which_segments_this_station_actually_has(self):
+        # Without the catalogue the agent either guessed at segment names or
+        # spent a turn asking the station mid-call, and the caller heard the
+        # pause. "What can you do?" was answered vaguely for the same reason.
+        import asyncio
+
+        from station import StationClient
+
+        snapshot = {"dj": {}, "personas": [], "now_playing": {}, "state": {},
+                    "session": {}, "schedule": {},
+                    "skills": [{"kind": "weather", "label": "Weather", "cooldownMin": 60},
+                               {"kind": "storytime", "label": "Story time"}]}
+        persona = {"id": "p_test", "name": "Test DJ", "soul": "A test soul."}
+
+        def build() -> str:
+            async def go():
+                station = StationClient()
+                try:
+                    return await prompts.build_system_prompt(
+                        station, persona, snapshot=snapshot)
+                finally:
+                    await station.aclose()
+            return asyncio.run(go())
+
+        # Off by default: no segment list, because it can't run any.
+        self.assertNotIn("weather", build().lower())
+
+        settings_store.save({"allow_skills": True})
+        text = build()
+        self.assertIn("weather", text)
+        self.assertIn("storytime", text)
+        self.assertIn("once every 60 min", text)   # cooldown, so it won't over-promise
+        self.assertIn("these and no others", text)
+
+    def test_prompt_carries_a_triage_guide(self):
+        text = self._prompt({})
+        self.assertIn("Running the call", text)
+        self.assertIn("that IS a request", text)      # a vibe is not a search
+        self.assertIn("never recite a menu", text)    # the "what can you do" answer
+        self.assertIn("Never two questions in a row", text)
 
     def test_prompt_states_the_caller_is_new(self):
         text = self._prompt({})

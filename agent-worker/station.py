@@ -127,19 +127,25 @@ class StationClient:
     async def session(self) -> dict:
         return await self._get("/session")
 
-    async def snapshot(self) -> dict:
+    async def snapshot(self, with_skills: bool = False) -> dict:
         """Everything the prompt needs, fetched concurrently.
 
         Serially these cost ~1s on a good day and far more when the station's
-        persona cache is cold; the caller hears all of it as ringing.
+        persona cache is cold; the caller hears all of it as ringing. The
+        skill catalogue joins the same gather when segments are enabled, so
+        knowing the show costs no extra ringing time.
         """
-        dj, personas, now, state, session, schedule = await asyncio.gather(
+        async def _skills() -> list[dict]:
+            return await self.list_skills() if with_skills else []
+
+        dj, personas, now, state, session, schedule, skills = await asyncio.gather(
             self.live_dj(), self.personas(), self.now_playing(),
-            self.state(), self.session(), self.schedule(),
+            self.state(), self.session(), self.schedule(), _skills(),
         )
         return {
             "dj": dj, "personas": personas, "now_playing": now,
             "state": state, "session": session, "schedule": schedule,
+            "skills": skills,
         }
 
     def persona_from(self, dj: dict, personas: list[dict]) -> dict:
@@ -324,6 +330,32 @@ class StationClient:
             return r.json()
         except Exception:
             return {}
+
+    async def list_skills(self) -> list[dict]:
+        """The station's segment catalogue — kind, label and cooldown.
+
+        Read up front rather than left to a mid-call tool round-trip: a DJ
+        knows its own show. Without this the agent either guesses at segment
+        names or spends a turn asking the station what it can do, and a caller
+        hears the pause.
+
+        Admin-gated; empty list when unavailable, which simply means the
+        prompt doesn't mention segments.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get("/dj/skills", auth=httpx.BasicAuth(user, password))
+            r.raise_for_status()
+            d = _body(r)
+            items = d.get("skills") or d.get("result") or []
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            log.info("skill catalogue unavailable: %s", e)
+            return []
 
     async def run_skill(self, name: str) -> dict:
         """Fire one of the station's own segments. Admin-only."""

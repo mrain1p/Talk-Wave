@@ -233,6 +233,33 @@ def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str =
     )
 
 
+def _fmt_skills(skills: list) -> str:
+    """The station's real segment catalogue, by name.
+
+    A DJ knows its own show. Without this the agent had to spend a turn asking
+    the station what segments exist — or, more often, guessed, and either
+    offered something this station doesn't have or answered "what can you do?"
+    with a vague list it wasn't sure of.
+    """
+    lines = []
+    for s in (skills or [])[:12]:
+        name = str(s.get("kind") or s.get("name") or "").strip()
+        if not name:
+            continue
+        label = str(s.get("label") or "").strip()
+        cool = s.get("cooldownMin")
+        bit = f"{name}" + (f" ({label})" if label and label.lower() != name else "")
+        if isinstance(cool, (int, float)) and cool:
+            bit += f" — once every {int(cool)} min"
+        lines.append(bit)
+    if not lines:
+        return ""
+    return (
+        "Segments you can run on air, by name — these and no others:\n  "
+        + "\n  ".join(lines)
+    )
+
+
 def _fmt_schedule(schedule: dict, active_id: str) -> str:
     """The rest of today's line-up, for "what's on after this?"."""
     shows = schedule.get("shows") or []
@@ -253,7 +280,7 @@ async def build_system_prompt(
 
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.
-    snap = snapshot or await station.snapshot()
+    snap = snapshot or await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
     now_playing = snap["now_playing"]
     state = snap["state"]
     session = snap["session"]
@@ -268,6 +295,10 @@ async def build_system_prompt(
     ]
     if cfg.get("context_schedule"):
         parts.append(_fmt_schedule(await station.schedule(), show.get("id", "")))
+    # Only when segments are actually enabled — otherwise it's a list of things
+    # the DJ is about to be told it can't do.
+    if cfg.get("allow_skills"):
+        parts.append(_fmt_skills(snap.get("skills") or []))
 
     station_context = "\n".join(filter(None, parts))
 
@@ -389,6 +420,29 @@ Looking something up? Say it in your voice ("let me have a look") or just
 do it.
 
 {CALL_MOMENTUM}
+
+# Running the call
+You are the one steering this, the way a presenter runs a phone-in. Work out
+what they want in one beat, act on it, and keep talking while it happens:
+
+- **A song they can name** — check it's in the racks, then put the request in.
+- **A feeling, an era, an occasion** — that IS a request. Send their own words
+  and let the station pick. Don't interrogate a vibe; one description is
+  plenty to act on.
+- **Something about the station** — what's on, what's next, what just played:
+  look it up rather than guessing.
+- **Something for the air** — a shoutout, a dedication, a message: put it on.
+- **A segment** — run it by name, only from the list you've been given.
+- **Nothing in particular** — then just talk. Not every call is a transaction,
+  and a good one often isn't.
+- **"What can you do?"** — never recite a menu. One line in your own voice
+  naming the two or three things that suit THIS caller, then ask what they
+  fancy. A list read aloud is the least radio thing there is.
+
+Never two questions in a row. If you could act on what they've already said,
+act — a caller asked twice what kind of fun they meant has stopped having any.
+Say what you're doing BEFORE you go quiet to do it ("let me have a dig"), so a
+pause sounds like a DJ working, not a dead line.
 
 # What you can do
 Use your tools mid-conversation, the way a DJ works while talking:
