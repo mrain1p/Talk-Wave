@@ -515,6 +515,33 @@ class TestCallPrivacy(_TempStores):
         self.assertIn("never recite a menu", text)    # the "what can you do" answer
         self.assertIn("Never two questions in a row", text)
 
+    def test_the_prompt_names_the_operators_station_not_ours(self):
+        # A DJ on Yosemite FM told callers they were live on SUB/WAVE — the
+        # software's name, which no listener has heard of. GET /dj has carried
+        # the real one all along.
+        import asyncio
+
+        from station import StationClient
+
+        def build(dj: dict) -> str:
+            snapshot = {"dj": dj, "personas": [], "now_playing": {}, "state": {},
+                        "session": {}, "schedule": {}, "skills": []}
+            async def go():
+                station = StationClient()
+                try:
+                    return await prompts.build_system_prompt(
+                        station, {"id": "p", "name": "Dalia", "soul": "x"},
+                        snapshot=snapshot)
+                finally:
+                    await station.aclose()
+            return asyncio.run(go())
+
+        text = build({"station": "Yosemite FM"})
+        self.assertIn("a DJ on Yosemite FM", text)
+        self.assertNotIn("SUB/WAVE", text)
+        # Falls back only when the station doesn't say.
+        self.assertIn("SUB/WAVE", build({}))
+
     def test_prompt_states_the_caller_is_new(self):
         text = self._prompt({})
         self.assertIn("This caller is NEW", text)
@@ -866,6 +893,34 @@ class TestCallRecord(unittest.TestCase):
         self.assertIn("allow_requests", c["config"]["permissions"])
         self.assertNotIn("allow_skills", c["config"]["permissions"])
 
+    def test_final_wording_replaces_the_clipped_live_capture(self):
+        # conversation_item_added fires while the DJ is still speaking, so the
+        # live text came out clipped ("Take a breath, I've"). Timing from the
+        # events is right; the wording has to come from the session history.
+        r = self.record.CallRecord("callin-x", {"name": "Dalia"}, {})
+        r.turn("dj", "Take a breath, I've")
+        r.turn("caller", "Play me Let It Go")
+        r.turn("dj", "Still with")
+        stamps = [t["t"] for t in r.data["turns"]]
+
+        r.finalise([("dj", "Take a breath, I've got you."),
+                    ("caller", "Play me Let It Go"),
+                    ("dj", "Still with me?"),
+                    ("dj", "A line the events never saw.")])
+
+        turns = r.data["turns"]
+        self.assertEqual(turns[0]["text"], "Take a breath, I've got you.")
+        self.assertEqual(turns[2]["text"], "Still with me?")
+        self.assertEqual([t["t"] for t in turns[:3]], stamps)   # timings kept
+        self.assertEqual(turns[3]["text"], "A line the events never saw.")
+
+    def test_finalise_on_an_empty_history_keeps_what_was_captured(self):
+        # If the session cannot be flattened, a clipped record beats none.
+        r = self.record.CallRecord("callin-x", {"name": "Dalia"}, {})
+        r.turn("dj", "something")
+        r.finalise([])
+        self.assertEqual(r.data["turns"][0]["text"], "something")
+
     def test_problems_are_kept_with_the_call_that_had_them(self):
         r = self._a_call()
         r.problem("APIStatusError: gemini llm: client error 400")
@@ -1133,6 +1188,32 @@ class TestMainToolLogic(_TempStores):
         waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
         self.assertGreater(waited, 0)
         self.assertTrue(guard._clear.is_set())
+
+    def test_firing_an_on_air_action_closes_the_gate_at_once(self):
+        # Observed: the DJ said it was going off to air something, aired it,
+        # then talked over its own delivery. The guard only closed when the
+        # station's log showed speech, and it polls every 4s — so there was a
+        # window where the DJ believed the air was clear. We know it isn't,
+        # because we are the ones who just made it busy.
+        import asyncio
+
+        guard = self.air.OnAirGuard(None, {"avoid_on_air_overlap": True,
+                                           "on_air_quiet_secs": 30})
+        self.assertTrue(guard._clear.is_set())
+        guard.mark_on_air(seconds=30)
+        self.assertFalse(guard._clear.is_set())
+        self.assertTrue(guard.on_air)
+        # …and a reply now waits rather than going out over the announcement.
+        waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
+        self.assertGreater(waited, 0)
+
+    def test_marking_on_air_is_inert_when_the_guard_is_off(self):
+        import asyncio
+
+        guard = self.air.OnAirGuard(None, {"avoid_on_air_overlap": False,
+                                           "on_air_quiet_secs": 30})
+        guard.mark_on_air()
+        self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
 
     def test_on_air_guard_clear_air_costs_nothing(self):
         import asyncio

@@ -53,8 +53,9 @@
     try {
       streamEl = new Audio(s.url);
       streamEl.crossOrigin = 'anonymous';
-      streamEl.volume = Math.min(1, (s.volume || 0) / 100);
-      streamEl.muted = !s.volume;
+      // Scaled by the caller's own volume from the start — see applyVolume.
+      streamEl.volume = stationLevel();
+      streamEl.muted = stationLevel() <= 0;
       streamEl.play().catch((e) => console.info('tune-in blocked:', e.message));
     } catch (e) { streamEl = null; }
   }
@@ -610,9 +611,23 @@
   }
 
   // -------------------------------------------------------------------- call
+  // The slider is the call's volume, not the DJ's. Turning it down used to
+  // leave the station playing underneath at its own fixed level — so at the
+  // bottom of the range the music was all you could hear. The station keeps
+  // its configured proportion of whatever the caller has chosen.
+  function stationLevel() {
+    const s = (live && live.stream) || {};
+    return Math.min(1, ((s.volume || 0) / 100) * (volume / 100));
+  }
+
   function applyVolume() {
     $('volPct').textContent = volume + '%';
     if (djEl) djEl.volume = Math.min(1, volume / 100);
+    if (streamEl) {
+      const level = stationLevel();
+      streamEl.volume = level;
+      streamEl.muted = level <= 0;
+    }
   }
   $('volSlider').oninput = (e) => { volume = +e.target.value; applyVolume(); };
 

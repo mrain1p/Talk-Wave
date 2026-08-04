@@ -43,6 +43,25 @@ class OnAirGuard:
         self.on_air = False
         self._clear = asyncio.Event()
         self._clear.set()
+        # When WE put something on air we know it is about to make sound, and
+        # we know before the station's log does. Waiting for the poll to notice
+        # left a window in which the DJ carried on talking over its own
+        # announcement — observed on a real call, right after it had said it
+        # was going off to air something.
+        self._assumed_until = 0.0
+
+    def mark_on_air(self, seconds: float = 25.0) -> None:
+        """Treat the air as busy from now, because we just made it busy.
+
+        The poll then confirms it and extends as needed; the gate does not
+        reopen until BOTH this window has passed and the station log agrees.
+        """
+        self._assumed_until = max(self._assumed_until, time.time() + seconds)
+        if self._clear.is_set():
+            self._clear.clear()
+            self.on_air = True
+            self._publish(True)
+            log.info("our own action is going out on air — holding the call DJ back")
 
     def _publish(self, on_air: bool) -> None:
         """Tell the widget, so the caller sees "DJ is on air" rather than a
@@ -95,7 +114,9 @@ class OnAirGuard:
                 log.debug("on-air check failed (assuming clear): %s", e)
                 since = None
 
-            busy = since is not None and since < self.quiet_secs
+            busy = (since is not None and since < self.quiet_secs) or (
+                time.time() < self._assumed_until
+            )
             if busy != self.on_air:
                 self.on_air = busy
                 self._publish(busy)

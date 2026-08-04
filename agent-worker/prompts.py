@@ -304,6 +304,13 @@ async def build_system_prompt(
     station_context = "\n".join(filter(None, parts))
 
     name = persona.get("name", "the DJ")
+    # The station's own name, not ours. This line used to say "the SUB/WAVE
+    # radio station" for everybody, so a DJ on Yosemite FM told callers they
+    # were live on SUB/WAVE — the software's name, which no listener has ever
+    # heard of. GET /dj has carried the real one all along.
+    station_name = _demojibake(
+        str((snap.get("dj") or {}).get("station") or "").strip()
+    ) or "the SUB/WAVE radio station"
     dj_card = _clip(persona.get("soul", ""), CARD_BUDGET)
     show_name = _demojibake(show.get("name", ""))
     show_card = _clip(show.get("topic", ""), CARD_BUDGET)
@@ -410,7 +417,7 @@ async def build_system_prompt(
             "  request in without one."
         )
 
-    return f"""You are {name}, a DJ on the SUB/WAVE radio station, and a listener has \
+    return f"""You are {name}, a DJ on {station_name}, and a listener has \
 just called in to the booth. You are live, on a phone call, talking with them out loud.
 
 # Who you are

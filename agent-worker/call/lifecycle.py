@@ -130,15 +130,33 @@ def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None
     if idle_secs <= 0:
         return
     max_nudges = int(cfg.get("idle_max_nudges") or 0)
-    state = {"last_words": time.time(), "nudges": 0}
+    state = {"last_words": time.time(), "nudges": 0, "asked": False}
 
     def _on_transcript(ev) -> None:
         text = str(getattr(ev, "transcript", "") or "")
         if text.strip():
             state["last_words"] = time.time()
             state["nudges"] = 0
+            state["asked"] = False
 
     session.on("user_input_transcribed", _on_transcript)
+
+    def _note_question(ev) -> None:
+        """Did the DJ just ask the caller something?
+
+        Observed on a real call: the DJ offered a choice of two versions of a
+        track and then asked "Still with me?" twice while the caller was
+        deciding. A caller weighing up an answer is not an absent caller, so a
+        question buys them considerably longer before anyone checks on them.
+        """
+        item = getattr(ev, "item", None)
+        if getattr(item, "role", None) != "assistant":
+            return
+        text = str(getattr(item, "text_content", "") or "").strip()
+        if text:
+            state["asked"] = text.endswith("?")
+
+    session.on("conversation_item_added", _note_question)
 
     async def _idle_watch() -> None:
         while True:
@@ -151,7 +169,10 @@ def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None
             if getattr(session, "agent_state", None) != "listening":
                 state["last_words"] = time.time()
                 continue
-            if time.time() - state["last_words"] < idle_secs:
+            # Thinking time, not dead air: give a caller who was just asked
+            # something three times as long before checking on them.
+            wait_for = idle_secs * 3 if state["asked"] else idle_secs
+            if time.time() - state["last_words"] < wait_for:
                 continue
             if state["nudges"] >= max_nudges:
                 continue

@@ -225,6 +225,16 @@ class CallSession:
         # Written before the on-air handoff, which makes an LLM call and can
         # fail — the record of the call must not depend on it succeeding.
         if self.record:
+            try:
+                # The session's committed history is the authoritative wording;
+                # the live events only got the timing right.
+                final = [
+                    ("caller" if role == "user" else "dj", text)
+                    for role, text in lifecycle._transcript(self.session, limit=400)
+                ]
+                self.record.finalise(final)
+            except Exception as e:
+                log.debug("could not finalise the transcript (keeping live text): %s", e)
             self.record.write(reason=getattr(self.ctx, "shutdown_reason", "") or "")
 
         await lifecycle.release_call_slot(self.ctx.room.name)

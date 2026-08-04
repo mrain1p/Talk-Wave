@@ -83,6 +83,37 @@ class CallRecord:
         self.data["problems"].append({"t": _iso(time.time()), "what": str(what)[:500]})
 
     # -- at the end --------------------------------------------------------
+    def finalise(self, final_turns: list) -> None:
+        """Replace the live text with the session's own final transcript.
+
+        The live capture rides `conversation_item_added`, which fires while the
+        DJ is still speaking — so recorded lines came out clipped ("Take a
+        breath, I've"). The timings from the live events are right and worth
+        keeping; only the wording was wrong. So the text comes from the
+        session's committed history and the timestamps stay as observed.
+        """
+        if not final_turns:
+            return
+        by_who: dict = {}
+        for who, text in final_turns:
+            by_who.setdefault(who, []).append(text)
+
+        seen: dict = {}
+        for turn in self.data["turns"]:
+            who = turn["who"]
+            i = seen.get(who, 0)
+            texts = by_who.get(who, [])
+            if i < len(texts):
+                turn["text"] = str(texts[i])[:MAX_TEXT]
+            seen[who] = i + 1
+
+        # Anything the session knows about that we never saw an event for.
+        for who, texts in by_who.items():
+            for extra in texts[seen.get(who, 0):]:
+                self.data["turns"].append(
+                    {"t": _iso(time.time()), "who": who, "text": str(extra)[:MAX_TEXT]}
+                )
+
     def write(self, reason: str = "") -> None:
         self.data["endedAt"] = _iso(time.time())
         self.data["durationSecs"] = round(time.time() - self.started, 1)

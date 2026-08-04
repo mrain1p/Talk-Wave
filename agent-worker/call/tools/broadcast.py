@@ -86,6 +86,8 @@ def build_on_air_tools(
                     "Tell the caller plainly — do not claim it worked."
                 )
             actions.note("announcement", message[:120])
+            # The gate closes now, not when the station log catches up.
+            guard.mark_on_air()
             return after_action("Your announcement", waited, result.get("unconfirmed"))
 
         tools.append(announce)
@@ -106,6 +108,7 @@ def build_on_air_tools(
                     "Tell the caller plainly — do not claim it worked."
                 )
             actions.note("skill", name)
+            guard.mark_on_air()
             return after_action(f"The {name} segment", waited, result.get("unconfirmed"))
 
         tools.append(run_skill)
