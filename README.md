@@ -9,6 +9,8 @@ The call is not the station speaking: it's this sidecar's own realtime voice
 agent wearing the live persona. The station only gets touched when the agent
 decides to act, through an allowlisted tool surface.
 
+Please note this was created with heavy use of AI. It is recommended to use it locally and only expose it externally if you know the risks and what you are doing.
+
 <table>
 <tr>
 <td valign="top"><img src="docs/call.png" width="430" alt="A live call: the DJ mid-sentence, level meters running, live captions — including a library search happening in-conversation" /></td>
