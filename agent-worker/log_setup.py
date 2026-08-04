@@ -44,12 +44,19 @@ def recent_lines(n: int = 300) -> list[str]:
     return list(RECENT)[-n:]
 
 
-def setup(process_name: str) -> None:
+def setup(process_name: str, console: bool = True) -> None:
     """Call once at process start, before any logging happens.
 
     Idempotent: the token server's test endpoints import main.py, whose
     module-level setup("worker") call would otherwise add a second handler
     and double every subsequent log line.
+
+    `console=False` for the worker. livekit-agents' cli.run_app calls its own
+    setup_logging(), which unconditionally adds a StreamHandler to the ROOT
+    logger — so a console handler of ours is a second sink for the same
+    records, and every line appeared twice in `docker logs` (once plain, once
+    as livekit's JSON). We keep the ring buffer and the file, and let livekit
+    own stdout in the process it controls.
     """
     root = logging.getLogger()
     if getattr(root, "_callin_log_setup", False):
@@ -59,9 +66,10 @@ def setup(process_name: str) -> None:
     level = os.environ.get("LOG_LEVEL", "INFO").upper()
     root.setLevel(level)
 
-    console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter(FORMAT))
-    root.addHandler(console)
+    if console:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(FORMAT))
+        root.addHandler(handler)
 
     ring = _RingHandler()
     ring.setFormatter(logging.Formatter(FORMAT))

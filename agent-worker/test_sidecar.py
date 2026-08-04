@@ -252,6 +252,35 @@ class TestSettings(_TempStores):
         self.assertEqual(cfg["call_volume"], 80)
         self.assertIs(cfg["call_sounds"], False)
 
+    def test_a_url_field_refuses_something_that_is_not_a_url(self):
+        # A real deployment ran with "Michael" in the MCP endpoint — the
+        # browser autofilled a name into the box — so the agent got NO station
+        # tools on any call and invented library results instead. Nothing
+        # downstream complained, which is the part that made it expensive.
+        problem = settings_store.complain({"station_mcp_url": "Michael"})
+        self.assertIsNotNone(problem)
+        self.assertIn("URL", problem)
+        self.assertIn("Michael", problem)          # says what it saw
+        self.assertIn("empty", problem)            # and how to fix it
+
+        for field in settings_store.URL_FIELDS:
+            self.assertIsNotNone(settings_store.complain({field: "nonsense"}), field)
+            self.assertIsNone(settings_store.complain({field: ""}))          # clears
+            self.assertIsNone(settings_store.complain({field: "http://x:7700/api"}))
+            self.assertIsNone(settings_store.complain({field: "https://x/api"}))
+        # Everything else is still free text.
+        self.assertIsNone(settings_store.complain({"greeting": "just say hi"}))
+
+    def test_a_url_already_stored_broken_falls_back_instead_of_breaking(self):
+        # Validation on save can't help a config that was already saved wrong,
+        # and handing an unusable URL to the agent is worse than the default.
+        settings_store.save({"station_mcp_url": "Michael",
+                             "station_base_url": "http://box:7700/api"})
+        self.assertEqual(settings_store.station_mcp_url(),
+                         "http://box:7700/api/mcp")
+        settings_store.save({"station_base_url": "Michael"})
+        self.assertTrue(settings_store.station_base_url().startswith("http"))
+
     def test_unknown_keys_are_ignored(self):
         settings_store.save({"allow_sfx": True, "not_a_field": 1})
         stored = json.loads(settings_store.SETTINGS_PATH.read_text())

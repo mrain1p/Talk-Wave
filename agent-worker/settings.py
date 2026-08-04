@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -628,6 +629,48 @@ def stored_only() -> dict:
     return {k: stored.get(k, "") for k in FIELDS}
 
 
+# Fields that must be a URL or nothing. A real deployment had "Michael" in
+# station_mcp_url — a browser autofilling a name into a text box — which meant
+# the agent got NO station tools on any call and invented library results
+# instead. The field accepted it silently and nothing downstream complained.
+URL_FIELDS = ("station_base_url", "station_mcp_url", "llm_base_url", "tts_base_url")
+
+_URLISH = re.compile(r"^(https?|wss?)://[^\s/?#]+", re.IGNORECASE)
+
+
+def complain(patch: dict) -> str | None:
+    """An operator-facing reason to refuse a settings write, or None.
+
+    Checked on save so a typo is caught while someone is looking at the panel,
+    rather than at 3am when a caller gets a DJ with no tools.
+    """
+    for field in URL_FIELDS:
+        if field not in patch:
+            continue
+        value = str(patch[field] or "").strip()
+        if not value:
+            continue                     # blank clears the override — fine
+        if not _URLISH.match(value):
+            label = SCHEMA.get(field, {}).get("label", field)
+            return (f"{label} must be a URL starting with http:// or https:// — "
+                    f"got {value!r}. Leave it empty to use the default.")
+    return None
+
+
+def _sane_url(field: str, value: str) -> str:
+    """Ignore a stored URL that isn't one, loudly.
+
+    Belt and braces for configs that are ALREADY broken: validation on save
+    can't help someone who saved rubbish before it existed, and falling back
+    to the default beats handing an unusable URL to the agent.
+    """
+    value = str(value or "").strip()
+    if value and not _URLISH.match(value):
+        log.warning("ignoring %s=%r — that is not a URL; using the default", field, value)
+        return ""
+    return value
+
+
 def tts_mode() -> str:
     """Single source of truth for cloud-vs-local. Previously several modules
     read os.environ["TTS_MODE"] directly, which meant voice resolution could
@@ -636,13 +679,13 @@ def tts_mode() -> str:
 
 
 def station_base_url() -> str:
-    return str(load()["station_base_url"]).rstrip("/")
+    resolved = _sane_url("station_base_url", load()["station_base_url"])
+    return (resolved or FIELDS["station_base_url"][1]).rstrip("/")
 
 
 def station_mcp_url() -> str:
-    cfg = load()
-    explicit = str(cfg.get("station_mcp_url") or "").strip()
-    return explicit or f"{str(cfg['station_base_url']).rstrip('/')}/mcp"
+    explicit = _sane_url("station_mcp_url", load().get("station_mcp_url"))
+    return explicit or f"{station_base_url()}/mcp"
 
 
 def save(patch: dict) -> dict:

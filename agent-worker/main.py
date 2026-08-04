@@ -42,7 +42,9 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 import log_setup
 
-log_setup.setup("worker")
+# console=False: livekit's cli.run_app adds its own stdout handler to the root
+# logger, so ours would be a second sink and every line appeared twice.
+log_setup.setup("worker", console=False)
 log = logging.getLogger("callin.agent")
 
 from version import APP_VERSION

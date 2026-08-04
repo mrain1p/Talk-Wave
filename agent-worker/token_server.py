@@ -818,6 +818,13 @@ async def handle_post_settings(request: web.Request) -> web.Response:
     if not isinstance(patch, dict):
         return _cors(request, web.json_response({"error": "expected an object"}, status=400))
 
+    # Catch a typo while the operator is still looking at the panel. A real
+    # deployment ran for days with "Michael" in the MCP endpoint — autofilled
+    # by the browser — which left the DJ with no station tools on every call.
+    problem = settings_store.complain(patch)
+    if problem:
+        return _cors(request, web.json_response({"error": problem}, status=400))
+
     resolved = settings_store.save(patch)
     _live_cache["data"] = None
     # Changing the station URL (or the TTS URL) changes what the options
