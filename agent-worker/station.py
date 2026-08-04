@@ -308,20 +308,44 @@ class StationClient:
 
     async def submit_request(self, text: str, name: str = "") -> dict:
         """Public request endpoint — the same path the station's own request
-        slip uses."""
-        try:
-            payload: dict = {"text": text}
-            if name:
-                payload["name"] = name
-            r = await self._client.post("/request", json=payload, timeout=ACTION_TIMEOUT)
-            r.raise_for_status()
-            return _body(r)
-        except Exception as e:
-            if _sent_but_unconfirmed(e):
-                log.warning("request slow to confirm (%s) — treating as submitted", e)
-                return {"unconfirmed": True}
-            log.warning("request submit failed: %s", e)
-            return {"error": str(e)[:140]}
+        slip uses.
+
+        Retries once on a 5xx. Observed on a real call: the caller asked for a
+        song eight seconds after pickup and the station answered 503 — it
+        pauses requests while nobody is listening, and the caller's own tune-in
+        had not shown up in its listener count yet. Their request was lost to a
+        few seconds of timing, and the DJ told them so. A single retry after a
+        short wait costs nothing and covers the window.
+        """
+        payload: dict = {"text": text}
+        if name:
+            payload["name"] = name
+
+        last: Exception | None = None
+        for attempt in (0, 1):
+            if attempt:
+                await asyncio.sleep(4.0)
+            try:
+                r = await self._client.post(
+                    "/request", json=payload, timeout=ACTION_TIMEOUT
+                )
+                r.raise_for_status()
+                return _body(r)
+            except httpx.HTTPStatusError as e:
+                last = e
+                if e.response.status_code < 500:
+                    break        # a real refusal — retrying would just repeat it
+                log.info("station 5xx on request (%s) — retrying once",
+                         e.response.status_code)
+            except Exception as e:
+                last = e
+                if _sent_but_unconfirmed(e):
+                    log.warning("request slow to confirm (%s) — treating as submitted", e)
+                    return {"unconfirmed": True}
+                break
+
+        log.warning("request submit failed: %s", last)
+        return {"error": str(last)[:140]}
 
     async def request_status(self, request_id: str) -> dict:
         try:

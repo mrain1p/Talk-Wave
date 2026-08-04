@@ -822,6 +822,62 @@ class TestStationActionResults(unittest.TestCase):
             self.station._sent_but_unconfirmed(self.httpx.ConnectTimeout("x")))
         self.assertFalse(self.station._sent_but_unconfirmed(ValueError("x")))
 
+    def test_a_5xx_on_a_request_is_retried_once(self):
+        """Real call: the caller asked eight seconds after pickup, the station
+        answered 503 because their tune-in hadn't reached its listener count
+        yet, and the DJ told them the request failed. A 5xx is transient."""
+        import asyncio
+
+        import httpx
+
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            # Fails once, then succeeds — the window the retry exists for.
+            if len(calls) == 1:
+                return httpx.Response(503, text="Service Unavailable")
+            return httpx.Response(200, json={"requestId": "abc", "status": "pending"})
+
+        async def run():
+            client = self.station.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                return await client.submit_request("something fun")
+            finally:
+                await client.aclose()
+
+        res = asyncio.run(run())
+        self.assertEqual(len(calls), 2, "the 5xx was not retried")
+        self.assertEqual(res.get("requestId"), "abc")
+        self.assertNotIn("error", res)
+
+    def test_a_4xx_refusal_is_not_retried(self):
+        # A real refusal means retrying just repeats it and delays the answer.
+        import asyncio
+
+        import httpx
+
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(429, text="Too Many Requests")
+
+        async def run():
+            client = self.station.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                return await client.submit_request("something fun")
+            finally:
+                await client.aclose()
+
+        res = asyncio.run(run())
+        self.assertEqual(len(calls), 1, "a 4xx should not be retried")
+        self.assertIn("error", res)
+
     def test_action_timeout_is_well_clear_of_the_read_timeout(self):
         self.assertGreaterEqual(self.station.ACTION_TIMEOUT, 30.0)
 
