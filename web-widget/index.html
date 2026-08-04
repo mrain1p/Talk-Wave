@@ -42,6 +42,17 @@
       <p class="track" id="npTrack"></p>
     </div>
 
+    <!-- Only shown when a guest password is set. Asks up front rather than
+         letting someone press Call and be turned away. -->
+    <div class="guestgate" id="guestGate" hidden>
+      <span class="glabel">The booth line is private.</span>
+      <span class="grow">
+        <input type="password" id="guestPw" placeholder="access code" autocomplete="off" />
+        <button id="guestBtn">Unlock the line</button>
+      </span>
+      <span id="guestMsg"></span>
+    </div>
+
     <div class="actionrow">
       <button id="callBtn" disabled>Call the DJ</button>
       <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
@@ -123,14 +134,17 @@
       </div>
     </details>
     <details data-group="security" class="sec">
-      <summary><span class="chev">▶</span>Security<span class="tag" id="tagSecurity"></span></summary>
+      <summary><span class="chev">▶</span>Passwords<span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">The password protects this
-          panel, the keys and the test buttons. The call card and embed stay
-          public — they're guarded by the usage limits instead. Stored as a
-          salted hash, never plaintext. Locked out? Set
-          <code>CALLIN_ADMIN_KEY</code> in the environment as a recovery
-          override; restarting the app clears IP bans.</p>
+        <p class="hint wide" style="margin-top:0">Two levels, and they should
+          never be the same. <strong>Admin</strong> opens this panel, the keys
+          and the test buttons — whoever has it controls the application and can
+          spend your API keys. <strong>Guest</strong> only opens the phone: the
+          Call button, on this page and on any embed. Admin works as a guest code
+          too, so you only carry one. Both are stored as salted hashes, never
+          plaintext.</p>
+
+        <h4 class="subhead">Admin — the controls</h4>
         <div class="row" id="curPwRow">
           <label for="sec_current_pw">Current password</label>
           <input type="password" id="sec_current_pw" autocomplete="off" />
@@ -141,9 +155,28 @@
         </div>
         <div class="testrow">
           <button id="setPwBtn">Set password</button>
-          <button id="logoutBtn" hidden>Sign out</button>
+          <button id="logoutBtn" class="btnquiet" hidden>Sign out</button>
         </div>
+        <p class="hint wide">Locked out? Set <code>CALLIN_ADMIN_KEY</code> in the
+          environment as a recovery override; restarting the app clears IP bans.</p>
         <div class="result" id="pwResult"></div>
+
+        <h4 class="subhead">Guest — the phone</h4>
+        <p class="hint wide" style="margin-top:0">Leave this empty and anyone who
+          can load the page can call. Set a code when the page is reachable from
+          the internet and you want only the people you gave it to ringing the
+          booth. No username — the code is the whole thing. It must be different
+          from the admin password: a code you hand out that also opens the
+          settings panel defeats the point of having two.</p>
+        <div class="row">
+          <label for="sec_guest_pw">Guest code</label>
+          <input type="password" id="sec_guest_pw" autocomplete="off" placeholder="at least 6 characters" />
+        </div>
+        <div class="testrow">
+          <button id="setGuestBtn">Set guest code</button>
+          <button id="clearGuestBtn" class="btnquiet">Remove — open the line</button>
+        </div>
+        <div class="result" id="guestResult"></div>
       </div>
     </details>
     <details data-group="keys" class="sec">
@@ -237,12 +270,22 @@
         <label class="check"><input type="checkbox" id="confirm_requests" /> Confirm requests before sending</label>
         <label class="check"><input type="checkbox" id="allow_library_search" /> Search the music library</label>
         <label class="check"><input type="checkbox" id="allow_announcements" /> Hand messages to the on-air DJ</label>
-        <label class="check"><input type="checkbox" id="allow_skills" /> Run station segments (weather, news, dedications, story time…)</label>
-        <label class="check"><input type="checkbox" id="offer_skills" /> Let the DJ offer segments when the moment fits</label>
+        <label class="check"><input type="checkbox" id="allow_skills" /> Run station segments when a caller asks</label>
+        <label class="check"><input type="checkbox" id="offer_skills" /> …and let the DJ offer one when the moment fits</label>
         <p class="hint wide">Segments put audio on air on a caller’s say-so, so
           they’re off by default. Track skipping, sound effects and direct
           queueing are never available to callers, regardless of settings —
           use “Test station + tools” to see the exact list.</p>
+
+        <h4 class="subhead">Sharing the microphone</h4>
+        <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ
+          on the broadcast are the same person. Without this they talk over each
+          other — the caller hears two of them, and so does everyone listening.</p>
+        <label class="check"><input type="checkbox" id="avoid_on_air_overlap" /> Pause the call while the station is talking</label>
+        <div class="row">
+          <label for="on_air_quiet_secs">Air counts as busy for (s)</label>
+          <input type="number" id="on_air_quiet_secs" min="0" max="180" step="5" />
+        </div>
       </div>
     </details>
     <details data-group="usage" class="sec">
@@ -261,9 +304,18 @@
           <input type="number" id="calls_per_hour" min="0" max="500" step="5" />
         </div>
         <div class="row">
+          <label for="calls_per_day">Per day</label>
+          <input type="number" id="calls_per_day" min="0" max="5000" step="10" />
+        </div>
+        <div class="row">
           <label for="caller_cooldown_secs">Redial wait</label>
           <input type="number" id="caller_cooldown_secs" min="0" max="600" step="15" />
         </div>
+        <div class="row">
+          <label for="max_actions_per_call">Actions per call</label>
+          <input type="number" id="max_actions_per_call" min="0" max="50" step="1" />
+        </div>
+        <label class="check"><input type="checkbox" id="calls_paused" /> Pause all calls</label>
       </div>
     </details>
     <details data-group="speech" class="sec">
@@ -365,6 +417,10 @@
           persona — not a replacement for it. The DJ keeps its own voice and applies
           these lightly. Leave blank and the persona alone decides.</p>
         <div class="row">
+          <label for="style_conversation">Conversation</label>
+          <input type="text" id="style_conversation" placeholder="e.g. let the caller lead; don't fill silences" />
+        </div>
+        <div class="row">
           <label for="style_answering">Answering</label>
           <input type="text" id="style_answering" placeholder="e.g. keep answers to two sentences; never repeat the caller's question back" />
         </div>
@@ -404,30 +460,54 @@
     <details data-group="sounds" class="sec">
       <summary><span class="chev">▶</span>Call sounds<span class="tag" id="tagSounds"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="call_sounds" /> Play ring / pickup / hang-up sounds</label>
-        <p class="hint wide">Leave a URL blank to use the built-in synthesized tone —
-          no audio file needed. Point at your own file to replace it.</p>
+        <label class="check"><input type="checkbox" id="call_sounds" /> Play call sounds</label>
         <div class="row">
-          <label for="sound_ring">Ring</label>
-          <input type="text" id="sound_ring" placeholder="built-in ringback" />
-        </div>
-        <div class="row">
-          <label for="sound_pickup">Pick up</label>
-          <input type="text" id="sound_pickup" placeholder="built-in click" />
-        </div>
-        <div class="row">
-          <label for="sound_hangup">Hang up</label>
-          <input type="text" id="sound_hangup" placeholder="built-in tone" />
+          <label for="sound_pack">Sound set</label>
+          <select id="sound_pack"></select>
         </div>
         <div class="row">
           <label for="call_volume">Default volume</label>
           <input type="number" id="call_volume" min="0" max="100" step="5" />
         </div>
         <div class="testrow">
-          <button id="testRingBtn">Preview ring</button>
-          <button id="testPickupBtn">Preview pickup</button>
-          <button id="testHangupBtn">Preview hang-up</button>
+          <button id="testRingBtn" class="btnquiet">Ring</button>
+          <button id="testPickupBtn" class="btnquiet">Pick up</button>
+          <button id="testHoldBtn" class="btnquiet">Hold</button>
+          <button id="testHangupBtn" class="btnquiet">Hang up</button>
+          <button id="testFailedBtn" class="btnquiet">Can't connect</button>
         </div>
+
+        <h4 class="subhead">Use your own</h4>
+        <p class="hint wide" style="margin-top:0">Each sound can be a built-in,
+          a file you upload here, or a URL you host yourself. Uploads stay on
+          this machine and are served to callers from it — mp3, wav, ogg, m4a,
+          aac or webm, up to 2 MB each.</p>
+        <div class="row">
+          <label for="sound_ring">Ring</label>
+          <input type="text" id="sound_ring" />
+        </div>
+        <div class="row">
+          <label for="sound_pickup">Pick up</label>
+          <input type="text" id="sound_pickup" />
+        </div>
+        <div class="row">
+          <label for="sound_hold">On hold</label>
+          <input type="text" id="sound_hold" />
+        </div>
+        <div class="row">
+          <label for="sound_hangup">Hang up</label>
+          <input type="text" id="sound_hangup" />
+        </div>
+        <div class="row">
+          <label for="sound_failed">Can't connect</label>
+          <input type="text" id="sound_failed" />
+        </div>
+        <div class="testrow">
+          <input type="file" id="soundFile" accept="audio/*" hidden />
+          <button id="uploadSoundBtn">Upload a sound…</button>
+          <span class="hint" id="uploadHint" style="margin:0"></span>
+        </div>
+        <ul class="soundlist" id="soundList"></ul>
         <div class="result" id="soundResult"></div>
       </div>
     </details>

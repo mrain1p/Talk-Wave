@@ -34,12 +34,18 @@ library.
   current show, the last few tracks, and what it just said on the broadcast.
 - Full-duplex conversation with barge-in — talking over the DJ cuts it off,
   like a phone call, not a voice memo.
-- Live captions for both sides, listening/thinking/speaking state, audio
-  level meters, call timer with cutoff warning — every indicator driven by a
-  real signal, nothing simulated.
-- Ring / pickup / hang-up sounds (synthesized in-browser, replaceable with
-  your own files), reconnect handling, graceful in-character timeouts for
-  silent callers and over-long calls.
+- Live captions for both sides, listening/thinking/speaking/on-air state,
+  audio level meters, call timer with cutoff warning — every indicator driven
+  by a real signal, nothing simulated.
+- Successful caller actions appear as their own line in the transcript
+  ("🎵 Song request scheduled"), tinted apart from speech. The DJ saying it
+  did something is a claim; that line is the receipt.
+- Two synthesized sound sets — telephone-exchange tones, or a physical
+  handset with a real bell and the receiver going down — covering ring,
+  pickup, hold, hang-up and an engaged tone when the booth can't take the
+  call. Any one can be replaced with an uploaded file or a URL.
+- Reconnect handling, and graceful in-character timeouts for silent callers
+  and over-long calls.
 
 **Station integration**
 - Tools come from the station's own MCP server, filtered through an
@@ -53,10 +59,17 @@ library.
   sidecar at a different SUB/WAVE instance and it re-homes itself.
 - After a call ends, the on-air DJ can mention it in one passing line
   (composed by the LLM, re-voiced by the station in persona).
-- Overlap protection: on-air actions wait for the broadcast to go quiet, and
-  the DJ steps back from the call while its own voice is on air.
-- The caller's browser is (optionally) tuned into the stream during the
-  call, so stations that refuse requests at zero listeners accept them.
+- Overlap protection (on by default): the call DJ and the on-air DJ are the
+  same person, so while the station has the microphone the caller's replies
+  queue rather than talk over the broadcast. Nothing the caller said is lost —
+  only the reply waits — and the card shows an **On air** state so the pause
+  reads as the station being busy, not the DJ being broken.
+- Every call is a first call. The back-to-air line about the previous caller
+  is kept out of the next caller's prompt, so a new caller is never greeted
+  as a continuation — and the last caller's business stays theirs.
+- The caller's browser is (optionally) tuned into the stream once the DJ
+  picks up (never during ringing), so stations that refuse requests at zero
+  listeners accept them, and the broadcast runs quietly behind the call.
 - Station webhooks are registered automatically for push updates; the widget
   falls back to polling when they're unavailable.
 
@@ -72,9 +85,18 @@ library.
   order and its failure messages name the fix.
 
 **Safety & limits**
-- Usage controls: max concurrent calls, calls per hour, per-caller redial
-  cooldown. Refusals are phrased in-world ("all the lines are busy"), never
-  error codes.
+- Two levels of password, and they must differ. **Admin** opens the settings
+  panel, the keys and the test buttons. **Guest** is an optional code that
+  opens only the phone — the Call button, on the page and on any embed — so
+  you can put the widget somewhere public without handing out the controls.
+  Admin works as a guest code too, so an operator carries one password. Both
+  are stored as salted PBKDF2 hashes; guest attempts are rate-limited in
+  their own bucket, so a caller fumbling the code can't lock you out.
+- Usage controls: max concurrent calls, calls per hour, calls per day, a
+  per-caller redial cooldown, a cap on how many actions one call can set in
+  motion, and a pause switch that closes the line at once. Refusals are
+  phrased in-world ("the booth line is tied up"), never error codes, and are
+  answered with an engaged tone rather than silence.
 - Speech hygiene applied to every line on its way to the voice, whatever the
   model does: stage directions (*shuffles records*, (laughs), [pause]) are
   stripped, expletives masked/removed/allowed per your policy.
@@ -159,23 +181,25 @@ Changes apply to the **next caller** — no restarts. Precedence: panel →
 `.env` → built-in defaults; clearing a field falls through to the layer
 below. Every field carries its own help text in the panel; this is the map:
 
-| Section | What it controls |
-|---|---|
-| **Station** | Which SUB/WAVE this answers for (everything else is discovered from it), the MCP endpoint, and the station admin credentials — with save/test buttons |
-| **Security** | The panel password: set/change, sign out. `CALLIN_ADMIN_KEY` env is the recovery override |
-| **API keys** | Provider keys (OpenAI, Google, Anthropic, OpenRouter, Deepgram, TTS), stored server-side, never shown back |
-| **Brains** | LLM provider/model (lists read live from each provider) and speech-to-text, incl. the in-process local Whisper |
-| **Voice** | TTS backend (cloud/local), server URL, voice (default: mirrored per-persona from the station), adapter config |
-| **Caller permissions** | What a stranger on the line may trigger: requests, library search, announcements, station segments — plus on-air overlap protection |
-| **Usage controls** | Concurrent calls, calls per hour, per-caller redial wait — the guard on API spend |
-| **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
-| **Call behaviour** | Persona pinning, greeting style, time limits, idle check-ins, tuning the caller into the stream |
-| **Station awareness** | How much live context (recent tracks, queue, on-air chatter) the DJ carries — each item costs latency every turn |
-| **House style** | Light steers on answering/sign-off, layered on the persona; prompt preview with token budget |
-| **Back to air** | The one-line on-air mention after a call ends |
-| **Call sounds** | Ring/pickup/hang-up tones, custom files, default volume |
-| **What callers can ask** | Live reference derived from the permissions above |
-| **Embed** | Copyable iframe snippet + compact preview |
+Sections are grouped by the job you're doing, in the order you'd do it:
+
+| Group | Section | What it controls |
+|---|---|---|
+| Access | **Passwords** | Admin (the controls) and the optional guest code (the phone). They must differ; `CALLIN_ADMIN_KEY` env is the recovery override |
+| Connect | **Station** | Which SUB/WAVE this answers for (everything else is discovered from it), the MCP endpoint, and the station admin credentials — with save/test buttons |
+| Connect | **API keys** | Provider keys (OpenAI, Google, Anthropic, OpenRouter, Deepgram, TTS), stored server-side, never shown back |
+| Models & voice | **Brains** | LLM provider/model (lists read live from each provider) and speech-to-text. A local Whisper is baked in and used by default — no key, no extra service — so this needs nothing set to work |
+| Models & voice | **Voice** | TTS backend (cloud/local), server URL, voice (default: mirrored per-persona from the station), adapter config |
+| Permissions & safety | **Caller permissions** | What a stranger on the line may trigger: requests, library search, announcements, running segments and (separately) whether the DJ may offer one — plus on-air overlap protection |
+| Permissions & safety | **Usage controls** | Concurrent calls, calls per hour and per day, per-caller redial wait, actions per call, and the pause switch — the guard on API spend |
+| Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
+| Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream |
+| Call settings | **Station awareness** | How much live context (recent tracks, queue, on-air chatter, the rest of the line-up) the DJ carries — each item costs latency every turn |
+| Call settings | **House style** | Light steers on conversation, answering and sign-off, layered on the persona; prompt preview with token budget |
+| Call settings | **Back to air** | The one-line on-air mention after a call ends |
+| Call settings | **Call sounds** | The sound set, per-sound uploads or URLs, previews, default volume |
+| Reference | **What callers can ask** | Live reference derived from the permissions above — including what is never available, and why |
+| Reference | **Embed** | Copyable iframe snippet + compact preview |
 
 At the bottom: **Run full pipeline check** (11 stages in call order — each
 failure message names its fix) and **Speed test** (per-turn latency
@@ -194,7 +218,7 @@ ships inside an embed. Optional attributes:
 
 | Attribute | Effect |
 |---|---|
-| `data-theme="light\|dark"` | Force a theme to match the host page (hides the widget's toggle). Omit for auto: viewer's OS preference + in-widget toggle |
+| `data-theme="light\|dark\|inherit"` | `light`/`dark` force a theme (and hide the widget's toggle). `inherit` reads the host page's own background and matches it — a cross-origin frame can't see the page it sits in, so this is resolved by `embed.js` before the frame loads. Omit for auto: viewer's OS preference + in-widget toggle |
 | `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — only the latest spoken line, fading after a few seconds, so the widget stays short. `full` restores the scrolling transcript |
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |
@@ -202,30 +226,46 @@ ships inside an embed. Optional attributes:
 
 ## Security
 
-**Panel password.** Set one in the settings panel (Security section). It
-protects the panel, API keys and test buttons — the call card and embed stay
-public, guarded by the usage limits instead. The login persists per browser
-until Sign out (Security section). Stored as a salted PBKDF2 hash.
-Wrong-password lockout: 5 failures per address → 5-minute cooldown; a second
-round → banned until the app restarts. Locked out yourself? Set
-`CALLIN_ADMIN_KEY` in the environment (always accepted, break-glass) or
-restart the app to clear bans. Until a password is set, the panel shows a
-standing nudge and stays open — fine on a trusted LAN, a choice you should
-make deliberately.
+**Two passwords, two jobs.** Both live in the panel under *Access →
+Passwords*, and the store refuses to let them be the same.
 
-The password travels with each request, so beyond your own LAN use the
-HTTPS front door — over plain http it's readable on the wire.
+**Admin** protects the panel, API keys and test buttons. Whoever holds it
+controls the application and can spend your API keys. The login persists per
+browser until Sign out. Until one is set, the panel shows a standing nudge
+and stays open — fine on a trusted LAN, a choice you should make
+deliberately.
+
+**Guest** is optional and protects only the phone: the Call button, `/token`,
+and every embed. Set one when the page is reachable from the internet and you
+want only the people you gave the code to ringing the booth. There's no
+username — the code is the whole thing. Admin is accepted as a guest code
+too, so an operator carries one password, never two. Leave it empty and
+anyone who can load the page can call (the usage limits are then the only
+guard).
+
+Both are stored as salted PBKDF2 hashes, never plaintext. Wrong-password
+lockout: 5 failures per address → 5-minute cooldown; a second round → banned
+until the app restarts. Guest failures are counted in their own bucket, so a
+caller fumbling the code can never lock you out of the panel. Locked out
+yourself? Set `CALLIN_ADMIN_KEY` in the environment (always accepted,
+break-glass) or restart the app to clear bans.
+
+Passwords travel with each request, so beyond your own LAN use the HTTPS
+front door — over plain http they're readable on the wire.
 
 Before exposing beyond your LAN:
 
 1. `CALLIN_ALLOWED_ORIGINS` — set to your real origins (`*` lets any page
    read config endpoints and mint call tokens).
-2. **Set the panel password** (above).
+2. **Set the admin password**, and a **guest code** if the page is public
+   (above).
 3. Fresh LiveKit keypair; `use_external_ip: true` and the UDP range open
    for off-LAN callers.
 4. Real TLS on the front door (a proper certificate instead of the
    self-signed one, e.g. via your own domain) so visitors see no warnings.
-5. Keep usage limits non-zero — every call spends real API money.
+5. Keep usage limits non-zero — every call spends real API money. On a public
+   page set **calls per day** and **actions per call** as well as the hourly
+   limit: an hourly cap alone still permits 24× that in a day.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted
    (0600 where the OS honours it). Protect the volume; never commit `.env`
    or `data/`.

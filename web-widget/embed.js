@@ -21,16 +21,46 @@
   var self = document.currentScript;
   var DEFAULT_ORIGIN = self ? new URL(self.src).origin : "http://localhost:8100";
 
+  /**
+   * Which theme does the host page look like? Walk up from the mount point
+   * for the first element with a real (non-transparent) background and judge
+   * its brightness; fall back to the page's declared color-scheme, then to
+   * the viewer's OS preference. Returns "light" or "dark".
+   */
+  function hostTheme(el) {
+    for (var node = el; node && node.nodeType === 1; node = node.parentElement) {
+      var bg = getComputedStyle(node).backgroundColor || "";
+      var m = bg.match(/rgba?\(([^)]+)\)/);
+      if (!m) continue;
+      var parts = m[1].split(",").map(parseFloat);
+      if (parts.length > 3 && parts[3] === 0) continue;   // transparent
+      // Rec. 601 luma: good enough to tell a dark page from a light one.
+      var luma = (0.299 * parts[0] + 0.587 * parts[1] + 0.114 * parts[2]) / 255;
+      return luma < 0.5 ? "dark" : "light";
+    }
+    var declared = getComputedStyle(document.documentElement).colorScheme || "";
+    if (/\bdark\b/.test(declared) && !/\blight\b/.test(declared)) return "dark";
+    if (/\blight\b/.test(declared) && !/\bdark\b/.test(declared)) return "light";
+    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
   document.querySelectorAll("[id^='subwave-callin']").forEach(function (el) {
     if (el.dataset.callinMounted) return;
     el.dataset.callinMounted = "1";
 
     var origin = el.getAttribute("data-origin") || DEFAULT_ORIGIN;
     var compact = el.getAttribute("data-compact") !== "false";
-    // data-theme="light"|"dark" forces a theme to match the host page and
-    // hides the widget's own toggle. Omit it for auto: the viewer's OS
-    // preference, with the in-widget toggle available.
+    // data-theme:
+    //   "light" / "dark"  force it, and hide the widget's own toggle
+    //   "inherit"         match the page this is embedded on
+    //   omitted           auto — the viewer's OS preference, toggle available
+    //
+    // "inherit" is resolved HERE rather than in the frame because a
+    // cross-origin iframe can't see the host page's styling at all. We read
+    // the host's own background and decide light or dark from it, which is
+    // what "matches the page" actually means to whoever dropped this in.
     var theme = el.getAttribute("data-theme") || "";
+    if (theme === "inherit") theme = hostTheme(el);
     // data-captions="ticker"|"full"|"off". Embeds default to the ticker —
     // only the latest spoken line, fading after a few seconds — so the
     // widget stays short wherever it's dropped.

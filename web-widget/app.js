@@ -94,29 +94,84 @@
     });
   }
 
-  const BUILTIN = {
-    // North-American ringback: 440+480Hz, two-second burst.
-    ring:   () => { tone([440, 480], 0, 1.1, 0.13); },
-    // Line picking up: a short click, then a soft confirmation blip.
-    pickup: () => { tone([220], 0, 0.045, 0.16); tone([660], 0.07, 0.10, 0.09); },
-    // Hanging up: descending pair.
-    hangup: () => { tone([480], 0, 0.14, 0.11); tone([380], 0.15, 0.22, 0.10); },
+  // A short burst of filtered noise — what every mechanical phone sound is
+  // actually made of. Oscillators alone can't do a click or a clunk.
+  function noise(start, dur, gain, freq, q) {
+    const c = ctx(), t0 = c.currentTime + start;
+    const frames = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, frames, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(); src.buffer = buf;
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q || 1;
+    const g = c.createGain();
+    g.gain.setValueAtTime(gain * (volume / 100), t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(bp); bp.connect(g); g.connect(c.destination);
+    src.start(t0); src.stop(t0 + dur);
+  }
+
+  // Two packs. "classic" is the telephone-exchange set the widget shipped
+  // with; "phone" is the one asked for — a physical handset in a room, all
+  // bell and bakelite rather than app blips. Both are synthesized, so
+  // neither needs an audio file to exist.
+  const PACKS = {
+    classic: {
+      // North-American ringback: 440+480Hz, two-second burst.
+      ring:   () => { tone([440, 480], 0, 1.1, 0.13); },
+      // Line picking up: a short click, then a soft confirmation blip.
+      pickup: () => { tone([220], 0, 0.045, 0.16); tone([660], 0.07, 0.10, 0.09); },
+      // Hanging up: descending pair.
+      hangup: () => { tone([480], 0, 0.14, 0.11); tone([380], 0.15, 0.22, 0.10); },
+      // Engaged tone, two beats only — enough to read as "no", not a nag.
+      failed: () => { tone([480, 620], 0, 0.35, 0.10); tone([480, 620], 0.5, 0.35, 0.10); },
+      // Put on hold: a soft double blip, then the line goes quiet.
+      hold:   () => { tone([520], 0, 0.07, 0.07); tone([440], 0.11, 0.09, 0.06); },
+    },
+    phone: {
+      // A bell struck twice, with the hammer noise on each strike and the
+      // metal ringing on after it.
+      ring: () => {
+        for (const at of [0, 0.14]) {
+          noise(at, 0.02, 0.10, 2600, 2);
+          tone([1180, 1580], at, 0.12, 0.075);
+        }
+      },
+      // Handset lifted off the cradle: a mechanical clunk, then the line
+      // opening with a breath of room tone.
+      pickup: () => { noise(0, 0.035, 0.20, 900, 1.2); noise(0.05, 0.12, 0.035, 1800, 0.7); },
+      // Receiver set back down: the clunk, then the cradle springing.
+      hangup: () => { noise(0, 0.05, 0.22, 620, 1.1); noise(0.07, 0.03, 0.11, 1500, 1.6); },
+      // Engaged: the old 400Hz burr rather than a two-tone beep.
+      failed: () => { tone([400], 0, 0.33, 0.09); tone([400], 0.45, 0.33, 0.09); },
+      // Handset set down on the desk beside the phone.
+      hold:   () => { noise(0, 0.04, 0.14, 700, 1.1); },
+    },
   };
+
+  function pack() {
+    const s = (live && live.sounds) || {};
+    return PACKS[s.pack] || PACKS.classic;
+  }
 
   let ringTimer = null;
   function playSound(kind) {
     const s = (live && live.sounds) || {};
     if (!s.enabled) return;
     const url = s[kind];
+    const builtin = pack()[kind];
     if (url) {
       try {
         const a = new Audio(url);
         a.volume = Math.min(1, volume / 100);
-        a.play().catch(() => BUILTIN[kind] && BUILTIN[kind]());
+        // A configured file that won't load must not mean silence — the
+        // built-in is always there to fall back on.
+        a.play().catch(() => builtin && builtin());
         return;
       } catch (e) { /* fall through to built-in */ }
     }
-    if (BUILTIN[kind]) BUILTIN[kind]();
+    if (builtin) builtin();
   }
 
   function startRinging() {
@@ -205,7 +260,24 @@
         img.onerror = () => img.classList.add('hidden');
       } else { img.classList.add('hidden'); }
 
-      if (!room) { callBtn.disabled = false; callBtn.textContent = 'Call the DJ'; }
+      // One place decides what the Call button says and whether it works.
+      // Split across two blocks, the later one silently undid the earlier.
+      if (!room) {
+        const needsCode = !!d.guestRequired && !callKey();
+        if (d.callsPaused) {
+          // A paused line is a deliberate state, not a fault: say so plainly
+          // rather than offering a button that can only fail.
+          callBtn.disabled = true;
+          callBtn.textContent = 'Line closed';
+        } else if (needsCode) {
+          callBtn.disabled = true;
+          callBtn.textContent = 'Enter the code';
+        } else {
+          callBtn.disabled = false;
+          callBtn.textContent = 'Call the DJ';
+        }
+      }
+      paintGuestGate();
       updateMicHelp();
 
       // Several station reads in a row have failed server-side: the card
@@ -223,6 +295,46 @@
       paintOffAir('offline');
       setStatus('Station unreachable', 'error');
     }
+  }
+
+  // ---------------------------------------------------------- the door code
+  // Optional: set a guest password in Settings → Security and the booth line
+  // only opens for people you gave the code to. Deliberately separate from
+  // the panel password — this buys you the phone, not the controls.
+  const CALL_KEY = 'callinCallKey';
+  const callKey = () => localStorage.getItem(CALL_KEY) || '';
+
+  // Visibility only — refreshLive owns the Call button, so the two can't
+  // fight over it.
+  function paintGuestGate() {
+    const box = $('guestGate');
+    if (box) box.hidden = !(live && live.guestRequired && !callKey());
+  }
+
+  async function submitGuestCode() {
+    const input = $('guestPw'), msg = $('guestMsg');
+    const pw = input.value.trim();
+    if (!pw) return;
+    msg.textContent = 'Checking…';
+    try {
+      const r = await fetch('/auth/guest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.textContent = d.error || 'That code is not right.'; return; }
+      localStorage.setItem(CALL_KEY, pw);
+      input.value = ''; msg.textContent = '';
+      $('guestGate').hidden = true;
+      await refreshLive();
+    } catch (e) { msg.textContent = 'Could not check that just now.'; }
+  }
+
+  if ($('guestBtn')) {
+    $('guestBtn').onclick = submitGuestCode;
+    $('guestPw').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitGuestCode();
+    });
   }
 
   // ------------------------------------------------------------ level meters
@@ -280,11 +392,28 @@
   const STATE_TEXT = {
     initializing: 'Connecting', idle: 'Idle', listening: 'Listening',
     thinking: 'Thinking', speaking: 'Speaking', reconnecting: 'Reconnecting',
+    // Not an SDK state. The DJ on the call and the DJ on the broadcast are
+    // the same person, so while the station has the microphone the call DJ
+    // waits — and the caller is told that's what the silence is.
+    onair: 'On air',
   };
-  function setAgentState(state) {
+
+  // The worker sets this participant attribute while the broadcast is live.
+  // It outranks the SDK's own state: the DJ may well be "listening" as far as
+  // the session is concerned, but what the caller needs to know is that it
+  // can't answer yet.
+  let djOnAir = false, lastAgentState = 'idle';
+
+  function paintAgentState() {
+    const state = djOnAir ? 'onair' : lastAgentState;
     const chip = $('stateChip');
     chip.dataset.state = state || 'idle';
     $('stateText').textContent = STATE_TEXT[state] || 'Idle';
+  }
+
+  function setAgentState(state) {
+    lastAgentState = state || 'idle';
+    paintAgentState();
     // The first time the DJ actually speaks, the call is properly underway:
     // the button flips from Answering to a green On the line for the rest
     // of the call.
@@ -295,14 +424,42 @@
     }
   }
 
+  function setOnAir(on) {
+    if (on === djOnAir) return;
+    djOnAir = on;
+    paintAgentState();
+    document.querySelector('.card').classList.toggle('onair', on);
+    if (on) {
+      playSound('hold');
+      addSystemLine('📻', 'Back on the broadcast',
+        'The DJ has the station mic for a moment — your call picks up straight after.');
+    }
+  }
+
   function watchAgentState(r) {
     const read = (p) => {
-      const s = p && p.attributes && p.attributes['lk.agent.state'];
+      if (!p || !p.attributes) return;
+      const s = p.attributes['lk.agent.state'];
       if (s) setAgentState(s);
+      if ('wavetalk.onair' in p.attributes) setOnAir(!!p.attributes['wavetalk.onair']);
     };
     r.on(LivekitClient.RoomEvent.ParticipantAttributesChanged, (_changed, p) => read(p));
     r.on(LivekitClient.RoomEvent.ParticipantConnected, read);
     r.remoteParticipants.forEach(read);
+  }
+
+  // The worker announces an action the moment the station actually accepts
+  // it. Worth its own channel: "I've put that in" from the DJ is a claim,
+  // this is the receipt.
+  function watchActions(r) {
+    const decoder = new TextDecoder();
+    r.on(LivekitClient.RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
+      if (topic && topic !== 'wavetalk.action') return;
+      let msg;
+      try { msg = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
+      if (!msg || msg.type !== 'action') return;
+      addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
+    });
   }
 
   // ---------------------------------------------------------------- captions
@@ -313,10 +470,12 @@
   function showTicker(who, text) {
     const t = $('ticker');
     if (!t) return;
-    t.querySelector('.who').textContent = who === 'dj' ? 'DJ' : 'You';
+    t.querySelector('.who').textContent =
+      who === 'dj' ? 'DJ' : (who === 'sys' ? '•' : 'You');
     t.querySelector('.line').textContent = text;
     t.hidden = false;
     t.classList.add('show');
+    t.classList.toggle('sys', who === 'sys');
     if (tickerTimer) clearTimeout(tickerTimer);
     tickerTimer = setTimeout(() => t.classList.remove('show'), 6000);
   }
@@ -359,6 +518,34 @@
     node.classList.toggle('interim', !final);
     lastByWho[who] = { node, text, at: Date.now() };
     capBox.scrollTop = capBox.scrollHeight;
+    while (capBox.children.length > 40) capBox.removeChild(capBox.firstChild);
+  }
+
+  // A system action, not speech: a song going into the queue, a message
+  // reaching the air, a segment starting. It gets its own line in the
+  // timeline, styled apart from the conversation, because the caller
+  // otherwise has only the DJ's word that anything happened.
+  function addSystemLine(icon, label, detail) {
+    if (captionsMode === 'off') return;
+    if (captionsMode !== 'full') {
+      showTicker('sys', label + (detail ? ' — ' + detail : ''));
+      return;
+    }
+    capBox.classList.add('on');
+    const empty = capBox.querySelector('.capempty');
+    if (empty) empty.remove();
+
+    const node = document.createElement('p');
+    node.className = 'cap sys';
+    node.innerHTML = '<span class="ico"></span><span class="said">'
+      + '<span class="what"></span><span class="detail"></span></span>';
+    node.querySelector('.ico').textContent = icon;
+    node.querySelector('.what').textContent = label;
+    node.querySelector('.detail').textContent = detail || '';
+    capBox.appendChild(node);
+    capBox.scrollTop = capBox.scrollHeight;
+    // A system line must not be merged into the next spoken turn.
+    delete lastByWho.dj;
     while (capBox.children.length > 40) capBox.removeChild(capBox.firstChild);
   }
 
@@ -422,21 +609,34 @@
 
     ctx();          // unlock audio inside the click gesture
     startRinging();
-    tuneIn();       // count the caller as a listener so requests are accepted
+    // Tune-in happens at PICKUP, not here: the station stream underneath a
+    // ringing tone is just noise, and the caller is only a listener once
+    // someone actually answers.
 
     try {
-      const res = await fetch('/token', { method: 'POST' });
-      if (res.status === 429) {
+      const res = await fetch('/token', {
+        method: 'POST',
+        headers: callKey() ? { 'X-Call-Key': callKey() } : {},
+      });
+      // 429 = the line is busy or the operator has closed it; 401 = the door
+      // code is missing or wrong. Both are answers, not faults — engaged
+      // tone, plain wording, and the button comes straight back.
+      if (res.status === 429 || res.status === 401) {
         const d = await res.json().catch(() => ({}));
         stopRinging(); tuneOut();
-        setStatus(d.error || 'The lines are busy — try again shortly.', 'error');
+        playSound('failed');
+        if (res.status === 401) {
+          localStorage.removeItem(CALL_KEY);
+          paintGuestGate();
+        }
+        setStatus(d.error || 'The booth line is tied up — try again shortly.', 'error');
         $('rig').classList.remove('on');
         $('stateChip').hidden = true;
         stopTimer();
         capBox.classList.remove('on');
         callBtn.classList.remove('ringing', 'answering');
-        callBtn.textContent = 'Call the DJ';
-        callBtn.disabled = false;
+        callBtn.textContent = res.status === 401 ? 'Enter the code' : 'Call the DJ';
+        callBtn.disabled = res.status === 401;
         room = null;
         return;
       }
@@ -450,6 +650,9 @@
         if (track.kind !== 'audio') return;
         stopRinging();
         playSound('pickup');
+        // Now they're actually on a call: tune them into the station so the
+        // station counts them as a listener and accepts their requests.
+        tuneIn();
         // Line picked up; the DJ hasn't spoken yet. setAgentState flips this
         // to the green "On the line" at its first spoken word.
         callBtn.classList.remove('ringing');
@@ -472,6 +675,7 @@
       });
       wireCaptions(room);
       watchAgentState(room);
+      watchActions(room);
 
       await room.connect(url, token);
       await room.localParticipant.setMicrophoneEnabled(true);
@@ -488,6 +692,7 @@
     } catch (err) {
       console.error(err);
       stopRinging();
+      playSound('failed');
       // The failure often happens AFTER room.connect() succeeded (a blocked
       // mic, typically). Without this the room stays joined and the agent
       // sits in an empty call.
@@ -553,6 +758,8 @@
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     anYou = anDj = null; djEl = null;
+    djOnAir = false;
+    document.querySelector('.card').classList.remove('onair');
     paintBars($('barsYou'), 0, false); paintBars($('barsDj'), 0, false);
     $('djAvatar').classList.remove('talking');
     $('rig').classList.remove('on');
@@ -802,13 +1009,17 @@
       .filter((f) => SCHEMA.fields[f].group === 'perms');
     const perms = permFields.filter((f) => resolved[f]).length;
     $('tagPerms').textContent = perms + ' of ' + permFields.length + ' enabled';
-    $('tagSounds').textContent = resolved.call_sounds ? 'on' : 'off';
+    $('tagSounds').textContent = resolved.call_sounds
+      ? (resolved.sound_pack === 'phone' ? 'handset' : 'exchange') : 'off';
     $('tagStyle').textContent = [resolved.style_answering, resolved.style_signoff]
       .filter(Boolean).length + ' set';
     $('tagHygiene').textContent = (resolved.strip_stage_directions ? 'directions stripped' : 'raw')
       + ' · ' + (resolved.profanity_mode === 'off' ? 'no filter' : resolved.profanity_mode);
-    $('tagUsage').textContent = (resolved.max_concurrent_calls || '∞') + ' at once · '
-      + (resolved.calls_per_hour || '∞') + '/hr · ' + (resolved.caller_cooldown_secs || 0) + 's redial';
+    $('tagUsage').textContent = resolved.calls_paused ? 'PAUSED — no calls'
+      : (resolved.max_concurrent_calls || '∞') + ' at once · '
+        + (resolved.calls_per_hour || '∞') + '/hr · '
+        + (resolved.calls_per_day || '∞') + '/day · '
+        + (resolved.max_actions_per_call || '∞') + ' actions';
     $('tagCallback').textContent = resolved.callback_enabled
       ? 'on · ' + resolved.callback_max_words + ' words' : 'off';
     $('tagContext').textContent = [resolved.context_recent_tracks + ' played',
@@ -824,8 +1035,16 @@
       why: 'Reads live station state — always available.' },
     { need: null, say: '“What have you been playing tonight?”',
       why: 'Recent history and what’s queued next.' },
+    { need: null, say: '“What’s on after this show?”',
+      why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
     { need: 'allow_requests', say: '“Can you play something slower?”',
       why: 'Vague requests work — the station resolves them.' },
+    { need: 'allow_requests', say: '“Something from the late seventies?”',
+      why: 'An era is a request like any other — no track name needed.' },
+    { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',
+      why: 'The station matches on feel, not just on title.' },
+    { need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
+      why: 'A run of requests in one mood — capped by the per-call action limit.' },
     { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
       why: 'Searches the real library before promising anything.' },
     { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
@@ -838,8 +1057,20 @@
       why: 'Runs the dedication or shoutout segment.' },
     { need: 'allow_skills', say: '“Tell us a story about the old days.”',
       why: 'Story time / remembrance segments, in the DJ’s own voice.' },
+    { need: null, say: '“Who is this? What’s the story behind this record?”',
+      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
     { need: null, say: '“How long have you been doing the night shift?”',
       why: 'Answered in character from the DJ Card — no tool needed.' },
+  ];
+
+  // The other half of the truth: what a caller CANNOT do, and why. Without
+  // this the permissions list reads as if anything might be one toggle away.
+  const NEVER = [
+    ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
+    ['Put a track straight into the queue', 'that bypasses the request queue and its rate limits'],
+    ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
+    ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
+    ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
   ];
 
   function paintAsks() {
@@ -862,6 +1093,18 @@
       say.appendChild(why);
       host.appendChild(li);
     });
+
+    // Always-off actions, listed once at the end so the boundary is visible
+    // rather than something you discover by toggling everything on.
+    const never = document.createElement('li');
+    never.className = 'nevergroup';
+    never.innerHTML = '<span class="mark">×</span><span class="say">'
+      + 'Never available to callers, whatever the settings say'
+      + '<span class="why"></span></span>';
+    never.querySelector('.why').textContent =
+      NEVER.map(([what, why]) => what + ' — ' + why).join(' · ');
+    host.appendChild(never);
+
     const tag = $('tagAsk');
     if (tag) tag.textContent = on + ' of ' + ASKS.length + ' available';
   }
@@ -960,16 +1203,26 @@
     fill('llm_provider', options.llmProviders);
     fill('stt_provider', options.sttProviders);
 
-    const ids = options.personas.map((p) => p.id);
-    const names = {};
+    // "Random each call" sits alongside the roster because it's the same
+    // choice: who answers the phone. Blank stays the honest default.
+    const RANDOM = '__random__';
+    const ids = [RANDOM].concat(options.personas.map((p) => p.id));
+    const names = { [RANDOM]: 'Random each call' };
     options.personas.forEach((p) => { names[p.id] = p.name; });
-    fill('persona_override', ids, { blankLabel: 'Whoever is live', labels: names });
+    fill('persona_override', ids, {
+      blankLabel: 'Whoever is live on air', labels: names,
+    });
 
     SELECT_FIELDS.filter((f) => !hasChoices(f))
       .forEach((f) => { $(f).value = overrides[f] || ''; });
     TEXT_FIELDS.forEach((f) => {
       $(f).value = overrides[f] || '';
+      // What an EMPTY box does is a real setting with real behaviour, so say
+      // it: the resolved value if something lower down supplies one, else the
+      // schema's own description of the default.
+      const meta = SCHEMA.fields[f] || {};
       if (resolved[f]) $(f).placeholder = resolved[f];
+      else if (meta.placeholder) $(f).placeholder = meta.placeholder;
     });
     NUM_FIELDS.forEach((f) => { $(f).value = overrides[f] !== '' ? overrides[f] : resolved[f]; });
     CHECK_FIELDS.forEach((f) => { $(f).checked = !!resolved[f]; });
@@ -1006,10 +1259,14 @@
   // none exists — an open panel is fine on a trusted LAN but should be a
   // choice, not an accident.
   function paintSecurity() {
-    $('tagSecurity').textContent = authConfigured ? 'password set' : 'open — no password';
+    $('tagSecurity').textContent =
+      (authConfigured ? 'admin set' : 'admin OPEN')
+      + ' · ' + (guestConfigured ? 'line private' : 'line open');
     $('curPwRow').style.display = authConfigured ? '' : 'none';
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
     $('logoutBtn').hidden = !authConfigured;
+    $('setGuestBtn').textContent = guestConfigured ? 'Change guest code' : 'Set guest code';
+    $('clearGuestBtn').hidden = !guestConfigured;
 
     let nudge = $('pwNudge');
     if (authConfigured) { if (nudge) nudge.remove(); return; }
@@ -1031,6 +1288,44 @@
     localStorage.removeItem('callinAdminKey');
     location.reload();
   };
+
+  async function setGuest(code) {
+    const out = $('guestResult');
+    const btn = code ? $('setGuestBtn') : $('clearGuestBtn');
+    btn.disabled = true;
+    try {
+      const r = await afetch('/auth/password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'guest', new: code }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { showResult(out, false, d.error || 'failed'); return; }
+      guestConfigured = !!d.guestConfigured;
+      $('sec_guest_pw').value = '';
+      paintSecurity();
+      // The operator's own browser shouldn't now be locked out of the phone
+      // it just locked — the admin password opens the guest door anyway, but
+      // storing the code saves them typing it.
+      if (code) localStorage.setItem(CALL_KEY, code);
+      else localStorage.removeItem(CALL_KEY);
+      await refreshLive();
+      showResult(out, true, code
+        ? 'Guest code set. Callers are asked for it before the line opens; this '
+          + 'browser is already through.'
+        : 'Guest code removed — anyone who can load the page can call again.');
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  }
+
+  $('setGuestBtn').onclick = () => {
+    const code = $('sec_guest_pw').value.trim();
+    if (code.length < 6) {
+      showResult($('guestResult'), false, 'Use at least 6 characters.');
+      return;
+    }
+    setGuest(code);
+  };
+  $('clearGuestBtn').onclick = () => setGuest('');
 
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');
@@ -1122,7 +1417,7 @@
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
   }
 
-  let authConfigured = false;
+  let authConfigured = false, guestConfigured = false;
 
   async function loadSettings() {
     const [ro, rs] = await Promise.all([
@@ -1140,8 +1435,9 @@
     const o = await ro.json(); const s = await rs.json();
     options = o; overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
     authConfigured = !!s.authConfigured;
+    guestConfigured = !!s.guestConfigured;
     adoptSchema(s.schema);
-    paint(); paintSecrets();
+    paint(); paintSecrets(); loadSounds();
     // Which build is this? Anchors every bug report and change over time.
     fetch('/health').then((r) => r.json()).then((h) => {
       $('versionLine').textContent = 'Wave Talk v' + (h.version || '?')
@@ -1464,18 +1760,118 @@
     finally { btn.disabled = false; }
   };
 
-  // Sound previews use the draft values, so you hear what you're about to save.
+  // Sound previews use the DRAFT values — the pack you've just picked and the
+  // file you've just chosen — so you hear what you're about to save, not what
+  // is currently live.
   function previewSound(kind) {
-    const url = $('sound_' + kind).value.trim();
+    const raw = ($('sound_' + kind).value || '').trim();
+    const url = raw.startsWith(UPLOAD_PREFIX)
+      ? '/sounds/' + encodeURIComponent(raw.slice(UPLOAD_PREFIX.length)) : raw;
     const prev = live && live.sounds;
     live = live || {};
-    live.sounds = { enabled: true, ring: '', pickup: '', hangup: '' };
+    live.sounds = { enabled: true, pack: $('sound_pack').value || 'classic' };
     live.sounds[kind] = url;
     playSound(kind);
     const out = $('soundResult');
     out.className = 'result on';
-    out.textContent = url ? 'Playing your file: ' + url : 'Playing the built-in ' + kind + ' sound.';
+    out.textContent = url
+      ? 'Playing your file: ' + url
+      : 'Playing the built-in ' + kind + ' sound from the '
+        + ($('sound_pack').selectedOptions[0] || {}).textContent + ' set.';
     setTimeout(() => { if (prev) live.sounds = prev; }, 1500);
+  }
+
+  // ------------------------------------------------------------- uploads
+  // Somewhere to put your own ring without hosting a file yourself.
+  const UPLOAD_PREFIX = 'upload:';
+  let uploaded = [];
+
+  function paintSounds() {
+    const host = $('soundList');
+    if (!host) return;
+    host.innerHTML = '';
+    if (!uploaded.length) {
+      $('uploadHint').textContent = 'Nothing uploaded yet — the built-in set is in use.';
+      return;
+    }
+    $('uploadHint').textContent = '';
+    const slots = ['ring', 'pickup', 'hold', 'hangup', 'failed'];
+    const labels = { ring: 'Ring', pickup: 'Pick up', hold: 'On hold',
+                     hangup: 'Hang up', failed: "Can't connect" };
+    uploaded.forEach((name) => {
+      const li = document.createElement('li');
+      const who = document.createElement('span');
+      who.className = 'sname';
+      who.textContent = name;
+
+      const play = document.createElement('button');
+      play.className = 'btnquiet'; play.textContent = 'Play';
+      play.onclick = () => { new Audio('/sounds/' + encodeURIComponent(name)).play(); };
+
+      // Assigning is the point of uploading — without this you'd have to know
+      // to type "upload:name.mp3" into the right box yourself.
+      const use = document.createElement('select');
+      use.innerHTML = '<option value="">Use for…</option>';
+      slots.forEach((s) => {
+        const o = document.createElement('option');
+        o.value = s; o.textContent = labels[s];
+        use.appendChild(o);
+      });
+      use.onchange = () => {
+        if (!use.value) return;
+        $('sound_' + use.value).value = UPLOAD_PREFIX + name;
+        use.value = '';
+        markClean();
+        showResult($('soundResult'), true,
+          'Assigned — press Save to apply it to the next caller.');
+      };
+
+      const del = document.createElement('button');
+      del.className = 'btnquiet'; del.textContent = 'Remove';
+      del.onclick = async () => {
+        del.disabled = true;
+        const r = await afetch('/settings/sounds/' + encodeURIComponent(name),
+                               { method: 'DELETE' });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { uploaded = d.sounds || []; paintSounds(); }
+        else { showResult($('soundResult'), false, d.error || 'Could not remove it.'); }
+      };
+
+      li.append(who, use, play, del);
+      host.appendChild(li);
+    });
+  }
+
+  async function loadSounds() {
+    try {
+      const r = await afetch('/settings/sounds');
+      if (!r.ok) return;
+      const d = await r.json();
+      uploaded = d.sounds || [];
+      paintSounds();
+    } catch (e) { /* the built-ins still work */ }
+  }
+
+  if ($('uploadSoundBtn')) {
+    $('uploadSoundBtn').onclick = () => $('soundFile').click();
+    $('soundFile').onchange = async () => {
+      const file = $('soundFile').files[0];
+      if (!file) return;
+      const out = $('soundResult');
+      out.className = 'result on'; out.textContent = 'Uploading ' + file.name + '…';
+      const form = new FormData();
+      form.append('file', file, file.name);
+      try {
+        const r = await afetch('/settings/sounds', { method: 'POST', body: form });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { showResult(out, false, d.error || 'Upload failed'); return; }
+        uploaded = d.sounds || [];
+        paintSounds();
+        showResult(out, true, d.name + ' uploaded. Pick which sound it should be, '
+          + 'then Save.');
+      } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+      finally { $('soundFile').value = ''; }
+    };
   }
   // ------------------------------------------------- full pipeline check
   // Runs every leg a real call depends on, in call order, so the first red
@@ -1752,7 +2148,9 @@
 
   $('testRingBtn').onclick = () => previewSound('ring');
   $('testPickupBtn').onclick = () => previewSound('pickup');
+  $('testHoldBtn').onclick = () => previewSound('hold');
   $('testHangupBtn').onclick = () => previewSound('hangup');
+  $('testFailedBtn').onclick = () => previewSound('failed');
 
   $('saveKeysBtn').onclick = async () => {
     const set = {};

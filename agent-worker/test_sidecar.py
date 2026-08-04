@@ -185,6 +185,55 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestPanelMarkup(unittest.TestCase):
+    """The panel builds itself from the schema, but it can only fill in a
+    control the markup actually contains — `byKind` skips any field with no
+    matching element id. So a setting declared in settings.py with no input in
+    index.html is simply unreachable, with nothing to say so. That shipped
+    twice (avoid_on_air_overlap, on_air_quiet_secs)."""
+
+    def setUp(self):
+        import re
+
+        html = (Path(__file__).parent.parent / "web-widget" / "index.html").read_text(
+            encoding="utf-8"
+        )
+        self.ids = set(re.findall(r'id="([^"]+)"', html))
+        self.groups = set(re.findall(r'data-group="([^"]+)"', html))
+
+    def test_every_schema_field_has_a_control(self):
+        missing = sorted(f for f in settings_store.SCHEMA if f not in self.ids)
+        self.assertFalse(
+            missing,
+            "settings with no input in index.html — they cannot be changed from "
+            f"the panel: {missing}",
+        )
+
+    def test_every_schema_group_has_a_section(self):
+        missing = sorted(g for g, *_ in settings_store.GROUPS if g not in self.groups)
+        self.assertFalse(missing, f"schema groups with no section: {missing}")
+
+    def test_every_field_belongs_to_a_real_group(self):
+        known = {g for g, *_ in settings_store.GROUPS}
+        strays = sorted(
+            f for f, meta in settings_store.SCHEMA.items() if meta["group"] not in known
+        )
+        self.assertFalse(strays, f"settings in an unknown group: {strays}")
+
+    def test_every_group_belongs_to_a_real_supergroup(self):
+        known = {s for s, *_ in settings_store.SUPERGROUPS}
+        strays = sorted(
+            g for g, sup, *_ in settings_store.GROUPS if sup not in known
+        )
+        self.assertFalse(strays, f"groups under an unknown supergroup: {strays}")
+
+    def test_every_declared_field_is_storable(self):
+        # A SCHEMA entry with no FIELDS entry renders a control that silently
+        # discards whatever you type into it (save() drops unknown keys).
+        strays = sorted(f for f in settings_store.SCHEMA if f not in settings_store.FIELDS)
+        self.assertFalse(strays, f"settings that cannot be saved: {strays}")
+
+
 class TestSecrets(_TempStores):
     def test_blank_means_unchanged_and_clear_is_explicit(self):
         secrets_store.save({"openai_api_key": "sk-real"}, [])
@@ -326,6 +375,64 @@ class TestAdminAuth(unittest.TestCase):
         self.auth.set_password("do-not-store-me")
         raw = self.auth.AUTH_PATH.read_text()
         self.assertNotIn("do-not-store-me", raw)
+
+    def test_guest_password_is_independent_of_admin(self):
+        self.auth.set_password("admin password here")
+        self.assertFalse(self.auth.guest_is_set())
+        self.auth.set_guest_password("guestcode")
+        self.assertTrue(self.auth.guest_is_set())
+        # Guest opens the phone but NOT the panel — the whole point.
+        self.assertTrue(self.auth.verify_guest("guestcode"))
+        self.assertFalse(self.auth.verify("guestcode"))
+        # Admin opens both, so an operator carries one password.
+        self.assertTrue(self.auth.verify_guest("admin password here"))
+        self.assertTrue(self.auth.verify("admin password here"))
+        # Changing the admin password leaves the guest one alone.
+        self.auth.set_password("a different admin one")
+        self.assertTrue(self.auth.verify_guest("guestcode"))
+
+    def test_the_two_passwords_cannot_be_made_identical(self):
+        # Sharing a code with callers that also opens the settings panel is
+        # the single most likely way to get this wrong.
+        self.auth.set_password("shared secret pw")
+        with self.assertRaises(ValueError):
+            self.auth.set_guest_password("shared secret pw")
+        self.assertFalse(self.auth.guest_is_set())
+        # …and from the other direction too.
+        self.auth.set_guest_password("guestcode")
+        with self.assertRaises(ValueError):
+            self.auth.set_password("guestcode")
+        self.assertTrue(self.auth.verify("shared secret pw"))   # unchanged
+
+    def test_clearing_the_guest_password_reopens_the_line(self):
+        self.auth.set_guest_password("guestcode")
+        self.auth.clear_guest_password()
+        self.assertFalse(self.auth.guest_is_set())
+        self.assertFalse(self.auth.verify_guest("guestcode"))
+
+    def test_guest_gate_is_open_until_a_code_exists(self):
+        import token_server as ts
+
+        self.assertIsNone(ts._guest_check("", "ip-a"))
+        self.auth.set_guest_password("guestcode")
+        self.assertIsNotNone(ts._guest_check("", "ip-a"))
+        self.assertIsNotNone(ts._guest_check("wrong", "ip-a"))
+        self.assertIsNone(ts._guest_check("guestcode", "ip-a"))
+        ts._auth_state.pop("guest:ip-a", None)
+
+    def test_guest_failures_do_not_lock_the_operator_out(self):
+        # A caller fumbling the door code must not ban the address from the
+        # settings panel — the two live in separate buckets.
+        import token_server as ts
+
+        self.auth.set_guest_password("guestcode")
+        ts._auth_state.pop("ip-b", None)
+        ts._auth_state.pop("guest:ip-b", None)
+        for _ in range(10):
+            ts._guest_check("nope", "ip-b")
+        self.assertIsNotNone(ts._auth_gate("guest:ip-b"))
+        self.assertIsNone(ts._auth_gate("ip-b"))
+        ts._auth_state.pop("guest:ip-b", None)
 
     def test_lockout_cooldown_then_ban(self):
         # 5 wrong tries -> cooldown; a second round of 5 -> banned until

@@ -35,7 +35,7 @@ from station_config import StationConfig
 
 # Reported on /health so a deployed instance can say what it is. Keep in
 # step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
-APP_VERSION = "0.9.25"
+APP_VERSION = "0.9.26"
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -186,6 +186,14 @@ async def handle_token(request: web.Request) -> web.Response:
 
     cfg = settings_store.load()
     if not probe:
+        # The door code, if there is one, is checked before the usage limits:
+        # a stranger who can't get in shouldn't be told how busy the line is.
+        if not _guest_ok(request):
+            return _cors(request, web.json_response(
+                {"error": request.get("auth_error") or "password required",
+                 "guestRequired": True},
+                status=401,
+            ))
         refusal = _check_usage(request, cfg)
         if refusal:
             log.info("call refused by usage controls: %s", refusal)
@@ -283,6 +291,13 @@ async def handle_live(request: web.Request) -> web.Response:
                 {
                     "reachable": reachable,
                     "onAir": on_air,
+                    # Whether the caller must enter a code before the line
+                    # opens. The card asks for it up front rather than letting
+                    # them press Call and be refused.
+                    "guestRequired": admin_auth.guest_is_set(),
+                    # The operator has closed the line; the card says so
+                    # instead of offering a button that can't work.
+                    "callsPaused": bool(cfg.get("calls_paused")),
                     # True when several station reads in a row have failed —
                     # the card can say "station struggling" instead of the
                     # prompt just silently thinning.
@@ -308,9 +323,12 @@ async def handle_live(request: web.Request) -> web.Response:
                     },
                     "sounds": {
                         "enabled": bool(cfg.get("call_sounds")),
-                        "ring": cfg.get("sound_ring") or "",
-                        "pickup": cfg.get("sound_pickup") or "",
-                        "hangup": cfg.get("sound_hangup") or "",
+                        "pack": cfg.get("sound_pack") or "classic",
+                        "ring": _sound_url(cfg.get("sound_ring")),
+                        "pickup": _sound_url(cfg.get("sound_pickup")),
+                        "hold": _sound_url(cfg.get("sound_hold")),
+                        "hangup": _sound_url(cfg.get("sound_hangup")),
+                        "failed": _sound_url(cfg.get("sound_failed")),
                         "volume": int(cfg.get("call_volume") or 100),
                     },
                     "name": persona["name"],
@@ -333,6 +351,138 @@ async def handle_live(request: web.Request) -> web.Response:
         return _cors(request, web.json_response(payload))
     finally:
         await station.aclose()
+
+
+# --- uploaded call sounds --------------------------------------------------
+# Somewhere to put your own ring without hosting it yourself. A setting whose
+# value is "upload:<name>" resolves to a file here; anything else is passed
+# through as a URL, so an externally hosted sound still works exactly as before.
+SOUNDS_DIR = Path(
+    os.environ.get("SOUNDS_PATH", Path(__file__).parent.parent / "data" / "sounds")
+)
+SOUND_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
+               ".m4a": "audio/mp4", ".aac": "audio/aac", ".webm": "audio/webm"}
+MAX_SOUND_BYTES = 2 * 1024 * 1024      # a call sound is a second or two
+UPLOAD_PREFIX = "upload:"
+
+
+def _safe_sound_name(name: str) -> str:
+    """One flat directory, no traversal, no surprises: keep the stem's word
+    characters and a known audio extension, drop everything else."""
+    import re
+
+    stem, _, ext = str(name or "").rpartition(".")
+    ext = "." + ext.lower()
+    if ext not in SOUND_TYPES:
+        return ""
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", stem).strip("-")[:48]
+    return f"{stem}{ext}" if stem else ""
+
+
+def _sound_url(value) -> str:
+    """Resolve a stored sound setting to something the browser can fetch."""
+    raw = str(value or "").strip()
+    if raw.startswith(UPLOAD_PREFIX):
+        name = _safe_sound_name(raw[len(UPLOAD_PREFIX):])
+        return f"/sounds/{name}" if name else ""
+    return raw
+
+
+def _uploaded_sounds() -> list[str]:
+    try:
+        return sorted(
+            p.name for p in SOUNDS_DIR.iterdir()
+            if p.is_file() and p.suffix.lower() in SOUND_TYPES
+        )
+    except OSError:
+        return []
+
+
+async def handle_sounds_list(request: web.Request) -> web.Response:
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    return _cors(request, web.json_response(
+        {"sounds": _uploaded_sounds(), "prefix": UPLOAD_PREFIX}))
+
+
+async def handle_sound_upload(request: web.Request) -> web.Response:
+    """Store an uploaded sound. Operator-only — this writes to disk and the
+    result is served to every caller."""
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+
+    try:
+        reader = await request.multipart()
+        field = await reader.next()
+        while field is not None and field.name != "file":
+            field = await reader.next()
+        if field is None:
+            return _cors(request, web.json_response({"error": "no file"}, status=400))
+
+        name = _safe_sound_name(field.filename or "")
+        if not name:
+            return _cors(request, web.json_response(
+                {"error": "use an mp3, wav, ogg, m4a, aac or webm file"}, status=400))
+
+        SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
+        target = SOUNDS_DIR / name
+        tmp = target.with_suffix(target.suffix + ".part")
+        size = 0
+        with open(tmp, "wb") as f:
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_SOUND_BYTES:
+                    f.close()
+                    tmp.unlink(missing_ok=True)
+                    return _cors(request, web.json_response(
+                        {"error": "that file is over 2 MB — a call sound only needs "
+                                  "a second or two"}, status=413))
+                f.write(chunk)
+        if not size:
+            tmp.unlink(missing_ok=True)
+            return _cors(request, web.json_response({"error": "empty file"}, status=400))
+        tmp.replace(target)
+    except Exception as e:
+        log.warning("sound upload failed: %s", e)
+        return _cors(request, web.json_response({"error": str(e)[:140]}, status=400))
+
+    log.info("call sound uploaded: %s (%d bytes)", name, size)
+    _live_cache["data"] = None
+    return _cors(request, web.json_response(
+        {"ok": True, "name": name, "value": UPLOAD_PREFIX + name,
+         "sounds": _uploaded_sounds()}))
+
+
+async def handle_sound_delete(request: web.Request) -> web.Response:
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    name = _safe_sound_name(request.match_info.get("name", ""))
+    if name:
+        (SOUNDS_DIR / name).unlink(missing_ok=True)
+        log.info("call sound removed: %s", name)
+    _live_cache["data"] = None
+    return _cors(request, web.json_response({"ok": True, "sounds": _uploaded_sounds()}))
+
+
+async def handle_sound_file(request: web.Request) -> web.StreamResponse:
+    """Public: every caller's browser has to be able to fetch these."""
+    name = _safe_sound_name(request.match_info.get("name", ""))
+    path = SOUNDS_DIR / name if name else None
+    if not path or not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={
+        "Cache-Control": "public, max-age=3600",
+        "Content-Type": SOUND_TYPES.get(path.suffix.lower(), "application/octet-stream"),
+    })
 
 
 async def handle_avatar(request: web.Request) -> web.StreamResponse:
@@ -395,8 +545,10 @@ def _auth_gate(ip: str) -> str | None:
     return None
 
 
-def _auth_fail(ip: str) -> str:
-    """Record a wrong password; returns the caller-facing message."""
+def _auth_fail(ip: str, noun: str = "password") -> str:
+    """Record a wrong password; returns the caller-facing message. `noun` so a
+    caller who mistypes the door code isn't told about a "password" they were
+    never given."""
     st = _auth_state.setdefault(ip, {"fails": 0, "strikes": 0})
     st["fails"] += 1
     if st["fails"] >= _AUTH_MAX_FAILS:
@@ -411,7 +563,7 @@ def _auth_fail(ip: str) -> str:
         log.warning("auth: %s in cooldown after %d failures", ip, _AUTH_MAX_FAILS)
         return f"too many failed attempts — try again in {int(_AUTH_COOLDOWN_SECS)}s"
     left = _AUTH_MAX_FAILS - st["fails"]
-    return f"wrong password ({left} tr{'y' if left == 1 else 'ies'} left before a cooldown)"
+    return f"wrong {noun} ({left} tr{'y' if left == 1 else 'ies'} left before a cooldown)"
 
 
 def _auth_clear(ip: str) -> None:
@@ -444,6 +596,37 @@ def _check_admin(request: web.Request) -> bool:
     request["auth_error"] = _auth_fail(ip) if key else "password required"
     request["auth_required"] = True
     return False
+
+
+def _guest_check(key: str, ip: str) -> str | None:
+    """The front door for CALLING, as opposed to configuring. Returns a
+    caller-facing reason to refuse, or None to allow.
+
+    Open unless a guest password has been set. Kept separate from the panel
+    gate on purpose: the guest code buys you the phone, never the controls.
+    Failed guest attempts are counted under their own key, so a caller
+    fumbling the code can't lock the operator out of the panel.
+    """
+    if not admin_auth.guest_is_set():
+        return None
+
+    bucket = "guest:" + ip
+    gate = _auth_gate(bucket)
+    if gate:
+        return gate
+    if key and (admin_auth.verify_guest(key) or _key_valid(key)):
+        _auth_clear(bucket)
+        return None
+    return _auth_fail(bucket, "code") if key else "code required"
+
+
+def _guest_ok(request: web.Request) -> bool:
+    reason = _guest_check(
+        request.headers.get("X-Call-Key", ""), _caller_key(request)
+    )
+    if reason:
+        request["auth_error"] = reason
+    return reason is None
 
 
 def _write_allowed(request: web.Request) -> bool:
@@ -497,21 +680,51 @@ async def handle_get_settings(request: web.Request) -> web.Response:
                 # page doesn't keep its own parallel copy of the schema.
                 "schema": settings_store.schema_payload(),
                 "authConfigured": _auth_configured(),
+                "guestConfigured": admin_auth.guest_is_set(),
             }
         ),
     )
 
 
 async def handle_set_password(request: web.Request) -> web.Response:
-    """Set or change the panel password. First-run set is open (same-origin
-    only); changing requires the current password, with the same lockout as
-    every other attempt."""
+    """Set or change a password. First-run set of the ADMIN password is open
+    (same-origin only); changing it requires the current one, with the same
+    lockout as every other attempt.
+
+    `scope: "guest"` sets the call-line password instead. That one always
+    requires admin — handing out a code that opens the settings panel is the
+    single most likely way to get this wrong, so the store refuses a guest
+    password that matches the admin one.
+    """
     try:
         body = await request.json()
     except Exception:
         return _cors(request, web.json_response({"error": "invalid JSON"}, status=400))
 
+    scope = str((body or {}).get("scope") or "admin").lower()
     new = str((body or {}).get("new") or "")
+
+    if scope == "guest":
+        if not _write_allowed(request):
+            return _cors(request, web.json_response(
+                {"error": request.get("auth_error") or "not allowed",
+                 "authRequired": bool(request.get("auth_required"))},
+                status=401,
+            ))
+        if not new:                       # blank clears it — the line reopens
+            admin_auth.clear_guest_password()
+            _live_cache["data"] = None
+            return _cors(request, web.json_response({"ok": True, "guestConfigured": False}))
+        if len(new) < 6:
+            return _cors(request, web.json_response(
+                {"error": "use at least 6 characters"}, status=400))
+        try:
+            admin_auth.set_guest_password(new)
+        except ValueError as e:
+            return _cors(request, web.json_response({"error": str(e)}, status=400))
+        _live_cache["data"] = None
+        return _cors(request, web.json_response({"ok": True, "guestConfigured": True}))
+
     if len(new) < 8:
         return _cors(request, web.json_response(
             {"error": "use at least 8 characters"}, status=400))
@@ -533,8 +746,31 @@ async def handle_set_password(request: web.Request) -> web.Response:
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "not allowed"}, status=401))
 
-    admin_auth.set_password(new)
+    try:
+        admin_auth.set_password(new)
+    except ValueError as e:
+        return _cors(request, web.json_response({"error": str(e)}, status=400))
+    _live_cache["data"] = None
     return _cors(request, web.json_response({"ok": True}))
+
+
+async def handle_guest_login(request: web.Request) -> web.Response:
+    """Check a caller's door code. Public by necessity — it's the only way in
+    — so it carries the same per-address lockout as every other attempt."""
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(request, web.json_response({"error": "invalid JSON"}, status=400))
+
+    # Same check /token runs, so the two can never disagree about what a good
+    # code is.
+    reason = _guest_check(
+        str((body or {}).get("password") or ""), _caller_key(request)
+    )
+    if reason is None:
+        return _cors(request, web.json_response({"ok": True}))
+    return _cors(request, web.json_response(
+        {"error": reason, "guestRequired": True}, status=401))
 
 
 async def handle_post_secrets(request: web.Request) -> web.Response:
@@ -1715,8 +1951,15 @@ def build_app() -> web.Application:
     app.router.add_options("/settings/secrets", handle_options)
     app.router.add_post("/auth/password", handle_set_password)
     app.router.add_options("/auth/password", handle_options)
+    app.router.add_post("/auth/guest", handle_guest_login)
+    app.router.add_options("/auth/guest", handle_options)
     app.router.add_get("/settings/options", handle_settings_options)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
+    app.router.add_get("/settings/sounds", handle_sounds_list)
+    app.router.add_post("/settings/sounds", handle_sound_upload)
+    app.router.add_options("/settings/sounds", handle_options)
+    app.router.add_delete("/settings/sounds/{name}", handle_sound_delete)
+    app.router.add_get("/sounds/{name}", handle_sound_file)
     app.router.add_post("/test/tts", handle_test_tts)
     app.router.add_options("/test/tts", handle_options)
     app.router.add_post("/test/llm", handle_test_llm)

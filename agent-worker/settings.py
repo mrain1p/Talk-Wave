@@ -157,12 +157,16 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "context_upcoming":      (None, 2),   # what's queued next
     "context_schedule":      (None, False),  # what show is on later
 
-    # Call sounds. Blank = the built-in synthesized tone (no asset needed);
-    # set a URL to use your own file. `call_sounds` turns the lot off.
+    # Call sounds. Blank = the built-in synthesized sound for the chosen pack
+    # (no asset needed); set a URL, or upload a file, to replace one.
+    # `call_sounds` turns the lot off.
     "call_sounds":      (None, True),
+    "sound_pack":       (None, "classic"),   # classic | phone
     "sound_ring":       (None, ""),
     "sound_pickup":     (None, ""),
+    "sound_hold":       (None, ""),
     "sound_hangup":     (None, ""),
+    "sound_failed":     (None, ""),
     "call_volume":      (None, 100),
 }
 
@@ -188,8 +192,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 
 # Super-groups, in display order. The page renders these headers and orders
 # every section beneath them from this table — it does not keep its own copy.
+# "Configuration" used to hold five sections and a dozen buttons, which is
+# where the clutter came from: connecting the station, entering keys and
+# choosing models are three different jobs done at three different times.
 SUPERGROUPS = [
-    ("config",  "Configuration",        "Connect it up and choose the models."),
+    ("access",  "Access",               "Who can open this panel, and who can call the booth."),
+    ("connect", "Connect",              "The station this answers for, and the keys to reach it."),
+    ("models",  "Models & voice",       "What listens, what thinks, and how it sounds."),
     ("safety",  "Permissions & safety", "What a caller may trigger, and the limits around it."),
     ("callcfg", "Call settings",        "How a call runs and how the DJ talks."),
     ("ref",     "Reference",            "What to expect, and how to put it on another page."),
@@ -201,11 +210,13 @@ SUPERGROUPS = [
 # snippet — are listed too, so ordering lives in exactly one place. Their
 # markup carries a matching data-group attribute.
 GROUPS = [
-    ("station",  "config",  "Station",            "Which SUB/WAVE this answers for."),
-    ("security", "config",  "Security",           "Who can open this panel."),
-    ("keys",     "config",  "API keys",           "Credentials, stored server-side."),
-    ("brains",   "config",  "Brains",             "The models that listen and think."),
-    ("voice",    "config",  "Voice",              "How the DJ sounds."),
+    ("security", "access",  "Passwords",          "Admin opens the controls; guest opens the phone."),
+
+    ("station",  "connect", "Station",            "Which SUB/WAVE this answers for."),
+    ("keys",     "connect", "API keys",           "Credentials, stored server-side."),
+
+    ("brains",   "models",  "Brains",             "The models that listen and think."),
+    ("voice",    "models",  "Voice",              "How the DJ sounds."),
 
     ("perms",    "safety",  "Caller permissions", "The station actions a caller can trigger."),
     ("usage",    "safety",  "Usage controls",     "Generous limits that stop runaway use."),
@@ -305,11 +316,17 @@ SCHEMA: dict[str, dict] = {
         help="After this many unanswered check-ins the DJ says goodbye and gets back "
              "to the broadcast, rather than holding an empty line open."),
     "tune_in_on_call": dict(group="call", kind="check", label="Tune the caller in",
-        help="The station refuses requests when nobody is listening, and a caller on "
-             "the line doesn't count. This makes them count. Recommended."),
+        help="Starts the live station stream in the caller's own browser once the "
+             "DJ picks up — never while it's still ringing. Two reasons: the station "
+             "refuses song requests when nobody is listening and a caller on the line "
+             "doesn't otherwise count, and it sounds like a real phone-in, with the "
+             "broadcast running quietly behind the conversation. Recommended."),
     "tune_in_volume": dict(group="call", kind="number", label="Station volume",
         needs=("tune_in_on_call", True),
-        help="0 keeps the station silent behind the DJ's voice."),
+        help="How loud the broadcast sits behind the call, as a percentage. 0 keeps "
+             "it silent — the caller still counts as a listener, they just don't "
+             "hear it. 10–20 gives that on-the-phone-to-the-station feel without "
+             "competing with the DJ's voice."),
     "avoid_on_air_overlap": dict(group="perms", kind="check", label="Pause the call while on air",
         help="The call DJ and the on-air DJ are the same voice. With this on, anything "
              "sent to air waits for the broadcast to go quiet, and the DJ steps back "
@@ -411,13 +428,30 @@ SCHEMA: dict[str, dict] = {
 
     # --- sounds ---
     "call_sounds": dict(group="sounds", kind="check", label="Play call sounds",
-        help="Ring while connecting, a pickup blip, and a tone on hang-up."),
+        help="Ringing while connecting, the line picking up, a hold click when the "
+             "DJ steps onto the broadcast, hang-up, and an engaged tone when the "
+             "booth can't take the call."),
+    "sound_pack": dict(group="sounds", kind="select", label="Sound set",
+        needs=("call_sounds", True),
+        help="Both are generated in the browser — neither needs an audio file. "
+             "'Exchange' is the classic telephone-network set; 'Handset' is a "
+             "physical phone in a room: a real bell, the receiver lifting off the "
+             "cradle, the clunk of it going back down."),
     "sound_ring": dict(group="sounds", kind="text", label="Ring",
-        needs=("call_sounds", True), help="URL to your own file. Blank uses the built-in tone."),
+        needs=("call_sounds", True),
+        placeholder="default: the sound set above",
+        help="Paste a URL, or upload a file, to replace this one sound."),
     "sound_pickup": dict(group="sounds", kind="text", label="Pick up",
-        needs=("call_sounds", True), help="URL to your own file."),
+        needs=("call_sounds", True), placeholder="default: the sound set above"),
+    "sound_hold": dict(group="sounds", kind="text", label="On hold",
+        needs=("call_sounds", True), placeholder="default: the sound set above",
+        help="Played once when the DJ steps onto the broadcast mid-call."),
     "sound_hangup": dict(group="sounds", kind="text", label="Hang up",
-        needs=("call_sounds", True), help="URL to your own file."),
+        needs=("call_sounds", True), placeholder="default: the sound set above"),
+    "sound_failed": dict(group="sounds", kind="text", label="Can't connect",
+        needs=("call_sounds", True), placeholder="default: the sound set above",
+        help="Engaged tone: the line is busy, the limit is reached, or the call "
+             "couldn't connect."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
 }
@@ -431,6 +465,8 @@ RANDOM_PERSONA = "__random__"
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
+    "sound_pack": [("classic", "Exchange — telephone network tones"),
+                   ("phone", "Handset — a real phone in a room")],
 }
 
 
