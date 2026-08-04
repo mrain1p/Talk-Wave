@@ -681,8 +681,15 @@
 
       room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
 
+      // Nobody has to answer. If the worker is down, mid-restart, or never
+      // gets dispatched, the room connects fine and then nothing happens —
+      // and the caller was left ringing indefinitely with no way to tell a
+      // slow pickup from a dead line. Every real phone gives up eventually.
+      startNoAnswerTimer();
+
       room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
         if (track.kind !== 'audio') return;
+        clearNoAnswerTimer();
         stopRinging();
         playSound('pickup');
         // Now they're actually on a call: tune them into the station so the
@@ -727,6 +734,7 @@
     } catch (err) {
       console.error(err);
       stopRinging();
+      clearNoAnswerTimer();
       playSound('failed');
       // The failure often happens AFTER room.connect() succeeded (a blocked
       // mic, typically). Without this the room stays joined and the agent
@@ -749,6 +757,29 @@
 
   let currentRoom = null;
   let callStarted = 0, timerId = null;
+
+  // How long the caller rings before we admit nobody is coming. Long enough
+  // to cover a cold worker picking up a first call (model load, station
+  // reads), short enough that it still feels like a phone.
+  const NO_ANSWER_SECS = 40;
+  let noAnswerId = null;
+
+  function clearNoAnswerTimer() {
+    if (noAnswerId) { clearTimeout(noAnswerId); noAnswerId = null; }
+  }
+
+  function startNoAnswerTimer() {
+    clearNoAnswerTimer();
+    noAnswerId = setTimeout(() => {
+      noAnswerId = null;
+      if (!room) return;
+      console.warn('no answer after ' + NO_ANSWER_SECS + 's — hanging up');
+      endCall(false);
+      playSound('failed');
+      setStatus('No answer — the booth didn’t pick up. Try again in a moment.',
+                'error');
+    }, NO_ANSWER_SECS * 1000);
+  }
 
   function fmt(sec) {
     const m = Math.floor(sec / 60), r = Math.floor(sec % 60);
@@ -780,6 +811,7 @@
 
   function endCall(remote) {
     stopRinging();
+    clearNoAnswerTimer();
     tuneOut();
     if (currentRoom) {
       // Release the concurrency slot now instead of waiting for it to age out.
@@ -1077,6 +1109,12 @@
       why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
     { need: 'allow_requests', say: '“Can you play something slower?”',
       why: 'Vague requests work — the station resolves them.' },
+    // Deliberately the station's own request-slip vocabulary, so the phone and
+    // the request drawer teach callers the same things.
+    { need: 'allow_requests', say: '“Something for late-night driving.”',
+      why: 'A mood, an occasion or an era goes to the station’s picker, not a name search.' },
+    { need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
+      why: 'Follow-ons and open picks are valid requests on their own.' },
     { need: 'allow_requests', say: '“Something from the late seventies?”',
       why: 'An era is a request like any other — no track name needed.' },
     { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',

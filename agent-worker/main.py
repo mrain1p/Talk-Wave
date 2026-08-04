@@ -62,6 +62,14 @@ import log_setup
 log_setup.setup("worker")
 log = logging.getLogger("callin.agent")
 
+from version import APP_VERSION
+
+# The worker and the token server are the same image but separate containers,
+# so a redeploy that recreates one and not the other leaves them skewed. That
+# has happened, and it was invisible because only the token server ever said
+# what it was.
+log.info("wave-talk worker %s starting", APP_VERSION)
+
 def station_mcp_url() -> str:
     """Resolved per call, so re-homing the sidecar to another station from the
     settings page takes effect on the next caller."""
