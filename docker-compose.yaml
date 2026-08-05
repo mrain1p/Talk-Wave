@@ -97,10 +97,18 @@ services:
       - ./data:/data
       # The local speech-to-text model (~141MB) downloads on first use into
       # the container's writable layer, so without this every recreate pays
-      # for it again before the worker is ready to take a call. The image
-      # creates this path owned by the runtime user precisely so a volume
-      # mounted here works — mount one somewhere docker has to create itself
-      # and you get a root-owned directory and a download that fails instead.
+      # for it again before the worker is ready to take a call. Only the worker
+      # loads it; the token server never does.
+      #
+      # A NAMED volume, as here, inherits ownership from the image — which
+      # creates /home/app/.cache as the runtime user precisely so this works.
+      # A BIND MOUNT does not: it keeps whatever the host directory already
+      # has, so an unprepared path arrives root-owned and the download fails
+      # rather than being cached. To keep it beside data/ where you can see and
+      # clear it, prepare the directory first and swap the line:
+      #
+      #   mkdir -p ./cache && chown -R 1000:1000 ./cache && chmod -R u+rwX ./cache
+      #   - ./cache:/home/app/.cache
       - wavetalk-cache:/home/app/.cache
       # Optional: uncomment to edit TTS adapter configs without a rebuild.
       # - ./agent-worker/tts-adapters:/app/tts-adapters
