@@ -1922,6 +1922,14 @@
     el.textContent = text;
   }
 
+  // A test can come back with something true about HOW it ran rather than
+  // what it found — chiefly that a draft URL was tested without the stored
+  // key, because a key only ever travels to the host it is saved for.
+  // Without this the operator sees an unexplained 401 from their own server.
+  function withNote(text, d) {
+    return d && d.note ? text + '\n\n' + d.note : text;
+  }
+
   // ------------------------------------------------------------- autofill
   $('tts_mode').onchange = async () => {
     const mode = $('tts_mode').value;
@@ -1974,16 +1982,16 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
-      if (!d.ok) { showResult(out, false, 'Failed: ' + d.error); return; }
+      if (!d.ok) { showResult(out, false, withNote('Failed: ' + d.error, d)); return; }
       const rtf = d.realtimeFactor;
       const verdict = rtf == null ? ''
         : rtf < 0.7 ? '\n✓ Fast enough for a live call.'
         : rtf < 1.0 ? '\n⚠ Tight — usable but little headroom.'
         : '\n✗ Slower than realtime: playback will starve and gap.';
       showResult(out, rtf != null && rtf < 1.0,
-        'voice ' + d.voice + '\nfirst audio ' + d.firstAudioMs + 'ms' +
+        withNote('voice ' + d.voice + '\nfirst audio ' + d.firstAudioMs + 'ms' +
         '\ngenerated ' + d.audioSec + 's in ' + d.wallMs + 'ms' +
-        '\nrealtime factor ' + rtf + verdict);
+        '\nrealtime factor ' + rtf + verdict, d));
       if (d.pcmBase64) playPcm(d.pcmBase64, d.sampleRate);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
@@ -1999,18 +2007,22 @@
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
       if (!d.ok) {
-        showResult(out, false, 'Failed: ' + d.error);
-        maybeOfferKey(out, $('llm_provider').value || resolved.llm_provider, d.error);
+        showResult(out, false, withNote('Failed: ' + d.error, d));
+        // A withheld key is the likeliest reason a draft endpoint 401s, and
+        // it is not a missing key — offering to paste one would be wrong.
+        if (!d.note) {
+          maybeOfferKey(out, $('llm_provider').value || resolved.llm_provider, d.error);
+        }
         return;
       }
       const slow = d.firstTokenMs > 1500;
       showResult(out, d.toolCalling && !slow,
-        d.provider + ' / ' + d.model +
+        withNote(d.provider + ' / ' + d.model +
         '\nfirst token ' + d.firstTokenMs + 'ms, total ' + d.totalMs + 'ms' +
         '\ntool calling: ' + (d.toolCalling ? '✓ works' : '✗ model did not call the tool') +
         (d.reply ? '\nreply: ' + d.reply : '') +
         (slow ? '\n⚠ Slow to first token — the call will feel laggy.' : '') +
-        (d.toolCalling ? '' : '\n✗ Without tool calling the DJ can never submit a request.'));
+        (d.toolCalling ? '' : '\n✗ Without tool calling the DJ can never submit a request.'), d));
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };

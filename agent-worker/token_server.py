@@ -13,6 +13,7 @@ Run: python token_server.py   (or via run-local.ps1)
 from __future__ import annotations
 
 import asyncio
+import datetime
 import hmac
 import logging
 import os
@@ -140,11 +141,69 @@ _live_calls: dict[str, float] = {}       # room -> started at
 
 _CALL_ASSUMED_MAX = 1800.0               # forget a room after 30 min
 
+# How long a minted join token stays valid. Long enough to cover a slow page
+# and a retry, short enough that a captured token is not a reusable line.
+TOKEN_TTL = datetime.timedelta(minutes=2)
+
+
+# Which immediate peers are allowed to speak for someone else — that is, whose
+# X-Forwarded-For we believe. Comma-separated addresses or CIDRs.
+#
+# The default is "any loopback or private address", which is exactly the
+# bundled deployment: caddy talks to this container over the docker bridge. A
+# request arriving straight off the internet is not on that list, so it cannot
+# hand us an address of its choosing.
+_TRUSTED_PROXIES_RAW = os.environ.get("CALLIN_TRUSTED_PROXIES", "").strip()
+
+
+def _peer_is_a_trusted_proxy(peer: str | None) -> bool:
+    import ipaddress
+
+    if not peer:
+        return False
+    try:
+        addr = ipaddress.ip_address(peer.strip("[]"))
+    except ValueError:
+        return False
+    if not _TRUSTED_PROXIES_RAW:
+        return addr.is_loopback or addr.is_private
+    for entry in _TRUSTED_PROXIES_RAW.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            if addr in ipaddress.ip_network(entry, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
 
 def _caller_key(request: web.Request) -> str:
-    fwd = request.headers.get("X-Forwarded-For", "")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """Who is calling, as well as we can know it.
+
+    This decides three things that all matter: the per-caller cooldown, which
+    bucket a failed password counts against, and which address gets locked
+    out. So it must not be a value the caller chooses.
+
+    X-Forwarded-For is a list the CLIENT starts and each proxy appends to, so
+    the leftmost entry is whatever the client felt like claiming. Reading it
+    let anyone rotate the header and sit at "4 tries left" forever, and let
+    anyone drop someone else's address into cooldown by failing on their
+    behalf. Two things fix it:
+
+      * only believe the header at all when the connection came from a proxy
+        we trust (see _peer_is_a_trusted_proxy) — otherwise the socket's own
+        address is the only honest answer;
+      * take the RIGHTMOST entry, which is the one that proxy appended and
+        therefore actually observed, rather than the leftmost, which is the
+        one the client wrote.
+    """
+    if _peer_is_a_trusted_proxy(request.remote):
+        hops = [h.strip() for h in
+                request.headers.get("X-Forwarded-For", "").split(",") if h.strip()]
+        if hops:
+            return hops[-1]
     return request.remote or "unknown"
 
 
@@ -257,6 +316,12 @@ async def handle_token(request: web.Request) -> web.Response:
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         .with_identity(identity)
         .with_name("caller")
+        # The SDK default is six hours, which is six hours in which a minted
+        # token can be replayed to open a fresh call — a new agent job, a new
+        # LLM+TTS bill — without passing the door code or the usage limits
+        # again, because those are only checked HERE. The widget joins within
+        # a second or two of asking; two minutes is already generous.
+        .with_ttl(TOKEN_TTL)
         .with_grants(
             api.VideoGrants(
                 room_join=True,
@@ -311,6 +376,10 @@ _live_cache: dict = {"at": 0.0, "data": None}
 # station roughly one sweep per 40s instead of one per poll. Now-playing on
 # the card may lag by up to ~30s, which is fine for a status line.
 _LIVE_TTL = 30.0
+# The most often an unauthenticated station webhook may force a fresh sweep.
+# Operator actions (a settings save, a sound upload) still clear it outright —
+# those are already behind the password.
+_LIVE_BUST_FLOOR = 5.0
 
 
 def _secure_origin() -> str:
@@ -619,11 +688,15 @@ async def handle_avatar(request: web.Request) -> web.StreamResponse:
     """Proxy the station's persona avatar (it lives off /api, at
     /persona-avatar/{id}) so the widget never has to reach the station
     directly from the browser."""
+    # Quoted: this arrives from the browser, and an unescaped path segment can
+    # walk the request somewhere other than the avatar endpoint.
+    from urllib.parse import quote
+
     persona_id = request.match_info["persona_id"]
     root = settings_store.station_base_url()
     try:
         async with httpx.AsyncClient(timeout=8.0) as c:
-            r = await c.get(f"{root}/persona-avatar/{persona_id}")
+            r = await c.get(f"{root}/persona-avatar/{quote(persona_id, safe='')}")
             r.raise_for_status()
             return web.Response(
                 body=r.content,
@@ -832,6 +905,23 @@ def _guest_ok(request: web.Request) -> bool:
     return reason is None
 
 
+def _is_literal_address(host: str | None) -> bool:
+    """True for an IP address, false for a DNS name.
+
+    The distinction matters because only a NAME can be pointed at this box by
+    someone else — which is what DNS rebinding does.
+    """
+    import ipaddress
+
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        return host in ("localhost",)
+
+
 def _write_allowed(request: web.Request) -> bool:
     """Gate for the panel: anything that reads config, changes state or
     costs money.
@@ -852,9 +942,22 @@ def _write_allowed(request: web.Request) -> bool:
     from urllib.parse import urlparse
 
     parsed = urlparse(origin)
-    if parsed.netloc == request.host:
+    if origin in ALLOWED_ORIGINS:
         return True
     if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
+        return True
+    # Same origin as the page — but only when the address is a literal one.
+    #
+    # `netloc == request.host` on its own is a DNS-rebinding hole: an attacker
+    # points evil.example at this box, serves a page from it, and the browser
+    # then sends BOTH Origin: http://evil.example and Host: evil.example, so
+    # the two match and a foreign page reads the settings (including which
+    # keys are set) and can write them. A name is what makes that possible;
+    # an IP or localhost cannot be rebound to something else. Operators who
+    # front this with a real hostname and no password can name it in
+    # CALLIN_ALLOWED_ORIGINS, which is checked above — and setting a password
+    # bypasses all of this anyway.
+    if parsed.netloc == request.host and _is_literal_address(parsed.hostname):
         return True
     log.warning("blocked cross-origin write from %s", origin)
     request["auth_error"] = "cross-origin request blocked"
@@ -1195,13 +1298,21 @@ async def handle_settings_options(request: web.Request) -> web.Response:
             return _cors(request, web.json_response(_options_cache["data"]))
 
     cfg = settings_store.load()
+    saved_station = settings_store.station_base_url()
     # Let the panel preview a URL it hasn't saved yet.
     for key in ("tts_base_url", "llm_base_url", "station_base_url"):
         if request.query.get(key):
             cfg[key] = request.query[key]
 
     station = StationClient(base_url=cfg.get("station_base_url"))
-    station_cfg = StationConfig(base_url=cfg.get("station_base_url"))
+    # StationConfig reads admin-only endpoints, so it carries the station
+    # password. A previewed URL must not be handed it — see
+    # _credentials_travel_to. Without auth it simply reports nothing mirrored,
+    # which is the honest answer for a station we cannot log in to.
+    station_authed = _is_saved_host(cfg.get("station_base_url"), saved_station)
+    station_cfg = StationConfig(
+        base_url=cfg.get("station_base_url"), with_auth=station_authed
+    )
     try:
         # These four hit four different hosts; serially they add up to several
         # seconds of staring at an empty settings panel.
@@ -1272,6 +1383,57 @@ async def handle_settings_options(request: web.Request) -> web.Response:
     return _cors(request, web.json_response(payload))
 
 
+# --- where a stored secret is allowed to travel ---------------------------
+# The panel can preview a URL before saving it — type a new TTS server in the
+# box, press Test, see whether it works. That override reaches the code that
+# builds the real provider, and that code attaches whatever key is stored for
+# it. So a URL supplied in a REQUEST could make this process post the stored
+# OpenAI key, the TTS key, or the station's admin password to any host the
+# requester named. Every one of them came back in the clear against a test
+# host, which turns the panel password into the plaintext of every key —
+# exactly what storing them server-side is supposed to prevent.
+#
+# The rule now: a stored secret only ever goes to the host that secret is
+# already configured for. A draft URL is still tested, just without the key
+# attached, and the answer says so. Save the URL and the key travels again.
+
+
+def _host_of(url: str) -> str:
+    """Scheme-less host:port, for comparing two configured URLs."""
+    from urllib.parse import urlparse
+
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    parsed = urlparse(text)
+    return (parsed.netloc or "").lower()
+
+
+def _is_saved_host(url: str, *saved: str) -> bool:
+    """True when `url` points at a host the operator has already configured.
+
+    Several saved values are compared because one field can legitimately have
+    more than one home — the MCP endpoint is derived from the station base URL
+    when it isn't set explicitly.
+    """
+    host = _host_of(url)
+    if not host:
+        return True                 # nothing supplied: the saved value is in use
+    return any(host == _host_of(s) for s in saved if s)
+
+
+def _credentials_travel_to(url: str, *saved: str) -> tuple[bool, str]:
+    """(may the stored secret go here, note for the operator if not)."""
+    if _is_saved_host(url, *saved):
+        return True, ""
+    log.warning("withholding stored credentials from unsaved host %s", _host_of(url))
+    return False, (
+        f"Tested without your stored credentials: {_host_of(url)} is not the "
+        "address in your saved settings, and a stored key is only ever sent to "
+        "the host it is configured for. Save this URL first to test it for real."
+    )
+
+
 # --- test endpoints -------------------------------------------------------
 # These exercise the same code paths a real call uses, so a green result here
 # means the call will work rather than "the URL responded".
@@ -1293,12 +1455,17 @@ async def handle_test_tts(request: web.Request) -> web.Response:
 
     body = await request.json() if request.can_read_body else {}
     cfg = settings_store.load()
+    saved_tts = cfg.get("tts_base_url") or ""
     cfg.update({k: v for k, v in body.items() if v not in (None, "")})
 
     import base64 as _b64
     import time as _time
 
     from tts_adapter import AdapterTTS
+
+    # A previewed TTS URL does not get the stored key. See
+    # _credentials_travel_to.
+    may_send, cred_note = _credentials_travel_to(cfg.get("tts_base_url"), saved_tts)
 
     os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
     adapter_path = cfg.get("tts_adapter") or None
@@ -1324,7 +1491,8 @@ async def handle_test_tts(request: web.Request) -> web.Response:
         tts = AdapterTTS(
             voice=voice,
             base_url=cfg.get("tts_base_url") or "",
-            api_key=os.environ.get("TTS_API_KEY", ""),
+            api_key=os.environ.get("TTS_API_KEY", "") if may_send else "",
+            allow_stored_key=may_send,
             adapter_path=adapter_path,
             model=cfg.get("tts_model") or "",
         )
@@ -1346,6 +1514,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
                 {
                     "ok": True,
                     "voice": voice,
+                    "note": cred_note,
                     "firstAudioMs": round((first or 0) * 1000),
                     "wallMs": round(wall * 1000),
                     "audioSec": round(audio_sec, 2),
@@ -1366,7 +1535,11 @@ async def handle_test_tts(request: web.Request) -> web.Response:
                 f"are not interchangeable — reload the voice list after "
                 f"switching backend."
             )
-        return _cors(request, web.json_response({"ok": False, "voice": voice, "error": msg}))
+        # The note matters most HERE: withholding the key is the likeliest
+        # reason a previewed endpoint answers 401, and without saying so the
+        # operator reads it as their key being wrong.
+        return _cors(request, web.json_response(
+            {"ok": False, "voice": voice, "error": msg, "note": cred_note}))
     finally:
         if tts is not None:
             await tts.aclose()
@@ -1386,6 +1559,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
 
     body = await request.json() if request.can_read_body else {}
     cfg = settings_store.load()
+    saved_llm = cfg.get("llm_base_url") or ""
     cfg.update({k: v for k, v in body.items() if v not in (None, "")})
 
     import time as _time
@@ -1394,8 +1568,17 @@ async def handle_test_llm(request: web.Request) -> web.Response:
 
     from call.providers import build_llm
 
+    # A previewed LLM endpoint does not get the stored key — otherwise the
+    # test button posts it, in an Authorization header, to whatever host was
+    # named in the request. See _credentials_travel_to.
+    may_send, cred_note = _credentials_travel_to(
+        cfg.get("llm_base_url"),
+        saved_llm,
+        settings_store.PROVIDER_BASE_URLS.get(str(cfg.get("llm_provider", "")).lower(), ""),
+    )
+
     try:
-        model = build_llm(cfg)
+        model = build_llm(cfg, use_stored_key=may_send)
 
         @lk_llm.function_tool
         async def request_song(song: str) -> str:
@@ -1430,6 +1613,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
                     "ok": True,
                     "provider": cfg.get("llm_provider"),
                     "model": cfg.get("llm_model"),
+                    "note": cred_note,
                     "firstTokenMs": round((first or 0) * 1000),
                     "totalMs": round((_time.perf_counter() - t0) * 1000),
                     "toolCalling": bool(tool_calls),
@@ -1438,7 +1622,11 @@ async def handle_test_llm(request: web.Request) -> web.Response:
             ),
         )
     except Exception as e:
-        return _cors(request, web.json_response({"ok": False, "error": str(e)}))
+        # With the note, because a withheld key is the likeliest reason a
+        # previewed endpoint refuses us — and it is not the same problem as a
+        # key that is missing or wrong.
+        return _cors(request, web.json_response(
+            {"ok": False, "error": str(e), "note": cred_note}))
 
 
 async def handle_prompt_preview(request: web.Request) -> web.Response:
@@ -1506,7 +1694,18 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     secrets_store.apply_to_env()
     body = await request.json() if request.can_read_body else {}
     cfg = settings_store.load()
+    saved_llm = cfg.get("llm_base_url") or ""
+    saved_tts = cfg.get("tts_base_url") or ""
     cfg.update({k: v for k, v in (body or {}).items() if v not in (None, "")})
+
+    # Same rule as the individual test buttons: a URL that arrived in this
+    # request does not get the stored key. See _credentials_travel_to.
+    llm_key_ok, llm_note = _credentials_travel_to(
+        cfg.get("llm_base_url"),
+        saved_llm,
+        settings_store.PROVIDER_BASE_URLS.get(str(cfg.get("llm_provider", "")).lower(), ""),
+    )
+    tts_key_ok, tts_note = _credentials_travel_to(cfg.get("tts_base_url"), saved_tts)
 
     stages: list[dict] = []
 
@@ -1565,7 +1764,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
         from call.providers import build_llm
 
-        model_obj = build_llm(cfg)
+        model_obj = build_llm(cfg, use_stored_key=llm_key_ok)
         ctx = lk_llm.ChatContext.empty()
         ctx.add_message(role="user", content="Say one short sentence about the weather.")
 
@@ -1609,7 +1808,8 @@ async def handle_speed_test(request: web.Request) -> web.Response:
                 await sc.aclose()
 
         tts = AdapterTTS(voice=voice, base_url=cfg.get("tts_base_url") or "",
-                         api_key=os.environ.get("TTS_API_KEY", ""),
+                         api_key=os.environ.get("TTS_API_KEY", "") if tts_key_ok else "",
+                         allow_stored_key=tts_key_ok,
                          adapter_path=adapter_path, model=cfg.get("tts_model") or "")
         pcm = bytearray()
         tts_rate = 24000
@@ -1688,6 +1888,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
             {
                 "ok": True,
                 "stages": stages,
+                "note": "  ".join(n for n in (llm_note, tts_note) if n),
                 "turnMs": round(turn_ms),
                 "realtimeFactor": rtf,
                 "verdict": (
@@ -1925,7 +2126,14 @@ async def handle_test_station(request: web.Request) -> web.Response:
 
     from station_config import mcp_headers
 
-    headers = mcp_headers()
+    # The MCP URL is request-supplied, and mcp_headers() is the station's admin
+    # password. Only send it to the station this instance is configured for.
+    may_send, note = _credentials_travel_to(
+        mcp_url, settings_store.station_mcp_url(), settings_store.station_base_url()
+    )
+    headers = mcp_headers() if may_send else {}
+    if note:
+        result["note"] = note
     result["adminAuth"] = bool(headers)
     server = lk_mcp.MCPServerHTTP(
         url=mcp_url,
@@ -1994,9 +2202,17 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     _hook_events.append({"at": _time.time(), "event": event, "data": body})
     log.info("station webhook: %s", event)
 
-    # Anything that changes what the card shows invalidates the cache.
+    # Anything that changes what the card shows invalidates the cache — but not
+    # more often than the cache would have expired anyway.
+    #
+    # This endpoint cannot be authenticated (the station doesn't sign hooks),
+    # and every bust makes the next /live fan out into four to six station
+    # reads. Left ungoverned, anyone who can reach this can make every open
+    # widget hammer the station on every poll. The floor means a flood of
+    # hooks costs the station no more than the normal 30-second refresh.
     if event.split(".")[0] in ("track", "dj", "request"):
-        _live_cache["data"] = None
+        if _time.time() - _live_cache["at"] >= _LIVE_BUST_FLOOR:
+            _live_cache["data"] = None
     return web.json_response({"ok": True})
 
 

@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -191,6 +192,10 @@ class _TempStores(unittest.TestCase):
     ENV_VARS = (
         "STT_MODEL", "DEEPGRAM_MODEL", "STT_PROVIDER", "LLM_PROVIDER",
         "DEEPGRAM_API_KEY", "OPENAI_API_KEY", "TTS_MODE",
+        # Set by the key-withholding tests; restored so a real key in the
+        # developer's environment survives the run.
+        "OPENROUTER_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY", "TTS_API_KEY",
     )
 
     def setUp(self):
@@ -2693,6 +2698,266 @@ class TestMainToolLogic(_TempStores):
         )
         self.assertEqual(provider, "local")
         self.assertEqual(model, "base.en")  # nova-3 is not a local model
+
+
+class TestCallerIdentityCannotBeChosen(unittest.TestCase):
+    """Who the server thinks you are decides your cooldown, your lockout
+    bucket, and whose address gets banned. All three were a header away.
+
+    X-Forwarded-For is a list the CLIENT starts and proxies append to, so its
+    leftmost entry is whatever the caller typed. Reading it meant rotating the
+    header sat at "4 tries left" forever, and writing someone else's address
+    into it put THEM in cooldown.
+    """
+
+    def _key(self, peer, xff=None, trusted=""):
+        import token_server
+
+        old = token_server._TRUSTED_PROXIES_RAW
+        token_server._TRUSTED_PROXIES_RAW = trusted
+        try:
+            headers = {"X-Forwarded-For": xff} if xff else {}
+            return token_server._caller_key(
+                types.SimpleNamespace(headers=headers, remote=peer)
+            )
+        finally:
+            token_server._TRUSTED_PROXIES_RAW = old
+
+    def test_a_direct_caller_cannot_claim_another_address(self):
+        # The peer is on the public internet, so nothing it says about who it
+        # is counts for anything.
+        self.assertEqual(
+            self._key("8.8.8.8", xff="10.0.0.1", trusted="10.99.99.99"),
+            "8.8.8.8",
+        )
+
+    def test_a_trusted_proxy_is_believed_but_only_for_what_it_appended(self):
+        # The client wrote "1.2.3.4"; the proxy appended what it actually saw.
+        # The rightmost entry is the proxy's, so that is the one that counts.
+        self.assertEqual(
+            self._key("10.99.99.99", xff="1.2.3.4, 8.8.4.4",
+                      trusted="10.99.99.99"),
+            "8.8.4.4",
+        )
+
+    def test_an_untrusted_peer_with_no_header_still_resolves(self):
+        self.assertEqual(self._key("8.8.8.8", trusted="10.99.99.99"),
+                         "8.8.8.8")
+
+    def test_the_default_trusts_a_private_peer_so_the_bundled_proxy_works(self):
+        # caddy reaches the container over the docker bridge; without this the
+        # per-caller limits collapse into one shared bucket for every caller.
+        self.assertEqual(self._key("172.18.0.4", xff="8.8.4.4"),
+                         "8.8.4.4")
+
+    def test_the_default_does_not_trust_a_public_peer(self):
+        self.assertEqual(self._key("8.8.4.4", xff="10.0.0.1"),
+                         "8.8.4.4")
+
+
+class TestStoredKeysStayHome(_TempStores):
+    """A stored API key only ever travels to the host it is configured for.
+
+    The panel can preview a URL before saving it, and that override reaches
+    the code that builds the real provider — which attaches whatever key is
+    stored. So a URL in a REQUEST could make this process post the OpenAI key,
+    the TTS key or the station's admin password to any host the requester
+    named. All three came back in the clear against a test listener, which
+    turns the panel password into the plaintext of every key — the one thing
+    storing them server-side is supposed to prevent.
+    """
+
+    def test_the_saved_host_is_credentialed(self):
+        import token_server
+
+        may, note = token_server._credentials_travel_to(
+            "https://api.openai.com/v1", "https://api.openai.com")
+        self.assertTrue(may)
+        self.assertEqual(note, "")
+
+    def test_an_unsaved_host_is_not(self):
+        import token_server
+
+        may, note = token_server._credentials_travel_to(
+            "http://attacker.example/v1", "https://api.openai.com")
+        self.assertFalse(may)
+        self.assertIn("not the address in your saved settings", note)
+
+    def test_supplying_nothing_leaves_the_saved_config_in_charge(self):
+        import token_server
+
+        may, _ = token_server._credentials_travel_to("", "https://api.openai.com")
+        self.assertTrue(may)
+
+    # Where each SDK ends up keeping the key, so the assertion is about what
+    # will actually go out on the wire rather than what we passed in.
+    KEY_ENV = {
+        "openai": "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }
+
+    def _key_on(self, model):
+        client = model._client
+        for holder in (client, getattr(client, "_api_client", None)):
+            if holder is None:
+                continue
+            for attr in ("api_key", "_api_key"):
+                value = getattr(holder, attr, None)
+                if isinstance(value, str) and value:
+                    return value
+        self.fail("could not find the api key on the built model")
+
+    def test_withholding_does_not_fall_back_to_the_environment(self):
+        # The failure this guards is subtle and per-SDK: these plugins take
+        # api_key as either NotGivenOr[str] or str|None, and two of them treat
+        # a falsy value as "read the environment" — so passing "" or None to
+        # withhold a key would send it anyway. Every provider is checked
+        # because getting one of them wrong leaks exactly one key, silently.
+        from call.providers import WITHHELD_KEY, build_llm
+
+        for provider, env_var in self.KEY_ENV.items():
+            with self.subTest(provider=provider):
+                os.environ[env_var] = f"{provider}-must-not-travel"
+                model = build_llm(
+                    {"llm_provider": provider, "llm_model": "",
+                     "llm_base_url": "http://attacker.example/v1"},
+                    use_stored_key=False,
+                )
+                self.assertEqual(self._key_on(model), WITHHELD_KEY)
+
+    def test_the_normal_path_still_uses_the_stored_key(self):
+        from call.providers import build_llm
+
+        for provider, env_var in self.KEY_ENV.items():
+            with self.subTest(provider=provider):
+                os.environ[env_var] = f"{provider}-the-real-one"
+                model = build_llm({"llm_provider": provider, "llm_model": ""})
+                self.assertEqual(self._key_on(model), f"{provider}-the-real-one")
+
+    def test_a_lookalike_openai_hostname_gets_no_key(self):
+        # "api.openai.com" in base_url also matched
+        # https://api.openai.com.example.net — a domain anyone can register.
+        from tts_adapter import _is_openai_host
+
+        self.assertTrue(_is_openai_host("https://api.openai.com/v1"))
+        self.assertFalse(_is_openai_host("https://api.openai.com.example.net/v1"))
+        self.assertFalse(_is_openai_host("https://notapi.openai.com.evil/v1"))
+
+    def test_station_config_without_auth_reads_nothing_admin_only(self):
+        import asyncio
+
+        from station_config import StationConfig
+
+        secrets_store.save({"subwave_admin_user": "u", "subwave_admin_pass": "p"})
+
+        async def go():
+            sc = StationConfig(base_url="http://attacker.example", with_auth=False)
+            try:
+                # No credentials on the client, so the admin-only read is not
+                # even attempted — it cannot leak what it never sends.
+                self.assertFalse(sc._authed)
+                self.assertEqual(await sc.settings(), {})
+            finally:
+                await sc.aclose()
+
+        asyncio.run(go())
+
+
+class TestFirstRunIsNotOpenToTheWeb(_TempStores):
+    """Before a password is set the panel stays open, gated only by refusing
+    foreign origins. That gate compared the Origin to the Host — which a
+    rebound DNS name satisfies, because the browser sets both to the attacker's
+    own name. A literal address cannot be rebound; a name can.
+    """
+
+    class _Req(dict):
+        """Enough of a request for the gate: headers, host, and the dict-like
+        slot handlers use to leave a caller-facing reason on."""
+
+        def __init__(self, origin, host):
+            super().__init__()
+            self.headers = {"Origin": origin}
+            self.host = host
+            self.remote = "8.8.8.8"
+
+    def _allowed(self, origin, host):
+        import token_server
+
+        return token_server._write_allowed(self._Req(origin, host))
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        import token_server
+
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "auth.json"
+        self._old_key = token_server.ADMIN_KEY
+        token_server.ADMIN_KEY = ""
+
+    def tearDown(self):
+        import admin_auth
+        import token_server
+
+        admin_auth.AUTH_PATH = self._old_auth
+        token_server.ADMIN_KEY = self._old_key
+        super().tearDown()
+
+    def test_a_rebound_name_is_refused(self):
+        self.assertFalse(self._allowed("http://evil.example", "evil.example"))
+
+    def test_the_real_lan_address_still_works(self):
+        self.assertTrue(self._allowed("http://192.168.1.10:8100", "192.168.1.10:8100"))
+
+    def test_localhost_still_works(self):
+        self.assertTrue(self._allowed("http://localhost:8100", "localhost:8100"))
+
+    def test_a_named_origin_can_be_opted_into(self):
+        import token_server
+
+        old = token_server.ALLOWED_ORIGINS
+        token_server.ALLOWED_ORIGINS = ["https://radio.example"]
+        try:
+            self.assertTrue(self._allowed("https://radio.example", "radio.example"))
+        finally:
+            token_server.ALLOWED_ORIGINS = old
+
+
+class TestJoinTokensExpire(unittest.TestCase):
+    def test_a_minted_token_is_short_lived(self):
+        """A join token is the only thing between a stranger and an agent job.
+        The door code and the usage limits are checked when it is MINTED, so a
+        long-lived token is a line that can be reopened without passing either
+        again. The SDK default is six hours."""
+        import token_server
+
+        self.assertLessEqual(token_server.TOKEN_TTL.total_seconds(), 300)
+
+
+class TestActionsAllHaveAReceipt(unittest.TestCase):
+    def test_every_action_a_tool_records_has_a_label(self):
+        """The caller's transcript shows a line per action, and the point of
+        that line is that the DJ *saying* it did something is a claim while the
+        line is the receipt. Two station-wide actions — skipping the record
+        everyone is listening to, and firing a programme beat — shipped with no
+        label and rendered as a bare "Action completed"."""
+        import re
+
+        from call.actions import CallActions
+
+        recorded = set()
+        for path in Path(__file__).parent.joinpath("call/tools").glob("*.py"):
+            recorded.update(
+                re.findall(r"actions\.note\(\s*[\"'](\w+)[\"']", path.read_text())
+            )
+        self.assertTrue(recorded, "found no actions.note() calls to check")
+        self.assertEqual(
+            sorted(recorded - set(CallActions.LABELS)), [],
+            "an action kind is recorded but has no label, so the caller sees "
+            "'Action completed' instead of what actually happened",
+        )
 
 
 if __name__ == "__main__":
