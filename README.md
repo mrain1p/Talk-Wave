@@ -190,7 +190,8 @@ through. Every field carries its own help text.
 | Permissions & safety | **Caller permissions** | What a stranger may trigger, overlap protection, and the two station-wide switches (skip the current track, fire a programme beat) that reach every listener — both off by default |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call, pause — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
-| Call settings | **Call behaviour** | Who answers, greeting, how early the DJ may hang up and the hard limit, idle check-ins, tune-in, **station stream URL** |
+| Call settings | **Call behaviour** | Who answers, greeting, how early the DJ may hang up and the hard limit, idle check-ins, tune-in, **station stream URL**, and whether call transcripts are kept at all |
+| Call settings | **Turn-taking** | When the DJ decides you've finished speaking, and whether a caller may talk over it. The biggest lever on whether a call *feels* like a phone call |
 | Call settings | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
 | Call settings | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call |
@@ -348,9 +349,14 @@ reopened without passing either again.
 
 **Before exposing beyond your LAN:**
 
-1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page embed
-   the widget and mint call tokens. This is the *embed* permission and nothing
-   more: it does not open the settings panel.
+1. `CALLIN_ALLOWED_ORIGINS` — **empty by default since 0.9.77**, which is
+   same-origin only and is what most deployments want: the widget on this
+   service's own page needs no entry. Set it only to embed the widget on
+   another site, and then to that site's origin. `*` lets *any* page on the
+   internet embed the widget and mint call tokens against you — it used to be
+   the default, and both processes now warn at startup if you choose it. This
+   is the *embed* permission and nothing more: it does not open the settings
+   panel.
 2. Set the admin password, and a guest code if the page is public. Do this
    before you reach the panel by hostname — with no password set, the panel
    accepts a same-origin request only from a literal address, because a *name*
@@ -365,6 +371,20 @@ reopened without passing either again.
    alone still permits 24× that in a day.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
    Protect the volume; never commit `.env` or `data/`.
+
+### Upgrading to 0.9.77: `CALLIN_ALLOWED_ORIGINS` defaults to empty
+
+It used to default to `*` — any page on the internet could embed the widget and
+mint call tokens against your service, spending your LLM and TTS budget. Empty
+now, which is same-origin only.
+
+**Breaking only if you embed the widget on another site and never set the
+variable.** Set it to that site's origin and embeds work exactly as before. If
+you only ever open the widget on this service's own page, there is nothing to
+do — that is same-origin and needs no entry.
+
+Taken pre-1.0 deliberately: shipping the convenient default into 1.0 would have
+meant living with it.
 
 ### Upgrading to 0.9.65 or later: the container is no longer root
 
@@ -455,7 +475,15 @@ names the fix. The classics:
 
 **Start with Recent calls**, under *Diagnostics*. Each call writes one file as
 it ends — both sides, every tool with its result, the config it ran under, and
-anything that failed:
+anything that failed.
+
+That file is a transcript of a stranger's conversation sitting on your disk, so
+it is a choice: **Keep call transcripts** under *Call behaviour* turns it off
+entirely, and **Transcripts to keep** decides how long the ones you do keep
+stick around (40 by default, deleted oldest-first as new calls land). With it
+off, nothing is written and Recent calls only shows what is already there — you
+are then diagnosing from the container logs, which is what this section exists
+to stop you doing.
 
 ```
 2026-08-04 23:34:36  Dalia  ·  136s  ·  6 caller turns

@@ -95,6 +95,13 @@ services:
       # Owned by uid 1000, which is what the container runs as. See the
       # chown/chmod note at the top of this file if you are upgrading.
       - ./data:/data
+      # The local speech-to-text model (~141MB) downloads on first use into
+      # the container's writable layer, so without this every recreate pays
+      # for it again before the worker is ready to take a call. The image
+      # creates this path owned by the runtime user precisely so a volume
+      # mounted here works — mount one somewhere docker has to create itself
+      # and you get a root-owned directory and a download that fails instead.
+      - wavetalk-cache:/home/app/.cache
       # Optional: uncomment to edit TTS adapter configs without a rebuild.
       # - ./agent-worker/tts-adapters:/app/tts-adapters
     depends_on:
@@ -164,6 +171,8 @@ services:
 
 volumes:
   caddy-data:
+  # Only the worker loads the STT model, so only the worker mounts this.
+  wavetalk-cache:
 
 networks:
   callin-net:
