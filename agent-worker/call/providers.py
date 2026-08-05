@@ -17,6 +17,7 @@ import logging
 import os
 from pathlib import Path
 
+from livekit.agents.types import NOT_GIVEN
 from livekit.plugins import anthropic, deepgram, google, openai
 
 import settings as settings_store
@@ -85,7 +86,20 @@ def build_stt(cfg: dict):
     return google.STT(languages="en-US")
 
 
-def build_llm(cfg: dict):
+# Passed as the api_key when a caller has asked us NOT to send the stored one.
+# A blank string makes some SDKs fall back to the environment, which is the
+# thing being prevented, so it has to be a real (worthless) value.
+WITHHELD_KEY = "withheld-by-wave-talk"
+
+
+def build_llm(cfg: dict, *, use_stored_key: bool = True):
+    """`use_stored_key=False` builds the model without the operator's API key.
+
+    Only the settings panel's test buttons pass this, and only when the base
+    URL came from the request rather than from saved settings — a stored key
+    must never be posted to a host the operator has not saved. See
+    token_server._credentials_travel_to.
+    """
     provider = str(cfg.get("llm_provider", "openai")).lower()
     # Same hazard as STT: a model left over from another provider.  The
     # discovered lists are authoritative when available, so only drop a model
@@ -100,6 +114,17 @@ def build_llm(cfg: dict):
             model = None
     base_url = str(cfg.get("llm_base_url") or "").strip()
     temperature = float(cfg.get("llm_temperature", 0.8))
+
+    def key(env_var: str):
+        """The stored key, or a worthless stand-in when withholding it.
+
+        NOT_GIVEN — not None, which these SDKs read as "given, and empty" and
+        reject — so the normal path keeps the plugins' own read-the-environment
+        behaviour, including the error a missing key produces.
+        """
+        if not use_stored_key:
+            return WITHHELD_KEY
+        return os.environ.get(env_var) or NOT_GIVEN
 
     if provider == "ollama":
         # Ollama speaks the OpenAI protocol. Tool calling depends on the model
@@ -119,7 +144,7 @@ def build_llm(cfg: dict):
         # public, so the settings page can populate before a key is entered.
         return openai.LLM.with_openrouter(
             model=model or "auto",
-            api_key=os.environ.get("OPENROUTER_API_KEY"),
+            api_key=key("OPENROUTER_API_KEY"),
             temperature=temperature,
         )
 
@@ -127,16 +152,21 @@ def build_llm(cfg: dict):
         return openai.LLM(
             model=model or "gpt-4.1-mini",
             temperature=temperature,
+            api_key=key("OPENAI_API_KEY"),
             **({"base_url": base_url} if base_url else {}),
         )
     if provider == "google":
         return google.LLM(
             model=model or "gemini-2.5-flash",
-            api_key=os.environ.get("GOOGLE_API_KEY"),
+            api_key=key("GOOGLE_API_KEY"),
             temperature=temperature,
         )
     if provider == "anthropic":
-        return anthropic.LLM(model=model or "claude-sonnet-5", temperature=temperature)
+        return anthropic.LLM(
+            model=model or "claude-sonnet-5",
+            api_key=key("ANTHROPIC_API_KEY"),
+            temperature=temperature,
+        )
 
     raise ValueError(f"Unsupported llm_provider: {provider}")
 

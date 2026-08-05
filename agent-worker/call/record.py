@@ -92,28 +92,54 @@ class CallRecord:
         breath, I've"). The timings from the live events are right and worth
         keeping; only the wording was wrong. So the text comes from the
         session's committed history and the timestamps stay as observed.
+
+        Matched on CONTENT, not on position. Pairing the Nth live event with
+        the Nth history entry assumes the two lists describe the same turns in
+        the same order, and one history entry with no live event behind it
+        silently shifts every later line of that speaker onto the NEXT line's
+        timestamp — with the last one appended at call-end time. That is
+        exactly what the opening prime did to every call: the written record
+        disagreed with the live log about who said what and when, while
+        reporting no problem at all. A transcript is the thing you reach for
+        when a call went wrong, so it lying quietly is worse than it being
+        clipped.
+
+        The live text is a PREFIX of the committed text — that is the whole
+        premise here, that events fire mid-sentence — so a prefix match pairs
+        them without assuming anything about order or count. Anything that
+        does not match keeps its live wording, which is the honest fallback.
         """
         if not final_turns:
             return
         by_who: dict = {}
         for who, text in final_turns:
-            by_who.setdefault(who, []).append(text)
+            by_who.setdefault(who, []).append(str(text))
 
-        seen: dict = {}
+        used: dict = {}
         for turn in self.data["turns"]:
             who = turn["who"]
-            i = seen.get(who, 0)
             texts = by_who.get(who, [])
-            if i < len(texts):
-                turn["text"] = str(texts[i])[:MAX_TEXT]
-            seen[who] = i + 1
+            taken = used.setdefault(who, set())
+            live = turn["text"].strip()
+            for i, candidate in enumerate(texts):
+                if i in taken:
+                    continue
+                if candidate.strip().startswith(live):
+                    turn["text"] = candidate[:MAX_TEXT]
+                    taken.add(i)
+                    break
 
-        # Anything the session knows about that we never saw an event for.
+        # Anything the session knows about that we never saw an event for —
+        # a closing line the events missed, typically. Appended in order, and
+        # only if it was never matched above.
         for who, texts in by_who.items():
-            for extra in texts[seen.get(who, 0):]:
-                self.data["turns"].append(
-                    {"t": _iso(time.time()), "who": who, "text": str(extra)[:MAX_TEXT]}
-                )
+            taken = used.get(who, set())
+            for i, extra in enumerate(texts):
+                if i not in taken:
+                    self.data["turns"].append(
+                        {"t": _iso(time.time()), "who": who,
+                         "text": extra[:MAX_TEXT]}
+                    )
 
     def write(self, reason: str = "") -> None:
         self.data["endedAt"] = _iso(time.time())
@@ -124,11 +150,25 @@ class CallRecord:
         )
         try:
             CALLS_DIR.mkdir(parents=True, exist_ok=True)
+            # Explicit, for the same reason settings.save() is: a Synology
+            # share creates both directories and files with mode 000, which
+            # root ignores and a normal user cannot get past — so the
+            # directory a non-root container writes transcripts into would be
+            # one it could not then list. A transcript is both sides of a
+            # stranger's call, so owner-only rather than world-readable.
+            try:
+                os.chmod(CALLS_DIR, 0o700)
+            except OSError:
+                pass
             stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(self.started))
             path = CALLS_DIR / f"{stamp}-{self.room[-12:]}.json"
             tmp = path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=1, ensure_ascii=False)
+            try:
+                os.chmod(tmp, 0o600)
+            except OSError:
+                pass
             tmp.replace(path)
             _prune()
             log.info("call transcript written: %s", path.name)

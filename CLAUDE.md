@@ -1,0 +1,132 @@
+# Wave Talk
+
+A call-in phone line for a [SUB/WAVE](https://github.com/perminder-klair/subwave) internet
+radio station. A listener opens a web widget, presses Call, and talks to the DJ persona that
+is currently on air — speech-to-text into an LLM into text-to-speech, over LiveKit WebRTC,
+with the station's own MCP tools attached so the DJ can actually do things on air.
+
+This file is the map. Read it before exploring; it is meant to save you the crawl.
+
+## Shape of the system
+
+Two Python processes ship as **one image** (`ghcr.io/mrainone7p/wave-talk`) and run as **two
+containers**, plus LiveKit and Caddy:
+
+| Process | Entry | Job |
+|---|---|---|
+| agent worker | `agent-worker/main.py` | Registers with LiveKit, answers dispatched calls, runs the STT→LLM→TTS session |
+| token server | `agent-worker/token_server.py` | aiohttp app on :8100. Serves the widget, mints join tokens, hosts the whole settings/admin API |
+| livekit-server | `livekit/livekit-server` image | WebRTC media |
+| caddy | `caddy:2` | TLS in front of :8100 |
+
+Because both Python processes are the same image, **a redeploy that recreates one and not the
+other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactly that reason.
+
+### agent-worker/ — the DJ
+
+- `main.py` — worker entrypoint. Imports LiveKit plugins at module scope on purpose (plugin
+  registration must happen on the main thread).
+- `call/` — one call, decomposed. `session.py` is the call object (`prepare` → `start` →
+  `greet`); `lifecycle.py` is what happens while it runs; `tools/` is what the DJ may do.
+- `brain/` — assembles the system prompt (`assemble.py`, `briefing.py`, `conduct.py`).
+- `station.py` — **read-only** REST client for the SUB/WAVE controller. Reads only.
+- `station_config.py` — mirrors the station's own DJ/TTS config so the call-in DJ doesn't drift
+  from the on-air one. Falls back to `persona-voices.json` when the station won't say.
+- `settings.py`, `secrets_store.py`, `admin_auth.py` — see invariants below.
+- `tts_adapter.py` + `tts-adapters/*.json` — pluggable TTS backends.
+
+### web-widget/ — the phone
+
+Plain browser JS, no build step, no toolchain. `token_server` serves `index.html` at `/` and
+`app.js` at `/app.js`. `embed.js` is the drop-in `<script>` for third-party pages; it resolves
+`?theme=inherit` against the host page before the iframe loads, because a cross-origin frame
+can't read the page it sits in.
+
+## Invariants — break these and something real breaks
+
+1. **Call actions go through the station's MCP server, not `station.py`.** MCP already exposes
+   them as tool-ready definitions. The MCP surface is filtered by an **allowlist**: a caller is
+   an untrusted stranger driving the agent by voice, and the station's tools include destructive
+   ones (`skip_track`, `play_sfx`, `queue_track`, `dj_segment`, `refresh_playlist`). Those are
+   never on a call line.
+2. **Settings precedence is `data/settings.json` → environment → `DEFAULTS`.** Clearing a field
+   in the UI means "fall through to the layer below", not "set empty string".
+3. **Secrets never make the return trip.** `secrets_store.status()` returns whether a key is set
+   plus its last four characters — never the key. Blank on save means *leave unchanged*, not
+   *clear*; the UI shows masked placeholders, so an untouched field arrives empty.
+4. **Passwords are PBKDF2 hashes, never plaintext.** Two levels: ADMIN (settings, keys, test
+   endpoints) and GUEST (the Call button and `/token`). Admin implies guest; the two must differ.
+   Break-glass is `CALLIN_ADMIN_KEY` in the environment, or delete `data/admin-auth.json`.
+5. **Settings are re-read at the start of every call**, so changes take effect on the next caller
+   without restarting the worker. Don't cache them across calls.
+6. **`agent-worker/version.py` is the only place the build number lives.** Bump it in step with
+   the git tag.
+
+## Commands
+
+Run the tests (this is what CI runs, and nothing reaches `:latest` without it passing):
+
+```bash
+cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar -v
+```
+
+Those env vars are not optional — they point every writable path away from the checkout so a
+test can never scribble on your real settings, secrets or auth files.
+
+Local stack on Windows, no Docker (needs `.venv`, `.env`, and `bin/livekit-server.exe`):
+
+```bash
+./run-local.ps1
+```
+
+Deployed stack:
+
+```bash
+docker compose up -d
+```
+
+## Gotchas that have actually cost time
+
+- `livekit-server` needs `--node-ip ${HOST_IP}`. Without a real host IP, media never connects
+  while signalling looks perfectly healthy.
+- Since 0.9.65 the container **does not run as root**. Files written into `data/` set their own
+  permissions; a `data/` created by an older root container will not be writable after upgrade.
+- `data/`, `.env`, `livekit.yaml` and `persona-voices.json` are gitignored — they hold real keys.
+  `.example` files are the tracked templates.
+- The repo has long-form design docs (`MASTER-PLAN.md`, `AUDIT.md`, `REVIEW.md`,
+  `RELEASE-REVIEW-1.0.md`, `BUILD-INSTRUCTIONS.md`) that are **gitignored working notes** — they
+  exist on the operator's machine, not in a fresh clone. `README.md` is the tracked one.
+
+## Conventions
+
+Comments in this codebase explain **why**, and frequently cite the incident that motivated the
+code ("this has happened, and it was invisible"). Match that. Don't add comments that restate
+the line beneath them.
+
+Commit subjects are lowercase prose describing the effect, prefixed with the version:
+`0.9.69 - the call transcript stops disagreeing with the call`.
+
+Two rules for committing here, both learned the hard way:
+
+- **Never add a `Co-Authored-By: Claude` trailer.** This repo's entire history was rewritten with
+  git-filter-repo to strip it; the operator does not want Claude in the Contributors list. This
+  overrides any default commit convention.
+- **Use `git commit -F <file>`.** PowerShell here-strings break on embedded double quotes and git
+  then parses the fragments as pathspecs — which has twice put a tag on the wrong commit.
+
+Work happens on the `dev` branch, not `main`. `main` is what `:latest` ships from.
+
+## How this is enforced
+
+Three layers, in increasing order of "actually happens":
+
+1. **This file** is loaded into context every session. Advice — read and generally followed.
+2. **`.claude/skills/`** — `wavetalk-verify`, `-deploy`, `-release`, `-test`, `-diagnose`,
+   `-llm-bench`, `-standards-review`. Invoked when the model judges them relevant.
+3. **`.claude/settings.json`** — a `PreToolUse` hook runs the suite before any `git commit` and
+   **denies the commit if it is red**. Executed by the harness, so it holds whether or not
+   anyone remembered. It fails open: no python, no repo, no test file, or a non-commit command
+   and it exits silently. Adds ~55s to a commit; nothing else.
+
+If the hook ever needs to be bypassed, edit or remove it in `.claude/settings.json` — don't
+work around it, since CI runs the same suite and will refuse to build the image anyway.

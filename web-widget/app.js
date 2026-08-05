@@ -35,6 +35,93 @@
     };
   })();
 
+  // The operator's theme choice arrives with /live, long after the page has
+  // painted, so the bootstrap above handles the immediate cases and this
+  // applies the configured one once it is known.
+  //
+  // "inherit" is resolved by embed.js BEFORE the frame loads — it reads the
+  // host page's background and passes ?theme=. A cross-origin frame cannot
+  // see the page it sits in, so if inherit reaches us unresolved there is no
+  // page to inherit from and auto is the honest answer.
+  function applyConfiguredTheme(choice) {
+    if (params.get('theme')) return;            // the host page has decided
+    const root = document.documentElement;
+    const btn = $('themeBtn');
+    if (choice === 'light' || choice === 'dark') {
+      root.setAttribute('data-theme', choice);
+      if (btn) btn.style.display = 'none';      // forced: nothing to toggle
+      return;
+    }
+    if (btn) btn.style.display = '';
+    if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
+  }
+
+  // "What can I ask?" — most people meeting a phone-in assume it only takes
+  // requests. Built from the shared ASKS list and filtered to the permissions
+  // actually switched on, so it can never suggest something the DJ would
+  // refuse. What a caller CANNOT do is deliberately left out: that list is
+  // for the operator deciding what to allow, not for a stranger on the line.
+  function paintAskPopup(canAsk) {
+    const host = $('askPopList');
+    if (!host) return;
+    host.innerHTML = '';
+    ASKS.filter((a) => !a.need || canAsk[a.need]).forEach((a) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="say"></span><span class="why"></span>';
+      li.querySelector('.say').textContent = a.say;
+      li.querySelector('.why').textContent = a.why;
+      host.appendChild(li);
+    });
+  }
+
+  // Placed in viewport coordinates so it can sit over the page rather than
+  // being squeezed into whatever room the card has — on an embed that is
+  // almost none, and the list came out squashed and scrolling.
+  //
+  // Downwards by default, flipping above the button only when there is
+  // genuinely more room up there.
+  function placeAskPopup(btn, pop) {
+    pop.style.maxHeight = '';
+    const b = btn.getBoundingClientRect();
+    const GAP = 8, EDGE = 12;
+    const below = innerHeight - b.bottom - GAP - EDGE;
+    const above = b.top - GAP - EDGE;
+    const wanted = pop.scrollHeight;
+
+    const goUp = below < wanted && above > below;
+    const room = Math.max(140, Math.min(wanted, goUp ? above : below));
+    pop.style.maxHeight = room + 'px';
+
+    // Right-aligned to the button, then pulled back inside the viewport.
+    const width = pop.getBoundingClientRect().width;
+    let left = Math.min(b.right - width, innerWidth - width - EDGE);
+    pop.style.left = Math.max(EDGE, left) + 'px';
+    pop.style.top = goUp ? Math.max(EDGE, b.top - GAP - room) + 'px'
+                         : (b.bottom + GAP) + 'px';
+  }
+
+  function setupAskPopup(canAsk) {
+    const btn = $('helpBtn'), pop = $('askPop');
+    if (!btn || !pop) return;
+    if (!canAsk) { btn.hidden = true; pop.hidden = true; return; }
+    paintAskPopup(canAsk);
+    btn.hidden = false;
+    const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.onclick = () => {
+      const open = pop.hidden;
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      if (open) placeAskPopup(btn, pop);
+    };
+    $('askClose').onclick = close;
+    // Escape and a click outside, because a popup with only an X is a trap on
+    // a phone.
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    document.addEventListener('click', (e) => {
+      if (!pop.hidden && !pop.contains(e.target) && e.target !== btn) close();
+    });
+  }
+
   const callBtn = $('callBtn'), muteBtn = $('muteBtn'), hangBtn = $('hangBtn');
   const statusText = $('statusText'), dot = $('dot'), capBox = $('captions');
 
@@ -302,7 +389,15 @@
       const r = await fetch('/live');
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
+      const first = !live;
       live = d;
+      // Operator choices that shape the card itself, applied once — /live is
+      // polled, and re-running these every few seconds would fight the
+      // viewer's own theme toggle and rebuild the popup under their finger.
+      if (first) {
+        applyConfiguredTheme(d.theme);
+        setupAskPopup(d.canAsk);
+      }
       if (typeof d.sounds?.volume === 'number' && !room) {
         volume = d.sounds.volume;
         $('volSlider').value = volume;
@@ -954,6 +1049,60 @@
   refreshLive();
   setInterval(() => { if (!room) refreshLive(); }, 20000);
 
+  // Shared by the caller's card and the operator's panel, so the two can
+  // never describe the phone differently. Defined above the compact
+  // cut-off below because an embed needs it as much as the full page.
+  const ASKS = [
+    { need: null, say: '“What’s playing right now?”',
+      why: 'Reads live station state — always available.' },
+    { need: null, say: '“What have you been playing tonight?”',
+      why: 'Recent history and what’s queued next.' },
+    { need: null, say: '“What’s on after this show?”',
+      why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
+    { need: 'allow_requests', say: '“Can you play something slower?”',
+      why: 'Vague requests work — the station resolves them.' },
+    // Deliberately the station's own request-slip vocabulary, so the phone and
+    // the request drawer teach callers the same things.
+    { need: 'allow_requests', say: '“Something for late-night driving.”',
+      why: 'A mood, an occasion or an era goes to the station’s picker, not a name search.' },
+    { need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
+      why: 'Follow-ons and open picks are valid requests on their own.' },
+    { need: 'allow_requests', say: '“Something from the late seventies?”',
+      why: 'An era is a request like any other — no track name needed.' },
+    { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',
+      why: 'The station matches on feel, not just on title.' },
+    { need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
+      why: 'A run of requests in one mood — capped by the per-call action limit.' },
+    { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
+      why: 'Searches the real library before promising anything.' },
+    { need: 'allow_exact_queue', say: '“The second one — the live version.”',
+      why: 'Queues that exact recording from the search results, not a re-match.' },
+    { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
+      why: 'Hands a line to the on-air DJ to read in persona.' },
+    { need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
+      why: 'Puts the gist of the call on air.' },
+    { need: 'allow_skills', say: '“What’s the weather doing?” / “Any news?”',
+      why: 'Runs the station’s own weather or news segment.' },
+    { need: 'allow_skills', say: '“Give my mate a dedication.”',
+      why: 'Runs the dedication or shoutout segment.' },
+    { need: 'allow_skills', say: '“Tell us a story about the old days.”',
+      why: 'Story time / remembrance segments, in the DJ’s own voice.' },
+    { need: null, say: '“Who is this? What’s the story behind this record?”',
+      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
+    { need: null, say: '“How long have you been doing the night shift?”',
+      why: 'Answered in character from the DJ Card — no tool needed.' },
+  ];
+
+  // The other half of the truth: what a caller CANNOT do, and why. Without
+  // this the permissions list reads as if anything might be one toggle away.
+  const NEVER = [
+    ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
+    ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
+    ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
+    ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
+  ];
+
+
   // =================================================== settings (full page)
   if (compact) return;
 
@@ -1039,7 +1188,17 @@
     decorateFields();
   }
 
-  let options = null, overrides = {}, resolved = {}, secrets = {};
+  // Starts empty rather than null: the panel now paints as soon as the
+  // schema arrives, before the slow provider lists have loaded, so every
+  // read of this has to survive it being empty.
+  let options = {}, overrides = {}, resolved = {}, secrets = {};
+  // Whether the panel has ever been filled. Its own flag rather than a
+  // truthiness test on `options`, which is how 0.9.58 silently emptied the
+  // whole panel: that commit changed `options` from null to {} for the
+  // paint-early fix, and the gear's "already loaded?" guard was reading it as
+  // "not loaded yet". {} is truthy, so the guard fired on the FIRST open and
+  // the settings were never fetched at all.
+  let loaded = false;
 
   // Browsers restore form state across reloads; since Save diffs against the
   // stored overrides, a restored value would look like a deliberate edit.
@@ -1088,7 +1247,7 @@
 
   function syncModels() {
     const llm = $('llm_provider').value || resolved.llm_provider;
-    const list = options.llmModels[llm] || [];
+    const list = (options.llmModels || {})[llm] || [];
     const liveList = (options.modelsDiscovered || {})[llm];
     const station = options.stationLlm || {};
 
@@ -1110,7 +1269,7 @@
     } else { note.textContent = ''; }
 
     const stt = $('stt_provider').value || resolved.stt_provider;
-    fill('stt_model', options.sttModels[stt] || []);
+    fill('stt_model', (options.sttModels || {})[stt] || []);
     $('stt_model').value = overrides.stt_model || '';
   }
 
@@ -1175,56 +1334,6 @@
 
   // Worked examples of what a caller can actually say, tied to the permission
   // that enables each one — so the list can't drift from the real tool surface.
-  const ASKS = [
-    { need: null, say: '“What’s playing right now?”',
-      why: 'Reads live station state — always available.' },
-    { need: null, say: '“What have you been playing tonight?”',
-      why: 'Recent history and what’s queued next.' },
-    { need: null, say: '“What’s on after this show?”',
-      why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
-    { need: 'allow_requests', say: '“Can you play something slower?”',
-      why: 'Vague requests work — the station resolves them.' },
-    // Deliberately the station's own request-slip vocabulary, so the phone and
-    // the request drawer teach callers the same things.
-    { need: 'allow_requests', say: '“Something for late-night driving.”',
-      why: 'A mood, an occasion or an era goes to the station’s picker, not a name search.' },
-    { need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
-      why: 'Follow-ons and open picks are valid requests on their own.' },
-    { need: 'allow_requests', say: '“Something from the late seventies?”',
-      why: 'An era is a request like any other — no track name needed.' },
-    { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',
-      why: 'The station matches on feel, not just on title.' },
-    { need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
-      why: 'A run of requests in one mood — capped by the per-call action limit.' },
-    { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
-      why: 'Searches the real library before promising anything.' },
-    { need: 'allow_exact_queue', say: '“The second one — the live version.”',
-      why: 'Queues that exact recording from the search results, not a re-match.' },
-    { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
-      why: 'Hands a line to the on-air DJ to read in persona.' },
-    { need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
-      why: 'Puts the gist of the call on air.' },
-    { need: 'allow_skills', say: '“What’s the weather doing?” / “Any news?”',
-      why: 'Runs the station’s own weather or news segment.' },
-    { need: 'allow_skills', say: '“Give my mate a dedication.”',
-      why: 'Runs the dedication or shoutout segment.' },
-    { need: 'allow_skills', say: '“Tell us a story about the old days.”',
-      why: 'Story time / remembrance segments, in the DJ’s own voice.' },
-    { need: null, say: '“Who is this? What’s the story behind this record?”',
-      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
-    { need: null, say: '“How long have you been doing the night shift?”',
-      why: 'Answered in character from the DJ Card — no tool needed.' },
-  ];
-
-  // The other half of the truth: what a caller CANNOT do, and why. Without
-  // this the permissions list reads as if anything might be one toggle away.
-  const NEVER = [
-    ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
-    ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
-    ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
-    ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
-  ];
-
   // What a permission is set to RIGHT NOW, including an unsaved tick. The
   // reference lists are there to answer "what does this switch do" — reading
   // only the saved value meant they didn't move until after you'd committed
@@ -1408,9 +1517,10 @@
     // "Random each call" sits alongside the roster because it's the same
     // choice: who answers the phone. Blank stays the honest default.
     const RANDOM = '__random__';
-    const ids = [RANDOM].concat(options.personas.map((p) => p.id));
+    const roster = options.personas || [];
+    const ids = [RANDOM].concat(roster.map((p) => p.id));
     const names = { [RANDOM]: 'Random each call' };
-    options.personas.forEach((p) => { names[p.id] = p.name; });
+    roster.forEach((p) => { names[p.id] = p.name; });
     fill('persona_override', ids, {
       blankLabel: 'Whoever is live on air', labels: names,
     });
@@ -1439,8 +1549,16 @@
     paintSecurity();
     markClean();
 
+    // paint() runs once before the provider lists land, so this has to survive
+    // `options` being empty. It did not: reading .mirroringStation off an
+    // undefined voiceSource threw from inside the FIRST paint, which aborted
+    // loadSettings before the sounds, the provider lists and the version line —
+    // leaving a half-painted panel and "Could not load settings" in the corner.
+    // Nothing to say yet is a reason to say nothing, not to guess.
     const src = options.voiceSource, banner = $('mirrorBanner');
-    if (banner) {
+    if (banner && !src) {
+      banner.style.display = 'none';
+    } else if (banner) {
       banner.style.display = 'block';
       if (src.mirroringStation) {
         banner.className = 'banner ok';
@@ -1488,7 +1606,12 @@
   // Signing out only forgets the password on THIS browser — the panel
   // itself stays protected everywhere.
   $('logoutBtn').onclick = () => {
+    // Both credentials, not just the panel one. They are stored separately
+    // because they buy different things, but "sign out" means signed out —
+    // clearing only the admin key left the phone still open on a deployment
+    // whose whole point was that it wasn't.
     localStorage.removeItem('callinAdminKey');
+    localStorage.removeItem(CALL_KEY);
     location.reload();
   };
 
@@ -1623,24 +1746,46 @@
   let authConfigured = false, guestConfigured = false;
 
   async function loadSettings() {
-    const [ro, rs] = await Promise.all([
-      afetch('/settings/options'),
-      afetch('/settings'),
-    ]);
+    // Two requests, wildly different costs: /settings is the schema and the
+    // current values (~190ms), /settings/options asks the station, the TTS
+    // server and Ollama what they can offer (~5s). Waiting for both left the
+    // panel showing its raw ungrouped markup for five seconds and then
+    // visibly rearranging itself. Only the fast one decides the layout.
+    const optionsSoon = afetch('/settings/options');
+    optionsSoon.catch(() => {});          // handled below; don't warn early
+    const rs = await afetch('/settings');
     // A 401 means the panel is password-protected and this tab isn't in yet.
-    const denied = [rs, ro].find((r) => r.status === 401);
-    if (denied) {
-      const body = await denied.json().catch(() => ({}));
+    if (rs.status === 401) {
+      const body = await rs.json().catch(() => ({}));
       const err = new Error(body.error || 'locked');
       err.auth = true; err.body = body;
       throw err;
     }
-    const o = await ro.json(); const s = await rs.json();
-    options = o; overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
+    const s = await rs.json();
+    overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
     authConfigured = !!s.authConfigured;
     guestConfigured = !!s.guestConfigured;
     adoptSchema(s.schema);
     paint(); paintSecrets(); loadSounds();
+    // Loaded as of here: the panel is filled and usable. The provider lists
+    // below only add choices to dropdowns, and a failure there must not leave
+    // the gear trying to fetch everything again on every open.
+    loaded = true;
+
+    // Then the provider lists, which only fill in the dropdowns. fill()
+    // keeps whatever is already selected, so this cannot steal a choice made
+    // while it was in flight.
+    try {
+      const ro = await optionsSoon;
+      if (ro.status !== 401) {
+        options = await ro.json();
+        paint();
+      }
+    } catch (e) {
+      // The panel is still usable without them — every field keeps its
+      // current value, they just cannot be picked from a list.
+      console.info('provider lists unavailable:', e && e.message);
+    }
     // Which build is this? Anchors every bug report and change over time.
     fetch('/health').then((r) => r.json()).then((h) => {
       $('versionLine').textContent = 'Wave Talk v' + (h.version || '?')
@@ -1777,6 +1922,14 @@
     el.textContent = text;
   }
 
+  // A test can come back with something true about HOW it ran rather than
+  // what it found — chiefly that a draft URL was tested without the stored
+  // key, because a key only ever travels to the host it is saved for.
+  // Without this the operator sees an unexplained 401 from their own server.
+  function withNote(text, d) {
+    return d && d.note ? text + '\n\n' + d.note : text;
+  }
+
   // ------------------------------------------------------------- autofill
   $('tts_mode').onchange = async () => {
     const mode = $('tts_mode').value;
@@ -1829,16 +1982,16 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
-      if (!d.ok) { showResult(out, false, 'Failed: ' + d.error); return; }
+      if (!d.ok) { showResult(out, false, withNote('Failed: ' + d.error, d)); return; }
       const rtf = d.realtimeFactor;
       const verdict = rtf == null ? ''
         : rtf < 0.7 ? '\n✓ Fast enough for a live call.'
         : rtf < 1.0 ? '\n⚠ Tight — usable but little headroom.'
         : '\n✗ Slower than realtime: playback will starve and gap.';
       showResult(out, rtf != null && rtf < 1.0,
-        'voice ' + d.voice + '\nfirst audio ' + d.firstAudioMs + 'ms' +
+        withNote('voice ' + d.voice + '\nfirst audio ' + d.firstAudioMs + 'ms' +
         '\ngenerated ' + d.audioSec + 's in ' + d.wallMs + 'ms' +
-        '\nrealtime factor ' + rtf + verdict);
+        '\nrealtime factor ' + rtf + verdict, d));
       if (d.pcmBase64) playPcm(d.pcmBase64, d.sampleRate);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
@@ -1854,18 +2007,22 @@
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
       if (!d.ok) {
-        showResult(out, false, 'Failed: ' + d.error);
-        maybeOfferKey(out, $('llm_provider').value || resolved.llm_provider, d.error);
+        showResult(out, false, withNote('Failed: ' + d.error, d));
+        // A withheld key is the likeliest reason a draft endpoint 401s, and
+        // it is not a missing key — offering to paste one would be wrong.
+        if (!d.note) {
+          maybeOfferKey(out, $('llm_provider').value || resolved.llm_provider, d.error);
+        }
         return;
       }
       const slow = d.firstTokenMs > 1500;
       showResult(out, d.toolCalling && !slow,
-        d.provider + ' / ' + d.model +
+        withNote(d.provider + ' / ' + d.model +
         '\nfirst token ' + d.firstTokenMs + 'ms, total ' + d.totalMs + 'ms' +
         '\ntool calling: ' + (d.toolCalling ? '✓ works' : '✗ model did not call the tool') +
         (d.reply ? '\nreply: ' + d.reply : '') +
         (slow ? '\n⚠ Slow to first token — the call will feel laggy.' : '') +
-        (d.toolCalling ? '' : '\n✗ Without tool calling the DJ can never submit a request.'));
+        (d.toolCalling ? '' : '\n✗ Without tool calling the DJ can never submit a request.'), d));
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
@@ -2474,8 +2631,8 @@
       const foot = document.createElement('p');
       foot.className = 'hint';
       foot.style.margin = '9px 0 0';
-      foot.textContent = 'Dimmed rows happen once per call, not on every turn, '
-        + 'so they are not in the per-turn total.';
+      // One line on purpose — it wrapped to two and unbalanced the panel.
+      foot.textContent = 'Dimmed rows run once per call, not per turn.';
       out.appendChild(foot);
     }
   }
@@ -2626,6 +2783,13 @@
   function callTime(iso, withDate) {
     const d = new Date(iso || '');
     if (!iso || isNaN(d.getTime())) return (iso || '').slice(11, 19);
+    if (withDate === 'short') {
+      // Fits one line in a list row; the year is noise across forty calls.
+      return d.toLocaleString([], {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        second: '2-digit',
+      });
+    }
     return withDate
       ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' })
       : d.toLocaleTimeString([], { hour12: false });
@@ -2649,21 +2813,108 @@
     return { cls: 'pass', icon: '✓', note: '' };
   }
 
-  function callTimeline(c) {
+  // The body of an opened call, in the order you actually read it: what the
+  // call was, what it ran on, who was calling, what went wrong, and only then
+  // the conversation. Dumping all of it as one block meant the warning that
+  // explained the call was buried under the transcript that didn't.
+  function callBody(c) {
+    const box = document.createElement('div');
+    box.className = 'callbody';
+
+    const section = (title) => {
+      const h = document.createElement('div');
+      h.className = 'cbhead';
+      h.textContent = title;
+      box.appendChild(h);
+    };
+    const facts = (pairs) => {
+      const dl = document.createElement('dl');
+      dl.className = 'cbfacts';
+      pairs.filter(([, v]) => v !== '' && v != null).forEach(([k, v]) => {
+        const dt = document.createElement('dt'); dt.textContent = k;
+        const dd = document.createElement('dd'); dd.textContent = v;
+        dl.appendChild(dt); dl.appendChild(dd);
+      });
+      box.appendChild(dl);
+    };
+
+    const turns = c.callerTurns || 0;
+    section('Call');
+    facts([
+      ['Started', callTime(c.startedAt, true)],
+      ['Length', `${Math.round(c.durationSecs || 0)}s`],
+      ['DJ', c.persona?.name || '—'],
+      ['Caller turns', turns],
+      ['Tools used', (c.tools || []).length],
+      ['Ended', c.endedBecause || 'caller hung up or the line timed out'],
+      ['Room', c.room || c.id || ''],
+    ]);
+
+    section('Running on');
+    facts([
+      ['AI model', c.config?.llm || '—'],
+      ['Speech-to-text', c.config?.stt || '—'],
+      ['Voice', c.config?.tts || '—'],
+    ]);
+
+    // Known only while the process that minted the token is still up, so it
+    // is absent rather than wrong on older calls.
+    if (c.caller) {
+      section('Caller');
+      facts([
+        ['Client', c.caller.client || '—'],
+        ['Network', c.caller.network || 'unknown'],
+        ['Address', c.caller.ip || '—'],
+      ]);
+    }
+
+    if ((c.problems || []).length) {
+      section('What went wrong');
+      const ul = document.createElement('ul');
+      ul.className = 'cbproblems';
+      c.problems.forEach((p) => {
+        const li = document.createElement('li');
+        li.textContent = p.what;
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
+    section('Conversation');
     const events = []
       .concat((c.turns || []).map((t) => ({ t: t.t, kind: t.who, text: t.text })))
       .concat((c.tools || []).map((t) => ({
-        t: t.t, kind: 'tool', text: t.name + (t.result ? ' → ' + t.result : ''),
+        t: t.t, kind: 'tool', name: t.name, result: t.result || '',
       })))
       .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
-    const label = { caller: 'CALLER', dj: 'DJ    ', tool: '  tool' };
-    const lines = events.map((e) =>
-      `${callTime(e.t)} ${label[e.kind] || e.kind}  ${e.text}`);
-    const foot = [];
-    if (c.endedBecause) foot.push('ended: ' + c.endedBecause);
-    (c.problems || []).forEach((p) => foot.push('⚠ ' + p.what));
-    foot.push(`${c.config?.llm || ''}  stt=${c.config?.stt || ''}  tts=${c.config?.tts || ''}`);
-    return (lines.join('\n') || '  (no conversation)') + '\n\n' + foot.join('\n');
+
+    if (!events.length) {
+      const p = document.createElement('p');
+      p.className = 'cbempty';
+      p.textContent = 'Nothing was said on this call.';
+      box.appendChild(p);
+      return box;
+    }
+
+    const talk = document.createElement('div');
+    talk.className = 'cbtalk';
+    const who = { caller: 'Caller', dj: 'DJ' };
+    events.forEach((e) => {
+      const line = document.createElement('div');
+      line.className = 'cbline ' + e.kind;
+      const failed = e.kind === 'tool'
+        && /refus|error|fail|could ?n.t|didn.t/i.test(e.result);
+      if (failed) line.className += ' bad';
+      line.innerHTML = '<span class="t"></span><span class="w"></span><span class="x"></span>';
+      line.querySelector('.t').textContent = callTime(e.t);
+      line.querySelector('.w').textContent = e.kind === 'tool' ? 'tool' : (who[e.kind] || e.kind);
+      line.querySelector('.x').textContent = e.kind === 'tool'
+        ? e.name + (e.result ? ' → ' + e.result : '')
+        : e.text;
+      talk.appendChild(line);
+    });
+    box.appendChild(talk);
+    return box;
   }
 
   // One <details> per call, closed. Forty records as forty scrolling walls of
@@ -2683,16 +2934,17 @@
 
     const el = document.createElement('details');
     el.className = 'callrow ' + v.cls;
+    el.dataset.verdict = v.cls;
     const sum = document.createElement('summary');
     sum.innerHTML = '<span class="icon"></span><span class="nm"></span><span class="dt"></span>';
     sum.querySelector('.icon').textContent = v.icon;
-    sum.querySelector('.nm').textContent = callTime(c.startedAt, true);
+    // No year: "Aug 5, 2026, 2:29:24 AM" wrapped onto a second line and broke
+    // the row. The year is never the thing you are looking for in a list that
+    // holds the last forty calls.
+    sum.querySelector('.nm').textContent = callTime(c.startedAt, 'short');
     sum.querySelector('.dt').textContent = bits.join(' · ');
-    const body = document.createElement('pre');
-    body.className = 'calltimeline';
-    body.textContent = callTimeline(c);
     el.appendChild(sum);
-    el.appendChild(body);
+    el.appendChild(callBody(c));
     return el;
   }
 
@@ -2715,6 +2967,22 @@
       const list = document.createElement('div');
       list.className = 'calllist';
       calls.forEach((c) => list.appendChild(renderCallRow(c)));
+
+      // Filtering, kept small and out of the way: the common case is reading
+      // the last call, not hunting failures, so this is a checkbox rather
+      // than a mode the panel remembers.
+      const rough = calls.filter((c) => callVerdict(c).cls !== 'pass').length;
+      const bar = document.createElement('label');
+      bar.className = 'callfilter';
+      bar.innerHTML = '<input type="checkbox" /><span></span>';
+      bar.querySelector('span').textContent = rough
+        ? `Only calls with problems (${rough} of ${calls.length})`
+        : `Only calls with problems — none of the last ${calls.length}`;
+      const box = bar.querySelector('input');
+      box.disabled = !rough;
+      box.onchange = () => list.classList.toggle('onlybad', box.checked);
+
+      out.appendChild(bar);
       out.appendChild(list);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
@@ -2746,7 +3014,7 @@
   $('gearBtn').onclick = async () => {
     const panel = $('panel');
     panel.classList.toggle('open');
-    if (!panel.classList.contains('open') || options || loading) return;
+    if (!panel.classList.contains('open') || loaded || loading) return;
     loading = true;
     $('saveMsg').textContent = 'Loading from station, TTS server and Ollama…';
     $('saveBtn').disabled = true;

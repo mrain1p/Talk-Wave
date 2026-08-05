@@ -348,8 +348,13 @@ class StationClient:
         return {"error": str(last)[:140]}
 
     async def request_status(self, request_id: str) -> dict:
+        # Quoted: the id comes back from the station via a tool result the
+        # model has passed through, so it is not ours to trust with the shape
+        # of a URL path.
+        from urllib.parse import quote
+
         try:
-            r = await self._client.get(f"/request/{request_id}")
+            r = await self._client.get(f"/request/{quote(str(request_id), safe='')}")
             r.raise_for_status()
             return r.json()
         except Exception:

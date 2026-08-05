@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -191,6 +192,10 @@ class _TempStores(unittest.TestCase):
     ENV_VARS = (
         "STT_MODEL", "DEEPGRAM_MODEL", "STT_PROVIDER", "LLM_PROVIDER",
         "DEEPGRAM_API_KEY", "OPENAI_API_KEY", "TTS_MODE",
+        # Set by the key-withholding tests; restored so a real key in the
+        # developer's environment survives the run.
+        "OPENROUTER_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY", "TTS_API_KEY",
     )
 
     def setUp(self):
@@ -288,6 +293,204 @@ class TestSettings(_TempStores):
         stored = json.loads(settings_store.SETTINGS_PATH.read_text())
         self.assertNotIn("allow_sfx", stored)
         self.assertNotIn("not_a_field", stored)
+
+
+class TestNothingToSay(_TempStores):
+    """A line that cleans down to nothing must never reach the TTS backend.
+
+    Found on a real call. The model answered with a stage direction and
+    nothing else; speech hygiene stripped it to an empty string, which is
+    correct; that empty string was then sent to the voice server, which
+    errored, four times, until the agent gave up and the caller heard the
+    dead-air fallback instead of the DJ:
+
+        Generating speech (streaming) - Text:  | Voice: -Cliff1
+        ValueError: No valid speaker lines found in script
+        POST /v1/audio/speech 500
+    """
+
+    def _synth(self, lines: list[str]) -> list[tuple[bool, str]]:
+        """(silent?, what would be sent) for each line.
+
+        Runs in a loop because a livekit ChunkedStream starts a metrics task
+        on construction.
+        """
+        import asyncio
+
+        from tts_adapter import AdapterTTS
+
+        async def go():
+            engine = AdapterTTS(voice="-Cliff1", base_url="http://tts.invalid")
+            out = []
+            for text in lines:
+                s = engine.synthesize(text)
+                out.append((s._silent, s.input_text))
+                await s.aclose()
+            await engine.aclose()
+            return out
+
+        return asyncio.run(go())
+
+    def test_a_stage_direction_only_line_is_not_spoken(self):
+        settings_store.save({"strip_stage_directions": True})
+        lines = ["*shuffles records*", "(laughs)", "[pause]", "   "]
+        for line, (silent, sent) in zip(lines, self._synth(lines)):
+            with self.subTest(line=line):
+                self.assertTrue(silent, f"{line!r} would still reach the voice server")
+                self.assertEqual(sent, "")
+
+    def test_real_speech_is_still_spoken(self):
+        settings_store.save({"strip_stage_directions": True})
+        (silent, sent), = self._synth(["*grins* Alright, putting that in for you."])
+        self.assertFalse(silent)
+        self.assertIn("Alright", sent)
+
+
+class TestFrontDoorPolicy(_TempStores):
+    """Who may reach the PHONE, as opposed to the panel.
+
+    This used to be inferred from whether a guest password happened to exist,
+    so the policy changed as a side effect of setting or clearing one. It is
+    now an explicit choice, and the property that matters most is the last
+    test: an unconfigured gate must refuse, never fall open.
+    """
+
+    def _check(self, mode: str, key: str = "") -> str | None:
+        import admin_auth  # noqa: F401  (imported for the reset in _TempStores)
+        import token_server
+
+        settings_store.save({"front_access": mode})
+        token_server._auth_state.clear()
+        return token_server._guest_check(key, "10.0.0.9")
+
+    def test_auto_is_the_old_behaviour_and_the_default(self):
+        # The default has to leave existing deployments exactly as they were:
+        # a line that took calls yesterday must take them after an upgrade.
+        import admin_auth
+
+        self.assertEqual(settings_store.load()["front_access"], "auto")
+        admin_auth.clear_guest_password()
+        self.assertIsNone(self._check("auto"), "auto closed a line that had no code")
+        admin_auth.set_guest_password("guest-code")
+        self.assertEqual(self._check("auto"), "code required")
+        self.assertIsNone(self._check("auto", "guest-code"))
+
+    def test_open_lets_anyone_call(self):
+        import admin_auth
+
+        admin_auth.set_guest_password("guest-code")
+        self.assertIsNone(self._check("open"))
+        self.assertIsNone(self._check("open", "anything"))
+
+    def test_guest_mode_wants_the_code(self):
+        import admin_auth
+
+        admin_auth.set_password("admin-pw")
+        admin_auth.set_guest_password("guest-code")
+        self.assertEqual(self._check("guest"), "code required")
+        self.assertIsNone(self._check("guest", "guest-code"))
+        # An operator carries one password: admin is accepted as a guest code.
+        self.assertIsNone(self._check("guest", "admin-pw"))
+        self.assertIsNotNone(self._check("guest", "wrong"))
+
+    def test_admin_mode_closes_the_phone_to_guests(self):
+        import admin_auth
+
+        admin_auth.set_password("admin-pw")
+        admin_auth.set_guest_password("guest-code")
+        self.assertIsNone(self._check("admin", "admin-pw"))
+        # The guest code is a valid code — just not for this door.
+        self.assertIsNotNone(self._check("admin", "guest-code"))
+        self.assertEqual(self._check("admin"), "code required")
+
+    def test_an_unconfigured_gate_refuses_rather_than_opening(self):
+        # The property worth having. Selecting a password-based policy without
+        # having set that password must not silently behave like "open" — that
+        # is how a deployment ends up publicly callable while its operator
+        # believes it is locked.
+        import admin_auth
+        import token_server
+
+        # Isolated rather than relying on store state: this asserts the
+        # no-password-configured branch specifically.
+        real_admin, real_guest = token_server._auth_configured, admin_auth.guest_is_set
+        token_server._auth_configured = lambda: False
+        admin_auth.guest_is_set = lambda: False
+        try:
+            for mode in ("guest", "admin"):
+                with self.subTest(mode=mode):
+                    reason = self._check(mode)
+                    self.assertIsNotNone(reason, "an unset gate fell open")
+                    self.assertIn("isn't taking calls", reason)
+        finally:
+            token_server._auth_configured = real_admin
+            admin_auth.guest_is_set = real_guest
+
+
+class TestCallerContext(unittest.TestCase):
+    """What we can say about a caller when a call goes wrong.
+
+    The worker writes the call record and never sees the browser that rang, so
+    the token server attaches what it knew at mint time. Kept in memory only —
+    enough to answer "why did that call fail" while the process is up, without
+    the call archive quietly becoming a log of who rang and from where.
+    """
+
+    def test_it_tells_the_browsers_apart(self):
+        from token_server import _describe_client
+
+        cases = {
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:153.0) Gecko/20100101 Firefox/153.0":
+                "Firefox on macOS",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36":
+                "Chrome on Windows",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1":
+                "Safari on iPhone",
+        }
+        for ua, want in cases.items():
+            with self.subTest(browser=want):
+                self.assertEqual(_describe_client(ua), want)
+        self.assertEqual(_describe_client(""), "unknown client")
+
+    def test_it_says_whether_the_caller_was_on_this_network(self):
+        # The point of the whole thing: a call that connects and then hears
+        # nothing looks identical whether the caller was off-LAN with no media
+        # path or simply silent. This separates them.
+        from token_server import _network_of
+
+        for ip in ("192.168.1.51", "10.0.0.8", "172.19.0.4", "127.0.0.1"):
+            with self.subTest(ip=ip):
+                self.assertEqual(_network_of(ip), "same network")
+        for ip in ("100.33.134.4", "8.8.8.8", "172.32.0.1"):
+            with self.subTest(ip=ip):
+                self.assertEqual(_network_of(ip), "off-network")
+        self.assertEqual(_network_of(""), "unknown")
+        self.assertEqual(_network_of("nonsense"), "off-network")
+
+    def test_caller_context_never_reaches_the_call_record_on_disk(self):
+        # It is diagnostic, not archive. If this ever changes, every stored
+        # call becomes a record of an address, which is a different promise
+        # than "both sides of the conversation". Tested on what is actually
+        # written, not on the source text — an earlier version grepped the
+        # module and matched "ip" inside "description".
+        import json
+
+        from call import record
+
+        tmp = Path(tempfile.mkdtemp())
+        original = record.CALLS_DIR
+        try:
+            record.CALLS_DIR = tmp
+            r = record.CallRecord("callin-abc", {"id": "p1", "name": "Cliff"}, {})
+            r.turn("caller", "hello")
+            r.write(reason="caller hung up")
+            written = json.loads(next(tmp.glob("*.json")).read_text(encoding="utf-8"))
+        finally:
+            record.CALLS_DIR = original
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        for key in ("caller", "ip", "client", "network", "userAgent"):
+            self.assertNotIn(key, written, f"the record on disk now carries {key}")
 
 
 class TestExposedSurface(unittest.TestCase):
@@ -1034,6 +1237,65 @@ class TestPanelMarkup(unittest.TestCase):
             f for f, meta in settings_store.SCHEMA.items() if meta["group"] not in known
         )
         self.assertFalse(strays, f"settings in an unknown group: {strays}")
+
+
+class TestPanelLoadsOnOpen(unittest.TestCase):
+    """Opening the panel must actually fetch the settings.
+
+    0.9.61 shipped with an admin panel that had nothing in it: every dropdown
+    empty, no values, no section headers, and no login prompt either. The cause
+    was one word. The gear's "have I loaded already?" guard was
+    `if (... || options || loading) return;`, written when `options` started as
+    null — then 0.9.58 changed it to `{}` so the panel could paint before the
+    slow provider lists arrived. `{}` is truthy, so from that commit on the
+    guard fired on the very first open and `loadSettings()` was never called.
+
+    Nothing failed loudly: no request, no console error, no 401. There is no JS
+    test runner here, so this reads the source — in the same spirit as
+    TestPanelMarkup above. It is deliberately narrow: the loaded-flag must be
+    its own boolean, never a data container tested for truthiness."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (Path(__file__).parent.parent / "web-widget" / "app.js").read_text(
+            encoding="utf-8"
+        )
+
+    def _gear_handler(self) -> str:
+        start = self.js.index("$('gearBtn').onclick")
+        return self.js[start : self.js.index("};", start)]
+
+    def test_the_gear_guard_uses_a_dedicated_flag(self):
+        guard = self._gear_handler()
+        self.assertIn(
+            "loaded ||",
+            guard,
+            "the gear's skip-the-fetch guard must test the `loaded` flag",
+        )
+
+    def test_the_gear_guard_never_tests_a_data_container(self):
+        # The actual bug: any of these is an object that is truthy while empty,
+        # so using one as "already loaded" skips the fetch on the first open.
+        guard = self._gear_handler()
+        for name in ("options", "overrides", "resolved", "secrets", "SCHEMA"):
+            self.assertNotIn(
+                f"|| {name} ||",
+                guard,
+                f"`{name}` is truthy when empty — it cannot stand in for `loaded`",
+            )
+
+    def test_loading_the_settings_sets_the_flag(self):
+        start = self.js.index("async function loadSettings()")
+        body = self.js[start : self.js.index("\n  }", start)]
+        self.assertIn(
+            "loaded = true",
+            body,
+            "loadSettings must record that the panel is filled, or the gear "
+            "refetches everything on every open",
+        )
+
+    def test_the_flag_starts_false(self):
+        self.assertIn("let loaded = false;", self.js)
 
     def test_every_group_belongs_to_a_real_supergroup(self):
         known = {s for s, *_ in settings_store.SUPERGROUPS}
@@ -1800,6 +2062,73 @@ class TestCallRecord(unittest.TestCase):
         r.finalise([])
         self.assertEqual(r.data["turns"][0]["text"], "something")
 
+    def test_a_history_entry_with_no_live_event_does_not_shift_the_rest(self):
+        """Taken from a real call (2026-08-05, room 1023dbeb3e28), where the
+        written transcript and the live log disagreed about who said what.
+
+        finalise used to pair the Nth live event with the Nth history entry.
+        The call opens with a primed `user` turn so the model has something to
+        answer, and that turn never produces a live event — so every caller
+        line landed on the NEXT line's timestamp, the last one was appended at
+        call-end time, and callerTurns came out one too high (which gates the
+        back-to-air mention). The record reported no problem while being wrong
+        about the whole call.
+
+        The prime is dropped at the source now; this pins the general case,
+        because any unmatched history entry did the same damage.
+        """
+        r = self.record.CallRecord("callin-x", {"id": "p1", "name": "Dawn"}, {})
+        r.turn("dj", "Yosemite FM, you're on with Dawn.")
+        r.turn("caller", "Can you play me a song?")
+        r.turn("caller", "Sit with.")
+        r.turn("caller", "Hello.")
+        stamps = {t["text"]: t["t"] for t in r.data["turns"]}
+
+        # An extra caller entry the events never saw, at the FRONT.
+        r.finalise([("caller", "[Call connected. You speak first.]"),
+                    ("dj", "Yosemite FM, you're on with Dawn."),
+                    ("caller", "Can you play me a song?"),
+                    ("caller", "Sit with."),
+                    ("caller", "Hello.")])
+
+        said = [(t["who"], t["text"]) for t in r.data["turns"]]
+        self.assertEqual(said, [
+            ("dj", "Yosemite FM, you're on with Dawn."),
+            ("caller", "Can you play me a song?"),
+            ("caller", "Sit with."),
+            ("caller", "Hello."),
+            # The unmatched entry is appended, never folded into a real turn.
+            ("caller", "[Call connected. You speak first.]"),
+        ])
+        # Every line the caller actually said keeps the time it was heard.
+        for text in ("Can you play me a song?", "Sit with.", "Hello."):
+            got = next(t["t"] for t in r.data["turns"] if t["text"] == text)
+            self.assertEqual(got, stamps[text],
+                             f"{text!r} was moved onto another line's timestamp")
+
+    def test_the_opening_prime_is_not_a_caller_turn(self):
+        """It sits in the history as a `user` message because that is the only
+        shape Gemini accepts a leading function call after — but the caller
+        neither said nor heard it. Counting it inflates callerTurns, which is
+        what `callback_min_turns` reads to decide whether a call was worth
+        mentioning on air."""
+        from call import lifecycle
+
+        class _Item:
+            def __init__(self, role, content):
+                self.role, self.content = role, content
+
+        class _Session:
+            history = type("H", (), {"items": [
+                _Item("user", lifecycle.CALL_OPENING_PRIME),
+                _Item("assistant", "Yosemite FM, you're on with Dawn."),
+                _Item("user", "Can you play me a song?"),
+            ]})()
+
+        got = lifecycle._transcript(_Session())
+        self.assertEqual(got, [("assistant", "Yosemite FM, you're on with Dawn."),
+                               ("user", "Can you play me a song?")])
+
     def test_problems_are_kept_with_the_call_that_had_them(self):
         r = self._a_call()
         r.problem("APIStatusError: gemini llm: client error 400")
@@ -2436,6 +2765,1237 @@ class TestMainToolLogic(_TempStores):
         )
         self.assertEqual(provider, "local")
         self.assertEqual(model, "base.en")  # nova-3 is not a local model
+
+
+class TestCallerIdentityCannotBeChosen(unittest.TestCase):
+    """Who the server thinks you are decides your cooldown, your lockout
+    bucket, and whose address gets banned. All three were a header away.
+
+    X-Forwarded-For is a list the CLIENT starts and proxies append to, so its
+    leftmost entry is whatever the caller typed. Reading it meant rotating the
+    header sat at "4 tries left" forever, and writing someone else's address
+    into it put THEM in cooldown.
+    """
+
+    def _key(self, peer, xff=None, trusted=""):
+        import token_server
+
+        old = token_server._TRUSTED_PROXIES_RAW
+        token_server._TRUSTED_PROXIES_RAW = trusted
+        try:
+            headers = {"X-Forwarded-For": xff} if xff else {}
+            return token_server._caller_key(
+                types.SimpleNamespace(headers=headers, remote=peer)
+            )
+        finally:
+            token_server._TRUSTED_PROXIES_RAW = old
+
+    def test_a_direct_caller_cannot_claim_another_address(self):
+        # The peer is on the public internet, so nothing it says about who it
+        # is counts for anything.
+        self.assertEqual(
+            self._key("8.8.8.8", xff="10.0.0.1", trusted="10.99.99.99"),
+            "8.8.8.8",
+        )
+
+    def test_a_trusted_proxy_is_believed_but_only_for_what_it_appended(self):
+        # The client wrote "1.2.3.4"; the proxy appended what it actually saw.
+        # The rightmost entry is the proxy's, so that is the one that counts.
+        self.assertEqual(
+            self._key("10.99.99.99", xff="1.2.3.4, 8.8.4.4",
+                      trusted="10.99.99.99"),
+            "8.8.4.4",
+        )
+
+    def test_an_untrusted_peer_with_no_header_still_resolves(self):
+        self.assertEqual(self._key("8.8.8.8", trusted="10.99.99.99"),
+                         "8.8.8.8")
+
+    def test_the_default_trusts_a_private_peer_so_the_bundled_proxy_works(self):
+        # caddy reaches the container over the docker bridge; without this the
+        # per-caller limits collapse into one shared bucket for every caller.
+        self.assertEqual(self._key("172.18.0.4", xff="8.8.4.4"),
+                         "8.8.4.4")
+
+    def test_the_default_does_not_trust_a_public_peer(self):
+        self.assertEqual(self._key("8.8.4.4", xff="10.0.0.1"),
+                         "8.8.4.4")
+
+
+class TestStoredKeysStayHome(_TempStores):
+    """A stored API key only ever travels to the host it is configured for.
+
+    The panel can preview a URL before saving it, and that override reaches
+    the code that builds the real provider — which attaches whatever key is
+    stored. So a URL in a REQUEST could make this process post the OpenAI key,
+    the TTS key or the station's admin password to any host the requester
+    named. All three came back in the clear against a test listener, which
+    turns the panel password into the plaintext of every key — the one thing
+    storing them server-side is supposed to prevent.
+    """
+
+    def test_the_saved_host_is_credentialed(self):
+        import token_server
+
+        may, note = token_server._credentials_travel_to(
+            "https://api.openai.com/v1", "https://api.openai.com")
+        self.assertTrue(may)
+        self.assertEqual(note, "")
+
+    def test_an_unsaved_host_is_not(self):
+        import token_server
+
+        may, note = token_server._credentials_travel_to(
+            "http://attacker.example/v1", "https://api.openai.com")
+        self.assertFalse(may)
+        self.assertIn("not the address in your saved settings", note)
+
+    def test_supplying_nothing_leaves_the_saved_config_in_charge(self):
+        import token_server
+
+        may, _ = token_server._credentials_travel_to("", "https://api.openai.com")
+        self.assertTrue(may)
+
+    # Where each SDK ends up keeping the key, so the assertion is about what
+    # will actually go out on the wire rather than what we passed in.
+    KEY_ENV = {
+        "openai": "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }
+
+    def _key_on(self, model):
+        client = model._client
+        for holder in (client, getattr(client, "_api_client", None)):
+            if holder is None:
+                continue
+            for attr in ("api_key", "_api_key"):
+                value = getattr(holder, attr, None)
+                if isinstance(value, str) and value:
+                    return value
+        self.fail("could not find the api key on the built model")
+
+    def test_withholding_does_not_fall_back_to_the_environment(self):
+        # The failure this guards is subtle and per-SDK: these plugins take
+        # api_key as either NotGivenOr[str] or str|None, and two of them treat
+        # a falsy value as "read the environment" — so passing "" or None to
+        # withhold a key would send it anyway. Every provider is checked
+        # because getting one of them wrong leaks exactly one key, silently.
+        from call.providers import WITHHELD_KEY, build_llm
+
+        for provider, env_var in self.KEY_ENV.items():
+            with self.subTest(provider=provider):
+                os.environ[env_var] = f"{provider}-must-not-travel"
+                model = build_llm(
+                    {"llm_provider": provider, "llm_model": "",
+                     "llm_base_url": "http://attacker.example/v1"},
+                    use_stored_key=False,
+                )
+                self.assertEqual(self._key_on(model), WITHHELD_KEY)
+
+    def test_the_normal_path_still_uses_the_stored_key(self):
+        from call.providers import build_llm
+
+        for provider, env_var in self.KEY_ENV.items():
+            with self.subTest(provider=provider):
+                os.environ[env_var] = f"{provider}-the-real-one"
+                model = build_llm({"llm_provider": provider, "llm_model": ""})
+                self.assertEqual(self._key_on(model), f"{provider}-the-real-one")
+
+    def test_a_lookalike_openai_hostname_gets_no_key(self):
+        # "api.openai.com" in base_url also matched
+        # https://api.openai.com.example.net — a domain anyone can register.
+        from tts_adapter import _is_openai_host
+
+        self.assertTrue(_is_openai_host("https://api.openai.com/v1"))
+        self.assertFalse(_is_openai_host("https://api.openai.com.example.net/v1"))
+        self.assertFalse(_is_openai_host("https://notapi.openai.com.evil/v1"))
+
+    def test_station_config_without_auth_reads_nothing_admin_only(self):
+        import asyncio
+
+        from station_config import StationConfig
+
+        secrets_store.save({"subwave_admin_user": "u", "subwave_admin_pass": "p"})
+
+        async def go():
+            sc = StationConfig(base_url="http://attacker.example", with_auth=False)
+            try:
+                # No credentials on the client, so the admin-only read is not
+                # even attempted — it cannot leak what it never sends.
+                self.assertFalse(sc._authed)
+                self.assertEqual(await sc.settings(), {})
+            finally:
+                await sc.aclose()
+
+        asyncio.run(go())
+
+
+class TestFirstRunIsNotOpenToTheWeb(_TempStores):
+    """Before a password is set the panel stays open, gated only by refusing
+    foreign origins. That gate compared the Origin to the Host — which a
+    rebound DNS name satisfies, because the browser sets both to the attacker's
+    own name. A literal address cannot be rebound; a name can.
+    """
+
+    class _Req(dict):
+        """Enough of a request for the gate: headers, host, and the dict-like
+        slot handlers use to leave a caller-facing reason on."""
+
+        def __init__(self, origin, host):
+            super().__init__()
+            self.headers = {"Origin": origin}
+            self.host = host
+            self.remote = "8.8.8.8"
+
+    def _allowed(self, origin, host):
+        import token_server
+
+        return token_server._write_allowed(self._Req(origin, host))
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        import token_server
+
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "auth.json"
+        self._old_key = token_server.ADMIN_KEY
+        token_server.ADMIN_KEY = ""
+
+    def tearDown(self):
+        import admin_auth
+        import token_server
+
+        admin_auth.AUTH_PATH = self._old_auth
+        token_server.ADMIN_KEY = self._old_key
+        super().tearDown()
+
+    def test_a_rebound_name_is_refused(self):
+        self.assertFalse(self._allowed("http://evil.example", "evil.example"))
+
+    def test_the_real_lan_address_still_works(self):
+        self.assertTrue(self._allowed("http://192.168.1.10:8100", "192.168.1.10:8100"))
+
+    def test_localhost_still_works(self):
+        self.assertTrue(self._allowed("http://localhost:8100", "localhost:8100"))
+
+    def test_a_named_origin_can_be_opted_into(self):
+        import token_server
+
+        old = token_server.PANEL_ORIGINS
+        token_server.PANEL_ORIGINS = ["https://radio.example"]
+        try:
+            self.assertTrue(self._allowed("https://radio.example", "radio.example"))
+        finally:
+            token_server.PANEL_ORIGINS = old
+
+    def test_permission_to_embed_is_not_permission_to_configure(self):
+        """CALLIN_ALLOWED_ORIGINS means 'this page may embed the widget and
+        mint call tokens'. It must not also mean 'this page may read the
+        settings and set the admin password' — the blast radius is API budget
+        in one case and the controls in the other, and a permission that moves
+        as a side effect of another one is the exact shape 0.9.61 removed."""
+        import token_server
+
+        old_embed = token_server.ALLOWED_ORIGINS
+        old_panel = token_server.PANEL_ORIGINS
+        token_server.ALLOWED_ORIGINS = ["https://someone-elses-blog.example"]
+        token_server.PANEL_ORIGINS = []
+        try:
+            self.assertFalse(
+                self._allowed("https://someone-elses-blog.example",
+                              "someone-elses-blog.example"))
+        finally:
+            token_server.ALLOWED_ORIGINS = old_embed
+            token_server.PANEL_ORIGINS = old_panel
+
+
+class TestAnUnreadablePasswordStoreFailsClosed(_TempStores):
+    """A password file that exists but will not open must not read as "no
+    password has been set".
+
+    Both used to come back as an empty dict, so is_set() went False,
+    _auth_configured() went False, and the panel dropped into first-run mode —
+    unauthenticated — with a perfectly good password sitting on disk. The gate
+    fell open on a configuration error, which is the one thing a gate must
+    never do.
+
+    This is not a hypothetical. Running the container as a non-root user
+    against a data/ whose files root wrote makes every store in it unreadable
+    at once, and that is exactly the hardening step this release adds.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+
+        self._old = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        self.admin_auth = admin_auth
+
+    def tearDown(self):
+        self.admin_auth.AUTH_PATH = self._old
+        super().tearDown()
+
+    def test_no_file_at_all_is_genuinely_unconfigured(self):
+        self.assertIsNone(self.admin_auth.unreadable())
+        self.assertFalse(self.admin_auth.is_set())
+
+    def test_a_normal_store_reads_normally(self):
+        self.admin_auth.set_password("a-real-password")
+        self.assertIsNone(self.admin_auth.unreadable())
+        self.assertTrue(self.admin_auth.is_set())
+        self.assertTrue(self.admin_auth.verify("a-real-password"))
+
+    def test_a_corrupt_store_counts_as_configured(self):
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        self.assertIsNotNone(self.admin_auth.unreadable())
+        # The point: configured, so the panel demands a password...
+        self.assertTrue(self.admin_auth.is_set())
+        # ...and nothing satisfies it, so it is shut rather than open.
+        self.assertFalse(self.admin_auth.verify("anything"))
+        self.assertFalse(self.admin_auth.verify(""))
+
+    def test_the_reason_names_the_file_and_the_way_back_in(self):
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        why = self.admin_auth.unreadable()
+        self.assertIn("admin-auth.json", why)
+        # An operator staring at "wrong password" has no way to guess this.
+        self.assertIn("CALLIN_ADMIN_KEY", why)
+
+    def test_the_phone_does_not_swing_open_either(self):
+        """The sharper half. front_access `auto` — the default — means "open
+        until a guest code exists", so guest_is_set() answering False is what
+        holds the line open. If an unreadable store answered False there, one
+        bad file permission would open the phone to anyone, which is precisely
+        the failure the explicit access modes exist to prevent."""
+        self.admin_auth.set_guest_password("a-real-guest-code")
+        self.assertTrue(self.admin_auth.guest_is_set())
+
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        self.assertTrue(
+            self.admin_auth.guest_is_set(),
+            "an unreadable store read as 'no guest code', which opens the line")
+        self.assertFalse(self.admin_auth.verify_guest("a-real-guest-code"))
+
+    def test_the_gate_refuses_on_auto_when_the_store_is_unreadable(self):
+        # End to end through the real gate, not just the store: `auto` is the
+        # shipped default, so this is the path an ordinary deployment takes.
+        import token_server
+
+        settings_store.save({"front_access": "auto"})
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        self.assertIsNotNone(token_server._guest_check("", "1.2.3.4"))
+        self.assertIsNotNone(token_server._guest_check("any-code", "1.2.3.4"))
+
+
+@unittest.skipUnless(hasattr(os, "getuid"), "POSIX modes only")
+class TestWrittenFilesGetExplicitModes(_TempStores):
+    """Everything written into data/ sets its own mode, rather than taking
+    whatever the filesystem hands out.
+
+    Found on a real deployment, not in theory: a Synology share creates files
+    with mode 000 — no bits at all. Root ignores that, so for as long as the
+    container ran as root nothing showed. The moment it ran as uid 1000, the
+    app could not read its own settings.json even though it OWNED it, and
+    chowning the directory did not help because the bits were never there.
+
+    secrets.json and admin-auth.json were only ever spared because they chmod
+    themselves. So now so does everything else.
+    """
+
+    def test_settings_are_readable_by_their_owner(self):
+        settings_store.save({"llm_model": "gpt-4.1-mini"})
+        mode = settings_store.SETTINGS_PATH.stat().st_mode & 0o777
+        self.assertTrue(mode & 0o400, f"settings.json came out {mode:03o}")
+        self.assertTrue(mode & 0o200, f"settings.json is not writable: {mode:03o}")
+
+    def test_the_secret_stores_stay_owner_only(self):
+        # The other half: fixing the readable ones must not loosen these.
+        secrets_store.save({"openai_api_key": "sk-test"})
+        self.assertEqual(secrets_store.SECRETS_PATH.stat().st_mode & 0o777, 0o600)
+
+    def test_a_call_transcript_and_its_directory_are_reachable(self):
+        from call import record
+
+        old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name) / "calls"
+        try:
+            r = record.CallRecord("callin-abcdefghijkl", {"id": "p1", "name": "Wade"}, {})
+            r.turn("caller", "hello")
+            r.write("test")
+            written = list(record.CALLS_DIR.glob("*.json"))
+            self.assertTrue(written, "no transcript was written")
+            # A directory with no execute bit cannot be listed by its owner,
+            # so the transcripts would be write-only in practice.
+            self.assertTrue(record.CALLS_DIR.stat().st_mode & 0o100)
+            self.assertTrue(written[0].stat().st_mode & 0o400)
+        finally:
+            record.CALLS_DIR = old
+
+
+class TestJoinTokensExpire(unittest.TestCase):
+    def test_a_minted_token_is_short_lived(self):
+        """A join token is the only thing between a stranger and an agent job.
+        The door code and the usage limits are checked when it is MINTED, so a
+        long-lived token is a line that can be reopened without passing either
+        again. The SDK default is six hours."""
+        import token_server
+
+        self.assertLessEqual(token_server.TOKEN_TTL.total_seconds(), 300)
+
+
+class TestActionsAllHaveAReceipt(unittest.TestCase):
+    def test_every_action_a_tool_records_has_a_label(self):
+        """The caller's transcript shows a line per action, and the point of
+        that line is that the DJ *saying* it did something is a claim while the
+        line is the receipt. Two station-wide actions — skipping the record
+        everyone is listening to, and firing a programme beat — shipped with no
+        label and rendered as a bare "Action completed"."""
+        import re
+
+        from call.actions import CallActions
+
+        recorded = set()
+        for path in Path(__file__).parent.joinpath("call/tools").glob("*.py"):
+            recorded.update(
+                re.findall(r"actions\.note\(\s*[\"'](\w+)[\"']", path.read_text())
+            )
+        self.assertTrue(recorded, "found no actions.note() calls to check")
+        self.assertEqual(
+            sorted(recorded - set(CallActions.LABELS)), [],
+            "an action kind is recorded but has no label, so the caller sees "
+            "'Action completed' instead of what actually happened",
+        )
+
+
+class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
+    """The call DJ and the on-air DJ are the same voice.
+
+    Left alone they talk over each other and the whole broadcast hears it
+    doubled. Everything here defends one rule: the gate is the single source
+    of truth about whether the air is busy, so the reply gate, the on-air
+    tools and the widget's chip can never disagree.
+    """
+
+    def _guard(self, station=None, **cfg):
+        from call.air import OnAirGuard
+
+        base = {"avoid_on_air_overlap": True, "on_air_quiet_secs": 30}
+        base.update(cfg)
+        return OnAirGuard(station or object(), base)
+
+    def test_a_disabled_guard_never_makes_anyone_wait(self):
+        import asyncio
+
+        guard = self._guard(avoid_on_air_overlap=False)
+        self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
+
+    def test_our_own_action_closes_the_gate_before_the_station_log_catches_up(self):
+        # Waiting for the poll to notice left a window in which the DJ carried
+        # on talking over its own announcement — seen on a real call, right
+        # after it had said it was going off to air something.
+        guard = self._guard()
+        self.assertTrue(guard._clear.is_set())
+        guard.mark_on_air(25)
+        self.assertTrue(guard.on_air)
+        self.assertFalse(guard._clear.is_set())
+
+    def test_dead_air_is_worse_than_an_overlap(self):
+        # If the station has been "speaking" for longer than any real link,
+        # the log is stale — let the call carry on rather than sit in silence.
+        import asyncio
+
+        guard = self._guard()
+        guard.mark_on_air(600)
+        waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
+        self.assertGreaterEqual(waited, 0.05)
+        self.assertTrue(guard._clear.is_set(), "the caller was left in silence")
+
+    def _watch(self, answers, stop_when):
+        import asyncio
+
+        class _Station:
+            def __init__(self):
+                self.left = list(answers)
+
+            async def seconds_since_on_air_speech(self):
+                return self.left.pop(0) if self.left else None
+
+        class _Session:
+            def __init__(self):
+                self.said = []
+                self.interrupted = 0
+
+            def interrupt(self):
+                self.interrupted += 1
+
+            def say(self, text, **kw):
+                self.said.append(text)
+
+        async def _run():
+            guard = self._guard(station=_Station())
+            guard.POLL_SECS = 0.01
+            session = _Session()
+            task = asyncio.create_task(guard.watch(session))
+            for _ in range(300):
+                await asyncio.sleep(0.01)
+                if stop_when(session):
+                    break
+            task.cancel()
+            return session
+
+        return asyncio.run(_run())
+
+    def test_dialling_in_mid_link_does_not_cut_the_greeting_off(self):
+        # The first pass closes the gate SILENTLY. Someone who dials in during
+        # a link should have their first reply held, without the greeting being
+        # interrupted by a hand-over line for a broadcast that was already
+        # running when they picked up the phone.
+        session = self._watch([1, 1, 1], stop_when=lambda s: False)
+        self.assertEqual(session.said, [])
+        self.assertEqual(session.interrupted, 0)
+
+    def test_the_air_going_busy_mid_call_hands_over_out_loud(self):
+        # Clear first (no transition), then busy — that one is not the first
+        # pass, so the caller is told why the DJ has stopped.
+        session = self._watch([None, 1, 1, 1], stop_when=lambda s: s.said)
+        self.assertTrue(session.said, "the DJ went quiet without telling the caller")
+        self.assertGreaterEqual(session.interrupted, 1)
+
+
+class TestBackgroundWorkIsNotGarbageCollected(unittest.TestCase):
+    """`asyncio.create_task` alone keeps only a weak reference, so a task with
+    no other reference can be collected mid-flight. That showed up as action
+    cards and on-air state changes going missing at random — worse than a
+    feature that never existed, because it looks like it works."""
+
+    def test_a_spawned_task_is_held_until_it_finishes_and_then_released(self):
+        import asyncio
+
+        from call import background
+
+        async def _run():
+            started, release = asyncio.Event(), asyncio.Event()
+
+            async def work():
+                started.set()
+                await release.wait()
+
+            task = background.spawn(work())
+            await started.wait()
+            held = task in background._background
+            release.set()
+            await task
+            await asyncio.sleep(0)      # let the done-callback run
+            return held, task in background._background
+
+        held, still_held = asyncio.run(_run())
+        self.assertTrue(held, "the task was not referenced while it ran")
+        self.assertFalse(still_held, "finished tasks are never released")
+
+
+class TestEndingACallDisconnectsTheCaller(unittest.TestCase):
+    """ctx.shutdown() alone only ends the AGENT's job. The caller stayed
+    connected to a DJ-less room — mic hot, timer running, "on the line"
+    forever. Three things end calls (the DJ wrapping up, the idle watcher, the
+    hard limit) and all three go through here, so this is the one place to
+    get it right."""
+
+    def _ctx(self, delete_raises=False):
+        class _Room:
+            name = "call-room"
+
+        class _RoomApi:
+            def __init__(self):
+                self.deleted = []
+
+            async def delete_room(self, req):
+                if delete_raises:
+                    raise RuntimeError("livekit unreachable")
+                self.deleted.append(req)
+
+        class _Ctx:
+            def __init__(self):
+                self.room = _Room()
+                self.api = types.SimpleNamespace(room=_RoomApi())
+                self.shutdown_reasons = []
+
+            def shutdown(self, reason=None):
+                self.shutdown_reasons.append(reason)
+
+        return _Ctx()
+
+    def test_the_room_is_deleted_so_the_caller_is_actually_disconnected(self):
+        import asyncio
+
+        from call.hangup import end_call
+
+        ctx = self._ctx()
+        asyncio.run(end_call(ctx, "wrapped up"))
+        self.assertEqual(len(ctx.api.room.deleted), 1)
+        self.assertEqual(ctx.api.room.deleted[0].room, "call-room")
+        self.assertEqual(ctx.shutdown_reasons, ["wrapped up"])
+
+    def test_the_agent_still_leaves_when_the_room_cannot_be_deleted(self):
+        import asyncio
+
+        from call.hangup import end_call
+
+        ctx = self._ctx(delete_raises=True)
+        asyncio.run(end_call(ctx, "time limit"))
+        self.assertEqual(ctx.shutdown_reasons, ["time limit"],
+                         "a failed room delete stranded the agent in the call")
+
+
+class TestSearchingForWhatTheCallerActuallySaid(unittest.TestCase):
+    """The station's search needs EVERY word to match, so the natural phrase a
+    caller uses returns nothing. A caller heard "can't pull that from the
+    racks" for a track the library holds three copies of."""
+
+    def test_the_by_connector_is_stripped_before_reporting_a_miss(self):
+        from call.tools.music import _query_variants
+
+        self.assertEqual(
+            _query_variants("Let It Be by The Beatles"),
+            ["Let It Be by The Beatles", "Let It Be The Beatles", "Let It Be"],
+        )
+
+    def test_a_title_containing_by_survives_the_split(self):
+        # Rightmost split, so "Stand by Me" is never torn in half.
+        from call.tools.music import _query_variants
+
+        variants = _query_variants("Stand by Me by Ben E. King")
+        self.assertIn("Stand by Me", variants)
+        self.assertNotIn("Stand", variants)
+
+    def test_a_query_with_no_connector_is_tried_once(self):
+        from call.tools.music import _query_variants
+
+        self.assertEqual(_query_variants("Mr. Blue Sky"), ["Mr. Blue Sky"])
+
+
+class TestAMoodIsNotASearch(unittest.TestCase):
+    """A caller saying "something fun" wants the station's picker, not a title
+    match — but the model reaches for the search tool anyway, and "fun"
+    dutifully returns "Fun, Fun, Fun" by The Beach Boys. Observed on a real
+    call. The guard is deliberately conservative: every meaningful word has to
+    be a mood word, so real titles are untouched."""
+
+    def test_a_pure_description_is_recognised(self):
+        from call.tools.music import looks_like_a_vibe
+
+        for q in ("something fun", "chill", "some upbeat music",
+                  "play me something nice"):
+            self.assertTrue(looks_like_a_vibe(q), q)
+
+    def test_real_titles_containing_a_mood_word_are_left_alone(self):
+        from call.tools.music import looks_like_a_vibe
+
+        for q in ("Fun House by The Stooges", "Mr. Blue Sky",
+                  "Heavy Metal by Sammy Hagar"):
+            self.assertFalse(looks_like_a_vibe(q), q)
+
+    def test_a_long_phrase_is_never_treated_as_a_vibe(self):
+        from call.tools.music import looks_like_a_vibe
+
+        self.assertFalse(looks_like_a_vibe("something fun and upbeat and happy too"))
+
+    def test_an_empty_query_is_not_a_vibe(self):
+        from call.tools.music import looks_like_a_vibe
+
+        self.assertFalse(looks_like_a_vibe(""))
+        self.assertFalse(looks_like_a_vibe(None))
+
+
+class TestTellingTheCallerWhenTheirSongPlays(unittest.TestCase):
+    """Without the queue position the DJ could only say "soon", which is how a
+    caller ends up being told their song is on when it is four tracks away."""
+
+    def test_next_up_is_said_plainly(self):
+        from call.tools.music import _when_it_plays
+
+        self.assertIn("next up", _when_it_plays(1))
+
+    def test_a_position_becomes_a_time_range(self):
+        from call.tools.music import _when_it_plays
+
+        out = _when_it_plays(4)
+        self.assertIn("number 4", out)
+        self.assertIn("12-16 minutes", out)
+
+    def test_an_unknown_position_tells_the_dj_not_to_guess(self):
+        from call.tools.music import _when_it_plays
+
+        for bad in (None, "soon", ""):
+            self.assertIn("don't guess", _when_it_plays(bad))
+
+
+class TestTheDJDescribesRecordsItHasInformationAbout(unittest.TestCase):
+    """The station returns mood tags and an energy score on every hit.
+    Dropping them left the DJ describing records purely from the title."""
+
+    def test_moods_and_energy_reach_the_model(self):
+        from call.tools.music import _fmt_track
+
+        out = _fmt_track({"title": "Roads", "artist": "Portishead",
+                          "moods": ["moody", "nocturnal"], "energy": 0.2})
+        self.assertIn("moody", out)
+        self.assertIn("nocturnal", out)
+        self.assertIn("low energy", out)
+
+    def test_the_id_is_included_only_when_exact_queueing_is_on(self):
+        # Without the id in the text the model has nothing to pass to the
+        # exact-queue tool and silently falls back to guessing.
+        track = {"title": "Roads", "artist": "Portishead", "id": "t-42"}
+        from call.tools.music import _fmt_track
+
+        self.assertIn("[id: t-42]", _fmt_track(track, with_id=True))
+        self.assertNotIn("t-42", _fmt_track(track, with_id=False))
+
+
+class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
+    """A fixed hold was the wrong shape. An announcement is a sentence and a
+    segment can run a minute or more, so one number either reopens the gate
+    mid-delivery — the DJ talking over its own voice on the broadcast — or
+    gags it long after the air is clear."""
+
+    def _tools(self, station, cfg=None, limit=5):
+        from call.actions import CallActions
+        from call.tools import build_on_air_tools
+
+        class _Guard:
+            def __init__(self):
+                self.holds = []
+
+            def mark_on_air(self, secs=25.0):
+                self.holds.append(secs)
+
+            async def wait_until_clear(self, timeout=None):
+                return 0.0
+
+        guard = _Guard()
+        actions = CallActions(limit)
+        built = build_on_air_tools(
+            cfg or {"allow_announcements": True}, station, actions, guard)
+        return {t.info.name: t for t in built}, guard, actions
+
+    def _station(self, **result):
+        class _Station:
+            def __init__(self):
+                self.calls = []
+
+            async def dj_say(self, message, mode="styled", kind=None):
+                self.calls.append(message)
+                return dict(result)
+
+        return _Station()
+
+    def test_a_long_segment_is_held_longer_than_a_short_line(self):
+        import asyncio
+
+        long_tools, long_guard, _ = self._tools(
+            self._station(ok=True, spoken=" ".join(["word"] * 120)))
+        asyncio.run(long_tools["subwave_dj_announce"]("go on air"))
+
+        short_tools, short_guard, _ = self._tools(
+            self._station(ok=True, spoken="Quick shout to Dave."))
+        asyncio.run(short_tools["subwave_dj_announce"]("go on air"))
+
+        self.assertGreater(long_guard.holds[0], short_guard.holds[0])
+        self.assertLessEqual(long_guard.holds[0], 180)
+        self.assertGreaterEqual(short_guard.holds[0], 12)
+
+    def test_a_refused_announcement_is_never_reported_as_done(self):
+        import asyncio
+
+        tools, guard, actions = self._tools(
+            self._station(ok=False, error="the station refused it"))
+        out = asyncio.run(tools["subwave_dj_announce"]("hello"))
+        self.assertIn("do not claim it worked", out.lower())
+        self.assertEqual(actions.count, 0, "a failed action was counted")
+        self.assertEqual(guard.holds, [], "the gate closed for speech that never happened")
+
+    def test_a_slow_confirmation_is_not_a_failure(self):
+        # A read timeout means the station took the action and hadn't finished
+        # answering. Reporting that as failure told callers their message
+        # hadn't gone out while it was audibly going out.
+        import asyncio
+
+        tools, _, actions = self._tools(
+            self._station(ok=True, unconfirmed=True, spoken="On air now."))
+        out = asyncio.run(tools["subwave_dj_announce"]("hello"))
+        self.assertIn("gone through", out.lower())
+        self.assertEqual(actions.count, 1)
+
+
+class TestTheLogKeepsTheLinesThatMatter(unittest.TestCase):
+    """Third-party chatter drowns the real events. The widget polls /live every
+    20 seconds forever, and the panel's log viewer reads the same ring buffer,
+    so unfiltered noise makes it useless."""
+
+    def setUp(self):
+        import log_setup
+
+        log_setup.setup("tests", console=False)     # idempotent
+        log_setup.RECENT.clear()
+
+    def test_the_widgets_polling_is_dropped(self):
+        import logging as _logging
+
+        import log_setup
+
+        access = _logging.getLogger("aiohttp.access")
+        access.info('GET /live HTTP/1.1 200')
+        access.info('GET /health HTTP/1.1 200')
+        self.assertEqual(log_setup.recent_lines(), [])
+
+    def test_real_requests_are_kept(self):
+        import logging as _logging
+
+        import log_setup
+
+        _logging.getLogger("aiohttp.access").info('POST /token HTTP/1.1 200')
+        self.assertTrue(any("/token" in line for line in log_setup.recent_lines()))
+
+    def test_the_panel_can_read_recent_lines_without_docker(self):
+        import logging as _logging
+
+        import log_setup
+
+        for i in range(5):
+            _logging.getLogger("callin.test").info("event %d", i)
+        lines = log_setup.recent_lines(3)
+        self.assertEqual(len(lines), 3)
+        self.assertIn("event 4", lines[-1])
+
+    def test_setting_up_twice_does_not_double_every_line(self):
+        # The token server's test endpoints import main.py, whose module-level
+        # setup("worker") would otherwise add a second handler.
+        import logging as _logging
+
+        import log_setup
+
+        before = len(_logging.getLogger().handlers)
+        log_setup.setup("tests-again", console=True)
+        self.assertEqual(len(_logging.getLogger().handlers), before)
+
+
+class TestTheSttModelIsLoadedOnceForTheWholeProcess(unittest.TestCase):
+    """Loading is slow enough that doing it per call would be audible, so one
+    model is shared per (name, compute type) across every call in the process.
+    The prewarm hook is synchronous on purpose: the Agents SDK calls
+    stt.prewarm() without awaiting, so an async version silently never ran."""
+
+    KEY = ("test-fake.en", "int8")
+
+    def setUp(self):
+        import local_stt
+
+        # A sentinel in the cache means neither preload_sync nor the STT class
+        # reaches for faster_whisper, so this test needs no model download.
+        local_stt._models[self.KEY] = object()
+
+    def tearDown(self):
+        import local_stt
+
+        local_stt._models.pop(self.KEY, None)
+
+    def test_preloading_an_already_loaded_model_is_a_no_op(self):
+        import local_stt
+
+        before = dict(local_stt._models)
+        local_stt.preload_sync("test-fake.en", "int8")
+        self.assertEqual(local_stt._models, before)
+
+    def test_prewarm_is_synchronous_so_the_sdk_actually_runs_it(self):
+        import inspect
+
+        import local_stt
+
+        self.assertFalse(
+            inspect.iscoroutinefunction(local_stt.LocalWhisperSTT.prewarm),
+            "an async prewarm is never awaited by the SDK and silently does nothing",
+        )
+        stt_impl = local_stt.LocalWhisperSTT(model="test-fake.en", compute_type="int8")
+        stt_impl.prewarm()      # must not try to download anything
+
+    def test_it_declares_itself_non_streaming_so_the_sdk_wraps_it_with_the_vad(self):
+        import local_stt
+
+        caps = local_stt.LocalWhisperSTT(model="test-fake.en").capabilities
+        self.assertFalse(caps.streaming)
+        self.assertFalse(caps.interim_results)
+
+
+class TestTheCallRecordHearsBothSides(unittest.TestCase):
+    """`heard:` alone was not enough. It showed only the CALLER's side, so a
+    report like "he wouldn't hang up" had to be reconstructed from tracebacks
+    to work out what the DJ had actually said or tried."""
+
+    def _attach(self):
+        from call.lifecycle import attach_heard_logging
+
+        class _Session:
+            def __init__(self):
+                self.handlers = {}
+
+            def on(self, name, fn):
+                self.handlers[name] = fn
+
+        class _Record:
+            def __init__(self):
+                self.turns = []
+                self.tools = []
+
+            def turn(self, who, text):
+                self.turns.append((who, text))
+
+            def tool(self, name, result=""):
+                self.tools.append((name, result))
+
+        session, record, counter = _Session(), _Record(), {"n": 0}
+        attach_heard_logging(session, counter, record)
+        return session, record, counter
+
+    def test_the_caller_is_recorded_and_counted(self):
+        session, record, counter = self._attach()
+        session.handlers["user_input_transcribed"](
+            types.SimpleNamespace(transcript="play something loud", is_final=True))
+        self.assertEqual(record.turns, [("caller", "play something loud")])
+        self.assertEqual(counter["n"], 1)
+
+    def test_a_partial_transcript_is_not_a_turn(self):
+        session, record, counter = self._attach()
+        session.handlers["user_input_transcribed"](
+            types.SimpleNamespace(transcript="play some", is_final=False))
+        session.handlers["user_input_transcribed"](
+            types.SimpleNamespace(transcript="   ", is_final=True))
+        self.assertEqual(record.turns, [])
+        self.assertEqual(counter["n"], 0)
+
+    def test_the_dj_is_recorded_too(self):
+        session, record, _ = self._attach()
+        session.handlers["conversation_item_added"](types.SimpleNamespace(
+            item=types.SimpleNamespace(role="assistant", text_content="You're through.")))
+        self.assertEqual(record.turns, [("dj", "You're through.")])
+
+    def test_the_callers_own_words_are_not_attributed_to_the_dj(self):
+        session, record, _ = self._attach()
+        session.handlers["conversation_item_added"](types.SimpleNamespace(
+            item=types.SimpleNamespace(role="user", text_content="hello?")))
+        self.assertEqual(record.turns, [])
+
+    def test_every_tool_lands_in_the_record_with_its_result(self):
+        # The DJ saying it did something is a claim; this line is the receipt.
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(name="subwave_request_song",
+                                                  call_id="c1")],
+            function_call_outputs=[types.SimpleNamespace(call_id="c1",
+                                                         output="Added to the queue")],
+        ))
+        self.assertEqual(record.tools, [("subwave_request_song", "Added to the queue")])
+
+    def test_a_tool_with_no_output_is_still_recorded(self):
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(name="subwave_skip_track",
+                                                  call_id="c9")],
+            function_call_outputs=[],
+        ))
+        self.assertEqual(record.tools, [("subwave_skip_track", "")])
+
+
+class TestWidgetServerContract(unittest.TestCase):
+    """The widget is plain browser JS with no toolchain and no test harness of
+    its own, so this is what guards it.
+
+    Two ways it has broken before: a route renamed on the server while app.js
+    kept calling the old path, and a DOM id changed in index.html while app.js
+    kept reaching for the old one. Both leave a green suite and a widget that
+    silently does nothing — the exact failure mode this project treats as a bug
+    rather than a nitpick.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import re
+
+        root = Path(__file__).parent.parent
+        cls.app_js = (root / "web-widget" / "app.js").read_text(encoding="utf-8")
+        cls.html = (root / "web-widget" / "index.html").read_text(encoding="utf-8")
+        server = (Path(__file__).parent / "token_server.py").read_text(encoding="utf-8")
+
+        cls.routes = set(re.findall(
+            r'router\.add_(?:get|post|put|delete)\(\s*"([^"]+)"', server))
+        cls.fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", cls.app_js))
+        cls.wanted_ids = set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", cls.app_js)) | set(
+            re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", cls.app_js))
+        cls.declared_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', cls.html))
+        # Some elements are built by app.js when first needed rather than
+        # sitting in the markup (the first-run banner, the password nudge).
+        cls.built_ids = set(re.findall(
+            r"\.id\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]", cls.app_js))
+
+    def test_the_scan_found_something_to_check(self):
+        # A silently-empty scan would make every assertion below pass forever.
+        self.assertGreater(len(self.routes), 10)
+        self.assertGreater(len(self.fetched), 10)
+        self.assertGreater(len(self.wanted_ids), 50)
+
+    def test_every_path_the_widget_calls_is_a_route_the_server_serves(self):
+        static = {r.rstrip("/") for r in self.routes if "{" not in r}
+        prefixes = [r.split("{")[0] for r in self.routes if "{" in r]
+        missing = sorted(
+            path for path in self.fetched
+            if path.rstrip("/") not in static
+            and not any(path.startswith(p) for p in prefixes)
+        )
+        self.assertEqual(
+            missing, [],
+            "app.js calls paths token_server.py does not serve — the widget "
+            f"will 404 with nothing to say so: {missing}",
+        )
+
+    def test_every_element_the_widget_reaches_for_exists(self):
+        missing = sorted(self.wanted_ids - self.declared_ids - self.built_ids)
+        self.assertEqual(
+            missing, [],
+            "app.js reads element ids that index.html does not declare and "
+            f"app.js never creates — those controls are dead: {missing}",
+        )
+
+    def test_the_widget_is_still_dependency_free(self):
+        # No build step, no bundler, no node_modules. The moment app.js needs
+        # one, everything above stops being enough and the deploy story changes.
+        root = Path(__file__).parent.parent
+        self.assertFalse(
+            list(root.glob("package.json")) + list((root / "web-widget").glob("package.json")),
+            "a package.json appeared — the widget is meant to stay toolchain-free",
+        )
+        self.assertNotIn("require(", self.app_js)
+        self.assertNotIn("import ", self.app_js.split("//")[0][:200])
+
+
+class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
+    """`scripted_call.py` is run against the LIVE station, deliberately — it is
+    the only way to check conduct, and its docstring promises that nothing is
+    queued, nothing is announced and no segment runs.
+
+    That promise is kept by one function, `muzzle_the_station()`, which swaps
+    each writing StationClient method for a recorder. It is a hand-maintained
+    list, and it had already fallen behind: `skip_track` and `dj_segment`
+    arrived in 0.9.54, went into the tool registry, and were never added here —
+    so with either switched on, a scripted run could cut the record the
+    station's listeners were hearing. Deriving the list from station.py means
+    the next write method cannot slip through the same gap.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+        import re
+
+        here = Path(__file__).parent
+        tree = ast.parse((here / "station.py").read_text(encoding="utf-8"))
+        client = next(n for n in ast.walk(tree)
+                      if isinstance(n, ast.ClassDef) and n.name == "StationClient")
+
+        cls.writes = set()
+        for fn in client.body:
+            if not isinstance(fn, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                continue
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in {"post", "put", "delete"}):
+                    cls.writes.add(fn.name)
+
+        harness = (here / "scripted_call.py").read_text(encoding="utf-8")
+        cls.muzzled = set(re.findall(r"StationClient\.(\w+)\s*=", harness))
+
+    def test_the_scan_found_the_writing_methods(self):
+        # A regex that quietly matched nothing would make the real assertion
+        # below pass forever.
+        self.assertGreaterEqual(len(self.writes), 4)
+        self.assertIn("dj_say", self.writes)
+
+    def test_every_writing_station_method_is_muzzled(self):
+        escaped = sorted(self.writes - self.muzzled)
+        self.assertEqual(
+            escaped, [],
+            "scripted_call.py is documented as safe to run against a live "
+            "station, but these StationClient methods write and are not "
+            f"swapped for a recorder: {escaped}",
+        )
+
+    def test_the_two_station_wide_actions_are_covered_by_name(self):
+        # Named explicitly as well as derived: these two reach every listener
+        # rather than the caller, so they are the ones that must never regress.
+        self.assertIn("skip_track", self.muzzled)
+        self.assertIn("dj_segment", self.muzzled)
+
+
+class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
+    """A new module with no tests is the way coverage rots — quietly, one file
+    at a time, while the suite stays green and says nothing.
+
+    The bar here is deliberately low: every module must be *reached* by the
+    suite at all. It does not judge how well. It exists so that adding a file
+    is a decision to test it rather than an oversight, and it adapts on its own
+    — a module added tomorrow is covered by this rule the moment it lands.
+    """
+
+    def test_every_module_is_reached_by_the_suite(self):
+        here = Path(__file__).parent
+        suite_src = Path(__file__).read_text(encoding="utf-8")
+
+        untested = []
+        for path in sorted(here.rglob("*.py")):
+            if path.name in ("test_sidecar.py", "__init__.py"):
+                continue
+            if "__pycache__" in path.parts or ".venv" in path.parts:
+                continue
+            rel = path.relative_to(here)
+            dotted = str(rel.with_suffix("")).replace("\\", "/").replace("/", ".")
+            if dotted not in suite_src and path.stem not in suite_src:
+                untested.append(str(rel).replace("\\", "/"))
+
+        self.assertEqual(
+            untested, [],
+            "these modules are never imported or named anywhere in the suite, so "
+            "nothing here would notice if they broke. Write a test, or say in the "
+            f"test file why they cannot have one: {untested}",
+        )
+
+
+class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
+    """CLAUDE.md is loaded into every agent's context, so a stale path there is
+    worse than no path — it sends the next person (or model) confidently to a
+    file that moved. Prose cannot self-heal, but it can be made to fail loudly
+    when the tree moves underneath it.
+
+    Only source paths under agent-worker/ and web-widget/ are checked: those are
+    tracked, so this holds in CI and inside the image. The long-form design docs
+    are gitignored and deliberately not referenced this way.
+    """
+
+    def _claude_mds(self):
+        root = Path(__file__).parent.parent
+        return [p for p in (root / "CLAUDE.md",
+                            root / "agent-worker" / "CLAUDE.md",
+                            root / "web-widget" / "CLAUDE.md") if p.is_file()]
+
+    def test_every_source_path_they_name_exists(self):
+        import re
+
+        docs = self._claude_mds()
+        if not docs:
+            self.skipTest("no CLAUDE.md in this checkout (not copied into the image)")
+
+        root = Path(__file__).parent.parent
+        # Every source filename in the tree, so a doc may name a module the way
+        # a person would ("session.py") without spelling out its directory.
+        present = {
+            p.name
+            for d in ("agent-worker", "web-widget")
+            for p in (root / d).rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts
+        }
+
+        missing = []
+        checked = 0
+        for doc in docs:
+            base = doc.parent
+            for ref in re.findall(r"`([A-Za-z0-9_./-]+\.(?:py|js|html|css))`",
+                                  doc.read_text(encoding="utf-8")):
+                if ref.startswith("/"):
+                    continue        # a served route (/app.js), not a path on disk
+                # Resolve as a path relative to the doc or the repo root, else
+                # as a bare filename anywhere in the source tree.
+                if (base / ref).exists() or (root / ref).exists() \
+                        or Path(ref).name in present:
+                    checked += 1
+                    continue
+                missing.append(f"{doc.name} -> {ref}")
+
+        self.assertGreater(checked, 10, "found almost no paths to check — the "
+                                        "scan regex has probably stopped matching")
+        self.assertEqual(missing, [],
+                         f"CLAUDE.md names source files that do not exist: {missing}")
+
+
+class TestEverySkillWouldActuallyLoad(unittest.TestCase):
+    """A skill with broken frontmatter does not error — it is simply never
+    offered, which looks identical to the model choosing not to use it. That is
+    the worst failure mode available: silent, and indistinguishable from
+    working. Adapts on its own; a skill added tomorrow is checked by this.
+    """
+
+    def _skills(self):
+        d = Path(__file__).parent.parent / ".claude" / "skills"
+        return sorted(d.glob("*/SKILL.md")) if d.is_dir() else []
+
+    def test_frontmatter_is_present_and_names_match_their_directories(self):
+        import re
+
+        skills = self._skills()
+        if not skills:
+            self.skipTest(".claude/skills not in this checkout (not copied into the image)")
+
+        problems = []
+        for skill in skills:
+            text = skill.read_text(encoding="utf-8")
+            if not text.startswith("---"):
+                problems.append(f"{skill.parent.name}: no frontmatter block")
+                continue
+            name = re.search(r"^name:\s*(.+)$", text, re.M)
+            desc = re.search(r"^description:\s*(.+)$", text, re.M)
+            if not name or name.group(1).strip() != skill.parent.name:
+                problems.append(
+                    f"{skill.parent.name}: name field is "
+                    f"{name.group(1).strip() if name else 'missing'}, which does not "
+                    "match the directory, so the skill cannot be invoked by name")
+            if not desc or len(desc.group(1).strip()) < 40:
+                problems.append(
+                    f"{skill.parent.name}: description missing or too short to "
+                    "trigger on — it is the only part always in context")
+
+        self.assertEqual(problems, [], f"skills that would not load correctly: {problems}")
+
+
+class TestTheCommitGateIsStillWiredUp(unittest.TestCase):
+    """A malformed .claude/settings.json does not raise — it silently disables
+    every setting in that file, the pre-commit gate included. The failure looks
+    exactly like a gate that decided everything was fine, which is the worst
+    kind available."""
+
+    def _settings(self):
+        return Path(__file__).parent.parent / ".claude" / "settings.json"
+
+    def test_it_is_valid_json_and_still_guards_commits(self):
+        path = self._settings()
+        if not path.is_file():
+            self.skipTest(".claude/ not in this checkout (not copied into the image)")
+
+        data = json.loads(path.read_text(encoding="utf-8"))   # raises if malformed
+        commands = [
+            hook.get("command", "")
+            for entry in data.get("hooks", {}).get("PreToolUse", [])
+            for hook in entry.get("hooks", [])
+        ]
+        gate = [c for c in commands if "test_sidecar" in c]
+        self.assertTrue(
+            gate, "no PreToolUse hook runs test_sidecar any more — commits are "
+                  "no longer gated on the suite")
+
+        # It must filter on its own stdin: the `if` field alone does not
+        # restrict, so without this the gate runs on every single Bash call.
+        self.assertIn("git commit", gate[0],
+                      "the hook does not check that the command is a commit")
 
 
 if __name__ == "__main__":

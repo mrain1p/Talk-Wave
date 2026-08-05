@@ -27,6 +27,7 @@
 </head>
 <body>
   <div class="card">
+    <button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button>
     <button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark">&#9681;</button>
     <button class="gear" id="gearBtn" title="Settings" aria-label="Settings">&#9881;</button>
 
@@ -58,6 +59,17 @@
       <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
       <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
       <div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
+    </div>
+
+    <!-- Opened by the ? button. Built from the same list the panel shows the
+         operator, filtered to what is switched on, so it can never suggest
+         something the DJ would refuse. -->
+    <div class="askpop" id="askPop" hidden role="dialog" aria-label="What you can ask">
+      <div class="askpop-head">
+        <strong>You can ask for…</strong>
+        <button class="askpop-close" id="askClose" aria-label="Close">&times;</button>
+      </div>
+      <ul class="askpop-list" id="askPopList"></ul>
     </div>
 
     <div class="michelp" id="micHelp" hidden></div>
@@ -143,6 +155,20 @@
           Call button, on this page and on any embed. Admin works as a guest code
           too, so you only carry one. Both are stored as salted hashes, never
           plaintext.</p>
+
+        <h4 class="subhead">Who can call the booth</h4>
+        <div class="row">
+          <label for="front_access">Phone access</label>
+          <select id="front_access"></select>
+        </div>
+        <p class="hint wide">This governs the <strong>phone</strong> only — the
+          panel is admin-only whatever you pick. <strong>Open</strong> suits a
+          trusted network; on a public page it is an invitation to spend your
+          API budget. <strong>Guest code</strong> asks callers for the code you
+          hand out. <strong>Admin only</strong> closes the phone to callers
+          entirely, which is the safe setting while you are still setting up.
+          Picking Guest or Admin without having set that password means nobody
+          can call — the tag beside this section says so.</p>
 
         <h4 class="subhead">Admin — the controls</h4>
         <div class="row" id="curPwRow">
@@ -383,6 +409,23 @@
           <label for="tune_in_volume">Station volume</label>
           <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
         </div>
+        <h4 class="subhead">The card itself</h4>
+        <div class="row">
+          <label for="widget_theme">Widget theme</label>
+          <select id="widget_theme"></select>
+        </div>
+        <p class="hint wide">Colours the whole card, Call and hang-up buttons
+          included. <strong>Auto</strong> follows the viewer and keeps the
+          light/dark toggle; <strong>light</strong> and <strong>dark</strong>
+          force one and hide it; <strong>inherit</strong> matches the page the
+          widget is embedded in, which is the right choice on a site with its
+          own colours. An embed’s own <code>data-theme</code> still wins.</p>
+        <label class="check"><input type="checkbox" id="show_caller_help" /> Show callers what they can ask</label>
+        <p class="hint wide">Adds a small <strong>?</strong> button to the card
+          opening the same live reference below — filtered to the permissions
+          you’ve enabled, so it can never suggest something the DJ would
+          refuse.</p>
+
         <div class="row">
           <label for="min_call_seconds">Earliest hang-up (s)</label>
           <input type="number" id="min_call_seconds" min="0" step="15" />

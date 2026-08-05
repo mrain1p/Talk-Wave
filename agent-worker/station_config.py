@@ -174,10 +174,20 @@ class StationConfig:
     """Reads the station's own config. Every method is best-effort — a call
     must still connect if the station is mid-restart or creds are absent."""
 
-    def __init__(self, base_url: str | None = None, timeout: float = 8.0) -> None:
+    def __init__(
+        self, base_url: str | None = None, timeout: float = 8.0,
+        with_auth: bool = True,
+    ) -> None:
+        """`with_auth=False` reads the station without logging in.
+
+        The station password belongs to the station in the saved settings and
+        nowhere else. A caller pointing this at some other base_url — which the
+        panel does when previewing an unsaved URL — must not have the password
+        sent along with it.
+        """
         import settings as settings_store
 
-        user, password = admin_credentials()
+        user, password = admin_credentials() if with_auth else ("", "")
         auth = httpx.BasicAuth(user, password) if user and password else None
         self._client = httpx.AsyncClient(
             base_url=base_url or settings_store.station_base_url(),
@@ -185,6 +195,7 @@ class StationConfig:
             auth=auth,
         )
         self._cache: dict[str, Any] = {}
+        self._authed = bool(auth)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -210,7 +221,9 @@ class StationConfig:
         return data
 
     async def settings(self) -> dict:
-        return await self._get("/settings") if has_admin() else {}
+        """Admin-only, so it needs THIS client to be carrying credentials —
+        not merely for some to exist in the store."""
+        return await self._get("/settings") if self._authed else {}
 
     async def persona_voices(self) -> dict[str, str]:
         """persona_id -> voice id, mirrored from the station when possible."""

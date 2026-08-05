@@ -11,6 +11,7 @@
 #     use_external_ip: true, and open the UDP range on the router
 #   - copy .env.example -> .env; LIVEKIT_PUBLIC_URL must be what the BROWSER
 #     reaches (wss://... via your reverse proxy), not the internal name
+#   - make ./data usable by the container's user (see the volume note below)
 #   - put a reverse proxy (Caddy/Traefik/nginx) in front of port 8100, set
 #     CALLIN_ALLOWED_ORIGINS to your real origins and CALLIN_ADMIN_KEY to a
 #     secret before this is reachable beyond your LAN
@@ -19,6 +20,21 @@
 #     require for the microphone) means the caller's browser will refuse the
 #     station's plain-http LAN stream as mixed content — silently, so the call
 #     runs with no music behind it. See Troubleshooting in the README.
+#
+# UPGRADING FROM 0.9.64 OR EARLIER: from 0.9.65 both python services run as
+# uid 1000 instead of root, so the bind-mounted ./data has to be readable and
+# writable by that user. Run this ONCE on the host before pulling — it is safe
+# against the still-running root container, which ignores permission bits:
+#
+#     chown -R 1000:1000 ./data
+#     chmod -R u+rwX     ./data
+#
+# Both. Ownership alone is not enough: some filesystems (Synology shares among
+# them) create files with mode 000, which root reads straight through and an
+# owner cannot. Skipping this fails SHUT and both services log the exact fix at
+# startup — an unreadable password file counts as "a password is set that
+# nothing can satisfy", never as "no password set", so it cannot leave the
+# panel open. CALLIN_ADMIN_KEY is the way back in.
 
 x-logging: &default-logging
   driver: json-file
@@ -75,6 +91,9 @@ services:
       # Settings and API keys entered in the panel live here. BOTH python
       # services must see the same directory, or panel changes never reach
       # the worker — and they must survive a rebuild.
+      #
+      # Owned by uid 1000, which is what the container runs as. See the
+      # chown/chmod note at the top of this file if you are upgrading.
       - ./data:/data
       # Optional: uncomment to edit TTS adapter configs without a rebuild.
       # - ./agent-worker/tts-adapters:/app/tts-adapters
@@ -114,6 +133,7 @@ services:
       - SUBWAVE_STREAM_URL=${SUBWAVE_STREAM_URL:-}
       - LOG_TO_FILE=0
     volumes:
+      # Same directory, same uid — see the note on the worker's volume above.
       - ./data:/data
     ports:
       - "8100:8100"     # widget + token mint; put a reverse proxy in front

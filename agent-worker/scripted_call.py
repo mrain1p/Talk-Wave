@@ -104,6 +104,21 @@ async def fake_skill(self, name):
     return {"ok": True, "spoken": f"[{name} segment, about twenty seconds of it]"}
 
 
+# The two station-wide actions. They arrived in 0.9.54 and were added to the
+# tool registry without being added here, so for as long as an operator had
+# either switched on, a scripted run against a live station could really cut
+# the record its listeners were hearing, or really fire a programme beat on
+# air — while this file's own docstring promised it could not.
+async def fake_skip(self):
+    STATION_CALLS.append(("skip_track", {}))
+    return {"ok": True}
+
+
+async def fake_segment(self, kind):
+    STATION_CALLS.append(("dj_segment", {"kind": kind}))
+    return {"ok": True, "spoken": f"[{kind} beat]"}
+
+
 def muzzle_the_station() -> None:
     StationClient.search_library = fake_search
     StationClient.submit_request = fake_submit
@@ -111,6 +126,8 @@ def muzzle_the_station() -> None:
     StationClient.queue_track = fake_queue
     StationClient.dj_say = fake_say
     StationClient.run_skill = fake_skill
+    StationClient.skip_track = fake_skip
+    StationClient.dj_segment = fake_segment
 
 
 # ------------------------------------------------------------------- scenarios

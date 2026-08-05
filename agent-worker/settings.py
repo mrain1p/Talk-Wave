@@ -178,6 +178,32 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # who isn't on the LAN. Point this at the station's public https stream.
     "tune_in_url":      ("SUBWAVE_STREAM_URL", ""),
 
+    # Who may reach the PHONE. The panel is always admin-only and is not
+    # affected by this.
+    #
+    #   auto   open until a guest code is set, then required — what this has
+    #          always done, kept as the default so upgrading changes nothing
+    #   open   anyone who can load the page can call, code or no code
+    #   guest  the guest code (or the admin password) is required
+    #   admin  the admin password only — the phone is closed to callers
+    #
+    # `auto` exists rather than being tidied away because the alternative was
+    # a default that silently stopped every existing deployment from taking
+    # calls. The explicit modes are the ones that refuse when their password
+    # is missing; auto is the one that reads the password to decide.
+    "front_access":     (None, "auto"),
+
+    # --- the widget itself, as a caller sees it --------------------------
+    # A caller staring at one button has no idea a phone-in can do anything
+    # beyond requests. This puts the same live reference the panel shows the
+    # operator behind a button on the card — filtered to what is actually
+    # switched on, so it can never promise something that would be refused.
+    "show_caller_help": (None, True),
+    # auto   follow the viewer's OS setting, with the in-widget toggle
+    # light  / dark   force one, and hide the toggle
+    # inherit  match the page the widget is embedded in
+    "widget_theme":     (None, "auto"),
+
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
     # deliberately brief — a passing mention, not a recap.
@@ -382,6 +408,29 @@ SCHEMA: dict[str, dict] = {
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
         help="Hard limit on call length. The DJ signs off in character first rather "
              "than the audio just stopping. 600 = ten minutes."),
+    "front_access": dict(group="security", kind="select",
+        label="Who can call the booth",
+        help="The panel is admin-only always — this is about the PHONE. "
+             "Open lets anyone who loads the page call, which is right on a "
+             "trusted network and an invitation to spend your API budget on a "
+             "public one. Guest code requires the code you hand out (the admin "
+             "password is accepted too, so you carry one). Admin only closes "
+             "the phone to callers entirely — useful while you are still "
+             "setting up. Choosing Guest or Admin without having set that "
+             "password means nobody can call, and the panel says so."),
+    "show_caller_help": dict(group="call", kind="check",
+        label="Show callers what they can ask",
+        help="Adds a small button to the call card that opens the same live "
+             "reference this panel shows you — filtered to the permissions "
+             "actually enabled, so it can never suggest something the DJ would "
+             "refuse. Most callers assume a phone-in only takes requests."),
+    "widget_theme": dict(group="call", kind="select", label="Widget theme",
+        help="How the call card is coloured, including the Call, mute and hang-up "
+             "buttons. Auto follows the viewer's own light/dark setting and keeps "
+             "the in-widget toggle. Light and dark force one and hide the toggle. "
+             "Inherit matches the page the widget is embedded in — the right "
+             "choice on a site with its own colours; on the standalone page it "
+             "behaves as auto. An embed's own data-theme attribute still wins."),
     "min_call_seconds": dict(group="call", kind="number",
         label="Earliest the DJ may hang up (s)",
         help="The DJ ends calls itself once one has run its course, and this is the "
@@ -570,6 +619,18 @@ def mcp_tools_payload() -> list[dict]:
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
+    "front_access": [
+        ("auto", "Automatic — open until you set a guest code"),
+        ("open", "Open — anyone who loads the page can call"),
+        ("guest", "Guest code — callers need the code you share"),
+        ("admin", "Admin only — the phone is closed to callers"),
+    ],
+    "widget_theme": [
+        ("auto", "Auto — follow the viewer, keep the toggle"),
+        ("light", "Light"),
+        ("dark", "Dark"),
+        ("inherit", "Inherit from the page it's embedded in"),
+    ],
 }
 
 
@@ -672,6 +733,59 @@ def _coerce(value: Any, default: Any) -> Any:
         except (TypeError, ValueError):
             return default
     return value
+
+
+def check_data_dir() -> None:
+    """Say so at startup if the data directory cannot be used.
+
+    Everything the operator sets lives in this one bind-mounted directory, and
+    each store fails soft on its own: settings fall back to env/defaults,
+    secrets come back empty, call records are not written. Three unrelated
+    symptoms, none of which names the cause — and the cause is almost always
+    the same single thing, ownership.
+
+    It matters most on the upgrade to a non-root container (see the
+    Dockerfile): files root wrote are not readable by the new runtime user, and
+    the operator's first clue would otherwise be a panel that has forgotten
+    everything. Both processes call this, because both read the same directory.
+
+    Windows has no getuid and no meaningful mode bits here, so it is a no-op
+    there — run-local.ps1 is not the deployment this protects.
+    """
+    if not hasattr(os, "getuid"):
+        return
+
+    import admin_auth
+    import secrets_store
+
+    data_dir = SETTINGS_PATH.parent
+    if not data_dir.exists():
+        return                      # first run; created on first write
+    uid = os.getuid()
+    # Both halves, always. Ownership alone is not enough: some filesystems
+    # (Synology shares among them) create files with mode 000, which root
+    # ignores and an owner cannot get past — so a chown that looks like it
+    # worked still leaves everything unreadable. An operator handed half the
+    # fix runs it, sees no change, and concludes the data is gone.
+    fix = (f"on the HOST: chown -R {uid}:{uid} <dir> && chmod -R u+rwX <dir> "
+           f"— <dir> is what is mounted here as {data_dir}")
+
+    if not os.access(data_dir, os.W_OK | os.X_OK):
+        log.error(
+            "%s is not writable by uid %s — settings, keys and call records "
+            "cannot be saved. %s", data_dir, uid, fix,
+        )
+    blocked = sorted(
+        p.name for p in (SETTINGS_PATH, admin_auth.AUTH_PATH, secrets_store.SECRETS_PATH)
+        if p.exists() and not os.access(p, os.R_OK)
+    )
+    if blocked:
+        log.error(
+            "unreadable in %s: %s — these exist but this process cannot open "
+            "them, so what is in them is NOT in effect. Almost always owner or "
+            "mode after the switch to a non-root container: %s",
+            data_dir, ", ".join(blocked), fix,
+        )
 
 
 def _stored() -> dict:
@@ -788,6 +902,17 @@ def save(patch: dict) -> dict:
         tmp = SETTINGS_PATH.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(current, f, indent=2, sort_keys=True)
+        # Set the mode explicitly rather than inheriting whatever the
+        # filesystem hands out. On a Synology share the default for a newly
+        # created file is 000 — no bits at all — which root ignores and a
+        # normal user cannot read past. secrets.json and admin-auth.json were
+        # only ever spared that because they chmod themselves; this file did
+        # not, and it is why a non-root container could not read its own
+        # settings. 0644: config, safe to copy or diff, unlike the other two.
+        try:
+            os.chmod(tmp, 0o644)
+        except OSError:
+            pass  # best effort; Windows ACLs don't map cleanly
         tmp.replace(SETTINGS_PATH)
 
     log.info("settings updated: %s", ", ".join(sorted(patch)) or "(none)")

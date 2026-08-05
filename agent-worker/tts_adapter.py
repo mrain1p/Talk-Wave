@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -34,6 +35,8 @@ import httpx
 from livekit.agents import APIConnectionError, APIConnectOptions, tts
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, NotGivenOr
 from livekit.agents.utils import shortuuid
+
+log = logging.getLogger("callin.agent")
 
 ADAPTER_DIR = Path(__file__).parent / "tts-adapters"
 
@@ -47,6 +50,15 @@ def _default_adapter_path() -> Path:
     # the app assumed cloud.
     mode = os.environ.get("TTS_MODE", "cloud").lower()
     return ADAPTER_DIR / ("local-vibevoice.json" if mode == "local" else "openai-cloud.json")
+
+
+def _is_openai_host(base_url: str) -> bool:
+    """Is this URL actually OpenAI's own API, rather than something whose
+    hostname merely contains that string?"""
+    from urllib.parse import urlparse
+
+    host = (urlparse(str(base_url or "")).hostname or "").lower()
+    return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
 def load_adapter(path: str | Path | None = None) -> dict:
@@ -72,7 +84,14 @@ class AdapterTTS(tts.TTS):
         api_key: NotGivenOr[str] = NOT_GIVEN,
         adapter_path: str | Path | None = None,
         model: str = "",
+        allow_stored_key: bool = True,
     ) -> None:
+        """`allow_stored_key=False` synthesizes without the operator's key.
+
+        Set by the panel's test button when the base URL came from the request
+        rather than from saved settings: a stored key is only ever sent to the
+        host it is configured for.
+        """
         self._adapter = load_adapter(adapter_path)
         audio = self._adapter["audio"]
 
@@ -87,7 +106,10 @@ class AdapterTTS(tts.TTS):
         self._base_url = (
             base_url if base_url is not NOT_GIVEN else os.environ.get("TTS_BASE_URL", "")
         ).rstrip("/")
-        self._api_key = api_key if api_key is not NOT_GIVEN else os.environ.get("TTS_API_KEY", "")
+        self._api_key = (
+            api_key if api_key is not NOT_GIVEN
+            else (os.environ.get("TTS_API_KEY", "") if allow_stored_key else "")
+        )
 
         if not self._base_url:
             raise ValueError("TTS_BASE_URL is not set and no base_url was passed")
@@ -96,7 +118,11 @@ class AdapterTTS(tts.TTS):
         # key covers cloud TTS, and /test/env accepts it as satisfying the
         # requirement — so honour that here rather than 401ing on the
         # documented happy path. TTS_API_KEY still wins when set.
-        if not self._api_key and "api.openai.com" in self._base_url:
+        #
+        # Matched on the HOST, not as a substring: `in self._base_url` also
+        # matched https://api.openai.com.example.net, which would have handed
+        # the OpenAI key to whoever owns example.net.
+        if not self._api_key and allow_stored_key and _is_openai_host(self._base_url):
             self._api_key = os.environ.get("OPENAI_API_KEY", "")
 
         self._client = httpx.AsyncClient(
@@ -153,6 +179,17 @@ class AdapterTTS(tts.TTS):
             profanity_mode=str(cfg.get("profanity_mode", "mask")),
             profanity_words=words,
         )
+        # Cleaning can empty a line completely — a model that answers with
+        # nothing but "*shuffles records*" leaves an empty string once stage
+        # directions are stripped, which is the correct result. Sending it on
+        # is not: a TTS backend asked to say nothing errors, the agent retries
+        # the same empty text until it gives up, and the caller hears the
+        # dead-air fallback instead of the DJ. Observed on a real call — four
+        # 500s in four seconds, all with an empty body.
+        if not spoken.strip():
+            log.info("nothing left to say after cleaning %r — not calling TTS", text[:60])
+            return AdapterChunkedStream(
+                tts=self, input_text="", conn_options=conn_options, silent=True)
         return AdapterChunkedStream(tts=self, input_text=spoken, conn_options=conn_options)
 
     async def aclose(self) -> None:
@@ -160,12 +197,26 @@ class AdapterTTS(tts.TTS):
 
 
 class AdapterChunkedStream(tts.ChunkedStream):
-    def __init__(self, *, tts: AdapterTTS, input_text: str, conn_options: APIConnectOptions):
+    def __init__(self, *, tts: AdapterTTS, input_text: str,
+                 conn_options: APIConnectOptions, silent: bool = False):
         super().__init__(tts=tts, input_text=input_text, conn_options=conn_options)
         self._tts_impl = tts
+        self._silent = silent
 
     async def _run(self, output_emitter: tts.AudioEmitter) -> None:
         impl = self._tts_impl
+        if self._silent:
+            # An empty, well-formed segment. The session gets a normal
+            # "finished speaking" rather than an error, so the turn completes
+            # and the DJ carries on listening.
+            output_emitter.initialize(
+                request_id=shortuuid(),
+                sample_rate=impl.sample_rate,
+                num_channels=impl.num_channels,
+                mime_type=impl._adapter["audio"].get("mime_type", "audio/pcm"),
+                stream=False,
+            )
+            return
         adapter = impl._adapter
         body = impl._build_body(self.input_text)
         resp_cfg = adapter["response"]

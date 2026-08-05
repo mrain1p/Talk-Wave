@@ -138,8 +138,14 @@ wave-talk/
 ```bash
 cp .env.example .env
 cp livekit.example.yaml livekit.yaml   # generate a fresh secret for it
+mkdir -p data && chown -R 1000:1000 data && chmod -R u+rwX data
 docker compose up -d
 ```
+
+Both processes run as **uid 1000**, so `data/` has to belong to it — that is
+what the third line does. Upgrading an existing deployment needs the same two
+commands run against the data you already have; see
+[Upgrading to 0.9.65](#upgrading-to-0965-or-later-the-container-is-no-longer-root).
 
 **`HOST_IP`** is the one deployment variable — the docker host's LAN address,
 driving LiveKit's advertised media address, the browser URL and the webhook
@@ -176,7 +182,7 @@ through. Every field carries its own help text.
 
 | Group | Section | What it controls |
 |---|---|---|
-| Access | **Passwords** | Admin (controls) and optional guest code (phone). `CALLIN_ADMIN_KEY` is the recovery override |
+| Access | **Passwords** | Admin (controls), optional guest code (phone), and **who can call the booth** — automatic, open, guest code, or admin only. `CALLIN_ADMIN_KEY` is the recovery override |
 | Connect | **Station** | Which SUB/WAVE this answers for, MCP endpoint, admin credentials |
 | Connect | **API keys** | Provider keys, stored server-side, never shown back |
 | Models & voice | **Brains** | LLM provider/model and STT. A local Whisper is baked in and used by default |
@@ -295,8 +301,21 @@ deliberate choice.
 
 **Guest** is optional and protects only the phone: the Call button, `/token`,
 and every embed. There's no username; the code is the whole thing. Admin is
-accepted as a guest code, so an operator carries one password. Leave it empty
-and anyone who loads the page can call, with usage limits as the only guard.
+accepted as a guest code, so an operator carries one password.
+
+**Who can call the booth** is its own setting beside them, not something
+inferred from whether a guest code happens to exist:
+
+| | |
+|---|---|
+| **Automatic** (default) | open until you set a guest code, then required |
+| **Open** | anyone who loads the page can call |
+| **Guest code** | the code you hand out, or the admin password |
+| **Admin only** | the phone is closed to callers — useful while setting up |
+
+Choosing *Guest code* or *Admin only* without having set that password refuses
+every call, and the panel says so, rather than falling open. The panel itself
+is admin-only in all four.
 
 Lockout is 5 failures per address → 5-minute cooldown, a second round → banned
 until restart, with guest failures counted separately. Locked out? Set
@@ -304,11 +323,41 @@ until restart, with guest failures counted separately. Locked out? Set
 request, so beyond your LAN use the HTTPS front door — over plain http they are
 readable on the wire.
 
+**Which address** is the address the connection came from, not one the caller
+can name. `X-Forwarded-For` is a list the client starts, so it is only read
+when the connection arrived from a reverse proxy you trust, and then only the
+entry that proxy appended — see `CALLIN_TRUSTED_PROXIES` in `.env.example`. It
+defaults to any loopback or private peer, which covers the normal deployment: a
+reverse proxy reaching the container over the docker bridge. Set it explicitly
+if this port is reachable directly from an untrusted network as well as through
+the proxy; otherwise the lockout is a header away from meaning nothing, in
+either direction. This reads one hop — the entry your proxy appended. With a
+CDN in front as well, that entry is the CDN's address rather than the caller's,
+so per-caller limits collapse into one shared bucket.
+
+**Stored keys only travel to the host they're saved for.** The panel can test a
+URL before saving it, and a test builds the real provider — so a URL supplied
+in a request could otherwise make this service post your OpenAI key, your TTS
+key or the station's admin password to whatever host was named, which is the
+one thing keeping keys server-side is meant to prevent. A draft URL is still
+tested; the key just stays home, and the result says so.
+
+**Join tokens last two minutes.** The guest code and the usage limits are
+checked when a token is minted, so a long-lived token is a line that can be
+reopened without passing either again.
+
 **Before exposing beyond your LAN:**
 
-1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page read
-   config endpoints and mint call tokens.
-2. Set the admin password, and a guest code if the page is public.
+1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page embed
+   the widget and mint call tokens. This is the *embed* permission and nothing
+   more: it does not open the settings panel.
+2. Set the admin password, and a guest code if the page is public. Do this
+   before you reach the panel by hostname — with no password set, the panel
+   accepts a same-origin request only from a literal address, because a *name*
+   can be pointed at this box by someone else and the browser would present
+   that as same-origin. If you need the named origin during setup, put it in
+   `CALLIN_PANEL_ORIGINS` (not the embed list — the two permissions are
+   different sizes and are kept apart).
 3. Fresh LiveKit keypair. Never deploy the example key.
 4. Real TLS on the front door, so visitors see no certificate warnings.
 5. Keep usage limits non-zero — every call spends real money. Set **calls per
@@ -316,6 +365,39 @@ readable on the wire.
    alone still permits 24× that in a day.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
    Protect the volume; never commit `.env` or `data/`.
+
+### Upgrading to 0.9.65 or later: the container is no longer root
+
+`data/` holds your API keys and password hashes as plain files, and it is bind
+mounted from the host — so the container running as root meant root on those
+files, and on anything else that mount could reach. It now runs as uid 1000.
+
+**Fix ownership *and* modes before you pull.** Both, not just the first:
+
+```
+chown -R 1000:1000 /path/to/wave-talk/data
+chmod -R u+rwX     /path/to/wave-talk/data
+```
+
+The chmod is not belt-and-braces. Some filesystems — Synology shares among them
+— create files with **no permission bits at all**, mode `000`. Root ignores
+that and reads them anyway, so it never showed; a normal user cannot, even as
+the owner, so chowning alone leaves the app unable to read its own settings.
+`u+rwX` gives the owner read/write and marks directories traversable without
+opening anything to anyone else. From 0.9.66 the app sets modes explicitly on
+everything it writes, so this is a one-time repair of files already on disk.
+
+Do it while the old container is still running — root ignores the mode bits, so
+the running deployment carries on unaffected and the new one comes up able to
+read its own files. If your host share uses a different uid, build with
+`--build-arg APP_UID=… --build-arg APP_GID=…` instead.
+
+Skip it and the app comes up unable to read its settings, keys or password
+store. That fails *shut*: an unreadable password file counts as "a password is
+set that nothing can satisfy", never as "no password set", so a permissions
+mistake cannot leave the panel open (0.9.64). `CALLIN_ADMIN_KEY` is the way
+back in, and both processes log the directory, the uid and the exact chown at
+startup.
 
 ## Known limitations
 
@@ -354,6 +436,13 @@ names the fix. The classics:
   https one; the *Station stream* stage says so outright.
 - **Locked out of the panel** — set `CALLIN_ADMIN_KEY`, or restart to clear
   bans. To remove the password entirely, delete `data/admin-auth.json`.
+- **The panel has forgotten everything, or the login says a file cannot be
+  read** — `data/` is not readable by the container's user, which is uid 1000
+  from 0.9.65. Nothing is lost; it just isn't being read. Fix owner *and*
+  modes on the host — `chown -R 1000:1000 data && chmod -R u+rwX data` — and
+  recreate. Both processes print the same instruction at startup, naming the
+  files. Ownership alone is not enough on filesystems that create files with
+  mode `000` (Synology shares do). `CALLIN_ADMIN_KEY` gets you in meanwhile.
 - **Voice test 400s on local TTS** — the voice id doesn't exist on that server
   (cloud names and local ids aren't interchangeable). *Reload voice list* after
   switching backend.
@@ -394,10 +483,45 @@ version — check both containers match, since they ship as one image but run as
 two.
 
 ```bash
-cd agent-worker && python -m unittest test_sidecar
+cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar
 ```
 
-covers the speech filter, settings precedence, secrets and passwords, the
-lockout ladder, usage limits, the tool registry, prompt assembly, sound packs,
-the call record and the call's lifecycle seams. CI runs it before building an
-image, so a failing suite never reaches `:latest`.
+**Those environment variables are not optional.** Most test classes redirect
+their own paths, but `admin_auth` and the call record fall back to the real
+`data/` directory, so a bare run can write into your actual auth file and call
+transcripts. They point every writable path away from the checkout; CI sets the
+same set.
+
+The suite covers the speech filter, settings precedence, secrets and passwords,
+the lockout ladder, usage limits, the tool registry, prompt assembly, sound
+packs, the call record and the call's lifecycle seams — plus the security
+posture itself: that a stored key only travels to a saved host, that a caller
+cannot name their own address, that an unreadable password store closes the
+panel and the phone rather than opening them, and that files written into
+`data/` set their own permissions. CI runs it before building an image, so a
+failing suite never reaches `:latest`.
+
+Several checks derive what they test from the source tree rather than from a
+hand-maintained list, so they cover code that does not exist yet: that the
+widget only calls routes the token server actually serves and only reads
+elements that exist, that every writing station method is muzzled in the
+conduct harness, that every settings field has a control in the panel, and that
+every module is reached by the suite at all.
+
+## Working on this repo
+
+Instructions for coding agents live in the repo, so a fresh checkout does not
+have to rediscover the architecture:
+
+- `CLAUDE.md` at the root — the architecture, the invariants that must not be
+  broken, and the gotchas that have cost real time. Also one in `agent-worker/`
+  (test conventions) and `web-widget/` (why there is no JS toolchain).
+- `.claude/skills/` — task playbooks: `wavetalk-verify`, `-deploy`, `-release`,
+  `-test`, `-diagnose`, `-llm-bench` and `-standards-review`.
+- `.claude/settings.json` — a hook that runs the suite before a commit and
+  blocks it if the suite is red. It fails open, and only covers commits made
+  through the agent; CI is the real backstop.
+
+Operator-specific details (hosts, addresses, keys) belong in
+`.claude/OPERATOR.local.md`, which is gitignored. **This repository is public —
+never put a real host or credential in a committed file.**
