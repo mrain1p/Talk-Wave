@@ -8,13 +8,32 @@
 port: 7880
 
 rtc:
+  # ONE muxed UDP port for all call audio, rather than a range. LiveKit
+  # multiplexes every call over it, so "open a port for calls from outside"
+  # is one firewall rule instead of a hundred and one.
+  udp_port: 7882
+  # ICE/TCP fallback, for networks that block UDP outright.
   tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50100
-  # false is for local dev (browser and server on the same host). Set true —
-  # and open the UDP range on your router/firewall — when callers connect
-  # from other machines.
+  # false is for local dev (browser and server on the same host). Set true
+  # when callers connect from anywhere else: LiveKit then discovers its
+  # public address via STUN and offers it to callers.
   use_external_ip: false
+
+  # DO NOT set node_ip unless you know you need it. It pins the address
+  # LiveKit advertises and OVERRIDES the public one use_external_ip finds —
+  # so setting it to a LAN address silently breaks every caller who isn't on
+  # your LAN, while working perfectly for everyone who is. It exists for
+  # bridge networking, where LiveKit would otherwise advertise its container
+  # IP; with network_mode: host it is usually wrong.
+  # node_ip: 192.168.1.10
+
+  # Only offer candidates from the real network interface. Without this, a
+  # host with docker bridges or VM networks advertises a dozen unreachable
+  # addresses, and every caller's browser connectivity-checks all of them
+  # before giving up. Set it to your actual interface (ip -o addr).
+  # interfaces:
+  #   includes:
+  #     - eth0
 
 logging:
   level: info

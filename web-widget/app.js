@@ -794,7 +794,26 @@
       if (room) { try { await room.disconnect(); } catch (e) {} }
       const denied = err && (err.name === 'NotAllowedError'
         || /permission|not allowed|denied/i.test(err.message || ''));
-      setStatus(denied ? 'Microphone blocked — allow mic access' : 'Could not connect', 'error');
+      // Three failures wore the same "Could not connect" label, and the most
+      // common one is the least obvious: the room is joined and signalling is
+      // fine, but audio has no route — so it rings for ~15s and then dies.
+      // A caller told "could not connect" reasonably assumes the station is
+      // down. It isn't, and there is something they can actually try.
+      const noMediaPath = !denied && err
+        && /pc connection|ice|media|timeout|could not establish/i.test(
+          (err.message || '') + ' ' + (err.reason || ''));
+      if (noMediaPath) {
+        console.warn(
+          'Wave Talk: signalling connected but no media path was established. '
+          + 'The caller reached the room; audio could not flow. Usually the '
+          + 'network cannot reach the media port, or the caller is on an '
+          + 'IPv4-only network while the station only publishes IPv6.', err);
+      }
+      setStatus(
+        denied ? 'Microphone blocked — allow mic access'
+          : noMediaPath ? 'Reached the studio, but no audio path — try mobile data'
+            : 'Could not connect',
+        'error');
       $('rig').classList.remove('on');
       $('stateChip').hidden = true;
       stopTimer();
@@ -1955,21 +1974,39 @@
   // Sound previews use the DRAFT values — the pack you've just picked and the
   // file you've just chosen — so you hear what you're about to save, not what
   // is currently live.
+  // What each pack bundles as files, so a preview plays what a caller would
+  // really hear rather than always demonstrating the synthesized set.
+  let packAssets = {};
+  async function loadPackAssets() {
+    try {
+      const d = await fetch('/sound-packs').then((r) => r.json());
+      packAssets = Object.fromEntries(
+        (d.packs || []).map((p) => [p.id, p.assets || {}]));
+    } catch (e) { packAssets = {}; }
+  }
+
   function previewSound(kind) {
     const raw = ($('sound_' + kind).value || '').trim();
-    const url = raw.startsWith(UPLOAD_PREFIX)
+    const chosen = $('sound_pack').value || 'classic';
+    const configured = raw.startsWith(UPLOAD_PREFIX)
       ? '/sounds/' + encodeURIComponent(raw.slice(UPLOAD_PREFIX.length)) : raw;
+    // Same order the server resolves in: configured, then bundled, then the
+    // synthesized fallback (which playSound reaches when the url is empty).
+    const bundled = (packAssets[chosen] || {})[kind] || '';
+    const url = configured || bundled;
     const prev = live && live.sounds;
     live = live || {};
-    live.sounds = { enabled: true, pack: $('sound_pack').value || 'classic' };
+    live.sounds = { enabled: true, pack: chosen };
     live.sounds[kind] = url;
     playSound(kind);
+    const setName = ($('sound_pack').selectedOptions[0] || {}).textContent;
     const out = $('soundResult');
     out.className = 'result on';
-    out.textContent = url
-      ? 'Playing your file: ' + url
-      : 'Playing the built-in ' + kind + ' sound from the '
-        + ($('sound_pack').selectedOptions[0] || {}).textContent + ' set.';
+    out.textContent = configured
+      ? 'Playing your file: ' + configured
+      : bundled
+        ? `Playing the ${kind} sound bundled with the ${setName} set.`
+        : `Playing the built-in ${kind} sound from the ${setName} set.`;
     setTimeout(() => { if (prev) live.sounds = prev; }, 1500);
   }
 
@@ -2035,6 +2072,9 @@
   }
 
   async function loadSounds() {
+    // Bundled packs need no auth and are useful even if the upload list
+    // fails, so they load independently.
+    loadPackAssets();
     try {
       const r = await afetch('/settings/sounds');
       if (!r.ok) return;
@@ -2068,6 +2108,68 @@
   // ------------------------------------------------- full pipeline check
   // Runs every leg a real call depends on, in call order, so the first red
   // line is the thing that would actually break the call.
+  // Which of the station's own addresses a caller could actually route to.
+  //
+  // Read from the live peer connection's remote candidates — the addresses
+  // the SERVER offered us — because that, not our own connectivity, is what
+  // decides whether a stranger can call. Reaches through the SDK for the
+  // RTCPeerConnection, so it is written to give up quietly: an unknown result
+  // reports the old pass/fail rather than a wrong diagnosis.
+  function classifyAddress(addr) {
+    if (!addr) return null;
+    if (addr.indexOf(':') >= 0) {
+      const a = addr.toLowerCase();
+      if (a.startsWith('fe80') || a.startsWith('::1')) return 'v6-local';
+      if (a.startsWith('fc') || a.startsWith('fd')) return 'v6-private';
+      return 'v6-public';
+    }
+    const o = addr.split('.').map(Number);
+    if (o.length !== 4 || o.some(isNaN)) return null;
+    if (o[0] === 10 || o[0] === 127 || (o[0] === 192 && o[1] === 168)
+      || (o[0] === 172 && o[1] >= 16 && o[1] <= 31)
+      || (o[0] === 169 && o[1] === 254)) return 'v4-private';
+    // Carrier-grade NAT: a real address, but not one anyone can reach in.
+    if (o[0] === 100 && o[1] >= 64 && o[1] <= 127) return 'v4-cgnat';
+    return 'v4-public';
+  }
+
+  function peerConnectionsOf(room) {
+    const pcs = [];
+    const push = (pc) => { if (pc && typeof pc.getStats === 'function') pcs.push(pc); };
+    try {
+      const eng = room.engine || {};
+      const mgr = eng.pcManager || {};
+      [mgr.publisher, mgr.subscriber, eng.publisher, eng.subscriber]
+        .forEach((t) => push(t && (t.pc || t._pc)));
+    } catch (e) { /* SDK internals moved — reported as unknown */ }
+    return pcs;
+  }
+
+  async function serverReachability(room) {
+    const kinds = new Set();
+    try {
+      const pcs = peerConnectionsOf(room);
+      if (!pcs.length) return { unknown: true };
+      for (const pc of pcs) {
+        const stats = await pc.getStats();
+        stats.forEach((s) => {
+          if (s.type !== 'remote-candidate') return;
+          const kind = classifyAddress(s.address || s.ip);
+          if (kind) kinds.add(kind);
+        });
+      }
+    } catch (e) {
+      return { unknown: true };
+    }
+    if (!kinds.size) return { unknown: true };
+    return {
+      unknown: false,
+      publicV4: kinds.has('v4-public'),
+      publicV6: kinds.has('v6-public'),
+      summary: Array.from(kinds).sort().join(', '),
+    };
+  }
+
   const PIPELINE = [
     {
       key: 'station', name: 'Station + tools',
@@ -2178,7 +2280,34 @@
             r.connect(url, token),
             new Promise((_, rej) => setTimeout(() => rej(new Error('no media connection within 10s')), 10000)),
           ]);
-          return { status: 'pass', detail: 'this browser connected to ' + url + ' — signalling and media both OK' };
+          // Connecting from HERE only proves it works from here. What decides
+          // whether strangers can call is which addresses the server offered:
+          // if the only publicly routable one is IPv6, everyone on an
+          // IPv4-only network gets fifteen seconds of ringing and a dead line,
+          // and nothing anywhere says so. That is roughly half of callers.
+          const reach = await serverReachability(r);
+          const base = 'this browser connected to ' + url;
+          if (reach.unknown) {
+            return { status: 'pass', detail: base + ' — signalling and media both OK' };
+          }
+          if (!reach.publicV4 && !reach.publicV6) {
+            return { status: 'warn',
+              detail: base + ', but the station only offered private addresses ('
+                + reach.summary + '). LAN calls work; nobody outside your network '
+                + 'can connect. Set use_external_ip: true and remove node_ip if it '
+                + 'points at a LAN address.' };
+          }
+          if (!reach.publicV4) {
+            return { status: 'warn',
+              detail: base + ', but the only public address offered is IPv6 ('
+                + reach.summary + '). IPv6 callers connect with no port forwarding; '
+                + 'IPv4-only callers — roughly half, and most office wifi — cannot '
+                + 'connect at all. Open UDP 7882 and make sure node_ip is not '
+                + 'pinned to a LAN address.' };
+          }
+          return { status: 'pass',
+            detail: base + ' — signalling and media OK, publicly reachable ('
+              + reach.summary + ')' };
         } catch (e) {
           // A wss endpoint on a different origin than this page usually
           // means a self-signed certificate the browser has never accepted —
@@ -2196,8 +2325,11 @@
           }
           return { status: 'fail',
             detail: 'browser could not establish media with ' + url + ' — '
-              + 'if LiveKit runs in docker, set rtc.node_ip to the host’s LAN IP '
-              + 'in livekit.yaml and check UDP 50000–50100 is open. ('
+              + 'signalling worked, audio had nowhere to flow. Check '
+              + 'rtc.udp_port (7882) is open to this machine, and that '
+              + 'livekit.yaml does NOT set node_ip to a LAN address: that '
+              + 'overrides the public address use_external_ip discovers and '
+              + 'breaks every caller who is not on your network. ('
               + ((e && e.message) || e) + ')' };
         } finally {
           try { r.disconnect(); } catch (e2) {}
@@ -2206,6 +2338,39 @@
             body: JSON.stringify({ room: roomName }), keepalive: true,
           }).catch(() => {});
         }
+      },
+    },
+    {
+      // Tested HERE rather than on the server, because the failure only
+      // exists here: an http stream on an https page is blocked as mixed
+      // content, silently, and the call runs with no station behind it. The
+      // server can fetch that same URL perfectly well and learn nothing.
+      key: 'stream', name: 'Station stream',
+      run: async () => {
+        const s = (live && live.stream) || {};
+        if (!s.tuneIn) return { status: 'skip', detail: 'tune-in is off — callers hear only the DJ' };
+        if (!s.url) return { status: 'warn', detail: 'no stream URL resolved' };
+        const mixed = location.protocol === 'https:' && s.url.indexOf('http://') === 0;
+        const loaded = await new Promise((res) => {
+          const el = new Audio(); el.muted = true; el.volume = 0; el.preload = 'auto';
+          const done = (v) => { try { el.pause(); el.src = ''; } catch (e) {} res(v); };
+          el.addEventListener('loadeddata', () => done(true));
+          el.addEventListener('canplay', () => done(true));
+          el.addEventListener('error', () => done(false));
+          el.src = s.url; el.load();
+          setTimeout(() => done(false), 8000);
+        });
+        if (loaded) {
+          return { status: 'pass',
+            detail: s.url + ' — playing behind the call at ' + (s.volume || 0) + '%' };
+        }
+        return { status: 'fail',
+          detail: mixed
+            ? 'this page is https and the stream is http:// — the browser blocks '
+              + 'it as mixed content, silently, so the caller hears no station. '
+              + 'Set the station stream URL to an https one. (' + s.url + ')'
+            : s.url + ' would not load in this browser — callers hear no station '
+              + 'behind the DJ. Check the URL is reachable and serves audio.' };
       },
     },
     {
@@ -2255,6 +2420,44 @@
     });
   }
 
+  // The same row layout the pipeline check uses, because these are the same
+  // kind of thing and were being rendered as padded monospace text — which
+  // fell apart the moment a stage had a long note (the STT stage quotes what
+  // it heard), taking the column alignment with it.
+  function renderTimings(out, d) {
+    out.className = 'result on ' + (d.turnMs < 2000 ? 'good' : 'bad');
+    out.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'stages timings on';
+
+    const row = (cls, ms, name, note) => {
+      const li = document.createElement('li');
+      li.className = cls;
+      li.innerHTML = '<span class="ms"></span><span class="nm"></span><span class="dt"></span>';
+      li.querySelector('.ms').textContent = ms;
+      li.querySelector('.nm').textContent = name;
+      li.querySelector('.dt').textContent = note || '';
+      ul.appendChild(li);
+    };
+
+    let oneOffs = 0;
+    d.stages.forEach((st) => {
+      if (!st.counts) oneOffs++;
+      row(st.counts ? '' : 'oneoff', st.ms + 'ms', st.name, st.note);
+    });
+    row('total', d.turnMs + 'ms', 'Per turn', d.verdict);
+    out.appendChild(ul);
+
+    if (oneOffs) {
+      const foot = document.createElement('p');
+      foot.className = 'hint';
+      foot.style.margin = '9px 0 0';
+      foot.textContent = 'Dimmed rows happen once per call, not on every turn, '
+        + 'so they are not in the per-turn total.';
+      out.appendChild(foot);
+    }
+  }
+
   // Stage-by-stage timing, and what they compound to for one turn.
   // The speed test writes to its OWN box so running it never wipes the
   // pipeline results — both stay visible side by side.
@@ -2269,18 +2472,7 @@
       }).then((r) => r.json());
       if (!d.ok) { showResult(out, false, 'Failed: ' + (d.error || 'unknown')); return; }
 
-      const lines = d.stages.map((st) => {
-        const ms = String(st.ms).padStart(6) + 'ms';
-        const mark = st.counts ? ' ' : '·';
-        return mark + ms + '  ' + st.name + (st.note ? '\n           ' + st.note : '');
-      });
-      const good = d.turnMs < 2000;
-      showResult(out, good,
-        lines.join('\n') +
-        '\n' + '─'.repeat(46) +
-        '\n' + String(d.turnMs).padStart(6) + 'ms  PER TURN (what the caller waits)' +
-        '\n           ' + d.verdict +
-        '\n\n· = one-off per call, not part of each turn');
+      renderTimings(out, d);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
@@ -2404,8 +2596,21 @@
   // Renders a call as a call: who said what, in order, with the tools the DJ
   // reached for shown inline where they happened. Reading a raw JSON dump to
   // answer "why did that call go wrong" is most of the work.
+  // Call records store an instant with its UTC offset; the container runs in
+  // UTC, so rendering the raw string showed an operator in New York every
+  // timestamp four hours out. Records written before 0.9.49 have no offset —
+  // those parse as local and read exactly as they did before, so nothing
+  // moves for them.
+  function callTime(iso, withDate) {
+    const d = new Date(iso || '');
+    if (!iso || isNaN(d.getTime())) return (iso || '').slice(11, 19);
+    return withDate
+      ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' })
+      : d.toLocaleTimeString([], { hour12: false });
+  }
+
   function renderCall(c) {
-    const when = (c.startedAt || '').replace('T', ' ').slice(0, 19);
+    const when = callTime(c.startedAt, true);
     const head = [
       `${when}  ${c.persona?.name || 'DJ'}  ·  ${c.durationSecs || 0}s  ·  `
         + `${c.callerTurns || 0} caller turn${c.callerTurns === 1 ? '' : 's'}`,
@@ -2426,7 +2631,7 @@
 
     const label = { caller: 'CALLER', dj: 'DJ    ', tool: '  tool' };
     const body = events.map((e) =>
-      `${(e.t || '').slice(11)} ${label[e.kind] || e.kind}  ${e.text}`);
+      `${callTime(e.t)} ${label[e.kind] || e.kind}  ${e.text}`);
     return head.join('\n') + '\n' + (body.join('\n') || '  (no conversation)');
   }
 

@@ -28,6 +28,7 @@ from livekit import api
 import admin_auth
 import secrets_store
 import settings as settings_store
+import sounds as sound_assets
 import station as station_mod
 import tune_in
 from tts_adapter import ADAPTER_DIR
@@ -289,6 +290,7 @@ async def handle_live(request: web.Request) -> web.Response:
         on_air = reachable and bool(persona.get("id")) and persona["id"] != "default"
 
         cfg = settings_store.load()
+        sound_pack = cfg.get("sound_pack") or "classic"
         # Cached inside tune_in, so a station that publishes a mount list is
         # only asked for it every few minutes rather than on every /live.
         stream_url, stream_alternates = await tune_in.resolve(
@@ -334,14 +336,18 @@ async def handle_live(request: web.Request) -> web.Response:
                         "maxCallSeconds": int(cfg.get("max_call_seconds") or 0),
                         "idlePromptSecs": int(cfg.get("idle_prompt_secs") or 0),
                     },
+                    # Per sound: what the operator configured, else whatever
+                    # the chosen pack bundles, else "" — which the widget
+                    # reads as "synthesize it", the behaviour it has always
+                    # had when nothing is set.
                     "sounds": {
                         "enabled": bool(cfg.get("call_sounds")),
-                        "pack": cfg.get("sound_pack") or "classic",
-                        "ring": _sound_url(cfg.get("sound_ring")),
-                        "pickup": _sound_url(cfg.get("sound_pickup")),
-                        "hold": _sound_url(cfg.get("sound_hold")),
-                        "hangup": _sound_url(cfg.get("sound_hangup")),
-                        "failed": _sound_url(cfg.get("sound_failed")),
+                        "pack": sound_pack,
+                        "ring": _resolved_sound(cfg, sound_pack, "ring"),
+                        "pickup": _resolved_sound(cfg, sound_pack, "pickup"),
+                        "hold": _resolved_sound(cfg, sound_pack, "hold"),
+                        "hangup": _resolved_sound(cfg, sound_pack, "hangup"),
+                        "failed": _resolved_sound(cfg, sound_pack, "failed"),
                         "volume": int(cfg.get("call_volume") or 100),
                     },
                     "name": persona["name"],
@@ -399,6 +405,40 @@ def _sound_url(value) -> str:
         name = _safe_sound_name(raw[len(UPLOAD_PREFIX):])
         return f"/sounds/{name}" if name else ""
     return raw
+
+
+def _resolved_sound(cfg: dict, pack: str, kind: str) -> str:
+    """Uploaded or configured URL -> bundled pack asset -> "" (synthesized).
+
+    The empty string is meaningful: the widget synthesizes whatever it isn't
+    given, which is why the product still works with no audio files anywhere.
+    """
+    return _sound_url(cfg.get(f"sound_{kind}")) or sound_assets.asset_url(pack, kind)
+
+
+async def handle_pack_sound(request: web.Request) -> web.FileResponse | web.Response:
+    """Serve one bundled sound. Public, like the widget's own assets — these
+    ship in the image and a caller's browser has to fetch them mid-call."""
+    found = sound_assets.file_for(
+        request.match_info.get("pack", ""), Path(request.match_info.get("name", "")).stem
+    )
+    if not found:
+        return _cors(request, web.json_response({"error": "no such sound"}, status=404))
+    return web.FileResponse(found, headers={"Cache-Control": "public, max-age=3600"})
+
+
+async def handle_sound_packs(request: web.Request) -> web.Response:
+    """Every pack and the sounds it actually bundles.
+
+    The panel's preview buttons use this so a preview plays what a caller
+    would really hear, rather than always demonstrating the synthesized set.
+    """
+    return _cors(request, web.json_response({
+        "packs": [
+            {"id": pid, "label": label, "assets": sound_assets.assets_for(pid)}
+            for pid, label in sound_assets.packs()
+        ],
+    }))
 
 
 def _uploaded_sounds() -> list[str]:
@@ -1342,35 +1382,10 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     finally:
         await st.aclose()
 
-    # --- tune-in (the caller's browser pulls this, not us) ---
-    # This failed silently for months: an http stream on an https page is
-    # blocked as mixed content, the widget logged it to the console and the
-    # call simply had no station behind it. Nothing else in the product would
-    # have told the operator.
-    if cfg.get("tune_in_on_call"):
-        t0 = _time.perf_counter()
-        stream_url, alternates = await tune_in.resolve(
-            cfg, settings_store.station_base_url())
-        secure_page = _secure_origin().startswith("https://")
-        note, ok = "", True
-        if secure_page and stream_url.startswith("http://"):
-            ok = False
-            note = ("BLOCKED: an https page cannot load an http stream — the "
-                    "caller hears no station. Set the station stream URL.")
-        else:
-            try:
-                async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as c:
-                    async with c.stream("GET", stream_url) as r:
-                        kind = r.headers.get("content-type", "?")
-                        ok = r.status_code == 200 and "audio" in kind.lower()
-                        note = f"{r.status_code}, {kind}"
-            except Exception as e:                            # noqa: BLE001
-                ok, note = False, f"unreachable: {type(e).__name__}"
-            if ok and alternates:
-                note += f"; {len(alternates)} other mount(s) published"
-        record("Station stream" + ("" if ok else " — FAILING"),
-               (_time.perf_counter() - t0) * 1000,
-               f"{stream_url} — {note}", counts=False)
+    # The station stream is checked in the PIPELINE, not here: it is a health
+    # question rather than a timing one, and the failure that matters — an
+    # http stream blocked as mixed content on an https page — only happens in
+    # the caller's browser, so that is the only place worth testing it.
 
     # --- STT ---
     # For the local engine this is MEASURED, not estimated: the TTS stage
@@ -2026,6 +2041,10 @@ def build_app() -> web.Application:
     app.router.add_options("/settings/sounds", handle_options)
     app.router.add_delete("/settings/sounds/{name}", handle_sound_delete)
     app.router.add_get("/sounds/{name}", handle_sound_file)
+    # Bundled packs ship in the image, so unlike uploads they are read-only
+    # and need no auth — a caller's browser fetches them mid-call.
+    app.router.add_get("/pack-sounds/{pack}/{name}", handle_pack_sound)
+    app.router.add_get("/sound-packs", handle_sound_packs)
     app.router.add_post("/test/tts", handle_test_tts)
     app.router.add_options("/test/tts", handle_options)
     app.router.add_post("/test/llm", handle_test_llm)
