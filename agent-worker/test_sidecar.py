@@ -3171,5 +3171,673 @@ class TestActionsAllHaveAReceipt(unittest.TestCase):
         )
 
 
+class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
+    """The call DJ and the on-air DJ are the same voice.
+
+    Left alone they talk over each other and the whole broadcast hears it
+    doubled. Everything here defends one rule: the gate is the single source
+    of truth about whether the air is busy, so the reply gate, the on-air
+    tools and the widget's chip can never disagree.
+    """
+
+    def _guard(self, station=None, **cfg):
+        from call.air import OnAirGuard
+
+        base = {"avoid_on_air_overlap": True, "on_air_quiet_secs": 30}
+        base.update(cfg)
+        return OnAirGuard(station or object(), base)
+
+    def test_a_disabled_guard_never_makes_anyone_wait(self):
+        import asyncio
+
+        guard = self._guard(avoid_on_air_overlap=False)
+        self.assertEqual(asyncio.run(guard.wait_until_clear()), 0.0)
+
+    def test_our_own_action_closes_the_gate_before_the_station_log_catches_up(self):
+        # Waiting for the poll to notice left a window in which the DJ carried
+        # on talking over its own announcement — seen on a real call, right
+        # after it had said it was going off to air something.
+        guard = self._guard()
+        self.assertTrue(guard._clear.is_set())
+        guard.mark_on_air(25)
+        self.assertTrue(guard.on_air)
+        self.assertFalse(guard._clear.is_set())
+
+    def test_dead_air_is_worse_than_an_overlap(self):
+        # If the station has been "speaking" for longer than any real link,
+        # the log is stale — let the call carry on rather than sit in silence.
+        import asyncio
+
+        guard = self._guard()
+        guard.mark_on_air(600)
+        waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
+        self.assertGreaterEqual(waited, 0.05)
+        self.assertTrue(guard._clear.is_set(), "the caller was left in silence")
+
+    def _watch(self, answers, stop_when):
+        import asyncio
+
+        class _Station:
+            def __init__(self):
+                self.left = list(answers)
+
+            async def seconds_since_on_air_speech(self):
+                return self.left.pop(0) if self.left else None
+
+        class _Session:
+            def __init__(self):
+                self.said = []
+                self.interrupted = 0
+
+            def interrupt(self):
+                self.interrupted += 1
+
+            def say(self, text, **kw):
+                self.said.append(text)
+
+        async def _run():
+            guard = self._guard(station=_Station())
+            guard.POLL_SECS = 0.01
+            session = _Session()
+            task = asyncio.create_task(guard.watch(session))
+            for _ in range(300):
+                await asyncio.sleep(0.01)
+                if stop_when(session):
+                    break
+            task.cancel()
+            return session
+
+        return asyncio.run(_run())
+
+    def test_dialling_in_mid_link_does_not_cut_the_greeting_off(self):
+        # The first pass closes the gate SILENTLY. Someone who dials in during
+        # a link should have their first reply held, without the greeting being
+        # interrupted by a hand-over line for a broadcast that was already
+        # running when they picked up the phone.
+        session = self._watch([1, 1, 1], stop_when=lambda s: False)
+        self.assertEqual(session.said, [])
+        self.assertEqual(session.interrupted, 0)
+
+    def test_the_air_going_busy_mid_call_hands_over_out_loud(self):
+        # Clear first (no transition), then busy — that one is not the first
+        # pass, so the caller is told why the DJ has stopped.
+        session = self._watch([None, 1, 1, 1], stop_when=lambda s: s.said)
+        self.assertTrue(session.said, "the DJ went quiet without telling the caller")
+        self.assertGreaterEqual(session.interrupted, 1)
+
+
+class TestBackgroundWorkIsNotGarbageCollected(unittest.TestCase):
+    """`asyncio.create_task` alone keeps only a weak reference, so a task with
+    no other reference can be collected mid-flight. That showed up as action
+    cards and on-air state changes going missing at random — worse than a
+    feature that never existed, because it looks like it works."""
+
+    def test_a_spawned_task_is_held_until_it_finishes_and_then_released(self):
+        import asyncio
+
+        from call import background
+
+        async def _run():
+            started, release = asyncio.Event(), asyncio.Event()
+
+            async def work():
+                started.set()
+                await release.wait()
+
+            task = background.spawn(work())
+            await started.wait()
+            held = task in background._background
+            release.set()
+            await task
+            await asyncio.sleep(0)      # let the done-callback run
+            return held, task in background._background
+
+        held, still_held = asyncio.run(_run())
+        self.assertTrue(held, "the task was not referenced while it ran")
+        self.assertFalse(still_held, "finished tasks are never released")
+
+
+class TestEndingACallDisconnectsTheCaller(unittest.TestCase):
+    """ctx.shutdown() alone only ends the AGENT's job. The caller stayed
+    connected to a DJ-less room — mic hot, timer running, "on the line"
+    forever. Three things end calls (the DJ wrapping up, the idle watcher, the
+    hard limit) and all three go through here, so this is the one place to
+    get it right."""
+
+    def _ctx(self, delete_raises=False):
+        class _Room:
+            name = "call-room"
+
+        class _RoomApi:
+            def __init__(self):
+                self.deleted = []
+
+            async def delete_room(self, req):
+                if delete_raises:
+                    raise RuntimeError("livekit unreachable")
+                self.deleted.append(req)
+
+        class _Ctx:
+            def __init__(self):
+                self.room = _Room()
+                self.api = types.SimpleNamespace(room=_RoomApi())
+                self.shutdown_reasons = []
+
+            def shutdown(self, reason=None):
+                self.shutdown_reasons.append(reason)
+
+        return _Ctx()
+
+    def test_the_room_is_deleted_so_the_caller_is_actually_disconnected(self):
+        import asyncio
+
+        from call.hangup import end_call
+
+        ctx = self._ctx()
+        asyncio.run(end_call(ctx, "wrapped up"))
+        self.assertEqual(len(ctx.api.room.deleted), 1)
+        self.assertEqual(ctx.api.room.deleted[0].room, "call-room")
+        self.assertEqual(ctx.shutdown_reasons, ["wrapped up"])
+
+    def test_the_agent_still_leaves_when_the_room_cannot_be_deleted(self):
+        import asyncio
+
+        from call.hangup import end_call
+
+        ctx = self._ctx(delete_raises=True)
+        asyncio.run(end_call(ctx, "time limit"))
+        self.assertEqual(ctx.shutdown_reasons, ["time limit"],
+                         "a failed room delete stranded the agent in the call")
+
+
+class TestSearchingForWhatTheCallerActuallySaid(unittest.TestCase):
+    """The station's search needs EVERY word to match, so the natural phrase a
+    caller uses returns nothing. A caller heard "can't pull that from the
+    racks" for a track the library holds three copies of."""
+
+    def test_the_by_connector_is_stripped_before_reporting_a_miss(self):
+        from call.tools.music import _query_variants
+
+        self.assertEqual(
+            _query_variants("Let It Be by The Beatles"),
+            ["Let It Be by The Beatles", "Let It Be The Beatles", "Let It Be"],
+        )
+
+    def test_a_title_containing_by_survives_the_split(self):
+        # Rightmost split, so "Stand by Me" is never torn in half.
+        from call.tools.music import _query_variants
+
+        variants = _query_variants("Stand by Me by Ben E. King")
+        self.assertIn("Stand by Me", variants)
+        self.assertNotIn("Stand", variants)
+
+    def test_a_query_with_no_connector_is_tried_once(self):
+        from call.tools.music import _query_variants
+
+        self.assertEqual(_query_variants("Mr. Blue Sky"), ["Mr. Blue Sky"])
+
+
+class TestAMoodIsNotASearch(unittest.TestCase):
+    """A caller saying "something fun" wants the station's picker, not a title
+    match — but the model reaches for the search tool anyway, and "fun"
+    dutifully returns "Fun, Fun, Fun" by The Beach Boys. Observed on a real
+    call. The guard is deliberately conservative: every meaningful word has to
+    be a mood word, so real titles are untouched."""
+
+    def test_a_pure_description_is_recognised(self):
+        from call.tools.music import looks_like_a_vibe
+
+        for q in ("something fun", "chill", "some upbeat music",
+                  "play me something nice"):
+            self.assertTrue(looks_like_a_vibe(q), q)
+
+    def test_real_titles_containing_a_mood_word_are_left_alone(self):
+        from call.tools.music import looks_like_a_vibe
+
+        for q in ("Fun House by The Stooges", "Mr. Blue Sky",
+                  "Heavy Metal by Sammy Hagar"):
+            self.assertFalse(looks_like_a_vibe(q), q)
+
+    def test_a_long_phrase_is_never_treated_as_a_vibe(self):
+        from call.tools.music import looks_like_a_vibe
+
+        self.assertFalse(looks_like_a_vibe("something fun and upbeat and happy too"))
+
+    def test_an_empty_query_is_not_a_vibe(self):
+        from call.tools.music import looks_like_a_vibe
+
+        self.assertFalse(looks_like_a_vibe(""))
+        self.assertFalse(looks_like_a_vibe(None))
+
+
+class TestTellingTheCallerWhenTheirSongPlays(unittest.TestCase):
+    """Without the queue position the DJ could only say "soon", which is how a
+    caller ends up being told their song is on when it is four tracks away."""
+
+    def test_next_up_is_said_plainly(self):
+        from call.tools.music import _when_it_plays
+
+        self.assertIn("next up", _when_it_plays(1))
+
+    def test_a_position_becomes_a_time_range(self):
+        from call.tools.music import _when_it_plays
+
+        out = _when_it_plays(4)
+        self.assertIn("number 4", out)
+        self.assertIn("12-16 minutes", out)
+
+    def test_an_unknown_position_tells_the_dj_not_to_guess(self):
+        from call.tools.music import _when_it_plays
+
+        for bad in (None, "soon", ""):
+            self.assertIn("don't guess", _when_it_plays(bad))
+
+
+class TestTheDJDescribesRecordsItHasInformationAbout(unittest.TestCase):
+    """The station returns mood tags and an energy score on every hit.
+    Dropping them left the DJ describing records purely from the title."""
+
+    def test_moods_and_energy_reach_the_model(self):
+        from call.tools.music import _fmt_track
+
+        out = _fmt_track({"title": "Roads", "artist": "Portishead",
+                          "moods": ["moody", "nocturnal"], "energy": 0.2})
+        self.assertIn("moody", out)
+        self.assertIn("nocturnal", out)
+        self.assertIn("low energy", out)
+
+    def test_the_id_is_included_only_when_exact_queueing_is_on(self):
+        # Without the id in the text the model has nothing to pass to the
+        # exact-queue tool and silently falls back to guessing.
+        track = {"title": "Roads", "artist": "Portishead", "id": "t-42"}
+        from call.tools.music import _fmt_track
+
+        self.assertIn("[id: t-42]", _fmt_track(track, with_id=True))
+        self.assertNotIn("t-42", _fmt_track(track, with_id=False))
+
+
+class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
+    """A fixed hold was the wrong shape. An announcement is a sentence and a
+    segment can run a minute or more, so one number either reopens the gate
+    mid-delivery — the DJ talking over its own voice on the broadcast — or
+    gags it long after the air is clear."""
+
+    def _tools(self, station, cfg=None, limit=5):
+        from call.actions import CallActions
+        from call.tools import build_on_air_tools
+
+        class _Guard:
+            def __init__(self):
+                self.holds = []
+
+            def mark_on_air(self, secs=25.0):
+                self.holds.append(secs)
+
+            async def wait_until_clear(self, timeout=None):
+                return 0.0
+
+        guard = _Guard()
+        actions = CallActions(limit)
+        built = build_on_air_tools(
+            cfg or {"allow_announcements": True}, station, actions, guard)
+        return {t.info.name: t for t in built}, guard, actions
+
+    def _station(self, **result):
+        class _Station:
+            def __init__(self):
+                self.calls = []
+
+            async def dj_say(self, message, mode="styled", kind=None):
+                self.calls.append(message)
+                return dict(result)
+
+        return _Station()
+
+    def test_a_long_segment_is_held_longer_than_a_short_line(self):
+        import asyncio
+
+        long_tools, long_guard, _ = self._tools(
+            self._station(ok=True, spoken=" ".join(["word"] * 120)))
+        asyncio.run(long_tools["subwave_dj_announce"]("go on air"))
+
+        short_tools, short_guard, _ = self._tools(
+            self._station(ok=True, spoken="Quick shout to Dave."))
+        asyncio.run(short_tools["subwave_dj_announce"]("go on air"))
+
+        self.assertGreater(long_guard.holds[0], short_guard.holds[0])
+        self.assertLessEqual(long_guard.holds[0], 180)
+        self.assertGreaterEqual(short_guard.holds[0], 12)
+
+    def test_a_refused_announcement_is_never_reported_as_done(self):
+        import asyncio
+
+        tools, guard, actions = self._tools(
+            self._station(ok=False, error="the station refused it"))
+        out = asyncio.run(tools["subwave_dj_announce"]("hello"))
+        self.assertIn("do not claim it worked", out.lower())
+        self.assertEqual(actions.count, 0, "a failed action was counted")
+        self.assertEqual(guard.holds, [], "the gate closed for speech that never happened")
+
+    def test_a_slow_confirmation_is_not_a_failure(self):
+        # A read timeout means the station took the action and hadn't finished
+        # answering. Reporting that as failure told callers their message
+        # hadn't gone out while it was audibly going out.
+        import asyncio
+
+        tools, _, actions = self._tools(
+            self._station(ok=True, unconfirmed=True, spoken="On air now."))
+        out = asyncio.run(tools["subwave_dj_announce"]("hello"))
+        self.assertIn("gone through", out.lower())
+        self.assertEqual(actions.count, 1)
+
+
+class TestTheLogKeepsTheLinesThatMatter(unittest.TestCase):
+    """Third-party chatter drowns the real events. The widget polls /live every
+    20 seconds forever, and the panel's log viewer reads the same ring buffer,
+    so unfiltered noise makes it useless."""
+
+    def setUp(self):
+        import log_setup
+
+        log_setup.setup("tests", console=False)     # idempotent
+        log_setup.RECENT.clear()
+
+    def test_the_widgets_polling_is_dropped(self):
+        import logging as _logging
+
+        import log_setup
+
+        access = _logging.getLogger("aiohttp.access")
+        access.info('GET /live HTTP/1.1 200')
+        access.info('GET /health HTTP/1.1 200')
+        self.assertEqual(log_setup.recent_lines(), [])
+
+    def test_real_requests_are_kept(self):
+        import logging as _logging
+
+        import log_setup
+
+        _logging.getLogger("aiohttp.access").info('POST /token HTTP/1.1 200')
+        self.assertTrue(any("/token" in line for line in log_setup.recent_lines()))
+
+    def test_the_panel_can_read_recent_lines_without_docker(self):
+        import logging as _logging
+
+        import log_setup
+
+        for i in range(5):
+            _logging.getLogger("callin.test").info("event %d", i)
+        lines = log_setup.recent_lines(3)
+        self.assertEqual(len(lines), 3)
+        self.assertIn("event 4", lines[-1])
+
+    def test_setting_up_twice_does_not_double_every_line(self):
+        # The token server's test endpoints import main.py, whose module-level
+        # setup("worker") would otherwise add a second handler.
+        import logging as _logging
+
+        import log_setup
+
+        before = len(_logging.getLogger().handlers)
+        log_setup.setup("tests-again", console=True)
+        self.assertEqual(len(_logging.getLogger().handlers), before)
+
+
+class TestTheSttModelIsLoadedOnceForTheWholeProcess(unittest.TestCase):
+    """Loading is slow enough that doing it per call would be audible, so one
+    model is shared per (name, compute type) across every call in the process.
+    The prewarm hook is synchronous on purpose: the Agents SDK calls
+    stt.prewarm() without awaiting, so an async version silently never ran."""
+
+    KEY = ("test-fake.en", "int8")
+
+    def setUp(self):
+        import local_stt
+
+        # A sentinel in the cache means neither preload_sync nor the STT class
+        # reaches for faster_whisper, so this test needs no model download.
+        local_stt._models[self.KEY] = object()
+
+    def tearDown(self):
+        import local_stt
+
+        local_stt._models.pop(self.KEY, None)
+
+    def test_preloading_an_already_loaded_model_is_a_no_op(self):
+        import local_stt
+
+        before = dict(local_stt._models)
+        local_stt.preload_sync("test-fake.en", "int8")
+        self.assertEqual(local_stt._models, before)
+
+    def test_prewarm_is_synchronous_so_the_sdk_actually_runs_it(self):
+        import inspect
+
+        import local_stt
+
+        self.assertFalse(
+            inspect.iscoroutinefunction(local_stt.LocalWhisperSTT.prewarm),
+            "an async prewarm is never awaited by the SDK and silently does nothing",
+        )
+        stt_impl = local_stt.LocalWhisperSTT(model="test-fake.en", compute_type="int8")
+        stt_impl.prewarm()      # must not try to download anything
+
+    def test_it_declares_itself_non_streaming_so_the_sdk_wraps_it_with_the_vad(self):
+        import local_stt
+
+        caps = local_stt.LocalWhisperSTT(model="test-fake.en").capabilities
+        self.assertFalse(caps.streaming)
+        self.assertFalse(caps.interim_results)
+
+
+class TestTheCallRecordHearsBothSides(unittest.TestCase):
+    """`heard:` alone was not enough. It showed only the CALLER's side, so a
+    report like "he wouldn't hang up" had to be reconstructed from tracebacks
+    to work out what the DJ had actually said or tried."""
+
+    def _attach(self):
+        from call.lifecycle import attach_heard_logging
+
+        class _Session:
+            def __init__(self):
+                self.handlers = {}
+
+            def on(self, name, fn):
+                self.handlers[name] = fn
+
+        class _Record:
+            def __init__(self):
+                self.turns = []
+                self.tools = []
+
+            def turn(self, who, text):
+                self.turns.append((who, text))
+
+            def tool(self, name, result=""):
+                self.tools.append((name, result))
+
+        session, record, counter = _Session(), _Record(), {"n": 0}
+        attach_heard_logging(session, counter, record)
+        return session, record, counter
+
+    def test_the_caller_is_recorded_and_counted(self):
+        session, record, counter = self._attach()
+        session.handlers["user_input_transcribed"](
+            types.SimpleNamespace(transcript="play something loud", is_final=True))
+        self.assertEqual(record.turns, [("caller", "play something loud")])
+        self.assertEqual(counter["n"], 1)
+
+    def test_a_partial_transcript_is_not_a_turn(self):
+        session, record, counter = self._attach()
+        session.handlers["user_input_transcribed"](
+            types.SimpleNamespace(transcript="play some", is_final=False))
+        session.handlers["user_input_transcribed"](
+            types.SimpleNamespace(transcript="   ", is_final=True))
+        self.assertEqual(record.turns, [])
+        self.assertEqual(counter["n"], 0)
+
+    def test_the_dj_is_recorded_too(self):
+        session, record, _ = self._attach()
+        session.handlers["conversation_item_added"](types.SimpleNamespace(
+            item=types.SimpleNamespace(role="assistant", text_content="You're through.")))
+        self.assertEqual(record.turns, [("dj", "You're through.")])
+
+    def test_the_callers_own_words_are_not_attributed_to_the_dj(self):
+        session, record, _ = self._attach()
+        session.handlers["conversation_item_added"](types.SimpleNamespace(
+            item=types.SimpleNamespace(role="user", text_content="hello?")))
+        self.assertEqual(record.turns, [])
+
+    def test_every_tool_lands_in_the_record_with_its_result(self):
+        # The DJ saying it did something is a claim; this line is the receipt.
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(name="subwave_request_song",
+                                                  call_id="c1")],
+            function_call_outputs=[types.SimpleNamespace(call_id="c1",
+                                                         output="Added to the queue")],
+        ))
+        self.assertEqual(record.tools, [("subwave_request_song", "Added to the queue")])
+
+    def test_a_tool_with_no_output_is_still_recorded(self):
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(name="subwave_skip_track",
+                                                  call_id="c9")],
+            function_call_outputs=[],
+        ))
+        self.assertEqual(record.tools, [("subwave_skip_track", "")])
+
+
+class TestWidgetServerContract(unittest.TestCase):
+    """The widget is plain browser JS with no toolchain and no test harness of
+    its own, so this is what guards it.
+
+    Two ways it has broken before: a route renamed on the server while app.js
+    kept calling the old path, and a DOM id changed in index.html while app.js
+    kept reaching for the old one. Both leave a green suite and a widget that
+    silently does nothing — the exact failure mode this project treats as a bug
+    rather than a nitpick.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import re
+
+        root = Path(__file__).parent.parent
+        cls.app_js = (root / "web-widget" / "app.js").read_text(encoding="utf-8")
+        cls.html = (root / "web-widget" / "index.html").read_text(encoding="utf-8")
+        server = (Path(__file__).parent / "token_server.py").read_text(encoding="utf-8")
+
+        cls.routes = set(re.findall(
+            r'router\.add_(?:get|post|put|delete)\(\s*"([^"]+)"', server))
+        cls.fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", cls.app_js))
+        cls.wanted_ids = set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", cls.app_js)) | set(
+            re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", cls.app_js))
+        cls.declared_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', cls.html))
+        # Some elements are built by app.js when first needed rather than
+        # sitting in the markup (the first-run banner, the password nudge).
+        cls.built_ids = set(re.findall(
+            r"\.id\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]", cls.app_js))
+
+    def test_the_scan_found_something_to_check(self):
+        # A silently-empty scan would make every assertion below pass forever.
+        self.assertGreater(len(self.routes), 10)
+        self.assertGreater(len(self.fetched), 10)
+        self.assertGreater(len(self.wanted_ids), 50)
+
+    def test_every_path_the_widget_calls_is_a_route_the_server_serves(self):
+        static = {r.rstrip("/") for r in self.routes if "{" not in r}
+        prefixes = [r.split("{")[0] for r in self.routes if "{" in r]
+        missing = sorted(
+            path for path in self.fetched
+            if path.rstrip("/") not in static
+            and not any(path.startswith(p) for p in prefixes)
+        )
+        self.assertEqual(
+            missing, [],
+            "app.js calls paths token_server.py does not serve — the widget "
+            f"will 404 with nothing to say so: {missing}",
+        )
+
+    def test_every_element_the_widget_reaches_for_exists(self):
+        missing = sorted(self.wanted_ids - self.declared_ids - self.built_ids)
+        self.assertEqual(
+            missing, [],
+            "app.js reads element ids that index.html does not declare and "
+            f"app.js never creates — those controls are dead: {missing}",
+        )
+
+    def test_the_widget_is_still_dependency_free(self):
+        # No build step, no bundler, no node_modules. The moment app.js needs
+        # one, everything above stops being enough and the deploy story changes.
+        root = Path(__file__).parent.parent
+        self.assertFalse(
+            list(root.glob("package.json")) + list((root / "web-widget").glob("package.json")),
+            "a package.json appeared — the widget is meant to stay toolchain-free",
+        )
+        self.assertNotIn("require(", self.app_js)
+        self.assertNotIn("import ", self.app_js.split("//")[0][:200])
+
+
+class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
+    """`scripted_call.py` is run against the LIVE station, deliberately — it is
+    the only way to check conduct, and its docstring promises that nothing is
+    queued, nothing is announced and no segment runs.
+
+    That promise is kept by one function, `muzzle_the_station()`, which swaps
+    each writing StationClient method for a recorder. It is a hand-maintained
+    list, and it had already fallen behind: `skip_track` and `dj_segment`
+    arrived in 0.9.54, went into the tool registry, and were never added here —
+    so with either switched on, a scripted run could cut the record the
+    station's listeners were hearing. Deriving the list from station.py means
+    the next write method cannot slip through the same gap.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+        import re
+
+        here = Path(__file__).parent
+        tree = ast.parse((here / "station.py").read_text(encoding="utf-8"))
+        client = next(n for n in ast.walk(tree)
+                      if isinstance(n, ast.ClassDef) and n.name == "StationClient")
+
+        cls.writes = set()
+        for fn in client.body:
+            if not isinstance(fn, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                continue
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in {"post", "put", "delete"}):
+                    cls.writes.add(fn.name)
+
+        harness = (here / "scripted_call.py").read_text(encoding="utf-8")
+        cls.muzzled = set(re.findall(r"StationClient\.(\w+)\s*=", harness))
+
+    def test_the_scan_found_the_writing_methods(self):
+        # A regex that quietly matched nothing would make the real assertion
+        # below pass forever.
+        self.assertGreaterEqual(len(self.writes), 4)
+        self.assertIn("dj_say", self.writes)
+
+    def test_every_writing_station_method_is_muzzled(self):
+        escaped = sorted(self.writes - self.muzzled)
+        self.assertEqual(
+            escaped, [],
+            "scripted_call.py is documented as safe to run against a live "
+            "station, but these StationClient methods write and are not "
+            f"swapped for a recorder: {escaped}",
+        )
+
+    def test_the_two_station_wide_actions_are_covered_by_name(self):
+        # Named explicitly as well as derived: these two reach every listener
+        # rather than the caller, so they are the ones that must never regress.
+        self.assertIn("skip_track", self.muzzled)
+        self.assertIn("dj_segment", self.muzzled)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

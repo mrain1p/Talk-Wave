@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "guide-preview",
+      "url": "http://localhost:8899",
+      "port": 8899
+    },
+    {
+      "name": "wavetalk",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["agent-worker/token_server.py"],
+      "port": 8100
+    }
+  ]
+}

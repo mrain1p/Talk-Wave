@@ -23,4 +23,12 @@ BUILD-INSTRUCTIONS.md
 subwave-openapi.json
 
 *.log
-.claude/
+
+# --- Claude Code ------------------------------------------------------------
+# The agent instructions and skills are part of the repo: they are how a fresh
+# checkout (or a fresh agent) learns this codebase without re-reading it. Only
+# machine-local overrides stay out. This repo is public and deliberately
+# sanitized: anything naming the operator's own hosts, IPs or keys goes in a
+# *.local.md file, never in a committed skill.
+.claude/settings.local.json
+.claude/*.local.md
