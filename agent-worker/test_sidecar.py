@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -287,6 +288,136 @@ class TestSettings(_TempStores):
         stored = json.loads(settings_store.SETTINGS_PATH.read_text())
         self.assertNotIn("allow_sfx", stored)
         self.assertNotIn("not_a_field", stored)
+
+
+class TestSoundPacks(unittest.TestCase):
+    """Bundled sound assets: a pack is a folder, not a code change.
+
+    The tier that did not exist before — uploads worked and synthesis worked,
+    so shipping a default ring meant writing oscillator code in the widget.
+    """
+
+    def setUp(self):
+        import sounds
+
+        self.sounds = sounds
+        self._real_dir = sounds.ASSETS_DIR
+        self.tmp = Path(tempfile.mkdtemp())
+        sounds.ASSETS_DIR = self.tmp
+
+    def tearDown(self):
+        self.sounds.ASSETS_DIR = self._real_dir
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _pack(self, name: str, files=(), label: str | None = None) -> Path:
+        folder = self.tmp / name
+        folder.mkdir(parents=True, exist_ok=True)
+        for f in files:
+            (folder / f).write_bytes(b"not really audio")
+        if label:
+            (folder / "label.txt").write_text(label, encoding="utf-8")
+        return folder
+
+    def test_with_no_assets_at_all_nothing_changes(self):
+        # The product has always worked with zero audio files and must keep
+        # doing so: every sound resolves to "", which the widget synthesizes.
+        self.assertEqual(self.sounds.asset_url("classic", "ring"), "")
+        self.assertEqual(self.sounds.assets_for("classic"), {})
+        self.assertEqual(
+            sorted(p for p, _ in self.sounds.packs()), ["classic", "phone"])
+
+    def test_a_new_folder_becomes_a_new_pack(self):
+        self._pack("vintage", ["ring.mp3"])
+        self.assertIn(("vintage", "Vintage"), self.sounds.packs())
+        self.assertEqual(
+            self.sounds.asset_url("vintage", "ring"), "/pack-sounds/vintage/ring.mp3")
+
+    def test_a_pack_can_name_itself(self):
+        self._pack("old-bell", ["ring.mp3"], label="Old Bell — 1950s exchange")
+        self.assertIn(("old-bell", "Old Bell — 1950s exchange"), self.sounds.packs())
+
+    def test_a_folder_name_without_a_label_is_tidied(self):
+        self._pack("old-bell", ["ring.mp3"])
+        self.assertIn(("old-bell", "Old Bell"), self.sounds.packs())
+
+    def test_a_partial_pack_only_covers_what_it_ships(self):
+        # One file is a valid pack; everything else stays synthesized.
+        self._pack("sparse", ["ring.mp3"])
+        self.assertEqual(self.sounds.assets_for("sparse"), {"ring": "/pack-sounds/sparse/ring.mp3"})
+        self.assertEqual(self.sounds.asset_url("sparse", "hangup"), "")
+
+    def test_a_folder_named_after_a_builtin_supplies_files_for_it(self):
+        # Not a new pack — the curated label is kept and only the one sound
+        # is replaced.
+        self._pack("classic", ["ring.mp3"])
+        ids = [p for p, _ in self.sounds.packs()]
+        self.assertEqual(ids.count("classic"), 1)
+        self.assertIn(("classic", self.sounds.SYNTHESIZED["classic"]), self.sounds.packs())
+        self.assertEqual(self.sounds.asset_url("classic", "ring"), "/pack-sounds/classic/ring.mp3")
+        self.assertEqual(self.sounds.asset_url("classic", "pickup"), "")
+
+    def test_mp3_wins_when_a_pack_ships_several_encodings(self):
+        # Every browser plays mp3; ogg and friends are less reliable.
+        self._pack("multi", ["ring.ogg", "ring.mp3", "ring.wav"])
+        self.assertEqual(self.sounds.asset_url("multi", "ring"), "/pack-sounds/multi/ring.mp3")
+
+    def test_a_pack_name_cannot_escape_the_assets_directory(self):
+        for evil in ("../../etc", "..", "a/b", ""):
+            with self.subTest(pack=evil):
+                self.assertIsNone(self.sounds.file_for(evil, "ring"))
+
+    def test_only_the_five_known_sounds_resolve(self):
+        self._pack("vintage", ["ring.mp3", "voicemail.mp3"])
+        self.assertIsNone(self.sounds.file_for("vintage", "voicemail"))
+
+    def test_the_panel_dropdown_reads_packs_from_disk(self):
+        # settings.schema_payload is what the panel builds its Sound set
+        # dropdown from — a new folder has to reach it with no code change.
+        self._pack("vintage", ["ring.mp3"])
+        choices = settings_store.schema_payload()["fields"]["sound_pack"]["choices"]
+        self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
+
+
+class TestSilentCallIsRecorded(unittest.TestCase):
+    """A call that received no caller audio has to say so.
+
+    The first off-LAN caller failed exactly this way and nothing in our own
+    logs mentioned it: room joined, agent started, greeting played, line
+    dropped at ~15s with nothing received. The diagnosis lived only in
+    LiveKit's ICE candidates and the caller's browser console.
+    """
+
+    def _session(self, heard: int):
+        from call.record import CallRecord
+        from call.session import CallSession
+
+        s = CallSession.__new__(CallSession)          # no room, no livekit
+        s.heard = {"n": heard}
+        s.ctx = type("C", (), {"room": type("R", (), {"name": "callin-test"})()})()
+        s.record = CallRecord("callin-test", {"name": "Test DJ"}, {})
+        return s
+
+    def test_a_call_with_no_caller_audio_is_flagged(self):
+        s = self._session(heard=0)
+        s._note_if_nothing_was_heard(15.0, [("dj", "Evening, you're through.")])
+        problems = s.record.data["problems"]
+        self.assertEqual(len(problems), 1)
+        what = problems[0]["what"]
+        self.assertIn("No audio was ever received", what)
+        self.assertIn("off-LAN", what)          # the likeliest cause, named
+        self.assertIn("the DJ did speak", what)  # so a mic problem is separable
+
+    def test_a_call_that_heard_the_caller_is_not_flagged(self):
+        s = self._session(heard=3)
+        s._note_if_nothing_was_heard(90.0, [("caller", "hello"), ("dj", "hi")])
+        self.assertEqual(s.record.data["problems"], [])
+
+    def test_it_records_whether_the_dj_spoke_at_all(self):
+        # A DJ that never spoke points at the pipeline; one that did points at
+        # the caller's side. The record has to keep them apart.
+        s = self._session(heard=0)
+        s._note_if_nothing_was_heard(12.0, [])
+        self.assertIn("the DJ did not speak", s.record.data["problems"][0]["what"])
 
 
 class TestCallRecordTimestamps(unittest.TestCase):

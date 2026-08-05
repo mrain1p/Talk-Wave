@@ -257,7 +257,7 @@ Sections are grouped by the job you're doing, in the order you'd do it:
 | Call settings | **Station awareness** | How much live context (recent tracks, queue, on-air chatter, the rest of the line-up) the DJ carries — each item costs latency every turn |
 | Call settings | **House style** | Light steers on conversation, answering and sign-off, layered on the persona; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call ends |
-| Call settings | **Call sounds** | The sound set, per-sound uploads or URLs, previews, default volume |
+| Call settings | **Call sounds** | The sound set, per-sound uploads or URLs, previews, default volume. Sets are discovered from `assets/sounds/` — see below |
 | Reference | **What callers can ask** | Live reference derived from the permissions above — including what is never available, and why |
 | Reference | **Station tools** | All 17 tools the station publishes over MCP, what each does, and whether a caller can reach it. Follows the permission switches as you flip them |
 | Reference | **Embed** | Copyable iframe snippet + compact preview |
@@ -266,6 +266,37 @@ Below the settings, a **Diagnostics** block of four collapsed rows, each with
 its own run button: full pipeline check, speed test, recent calls and server
 logs. See [Diagnosing a call](#diagnosing-a-call). The running version is
 stamped underneath.
+
+### Call sounds
+
+Each of the five call sounds resolves in the same order:
+
+```
+operator upload / URL   →   bundled asset   →   synthesized in the browser
+```
+
+The last tier means **no audio file has to exist anywhere** — a fresh
+deployment rings, picks up and hangs up using tones generated in the browser.
+
+To ship your own, a pack is a folder in `assets/sounds/`:
+
+```
+assets/sounds/vintage/
+  label.txt        optional — "Vintage — 1950s exchange"
+  ring.mp3  pickup.mp3  hold.mp3  hangup.mp3  failed.mp3
+```
+
+It appears in **Sound set** automatically; no code change, no schema edit.
+Packs may be partial — anything a folder doesn't provide falls back to the
+synthesized sound, so a folder containing only `ring.mp3` is a valid pack.
+Prefer mp3; it's the one format every browser plays. `classic` and `phone` are
+the built-in synthesized sets, and a folder with either name supplies files for
+that set rather than creating a new one. Full conventions in
+[assets/sounds/README.md](assets/sounds/README.md).
+
+Panel uploads (`data/sounds/`) override bundled assets — they're
+per-deployment, the folder is per-build. Set `SOUND_ASSETS_PATH` to bind-mount
+packs without rebuilding.
 
 ## Embedding
 

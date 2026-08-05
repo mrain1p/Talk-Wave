@@ -534,9 +534,17 @@ def mcp_tools_payload() -> list[dict]:
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
-    "sound_pack": [("classic", "Exchange — telephone network tones"),
-                   ("phone", "Handset — a real phone in a room")],
 }
+
+
+def _choices_for(name: str):
+    """Static choices, except the sound packs — those are read from disk so a
+    new pack is a folder in assets/sounds/ rather than an edit here."""
+    if name == "sound_pack":
+        import sounds
+
+        return sounds.packs()
+    return STATIC_CHOICES.get(name)
 
 
 def schema_payload() -> dict:
@@ -558,7 +566,7 @@ def schema_payload() -> dict:
                 "help": meta.get("help", ""),
                 "placeholder": meta.get("placeholder", ""),
                 "needs": list(meta["needs"]) if meta.get("needs") else None,
-                "choices": STATIC_CHOICES.get(name),
+                "choices": _choices_for(name),
             }
             for name, meta in SCHEMA.items()
         },

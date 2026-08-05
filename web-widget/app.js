@@ -1955,21 +1955,39 @@
   // Sound previews use the DRAFT values — the pack you've just picked and the
   // file you've just chosen — so you hear what you're about to save, not what
   // is currently live.
+  // What each pack bundles as files, so a preview plays what a caller would
+  // really hear rather than always demonstrating the synthesized set.
+  let packAssets = {};
+  async function loadPackAssets() {
+    try {
+      const d = await fetch('/sound-packs').then((r) => r.json());
+      packAssets = Object.fromEntries(
+        (d.packs || []).map((p) => [p.id, p.assets || {}]));
+    } catch (e) { packAssets = {}; }
+  }
+
   function previewSound(kind) {
     const raw = ($('sound_' + kind).value || '').trim();
-    const url = raw.startsWith(UPLOAD_PREFIX)
+    const chosen = $('sound_pack').value || 'classic';
+    const configured = raw.startsWith(UPLOAD_PREFIX)
       ? '/sounds/' + encodeURIComponent(raw.slice(UPLOAD_PREFIX.length)) : raw;
+    // Same order the server resolves in: configured, then bundled, then the
+    // synthesized fallback (which playSound reaches when the url is empty).
+    const bundled = (packAssets[chosen] || {})[kind] || '';
+    const url = configured || bundled;
     const prev = live && live.sounds;
     live = live || {};
-    live.sounds = { enabled: true, pack: $('sound_pack').value || 'classic' };
+    live.sounds = { enabled: true, pack: chosen };
     live.sounds[kind] = url;
     playSound(kind);
+    const setName = ($('sound_pack').selectedOptions[0] || {}).textContent;
     const out = $('soundResult');
     out.className = 'result on';
-    out.textContent = url
-      ? 'Playing your file: ' + url
-      : 'Playing the built-in ' + kind + ' sound from the '
-        + ($('sound_pack').selectedOptions[0] || {}).textContent + ' set.';
+    out.textContent = configured
+      ? 'Playing your file: ' + configured
+      : bundled
+        ? `Playing the ${kind} sound bundled with the ${setName} set.`
+        : `Playing the built-in ${kind} sound from the ${setName} set.`;
     setTimeout(() => { if (prev) live.sounds = prev; }, 1500);
   }
 
@@ -2035,6 +2053,9 @@
   }
 
   async function loadSounds() {
+    // Bundled packs need no auth and are useful even if the upload list
+    // fails, so they load independently.
+    loadPackAssets();
     try {
       const r = await afetch('/settings/sounds');
       if (!r.ok) return;

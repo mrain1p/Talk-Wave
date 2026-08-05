@@ -220,17 +220,53 @@ class CallSession:
     async def greet(self) -> None:
         await lifecycle.greet(self.session, self.cfg)
 
+    def _note_if_nothing_was_heard(self, duration: float, final: list) -> None:
+        """Say so, in the record, when a call produced no caller audio.
+
+        An off-LAN caller whose media path never establishes looks exactly like
+        a healthy call from in here: the room is joined, the agent starts, the
+        greeting plays, and then the line drops around fifteen seconds later
+        with nothing received. That is what the first outside caller hit, and
+        NOTHING in our own logs said so — the failure was only visible in
+        LiveKit's ICE candidates and the caller's browser console.
+
+        This can't distinguish a broken media path from a silent caller, so it
+        doesn't pretend to. It records the shape and names the candidates in
+        order of likelihood, which is what a future investigation needs.
+        """
+        if self.heard["n"] or not self.record:
+            return
+
+        dj_spoke = any(who == "dj" and text.strip() for who, text in final)
+        log.warning(
+            "no caller audio received room=%s duration=%.0fs dj_spoke=%s — "
+            "media path, blocked microphone, or a silent caller",
+            self.ctx.room.name, duration, dj_spoke,
+        )
+        self.record.problem(
+            f"No audio was ever received from the caller ({duration:.0f}s on the "
+            f"line, the DJ {'did' if dj_spoke else 'did not'} speak). Three "
+            "things look like this from the booth: the caller was off-LAN and "
+            "the media path never established, their microphone was blocked, "
+            "or they genuinely said nothing. If they reported \"Could not "
+            "connect\" after about fifteen seconds of ringing, it is the first "
+            "— see off-LAN calling in the README."
+        )
+
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
+        duration = time.time() - self.started_at
+        reason = getattr(self.ctx, "shutdown_reason", "") or ""
+
         # One greppable line per call: what happened, at a glance.
         log.info(
             "call ended room=%s persona=%s duration=%.0fs caller_turns=%d "
-            "llm=%s/%s tts=%s",
+            "llm=%s/%s tts=%s ended=%s",
             self.ctx.room.name, self.persona.get("name"),
-            time.time() - self.started_at, self.heard["n"],
+            duration, self.heard["n"],
             self.cfg.get("llm_provider"), self.cfg.get("llm_model"),
-            self.cfg.get("tts_mode"),
+            self.cfg.get("tts_mode"), reason or "-",
         )
         # Written before the on-air handoff, which makes an LLM call and can
         # fail — the record of the call must not depend on it succeeding.
@@ -245,7 +281,9 @@ class CallSession:
                 self.record.finalise(final)
             except Exception as e:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
-            self.record.write(reason=getattr(self.ctx, "shutdown_reason", "") or "")
+                final = []
+            self._note_if_nothing_was_heard(duration, final)
+            self.record.write(reason=reason)
 
         await lifecycle.release_call_slot(self.ctx.room.name)
         await lifecycle.send_on_air_callback(
