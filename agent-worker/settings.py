@@ -896,6 +896,17 @@ def save(patch: dict) -> dict:
         tmp = SETTINGS_PATH.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(current, f, indent=2, sort_keys=True)
+        # Set the mode explicitly rather than inheriting whatever the
+        # filesystem hands out. On a Synology share the default for a newly
+        # created file is 000 — no bits at all — which root ignores and a
+        # normal user cannot read past. secrets.json and admin-auth.json were
+        # only ever spared that because they chmod themselves; this file did
+        # not, and it is why a non-root container could not read its own
+        # settings. 0644: config, safe to copy or diff, unlike the other two.
+        try:
+            os.chmod(tmp, 0o644)
+        except OSError:
+            pass  # best effort; Windows ACLs don't map cleanly
         tmp.replace(SETTINGS_PATH)
 
     log.info("settings updated: %s", ", ".join(sorted(patch)) or "(none)")

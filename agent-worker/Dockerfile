@@ -25,11 +25,14 @@ COPY assets/ /assets/
 #   docker build --build-arg APP_UID=1026 --build-arg APP_GID=100 ...
 #
 # UPGRADING AN EXISTING DEPLOYMENT: files already in data/ were written by root
-# and will not be readable by this user. Chown them on the HOST first, or the
-# app comes up with no settings, no keys and no password:
+# and will not be readable by this user. Fix them on the HOST first — BOTH the
+# owner and the modes — or the app comes up with no settings, no keys and no
+# password:
 #   chown -R 1000:1000 /path/to/wave-talk/data
-# Safe to run while the old container is still up — root ignores the mode bits,
-# so the running deployment is unaffected and the new one can read its files.
+#   chmod -R u+rwX     /path/to/wave-talk/data
+# The chmod matters as much as the chown: a Synology share creates files with
+# mode 000, which root walks straight through and an owner cannot. Safe to run
+# while the old container is still up — root ignores the mode bits either way.
 # The password store now refuses to read as "unconfigured" when it cannot be
 # opened (admin_auth.unreadable), so this fails shut and says so rather than
 # quietly serving an open panel.

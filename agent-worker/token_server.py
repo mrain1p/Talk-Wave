@@ -667,6 +667,16 @@ async def handle_sound_upload(request: web.Request) -> web.Response:
         if not size:
             tmp.unlink(missing_ok=True)
             return _cors(request, web.json_response({"error": "empty file"}, status=400))
+        # Explicit modes, as everywhere else under data/: a Synology share
+        # creates files and directories with no permission bits at all, which
+        # root walks through and a normal user cannot. An uploaded sound that
+        # the server can write but not read back is a ring tone that silently
+        # never plays.
+        for path, mode in ((SOUNDS_DIR, 0o755), (tmp, 0o644)):
+            try:
+                os.chmod(path, mode)
+            except OSError:
+                pass
         tmp.replace(target)
     except Exception as e:
         log.warning("sound upload failed: %s", e)

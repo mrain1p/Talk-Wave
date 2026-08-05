@@ -124,11 +124,25 @@ class CallRecord:
         )
         try:
             CALLS_DIR.mkdir(parents=True, exist_ok=True)
+            # Explicit, for the same reason settings.save() is: a Synology
+            # share creates both directories and files with mode 000, which
+            # root ignores and a normal user cannot get past — so the
+            # directory a non-root container writes transcripts into would be
+            # one it could not then list. A transcript is both sides of a
+            # stranger's call, so owner-only rather than world-readable.
+            try:
+                os.chmod(CALLS_DIR, 0o700)
+            except OSError:
+                pass
             stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(self.started))
             path = CALLS_DIR / f"{stamp}-{self.room[-12:]}.json"
             tmp = path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=1, ensure_ascii=False)
+            try:
+                os.chmod(tmp, 0o600)
+            except OSError:
+                pass
             tmp.replace(path)
             _prune()
             log.info("call transcript written: %s", path.name)

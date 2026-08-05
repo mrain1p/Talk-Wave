@@ -353,12 +353,20 @@ reopened without passing either again.
 mounted from the host — so the container running as root meant root on those
 files, and on anything else that mount could reach. It now runs as uid 1000.
 
-**Chown that directory before you pull**, because the files in it were written
-by root and the new user cannot read them:
+**Fix ownership *and* modes before you pull.** Both, not just the first:
 
 ```
 chown -R 1000:1000 /path/to/wave-talk/data
+chmod -R u+rwX     /path/to/wave-talk/data
 ```
+
+The chmod is not belt-and-braces. Some filesystems — Synology shares among them
+— create files with **no permission bits at all**, mode `000`. Root ignores
+that and reads them anyway, so it never showed; a normal user cannot, even as
+the owner, so chowning alone leaves the app unable to read its own settings.
+`u+rwX` gives the owner read/write and marks directories traversable without
+opening anything to anyone else. From 0.9.66 the app sets modes explicitly on
+everything it writes, so this is a one-time repair of files already on disk.
 
 Do it while the old container is still running — root ignores the mode bits, so
 the running deployment carries on unaffected and the new one comes up able to

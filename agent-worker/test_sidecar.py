@@ -2999,6 +2999,50 @@ class TestAnUnreadablePasswordStoreFailsClosed(_TempStores):
         self.assertIn("CALLIN_ADMIN_KEY", why)
 
 
+@unittest.skipUnless(hasattr(os, "getuid"), "POSIX modes only")
+class TestWrittenFilesGetExplicitModes(_TempStores):
+    """Everything written into data/ sets its own mode, rather than taking
+    whatever the filesystem hands out.
+
+    Found on a real deployment, not in theory: a Synology share creates files
+    with mode 000 — no bits at all. Root ignores that, so for as long as the
+    container ran as root nothing showed. The moment it ran as uid 1000, the
+    app could not read its own settings.json even though it OWNED it, and
+    chowning the directory did not help because the bits were never there.
+
+    secrets.json and admin-auth.json were only ever spared because they chmod
+    themselves. So now so does everything else.
+    """
+
+    def test_settings_are_readable_by_their_owner(self):
+        settings_store.save({"llm_model": "gpt-4.1-mini"})
+        mode = settings_store.SETTINGS_PATH.stat().st_mode & 0o777
+        self.assertTrue(mode & 0o400, f"settings.json came out {mode:03o}")
+        self.assertTrue(mode & 0o200, f"settings.json is not writable: {mode:03o}")
+
+    def test_the_secret_stores_stay_owner_only(self):
+        # The other half: fixing the readable ones must not loosen these.
+        secrets_store.save({"openai_api_key": "sk-test"})
+        self.assertEqual(secrets_store.SECRETS_PATH.stat().st_mode & 0o777, 0o600)
+
+    def test_a_call_transcript_and_its_directory_are_reachable(self):
+        from call import record
+
+        old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name) / "calls"
+        try:
+            r = record.CallRecord(room="room-abcdefghijkl")
+            r.write("test")
+            written = list(record.CALLS_DIR.glob("*.json"))
+            self.assertTrue(written, "no transcript was written")
+            # A directory with no execute bit cannot be listed by its owner,
+            # so the transcripts would be write-only in practice.
+            self.assertTrue(record.CALLS_DIR.stat().st_mode & 0o100)
+            self.assertTrue(written[0].stat().st_mode & 0o400)
+        finally:
+            record.CALLS_DIR = old
+
+
 class TestJoinTokensExpire(unittest.TestCase):
     def test_a_minted_token_is_short_lived(self):
         """A join token is the only thing between a stranger and an agent job.
