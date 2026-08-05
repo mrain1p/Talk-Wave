@@ -93,10 +93,15 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
+  /* One button shape for the whole app. Every control had picked up its own
+     radius and colour over time — 999px pills next to 7px squares, three
+     different greys — so nothing read as belonging to the same family. 10px
+     is the shape; colour is the only thing that says primary or secondary. */
   button {
-    font: inherit; font-weight: 650; font-size: 15px;
-    padding: 14px 20px; border-radius: 999px; border: none; cursor: pointer;
-    transition: filter .15s ease, opacity .15s ease;
+    font: inherit; font-weight: 650; font-size: 13.5px;
+    padding: 10px 17px; border-radius: 10px; border: none; cursor: pointer;
+    background: var(--line2); color: var(--text);
+    transition: filter .15s ease, opacity .15s ease, background .15s ease;
   }
   button:hover:not(:disabled) { filter: brightness(1.15); }
   button:disabled { opacity: .5; cursor: default; }
@@ -104,7 +109,7 @@
      main event when it's really just "start". */
   #callBtn {
     background: var(--accent); color: #fff;
-    padding: 10px 22px; font-size: 13.5px; min-width: 140px;
+    padding: 11px 24px; font-size: 14px; min-width: 150px; border-radius: 11px;
   }
   /* Call progression on the button itself: Ringing (amber, blinking — the
      thinking scheme), then Answering and On the line both green (the line is
@@ -115,7 +120,7 @@
   #callBtn.ringing, #callBtn.answering, #callBtn.live {
     background: var(--line2);
     display: inline-flex; align-items: center; height: 28px; min-width: 0;
-    padding: 0 13px; border-radius: 999px;
+    padding: 0 13px; border-radius: 9px;
     font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
     font-weight: 700;
   }
@@ -136,7 +141,7 @@
   .actionrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
   .pill {
     display: inline-flex; align-items: center; gap: 6px; height: 28px;
-    padding: 0 12px; border-radius: 999px;
+    padding: 0 12px; border-radius: 9px;
     background: var(--bg); border: 1px solid var(--line2); color: var(--dim);
     font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700;
     transition: color .2s, border-color .2s;
@@ -377,7 +382,21 @@
     color: var(--dimmer); font-weight: 500; opacity: .85;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
   }
-  details.sec > .body { padding: 2px 0 12px; }
+  /* The body of a section is recessed against its header, so it is obvious
+     where one section ends and the next begins when several are open. */
+  details.sec > .body {
+    padding: 14px 14px 12px; margin: 0 0 12px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 11px;
+  }
+  /* …which means anything that WAS recessed has to lift, or it disappears
+     into the body it sits on. */
+  details.sec > .body .result,
+  details.sec > .body .banner,
+  details.sec > .body .snippet,
+  details.sec > .body .soundlist li,
+  details.sec > .body input,
+  details.sec > .body select,
+  details.sec > .body textarea { background: var(--panel); }
 
   /* Diagnostics rows: same folded look as a settings section, but the action
      lives in the header so a check can be run without opening anything. The
@@ -387,7 +406,7 @@
     flex: 0 0 auto; margin-left: 10px;
     background: var(--line2); color: var(--text);
     font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-    font-weight: 700; padding: 5px 13px; border-radius: 7px;
+    font-weight: 700; padding: 6px 14px;
   }
   .runbtn:hover { background: var(--accent); color: #fff; }
   .runbtn.running { opacity: .55; }
@@ -417,10 +436,12 @@
   .banner.ok { border-color: var(--ok); color: var(--ok); }
   /* Buttons created from JS use these instead of inline colors. */
   .btnaccent { background: var(--accent); color: #fff; }
-  .btnquiet { flex: 0 0 auto; background: var(--line2); color: var(--dim);
-              font-size: 12px; padding: 8px 12px; }
+  .btnquiet { flex: 0 0 auto; background: transparent; color: var(--dim);
+              box-shadow: inset 0 0 0 1px var(--line2);
+              font-size: 12.5px; padding: 9px 14px; }
+  .btnquiet:hover:not(:disabled) { color: var(--text); background: var(--line2); }
   .testrow { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
-  .testrow button { background: var(--line2); color: var(--text); font-size: 12.5px; padding: 9px 15px; }
+  .testrow button { font-size: 12.5px; padding: 9px 15px; }
 
   /* A section with two jobs in it (set the admin password / set the guest
      code) needs a divider inside the section, or the two runs of fields read
@@ -493,10 +514,9 @@
     display: flex; gap: 10px; align-items: center; margin-top: 16px;
     padding-top: 16px; border-top: 1px solid var(--line);
   }
-  .actions button { flex: 0 0 auto; font-size: 13.5px; padding: 11px 20px; }
+  .actions button { flex: 0 0 auto; padding: 11px 20px; }
   #saveBtn { background: var(--accent); color: #fff; }
   #saveBtn.clean { background: var(--line2); color: var(--dim); }
-  #resetBtn { background: var(--line2); color: var(--text); }
   #saveMsg { font-size: 12px; color: var(--dimmer); }
   /* "What callers can ask" reference */
   .asklist { list-style: none; margin: 0; padding: 0; }
