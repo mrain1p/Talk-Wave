@@ -3775,6 +3775,50 @@ class TestAVoiceTheBackendCannotSpeakIsNotSilence(unittest.TestCase):
         self.assertIs(token_server.tts_voice_list, available_voices)
 
 
+class TestTheCloseReasonIsReadable(unittest.TestCase):
+    """0.9.76 mapped the SDK's close reason to plain words and assumed the enum
+    stringified to its bare value. It does not: str() gives
+    "CloseReason.USER_INITIATED". The mapping therefore never matched, and the
+    first real call after it shipped wrote that whole repr into endedBecause —
+    the raw thing the mapping existed to avoid showing.
+
+    Caught by reading a real record (2026-08-05, 456758bdbbae), not by a test,
+    which is the wrong order and is why this one exists.
+    """
+
+    def _reason(self, raw):
+        import types
+
+        from call import lifecycle
+
+        ended = {"reason": ""}
+        captured = {}
+        session = types.SimpleNamespace(
+            on=lambda name, fn: captured.__setitem__(name, fn))
+        lifecycle.attach_close_reason(session, ended)
+        captured["close"](types.SimpleNamespace(reason=raw))
+        return ended["reason"]
+
+    def test_the_qualified_enum_form_is_understood(self):
+        self.assertEqual(
+            self._reason("CloseReason.PARTICIPANT_DISCONNECTED"),
+            "the caller hung up")
+
+    def test_the_bare_value_is_understood_too(self):
+        # Whichever the SDK hands over, since it has been both.
+        self.assertEqual(
+            self._reason("PARTICIPANT_DISCONNECTED"), "the caller hung up")
+
+    def test_an_unknown_reason_is_passed_through_rather_than_swallowed(self):
+        self.assertEqual(self._reason("CloseReason.SOMETHING_NEW"),
+                         "CloseReason.SOMETHING_NEW")
+
+    def test_a_broken_event_does_not_take_the_call_down(self):
+        # This runs on the way out of a call, after the audio is done but
+        # before the on-air handoff.
+        self.assertEqual(self._reason(None), "")
+
+
 class TestJoinTokensExpire(unittest.TestCase):
     def test_a_minted_token_is_short_lived(self):
         """A join token is the only thing between a stranger and an agent job.

@@ -149,8 +149,13 @@ def attach_close_reason(session: AgentSession, ended: dict) -> None:
     """
     def _closed(ev) -> None:
         raw = str(getattr(ev, "reason", "") or "")
-        # The enum is a plain str subclass, so this is the value either way.
-        ended["reason"] = _CLOSE_REASONS.get(raw.upper(), raw)
+        # str() on the enum gives "CloseReason.USER_INITIATED", not the bare
+        # value — the assumption that it was a plain str subclass was wrong,
+        # and the first real call after 0.9.76 wrote that whole repr into the
+        # record instead of "the caller hung up". Take the last segment either
+        # way, so it works whichever the SDK hands over.
+        name = raw.rsplit(".", 1)[-1].strip().upper()
+        ended["reason"] = _CLOSE_REASONS.get(name, raw)
 
     try:
         session.on("close", _closed)
