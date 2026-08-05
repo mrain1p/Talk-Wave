@@ -75,7 +75,14 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # real options first. Costs one extra turn; makes the call a conversation
     # rather than a form.
     "shape_vague_requests": (None, False),
-    "allow_announcements": (None, True),
+    # OFF by default from 0.9.89. Unlike a request, this lands on everyone
+    # listening rather than on the caller who asked: a stranger hands the DJ a
+    # line and the station reads it, in persona, to the whole audience. The
+    # allowlist keeps the destructive tools off a call line and the conduct
+    # prompt pushes back — but that is a model declining, not a gate refusing,
+    # and a patient caller gets words onto the air. Defaulting it on meant
+    # every deployment shipped that way without choosing it.
+    "allow_announcements": (None, False),
     "allow_library_search": (None, True),
     # Let a caller who has picked a track out of the search results have THAT
     # recording queued, rather than the words being resolved a second time.
