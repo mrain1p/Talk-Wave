@@ -631,12 +631,33 @@ class TestCallPrivacy(_TempStores):
     def test_prompt_tells_the_dj_how_to_close_a_call(self):
         text = self._prompt({})
         self.assertIn("Closing a call", text)
-        self.assertIn("anything else before I let you go?", text)
+        self.assertIn("anything else before i let you go?", text.lower())
         self.assertIn("end_call", text)
         # And the guard against closing early, which is the real risk.
         self.assertIn("is NOT a call to close", text)
         self.assertIn("nothing good about a short", text)
         self.assertIn("never end a call because it's gone quiet", text.lower())
+
+    def test_the_closing_check_is_the_end_not_a_full_stop_on_every_action(self):
+        # Measured against the live deployment: the closing question landed in
+        # eight of twelve turns, attached to every completed action. The model
+        # was reading "I did the thing" as "the call is over", and momentum
+        # agreed with it — so both places had to stop saying so.
+        text = self._prompt({})
+        self.assertIn("Calls end when the CALLER is finished", text)
+        self.assertIn("is the LAST thing you say in a call", text)
+        self.assertIn("nothing to angle for", text)
+        # Momentum must not undo it by asking for a wind-down after each action.
+        self.assertNotIn("wind toward a close", text)
+        self.assertIn("does NOT mean moving it", text)
+
+    def test_a_refused_hangup_does_not_invite_a_new_subject(self):
+        # A caller who says goodbye inside the first minute was getting the
+        # sign-off AND then a fresh line of questioning, because the refusal
+        # read as "go find something else to talk about".
+        text = self._prompt({})
+        self.assertIn("overruled on the timing, not on the goodbye", text)
+        self.assertIn("Do NOT open a new subject", text)
 
     def test_a_mood_request_either_ships_or_offers_options_never_both(self):
         # The two rules contradict each other, so exactly one must be in the
@@ -1523,7 +1544,11 @@ class TestMainToolLogic(_TempStores):
         end_call = tools[0]
         self.assertEqual(end_call.info.name, "end_call")
         out = asyncio.run(end_call(reason="done"))
-        self.assertIn("Too early", out)
+        self.assertIn("can't close for another", out)
+        # It must refuse the TIMING without inviting a new conversation at
+        # someone who has just said goodbye — that was the observed failure.
+        self.assertIn("not a disagreement about the goodbye", out)
+        self.assertIn("Do NOT open a new subject", out)
 
     def test_ending_a_settled_call_is_allowed_once(self):
         import asyncio, time
@@ -1533,7 +1558,12 @@ class TestMainToolLogic(_TempStores):
         tools = self.control.build_call_control_tools(None, lambda: None, time.time() - 600)
         end_call = tools[0]
         first = asyncio.run(end_call(reason="caller said goodbye"))
-        self.assertIn("say your goodbye", first.lower())
+        self.assertIn("the line is closing", first.lower())
+        # The sign-off is spoken in the same turn as the tool call, so asking
+        # for one here made the caller hear a second, different farewell every
+        # time — observed on a scripted run against the live deployment.
+        self.assertIn("Do not say it again", first)
+        self.assertIn("two or three words", first)
         # A second call must not stack another close task.
         second = asyncio.run(end_call(reason="again"))
         self.assertIn("Already wrapping up", second)
@@ -1562,7 +1592,7 @@ class TestMainToolLogic(_TempStores):
             tools = self.control.build_call_control_tools(
                 FakeCtx(), lambda: None, time.time() - 600)
             said = await tools[0](reason="caller said goodbye")
-            self.assertIn("say your goodbye", said.lower())
+            self.assertIn("the line is closing", said.lower())
             # The close runs in the background; give it room to finish.
             for _ in range(60):
                 await asyncio.sleep(0.1)
