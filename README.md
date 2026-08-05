@@ -235,38 +235,124 @@ Signalling rides your reverse proxy on 443, so the page loads for anyone.
 isn't reachable from the caller's network they get about fifteen seconds of
 ringing and a dead line.
 
-**LAN only — nothing to do.** The default.
+**Pick one of the three below deliberately.** The failure this section exists to
+prevent is not choosing: a config that half-works looks fine from your own
+house and drops every caller who isn't on IPv6, with no error anywhere.
 
-**IPv6 — also nothing to do.** With `use_external_ip: true` LiveKit advertises
-your public IPv6 address, and IPv6 has no NAT, so callers reach it directly
-with no port forwarding. If your ISP gives you IPv6, off-network calling may
-already work — worth knowing, because "it works from my phone" is then not
-evidence that it works for everyone.
+### Which am I on right now?
 
-**IPv4 — one port.** Roughly half of internet users still have no IPv6, and
-office wifi is frequently IPv4-only:
+```bash
+docker logs <livekit container> 2>&1 | grep "using external IPs"
+```
 
-- forward **UDP 7882** (`rtc.udp_port`) to the LiveKit host — one rule, since
-  LiveKit muxes every call over it. **TCP 7881** too as a fallback for networks
-  that block UDP;
-- set `use_external_ip: true`;
-- **do not set `node_ip`** unless you know you need it. It overrides the public
-  address STUN discovers, so a LAN value silently breaks every outside caller
-  while working perfectly on your own network.
+```
+using external IPs  ["2600:4040:.../…", "192.168.1.245/192.168.1.245"]
+                      ^ public IPv6, reachable    ^ LAN only, not reachable
+```
 
-**The risk of opening that port.** It exposes LiveKit's media port to the
-internet: yours to keep patched, and anyone who reaches it can attempt to
-consume bandwidth. Only open it if you actually want outside callers. A public
-port plus no guest code plus generous limits is an open invitation to spend
-your API budget — pair it with a guest code and non-zero limits.
+A **public** address on both lines is option 3. A LAN address on the IPv4 line
+means IPv4 callers cannot reach you — roughly half the internet, including most
+office wifi. The pipeline check's *Browser media path* stage says the same
+thing in words.
 
-**Or don't self-host the media.** Point `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET` and `LIVEKIT_PUBLIC_URL` at a LiveKit Cloud project and
-audio relays through them — no inbound ports, and it includes TURN, the only
-thing that fixes restrictive corporate networks. Everything else stays local.
+---
 
-**Which tier are you on?** Run the pipeline check. *Browser media path* reports
-the addresses the station offered and warns when the only public one is IPv6.
+### Option 1 — LAN only
+
+Nobody outside your network can call. No inbound exposure whatsoever. Right for
+a station with no outside audience, and the honest default.
+
+`livekit.yaml` — see [`livekit.example.yaml`](livekit.example.yaml):
+
+```yaml
+rtc:
+  udp_port: 7882
+  tcp_port: 7881
+  use_external_ip: false     # don't even advertise a public address
+```
+
+Nothing to open, nothing to maintain. Remote callers get ~15s of ringing and a
+dead line, so say so wherever you share the link.
+
+---
+
+### Option 2 — LiveKit Cloud carries the media
+
+Everyone can call. **No inbound port**: the media path is outbound to Cloud.
+Costs an account, a bill, and the audio leaving your network. It also includes
+TURN, which is the only thing that fixes genuinely restrictive corporate
+networks — neither of the other options helps there.
+
+Drop the `livekit-server` service from
+[`docker-compose.yaml`](docker-compose.yaml) entirely and point the two Python
+services at Cloud in `.env`:
+
+```env
+LIVEKIT_URL=wss://<project>.livekit.cloud
+LIVEKIT_API_KEY=<from the Cloud dashboard>
+LIVEKIT_API_SECRET=<from the Cloud dashboard>
+LIVEKIT_PUBLIC_URL=wss://<project>.livekit.cloud
+```
+
+Everything else — the station, the panel, your keys, the transcripts — stays on
+your machine. Only the audio relay moves.
+
+---
+
+### Option 3 — one forwarded UDP port, self-hosted
+
+Everyone can call and the media stays yours. **One router rule.**
+
+`livekit.yaml`:
+
+```yaml
+rtc:
+  udp_port: 7882             # ONE muxed port — not a range
+  tcp_port: 7881
+  use_external_ip: true      # discover the public address via STUN
+  # node_ip:                 # MUST stay unset — see below
+```
+
+Three things have to be true together, and missing any one of them produces the
+silent half-broken state:
+
+1. **`udp_port`, not `port_range_start`/`end`.** A range means one firewall rule
+   per port. LiveKit muxes every call over the single port.
+2. **`node_ip` unset.** It pins the advertised address and *overrides* what
+   `use_external_ip` discovers, so a LAN value works perfectly on your own
+   network and breaks every outside caller.
+3. **The port actually forwarded.** Without it `use_external_ip` finds your
+   public address and then fails to validate it, and LiveKit falls back to
+   advertising the LAN address — the exact half-broken state.
+
+**In your router,** one rule:
+
+| field | value |
+|---|---|
+| Name | `wavetalk-media` |
+| Protocol | **UDP** only |
+| External / WAN port | `7882` |
+| Internal / LAN IP | the LiveKit host, e.g. `192.168.1.245` |
+| Internal port | `7882` |
+| Source / remote | any |
+
+Do **not** forward the `50000–50100` range — that is what `udp_port` replaces.
+Do not forward TCP 7881 unless UDP proves insufficient; one rule is easier to
+reason about than two.
+
+**What that exposes.** LiveKit's media port, and nothing else on the host —
+forwarding is per-port, per-protocol, per-destination. Getting audio in still
+requires ICE credentials and a DTLS fingerprint issued per session over the
+authenticated signalling channel, so the port alone grants nothing. The real
+costs are that it answers unsolicited STUN (a weak ~2–4× reflector), and that
+LiveKit's pre-auth ICE/DTLS parsing becomes reachable from the internet.
+
+Weigh it against what you already expose: if port 443 is open, you are already
+running a public HTTP application with authentication, a settings API and file
+upload. This is a smaller surface than that.
+
+Pair it with a **guest code** and non-zero usage limits. A public media port,
+no guest code and generous limits is an invitation to spend your API budget.
 
 ## Embedding
 
