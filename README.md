@@ -138,8 +138,14 @@ wave-talk/
 ```bash
 cp .env.example .env
 cp livekit.example.yaml livekit.yaml   # generate a fresh secret for it
+mkdir -p data && chown -R 1000:1000 data && chmod -R u+rwX data
 docker compose up -d
 ```
+
+Both processes run as **uid 1000**, so `data/` has to belong to it — that is
+what the third line does. Upgrading an existing deployment needs the same two
+commands run against the data you already have; see
+[Upgrading to 0.9.65](#upgrading-to-0965-or-later-the-container-is-no-longer-root).
 
 **`HOST_IP`** is the one deployment variable — the docker host's LAN address,
 driving LiveKit's advertised media address, the browser URL and the webhook
@@ -176,7 +182,7 @@ through. Every field carries its own help text.
 
 | Group | Section | What it controls |
 |---|---|---|
-| Access | **Passwords** | Admin (controls) and optional guest code (phone). `CALLIN_ADMIN_KEY` is the recovery override |
+| Access | **Passwords** | Admin (controls), optional guest code (phone), and **who can call the booth** — automatic, open, guest code, or admin only. `CALLIN_ADMIN_KEY` is the recovery override |
 | Connect | **Station** | Which SUB/WAVE this answers for, MCP endpoint, admin credentials |
 | Connect | **API keys** | Provider keys, stored server-side, never shown back |
 | Models & voice | **Brains** | LLM provider/model and STT. A local Whisper is baked in and used by default |
@@ -295,8 +301,21 @@ deliberate choice.
 
 **Guest** is optional and protects only the phone: the Call button, `/token`,
 and every embed. There's no username; the code is the whole thing. Admin is
-accepted as a guest code, so an operator carries one password. Leave it empty
-and anyone who loads the page can call, with usage limits as the only guard.
+accepted as a guest code, so an operator carries one password.
+
+**Who can call the booth** is its own setting beside them, not something
+inferred from whether a guest code happens to exist:
+
+| | |
+|---|---|
+| **Automatic** (default) | open until you set a guest code, then required |
+| **Open** | anyone who loads the page can call |
+| **Guest code** | the code you hand out, or the admin password |
+| **Admin only** | the phone is closed to callers — useful while setting up |
+
+Choosing *Guest code* or *Admin only* without having set that password refuses
+every call, and the panel says so, rather than falling open. The panel itself
+is admin-only in all four.
 
 Lockout is 5 failures per address → 5-minute cooldown, a second round → banned
 until restart, with guest failures counted separately. Locked out? Set
@@ -347,7 +366,7 @@ reopened without passing either again.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
    Protect the volume; never commit `.env` or `data/`.
 
-### Upgrading to 0.9.65: the container is no longer root
+### Upgrading to 0.9.65 or later: the container is no longer root
 
 `data/` holds your API keys and password hashes as plain files, and it is bind
 mounted from the host — so the container running as root meant root on those
@@ -417,6 +436,13 @@ names the fix. The classics:
   https one; the *Station stream* stage says so outright.
 - **Locked out of the panel** — set `CALLIN_ADMIN_KEY`, or restart to clear
   bans. To remove the password entirely, delete `data/admin-auth.json`.
+- **The panel has forgotten everything, or the login says a file cannot be
+  read** — `data/` is not readable by the container's user, which is uid 1000
+  from 0.9.65. Nothing is lost; it just isn't being read. Fix owner *and*
+  modes on the host — `chown -R 1000:1000 data && chmod -R u+rwX data` — and
+  recreate. Both processes print the same instruction at startup, naming the
+  files. Ownership alone is not enough on filesystems that create files with
+  mode `000` (Synology shares do). `CALLIN_ADMIN_KEY` gets you in meanwhile.
 - **Voice test 400s on local TTS** — the voice id doesn't exist on that server
   (cloud names and local ids aren't interchangeable). *Reload voice list* after
   switching backend.
@@ -462,5 +488,9 @@ cd agent-worker && python -m unittest test_sidecar
 
 covers the speech filter, settings precedence, secrets and passwords, the
 lockout ladder, usage limits, the tool registry, prompt assembly, sound packs,
-the call record and the call's lifecycle seams. CI runs it before building an
-image, so a failing suite never reaches `:latest`.
+the call record and the call's lifecycle seams — plus the security posture
+itself: that a stored key only travels to a saved host, that a caller cannot
+name their own address, that an unreadable password store closes the panel and
+the phone rather than opening them, and that files written into `data/` set
+their own permissions. CI runs it before building an image, so a failing suite
+never reaches `:latest`.

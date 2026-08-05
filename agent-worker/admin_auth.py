@@ -137,6 +137,17 @@ def is_set() -> bool:
 
 
 def guest_is_set() -> bool:
+    """Same rule as is_set(), and for a sharper reason.
+
+    `front_access: auto` — the default — is "open until a guest code exists",
+    so this answering False is what holds the phone open. An unreadable store
+    answering False would swing the line open to anyone the moment a file
+    permission went wrong, which is the door-fell-open failure the explicit
+    modes were written to avoid. Unreadable means "assume a code is set";
+    verify_guest then cannot match it, so the line refuses instead.
+    """
+    if unreadable():
+        return True
     return bool(_slot(_read(), "guest").get("hash"))
 
 

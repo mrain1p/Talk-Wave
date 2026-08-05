@@ -2998,6 +2998,31 @@ class TestAnUnreadablePasswordStoreFailsClosed(_TempStores):
         # An operator staring at "wrong password" has no way to guess this.
         self.assertIn("CALLIN_ADMIN_KEY", why)
 
+    def test_the_phone_does_not_swing_open_either(self):
+        """The sharper half. front_access `auto` — the default — means "open
+        until a guest code exists", so guest_is_set() answering False is what
+        holds the line open. If an unreadable store answered False there, one
+        bad file permission would open the phone to anyone, which is precisely
+        the failure the explicit access modes exist to prevent."""
+        self.admin_auth.set_guest_password("a-real-guest-code")
+        self.assertTrue(self.admin_auth.guest_is_set())
+
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        self.assertTrue(
+            self.admin_auth.guest_is_set(),
+            "an unreadable store read as 'no guest code', which opens the line")
+        self.assertFalse(self.admin_auth.verify_guest("a-real-guest-code"))
+
+    def test_the_gate_refuses_on_auto_when_the_store_is_unreadable(self):
+        # End to end through the real gate, not just the store: `auto` is the
+        # shipped default, so this is the path an ordinary deployment takes.
+        import token_server
+
+        settings_store.save({"front_access": "auto"})
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        self.assertIsNotNone(token_server._guest_check("", "1.2.3.4"))
+        self.assertIsNotNone(token_server._guest_check("any-code", "1.2.3.4"))
+
 
 @unittest.skipUnless(hasattr(os, "getuid"), "POSIX modes only")
 class TestWrittenFilesGetExplicitModes(_TempStores):
