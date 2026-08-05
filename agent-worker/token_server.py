@@ -358,7 +358,13 @@ async def handle_live(request: web.Request) -> web.Response:
                     # Whether the caller must enter a code before the line
                     # opens. The card asks for it up front rather than letting
                     # them press Call and be refused.
-                    "guestRequired": admin_auth.guest_is_set(),
+                    # Derived from the policy, not from whether a password
+                    # exists — the widget must gate on the same rule the
+                    # server enforces, or the button lies.
+                    "guestRequired": (
+                        admin_auth.guest_is_set()
+                        if str(cfg.get("front_access") or "auto").lower() == "auto"
+                        else str(cfg.get("front_access")).lower() != "open"),
                     # The operator has closed the line; the card says so
                     # instead of offering a button that can't work.
                     "callsPaused": bool(cfg.get("calls_paused")),
@@ -770,21 +776,50 @@ def _guest_check(key: str, ip: str) -> str | None:
     """The front door for CALLING, as opposed to configuring. Returns a
     caller-facing reason to refuse, or None to allow.
 
-    Open unless a guest password has been set. Kept separate from the panel
-    gate on purpose: the guest code buys you the phone, never the controls.
-    Failed guest attempts are counted under their own key, so a caller
-    fumbling the code can't lock the operator out of the panel.
+    Governed by `front_access`, not by whether a password happens to exist.
+    Inferring the policy from "is a guest code set" meant the answer changed
+    as a side effect of setting or clearing one, which is not something an
+    operator should have to reason about.
+
+        open   anyone who can load the page
+        guest  the guest code, or the admin password
+        admin  the admin password only
+
+    Kept separate from the panel gate on purpose: the guest code buys you the
+    phone, never the controls. Failed attempts are counted under their own key,
+    so a caller fumbling the code can't lock the operator out of the panel.
     """
-    if not admin_auth.guest_is_set():
+    import settings as settings_store
+
+    mode = str(settings_store.load().get("front_access") or "auto").lower()
+    if mode == "open":
         return None
+    # The historical rule, kept as the default so an upgrade cannot silently
+    # close a line that was working. Here the password decides the policy;
+    # in the explicit modes below the policy decides, and a missing password
+    # is a misconfiguration rather than an invitation.
+    if mode == "auto" and not admin_auth.guest_is_set():
+        return None
+
+    # Nothing to check against. Refusing is the safe reading of "a password is
+    # required": an unconfigured gate must not silently become an open door.
+    if mode == "admin" and not _auth_configured():
+        return "the booth line isn't taking calls yet"
+    if mode == "guest" and not (admin_auth.guest_is_set() or _auth_configured()):
+        return "the booth line isn't taking calls yet"
 
     bucket = "guest:" + ip
     gate = _auth_gate(bucket)
     if gate:
         return gate
-    if key and (admin_auth.verify_guest(key) or _key_valid(key)):
-        _auth_clear(bucket)
-        return None
+    if key:
+        # Admin is accepted in guest mode so an operator carries one password;
+        # in admin mode only the admin password opens the phone.
+        ok = _key_valid(key) if mode == "admin" else (
+            admin_auth.verify_guest(key) or _key_valid(key))
+        if ok:
+            _auth_clear(bucket)
+            return None
     return _auth_fail(bucket, "code") if key else "code required"
 
 

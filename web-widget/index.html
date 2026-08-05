@@ -156,6 +156,20 @@
           too, so you only carry one. Both are stored as salted hashes, never
           plaintext.</p>
 
+        <h4 class="subhead">Who can call the booth</h4>
+        <div class="row">
+          <label for="front_access">Phone access</label>
+          <select id="front_access"></select>
+        </div>
+        <p class="hint wide">This governs the <strong>phone</strong> only — the
+          panel is admin-only whatever you pick. <strong>Open</strong> suits a
+          trusted network; on a public page it is an invitation to spend your
+          API budget. <strong>Guest code</strong> asks callers for the code you
+          hand out. <strong>Admin only</strong> closes the phone to callers
+          entirely, which is the safe setting while you are still setting up.
+          Picking Guest or Admin without having set that password means nobody
+          can call — the tag beside this section says so.</p>
+
         <h4 class="subhead">Admin — the controls</h4>
         <div class="row" id="curPwRow">
           <label for="sec_current_pw">Current password</label>

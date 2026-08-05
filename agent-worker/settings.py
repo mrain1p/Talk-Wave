@@ -178,6 +178,21 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # who isn't on the LAN. Point this at the station's public https stream.
     "tune_in_url":      ("SUBWAVE_STREAM_URL", ""),
 
+    # Who may reach the PHONE. The panel is always admin-only and is not
+    # affected by this.
+    #
+    #   auto   open until a guest code is set, then required — what this has
+    #          always done, kept as the default so upgrading changes nothing
+    #   open   anyone who can load the page can call, code or no code
+    #   guest  the guest code (or the admin password) is required
+    #   admin  the admin password only — the phone is closed to callers
+    #
+    # `auto` exists rather than being tidied away because the alternative was
+    # a default that silently stopped every existing deployment from taking
+    # calls. The explicit modes are the ones that refuse when their password
+    # is missing; auto is the one that reads the password to decide.
+    "front_access":     (None, "auto"),
+
     # --- the widget itself, as a caller sees it --------------------------
     # A caller staring at one button has no idea a phone-in can do anything
     # beyond requests. This puts the same live reference the panel shows the
@@ -393,6 +408,16 @@ SCHEMA: dict[str, dict] = {
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
         help="Hard limit on call length. The DJ signs off in character first rather "
              "than the audio just stopping. 600 = ten minutes."),
+    "front_access": dict(group="security", kind="select",
+        label="Who can call the booth",
+        help="The panel is admin-only always — this is about the PHONE. "
+             "Open lets anyone who loads the page call, which is right on a "
+             "trusted network and an invitation to spend your API budget on a "
+             "public one. Guest code requires the code you hand out (the admin "
+             "password is accepted too, so you carry one). Admin only closes "
+             "the phone to callers entirely — useful while you are still "
+             "setting up. Choosing Guest or Admin without having set that "
+             "password means nobody can call, and the panel says so."),
     "show_caller_help": dict(group="call", kind="check",
         label="Show callers what they can ask",
         help="Adds a small button to the call card that opens the same live "
@@ -594,6 +619,12 @@ def mcp_tools_payload() -> list[dict]:
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
+    "front_access": [
+        ("auto", "Automatic — open until you set a guest code"),
+        ("open", "Open — anyone who loads the page can call"),
+        ("guest", "Guest code — callers need the code you share"),
+        ("admin", "Admin only — the phone is closed to callers"),
+    ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),
         ("light", "Light"),

@@ -341,6 +341,87 @@ class TestNothingToSay(_TempStores):
         self.assertIn("Alright", sent)
 
 
+class TestFrontDoorPolicy(_TempStores):
+    """Who may reach the PHONE, as opposed to the panel.
+
+    This used to be inferred from whether a guest password happened to exist,
+    so the policy changed as a side effect of setting or clearing one. It is
+    now an explicit choice, and the property that matters most is the last
+    test: an unconfigured gate must refuse, never fall open.
+    """
+
+    def _check(self, mode: str, key: str = "") -> str | None:
+        import admin_auth  # noqa: F401  (imported for the reset in _TempStores)
+        import token_server
+
+        settings_store.save({"front_access": mode})
+        token_server._auth_state.clear()
+        return token_server._guest_check(key, "10.0.0.9")
+
+    def test_auto_is_the_old_behaviour_and_the_default(self):
+        # The default has to leave existing deployments exactly as they were:
+        # a line that took calls yesterday must take them after an upgrade.
+        import admin_auth
+
+        self.assertEqual(settings_store.load()["front_access"], "auto")
+        admin_auth.clear_guest_password()
+        self.assertIsNone(self._check("auto"), "auto closed a line that had no code")
+        admin_auth.set_guest_password("guest-code")
+        self.assertEqual(self._check("auto"), "code required")
+        self.assertIsNone(self._check("auto", "guest-code"))
+
+    def test_open_lets_anyone_call(self):
+        import admin_auth
+
+        admin_auth.set_guest_password("guest-code")
+        self.assertIsNone(self._check("open"))
+        self.assertIsNone(self._check("open", "anything"))
+
+    def test_guest_mode_wants_the_code(self):
+        import admin_auth
+
+        admin_auth.set_password("admin-pw")
+        admin_auth.set_guest_password("guest-code")
+        self.assertEqual(self._check("guest"), "code required")
+        self.assertIsNone(self._check("guest", "guest-code"))
+        # An operator carries one password: admin is accepted as a guest code.
+        self.assertIsNone(self._check("guest", "admin-pw"))
+        self.assertIsNotNone(self._check("guest", "wrong"))
+
+    def test_admin_mode_closes_the_phone_to_guests(self):
+        import admin_auth
+
+        admin_auth.set_password("admin-pw")
+        admin_auth.set_guest_password("guest-code")
+        self.assertIsNone(self._check("admin", "admin-pw"))
+        # The guest code is a valid code — just not for this door.
+        self.assertIsNotNone(self._check("admin", "guest-code"))
+        self.assertEqual(self._check("admin"), "code required")
+
+    def test_an_unconfigured_gate_refuses_rather_than_opening(self):
+        # The property worth having. Selecting a password-based policy without
+        # having set that password must not silently behave like "open" — that
+        # is how a deployment ends up publicly callable while its operator
+        # believes it is locked.
+        import admin_auth
+        import token_server
+
+        # Isolated rather than relying on store state: this asserts the
+        # no-password-configured branch specifically.
+        real_admin, real_guest = token_server._auth_configured, admin_auth.guest_is_set
+        token_server._auth_configured = lambda: False
+        admin_auth.guest_is_set = lambda: False
+        try:
+            for mode in ("guest", "admin"):
+                with self.subTest(mode=mode):
+                    reason = self._check(mode)
+                    self.assertIsNotNone(reason, "an unset gate fell open")
+                    self.assertIn("isn't taking calls", reason)
+        finally:
+            token_server._auth_configured = real_admin
+            admin_auth.guest_is_set = real_guest
+
+
 class TestCallerContext(unittest.TestCase):
     """What we can say about a caller when a call goes wrong.
 
