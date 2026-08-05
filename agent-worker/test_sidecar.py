@@ -3119,6 +3119,25 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
         self.assertTrue(mode & 0o400, f"settings.json came out {mode:03o}")
         self.assertTrue(mode & 0o200, f"settings.json is not writable: {mode:03o}")
 
+    def test_the_data_dir_check_never_stops_the_worker(self):
+        """It runs at module scope in main.py, before the worker registers with
+        LiveKit. A diagnostic that can prevent every call from happening is a
+        bad trade for a log line, so it swallows its own failures — the same
+        reasoning as record.write(), which must not cost the on-air handoff."""
+        original = settings_store.SETTINGS_PATH
+        try:
+            settings_store.SETTINGS_PATH = Path("\x00nonsense") / "settings.json"
+            # assertLogs IS the assertion: it must not raise, and it must have
+            # gone down the swallow path rather than quietly returning early
+            # for some unrelated reason.
+            with self.assertLogs("callin.settings", level="DEBUG") as caught:
+                settings_store.check_data_dir()
+            self.assertTrue(
+                any("data directory" in m for m in caught.output),
+                f"swallowed something else: {caught.output}")
+        finally:
+            settings_store.SETTINGS_PATH = original
+
     def test_the_secret_stores_stay_owner_only(self):
         # The other half: fixing the readable ones must not loosen these.
         secrets_store.save({"openai_api_key": "sk-test"})

@@ -754,7 +754,17 @@ def check_data_dir() -> None:
     """
     if not hasattr(os, "getuid"):
         return
+    try:
+        _check_data_dir()
+    except Exception as e:
+        # This runs at module scope in the worker, before it registers with
+        # LiveKit. A diagnostic that can stop the thing it is diagnosing is
+        # worse than no diagnostic — same reasoning as record.write(), where a
+        # crash would cost the on-air handoff for the sake of a JSON file.
+        log.debug("could not check the data directory: %s", e)
 
+
+def _check_data_dir() -> None:
     import admin_auth
     import secrets_store
 
