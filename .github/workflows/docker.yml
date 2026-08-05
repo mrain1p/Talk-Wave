@@ -20,6 +20,10 @@ on:
   push:
     branches: [main, beta, dev]
     tags: ["v*"]
+  # A dev -> main pull request runs the suite before you can merge it.
+  # It builds nothing: PRs publish no image.
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -53,6 +57,7 @@ jobs:
 
   build-and-push:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
