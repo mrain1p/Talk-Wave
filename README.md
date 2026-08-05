@@ -1,15 +1,17 @@
 # Wave Talk
 
-**Live voice call-ins for a [SUB/WAVE] AI radio station.** A listener presses one
-button in the browser, has a real back-and-forth conversation with whoever is
-live on air, and the DJ can act on the station mid-call — search the library,
-queue a request, put a shoutout on the broadcast.
+**Live voice call-ins for a [SUB/WAVE] AI radio station.** A listener presses
+one button in the browser, talks with whoever is live on air, and the DJ can
+act on the station mid-call — search the library, queue a request, put a
+shoutout on the broadcast.
 
-The call is not the station speaking: it's this sidecar's own realtime voice
-agent wearing the live persona. The station only gets touched when the agent
-decides to act, through an allowlisted tool surface.
+The call is not the station speaking. It's this sidecar's own realtime voice
+agent wearing the live persona, and the station is only touched when the agent
+uses an allowlisted tool.
 
-Please note this was created with heavy use of AI. It is recommended to use it locally and only expose it externally if you know the risks and what you are doing.
+Please note this was created with use of AI. It is recommended to use it
+locally and only expose it externally if you know the risks and what you are
+doing.
 
 <table>
 <tr>
@@ -18,9 +20,8 @@ Please note this was created with heavy use of AI. It is recommended to use it l
 </tr>
 </table>
 
-▶ **[Watch a real call (2 min)](docs/wavetalk-call.mp4)** — in-persona
-pickup, back-and-forth, and a Beatles request resolved against the live
-library.
+▶ **[Watch a real call (2 min)](docs/wavetalk-call.mp4)** — in-persona pickup,
+back-and-forth, and a Beatles request resolved against the live library.
 
 ```
 [browser mic] --WebRTC--> [livekit-server] --> [agent-worker]
@@ -32,166 +33,102 @@ library.
 ## Features
 
 **The call**
-- One call button; whoever is live on air answers, in persona, aware of the
-  current show, the last few tracks, and what it just said on the broadcast.
-- Full-duplex conversation with barge-in — talking over the DJ cuts it off,
-  like a phone call, not a voice memo.
-- Live captions for both sides, listening/thinking/speaking/on-air state,
-  audio level meters, call timer with cutoff warning — every indicator driven
-  by a real signal, nothing simulated.
-- Successful caller actions appear as their own line in the transcript
-  ("🎵 Song request scheduled"), tinted apart from speech. The DJ saying it
-  did something is a claim; that line is the receipt.
-- Two synthesized sound sets — telephone-exchange tones, or a physical
-  handset with a real bell and the receiver going down — covering ring,
-  pickup, hold, hang-up and an engaged tone when the booth can't take the
-  call. Any one can be replaced with an uploaded file or a URL.
-- Reconnect handling, and graceful in-character timeouts for silent callers
-  and over-long calls. A caller who is thinking gets longer than one who has
-  simply gone quiet — being asked a question buys them three times the wait
-  before anyone checks on them.
-- The DJ closes the call itself: it notices when one has run its course,
-  checks whether there's anything else, and hangs up. Guarded in code against
-  ending one early — nothing can hang up in the first minute, whatever the
-  model decides.
-- Nobody has to answer. If the worker is down or never dispatched, the caller
-  gets an engaged tone after 40 seconds rather than ringing forever.
+- One button; whoever is live on air answers, in persona, aware of the show,
+  recent tracks, and what it just said on the broadcast.
+- Full-duplex with barge-in. Live captions both ways, state and level meters,
+  call timer — every indicator driven by a real signal.
+- Caller actions get their own transcript line. The DJ *saying* it did
+  something is a claim; that line is the receipt.
+- Synthesized ring, pickup, hold, hang-up and engaged tones, each replaceable
+  — see [Call sounds](#call-sounds).
+- In-character timeouts for silence and over-long calls; a caller who was just
+  asked a question gets three times the usual wait. If no worker answers, an
+  engaged tone after 40 seconds rather than endless ringing.
+- The DJ closes the call itself, and code stops it hanging up in the first
+  minute whatever the model decides.
 - Every call is written down — see [Diagnosing a call](#diagnosing-a-call).
 
 **Station integration**
-- Tools come from the station's own MCP server, filtered through an
-  allowlist. Callers can trigger: song requests (with an optional
-  confirm-before-send step), library search, exact queueing of a track they
-  picked out of the results (off by default), on-air announcements, and
-  station segments (weather, news, dedications). Track skipping, sound
-  effects and station programming are never exposed, regardless of settings —
-  and the panel lists all 17 of the station's tools with the status of each,
-  so the boundary is visible rather than something you discover by toggling.
-- The DJ knows what it's playing, not just its name: genre, mood tags, BPM
-  and key come through when the station has analysed the track, along with
-  the live listener count — so "what is this?" gets a real answer.
-- A queued request comes back with its queue position, so the DJ can say
-  "third up, about ten minutes" instead of implying it's on now.
-- Everything is discovered, not hardcoded: personas, DJ/Show cards, voices,
-  and model lists are read live from the station and providers. Point the
-  sidecar at a different SUB/WAVE instance and it re-homes itself.
-- After a call ends, the on-air DJ can mention it in one passing line
-  (composed by the LLM, re-voiced by the station in persona).
-- Overlap protection (on by default): the call DJ and the on-air DJ are the
+- Tools come from the station's MCP server through an allowlist: requests
+  (optionally confirmed first), search, exact queueing (off by default),
+  announcements, segments. Track skipping, sound effects and station
+  programming are **never** exposed at any setting, and the panel lists all 17
+  tools with each one's status, so the boundary is visible.
+- The DJ knows genre, mood, BPM, key and listener count where the station
+  publishes them. A queued request returns its position, so "third up, about
+  ten minutes" replaces implying it's playing now.
+- Personas, cards, voices and model lists are discovered live. Point it at
+  another SUB/WAVE and it re-homes itself.
+- **Overlap protection** (default on): the call DJ and the on-air DJ are the
   same person, so while the station has the microphone the caller's replies
-  queue rather than talk over the broadcast. Nothing the caller said is lost —
-  only the reply waits — and the card shows an **On air** state so the pause
-  reads as the station being busy, not the DJ being broken.
-- Every call is a first call. The back-to-air line about the previous caller
-  is kept out of the next caller's prompt, so a new caller is never greeted
-  as a continuation — and the last caller's business stays theirs.
-- The caller's browser is (optionally) tuned into the stream once the DJ
-  picks up (never during ringing), so stations that refuse requests at zero
-  listeners accept them, and the broadcast runs quietly behind the call.
-  **Set Station stream URL** (Call behaviour) to the station's public https
-  stream if the widget is served over TLS — see Troubleshooting. A bare origin
-  is enough: the mounts SubWave publishes are discovered, mp3 first, and the
-  widget falls back through the rest if one won't play.
-- Station webhooks are registered automatically for push updates; the widget
-  falls back to polling when they're unavailable.
+  queue rather than talk over the broadcast. Nothing is lost, and the card
+  shows **On air** so the pause reads as the station being busy.
+- Every call is a first call — the previous caller's business never reaches the
+  next caller's prompt.
+- The caller's browser is optionally tuned into the stream at pickup, so
+  stations that refuse requests at zero listeners accept them.
 
 **Operator panel**
-- Every runtime choice lives in a settings panel on the call page: station,
-  LLM/STT/TTS providers and models, caller permissions, usage limits, call
-  behaviour, house style. Changes apply to the next caller — no restarts.
-- API keys are entered in the panel and stored server-side; key material
-  never travels back to the browser. Blank fields mean "unchanged", clearing
-  is explicit, values are never logged.
-- Test buttons exercise the real code paths — green means the call will
-  work, not "the URL responded". The pipeline check walks every leg in call
-  order and its failure messages name the fix.
+- Every runtime choice lives behind the gear: station, providers, permissions,
+  limits, call behaviour, house style. Changes apply to the next caller.
+- API keys are stored server-side and never travel back to the browser.
+- Test buttons exercise the real code paths — green means the call will work,
+  not "the URL responded".
 
-**Safety & limits**
-- Two levels of password, and they must differ. **Admin** opens the settings
-  panel, the keys and the test buttons. **Guest** is an optional code that
-  opens only the phone — the Call button, on the page and on any embed — so
-  you can put the widget somewhere public without handing out the controls.
-  Admin works as a guest code too, so an operator carries one password. Both
-  are stored as salted PBKDF2 hashes; guest attempts are rate-limited in
-  their own bucket, so a caller fumbling the code can't lock you out.
-- Usage controls: max concurrent calls, calls per hour, calls per day, a
-  per-caller redial cooldown, a cap on how many actions one call can set in
-  motion, and a pause switch that closes the line at once. Refusals are
-  phrased in-world ("the booth line is tied up"), never error codes, and are
-  answered with an engaged tone rather than silence.
-- Speech hygiene applied to every line on its way to the voice, whatever the
-  model does: stage directions (*shuffles records*, (laughs), [pause]) are
-  stripped, expletives masked/removed/allowed per your policy.
-- The caller is treated as an untrusted stranger: the prompt says so, the
-  tool allowlist enforces it, and cross-origin writes to the settings API
-  are refused.
+**Safety and limits** — two passwords (panel and phone, separately
+rate-limited), usage caps on concurrency, hour, day, redial and actions, plus a
+pause switch. Speech hygiene runs on every line before it reaches the voice.
+Refusals are phrased in-world, never as codes. The caller is treated as an
+untrusted stranger: stated in the prompt, enforced by the allowlist,
+cross-origin writes refused. See [Security](#security).
 
 ## Architecture
 
 | Component | What it does |
 |---|---|
-| `livekit-server` | WebRTC media — mic in, DJ audio out, one room per call |
-| `agent-worker` | LiveKit Agents worker: resolves the live persona, builds the prompt, runs the STT → LLM → TTS session with MCP tools attached |
-| `token-server` | Mints join tokens (the browser never sees LiveKit secrets), serves the widget + settings panel, proxies station reads, runs tests |
+| `livekit-server` | WebRTC media — one room per call |
+| `agent-worker` | Resolves the persona, builds the prompt, runs STT → LLM → TTS with MCP tools attached |
+| `token-server` | Mints join tokens (the browser never sees LiveKit secrets), serves widget and panel, proxies station reads |
 | `web-widget` | The call page — full page with settings, or a compact embeddable card |
 
-Inside the worker, one call is one `CallSession`. Everything it needs lives
-under `agent-worker/call/`, each file named after its job:
+Inside the worker, one call is one `CallSession` and every file under
+`agent-worker/call/` is named after its job: the session and its lifecycle, the
+tool registry and wrappers, the provider builders, the on-air gate, the action
+ledger and the written record. `registry.py` describes the tool surface
+**once** — the allowlist and the panel's reference both derive from it, so
+adding a tool is one table entry plus one function.
 
-| Module | Owns |
-|---|---|
-| `session.py` | What a call knows about itself, in the order the caller experiences it: `prepare()` (heard as ringing) → `start()` (the DJ is on the line) → `greet()` |
-| `lifecycle.py` | One function per behaviour attached to a live session: dead-air recovery, transcript logging, the idle check-in, the time limit, the greeting, the on-air handoff |
-| `tools/registry.py` | The station's whole tool surface described **once** — name, what unlocks it, whether MCP or one of our wrappers serves it. The allowlist and the panel's reference both derive from it |
-| `tools/music.py`, `tools/broadcast.py`, `tools/control.py` | The wrappers themselves: the library and queue, anything that makes the on-air DJ speak, and ending the call |
-| `providers.py` | Which engine listens, thinks and speaks |
-| `air.py` | Whether the broadcast currently has the microphone — read by the reply gate, the on-air tools and the widget's status chip, so they can't disagree |
-| `actions.py`, `record.py`, `hangup.py`, `background.py` | The per-call action ledger, the written record, ending a call the same way from all three places that do, and fire-and-forget tasks that survive |
-
-`main.py` is wiring: connect, refuse probe rooms, run the three phases.
-Adding a tool is one entry in `registry.TOOLS` plus one function.
-
-The prompt each call runs on is assembled next door, in `agent-worker/brain/`,
-split along the line that actually matters:
-
-| Module | Owns |
-|---|---|
-| `briefing.py` | What the DJ **knows**: now playing, what just played, what's queued, its own recent on-air lines, the segment catalogue, the rest of the line-up |
-| `conduct.py` | How the DJ **behaves**: momentum, triage, closing a call, tool etiquette, and the safety floor under all of it |
-| `assemble.py` | Joins the two onto the persona card, the show card and the operator's house style |
-
-The halves change for unrelated reasons — a new station field is an edit to
-`briefing.py`, a call that went wrong is an edit to `conduct.py` — so neither
-imports the other, and a test enforces that.
+The prompt is assembled in `agent-worker/brain/`: `briefing.py` is what the DJ
+**knows** (now playing, recent, queue, its own on-air lines, segments),
+`conduct.py` is how it **behaves** (momentum, triage, closing, tool etiquette,
+safety), `assemble.py` joins both onto the persona and show cards. They change
+for unrelated reasons — a new station field edits briefing, a bad call edits
+conduct — so neither imports the other, and a test enforces it.
 
 **Providers** are pluggable per leg: LLM (OpenAI, Google, Anthropic,
 OpenRouter, Ollama), STT (Deepgram, OpenAI, Google, or in-process
 faster-whisper on CPU — no key, no network), TTS (any OpenAI-compatible
-endpoint, local or cloud, described by a small JSON adapter config — a new
-backend is a config file, not code).
+endpoint, described by a JSON adapter, so a new backend is a config file).
 
-**Performance posture**: the station's slow lazy-cache endpoint is kept warm
-by a background ping; per-call reads are one concurrent snapshot; a
-last-known-good persona cache covers station hiccups; the system prompt is
-budgeted (~1.8k tokens) because every token is paid on time-to-first-token
-every turn. Local TTS/STT are supported but measured honestly — the pipeline
-check reports realtime factors and warns when a backend can't keep up with
-live playback.
+**Performance**: the station's slow endpoint is kept warm by a background ping,
+per-call reads are one concurrent snapshot, and the prompt is budgeted because
+every token is paid on time-to-first-token every turn. Local TTS and STT are
+measured honestly — the pipeline check reports realtime factors and warns when
+a backend can't keep pace with playback.
 
 ## Getting started
 
 ### Docker (recommended)
 
-Images are published by CI: `ghcr.io/mrainone7p/wave-talk` — `:latest`
-tracks `main`, version tags (`:0.9.0`) come from git tags. The image is
-self-contained (widget included); a deploy needs four things:
+Images publish to `ghcr.io/mrainone7p/wave-talk`; `:latest` tracks `main`. The
+image includes the widget. A deploy needs four files:
 
 ```
 wave-talk/
 ├── docker-compose.yaml    # from this repo
-├── .env                   # from .env.example — REQUIRED, see below
+├── .env                   # from .env.example — REQUIRED
 ├── livekit.yaml           # from livekit.example.yaml, with a fresh secret
-└── data/                  # panel settings & keys persist here
+└── data/                  # panel settings and keys persist here
 ```
 
 ```bash
@@ -200,27 +137,21 @@ cp livekit.example.yaml livekit.yaml   # generate a fresh secret for it
 docker compose up -d
 ```
 
-**Set `HOST_IP`** (in `.env` or your stack GUI's environment panel) to the
-LAN address of the docker host — the one deployment variable; it drives
-LiveKit's advertised media address, the browser URL and the webhook
-callback. Beyond that, `.env` only genuinely needs the LiveKit keypair
-(matching `livekit.yaml`) — everything else can be set in the panel.
+**`HOST_IP`** is the one deployment variable — the docker host's LAN address,
+driving LiveKit's advertised media address, the browser URL and the webhook
+callback. Otherwise `.env` only needs the LiveKit keypair; the rest is panel.
 
-**Set `SUBWAVE_STREAM_URL`** to the station's public `https://` stream (or set
-*Station stream URL* in the panel). Left blank it derives from the station's
-own address, which is plain http on the LAN — and because the widget must be
-served over TLS for the microphone to work at all, the browser then refuses
-that stream as mixed content and the caller hears no station behind the DJ. It
-fails silently, so it is worth setting before you wonder why. A bare origin
-(`https://live.example.com`) is enough: the mounts the station publishes are
-discovered, mp3 first. The pipeline check's *Station stream* stage confirms it.
+**`SUBWAVE_STREAM_URL`** should be the station's public `https://` stream. Left
+blank it derives from the station's own address, which is plain http on the
+LAN — and since the widget must be served over TLS for the microphone to work,
+the browser blocks that stream as mixed content and the caller hears no
+station. It fails silently, so set it first. A bare origin is enough; the
+station's published mounts are discovered, mp3 first.
 
-**Open `https://<HOST_IP>:8443`** — the bundled Caddy TLS front door.
-Browsers only allow the microphone on HTTPS origins; the first visit shows
-a one-time self-signed-certificate screen (Advanced → Proceed), then the
-normal mic permission popup. Add an API key in the panel, run the pipeline
-check, press Call. Plain `http://<HOST_IP>:8100` works for everything
-except placing calls.
+**Open `https://<HOST_IP>:8443`**, the bundled Caddy TLS front door. Browsers
+only allow the microphone on HTTPS origins; the first visit shows a one-time
+certificate screen. Add an API key, run the pipeline check, press Call. Plain
+`http://<HOST_IP>:8100` works for everything except placing calls.
 
 ### Local, no Docker (Windows)
 
@@ -235,50 +166,42 @@ copy livekit.example.yaml livekit.yaml
 
 ## Settings reference
 
-Everything lives in the panel behind the gear on the call page (password
-prompt once one is set; the login persists on that browser until Sign out).
-Changes apply to the **next caller** — no restarts. Precedence: panel →
-`.env` → built-in defaults; clearing a field falls through to the layer
-below. Every field carries its own help text in the panel; this is the map:
-
-Sections are grouped by the job you're doing, in the order you'd do it:
+Everything lives in the panel behind the gear, and changes apply to the **next
+caller**. Precedence is panel → `.env` → defaults; clearing a field falls
+through. Every field carries its own help text.
 
 | Group | Section | What it controls |
 |---|---|---|
-| Access | **Passwords** | Admin (the controls) and the optional guest code (the phone). They must differ; `CALLIN_ADMIN_KEY` env is the recovery override |
-| Connect | **Station** | Which SUB/WAVE this answers for (everything else is discovered from it), the MCP endpoint, and the station admin credentials — with save/test buttons |
-| Connect | **API keys** | Provider keys (OpenAI, Google, Anthropic, OpenRouter, Deepgram, TTS), stored server-side, never shown back |
-| Models & voice | **Brains** | LLM provider/model (lists read live from each provider) and speech-to-text. A local Whisper is baked in and used by default — no key, no extra service — so this needs nothing set to work |
-| Models & voice | **Voice** | TTS backend (cloud/local), server URL, voice (default: mirrored per-persona from the station), adapter config |
-| Permissions & safety | **Caller permissions** | What a stranger on the line may trigger: requests, library search, exact queueing of a track they picked, announcements, running segments and (separately) whether the DJ may offer one — plus whether a mood request comes back with options first, and on-air overlap protection |
-| Permissions & safety | **Usage controls** | Concurrent calls, calls per hour and per day, per-caller redial wait, actions per call, and the pause switch — the guard on API spend |
-| Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
-| Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream — including the **station stream URL**, which must be an `https://` one wherever the widget is served over TLS |
-| Call settings | **Station awareness** | How much live context (recent tracks, queue, on-air chatter, the rest of the line-up) the DJ carries — each item costs latency every turn |
-| Call settings | **House style** | Light steers on conversation, answering and sign-off, layered on the persona; prompt preview with token budget |
-| Call settings | **Back to air** | The one-line on-air mention after a call ends |
-| Call settings | **Call sounds** | The sound set, per-sound uploads or URLs, previews, default volume. Sets are discovered from `assets/sounds/` — see below |
-| Reference | **What callers can ask** | Live reference derived from the permissions above — including what is never available, and why |
-| Reference | **Station tools** | All 17 tools the station publishes over MCP, what each does, and whether a caller can reach it. Follows the permission switches as you flip them |
-| Reference | **Embed** | Copyable iframe snippet + compact preview |
+| Access | **Passwords** | Admin (controls) and optional guest code (phone). `CALLIN_ADMIN_KEY` is the recovery override |
+| Connect | **Station** | Which SUB/WAVE this answers for, MCP endpoint, admin credentials |
+| Connect | **API keys** | Provider keys, stored server-side, never shown back |
+| Models & voice | **Brains** | LLM provider/model and STT. A local Whisper is baked in and used by default |
+| Models & voice | **Voice** | TTS backend, URL, voice (default: mirrored per-persona from the station), adapter |
+| Permissions & safety | **Caller permissions** | What a stranger may trigger, and overlap protection |
+| Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call, pause — the guard on API spend |
+| Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
+| Call settings | **Call behaviour** | Who answers, greeting, time limits, idle check-ins, tune-in, **station stream URL** |
+| Call settings | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
+| Call settings | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
+| Call settings | **Back to air** | The one-line on-air mention after a call |
+| Call settings | **Call sounds** | Sound set, uploads or URLs, previews, volume |
+| Reference | **What callers can ask** | Derived from the permissions above, including what is never available |
+| Reference | **Station tools** | All 17 MCP tools and whether a caller can reach each |
+| Reference | **Embed** | Copyable iframe snippet and preview |
 
-Below the settings, a **Diagnostics** block of four collapsed rows, each with
-its own run button: full pipeline check, speed test, recent calls and server
-logs. See [Diagnosing a call](#diagnosing-a-call). The running version is
-stamped underneath.
+Below settings, a **Diagnostics** block: pipeline check, speed test, recent
+calls, server logs. The running version is stamped underneath.
 
 ### Call sounds
 
-Each of the five call sounds resolves in the same order:
+Each sound resolves in one order:
 
 ```
 operator upload / URL   →   bundled asset   →   synthesized in the browser
 ```
 
-The last tier means **no audio file has to exist anywhere** — a fresh
-deployment rings, picks up and hangs up using tones generated in the browser.
-
-To ship your own, a pack is a folder in `assets/sounds/`:
+The last tier means **no audio file has to exist anywhere**. A pack is a folder
+in `assets/sounds/`:
 
 ```
 assets/sounds/vintage/
@@ -286,56 +209,53 @@ assets/sounds/vintage/
   ring.mp3  pickup.mp3  hold.mp3  hangup.mp3  failed.mp3
 ```
 
-It appears in **Sound set** automatically; no code change, no schema edit.
-Packs may be partial — anything a folder doesn't provide falls back to the
-synthesized sound, so a folder containing only `ring.mp3` is a valid pack.
-Prefer mp3; it's the one format every browser plays. `classic` and `phone` are
-the built-in synthesized sets, and a folder with either name supplies files for
-that set rather than creating a new one. Full conventions in
-[assets/sounds/README.md](assets/sounds/README.md).
-
-Panel uploads (`data/sounds/`) override bundled assets — they're
-per-deployment, the folder is per-build. Set `SOUND_ASSETS_PATH` to bind-mount
-packs without rebuilding.
+It appears in **Sound set** automatically, no code change. Packs may be
+partial — anything missing falls back to the synthesized sound, so one file is
+a valid pack. Prefer mp3. `classic` and `phone` are the built-in sets; a folder
+with either name supplies files for that set rather than creating a new one.
+Conventions in [assets/sounds/README.md](assets/sounds/README.md). Panel
+uploads override bundled assets; `SOUND_ASSETS_PATH` bind-mounts packs without
+rebuilding.
 
 ## Calling from outside your network
 
 Signalling rides your reverse proxy on 443, so the page loads for anyone.
-**Audio doesn't.** Media is a direct connection to whatever address LiveKit
-advertises, and if that address isn't reachable from the caller's network they
-get about fifteen seconds of ringing and a dead line. Three tiers, in
-increasing order of effort:
+**Audio doesn't.** Media goes direct to the address LiveKit advertises; if that
+isn't reachable from the caller's network they get about fifteen seconds of
+ringing and a dead line.
 
-**LAN only — nothing to do.** The default. Callers on your network connect to
-your LAN address; nobody else can.
+**LAN only — nothing to do.** The default.
 
 **IPv6 — also nothing to do.** With `use_external_ip: true` LiveKit advertises
 your public IPv6 address, and IPv6 has no NAT, so callers reach it directly
-with **no port forwarding at all**. If your ISP gives you IPv6, off-network
-calling may already work — and this is worth knowing, because it means "it
-works from my phone" is not evidence that it works for everyone.
+with no port forwarding. If your ISP gives you IPv6, off-network calling may
+already work — worth knowing, because "it works from my phone" is then not
+evidence that it works for everyone.
 
 **IPv4 — one port.** Roughly half of internet users still have no IPv6, and
-office wifi is frequently IPv4-only, so those callers need a public IPv4 path:
+office wifi is frequently IPv4-only:
 
-- forward **UDP 7882** (`rtc.udp_port`) to the machine running LiveKit — one
-  rule, because LiveKit muxes every call over it. **TCP 7881** as well if you
-  want a fallback for networks that block UDP;
+- forward **UDP 7882** (`rtc.udp_port`) to the LiveKit host — one rule, since
+  LiveKit muxes every call over it. **TCP 7881** too as a fallback for networks
+  that block UDP;
 - set `use_external_ip: true`;
-- **do not set `node_ip`** unless you know you need it. It overrides the
-  public address STUN discovers, so pointing it at a LAN address silently
-  breaks every outside caller while working perfectly on your own network.
+- **do not set `node_ip`** unless you know you need it. It overrides the public
+  address STUN discovers, so a LAN value silently breaks every outside caller
+  while working perfectly on your own network.
+
+**The risk of opening that port.** It exposes LiveKit's media port to the
+internet: yours to keep patched, and anyone who reaches it can attempt to
+consume bandwidth. Only open it if you actually want outside callers. A public
+port plus no guest code plus generous limits is an open invitation to spend
+your API budget — pair it with a guest code and non-zero limits.
 
 **Or don't self-host the media.** Point `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
 `LIVEKIT_API_SECRET` and `LIVEKIT_PUBLIC_URL` at a LiveKit Cloud project and
-the audio relays through them — no inbound ports at all, and it includes TURN,
-which is the only thing that fixes restrictive corporate networks. Everything
-else (station, worker, panel, recordings) stays on your machine.
+audio relays through them — no inbound ports, and it includes TURN, the only
+thing that fixes restrictive corporate networks. Everything else stays local.
 
-**How to tell which tier you're on:** run the pipeline check. *Browser media
-path* now reports the addresses the station actually offered and warns when the
-only public one is IPv6 — the case where it works for you and fails for half of
-everyone else.
+**Which tier are you on?** Run the pipeline check. *Browser media path* reports
+the addresses the station offered and warns when the only public one is IPv6.
 
 ## Embedding
 
@@ -345,118 +265,100 @@ everyone else.
 ```
 
 Renders the compact card in an iframe with `allow="microphone"` set (its
-absence is the classic silent embed failure). The settings panel never
-ships inside an embed. Optional attributes:
+absence is the classic silent embed failure). The panel never ships in an
+embed.
 
 | Attribute | Effect |
 |---|---|
-| `data-theme="light\|dark\|inherit"` | `light`/`dark` force a theme (and hide the widget's toggle). `inherit` reads the host page's own background and matches it — a cross-origin frame can't see the page it sits in, so this is resolved by `embed.js` before the frame loads. Omit for auto: viewer's OS preference + in-widget toggle |
-| `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — only the latest spoken line, fading after a few seconds, so the widget stays short. `full` restores the scrolling transcript |
+| `data-theme="light\|dark\|inherit"` | Force a theme, or `inherit` to match the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent). Omit for OS preference plus toggle |
+| `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |
 | `data-origin` | Widget origin when the script is served from elsewhere |
 
+Any page you embed on can mint call tokens, so treat an embed as publishing the
+phone. Set a guest code if that isn't what you want.
+
 ## Security
 
-**Two passwords, two jobs.** Both live in the panel under *Access →
-Passwords*, and the store refuses to let them be the same.
+**Two passwords, two jobs**, both under *Access → Passwords*, and the store
+refuses to let them match.
 
 **Admin** protects the panel, API keys and test buttons. Whoever holds it
-controls the application and can spend your API keys. The login persists per
-browser until Sign out. Until one is set, the panel shows a standing nudge
-and stays open — fine on a trusted LAN, a choice you should make
-deliberately.
+controls the application and can spend your API keys. Until one is set the
+panel stays open with a standing nudge — fine on a trusted LAN, but a
+deliberate choice.
 
 **Guest** is optional and protects only the phone: the Call button, `/token`,
-and every embed. Set one when the page is reachable from the internet and you
-want only the people you gave the code to ringing the booth. There's no
-username — the code is the whole thing. Admin is accepted as a guest code
-too, so an operator carries one password, never two. Leave it empty and
-anyone who can load the page can call (the usage limits are then the only
-guard).
+and every embed. There's no username; the code is the whole thing. Admin is
+accepted as a guest code, so an operator carries one password. Leave it empty
+and anyone who loads the page can call, with usage limits as the only guard.
 
-Both are stored as salted PBKDF2 hashes, never plaintext. Wrong-password
-lockout: 5 failures per address → 5-minute cooldown; a second round → banned
-until the app restarts. Guest failures are counted in their own bucket, so a
-caller fumbling the code can never lock you out of the panel. Locked out
-yourself? Set `CALLIN_ADMIN_KEY` in the environment (always accepted,
-break-glass) or restart the app to clear bans.
+Lockout is 5 failures per address → 5-minute cooldown, a second round → banned
+until restart, with guest failures counted separately. Locked out? Set
+`CALLIN_ADMIN_KEY` (always accepted) or restart. Passwords travel with each
+request, so beyond your LAN use the HTTPS front door — over plain http they are
+readable on the wire.
 
-Passwords travel with each request, so beyond your own LAN use the HTTPS
-front door — over plain http they're readable on the wire.
+**Before exposing beyond your LAN:**
 
-Before exposing beyond your LAN:
+1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page read
+   config endpoints and mint call tokens.
+2. Set the admin password, and a guest code if the page is public.
+3. Fresh LiveKit keypair. Never deploy the example key.
+4. Real TLS on the front door, so visitors see no certificate warnings.
+5. Keep usage limits non-zero — every call spends real money. Set **calls per
+   day** and **actions per call**, not just the hourly limit: an hourly cap
+   alone still permits 24× that in a day.
+6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
+   Protect the volume; never commit `.env` or `data/`.
 
-1. `CALLIN_ALLOWED_ORIGINS` — set to your real origins (`*` lets any page
-   read config endpoints and mint call tokens).
-2. **Set the admin password**, and a **guest code** if the page is public
-   (above).
-3. Fresh LiveKit keypair; `use_external_ip: true` and the UDP range open
-   for off-LAN callers.
-4. Real TLS on the front door (a proper certificate instead of the
-   self-signed one, e.g. via your own domain) so visitors see no warnings.
-5. Keep usage limits non-zero — every call spends real API money. On a public
-   page set **calls per day** and **actions per call** as well as the hourly
-   limit: an hourly cap alone still permits 24× that in a day.
-6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted
-   (0600 where the OS honours it). Protect the volume; never commit `.env`
-   or `data/`.
+## Known limitations
+
+- **IPv4-only callers can't connect** without a forwarded port or a relay — see
+  [Calling from outside your network](#calling-from-outside-your-network).
+  Roughly half of users, and it fails silently from their side.
+- **Local TTS may not keep pace with playback.** Above ~1.0× realtime, audio
+  gaps mid-sentence. The speed test measures it.
+- **One station per deployment** — everything is discovered from a single
+  SUB/WAVE instance.
+- **Secrets are stored unencrypted on disk**, protected only by file
+  permissions and whatever guards the volume.
+- **One shared admin password, no user accounts** — no per-operator identity or
+  audit trail.
+- **Recent calls keeps the newest 40.** A diagnostic aid, not an archive.
+- **The panel is not built for hostile exposure.** It assumes an operator on a
+  trusted network who has set a password.
 
 ## Troubleshooting
 
-Run the **full pipeline check** first — it walks every leg in call order and
-its failure messages name the fix. The classics:
+Run the **full pipeline check** first; it walks every leg in call order and
+names the fix. The classics:
 
-- **Call hangs at "Ringing" while every server check passes** — LiveKit in
-  docker is advertising its container IP as the media address. Set `HOST_IP`
-  (which feeds `--node-ip`) and recreate the livekit container; the same
-  cause shows up as webhooks registered to a `172.x` address. The *Browser
-  media path* stage exists precisely for this. If it still fails, check the
-  host firewall allows **UDP 7882** and TCP 7881.
-- **"This page can't use the microphone"** — the page is on a plain
-  `http://<lan-ip>` origin, where browsers refuse microphone capture
-  (localhost is exempt, which is why local dev works). The widget shows this
-  guidance itself, with a link to the bundled TLS page
-  (`https://<HOST_IP>:8443`) — or use the Chrome flag for single-machine
-  testing. The *Microphone* pipeline stage reports the same thing.
-- **No station behind the call — the DJ is there, the music isn't** — the
-  caller's browser is being handed an `http://` stream on an `https://` page,
-  and browsers block that as mixed content. It is silent by design on their
-  side, so nothing looks broken; the same happens off-LAN, where a
-  `192.168.x.x` stream is simply unreachable. Fix: set **Station stream URL**
-  (Call behaviour) or `SUBWAVE_STREAM_URL` to the station's public https
-  stream. A bare origin (`https://live.example.com`) is enough — SubWave
-  publishes its mounts at `/listen.pls` and they're discovered, mp3 first. The
-  *Station stream* pipeline stage reports the status and content type, and
-  says outright when the scheme is the problem.
-- **Locked out of the settings panel** — set `CALLIN_ADMIN_KEY` in the
-  environment (always accepted) or restart the app (clears IP bans). To
-  remove the password entirely, delete `data/admin-auth.json` and restart.
-- **Station admin returns 429** — the station's login rate limiter, usually
-  after repeated credential tests. Wait ~15 minutes (or restart the station
-  container); it does not mean the credentials are wrong. The *Test admin
-  access* button distinguishes the two.
-- **Voice test 400s on a local TTS backend** — the voice id doesn't exist on
-  that server (cloud names and local sample ids aren't interchangeable), or
-  no voice is configured anywhere; *Reload voice list* after switching
-  backend. With station admin credentials set, per-persona voices mirror
-  from the station automatically.
-- **Calls work on the LAN but not from outside** — see [Calling from outside
-  your network](#calling-from-outside-your-network) below; it's common enough
-  to have its own section. Related: Chrome may ask LAN visitors to
-  "connect to devices on your local network" — that's the browser's Private
-  Network Access guard for a public page reaching a private IP; one-time
-  and harmless.
-- **Audio gaps on local TTS** — generation slower than playback. The voice
-  test reports the realtime factor; above ~1.0, lower your TTS engine's
-  inference steps or use cloud for the live leg.
+- **Hangs at "Ringing" while server checks pass** — LiveKit is advertising an
+  address the browser can't reach. Set `HOST_IP` and recreate the container;
+  the same cause shows as webhooks on a `172.x` address. Check the firewall
+  allows **UDP 7882** and TCP 7881.
+- **"This page can't use the microphone"** — the page is on plain
+  `http://<lan-ip>`, where browsers refuse capture. Use the TLS page.
+- **The DJ is there, the music isn't** — an `http://` stream on an `https://`
+  page is blocked as mixed content, silently. Set **Station stream URL** to an
+  https one; the *Station stream* stage says so outright.
+- **Locked out of the panel** — set `CALLIN_ADMIN_KEY`, or restart to clear
+  bans. To remove the password entirely, delete `data/admin-auth.json`.
+- **Voice test 400s on local TTS** — the voice id doesn't exist on that server
+  (cloud names and local ids aren't interchangeable). *Reload voice list* after
+  switching backend.
+- **Works on the LAN, not outside** — see [Calling from outside your
+  network](#calling-from-outside-your-network). Chrome may also ask LAN
+  visitors to "connect to devices on your local network"; that's Private
+  Network Access, one-time and harmless.
 
 ## Diagnosing a call
 
-**Start with Recent calls**, under *Diagnostics* at the bottom of the panel.
-Each call writes one file as it ends — both sides of the conversation, every
-tool the DJ used with its result, the config it ran under, and anything that
-failed — rendered as one timeline:
+**Start with Recent calls**, under *Diagnostics*. Each call writes one file as
+it ends — both sides, every tool with its result, the config it ran under, and
+anything that failed:
 
 ```
 2026-08-04 23:34:36  Dalia  ·  136s  ·  6 caller turns
@@ -467,29 +369,27 @@ failed — rendered as one timeline:
 23:34:49   tool  subwave_request_song → Added to the queue
 ```
 
-That last column is the point: the DJ *saying* it did something is a claim,
-the tool line is the receipt. The config line ties a bad call to the setting
-that caused it. Files live in `data/calls/`, newest 40 kept.
+The tool column is the point: the DJ saying it did something is a claim, that
+line is the receipt. The config line ties a bad call to the setting that caused
+it. Files live in `data/calls/`, newest 40 kept.
 
-The other three diagnostics rows: **Full pipeline check** walks every leg in
-call order and names the first thing that would break; **Speed test** reports
-time to first audio per leg (over ~1.5s to first token sounds laggy);
-**Server logs** shows this service's recent activity.
+The other rows: **Full pipeline check** names the first thing that would break;
+**Speed test** reports time to first audio per leg (over ~1.5s sounds laggy);
+**Server logs** shows recent activity.
 
-## Logs & tests
+## Logs and tests
 
-Local runs write timestamped rotating logs to `data/logs/` (worker,
-token-server, livekit). Under Docker the same lines go to container stdout
-(`docker compose logs -f <stack>-wavetalk-worker-1`), where the worker logs
-its version at startup and every call as `heard:` / `said:` / `tool:` lines.
-`/health` reports the running version — check both containers match, since
-they ship as one image but run as two.
+Local runs write rotating logs to `data/logs/`. Under Docker the same lines go
+to container stdout, where the worker logs its version at startup and every
+call as `heard:` / `said:` / `tool:` lines. `/health` reports the running
+version — check both containers match, since they ship as one image but run as
+two.
 
 ```bash
 cd agent-worker && python -m unittest test_sidecar
 ```
 
-covers the speech filter, settings precedence, secrets and password handling,
-the lockout ladder, usage limits, the tool registry, prompt assembly, the call
-record and the call's lifecycle seams. CI runs it before building an image, so
-a failing suite never reaches `:latest`.
+covers the speech filter, settings precedence, secrets and passwords, the
+lockout ladder, usage limits, the tool registry, prompt assembly, sound packs,
+the call record and the call's lifecycle seams. CI runs it before building an
+image, so a failing suite never reaches `:latest`.
