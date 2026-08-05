@@ -708,7 +708,14 @@
           service — settings changes, call tokens, station reads, webhooks. The
           call agent's own logs live in its container:
           <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
-        <div class="result scrolly" id="logsResult"></div>
+        <div class="logfilters" id="logFilters" hidden>
+          <label for="logLevels">Levels</label>
+          <select id="logLevels" multiple size="3"></select>
+          <input type="search" id="logSearch" placeholder="filter text…" />
+          <button type="button" class="runbtn" id="logClearFilters">Clear</button>
+          <span class="tag" id="logCount"></span>
+        </div>
+        <div class="result scrolly logs" id="logsResult"></div>
       </div>
     </details>
 

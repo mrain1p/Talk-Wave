@@ -2993,18 +2993,86 @@
     finally { btn.disabled = false; }
   };
 
+  // The log viewer. Records rather than pre-formatted lines, so a warning can
+  // look different from a station read and the 20-second poll can be hidden to
+  // leave the calls visible — neither of which is possible against a string.
+  let logRecords = [];
+
+  // Levels in severity order, so the filter reads as a scale rather than as
+  // whatever order the server happened to see them in.
+  const LEVEL_ORDER = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+
+  function paintLogs() {
+    const out = $('logsResult');
+    const chosen = [...$('logLevels').selectedOptions].map((o) => o.value);
+    const needle = ($('logSearch').value || '').toLowerCase();
+    const rows = logRecords.filter((r) =>
+      (!chosen.length || chosen.indexOf(r.level) !== -1)
+      && (!needle || (r.msg + ' ' + r.logger).toLowerCase().indexOf(needle) !== -1));
+
+    out.innerHTML = '';
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'capempty';
+      p.textContent = logRecords.length
+        ? 'Nothing matches that filter.' : 'No log lines yet.';
+      out.appendChild(p);
+    } else {
+      rows.forEach((r) => {
+        const line = document.createElement('div');
+        line.className = 'logline lvl-' + String(r.level || 'INFO').toLowerCase();
+        line.innerHTML = '<span class="lt"></span><span class="ll"></span>'
+          + '<span class="lg"></span><span class="lm"></span>';
+        line.querySelector('.lt').textContent = r.t || '';
+        line.querySelector('.ll').textContent = (r.level || '')[0] || '·';
+        line.querySelector('.ll').title = r.level || '';
+        // The callin. prefix is on every line of ours and earns no width.
+        line.querySelector('.lg').textContent =
+          String(r.logger || '').replace(/^callin\./, '');
+        line.querySelector('.lm').textContent = r.msg || '';
+        out.appendChild(line);
+      });
+    }
+    $('logCount').textContent = rows.length === logRecords.length
+      ? `${rows.length} lines`
+      : `${rows.length} of ${logRecords.length}`;
+    out.scrollTop = out.scrollHeight;
+  }
+
   $('viewLogsBtn').onclick = async () => {
     const btn = $('viewLogsBtn'), out = $('logsResult');
     btn.disabled = true;
-    out.className = 'result on'; out.textContent = 'Fetching…';
+    out.className = 'result on logs'; out.textContent = 'Fetching…';
     try {
       const d = await afetch('/logs').then((r) => r.json());
       if (d.error) { showResult(out, false, d.error); return; }
-      out.className = 'result on';
-      out.textContent = (d.lines || []).join('\n') || 'No log lines yet.';
-      out.scrollTop = out.scrollHeight;
+      // Fall back to the flat lines if this is an older server, so the viewer
+      // degrades to what it used to be rather than to nothing.
+      logRecords = d.records || (d.lines || []).map((l) => ({
+        t: '', level: 'INFO', logger: '', msg: l,
+      }));
+      const present = d.levels || [];
+      const keep = [...$('logLevels').selectedOptions].map((o) => o.value);
+      $('logLevels').innerHTML = '';
+      LEVEL_ORDER.filter((l) => present.indexOf(l) !== -1).forEach((l) => {
+        const o = document.createElement('option');
+        o.value = l; o.textContent = l[0] + l.slice(1).toLowerCase();
+        o.selected = keep.indexOf(l) !== -1;
+        $('logLevels').appendChild(o);
+      });
+      $('logFilters').hidden = false;
+      out.className = 'result on logs';
+      paintLogs();
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
+  };
+
+  $('logLevels').onchange = paintLogs;
+  $('logSearch').oninput = paintLogs;
+  $('logClearFilters').onclick = () => {
+    [...$('logLevels').options].forEach((o) => { o.selected = false; });
+    $('logSearch').value = '';
+    paintLogs();
   };
 
   $('copyEmbedBtn').onclick = async () => {

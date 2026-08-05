@@ -2351,7 +2351,17 @@ async def handle_logs(request: web.Request) -> web.Response:
         ))
     import log_setup
 
-    return _cors(request, web.json_response({"lines": log_setup.recent_lines(300)}))
+    records = log_setup.recent_records(300)
+    return _cors(request, web.json_response({
+        "records": records,
+        # The flattened form stays, so an older widget cached in a browser
+        # keeps working rather than showing an empty box after an upgrade.
+        "lines": log_setup.recent_lines(300),
+        # What is actually present, so the filter offers real choices rather
+        # than a fixed list of levels that may match nothing.
+        "levels": sorted({r["level"] for r in records}),
+        "sources": sorted({r["logger"] for r in records}),
+    }))
 
 
 async def handle_hooks_recent(request: web.Request) -> web.Response:

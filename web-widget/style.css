@@ -542,6 +542,49 @@
   .result.on { display: block; }
   .result.good { border-color: #1e3a28; color: #7fc79b; }
   .result.bad { border-color: #4a2620; color: #e08b7d; }
+
+  /* The log viewer. Rows rather than one pre-wrapped block, so a level can be
+     coloured and a line can be hidden — neither of which a single string
+     allows. Colours come from the existing theme tokens rather than new ones,
+     so this reads correctly in light mode without a second set of values. */
+  .logfilters {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 0 0 8px;
+  }
+  .logfilters label { font-size: 11.5px; color: var(--dimmer); }
+  .logfilters select[multiple] {
+    font-size: 11.5px; padding: 3px 6px; border-radius: 7px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--line2);
+    min-width: 104px;
+  }
+  .logfilters input[type="search"] {
+    flex: 1 1 140px; min-width: 120px; font-size: 12px; padding: 5px 8px;
+    border-radius: 7px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line2);
+  }
+  .result.logs { white-space: normal; padding: 6px 8px; }
+  .logline {
+    display: grid; grid-template-columns: auto auto auto 1fr; gap: 8px;
+    align-items: baseline; padding: 2px 4px; border-radius: 5px;
+    font-size: 11.5px; line-height: 1.5;
+  }
+  .logline:hover { background: var(--line); }
+  .logline .lt { color: var(--dimmer); font-variant-numeric: tabular-nums; }
+  /* One letter, not the whole word: the level is a glance, and eight columns
+     of "WARNING" pushes the message — the part you are reading for — off the
+     right of a narrow panel. The full word is the title attribute. */
+  .logline .ll {
+    width: 1.1em; text-align: center; font-weight: 700; color: var(--dimmer);
+  }
+  .logline .lg { color: var(--cool); }
+  .logline .lm { color: var(--dim); overflow-wrap: anywhere; }
+  .logline.lvl-warning .ll, .logline.lvl-warning .lm { color: var(--warn); }
+  .logline.lvl-error .ll, .logline.lvl-error .lm,
+  .logline.lvl-critical .ll, .logline.lvl-critical .lm { color: var(--accent); }
+  .logline.lvl-critical { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .logline.lvl-debug .lt, .logline.lvl-debug .lg, .logline.lvl-debug .lm {
+    color: var(--dimmer);
+  }
   .actions {
     display: flex; gap: 10px; align-items: center; margin-top: 16px;
     padding-top: 16px; border-top: 1px solid var(--line);
