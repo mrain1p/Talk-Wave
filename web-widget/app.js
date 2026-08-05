@@ -1564,7 +1564,12 @@
   // Signing out only forgets the password on THIS browser — the panel
   // itself stays protected everywhere.
   $('logoutBtn').onclick = () => {
+    // Both credentials, not just the panel one. They are stored separately
+    // because they buy different things, but "sign out" means signed out —
+    // clearing only the admin key left the phone still open on a deployment
+    // whose whole point was that it wasn't.
     localStorage.removeItem('callinAdminKey');
+    localStorage.removeItem(CALL_KEY);
     location.reload();
   };
 
