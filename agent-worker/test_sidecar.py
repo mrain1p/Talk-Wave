@@ -290,6 +290,169 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestHttpSurface(_TempStores):
+    """The routes, exercised the way a browser reaches them.
+
+    Everything else in this file tests a function. Nothing tested that the
+    functions are actually *wired up* — so a route registered without its
+    gate, a renamed path the widget still calls, or a middleware that stopped
+    running would all pass a green suite and fail in the browser. The auth
+    cases matter most: `admin_auth.verify` being correct is no comfort if
+    `/settings` forgets to call it.
+    """
+
+    # Reads config, changes state, or costs money. Each must refuse a caller
+    # who has no password once one is configured.
+    PROTECTED = [
+        ("GET", "/settings"),
+        ("POST", "/settings"),
+        ("GET", "/settings/sounds"),
+        ("GET", "/prompt"),
+        ("GET", "/calls"),
+        ("GET", "/logs"),
+    ]
+    # Reachable by anyone: the widget itself, and what it reads to render.
+    PUBLIC = ["/health", "/", "/app.js", "/style.css", "/embed.js"]
+
+    def _serve(self, coro):
+        import asyncio
+
+        from aiohttp.test_utils import TestClient, TestServer
+
+        import admin_auth
+        import token_server
+
+        self.admin_auth = admin_auth
+
+        async def go():
+            client = TestClient(TestServer(token_server.build_app()))
+            await client.start_server()
+            try:
+                return await coro(client, token_server)
+            finally:
+                await client.close()
+
+        return asyncio.run(go())
+
+    def test_public_routes_answer_without_credentials(self):
+        # Body length as well as status: a 200 carrying nothing would break
+        # every embed while looking perfectly healthy in a status check.
+        async def check(client, ts):
+            out = {}
+            for path in self.PUBLIC:
+                r = await client.get(path)
+                out[path] = (r.status, len(await r.read()))
+            return out
+
+        for path, (status, size) in self._serve(check).items():
+            with self.subTest(path=path):
+                self.assertEqual(status, 200, f"{path} should be public")
+                if path != "/health":
+                    self.assertGreater(size, 500, f"{path} served an empty body")
+
+    def test_served_assets_match_the_files_on_disk(self):
+        async def check(client, ts):
+            out = {}
+            for name in ("app.js", "style.css", "embed.js"):
+                r = await client.get("/" + name)
+                out[name] = len(await r.read())
+            return out
+
+        served = self._serve(check)
+        for name, size in served.items():
+            with self.subTest(asset=name):
+                on_disk = (Path(__file__).parent.parent / "web-widget" / name).stat().st_size
+                self.assertEqual(size, on_disk, f"{name} decoded to {size}, file is {on_disk}")
+
+    def test_health_reports_the_running_version(self):
+        async def check(client, ts):
+            return await (await client.get("/health")).json()
+
+        from version import APP_VERSION
+
+        self.assertEqual(self._serve(check)["version"], APP_VERSION)
+
+    def test_protected_routes_refuse_once_a_password_is_set(self):
+        # The real regression risk: a route added without the gate. Asserting
+        # 401 specifically — "not 200" would also pass for a route that has
+        # been renamed out of existence.
+        async def check(client, ts):
+            self.admin_auth.set_password("a-real-password")
+            out = {}
+            for method, path in self.PROTECTED:
+                r = await client.request(method, path, json={})
+                out[f"{method} {path}"] = r.status
+            return out
+
+        for route, status in self._serve(check).items():
+            with self.subTest(route=route):
+                self.assertEqual(status, 401, f"{route} answered {status}, not 401")
+
+    def test_the_break_glass_key_opens_them_again(self):
+        # Proves the previous test is measuring a gate rather than a 404.
+        async def check(client, ts):
+            self.admin_auth.set_password("a-real-password")
+            ts.ADMIN_KEY = "break-glass"
+            try:
+                r = await client.get("/settings", headers={"X-Admin-Key": "break-glass"})
+                return r.status
+            finally:
+                ts.ADMIN_KEY = ""
+
+        self.assertEqual(self._serve(check), 200)
+
+    def test_a_wrong_password_is_refused(self):
+        async def check(client, ts):
+            self.admin_auth.set_password("a-real-password")
+            r = await client.get("/settings", headers={"X-Admin-Key": "not-it"})
+            return r.status
+
+        self.assertEqual(self._serve(check), 401)
+
+    def test_versioned_assets_are_immutable_and_bare_ones_revalidate(self):
+        # The caching contract from 0.9.53. If this inverts, either everyone
+        # re-downloads 150KB on every load, or they get a stale interface
+        # after an update — the bug no-cache existed to prevent.
+        async def check(client, ts):
+            from version import APP_VERSION
+
+            good = await client.get(f"/app.js?v={APP_VERSION}")
+            bare = await client.get("/app.js")
+            stale = await client.get("/app.js?v=0.0.1")
+            page = await client.get("/")
+            return {
+                "versioned": good.headers.get("Cache-Control"),
+                "bare": bare.headers.get("Cache-Control"),
+                "stale": stale.headers.get("Cache-Control"),
+                "html": page.headers.get("Cache-Control"),
+            }
+
+        got = self._serve(check)
+        self.assertIn("immutable", got["versioned"])
+        self.assertEqual(got["bare"], "no-cache")
+        self.assertEqual(got["stale"], "no-cache")
+        self.assertEqual(got["html"], "no-cache")
+
+    def test_compression_is_negotiated_not_forced(self):
+        # Forcing it would corrupt the response for a client that can't
+        # decode; never offering it was the 0.9.53 bug.
+        async def check(client, ts):
+            asked = await client.get("/app.js", headers={"Accept-Encoding": "gzip, deflate"})
+            plain = await client.get("/app.js", headers={"Accept-Encoding": "identity"})
+            return {
+                "encoding": asked.headers.get("Content-Encoding"),
+                "vary": asked.headers.get("Vary"),
+                "plain_encoding": plain.headers.get("Content-Encoding"),
+                "plain_body": len(await plain.read()),
+            }
+
+        got = self._serve(check)
+        self.assertIn(got["encoding"], ("gzip", "deflate"))
+        self.assertEqual(got["vary"], "Accept-Encoding")
+        self.assertIsNone(got["plain_encoding"])
+        self.assertGreater(got["plain_body"], 10000)
+
+
 class TestAssetVersioning(unittest.TestCase):
     """The html must point at versioned asset URLs.
 
