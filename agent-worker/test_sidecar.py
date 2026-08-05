@@ -652,9 +652,7 @@ class TestHttpSurface(_TempStores):
         # re-downloads 150KB on every load, or they get a stale interface
         # after an update — the bug no-cache existed to prevent.
         async def check(client, ts):
-            from version import APP_VERSION
-
-            good = await client.get(f"/app.js?v={APP_VERSION}")
+            good = await client.get(f"/app.js?v={ts.asset_tag('app.js')}")
             bare = await client.get("/app.js")
             stale = await client.get("/app.js?v=0.0.1")
             page = await client.get("/")
@@ -703,14 +701,28 @@ class TestAssetVersioning(unittest.TestCase):
 
     def test_the_served_html_versions_its_own_assets(self):
         import token_server
-        from version import APP_VERSION
 
         token_server._index_cache.update(mtime=0.0, html="")
         html = token_server._versioned_index()
-        self.assertIn(f'src="/app.js?v={APP_VERSION}"', html)
-        self.assertIn(f'href="/style.css?v={APP_VERSION}"', html)
+        self.assertIn(f'src="/app.js?v={token_server.asset_tag("app.js")}"', html)
+        self.assertIn(
+            f'href="/style.css?v={token_server.asset_tag("style.css")}"', html)
         self.assertNotIn('src="/app.js"', html)
         self.assertNotIn('href="/style.css"', html)
+
+    def test_the_tag_follows_the_file_not_the_release(self):
+        # The bug this prevents: assets are served `immutable` for a year, so
+        # keying the URL on APP_VERSION meant any change to app.js without a
+        # version bump left every browser pinned to the old copy. Caught in
+        # development, where an edit silently kept serving the previous file.
+        import token_server
+        from version import APP_VERSION
+
+        tag = token_server.asset_tag("app.js")
+        self.assertNotEqual(tag, APP_VERSION, "the tag is still release-keyed")
+        self.assertNotEqual(
+            tag, token_server.asset_tag("style.css"),
+            "both files share a tag, so one changing cannot bust the other")
 
     def test_it_is_the_real_widget_html(self):
         # Guards against the rewrite silently operating on an empty string.

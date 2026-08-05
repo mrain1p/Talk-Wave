@@ -561,25 +561,44 @@ async def handle_avatar(request: web.Request) -> web.StreamResponse:
 _index_cache: dict = {"mtime": 0.0, "html": ""}
 
 
+def asset_tag(name: str) -> str:
+    """The cache key for one widget file: its own modification time.
+
+    Keyed on the FILE, not on APP_VERSION. That distinction is load-bearing.
+    These are served `immutable` for a year, so a version-keyed URL means any
+    change to app.js without a version bump — a hotfix, an edit in a running
+    container, anyone working on the widget — leaves every browser holding the
+    old copy until the cache expires. Keying on mtime means the URL changes
+    exactly when the bytes do, which is the actual promise `immutable` makes.
+    """
+    try:
+        return str(int((WIDGET_DIR / name).stat().st_mtime))
+    except OSError:
+        return APP_VERSION
+
+
 def _versioned_index() -> str:
-    """index.html with ?v=<version> on its own script and stylesheet.
+    """index.html with ?v=<tag> on its own script and stylesheet.
 
     The page itself must never be cached — that is what stopped operators
     seeing a stale interface after an image update. But the 100KB of js and
-    css behind it can be cached forever *if the URL changes when they do*, and
-    the version already changes on every release. So the html stays fresh and
-    the heavy assets stop being re-downloaded on every single load.
+    css behind it can be cached forever *if the URL changes when they do*. So
+    the html stays fresh and the heavy assets stop being re-downloaded on
+    every single load.
 
-    Re-read when the file changes, so a local edit still shows up without a
-    restart.
+    Re-read when the file changes, so an edit shows up without a restart.
     """
     path = WIDGET_DIR / "index.html"
-    mtime = path.stat().st_mtime
-    if _index_cache["mtime"] != mtime:
+    js, css = asset_tag("app.js"), asset_tag("style.css")
+    # Keyed on all three, because the html embeds the other two files' tags —
+    # cache it on its own mtime alone and an app.js edit would keep serving
+    # the previous tag, which is the exact bug this is here to prevent.
+    key = (path.stat().st_mtime, js, css)
+    if _index_cache["mtime"] != key:
         html = path.read_text(encoding="utf-8")
-        html = html.replace('src="/app.js"', f'src="/app.js?v={APP_VERSION}"')
-        html = html.replace('href="/style.css"', f'href="/style.css?v={APP_VERSION}"')
-        _index_cache.update(mtime=mtime, html=html)
+        html = html.replace('src="/app.js"', f'src="/app.js?v={js}"')
+        html = html.replace('href="/style.css"', f'href="/style.css?v={css}"')
+        _index_cache.update(mtime=key, html=html)
     return _index_cache["html"]
 
 
@@ -2053,7 +2072,10 @@ async def _assets(request: web.Request, handler):
     if path == "/" or path.endswith(".html"):
         resp.headers["Cache-Control"] = "no-cache"
     elif path.endswith((".js", ".css")):
-        if request.query.get("v") == APP_VERSION:
+        # Immutable only when the tag matches the file as it is on disk right
+        # now. A stale tag gets revalidation instead, so an old page can never
+        # pin a copy that has since changed.
+        if request.query.get("v") == asset_tag(path.lstrip("/")):
             resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
             resp.headers["Cache-Control"] = "no-cache"

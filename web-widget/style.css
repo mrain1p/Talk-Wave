@@ -598,6 +598,39 @@
   .stages.timings li.total.warn .icon, .stages.timings li.total.warn .ms { color: var(--warn); }
   .stages.timings li.total.bad .icon,  .stages.timings li.total.bad .ms  { color: var(--accent); }
 
+  /* Recent calls: one collapsed row per call, in the same three columns as
+     the pipeline check and the speed test. Forty records rendered as forty
+     walls of transcript could not be skimmed at all. */
+  .result .calllist { white-space: normal; }
+  .callrow { border-bottom: 1px solid var(--line); }
+  .callrow:last-child { border-bottom: none; }
+  .callrow > summary {
+    display: grid; grid-template-columns: 18px 132px 1fr; gap: 10px;
+    align-items: baseline; padding: 6px 0; font-size: 12px;
+    cursor: pointer; list-style: none;
+  }
+  .callrow > summary::-webkit-details-marker { display: none; }
+  .callrow > summary:hover .nm { color: var(--text); }
+  .callrow > summary .icon { text-align: center; }
+  .callrow > summary .nm {
+    color: var(--dim); font-weight: 600;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .callrow > summary .dt { color: var(--dimmer); overflow-wrap: anywhere; }
+  .callrow.pass > summary .icon { color: var(--ok); }
+  .callrow.warn > summary .icon { color: var(--warn); }
+  .callrow.warn > summary .dt { color: #d0a882; }
+  /* A call nobody could be heard on is not a warning, it is a failed call. */
+  .callrow.fail > summary .icon { color: var(--accent); }
+  .callrow.fail > summary .dt { color: #e08b7d; }
+  .calltimeline {
+    margin: 2px 0 10px; padding: 9px 11px; border-radius: 8px;
+    background: var(--bg2, rgba(255,255,255,.03));
+    font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px;
+    line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+    color: var(--dim); max-height: 340px; overflow: auto;
+  }
+
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;
     padding: 11px; border-radius: 9px; border: 1px solid var(--line2);

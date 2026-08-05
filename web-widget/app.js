@@ -2631,30 +2631,69 @@
       : d.toLocaleTimeString([], { hour12: false });
   }
 
-  function renderCall(c) {
-    const when = callTime(c.startedAt, true);
-    const head = [
-      `${when}  ${c.persona?.name || 'DJ'}  ·  ${c.durationSecs || 0}s  ·  `
-        + `${c.callerTurns || 0} caller turn${c.callerTurns === 1 ? '' : 's'}`,
-      `  ${c.config?.llm || ''}  stt=${c.config?.stt || ''}  tts=${c.config?.tts || ''}`,
-    ];
-    if (c.endedBecause) head.push('  ended: ' + c.endedBecause);
-    if ((c.problems || []).length) {
-      head.push(...c.problems.map((p) => '  ⚠ ' + p.what));
+  // A call's verdict, in one glyph. "Had a problem entry" alone is too blunt
+  // — a station 503 the DJ recovered from is not the same as a call where
+  // nobody could hear anything — so the caller having actually spoken is what
+  // separates a warning from a failure.
+  function callVerdict(c) {
+    const problems = (c.problems || []).length;
+    const spoke = (c.callerTurns || 0) > 0;
+    if (!spoke) {
+      return { cls: 'fail', icon: '!',
+        note: 'no caller audio' + (problems ? ` · ${problems} problem${problems === 1 ? '' : 's'}` : '') };
     }
+    if (problems) {
+      return { cls: 'warn', icon: '!',
+        note: `${problems} problem${problems === 1 ? '' : 's'}` };
+    }
+    return { cls: 'pass', icon: '✓', note: '' };
+  }
 
-    // Merge speech and tool calls into one timeline.
+  function callTimeline(c) {
     const events = []
       .concat((c.turns || []).map((t) => ({ t: t.t, kind: t.who, text: t.text })))
       .concat((c.tools || []).map((t) => ({
         t: t.t, kind: 'tool', text: t.name + (t.result ? ' → ' + t.result : ''),
       })))
       .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
-
     const label = { caller: 'CALLER', dj: 'DJ    ', tool: '  tool' };
-    const body = events.map((e) =>
+    const lines = events.map((e) =>
       `${callTime(e.t)} ${label[e.kind] || e.kind}  ${e.text}`);
-    return head.join('\n') + '\n' + (body.join('\n') || '  (no conversation)');
+    const foot = [];
+    if (c.endedBecause) foot.push('ended: ' + c.endedBecause);
+    (c.problems || []).forEach((p) => foot.push('⚠ ' + p.what));
+    foot.push(`${c.config?.llm || ''}  stt=${c.config?.stt || ''}  tts=${c.config?.tts || ''}`);
+    return (lines.join('\n') || '  (no conversation)') + '\n\n' + foot.join('\n');
+  }
+
+  // One <details> per call, closed. Forty records as forty scrolling walls of
+  // transcript was unreadable; the header answers "which call was that, and
+  // did it go wrong" without opening anything.
+  function renderCallRow(c) {
+    const v = callVerdict(c);
+    const turns = c.callerTurns || 0;
+    const tools = (c.tools || []).length;
+    const bits = [
+      c.persona?.name || 'DJ',
+      `${Math.round(c.durationSecs || 0)}s`,
+      `${turns} turn${turns === 1 ? '' : 's'}`,
+    ];
+    if (tools) bits.push(`${tools} tool${tools === 1 ? '' : 's'}`);
+    if (v.note) bits.push(v.note);
+
+    const el = document.createElement('details');
+    el.className = 'callrow ' + v.cls;
+    const sum = document.createElement('summary');
+    sum.innerHTML = '<span class="icon"></span><span class="nm"></span><span class="dt"></span>';
+    sum.querySelector('.icon').textContent = v.icon;
+    sum.querySelector('.nm').textContent = callTime(c.startedAt, true);
+    sum.querySelector('.dt').textContent = bits.join(' · ');
+    const body = document.createElement('pre');
+    body.className = 'calltimeline';
+    body.textContent = callTimeline(c);
+    el.appendChild(sum);
+    el.appendChild(body);
+    return el;
   }
 
   $('viewCallsBtn').onclick = async () => {
@@ -2666,9 +2705,17 @@
       if (d.error) { showResult(out, false, d.error); return; }
       const calls = d.calls || [];
       out.className = 'result on';
-      out.textContent = calls.length
-        ? calls.map(renderCall).join('\n\n' + '─'.repeat(46) + '\n\n')
-        : 'No calls recorded yet. One file is written as each call ends.';
+      out.innerHTML = '';
+      if (!calls.length) {
+        out.textContent = 'No calls recorded yet. One file is written as each call ends.';
+        return;
+      }
+      // /calls already returns newest first — the call you want is almost
+      // always the last one — so this renders in the order given.
+      const list = document.createElement('div');
+      list.className = 'calllist';
+      calls.forEach((c) => list.appendChild(renderCallRow(c)));
+      out.appendChild(list);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
