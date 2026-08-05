@@ -89,6 +89,53 @@ async def handle_options(request: web.Request) -> web.Response:
 # point is to stop runaway use, not to ration callers.
 _recent_mints: list[float] = []          # timestamps, global
 _caller_last: dict[str, float] = {}      # caller key -> last mint
+
+# room -> what we knew about the caller when the token was minted. The worker
+# writes the call record and never sees any of this, so it is merged in when
+# /calls is served.
+#
+# Deliberately in memory only and never written to disk: it is enough to
+# answer "why did that call fail" while the process is up, without the call
+# archive quietly becoming a log of who rang and from where. A restart loses
+# it, which is the right trade for a diagnostic.
+_mint_info: dict[str, dict] = {}
+_MINT_INFO_KEEP = 60
+
+
+def _describe_client(ua: str) -> str:
+    """Browser and OS, roughly. Enough to tell a Safari problem from a Firefox
+    one without pulling in a user-agent library."""
+    ua = ua or ""
+    browser = next((n for n in ("Edg", "OPR", "Chrome", "Firefox", "Safari")
+                    if n in ua), "")
+    browser = {"Edg": "Edge", "OPR": "Opera"}.get(browser, browser)
+    if browser == "Safari" and "Chrome" in ua:
+        browser = "Chrome"
+    os_name = next((n for n in ("iPhone", "iPad", "Android", "Mac OS X",
+                                "Windows NT", "Linux", "CrOS") if n in ua), "")
+    os_name = {"Windows NT": "Windows", "Mac OS X": "macOS",
+               "CrOS": "ChromeOS"}.get(os_name, os_name)
+    return " on ".join(p for p in (browser, os_name) if p) or "unknown client"
+
+
+def _network_of(ip: str) -> str:
+    """Whether the caller was on this network or came in from outside.
+
+    Worth surfacing because it is the first question when a call connects and
+    then hears nothing: an off-LAN caller with no media path looks identical
+    to a silent one from inside the booth.
+    """
+    ip = (ip or "").strip()
+    if not ip or ip == "unknown":
+        return "unknown"
+    if ip.startswith(("10.", "192.168.", "127.", "::1", "fd", "fe80")):
+        return "same network"
+    if ip.startswith("172."):
+        try:
+            return "same network" if 16 <= int(ip.split(".")[1]) <= 31 else "off-network"
+        except (ValueError, IndexError):
+            return "unknown"
+    return "off-network"
 _live_calls: dict[str, float] = {}       # room -> started at
 
 _CALL_ASSUMED_MAX = 1800.0               # forget a room after 30 min
@@ -229,6 +276,14 @@ async def handle_token(request: web.Request) -> web.Response:
         _recent_mints.append(now)
         _caller_last[_caller_key(request)] = now
         _live_calls[room] = now
+        ip = _caller_key(request)
+        _mint_info[room] = {
+            "client": _describe_client(request.headers.get("User-Agent", "")),
+            "network": _network_of(ip),
+            "ip": ip,
+        }
+        for stale in list(_mint_info)[:-_MINT_INFO_KEEP]:
+            _mint_info.pop(stale, None)
 
     log.info(
         "minted %s token for room=%s identity=%s (%d live, %d this hour)",
@@ -1906,7 +1961,14 @@ async def handle_calls(request: web.Request) -> web.Response:
              "authRequired": bool(request.get("auth_required"))}, status=401))
     from call.record import recent
 
-    return _cors(request, web.json_response({"calls": recent(20)}))
+    # The worker writes the record and never sees the browser that called, so
+    # what we knew at mint time is attached here rather than stored with it.
+    calls = recent(20)
+    for c in calls:
+        known = _mint_info.get(c.get("room") or "")
+        if known:
+            c["caller"] = known
+    return _cors(request, web.json_response({"calls": calls}))
 
 
 async def handle_logs(request: web.Request) -> web.Response:

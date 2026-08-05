@@ -2474,8 +2474,8 @@
       const foot = document.createElement('p');
       foot.className = 'hint';
       foot.style.margin = '9px 0 0';
-      foot.textContent = 'Dimmed rows happen once per call, not on every turn, '
-        + 'so they are not in the per-turn total.';
+      // One line on purpose — it wrapped to two and unbalanced the panel.
+      foot.textContent = 'Dimmed rows run once per call, not per turn.';
       out.appendChild(foot);
     }
   }
@@ -2626,6 +2626,13 @@
   function callTime(iso, withDate) {
     const d = new Date(iso || '');
     if (!iso || isNaN(d.getTime())) return (iso || '').slice(11, 19);
+    if (withDate === 'short') {
+      // Fits one line in a list row; the year is noise across forty calls.
+      return d.toLocaleString([], {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        second: '2-digit',
+      });
+    }
     return withDate
       ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' })
       : d.toLocaleTimeString([], { hour12: false });
@@ -2649,21 +2656,108 @@
     return { cls: 'pass', icon: '✓', note: '' };
   }
 
-  function callTimeline(c) {
+  // The body of an opened call, in the order you actually read it: what the
+  // call was, what it ran on, who was calling, what went wrong, and only then
+  // the conversation. Dumping all of it as one block meant the warning that
+  // explained the call was buried under the transcript that didn't.
+  function callBody(c) {
+    const box = document.createElement('div');
+    box.className = 'callbody';
+
+    const section = (title) => {
+      const h = document.createElement('div');
+      h.className = 'cbhead';
+      h.textContent = title;
+      box.appendChild(h);
+    };
+    const facts = (pairs) => {
+      const dl = document.createElement('dl');
+      dl.className = 'cbfacts';
+      pairs.filter(([, v]) => v !== '' && v != null).forEach(([k, v]) => {
+        const dt = document.createElement('dt'); dt.textContent = k;
+        const dd = document.createElement('dd'); dd.textContent = v;
+        dl.appendChild(dt); dl.appendChild(dd);
+      });
+      box.appendChild(dl);
+    };
+
+    const turns = c.callerTurns || 0;
+    section('Call');
+    facts([
+      ['Started', callTime(c.startedAt, true)],
+      ['Length', `${Math.round(c.durationSecs || 0)}s`],
+      ['DJ', c.persona?.name || '—'],
+      ['Caller turns', turns],
+      ['Tools used', (c.tools || []).length],
+      ['Ended', c.endedBecause || 'caller hung up or the line timed out'],
+      ['Room', c.room || c.id || ''],
+    ]);
+
+    section('Running on');
+    facts([
+      ['AI model', c.config?.llm || '—'],
+      ['Speech-to-text', c.config?.stt || '—'],
+      ['Voice', c.config?.tts || '—'],
+    ]);
+
+    // Known only while the process that minted the token is still up, so it
+    // is absent rather than wrong on older calls.
+    if (c.caller) {
+      section('Caller');
+      facts([
+        ['Client', c.caller.client || '—'],
+        ['Network', c.caller.network || 'unknown'],
+        ['Address', c.caller.ip || '—'],
+      ]);
+    }
+
+    if ((c.problems || []).length) {
+      section('What went wrong');
+      const ul = document.createElement('ul');
+      ul.className = 'cbproblems';
+      c.problems.forEach((p) => {
+        const li = document.createElement('li');
+        li.textContent = p.what;
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
+    section('Conversation');
     const events = []
       .concat((c.turns || []).map((t) => ({ t: t.t, kind: t.who, text: t.text })))
       .concat((c.tools || []).map((t) => ({
-        t: t.t, kind: 'tool', text: t.name + (t.result ? ' → ' + t.result : ''),
+        t: t.t, kind: 'tool', name: t.name, result: t.result || '',
       })))
       .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
-    const label = { caller: 'CALLER', dj: 'DJ    ', tool: '  tool' };
-    const lines = events.map((e) =>
-      `${callTime(e.t)} ${label[e.kind] || e.kind}  ${e.text}`);
-    const foot = [];
-    if (c.endedBecause) foot.push('ended: ' + c.endedBecause);
-    (c.problems || []).forEach((p) => foot.push('⚠ ' + p.what));
-    foot.push(`${c.config?.llm || ''}  stt=${c.config?.stt || ''}  tts=${c.config?.tts || ''}`);
-    return (lines.join('\n') || '  (no conversation)') + '\n\n' + foot.join('\n');
+
+    if (!events.length) {
+      const p = document.createElement('p');
+      p.className = 'cbempty';
+      p.textContent = 'Nothing was said on this call.';
+      box.appendChild(p);
+      return box;
+    }
+
+    const talk = document.createElement('div');
+    talk.className = 'cbtalk';
+    const who = { caller: 'Caller', dj: 'DJ' };
+    events.forEach((e) => {
+      const line = document.createElement('div');
+      line.className = 'cbline ' + e.kind;
+      const failed = e.kind === 'tool'
+        && /refus|error|fail|could ?n.t|didn.t/i.test(e.result);
+      if (failed) line.className += ' bad';
+      line.innerHTML = '<span class="t"></span><span class="w"></span><span class="x"></span>';
+      line.querySelector('.t').textContent = callTime(e.t);
+      line.querySelector('.w').textContent = e.kind === 'tool' ? 'tool' : (who[e.kind] || e.kind);
+      line.querySelector('.x').textContent = e.kind === 'tool'
+        ? e.name + (e.result ? ' → ' + e.result : '')
+        : e.text;
+      talk.appendChild(line);
+    });
+    box.appendChild(talk);
+    return box;
   }
 
   // One <details> per call, closed. Forty records as forty scrolling walls of
@@ -2683,16 +2777,17 @@
 
     const el = document.createElement('details');
     el.className = 'callrow ' + v.cls;
+    el.dataset.verdict = v.cls;
     const sum = document.createElement('summary');
     sum.innerHTML = '<span class="icon"></span><span class="nm"></span><span class="dt"></span>';
     sum.querySelector('.icon').textContent = v.icon;
-    sum.querySelector('.nm').textContent = callTime(c.startedAt, true);
+    // No year: "Aug 5, 2026, 2:29:24 AM" wrapped onto a second line and broke
+    // the row. The year is never the thing you are looking for in a list that
+    // holds the last forty calls.
+    sum.querySelector('.nm').textContent = callTime(c.startedAt, 'short');
     sum.querySelector('.dt').textContent = bits.join(' · ');
-    const body = document.createElement('pre');
-    body.className = 'calltimeline';
-    body.textContent = callTimeline(c);
     el.appendChild(sum);
-    el.appendChild(body);
+    el.appendChild(callBody(c));
     return el;
   }
 
@@ -2715,6 +2810,22 @@
       const list = document.createElement('div');
       list.className = 'calllist';
       calls.forEach((c) => list.appendChild(renderCallRow(c)));
+
+      // Filtering, kept small and out of the way: the common case is reading
+      // the last call, not hunting failures, so this is a checkbox rather
+      // than a mode the panel remembers.
+      const rough = calls.filter((c) => callVerdict(c).cls !== 'pass').length;
+      const bar = document.createElement('label');
+      bar.className = 'callfilter';
+      bar.innerHTML = '<input type="checkbox" /><span></span>';
+      bar.querySelector('span').textContent = rough
+        ? `Only calls with problems (${rough} of ${calls.length})`
+        : `Only calls with problems — none of the last ${calls.length}`;
+      const box = bar.querySelector('input');
+      box.disabled = !rough;
+      box.onchange = () => list.classList.toggle('onlybad', box.checked);
+
+      out.appendChild(bar);
       out.appendChild(list);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }

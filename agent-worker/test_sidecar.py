@@ -290,6 +290,72 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestCallerContext(unittest.TestCase):
+    """What we can say about a caller when a call goes wrong.
+
+    The worker writes the call record and never sees the browser that rang, so
+    the token server attaches what it knew at mint time. Kept in memory only —
+    enough to answer "why did that call fail" while the process is up, without
+    the call archive quietly becoming a log of who rang and from where.
+    """
+
+    def test_it_tells_the_browsers_apart(self):
+        from token_server import _describe_client
+
+        cases = {
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:153.0) Gecko/20100101 Firefox/153.0":
+                "Firefox on macOS",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36":
+                "Chrome on Windows",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1":
+                "Safari on iPhone",
+        }
+        for ua, want in cases.items():
+            with self.subTest(browser=want):
+                self.assertEqual(_describe_client(ua), want)
+        self.assertEqual(_describe_client(""), "unknown client")
+
+    def test_it_says_whether_the_caller_was_on_this_network(self):
+        # The point of the whole thing: a call that connects and then hears
+        # nothing looks identical whether the caller was off-LAN with no media
+        # path or simply silent. This separates them.
+        from token_server import _network_of
+
+        for ip in ("192.168.1.51", "10.0.0.8", "172.19.0.4", "127.0.0.1"):
+            with self.subTest(ip=ip):
+                self.assertEqual(_network_of(ip), "same network")
+        for ip in ("100.33.134.4", "8.8.8.8", "172.32.0.1"):
+            with self.subTest(ip=ip):
+                self.assertEqual(_network_of(ip), "off-network")
+        self.assertEqual(_network_of(""), "unknown")
+        self.assertEqual(_network_of("nonsense"), "off-network")
+
+    def test_caller_context_never_reaches_the_call_record_on_disk(self):
+        # It is diagnostic, not archive. If this ever changes, every stored
+        # call becomes a record of an address, which is a different promise
+        # than "both sides of the conversation". Tested on what is actually
+        # written, not on the source text — an earlier version grepped the
+        # module and matched "ip" inside "description".
+        import json
+
+        from call import record
+
+        tmp = Path(tempfile.mkdtemp())
+        original = record.CALLS_DIR
+        try:
+            record.CALLS_DIR = tmp
+            r = record.CallRecord("callin-abc", {"id": "p1", "name": "Cliff"}, {})
+            r.turn("caller", "hello")
+            r.write(reason="caller hung up")
+            written = json.loads(next(tmp.glob("*.json")).read_text(encoding="utf-8"))
+        finally:
+            record.CALLS_DIR = original
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        for key in ("caller", "ip", "client", "network", "userAgent"):
+            self.assertNotIn(key, written, f"the record on disk now carries {key}")
+
+
 class TestExposedSurface(unittest.TestCase):
     """Everything this service exposes, pinned so a change has to be deliberate.
 

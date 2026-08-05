@@ -623,13 +623,54 @@
   /* A call nobody could be heard on is not a warning, it is a failed call. */
   .callrow.fail > summary .icon { color: var(--accent); }
   .callrow.fail > summary .dt { color: #e08b7d; }
-  .calltimeline {
-    margin: 2px 0 10px; padding: 9px 11px; border-radius: 8px;
-    background: var(--bg2, rgba(255,255,255,.03));
-    font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px;
-    line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
-    color: var(--dim); max-height: 340px; overflow: auto;
+  /* An opened call, read top to bottom: what it was, what it ran on, who
+     called, what went wrong, then the conversation. */
+  .callbody {
+    margin: 2px 0 12px; padding: 10px 12px; border-radius: 8px;
+    background: rgba(255,255,255,.03); font-size: 11.5px;
+    max-height: 420px; overflow: auto;
   }
+  .cbhead {
+    font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--dimmer); font-weight: 700; margin: 12px 0 5px;
+  }
+  .cbhead:first-child { margin-top: 0; }
+  .cbfacts {
+    display: grid; grid-template-columns: 116px 1fr; gap: 3px 10px; margin: 0;
+  }
+  .cbfacts dt { color: var(--dimmer); }
+  .cbfacts dd {
+    margin: 0; color: var(--dim); overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px;
+  }
+  .cbproblems { margin: 0; padding-left: 16px; color: #e08b7d; }
+  .cbproblems li { margin: 3px 0; overflow-wrap: anywhere; }
+  .cbempty { margin: 0; color: var(--dimmer); font-style: italic; }
+
+  .cbtalk { display: grid; gap: 2px; }
+  .cbline {
+    display: grid; grid-template-columns: 62px 52px 1fr; gap: 9px;
+    align-items: baseline; padding: 2px 0;
+    font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px;
+    line-height: 1.5;
+  }
+  .cbline .t { color: var(--dimmer); font-variant-numeric: tabular-nums; }
+  .cbline .w { color: var(--dimmer); font-weight: 700; }
+  .cbline .x { color: var(--dim); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .cbline.dj .w { color: var(--ok); }
+  .cbline.caller .w { color: var(--text); }
+  .cbline.caller .x { color: var(--text); }
+  .cbline.tool .w, .cbline.tool .x { color: var(--dimmer); }
+  /* A tool that came back with a refusal is the line you are looking for. */
+  .cbline.tool.bad .w, .cbline.tool.bad .x { color: #e08b7d; }
+
+  .callfilter {
+    display: flex; align-items: center; gap: 7px; margin: 0 0 4px;
+    font-size: 11px; color: var(--dimmer); cursor: pointer;
+  }
+  .callfilter input { margin: 0; }
+  .callfilter input:disabled + span { opacity: .5; cursor: default; }
+  .calllist.onlybad .callrow.pass { display: none; }
 
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;
