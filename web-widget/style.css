@@ -1,102 +1,159 @@
-/* SUB/WAVE call-in widget styles. Served by token_server as /style.css. */
+/* SUB/WAVE call-in widget styles. Served by token_server as /style.css.
+
+   THEMING CONTRACT (HOST-STYLE-GUIDE.md §2). The host page's own token names
+   are the source of truth here, so `?theme=inherit` and the station palette
+   can be copied straight across with no translation layer. Nothing below may
+   hardcode a colour: if you need a tint, derive it with color-mix() from a
+   token. A literal is a bug the moment the station changes its palette.
+
+   The older names (--bg, --panel, --line…) are kept as ALIASES of the new
+   ones. The settings panel is ~450 lines written against them and is
+   full-page only, so it is not worth the churn of a rename; the call card
+   below uses the contract names directly. */
   :root {
     color-scheme: light dark;
     /* Dark is the default look — it's a late-night radio booth. Light mode
        exists for embedding on pages that aren't. */
-    --bg: #0b0b0c; --panel: #111113; --line: #26262a; --line2: #2b2b31;
-    --text: #f2f0ec; --dim: #9a9aa2; --dimmer: #6f6f78;
-    --accent: #e0533d; --ok: #47b877; --warn: #d8a13a; --cool: #4a8b8d;
+    --pine: #211d19; --granite: #2a2520; --granite-hi: #37302a;
+    --alpenglow: #ece4d2; --sage: #a89e8c; --sage-dim: #7d7466;
+    --coral: #f05a47; --amber: #d9a441;
+    --hairline: rgba(236,228,210,.12); --rule: rgba(236,228,210,.55);
+    --edge: rgba(236,228,210,.22);      /* between hairline and rule */
+
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-body: Archivo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-display: Archivo, ui-sans-serif, system-ui, sans-serif;
+    --control-h: 31px; --band-gap: 12px;
+
+    /* Legacy aliases — settings panel only. */
+    --bg: var(--pine); --panel: var(--granite);
+    --line: var(--hairline); --line2: var(--edge);
+    --text: var(--alpenglow); --dim: var(--sage); --dimmer: var(--sage-dim);
+    --accent: var(--coral); --warn: var(--amber);
+    --ok: #47b877; --cool: #4a8b8d;
     --shadow: none;
   }
+  /* Light is not an inversion: coral and amber DARKEN, because the dark-mode
+     values wash out on cream and fail contrast on light ground. */
   @media (prefers-color-scheme: light) {
     :root {
-      --bg: #f6f5f3; --panel: #ffffff; --line: #e3e0db; --line2: #d5d1ca;
-      --text: #1b1a18; --dim: #5f5c57; --dimmer: #86827b;
-      --accent: #c2402b; --ok: #2f7d4f; --warn: #9a6b16; --cool: #2f6f72;
-      --shadow: 0 1px 2px rgba(0,0,0,.05);
+      --pine: #f3efe6; --granite: #faf7f0; --granite-hi: #ebe4d5;
+      --alpenglow: #1a1613; --sage: #6f675c; --sage-dim: #988e80;
+      --coral: #c5302a; --amber: #8a5a00;
+      --hairline: rgba(26,22,19,.15); --rule: rgba(26,22,19,.65);
+      --edge: rgba(26,22,19,.28);
+      --ok: #2f7d4f; --cool: #2f6f72;
     }
   }
   /* Explicit choice always wins over the OS. */
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #0b0b0c; --panel: #111113; --line: #26262a; --line2: #2b2b31;
-    --text: #f2f0ec; --dim: #9a9aa2; --dimmer: #6f6f78;
-    --accent: #e0533d; --ok: #47b877; --warn: #d8a13a; --cool: #4a8b8d;
-    --shadow: none;
+    --pine: #211d19; --granite: #2a2520; --granite-hi: #37302a;
+    --alpenglow: #ece4d2; --sage: #a89e8c; --sage-dim: #7d7466;
+    --coral: #f05a47; --amber: #d9a441;
+    --hairline: rgba(236,228,210,.12); --rule: rgba(236,228,210,.55);
+    --edge: rgba(236,228,210,.22);
+    --ok: #47b877; --cool: #4a8b8d;
   }
   :root[data-theme="light"] {
     color-scheme: light;
-    --bg: #f6f5f3; --panel: #ffffff; --line: #e3e0db; --line2: #d5d1ca;
-    --text: #1b1a18; --dim: #5f5c57; --dimmer: #86827b;
-    --accent: #c2402b; --ok: #2f7d4f; --warn: #9a6b16; --cool: #2f6f72;
-    --shadow: 0 1px 2px rgba(0,0,0,.05);
+    --pine: #f3efe6; --granite: #faf7f0; --granite-hi: #ebe4d5;
+    --alpenglow: #1a1613; --sage: #6f675c; --sage-dim: #988e80;
+    --coral: #c5302a; --amber: #8a5a00;
+    --hairline: rgba(26,22,19,.15); --rule: rgba(26,22,19,.65);
+    --edge: rgba(26,22,19,.28);
+    --ok: #2f7d4f; --cool: #2f6f72;
+  }
+
+  /* Micro-type: every label, button, chip and timer in the card. One spec,
+     used by name, so they cannot drift apart again. */
+  .micro {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; padding: 24px 16px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--bg); color: var(--text);
+    font-family: var(--font-body);
+    background: var(--pine); color: var(--alpenglow);
   }
-  /* Card and settings panel share a width so the page reads as one column. */
+  /* No card (§4.1). The near-black slab with its own radius floating inside
+     the host's column is the single thing that made this read as a
+     third-party component. The widget is transparent and contributes no
+     inset; the page (standalone) or the frame padding (embed) provides it,
+     and bands separated by hairlines do the work the card used to do.
+     Width still matches the settings panel so the page reads as one column. */
   .card {
-    width: min(620px, 100%); padding: 22px 24px; position: relative;
-    border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
-    box-shadow: var(--shadow);
+    width: min(620px, 100%); padding: 0; position: relative;
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
   }
   /* Avatar beside the text rather than stacked above it — the stacked version
      wasted vertical space and pushed the captions off screen. */
   .who-row {
-    display: flex; align-items: center; gap: 15px; text-align: left;
-    padding-bottom: 14px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: var(--band-gap); text-align: left;
+    padding: 13px 0 14px; border-bottom: 1px dashed var(--hairline);
   }
   .who-row .meta { min-width: 0; flex: 1; }
 
   /* --- status --- */
+  /* The header band is 38px so it sits level with the host's own caption row
+     across the seam (§6). The pip is a SQUARE — the host has no circles. */
   .eyebrow {
-    font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
-    font-weight: 700; margin-bottom: 13px; color: var(--accent);
-    display: flex; align-items: center; gap: 7px;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .16em;
+    text-transform: uppercase; font-weight: 700; color: var(--coral);
+    height: 38px; margin: 0; border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 8px;
   }
   .eyebrow .pip {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 0 0 rgba(224,83,61,.6); animation: live 2s infinite;
+    width: 7px; height: 7px; border-radius: 0; background: var(--coral);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--coral) 60%, transparent);
+    animation: live 2s infinite;
   }
-  @keyframes live { 70% { box-shadow: 0 0 0 7px rgba(224,83,61,0); } 100% { box-shadow: 0 0 0 0 rgba(224,83,61,0); } }
-  .eyebrow.off { color: var(--dimmer); }
-  .eyebrow.off .pip { background: var(--dimmer); animation: none; }
+  @keyframes live {
+    70%  { box-shadow: 0 0 0 7px color-mix(in srgb, var(--coral) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--coral) 0%, transparent); }
+  }
+  .eyebrow.off { color: var(--sage-dim); }
+  .eyebrow.off .pip { background: var(--sage-dim); animation: none; }
 
+  /* Square, hairline-framed, 44px (§4.3). */
   .avatar {
-    width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
-    border: 2px solid var(--line); background: var(--line); display: block;
+    width: 44px; height: 44px; border-radius: 0; object-fit: cover; flex: 0 0 auto;
+    border: 1px solid var(--hairline); background: var(--granite-hi); display: block;
     transition: border-color .25s ease, box-shadow .25s ease;
   }
   .avatar.hidden { display: none; }
-  .avatar.talking { border-color: var(--accent); box-shadow: 0 0 0 5px rgba(224,83,61,.12); }
+  /* The one permitted glow: live state, matching the host's playing button. */
+  .avatar.talking {
+    border-color: var(--coral); box-shadow: 0 0 18px rgba(240,90,71,.38);
+  }
   .dj {
-    font-size: 21px; font-weight: 700; margin: 0 0 2px; letter-spacing: -.01em;
+    font-family: var(--font-body); font-size: 17px; font-weight: 600;
+    color: var(--alpenglow); margin: 0 0 3px; letter-spacing: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .show {
-    font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-    color: #8a8a93; font-weight: 600; margin: 0 0 3px;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--sage-dim); font-weight: 700; margin: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tagline {
-    font-size: 12.5px; color: var(--dim); margin: 0;
+    font-size: 13.5px; line-height: 1.5; color: var(--sage); margin: 3px 0 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   /* Now-playing sits in the spare space to the right of the DJ block. */
   .track {
-    font-size: 11.5px; color: var(--dimmer); margin: 0 0 0 auto;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; font-weight: 700;
+    color: var(--sage-dim); margin: 0 0 0 auto;
     padding-left: 14px; max-width: 42%; text-align: right; align-self: center;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  /* One button shape for the whole app. Every control had picked up its own
-     radius and colour over time — 999px pills next to 7px squares, three
-     different greys — so nothing read as belonging to the same family. 10px
-     is the shape; colour is the only thing that says primary or secondary. */
+  /* The settings panel keeps the old button shape — it is full-page only and
+     ~450 lines are written against it. Inside the card there are exactly TWO
+     treatments (§4.7), and they differ only in fill. */
   button {
     font: inherit; font-weight: 600; font-size: 11.5px;
     padding: 6px 13px; border-radius: 9px; border: none; cursor: pointer;
@@ -105,112 +162,173 @@
   }
   button:hover:not(:disabled) { filter: brightness(1.15); }
   button:disabled { opacity: .5; cursor: default; }
-  /* Sized to the action, not the card — a full-width slab read as the page's
-     main event when it's really just "start". */
-  #callBtn {
-    background: var(--accent); color: #fff;
-    padding: 11px 24px; font-size: 14px; min-width: 150px; border-radius: 11px;
+
+  /* Secondary is the default in the card: same box, ghosted. min-width:0 and
+     the clip are load-bearing — a flex button is floored at its min-content
+     width, so "Reconnecting…" would otherwise push its whole row wider than
+     "Hang up" did. */
+  .card button {
+    font: 700 11px/1 var(--font-mono);
+    letter-spacing: .14em; text-transform: uppercase;
+    height: var(--control-h); padding: 0 18px; min-width: 0;
+    border-radius: 0; border: 1px solid var(--coral);
+    background: transparent; color: var(--coral);
+    overflow: hidden; white-space: nowrap;
   }
-  /* Call progression on the button itself: Ringing (amber, blinking — the
-     thinking scheme), then Answering and On the line both green (the line is
-     live from pickup onward). Disabled during all three, but not dimmed —
-     the button IS the status while a call is being placed. */
-  /* During a call the button is a status chip and must sit flush with the
-     state and timer pills — same height, same pill typography. */
-  #callBtn.ringing, #callBtn.answering, #callBtn.live {
-    background: var(--line2);
-    display: inline-flex; align-items: center; height: 28px; min-width: 0;
-    padding: 0 13px; border-radius: 9px;
-    font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
-    font-weight: 700;
+  .card button:hover:not(:disabled) {
+    filter: none; background: color-mix(in srgb, var(--coral) 12%, transparent);
   }
-  #callBtn.ringing   { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn);
-                       animation: blink 1.2s infinite; }
-  #callBtn.answering { color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); }
-  #callBtn.live      { color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); }
-  #callBtn:disabled.ringing, #callBtn:disabled.answering, #callBtn:disabled.live {
+  /* Exactly one filled button in any state — so a disabled action gives up
+     the fill rather than sitting there looking like the thing to press. */
+  .card button:disabled {
     opacity: 1; cursor: default;
+    background: transparent; color: var(--sage-dim); border-color: var(--hairline);
+  }
+  /* Primary: the one action in this state. Idle that is Call, in-call it is
+     Hang up, behind the door it is the code button. */
+  #callBtn:not(:disabled), #hangBtn, .guestgate:not([hidden]) #guestBtn {
+    background: var(--coral); color: #fff; border-color: var(--coral);
+  }
+  #callBtn:not(:disabled):hover, #hangBtn:hover,
+  .guestgate:not([hidden]) #guestBtn:hover {
+    filter: brightness(1.08); background: var(--coral);
+  }
+  /* While the door code is up it owns the primary, so Call steps back even
+     when it is technically enabled. */
+  .card:has(.guestgate:not([hidden])) #callBtn:not(:disabled) {
+    background: transparent; color: var(--coral); border-color: var(--coral);
+  }
+  /* Call progression on the button itself: Ringing (amber — nothing is live
+     yet), then Answering and On the line in coral, which is what live looks
+     like everywhere else in the widget. Disabled during all three, but not
+     ghosted — the button IS the status while a call is being placed, so it
+     opts out of the disabled treatment above. */
+  #callBtn.ringing, #callBtn.answering, #callBtn.live,
+  #callBtn:disabled.ringing, #callBtn:disabled.answering, #callBtn:disabled.live {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: var(--control-h); min-width: 0; padding: 0 13px;
+    border-radius: 0; background: transparent; opacity: 1; cursor: default;
+    font: 700 10.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  #callBtn.ringing, #callBtn:disabled.ringing {
+    color: var(--amber); border-color: var(--amber); animation: blink 1.2s infinite;
+  }
+  #callBtn.answering, #callBtn.live,
+  #callBtn:disabled.answering, #callBtn:disabled.live {
+    color: var(--coral); border-color: var(--coral);
   }
 
   /* --- in-call rig --- */
-  .rig { display: none; margin-top: 14px; }
+  .rig { display: none; }
   .rig.on { display: block; }
 
   /* Button, state pill, timer and the idle status line all share this one
-     row — every status lives beside the action, never below it. */
-  .actionrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+     row — every status lives beside the action, never below it. Bands are
+     full-bleed and separated by a dashed hairline, not stacked as cards. */
+  .actionrow {
+    display: flex; align-items: center; gap: var(--band-gap); flex-wrap: wrap;
+    padding: var(--band-gap) 0; border-bottom: 1px dashed var(--hairline);
+  }
+  /* Square, transparent, hairline-bordered, control height. Colour carries
+     state; fill never does (§4.4) — the only filled thing in any state is the
+     one primary button. */
   .pill {
-    display: inline-flex; align-items: center; gap: 6px; height: 28px;
-    padding: 0 12px; border-radius: 9px;
-    background: var(--bg); border: 1px solid var(--line2); color: var(--dim);
-    font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 7px; height: var(--control-h);
+    padding: 0 12px; border-radius: 0;
+    background: transparent; border: 1px solid var(--hairline); color: var(--sage-dim);
+    font: 700 10.5px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
     transition: color .2s, border-color .2s;
   }
   .pill[hidden] { display: none; }
   .timechip {
-    text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11.5px;
+    color: var(--amber); letter-spacing: .1em;
     font-variant-numeric: tabular-nums;
   }
-  .timechip .tmax { color: var(--dimmer); font-weight: 400; font-size: 10.5px; margin-left: 2px; }
-  .timechip.warn { color: var(--warn); border-color: var(--warn); }
-  .timechip.urgent { color: var(--accent); border-color: var(--accent); }
-  .statechip .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .statechip[data-state="listening"] { color: var(--ok); border-color: var(--ok); }
-  .statechip[data-state="thinking"]  { color: var(--warn); border-color: var(--warn); }
+  .timechip .tmax { color: var(--sage-dim); font-weight: 400; margin-left: 4px; }
+  .timechip.warn { color: var(--amber); border-color: var(--amber); }
+  .timechip.urgent { color: var(--coral); border-color: var(--coral); }
+  /* Square pip, like every other dot in the widget. */
+  .statechip .sdot { width: 7px; height: 7px; border-radius: 0; background: currentColor; }
+  /* Live states are coral. The green this used to use is not in the host's
+     palette at all, which is most of why the widget read as foreign. */
+  .statechip[data-state="listening"] { color: var(--coral); border-color: var(--coral); }
+  .statechip[data-state="thinking"]  { color: var(--amber); border-color: var(--amber); }
   .statechip[data-state="thinking"] .sdot { animation: blink .7s infinite; }
-  .statechip[data-state="speaking"]  { color: var(--accent); border-color: var(--accent); }
-  .statechip[data-state="reconnecting"] { color: var(--warn); border-color: var(--warn); }
+  .statechip[data-state="speaking"]  { color: var(--coral); border-color: var(--coral); }
+  .statechip[data-state="speaking"] .sdot { animation: blink 1.1s infinite; }
+  .statechip[data-state="reconnecting"] { color: var(--amber); border-color: var(--amber); }
   .statechip[data-state="reconnecting"] .sdot { animation: blink .7s infinite; }
-  /* The station has the microphone. Deliberately the loudest of the states:
-     it's the only one where the DJ going quiet is correct rather than broken.
-     The text colour is pinned per theme rather than taken from --bg: this is
-     the one filled chip in the widget, and it has to stay legible on a light
-     amber (dark theme) and a dark amber (light theme) alike. */
+  /* The station has the microphone — the one state where the DJ going quiet
+     is correct rather than broken. It used to be the widget's only filled
+     chip; it now carries in amber with a blinking pip and the bloom, because
+     a second filled element competes with the primary button and fill is not
+     allowed to mean state. */
   .statechip[data-state="onair"] {
-    color: #0b0b0c; background: var(--warn); border-color: var(--warn);
-    font-weight: 700;
+    color: var(--amber); border-color: var(--amber);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 30%, transparent);
   }
-  @media (prefers-color-scheme: light) {
-    .statechip[data-state="onair"] { color: #fff; }
-  }
-  :root[data-theme="dark"] .statechip[data-state="onair"] { color: #0b0b0c; }
-  :root[data-theme="light"] .statechip[data-state="onair"] { color: #fff; }
   .statechip[data-state="onair"] .sdot { animation: blink 1.1s infinite; }
-  .card.onair .avatar { box-shadow: 0 0 0 2px var(--warn); }
+  .card.onair .avatar { border-color: var(--amber); }
   @keyframes blink { 50% { opacity: .25; } }
 
   /* While a call is live the pills are the status — the bottom line would
      just say the same thing twice. */
   .card.oncall #status { display: none; }
 
-  .meters { display: flex; gap: 14px; margin: 13px 0 4px; }
-  .meter { flex: 1; text-align: left; }
+  /* §4.6: a 3px trough and a fill in the speaker's identity colour. The old
+     ten-bar spectrum was ten style writes per animation frame per meter and
+     read as a dashed placeholder when idle, which is what it looked like in
+     the screenshots. */
+  .meters { display: flex; gap: var(--band-gap); padding: var(--band-gap) 0 0; }
+  .meter { flex: 1; text-align: left; min-width: 0; }
   .meter .mlabel {
-    font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
-    font-weight: 700; color: var(--dimmer); margin-bottom: 5px;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    margin-bottom: 6px;
   }
-  .bars { display: flex; gap: 2px; align-items: flex-end; height: 26px; }
+  .bars {
+    display: block; height: 3px; background: var(--hairline);
+    border-radius: 0; overflow: hidden;
+  }
   .bars i {
-    flex: 1; background: var(--line2); border-radius: 1px; height: 12%;
-    transition: height .07s linear, background .15s;
+    display: block; height: 100%; width: 0;
+    background: currentColor; border-radius: 0;
+    transition: width .07s linear;
   }
-  .meter.you .bars i.hot { background: var(--cool); }
-  .meter.dj .bars i.hot { background: var(--accent); }
-  .meter.muted .mlabel { color: var(--accent); }
+  .meter.you { color: var(--amber); }
+  .meter.dj { color: var(--coral); }
+  .meter.muted .mlabel { color: var(--coral); }
+  .meter.muted .bars i { background: var(--hairline); }
 
   /* Volume and the call buttons share a row — at full card width they fit
      side by side, which keeps the captions higher up the page. */
-  .callrow { display: flex; align-items: center; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
-  .vol { display: flex; align-items: center; gap: 9px; flex: 1 1 190px; min-width: 0; }
-  .vol label { font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--dimmer); font-weight: 700; }
-  .vol input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
-  .vol .pct { font-size: 11px; color: var(--dimmer); width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+  .callrow {
+    display: flex; align-items: center; gap: var(--band-gap);
+    padding: var(--band-gap) 0; flex-wrap: wrap;
+  }
+  .vol { display: flex; align-items: center; gap: 10px; flex: 1 1 190px; min-width: 0; }
+  .vol label {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--sage-dim); font-weight: 700;
+  }
+  .vol input[type=range] { flex: 1; accent-color: var(--coral); min-width: 0; height: var(--control-h); }
+  .vol .pct {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    color: var(--sage-dim); width: 38px; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 
-  .controls { display: flex; gap: 8px; flex: 0 0 auto; }
-  .controls button { background: var(--line2); color: var(--text); }
-  .controls button.on { background: var(--accent); color: #fff; }
+  .controls { display: flex; gap: var(--band-gap); flex: 0 0 auto; }
+  /* Muted is a state, so it colours the label — it does not fill the button,
+     which would put two filled controls in the row. */
+  .controls button.on { color: var(--amber); border-color: var(--amber); }
 
-  #status { display: inline-flex; align-items: center; font-size: 11.5px; color: var(--dimmer); }
+  /* §4.5: this is a sentence, not a label. */
+  #status {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-body); font-size: 12.5px; color: var(--sage);
+  }
   #logsResult { max-height: 320px; overflow-y: auto; }
 
   /* Version footer in the settings panel — which build am I looking at,
@@ -220,31 +338,37 @@
 
   /* In-place guidance when the page can't capture the mic (plain http on a
      LAN address). The whole point is a clickable way out. */
-  .michelp { margin-top: 10px; font-size: 12px; line-height: 1.5;
-             color: var(--warn); border: 1px solid var(--warn);
-             border-radius: 9px; padding: 9px 12px; }
+  .michelp { margin: 0; font-size: 13.5px; line-height: 1.5;
+             color: var(--amber); border-bottom: 1px dashed var(--hairline);
+             border-radius: 0; padding: var(--band-gap) 0; }
   .michelp a { color: inherit; font-weight: 600; }
-  .michelp .alt { display: block; margin-top: 4px; font-size: 11px;
-                  color: var(--dimmer); }
+  .michelp .alt { display: block; margin-top: 4px; font-size: 12.5px;
+                  color: var(--sage-dim); }
 
   /* The caller's door code, when the operator has set one. Sits above the
      Call button, in the card, because it's a condition of calling — not a
      settings concern. */
   .guestgate {
-    margin: 12px 0 4px; padding: 10px 12px; text-align: left;
-    border: 1px solid var(--line2); border-radius: 10px; background: var(--bg);
-    font-size: 12px; line-height: 1.5;
+    margin: 0; padding: var(--band-gap) 0; text-align: left;
+    border: 0; border-bottom: 1px dashed var(--hairline);
+    border-radius: 0; background: transparent;
+    font-size: 13.5px; line-height: 1.5;
   }
-  .guestgate .glabel { display: block; color: var(--dim); margin-bottom: 7px; }
-  .guestgate .grow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .guestgate .glabel { display: block; color: var(--sage); margin-bottom: 9px; }
+  .guestgate .grow { display: flex; gap: var(--band-gap); flex-wrap: wrap; }
+  /* §4.8. The placeholder is deliberately smaller than the typed text so a
+     long prompt fits without shrinking what the caller actually types. */
   .guestgate input {
-    flex: 1 1 140px; min-width: 0; font: inherit; font-size: 12.5px;
-    padding: 7px 10px; border-radius: 7px;
-    border: 1px solid var(--line2); background: var(--card); color: var(--text);
+    flex: 1 1 140px; min-width: 0;
+    height: var(--control-h); padding: 0 10px; border-radius: 0;
+    font: 13.5px var(--font-body);
+    border: 1px solid var(--hairline); background: var(--granite-hi);
+    color: var(--alpenglow);
   }
-  .guestgate input:focus { outline: none; border-color: var(--accent); }
+  .guestgate input::placeholder { color: var(--sage-dim); font-size: 11.5px; }
+  .guestgate input:focus { outline: none; border-color: var(--amber); }
   .guestgate button { flex: 0 0 auto; }
-  #guestMsg { display: block; margin-top: 6px; color: var(--warn); font-size: 11.5px; }
+  #guestMsg { display: block; margin-top: 7px; color: var(--amber); font-size: 12.5px; }
   #guestMsg:empty { display: none; }
 
   /* Locked panel: the login banner is the only thing shown. */
@@ -255,93 +379,124 @@
   #loginGate input { width: 180px; }
   #loginMsg { font-size: 11.5px; color: var(--accent); }
 
-  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dimmer); margin-right: 6px; vertical-align: middle; }
-  .dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
-  .dot.connected { background: var(--ok); }
-  .dot.error { background: var(--accent); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 0; background: var(--sage-dim); vertical-align: middle; }
+  .dot.connecting { background: var(--amber); animation: pulse 1s infinite; }
+  .dot.connected { background: var(--coral); }
+  .dot.error { background: var(--coral); }
   @keyframes pulse { 50% { opacity: .3; } }
 
   /* Once a call ends the transcript collapses to a single row — still there
      if you want it, not taking up the card if you don't. */
   .callended {
-    display: none; width: 100%; margin-top: 12px; padding: 9px 12px;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
-    color: var(--dim); font-size: 12px; font-weight: 600; text-align: left;
-    display: flex; align-items: center; gap: 8px;
+    width: 100%; margin: 0; padding: 0;
+    background: transparent; border: 0; border-bottom: 1px dashed var(--hairline);
+    border-radius: 0; color: var(--sage); text-align: left;
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
   }
   .callended[hidden] { display: none; }
-  .callended:hover { border-color: var(--line2); color: var(--text); }
+  .card .callended { height: 38px; color: var(--sage); border-color: var(--hairline); }
+  .card .callended:hover { background: transparent; color: var(--alpenglow); }
   .callended .chev { font-size: 9px; transition: transform .18s ease; }
   .callended.open .chev { transform: rotate(90deg); }
-  .callended .when { margin-left: auto; font-weight: 500; color: var(--dimmer); font-size: 11px; }
+  .callended .when { margin-left: auto; color: var(--sage-dim); }
 
   /* --- captions --- */
   /* Captions: speaker in a narrow left column so the transcript reads as a
      script. Previously the label sat on its own line above each turn, which
      at 13px in a 430px card meant a few words per line and constant scrolling. */
+  /* §5 — THE PART THAT ACTUALLY MATTERS.
+     The height is FIXED, not capped. Every new line used to grow this block,
+     which grew the card, which made the widget report a taller height, which
+     made embed.js resize the frame — so the host page moved while somebody
+     was reading it. A fixed height means the reported height stops changing
+     during a call. States that genuinely need more room (the door code, a mic
+     warning) still grow the frame; speech no longer does. */
   .captions {
-    display: none; margin-top: 13px; padding: 11px 13px; text-align: left;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 11px;
-    max-height: 210px; overflow-y: auto; overflow-x: hidden; font-size: 12px;
-    line-height: 1.45; scrollbar-width: thin; scrollbar-color: var(--line2) transparent;
+    display: none; margin: 0; padding: var(--band-gap) 0; text-align: left;
+    background: transparent; border: 0; border-radius: 0;
+    height: 210px; overflow-y: auto; overflow-x: hidden;
+    font-family: var(--font-body); font-size: 13.5px; line-height: 1.5;
+    scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   }
   .captions.on { display: block; }
   .captions::-webkit-scrollbar { width: 8px; }
-  .captions::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 4px; }
+  .captions::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 0; }
+  /* An 86px gutter, matching the host, so both speakers' text starts on the
+     same edge and the transcript reads as a script rather than two columns. */
   .cap {
-    display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 9px;
-    margin: 0 0 5px; align-items: baseline;
+    display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--band-gap);
+    margin: 0 0 7px; align-items: baseline;
     /* minmax(0,1fr) plus the min-width/white-space below is what actually
        stops a long turn from pushing the grid wider than its container. */
     max-width: 100%;
   }
   .cap:last-child { margin-bottom: 0; }
   .cap .who {
-    font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
-    font-weight: 700; text-align: right; padding-top: 1px;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; font-weight: 700; text-align: right;
     white-space: nowrap;
   }
-  .cap.dj .who { color: var(--accent); }
-  .cap.you .who { color: var(--cool); }
+  /* Identity is carried by the label and REINFORCED by a text tint, never
+     replaced by it — tinted body text at 13.5px has to stay readable. */
+  .cap.dj .who { color: var(--coral); }
+  .cap.you .who { color: var(--amber); }
   .cap .said {
-    color: var(--text); min-width: 0; max-width: 100%;
+    color: var(--alpenglow); min-width: 0; max-width: 100%;
     white-space: normal; overflow-wrap: break-word; word-break: break-word;
-    font-size: 12px; font-weight: 400; line-height: 1.45;
+    font-size: 13.5px; font-weight: 400; line-height: 1.5;
   }
-  .cap.dj .said { color: var(--text); }
-  .cap.interim .said { color: #7a7a83; font-style: italic; }
-  .capempty { color: var(--dimmer); font-size: 11.5px; font-style: italic; }
+  .cap.dj .said { color: var(--alpenglow); }
+  .cap.you .said { color: var(--sage); }
+  .cap.interim .said { color: var(--sage-dim); font-style: italic; }
+  .capempty { color: var(--sage-dim); font-size: 13.5px; font-style: italic; }
+
+  /* A change should register as movement, not as text that was simply
+     different when you looked back. Same rise-and-fade the host uses for
+     track changes. */
+  @keyframes roll-in {
+    from { opacity: 0; transform: translateY(0.5em); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .roll { animation: roll-in .42s cubic-bezier(.22,.7,.3,1) both; }
 
   /* A system action — a song reaching the queue, a message reaching the air.
      Tinted and inset so it reads as something that HAPPENED, clearly not
      another thing the DJ said. */
   .cap.sys {
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-    border-left: 2px solid var(--accent);
-    border-radius: 0 8px 8px 0;
-    padding: 6px 9px; margin: 7px 0;
-    grid-template-columns: 20px minmax(0, 1fr); gap: 8px;
+    background: color-mix(in srgb, var(--coral) 9%, transparent);
+    border-left: 2px solid var(--coral);
+    border-radius: 0;
+    padding: 7px 9px; margin: 9px 0;
+    grid-template-columns: 20px minmax(0, 1fr); gap: 9px;
     align-items: start;
   }
   .cap.sys .ico { font-size: 13px; line-height: 1.2; text-align: center; }
   .cap.sys .what {
-    display: block; color: var(--accent); font-weight: 700;
-    font-size: 11px; letter-spacing: .02em;
+    display: block; color: var(--coral); font-weight: 700;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase;
   }
   .cap.sys .detail {
-    display: block; color: var(--dim); font-size: 11.5px; margin-top: 1px;
+    display: block; color: var(--sage); font-size: 12.5px; margin-top: 3px;
   }
   .cap.sys .detail:empty { display: none; }
-  .ticker.sys .who { color: var(--ok); }
+  .ticker.sys .who { color: var(--amber); }
 
-  .gear {
-    position: absolute; top: 14px; right: 14px;
-    width: 32px; height: 32px; padding: 0; border-radius: 8px;
-    background: transparent; color: var(--dimmer); font-size: 15px; line-height: 1;
+  /* The corner controls sit in the 38px header band, level with its text.
+     They are chrome, not actions — no border, no fill, they never compete
+     with the primary button. */
+  .card .gear {
+    position: absolute; top: 0; right: 0;
+    width: 26px; height: 38px; padding: 0; border-radius: 0; border: 0;
+    background: transparent; color: var(--sage-dim);
+    font-family: var(--font-mono); font-size: 14px; line-height: 1;
+    letter-spacing: 0;
   }
-  #themeBtn { right: 50px; }
-  #helpBtn { right: 86px; font-weight: 700; }
-  body.compact #helpBtn { right: 40px; width: 26px; height: 26px; }
+  .card .gear:hover { background: transparent; color: var(--amber); }
+  .card #themeBtn { right: 30px; }
+  .card #helpBtn { right: 60px; font-weight: 700; }
+  body.compact .card #helpBtn { right: 30px; }
+  body.compact .card #themeBtn { right: 0; width: 26px; height: 38px; }
 
   /* "What can I ask?" — a fixed overlay rather than a box inside the card.
      Absolutely positioning it inside the widget meant it was squeezed into
@@ -349,11 +504,14 @@
      positioning lets it size to its content and sit over the page, and the
      open handler flips it above the button when there is more room up there.
      Downwards by default. */
+  /* The one place a raised surface is genuinely needed: this floats over the
+     host page, so it uses --granite and keeps a shadow to lift off whatever
+     is underneath. Square, like everything else. */
   .askpop {
     position: fixed; z-index: 2147483000;
     width: min(380px, calc(100vw - 24px));
-    border: 1px solid var(--line2); border-radius: 12px; background: var(--panel);
-    box-shadow: 0 16px 44px rgba(0,0,0,.55); padding: 12px 14px;
+    border: 1px solid var(--edge); border-radius: 0; background: var(--granite);
+    box-shadow: 0 16px 44px rgba(0,0,0,.55); padding: 13px 14px;
     overflow: auto; text-align: left;
   }
   .askpop-head {
@@ -375,10 +533,10 @@
     display: block; color: var(--dimmer); font-size: 11.5px; margin-top: 2px;
     line-height: 1.45;
   }
+  /* The settings gear on the full page only — the panel is never embedded. */
   .gear:hover { background: var(--line); color: var(--text); }
   /* Embeds keep the theme toggle (it hides itself when the host page forces
-     a theme via data-theme). */
-  body.compact #themeBtn { right: 10px; width: 26px; height: 26px; }
+     a theme via data-theme); positioning lives with the other card chrome. */
 
   /* --- settings --- */
   .panel {
@@ -767,19 +925,17 @@
     .card, .panel { width: 100%; }
   }
   @media (max-width: 600px) {
-    .card { padding: 18px 15px; }
-    .avatar { width: 78px; height: 78px; }
-    .dj { font-size: 26px; }
-    .tagline { font-size: 13px; }
+    .avatar { width: 56px; height: 56px; }
+    .dj { font-size: 19px; }
     /* Idle, the call button IS the page's action — give it the full row.
-       The in-call chip states keep their pill size. */
-    #callBtn:not(.ringing):not(.answering):not(.live) {
-      width: 100%; padding: 14px 22px; font-size: 15px;
-    }
-    .controls button { padding: 12px 20px; font-size: 14px; }
-    /* Spend the freed space where a call actually needs it. */
-    .captions { max-height: 44vh; }
-    .ticker { font-size: 13px; }
+       Height stays --control-h: the spec has no exceptions to that, and a
+       taller-on-mobile button was one of the four treatments this replaced.
+       The in-call chip states keep their own width. */
+    #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
+    /* Spend the freed space where a call actually needs it. Fixed, not
+       capped — see §5. */
+    .captions { height: 44vh; }
+    .cap, .ticker { grid-template-columns: 60px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
        wraps onto new lines, and the now-playing track takes a full row of
        its own instead of a squeezed corner. */
@@ -794,33 +950,54 @@
     }
   }
 
-  body.compact { padding: 0; min-height: 0; }
-  body.compact .card { border: none; padding: 13px; background: transparent; width: 100%; }
-  body.compact .avatar { width: 46px; height: 46px; }
-  body.compact .dj { font-size: 17px; }
-  body.compact .who-row { gap: 11px; }
+  /* The embed. The card contributes no inset of its own (§4.1) — the frame
+     padding is the inset, so the widget's bands run full-bleed to the edges
+     the host can see. */
+  body.compact { padding: 0 12px; min-height: 0; }
+  body.compact .card { border: none; padding: 0; background: transparent; width: 100%; }
+  body.compact .avatar { width: 38px; height: 38px; }
+  body.compact .dj { font-size: 15px; }
   /* Compact drops the tagline, track and SETTINGS gear — the theme toggle
      stays (and hides itself when the host forces data-theme). */
   body.compact .tagline, body.compact .track, body.compact #gearBtn { display: none; }
-  body.compact .captions { max-height: 104px; font-size: 11.5px; }
+  body.compact .captions { height: 104px; }
+
   /* Ticker: the latest spoken line only, fading out after a few seconds —
-     keeps embeds short wherever they're dropped. */
-  .ticker { margin-top: 10px; font-size: 12px; line-height: 1.45; color: var(--dim);
-            opacity: 0; transition: opacity .5s ease; }
+     keeps embeds short wherever they're dropped. It is also the caption
+     surface an embed actually uses, so §5's reservation matters MORE here
+     than in the full transcript: this is the thing that was resizing the
+     station page mid-call. The row is always two lines tall whether it holds
+     nothing, one line or a paragraph, so the frame stops moving. */
+  .ticker {
+    display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--band-gap);
+    align-items: baseline; padding: var(--band-gap) 0;
+    font-family: var(--font-body); font-size: 13.5px; line-height: 1.5;
+    color: var(--sage); opacity: 0; transition: opacity .5s ease;
+  }
+  .ticker[hidden] { display: none; }
   .ticker.show { opacity: 1; }
-  .ticker .who { color: var(--accent); font-weight: 700; font-size: 10px;
-                 letter-spacing: .08em; text-transform: uppercase; margin-right: 7px; }
-  body.compact .ticker { font-size: 11.5px; margin-top: 8px; }
-  body.compact .cap { grid-template-columns: 32px 1fr; gap: 7px; }
-  body.compact .meters { margin: 10px 0 2px; }
-  body.compact .callrow { gap: 10px; }
+  .ticker .who {
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase; text-align: right;
+    color: var(--coral); white-space: nowrap;
+  }
+  /* Reserved on the element that HOLDS the text, not an ancestor — reserving
+     on the row lets a clamped one-line message collapse the block anyway. */
+  .ticker .line {
+    min-height: calc(1.5em * 2);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    white-space: normal; overflow: hidden;
+  }
+  body.compact .ticker, body.compact .cap {
+    grid-template-columns: 44px minmax(0, 1fr); gap: 10px;
+  }
   /* The door code has to fit an embed too. A compact frame is ~190px tall,
      and the full-size gate (label above, input and button below) alone eats
      most of that — so drop the label and put the row on one line. */
-  body.compact .guestgate {
-    margin: 9px 0 2px; padding: 8px 9px; border-radius: 9px;
-  }
   body.compact .guestgate .glabel { display: none; }
-  body.compact .guestgate input { padding: 6px 8px; font-size: 12px; }
-  body.compact .guestgate button { font-size: 12px; padding: 6px 11px; }
   body.compact .guestgate .grow { flex-wrap: nowrap; }
+
+  /* §3 — nothing moves for anyone who asked for that. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }

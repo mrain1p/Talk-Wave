@@ -23,6 +23,14 @@
 <!-- Pinned exactly: a floating @2 tag means a breaking client release lands
      silently on every visitor. Bump deliberately, test a call, then ship. -->
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.min.js"></script>
+<!-- The host page's two faces. A cross-origin iframe inherits NOTHING from
+     the page it sits in, so the widget has to load these itself or every mono
+     label silently falls back to Courier and stops matching the station page.
+     display=swap: the widget paints in the fallback stack immediately rather
+     than holding a blank card while a font downloads. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>

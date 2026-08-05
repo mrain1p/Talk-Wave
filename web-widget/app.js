@@ -56,6 +56,27 @@
     if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
   }
 
+  // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
+  // show's palette, which changes when the show changes, and sends us the same
+  // token map. We repaint IN PLACE — the old mechanism was reloading the
+  // frame, and a reload during a call drops the call.
+  //
+  // Unknown keys are ignored and missing keys fall through to the CSS
+  // defaults, so a host that sends three tokens or thirty both work. Only
+  // custom-property names are accepted: this is a message from another origin,
+  // and nothing here should be able to set arbitrary style.
+  addEventListener('message', (e) => {
+    if (window.parent === window || e.source !== window.parent) return;
+    const msg = e.data;
+    if (!msg || msg.type !== 'swtv:theme' || !msg.tokens) return;
+    const root = document.documentElement;
+    Object.keys(msg.tokens).forEach((k) => {
+      if (!/^--[a-z0-9-]+$/i.test(k)) return;
+      const v = String(msg.tokens[k]);
+      if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
+    });
+  });
+
   // "What can I ask?" — most people meeting a phone-in assume it only takes
   // requests. Built from the shared ASKS list and filtered to the permissions
   // actually switched on, so it can never suggest something the DJ would
@@ -516,10 +537,13 @@
   }
 
   // ------------------------------------------------------------ level meters
-  const BAR_COUNT = 14;
+  // One trough, one fill (HOST-STYLE-GUIDE §4.6). This was fourteen <i>
+  // elements whose heights were rewritten every animation frame — twenty-eight
+  // style writes per frame across both meters, and at rest it read as a row of
+  // dashes rather than as a level. Now it is one width per meter per frame.
   function buildBars(host) {
     host.innerHTML = '';
-    for (let i = 0; i < BAR_COUNT; i++) host.appendChild(document.createElement('i'));
+    host.appendChild(document.createElement('i'));
   }
   buildBars($('barsYou')); buildBars($('barsDj'));
 
@@ -547,14 +571,13 @@
   }
 
   function paintBars(host, lvl, active) {
-    const bars = host.children;
-    for (let i = 0; i < bars.length; i++) {
-      // Rough spectrum shape: middle bars run taller than the edges.
-      const shape = 0.55 + 0.45 * Math.sin((i / (bars.length - 1)) * Math.PI);
-      const h = active ? Math.max(0.12, Math.min(1, lvl * shape * 1.9)) : 0.12;
-      bars[i].style.height = (h * 100) + '%';
-      bars[i].classList.toggle('hot', active && h > 0.2);
-    }
+    const fill = host.firstElementChild;
+    if (!fill) return;
+    // Idle sits at zero rather than at a token 12%: an empty trough is an
+    // honest "nothing is coming through", and the old floor made a dead mic
+    // look the same as a quiet one.
+    const w = active ? Math.max(0, Math.min(1, lvl * 1.35)) : 0;
+    fill.style.width = (w * 100) + '%';
   }
 
   function tick() {
@@ -644,13 +667,29 @@
   const capNodes = new Map();
   const lastByWho = {};   // { who: {node, text, at} }
 
+  // A new line should register as movement, not as text that was simply
+  // different when you looked back (HOST-STYLE-GUIDE §5). The forced reflow
+  // is load-bearing: without it the class is still present on the second
+  // update and the animation never replays. CSS kills this entirely under
+  // prefers-reduced-motion.
+  function rollIn(el) {
+    el.classList.remove('roll');
+    void el.offsetWidth;
+    el.classList.add('roll');
+  }
+  function setLine(el, text) {
+    if (!el || el.textContent === text) return;   // only animate real changes
+    el.textContent = text;
+    rollIn(el);
+  }
+
   let tickerTimer = null;
   function showTicker(who, text) {
     const t = $('ticker');
     if (!t) return;
     t.querySelector('.who').textContent =
       who === 'dj' ? 'DJ' : (who === 'sys' ? '•' : 'You');
-    t.querySelector('.line').textContent = text;
+    setLine(t.querySelector('.line'), text);
     t.hidden = false;
     t.classList.add('show');
     t.classList.toggle('sys', who === 'sys');
@@ -691,6 +730,10 @@
       node.querySelector('.who').textContent = who === 'dj' ? 'DJ' : 'You';
       capBox.appendChild(node);
       capNodes.set(id, node);
+      // Only a NEW turn rises in. An interim transcript rewrites the same
+      // node every few hundred ms, and replaying the animation on each of
+      // those would shake the line while someone is still speaking.
+      rollIn(node);
     }
     node.querySelector('.said').textContent = text;
     node.classList.toggle('interim', !final);
@@ -798,7 +841,15 @@
     if (captionsMode === 'full') {
       capBox.classList.add('on');
       capBox.innerHTML = '<p class="capempty">Captions will appear here as you talk…</p>';
+    } else if (captionsMode === 'ticker') {
+      // Claim the ticker's reserved two lines NOW, empty, so the frame
+      // settles once at the start of the call instead of jumping when the
+      // first word arrives. From here the height is constant for the rest of
+      // the call however long anyone talks.
+      const t = $('ticker');
+      if (t) { t.querySelector('.line').textContent = ''; t.hidden = false; }
     }
+    notifyHeight();
 
     ctx();          // unlock audio inside the click gesture
     startRinging();

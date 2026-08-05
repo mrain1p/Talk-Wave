@@ -77,10 +77,25 @@
     iframe.style.border = "none";
     iframe.style.width = "100%";
     iframe.style.height = height || (compact ? "190px" : "420px");
-    iframe.style.borderRadius = "14px";
+    // Square. The rounded frame was the outermost part of the "pasted-on
+    // card" look — the host page has no rounded corners anywhere.
+    iframe.style.borderRadius = "0";
     if (theme) iframe.style.colorScheme = theme;
 
     el.appendChild(iframe);
+
+    // Station theming. The host page calls this when the on-air show changes,
+    // passing the same token map it dressed itself in:
+    //
+    //   document.getElementById("subwave-callin")
+    //     .setCallinTheme({ "--pine": "#1b1a2e", "--coral": "#ff7a5c" });
+    //
+    // The widget repaints in place. Do NOT reload the frame to change a
+    // theme — a reload drops whatever call is in progress.
+    el.setCallinTheme = function (tokens) {
+      if (!tokens || !iframe.contentWindow) return;
+      iframe.contentWindow.postMessage({ type: "swtv:theme", tokens: tokens }, origin);
+    };
 
     // Unless the host pinned a height, follow the widget's own. A fixed
     // height is a guess made before the widget knows whether it has to ask
