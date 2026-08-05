@@ -32,7 +32,7 @@ import settings as settings_store
 import sounds as sound_assets
 import station as station_mod
 import tune_in
-from tts_adapter import ADAPTER_DIR
+from tts_adapter import ADAPTER_DIR, resolve_adapter
 from brain.briefing import demojibake
 from station import StationClient
 from station_config import StationConfig
@@ -1508,10 +1508,9 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     may_send, cred_note = _credentials_travel_to(cfg.get("tts_base_url"), saved_tts)
 
     os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
-    adapter_path = cfg.get("tts_adapter") or None
-    if adapter_path and not os.path.isabs(adapter_path):
-        candidate = ADAPTER_DIR / adapter_path
-        adapter_path = str(candidate) if candidate.exists() else None
+    # `tts_adapter` arrives in the BODY of this request, so it names a file
+    # only within tts-adapters/ — see tts_adapter.resolve_adapter.
+    adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
     voice = cfg.get("tts_voice") or ""
     if not voice:
@@ -1829,10 +1828,8 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         from tts_adapter import AdapterTTS
 
         os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
-        adapter_path = cfg.get("tts_adapter") or None
-        if adapter_path and not os.path.isabs(adapter_path):
-            cand = ADAPTER_DIR / adapter_path
-            adapter_path = str(cand) if cand.exists() else None
+        # Request-supplied, same as /test/tts — constrained to tts-adapters/.
+        adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
         voice = cfg.get("tts_voice") or ""
         if not voice:
@@ -2238,8 +2235,19 @@ async def handle_station_hook(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         body = {}
-    event = str(body.get("event") or body.get("type") or "?")
-    _hook_events.append({"at": _time.time(), "event": event, "data": body})
+    event = str(body.get("event") or body.get("type") or "?")[:80]
+    # Summarised, not stored whole. This endpoint cannot be authenticated (the
+    # station does not sign its hooks), so `body` is arbitrary and unbounded up
+    # to aiohttp's 1MB limit — and the deque holds fifty of them, in a process
+    # already running near the SDK's own memory warning line. It is only ever
+    # read back as a diagnostic list, so a trimmed rendering is all it was
+    # worth keeping.
+    _hook_events.append({
+        "at": _time.time(),
+        "event": event,
+        "data": {str(k)[:40]: str(v)[:120] for k, v in list(body.items())[:12]}
+        if isinstance(body, dict) else {},
+    })
     log.info("station webhook: %s", event)
 
     # Anything that changes what the card shows invalidates the cache — but not

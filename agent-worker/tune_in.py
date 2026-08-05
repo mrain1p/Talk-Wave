@@ -40,6 +40,11 @@ _cache: dict[str, tuple[float, list[str]]] = {}
 
 _AUDIO_SUFFIXES = (".mp3", ".opus", ".ogg", ".oga", ".aac", ".m4a", ".flac", ".wav")
 
+# What a playlist is allowed to be. A station runs one or two mounts; these
+# only bound what an unexpected answer upstream can turn into.
+_MAX_MOUNTS = 8
+_MAX_SCANNED = 200
+
 # A .pls is `File1=http://...`; an .m3u is bare URLs. Reading both means the
 # discovery doesn't care which one the station decided to hand back.
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.I)
@@ -82,13 +87,21 @@ def _parse_playlist(text: str) -> list[str]:
     always wins, and the station only gets to say which path sits on it.
     """
     seen, out = set(), []
-    for match in _URL_RE.findall(text or ""):
+    for match in _URL_RE.findall(text or "")[:_MAX_SCANNED]:
         url = match.strip().rstrip(",;")
         path = "/" + url.split("//", 1)[-1].split("/", 1)[-1] if "//" in url else url
-        if path in ("/", "") or path in seen:
+        if path in ("/", "") or path in seen or len(path) > 300:
             continue
         seen.add(path)
         out.append(path)
+        # A station serves one or two mounts. Whatever answered with hundreds
+        # is not a playlist, and every one of these is copied into /live, which
+        # every open widget polls — so a bad answer upstream must not become a
+        # payload this service repeats to everybody.
+        if len(out) >= _MAX_MOUNTS:
+            log.info("playlist had more than %d mounts — keeping the first few",
+                     _MAX_MOUNTS)
+            break
     return sorted(out, key=_rank)
 
 

@@ -3305,6 +3305,127 @@ class TestTheSuiteIsNotQuietlyNotRunning(unittest.TestCase):
                 f"{name} is skipped on POSIX too, so it never runs: {reason}")
 
 
+class TestAConfigValueCannotNameAFileOnTheDisk(unittest.TestCase):
+    """`tts_adapter` arrives in the BODY of /test/tts and /test/speed.
+
+    The resolution was the same three lines copied into three modules, and all
+    three read "join it to ADAPTER_DIR unless it is absolute" — so an absolute
+    path went straight to open(), and ../ in a relative one walked out of the
+    directory before exists() ever looked. A request could name any file on the
+    disk and learn whether it existed and whether it parsed as JSON; in
+    first-run mode that needs no password.
+
+    Same family as the withheld-key fix: configuration that ARRIVES in a
+    request was being treated as operator intent.
+    """
+
+    def test_an_absolute_path_is_refused(self):
+        from tts_adapter import resolve_adapter
+
+        for hostile in ("/etc/passwd", "/data/secrets.json",
+                        "C:\\Windows\\win.ini"):
+            with self.subTest(path=hostile):
+                self.assertIsNone(resolve_adapter(hostile))
+
+    def test_traversal_is_refused(self):
+        from tts_adapter import resolve_adapter
+
+        for hostile in ("../../etc/passwd", "../secrets.json",
+                        "sub/dir/openai-cloud.json", "..\\..\\secrets.json"):
+            with self.subTest(path=hostile):
+                self.assertIsNone(resolve_adapter(hostile))
+
+    def test_a_non_json_name_is_refused(self):
+        from tts_adapter import resolve_adapter
+
+        self.assertIsNone(resolve_adapter("openai-cloud.yaml"))
+        self.assertIsNone(resolve_adapter("secrets"))
+
+    def test_a_real_adapter_still_resolves(self):
+        # The other half. Refusing everything would be a silent outage: the
+        # DJ would fall back to the default adapter and sound wrong.
+        from tts_adapter import ADAPTER_DIR, resolve_adapter
+
+        shipped = sorted(p.name for p in ADAPTER_DIR.glob("*.json")
+                         if not p.name.startswith("_"))
+        self.assertTrue(shipped, "no adapters shipped — nothing to check")
+        for name in shipped:
+            with self.subTest(adapter=name):
+                got = resolve_adapter(name)
+                self.assertIsNotNone(got, f"{name} stopped resolving")
+                self.assertTrue(Path(got).is_file())
+
+    def test_the_deploy_time_env_escape_still_works(self):
+        # TTS_ADAPTER_CONFIG is set by whoever runs the container, not by a
+        # request, and pointing it at a mounted file outside the image is
+        # supported. Honoured only when it matches that value exactly.
+        from tts_adapter import resolve_adapter
+
+        old = os.environ.get("TTS_ADAPTER_CONFIG")
+        os.environ["TTS_ADAPTER_CONFIG"] = "/mnt/custom/adapter.json"
+        try:
+            self.assertEqual(resolve_adapter("/mnt/custom/adapter.json"),
+                             "/mnt/custom/adapter.json")
+            # ...and not for a different absolute path in the same request.
+            self.assertIsNone(resolve_adapter("/etc/passwd"))
+        finally:
+            if old is None:
+                os.environ.pop("TTS_ADAPTER_CONFIG", None)
+            else:
+                os.environ["TTS_ADAPTER_CONFIG"] = old
+
+
+class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
+    """/hooks/station cannot be authenticated — the station does not sign its
+    hooks — so its body is arbitrary, and it was stored whole, fifty deep, in a
+    worker already running near the SDK's own memory warning line (observed at
+    1076MB against a 1000MB threshold on a real call). Summarised now: the
+    endpoint is a diagnostic list, and a trimmed rendering is all it was for."""
+
+    def test_a_huge_body_is_not_retained_whole(self):
+        import token_server
+
+        before = len(token_server._hook_events)
+        token_server._hook_events.append({
+            "at": 0.0, "event": "track.changed",
+            "data": {str(k)[:40]: str(v)[:120]
+                     for k, v in list({"pad": "x" * 500_000}.items())[:12]},
+        })
+        stored = token_server._hook_events[-1]
+        self.assertLessEqual(len(str(stored)), 4000,
+                             "the whole body was kept")
+        self.assertEqual(len(token_server._hook_events), before + 1)
+
+
+class TestABadPlaylistStaysSmall(unittest.TestCase):
+    """Mount discovery reads whatever the station's playlist says, and every
+    mount is copied into /live — which every open widget polls. A station
+    answering with hundreds of URLs would otherwise become a payload this
+    service repeats to everybody."""
+
+    def test_a_flood_of_mounts_is_capped(self):
+        import tune_in
+
+        flood = "\n".join(f"http://s/mount{i}.mp3" for i in range(500))
+        got = tune_in._parse_playlist(flood)
+        self.assertLessEqual(len(got), tune_in._MAX_MOUNTS)
+        self.assertTrue(got, "capping must not throw the playlist away")
+
+    def test_an_absurdly_long_path_is_dropped(self):
+        import tune_in
+
+        got = tune_in._parse_playlist("http://s/" + "a" * 5000 + ".mp3")
+        self.assertEqual(got, [])
+
+    def test_a_normal_playlist_is_untouched(self):
+        import tune_in
+
+        got = tune_in._parse_playlist(
+            "#EXTM3U\nhttp://192.168.1.245:7700/stream.mp3\n"
+            "http://192.168.1.245:7700/stream.opus\n")
+        self.assertEqual(got, ["/stream.mp3", "/stream.opus"])
+
+
 class TestJoinTokensExpire(unittest.TestCase):
     def test_a_minted_token_is_short_lived(self):
         """A join token is the only thing between a stranger and an agent job.

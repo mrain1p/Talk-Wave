@@ -21,7 +21,7 @@ from livekit.agents.types import NOT_GIVEN
 from livekit.plugins import anthropic, deepgram, google, openai
 
 import settings as settings_store
-from tts_adapter import ADAPTER_DIR, AdapterTTS
+from tts_adapter import AdapterTTS, resolve_adapter
 
 log = logging.getLogger("callin.agent")
 
@@ -172,15 +172,12 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
 
 
 def build_tts(cfg: dict, voice: str) -> AdapterTTS:
-    adapter_path = cfg.get("tts_adapter") or None
-    if adapter_path and not os.path.isabs(adapter_path):
-        # ADAPTER_DIR, never Path(__file__) — this line used to live in
-        # main.py, where __file__ happened to sit beside tts-adapters/. Moving
-        # it one directory down silently stopped resolving the adapter name,
-        # and every call crashed on FileNotFoundError before the DJ spoke.
-        candidate = ADAPTER_DIR / adapter_path
-        if candidate.exists():
-            adapter_path = str(candidate)
+    # One resolver, in tts_adapter. This was three copies of the same three
+    # lines — token_server twice and here — and all three let an absolute path
+    # through to open(). It also used to resolve against Path(__file__) rather
+    # than ADAPTER_DIR, which silently stopped finding the adapter when this
+    # moved a directory down and crashed every call before the DJ spoke.
+    adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
     # settings.tts_mode drives the default adapter choice inside tts_adapter.
     os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))

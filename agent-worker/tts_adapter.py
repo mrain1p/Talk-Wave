@@ -61,6 +61,50 @@ def _is_openai_host(base_url: str) -> bool:
     return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
+def resolve_adapter(value: str | None) -> str | None:
+    """The adapter file a setting names, constrained to ADAPTER_DIR.
+
+    `tts_adapter` reaches this from saved settings *and* from the body of
+    /test/tts and /test/speed, which is a request. The resolution used to be
+    the same three lines copied into three modules, and all three read "join
+    it to ADAPTER_DIR unless it is absolute" — so an absolute path went
+    straight to open(), and a relative one with ../ in it walked out of the
+    directory before the exists() check ever looked. A request could name any
+    file on the disk and learn whether it existed and whether it parsed as
+    JSON, which in first-run mode needs no password at all.
+
+    Same shape as _safe_sound_name: one flat directory, a known extension,
+    nothing that can point elsewhere. The panel only ever offers a filename
+    out of ADAPTER_DIR.glob("*.json"), so nothing legitimate is lost.
+
+    The one exception is TTS_ADAPTER_CONFIG. That is set at deploy time by
+    whoever runs the container, not by a request, and pointing it at a mounted
+    file outside the image is a supported thing to do — so an absolute path is
+    honoured when it is *exactly* that value and never otherwise.
+    """
+    name = str(value or "").strip()
+    if not name:
+        return None
+
+    from_env = str(os.environ.get("TTS_ADAPTER_CONFIG") or "").strip()
+    if from_env and name == from_env:
+        return name
+
+    if name != Path(name).name or not name.lower().endswith(".json"):
+        log.warning(
+            "ignoring tts adapter %r — it must be a .json filename in %s, "
+            "with no path in it", name, ADAPTER_DIR,
+        )
+        return None
+    candidate = ADAPTER_DIR / name
+    try:
+        if candidate.resolve().parent != ADAPTER_DIR.resolve():
+            return None
+    except OSError:
+        return None
+    return str(candidate) if candidate.is_file() else None
+
+
 def load_adapter(path: str | Path | None = None) -> dict:
     p = Path(path) if path else _default_adapter_path()
     with open(p, "r", encoding="utf-8") as f:
