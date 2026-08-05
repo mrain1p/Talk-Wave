@@ -3119,25 +3119,6 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
         self.assertTrue(mode & 0o400, f"settings.json came out {mode:03o}")
         self.assertTrue(mode & 0o200, f"settings.json is not writable: {mode:03o}")
 
-    def test_the_data_dir_check_never_stops_the_worker(self):
-        """It runs at module scope in main.py, before the worker registers with
-        LiveKit. A diagnostic that can prevent every call from happening is a
-        bad trade for a log line, so it swallows its own failures — the same
-        reasoning as record.write(), which must not cost the on-air handoff."""
-        original = settings_store.SETTINGS_PATH
-        try:
-            settings_store.SETTINGS_PATH = Path("\x00nonsense") / "settings.json"
-            # assertLogs IS the assertion: it must not raise, and it must have
-            # gone down the swallow path rather than quietly returning early
-            # for some unrelated reason.
-            with self.assertLogs("callin.settings", level="DEBUG") as caught:
-                settings_store.check_data_dir()
-            self.assertTrue(
-                any("data directory" in m for m in caught.output),
-                f"swallowed something else: {caught.output}")
-        finally:
-            settings_store.SETTINGS_PATH = original
-
     def test_the_secret_stores_stay_owner_only(self):
         # The other half: fixing the readable ones must not loosen these.
         secrets_store.save({"openai_api_key": "sk-test"})
@@ -3217,6 +3198,46 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
         self.assertTrue(
             self._run(on_air=False),
             "the idle check-in stopped working when the air was clear")
+
+
+class TestTheDataDirCheckCannotStopTheWorker(unittest.TestCase):
+    """It runs at module scope in main.py, before the worker registers with
+    LiveKit, so anything it raises means no calls at all. A diagnostic written
+    to explain a broken data directory must not be able to break more than the
+    directory did — the same trade record.write() makes when it refuses to cost
+    the on-air handoff for the sake of a JSON file.
+
+    Deliberately NOT platform-gated. The first version of this test lived in a
+    POSIX-only class, was skipped on the author's machine, and reached CI
+    broken — the third time in one afternoon that a skip hid a defect. The
+    `hasattr(os, "getuid")` check moved inside the guarded function so the
+    swallow itself runs everywhere and this test means something everywhere.
+    """
+
+    def test_a_failure_inside_it_is_swallowed_and_logged(self):
+        class _Exploding:
+            @property
+            def parent(self):
+                raise RuntimeError("the data directory is unreachable")
+
+        original = settings_store.SETTINGS_PATH
+        try:
+            settings_store.SETTINGS_PATH = _Exploding()
+            # assertLogs IS the assertion: check_data_dir must not raise, and
+            # must have reached the swallow rather than returning early for
+            # some unrelated reason.
+            with self.assertLogs("callin.settings", level="DEBUG") as caught:
+                settings_store.check_data_dir()
+        finally:
+            settings_store.SETTINGS_PATH = original
+        self.assertTrue(
+            any("data directory" in m for m in caught.output),
+            f"something else was swallowed: {caught.output}")
+
+    def test_a_healthy_directory_says_nothing(self):
+        # The other half: it must not cry wolf on a directory that is fine.
+        with self.assertNoLogs("callin.settings", level="ERROR"):
+            settings_store.check_data_dir()
 
 
 class TestTheSuiteIsNotQuietlyNotRunning(unittest.TestCase):

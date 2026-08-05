@@ -752,8 +752,6 @@ def check_data_dir() -> None:
     Windows has no getuid and no meaningful mode bits here, so it is a no-op
     there — run-local.ps1 is not the deployment this protects.
     """
-    if not hasattr(os, "getuid"):
-        return
     try:
         _check_data_dir()
     except Exception as e:
@@ -768,7 +766,14 @@ def _check_data_dir() -> None:
     import admin_auth
     import secrets_store
 
+    # Resolved before the platform gate on purpose, so the guard above is
+    # reachable on every platform and the test for it means something
+    # everywhere. When the gate came first, the only test for the guard was
+    # POSIX-only, was skipped on the author's machine, and reached CI broken —
+    # the third time in one afternoon that a skip hid a defect.
     data_dir = SETTINGS_PATH.parent
+    if not hasattr(os, "getuid"):
+        return                      # Windows: mode bits carry no meaning here
     if not data_dir.exists():
         return                      # first run; created on first write
     uid = os.getuid()
