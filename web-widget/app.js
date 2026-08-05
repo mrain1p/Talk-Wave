@@ -35,6 +35,66 @@
     };
   })();
 
+  // The operator's theme choice arrives with /live, long after the page has
+  // painted, so the bootstrap above handles the immediate cases and this
+  // applies the configured one once it is known.
+  //
+  // "inherit" is resolved by embed.js BEFORE the frame loads — it reads the
+  // host page's background and passes ?theme=. A cross-origin frame cannot
+  // see the page it sits in, so if inherit reaches us unresolved there is no
+  // page to inherit from and auto is the honest answer.
+  function applyConfiguredTheme(choice) {
+    if (params.get('theme')) return;            // the host page has decided
+    const root = document.documentElement;
+    const btn = $('themeBtn');
+    if (choice === 'light' || choice === 'dark') {
+      root.setAttribute('data-theme', choice);
+      if (btn) btn.style.display = 'none';      // forced: nothing to toggle
+      return;
+    }
+    if (btn) btn.style.display = '';
+    if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
+  }
+
+  // "What can I ask?" — most people meeting a phone-in assume it only takes
+  // requests. Built from the shared ASKS list and filtered to the permissions
+  // actually switched on, so it can never suggest something the DJ would
+  // refuse. What a caller CANNOT do is deliberately left out: that list is
+  // for the operator deciding what to allow, not for a stranger on the line.
+  function paintAskPopup(canAsk) {
+    const host = $('askPopList');
+    if (!host) return;
+    host.innerHTML = '';
+    ASKS.filter((a) => !a.need || canAsk[a.need]).forEach((a) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="say"></span><span class="why"></span>';
+      li.querySelector('.say').textContent = a.say;
+      li.querySelector('.why').textContent = a.why;
+      host.appendChild(li);
+    });
+  }
+
+  function setupAskPopup(canAsk) {
+    const btn = $('helpBtn'), pop = $('askPop');
+    if (!btn || !pop) return;
+    if (!canAsk) { btn.hidden = true; pop.hidden = true; return; }
+    paintAskPopup(canAsk);
+    btn.hidden = false;
+    const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.onclick = () => {
+      const open = pop.hidden;
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+    };
+    $('askClose').onclick = close;
+    // Escape and a click outside, because a popup with only an X is a trap on
+    // a phone.
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    document.addEventListener('click', (e) => {
+      if (!pop.hidden && !pop.contains(e.target) && e.target !== btn) close();
+    });
+  }
+
   const callBtn = $('callBtn'), muteBtn = $('muteBtn'), hangBtn = $('hangBtn');
   const statusText = $('statusText'), dot = $('dot'), capBox = $('captions');
 
@@ -302,7 +362,15 @@
       const r = await fetch('/live');
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
+      const first = !live;
       live = d;
+      // Operator choices that shape the card itself, applied once — /live is
+      // polled, and re-running these every few seconds would fight the
+      // viewer's own theme toggle and rebuild the popup under their finger.
+      if (first) {
+        applyConfiguredTheme(d.theme);
+        setupAskPopup(d.canAsk);
+      }
       if (typeof d.sounds?.volume === 'number' && !room) {
         volume = d.sounds.volume;
         $('volSlider').value = volume;
@@ -954,6 +1022,60 @@
   refreshLive();
   setInterval(() => { if (!room) refreshLive(); }, 20000);
 
+  // Shared by the caller's card and the operator's panel, so the two can
+  // never describe the phone differently. Defined above the compact
+  // cut-off below because an embed needs it as much as the full page.
+  const ASKS = [
+    { need: null, say: '“What’s playing right now?”',
+      why: 'Reads live station state — always available.' },
+    { need: null, say: '“What have you been playing tonight?”',
+      why: 'Recent history and what’s queued next.' },
+    { need: null, say: '“What’s on after this show?”',
+      why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
+    { need: 'allow_requests', say: '“Can you play something slower?”',
+      why: 'Vague requests work — the station resolves them.' },
+    // Deliberately the station's own request-slip vocabulary, so the phone and
+    // the request drawer teach callers the same things.
+    { need: 'allow_requests', say: '“Something for late-night driving.”',
+      why: 'A mood, an occasion or an era goes to the station’s picker, not a name search.' },
+    { need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
+      why: 'Follow-ons and open picks are valid requests on their own.' },
+    { need: 'allow_requests', say: '“Something from the late seventies?”',
+      why: 'An era is a request like any other — no track name needed.' },
+    { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',
+      why: 'The station matches on feel, not just on title.' },
+    { need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
+      why: 'A run of requests in one mood — capped by the per-call action limit.' },
+    { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
+      why: 'Searches the real library before promising anything.' },
+    { need: 'allow_exact_queue', say: '“The second one — the live version.”',
+      why: 'Queues that exact recording from the search results, not a re-match.' },
+    { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
+      why: 'Hands a line to the on-air DJ to read in persona.' },
+    { need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
+      why: 'Puts the gist of the call on air.' },
+    { need: 'allow_skills', say: '“What’s the weather doing?” / “Any news?”',
+      why: 'Runs the station’s own weather or news segment.' },
+    { need: 'allow_skills', say: '“Give my mate a dedication.”',
+      why: 'Runs the dedication or shoutout segment.' },
+    { need: 'allow_skills', say: '“Tell us a story about the old days.”',
+      why: 'Story time / remembrance segments, in the DJ’s own voice.' },
+    { need: null, say: '“Who is this? What’s the story behind this record?”',
+      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
+    { need: null, say: '“How long have you been doing the night shift?”',
+      why: 'Answered in character from the DJ Card — no tool needed.' },
+  ];
+
+  // The other half of the truth: what a caller CANNOT do, and why. Without
+  // this the permissions list reads as if anything might be one toggle away.
+  const NEVER = [
+    ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
+    ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
+    ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
+    ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
+  ];
+
+
   // =================================================== settings (full page)
   if (compact) return;
 
@@ -1178,56 +1300,6 @@
 
   // Worked examples of what a caller can actually say, tied to the permission
   // that enables each one — so the list can't drift from the real tool surface.
-  const ASKS = [
-    { need: null, say: '“What’s playing right now?”',
-      why: 'Reads live station state — always available.' },
-    { need: null, say: '“What have you been playing tonight?”',
-      why: 'Recent history and what’s queued next.' },
-    { need: null, say: '“What’s on after this show?”',
-      why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
-    { need: 'allow_requests', say: '“Can you play something slower?”',
-      why: 'Vague requests work — the station resolves them.' },
-    // Deliberately the station's own request-slip vocabulary, so the phone and
-    // the request drawer teach callers the same things.
-    { need: 'allow_requests', say: '“Something for late-night driving.”',
-      why: 'A mood, an occasion or an era goes to the station’s picker, not a name search.' },
-    { need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
-      why: 'Follow-ons and open picks are valid requests on their own.' },
-    { need: 'allow_requests', say: '“Something from the late seventies?”',
-      why: 'An era is a request like any other — no track name needed.' },
-    { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',
-      why: 'The station matches on feel, not just on title.' },
-    { need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
-      why: 'A run of requests in one mood — capped by the per-call action limit.' },
-    { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
-      why: 'Searches the real library before promising anything.' },
-    { need: 'allow_exact_queue', say: '“The second one — the live version.”',
-      why: 'Queues that exact recording from the search results, not a re-match.' },
-    { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
-      why: 'Hands a line to the on-air DJ to read in persona.' },
-    { need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
-      why: 'Puts the gist of the call on air.' },
-    { need: 'allow_skills', say: '“What’s the weather doing?” / “Any news?”',
-      why: 'Runs the station’s own weather or news segment.' },
-    { need: 'allow_skills', say: '“Give my mate a dedication.”',
-      why: 'Runs the dedication or shoutout segment.' },
-    { need: 'allow_skills', say: '“Tell us a story about the old days.”',
-      why: 'Story time / remembrance segments, in the DJ’s own voice.' },
-    { need: null, say: '“Who is this? What’s the story behind this record?”',
-      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
-    { need: null, say: '“How long have you been doing the night shift?”',
-      why: 'Answered in character from the DJ Card — no tool needed.' },
-  ];
-
-  // The other half of the truth: what a caller CANNOT do, and why. Without
-  // this the permissions list reads as if anything might be one toggle away.
-  const NEVER = [
-    ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
-    ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
-    ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
-    ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
-  ];
-
   // What a permission is set to RIGHT NOW, including an unsaved tick. The
   // reference lists are there to answer "what does this switch do" — reading
   // only the saved value meant they didn't move until after you'd committed

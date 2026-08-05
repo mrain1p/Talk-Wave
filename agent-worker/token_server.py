@@ -385,6 +385,22 @@ async def handle_live(request: web.Request) -> web.Response:
                         "tuneIn": bool(cfg.get("tune_in_on_call")),
                         "volume": int(cfg.get("tune_in_volume") or 0),
                     },
+                    # How the card is coloured. An embed's own data-theme
+                    # attribute still wins — the host page knows more about
+                    # itself than this setting does.
+                    "theme": str(cfg.get("widget_theme") or "auto"),
+                    # What a caller may actually ask for. Sent only when the
+                    # operator has switched the help button on, and only as
+                    # the permissions themselves — the wording lives in the
+                    # widget, so the panel and the card cannot drift.
+                    "canAsk": (
+                        {k: bool(cfg.get(k)) for k in (
+                            "allow_requests", "allow_library_search",
+                            "allow_exact_queue", "allow_announcements",
+                            "allow_skills",
+                        )}
+                        if cfg.get("show_caller_help") else None
+                    ),
                     # So the card can show elapsed/remaining and warn before
                     # the graceful cutoff rather than surprising the caller.
                     "limits": {

@@ -178,6 +178,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # who isn't on the LAN. Point this at the station's public https stream.
     "tune_in_url":      ("SUBWAVE_STREAM_URL", ""),
 
+    # --- the widget itself, as a caller sees it --------------------------
+    # A caller staring at one button has no idea a phone-in can do anything
+    # beyond requests. This puts the same live reference the panel shows the
+    # operator behind a button on the card — filtered to what is actually
+    # switched on, so it can never promise something that would be refused.
+    "show_caller_help": (None, True),
+    # auto   follow the viewer's OS setting, with the in-widget toggle
+    # light  / dark   force one, and hide the toggle
+    # inherit  match the page the widget is embedded in
+    "widget_theme":     (None, "auto"),
+
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
     # deliberately brief — a passing mention, not a recap.
@@ -382,6 +393,19 @@ SCHEMA: dict[str, dict] = {
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
         help="Hard limit on call length. The DJ signs off in character first rather "
              "than the audio just stopping. 600 = ten minutes."),
+    "show_caller_help": dict(group="call", kind="check",
+        label="Show callers what they can ask",
+        help="Adds a small button to the call card that opens the same live "
+             "reference this panel shows you — filtered to the permissions "
+             "actually enabled, so it can never suggest something the DJ would "
+             "refuse. Most callers assume a phone-in only takes requests."),
+    "widget_theme": dict(group="call", kind="select", label="Widget theme",
+        help="How the call card is coloured, including the Call, mute and hang-up "
+             "buttons. Auto follows the viewer's own light/dark setting and keeps "
+             "the in-widget toggle. Light and dark force one and hide the toggle. "
+             "Inherit matches the page the widget is embedded in — the right "
+             "choice on a site with its own colours; on the standalone page it "
+             "behaves as auto. An embed's own data-theme attribute still wins."),
     "min_call_seconds": dict(group="call", kind="number",
         label="Earliest the DJ may hang up (s)",
         help="The DJ ends calls itself once one has run its course, and this is the "
@@ -570,6 +594,12 @@ def mcp_tools_payload() -> list[dict]:
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
+    "widget_theme": [
+        ("auto", "Auto — follow the viewer, keep the toggle"),
+        ("light", "Light"),
+        ("dark", "Dark"),
+        ("inherit", "Inherit from the page it's embedded in"),
+    ],
 }
 
 

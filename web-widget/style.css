@@ -340,6 +340,37 @@
     background: transparent; color: var(--dimmer); font-size: 15px; line-height: 1;
   }
   #themeBtn { right: 50px; }
+  #helpBtn { right: 86px; font-weight: 700; }
+  body.compact #helpBtn { right: 40px; width: 26px; height: 26px; }
+
+  /* "What can I ask?" — anchored under its button so it reads as belonging to
+     it. It does sit over the card, including the Call button: measured, there
+     is only ~90px between the two at any viewport size, and a list short
+     enough to clear that is too short to be worth opening. It is a popover the
+     caller opened deliberately, and the X, Escape and a click outside all
+     close it. */
+  .askpop {
+    position: absolute; top: 52px; right: 14px; left: 14px; z-index: 20;
+    border: 1px solid var(--line2); border-radius: 12px; background: var(--panel);
+    box-shadow: 0 12px 32px rgba(0,0,0,.45); padding: 12px 14px;
+    max-height: min(60vh, 420px); overflow: auto; text-align: left;
+  }
+  .askpop-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px; font-size: 13px; color: var(--text);
+  }
+  .askpop-close {
+    background: transparent; border: 0; color: var(--dimmer);
+    font-size: 20px; line-height: 1; padding: 0 4px; cursor: pointer;
+  }
+  .askpop-close:hover { color: var(--text); }
+  .askpop-list { list-style: none; margin: 0; padding: 0; }
+  .askpop-list li {
+    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+  }
+  .askpop-list li:last-child { border-bottom: none; }
+  .askpop-list .say { display: block; color: var(--text); }
+  .askpop-list .why { display: block; color: var(--dimmer); font-size: 11.5px; margin-top: 2px; }
   .gear:hover { background: var(--line); color: var(--text); }
   /* Embeds keep the theme toggle (it hides itself when the host page forces
      a theme via data-theme). */
