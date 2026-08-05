@@ -289,6 +289,84 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestTuneIn(unittest.TestCase):
+    """Where the caller's browser pulls the broadcast from.
+
+    This was silently broken on every TLS deployment: the URL was derived from
+    the station's LAN address over plain http, and a browser refuses to load
+    that into an https page. Nothing reported it — the widget logged to the
+    console and the call ran with no station behind it.
+    """
+
+    def setUp(self):
+        import tune_in
+        self.tune_in = tune_in
+        tune_in._cache.clear()
+
+    def test_a_full_mount_is_used_as_given(self):
+        import asyncio
+
+        url, alts = asyncio.run(self.tune_in.resolve(
+            {"tune_in_url": "https://live.example.com/stream.mp3"},
+            "http://192.168.1.245:7700/api"))
+        self.assertEqual(url, "https://live.example.com/stream.mp3")
+        self.assertEqual(alts, [])
+
+    def test_blank_falls_back_to_the_derived_lan_url(self):
+        import asyncio
+
+        url, alts = asyncio.run(self.tune_in.resolve(
+            {}, "http://192.168.1.245:7700/api"))
+        self.assertEqual(url, "http://192.168.1.245:7700/stream.mp3")
+        self.assertEqual(alts, [])
+
+    def test_a_bare_origin_discovers_the_published_mounts(self):
+        # SubWave publishes its mount list at /listen.pls — "the always-served
+        # MP3 mount first, appending any enabled optional mounts" — so an
+        # operator shouldn't have to know whether opus is switched on.
+        import asyncio
+
+        self.tune_in._cache["https://live.example.com"] = (
+            9e18,   # never expires during the test
+            ["https://live.example.com/stream.mp3",
+             "https://live.example.com/stream.opus"],
+        )
+        url, alts = asyncio.run(self.tune_in.resolve(
+            {"tune_in_url": "https://live.example.com"}, "http://x/api"))
+        self.assertEqual(url, "https://live.example.com/stream.mp3")
+        self.assertEqual(alts, ["https://live.example.com/stream.opus"])
+
+    def test_discovery_keeps_the_path_and_throws_away_the_host(self):
+        # The one that actually bit. A station generates its playlist from its
+        # own configured address, which is routinely internal — asked over a
+        # public https origin, the real deployment answered with
+        # http://192.168.1.245:7700/stream.mp3. Taking that whole would hand
+        # the browser the exact unreachable LAN address this setting exists to
+        # escape, so discovery would be worse than none at all.
+        out = self.tune_in._parse_playlist(
+            "#EXTM3U\n#EXTINF:-1,Yosemite FM\n"
+            "http://192.168.1.245:7700/stream.mp3\n")
+        self.assertEqual(out, ["/stream.mp3"])
+        self.assertNotIn("192.168", "".join(out))
+
+    def test_mp3_is_ordered_first_whatever_the_station_lists(self):
+        # Every browser plays mp3; Safari is unreliable on opus. The widget
+        # tries these in order, so the order is the whole point.
+        out = self.tune_in._parse_playlist(
+            "[playlist]\n"
+            "File1=https://live.example.com/stream.opus\n"
+            "File2=https://live.example.com/stream.mp3\n"
+        )
+        self.assertEqual(out[0], "/stream.mp3")
+
+    def test_a_mount_is_told_apart_from_an_origin(self):
+        self.assertTrue(self.tune_in.is_a_mount("https://a.example.com/stream.mp3"))
+        self.assertTrue(self.tune_in.is_a_mount("https://a.example.com/x/live.opus"))
+        self.assertFalse(self.tune_in.is_a_mount("https://a.example.com"))
+        self.assertFalse(self.tune_in.is_a_mount("https://a.example.com/"))
+        self.assertFalse(self.tune_in.is_a_mount(""))
+
+
 class TestPanelMarkup(unittest.TestCase):
     """The panel builds itself from the schema, but it can only fill in a
     control the markup actually contains — `byKind` skips any field with no

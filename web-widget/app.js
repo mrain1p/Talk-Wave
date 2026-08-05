@@ -50,14 +50,50 @@
   function tuneIn() {
     const s = live && live.stream;
     if (!s || !s.tuneIn || !s.url || streamEl) return;
+    // The station's published mounts, best first. Not every mount plays in
+    // every browser — Safari and opus, most often — so a failure moves to the
+    // next one rather than leaving the call with no station behind it.
+    const candidates = [s.url].concat(s.alternates || []);
+    playFirstWorking(candidates, 0);
+  }
+
+  function playFirstWorking(urls, i) {
+    if (i >= urls.length) {
+      // Was console.info, which meant nobody ever found out. The commonest
+      // cause is an http stream on an https page: the browser blocks it as
+      // mixed content and the caller hears no station at all.
+      console.warn(
+        'Wave Talk: could not tune the caller in. Tried:', urls.join(', '),
+        '— if these are http:// and this page is https://, the browser blocked ' +
+        'them as mixed content. Set the station stream URL in settings.'
+      );
+      streamEl = null;
+      return;
+    }
     try {
-      streamEl = new Audio(s.url);
-      streamEl.crossOrigin = 'anonymous';
+      // No crossOrigin: the stream is never read through Web Audio, and
+      // asking for CORS makes a station that doesn't send the headers fail
+      // for no benefit.
+      const el = new Audio(urls[i]);
       // Scaled by the caller's own volume from the start — see applyVolume.
-      streamEl.volume = stationLevel();
-      streamEl.muted = stationLevel() <= 0;
-      streamEl.play().catch((e) => console.info('tune-in blocked:', e.message));
-    } catch (e) { streamEl = null; }
+      el.volume = stationLevel();
+      el.muted = stationLevel() <= 0;
+      el.addEventListener('error', () => {
+        if (streamEl !== el) return;
+        try { el.pause(); } catch (e) {}
+        streamEl = null;
+        playFirstWorking(urls, i + 1);
+      }, { once: true });
+      streamEl = el;
+      el.play().catch(() => {
+        if (streamEl !== el) return;
+        streamEl = null;
+        playFirstWorking(urls, i + 1);
+      });
+    } catch (e) {
+      streamEl = null;
+      playFirstWorking(urls, i + 1);
+    }
   }
 
   function tuneOut() {

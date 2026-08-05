@@ -88,6 +88,10 @@ library.
 - The caller's browser is (optionally) tuned into the stream once the DJ
   picks up (never during ringing), so stations that refuse requests at zero
   listeners accept them, and the broadcast runs quietly behind the call.
+  **Set Station stream URL** (Call behaviour) to the station's public https
+  stream if the widget is served over TLS — see Troubleshooting. A bare origin
+  is enough: the mounts SubWave publishes are discovered, mp3 first, and the
+  widget falls back through the rest if one won't play.
 - Station webhooks are registered automatically for push updates; the widget
   falls back to polling when they're unavailable.
 
@@ -336,6 +340,16 @@ its failure messages name the fix. The classics:
   guidance itself, with a link to the bundled TLS page
   (`https://<HOST_IP>:8443`) — or use the Chrome flag for single-machine
   testing. The *Microphone* pipeline stage reports the same thing.
+- **No station behind the call — the DJ is there, the music isn't** — the
+  caller's browser is being handed an `http://` stream on an `https://` page,
+  and browsers block that as mixed content. It is silent by design on their
+  side, so nothing looks broken; the same happens off-LAN, where a
+  `192.168.x.x` stream is simply unreachable. Fix: set **Station stream URL**
+  (Call behaviour) or `SUBWAVE_STREAM_URL` to the station's public https
+  stream. A bare origin (`https://live.example.com`) is enough — SubWave
+  publishes its mounts at `/listen.pls` and they're discovered, mp3 first. The
+  *Station stream* pipeline stage reports the status and content type, and
+  says outright when the scheme is the problem.
 - **Locked out of the settings panel** — set `CALLIN_ADMIN_KEY` in the
   environment (always accepted) or restart the app (clears IP bans). To
   remove the password entirely, delete `data/admin-auth.json` and restart.

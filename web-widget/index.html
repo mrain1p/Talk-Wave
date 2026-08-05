@@ -359,6 +359,18 @@
           don’t count. This tunes their browser in for the duration of the call
           so requests are accepted. Volume 0 keeps it silent behind the DJ.</p>
         <div class="row">
+          <label for="tune_in_url">Station stream URL</label>
+          <input type="text" id="tune_in_url" placeholder="https://live.example.com/stream.mp3" />
+        </div>
+        <p class="hint wide">Where the caller’s browser pulls the broadcast from.
+          Leave blank to derive it from the station address — that only works
+          when the caller is on the same network <em>and</em> this page is served
+          over plain http. Behind TLS a browser silently refuses to load an http
+          stream into an https page, and the call runs with no station behind it.
+          Paste the station’s own https stream, or just its address
+          (<code>https://live.example.com</code>) and the mounts it publishes are
+          found for you. The pipeline check tests it.</p>
+        <div class="row">
           <label for="tune_in_volume">Station volume</label>
           <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
         </div>
