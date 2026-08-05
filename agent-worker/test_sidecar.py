@@ -2211,6 +2211,32 @@ class TestMainToolLogic(_TempStores):
         # And stays clean when the station sends nothing.
         self.assertNotIn("energy", self.music._fmt_track({"title": "T", "artist": "A"}))
 
+    def test_the_hangup_floor_is_configurable(self):
+        # Asked for directly: "is there a setting for it?" There wasn't. The
+        # default still guards, but an operator can move or remove it.
+        import asyncio, time
+
+        from version import APP_VERSION  # noqa: F401  (import sanity)
+
+        # A shorter floor lets a call end sooner...
+        tools = self.control.build_call_control_tools(
+            None, lambda: None, time.time() - 20, min_call_secs=10)
+        self.assertIn("the line is closing", asyncio.run(tools[0]()).lower())
+
+        # ...and 0 removes the guard entirely.
+        tools = self.control.build_call_control_tools(
+            None, lambda: None, time.time(), min_call_secs=0)
+        self.assertIn("the line is closing", asyncio.run(tools[0]()).lower())
+
+        # A longer floor still refuses.
+        tools = self.control.build_call_control_tools(
+            None, lambda: None, time.time() - 60, min_call_secs=180)
+        self.assertIn("can't close for another", asyncio.run(tools[0]()))
+
+    def test_the_default_floor_is_still_a_minute(self):
+        cfg = settings_store.load()
+        self.assertEqual(int(cfg.get("min_call_seconds")), 60)
+
     def test_the_dj_cannot_hang_up_in_the_first_minute(self):
         # A model that decides to end the call early is worse than one that
         # lingers, so this floor is enforced in code, not asked for in a prompt.

@@ -44,8 +44,8 @@ back-and-forth, and a Beatles request resolved against the live library.
 - In-character timeouts for silence and over-long calls; a caller who was just
   asked a question gets three times the usual wait. If no worker answers, an
   engaged tone after 40 seconds rather than endless ringing.
-- The DJ closes the call itself, and code stops it hanging up in the first
-  minute whatever the model decides.
+- The DJ closes the call itself, with a configurable floor (60s by default)
+  stopping it hanging up early whatever the model decides.
 - Every call is written down — see [Diagnosing a call](#diagnosing-a-call).
 
 **Station integration**
@@ -184,7 +184,7 @@ through. Every field carries its own help text.
 | Permissions & safety | **Caller permissions** | What a stranger may trigger, overlap protection, and the two station-wide switches (skip the current track, fire a programme beat) that reach every listener — both off by default |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call, pause — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
-| Call settings | **Call behaviour** | Who answers, greeting, time limits, idle check-ins, tune-in, **station stream URL** |
+| Call settings | **Call behaviour** | Who answers, greeting, how early the DJ may hang up and the hard limit, idle check-ins, tune-in, **station stream URL** |
 | Call settings | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
 | Call settings | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call |

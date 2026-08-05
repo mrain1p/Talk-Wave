@@ -25,7 +25,10 @@ def _clock_start() -> float:
 
 
 def build_call_control_tools(
-    ctx: JobContext, get_session: Callable[[], object], started_at: float
+    ctx: JobContext,
+    get_session: Callable[[], object],
+    started_at: float,
+    min_call_secs: float = 60.0,
 ) -> list:
     """Lets the DJ hang up, the way a presenter closes a call.
 
@@ -40,14 +43,20 @@ def build_call_control_tools(
 
     Two guards, because a model that decides to hang up early is worse than
     one that lingers:
-      * nothing can end a call in its first minute, whatever the model thinks;
+      * nothing can end a call before `min_call_secs`, whatever the model
+        thinks — it defaults to a minute and the operator can change it;
       * the goodbye is allowed to finish playing before the room closes.
+
+    Setting the floor to 0 removes the first guard entirely. That is a real
+    choice rather than a hidden one: the DJ deciding a call is over after two
+    words has happened, and a caller hung up on mid-sentence has no way to
+    tell that from the line dropping.
     """
     from livekit.agents import llm as lk_llm
 
     import time as _t
 
-    MIN_CALL_SECS = 60.0
+    MIN_CALL_SECS = max(0.0, float(min_call_secs or 0))
     ending = {"done": False}
 
     @lk_llm.function_tool(name="end_call")

@@ -384,6 +384,14 @@
           <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
         </div>
         <div class="row">
+          <label for="min_call_seconds">Earliest hang-up (s)</label>
+          <input type="number" id="min_call_seconds" min="0" step="15" />
+        </div>
+        <p class="hint wide">The DJ closes calls itself; this is the floor under
+          that. 60 by default — a model deciding a call is over after two words
+          is worse than one that lingers, and the caller can’t tell being hung
+          up on from the line dropping. 0 removes the guard.</p>
+        <div class="row">
           <label for="max_call_seconds">Hang up after (s)</label>
           <input type="number" id="max_call_seconds" min="30" step="30" />
         </div>

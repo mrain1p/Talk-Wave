@@ -2430,22 +2430,44 @@
     const ul = document.createElement('ul');
     ul.className = 'stages timings on';
 
-    const row = (cls, ms, name, note) => {
+    // Same three columns as the pipeline check — icon, name, detail — so the
+    // two lists read as one design. The elapsed time leads the detail cell
+    // with a fixed width, which keeps the numbers in a column without pushing
+    // the names out of line with the list above.
+    const row = (cls, icon, ms, name, note) => {
       const li = document.createElement('li');
       li.className = cls;
-      li.innerHTML = '<span class="ms"></span><span class="nm"></span><span class="dt"></span>';
-      li.querySelector('.ms').textContent = ms;
+      li.innerHTML = '<span class="icon"></span><span class="nm"></span>'
+        + '<span class="dt"><span class="ms"></span><span class="note"></span></span>';
+      li.querySelector('.icon').textContent = icon;
       li.querySelector('.nm').textContent = name;
-      li.querySelector('.dt').textContent = note || '';
+      li.querySelector('.ms').textContent = ms;
+      li.querySelector('.note').textContent = note || '';
       ul.appendChild(li);
     };
 
+    // Which stage to point at. Only worth naming a chokepoint when the turn
+    // is actually slow — on a fast call the largest stage is just the largest
+    // stage, and colouring it would train you to ignore the colour.
+    const counting = d.stages.filter((st) => st.counts);
+    const slowTurn = d.turnMs >= 1500;
+    const worst = counting.reduce((a, b) => (b.ms > (a ? a.ms : -1) ? b : a), null);
+
     let oneOffs = 0;
     d.stages.forEach((st) => {
-      if (!st.counts) oneOffs++;
-      row(st.counts ? '' : 'oneoff', st.ms + 'ms', st.name, st.note);
+      if (!st.counts) {
+        oneOffs++;
+        return row('oneoff', '·', st.ms + 'ms', st.name, st.note);
+      }
+      const choke = slowTurn && worst && st === worst;
+      row(choke ? 'choke' : '', choke ? '!' : '✓', st.ms + 'ms', st.name, st.note);
     });
-    row('total', d.turnMs + 'ms', 'Per turn', d.verdict);
+
+    // The number the caller actually experiences, judged against the same
+    // 1.5s the panel's own blurb quotes.
+    const verdictClass = d.turnMs < 1500 ? 'good' : d.turnMs < 2500 ? 'warn' : 'bad';
+    row('total ' + verdictClass, d.turnMs < 1500 ? '✓' : '!',
+        d.turnMs + 'ms', 'Per turn', d.verdict);
     out.appendChild(ul);
 
     if (oneOffs) {

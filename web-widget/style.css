@@ -561,22 +561,42 @@
   /* Lives inside .result, which is monospace and pre-wrap — neither of which
      suits a table of rows, so both are reset here. */
   .result .stages.timings { white-space: normal; }
-  .stages.timings li { grid-template-columns: 64px 128px 1fr; }
+  /* Identical grid to the pipeline check above it, so the two lists read as
+     one design: status, name, detail. The elapsed time leads the detail cell
+     at a fixed width, which keeps the numbers in a column without shifting
+     the names out of line with the list above. */
   .stages.timings .nm {
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
+  .stages.timings .dt { display: flex; gap: 10px; align-items: baseline; }
   .stages.timings .ms {
-    text-align: right; font-family: ui-monospace, SFMono-Regular, monospace;
-    font-variant-numeric: tabular-nums; color: var(--dim);
+    flex: 0 0 58px; text-align: right; font-variant-numeric: tabular-nums;
+    color: var(--dim);
   }
-  .stages.timings li.oneoff { opacity: .5; }
+  .stages.timings .note { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .stages.timings li .icon { color: var(--ok); }
+
+  /* One-off stages are dimmed rather than coloured: real work, but not work
+     the caller waits through on every turn. */
+  .stages.timings li.oneoff { opacity: .55; }
+  .stages.timings li.oneoff .icon { color: var(--dimmer); }
+
+  /* The chokepoint: the largest stage, marked only when the turn is actually
+     slow. On a fast call the biggest stage is just the biggest stage, and
+     colouring it anyway would teach you to ignore the colour. */
+  .stages.timings li.choke .icon,
+  .stages.timings li.choke .ms { color: var(--warn); }
+  .stages.timings li.choke .nm { color: var(--text); }
+
   .stages.timings li.total {
     border-bottom: none; border-top: 1px solid var(--line2);
     margin-top: 3px; padding-top: 9px;
   }
   .stages.timings li.total .ms,
   .stages.timings li.total .nm { color: var(--text); font-weight: 700; }
-  .stages.timings li.total .dt { color: var(--dim); }
+  .stages.timings li.total.good .icon, .stages.timings li.total.good .ms { color: var(--ok); }
+  .stages.timings li.total.warn .icon, .stages.timings li.total.warn .ms { color: var(--warn); }
+  .stages.timings li.total.bad .icon,  .stages.timings li.total.bad .ms  { color: var(--accent); }
 
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;

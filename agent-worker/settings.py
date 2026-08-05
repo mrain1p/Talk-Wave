@@ -117,6 +117,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "greeting_style":   (None, "inviting"),   # inviting | in-world
     "greeting":         (None, ""),
     "max_call_seconds": (None, 600),
+    # Floor on the DJ hanging up by itself. A model that decides a call is
+    # finished after two words is worse than one that lingers, so nothing can
+    # end a call before this. 0 removes the guard.
+    "min_call_seconds": (None, 60),
 
     # Silence handling. A caller who stops talking shouldn't sit in dead air:
     # the DJ checks in, and if there's still nothing, winds the call up in
@@ -378,6 +382,15 @@ SCHEMA: dict[str, dict] = {
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
         help="Hard limit on call length. The DJ signs off in character first rather "
              "than the audio just stopping. 600 = ten minutes."),
+    "min_call_seconds": dict(group="call", kind="number",
+        label="Earliest the DJ may hang up (s)",
+        help="The DJ ends calls itself once one has run its course, and this is the "
+             "floor under that. 60 is the default because the opposite failure is "
+             "worse: a model deciding a call is finished after two words, with the "
+             "caller unable to tell being hung up on from the line dropping. Raise "
+             "it if calls end too briskly; 0 removes the guard and lets the DJ close "
+             "whenever it judges the conversation done. The hard limit above is the "
+             "other end of the same range."),
     "idle_prompt_secs": dict(group="call", kind="number", label="Check in after (s)",
         help="Seconds without SPOKEN WORDS from the caller before the DJ asks if "
              "they're still there — background noise doesn't count, and the clock "

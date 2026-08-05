@@ -129,7 +129,8 @@ class CallSession:
         # The AgentSession doesn't exist yet — tools are built first — so the
         # hang-up tool is handed a way to read it later, not the thing itself.
         local += build_call_control_tools(
-            self.ctx, lambda: self.session, self.started_at
+            self.ctx, lambda: self.session, self.started_at,
+            float(self.cfg.get("min_call_seconds") or 0),
         )
         return mcp_allowlist(self.cfg), local
 
