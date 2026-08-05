@@ -290,6 +290,147 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestExposedSurface(unittest.TestCase):
+    """Everything this service exposes, pinned so a change has to be deliberate.
+
+    Not a style check. The failure it exists for is quiet: someone adds a route
+    and forgets the auth gate, or relaxes a tool from `never` to a settings
+    flag, and nothing anywhere says the attack surface just grew. Both are one
+    line of a diff and neither breaks a test that only exercises behaviour.
+
+    When this fails, read the diff and decide. Updating the manifest is the
+    right fix for an intentional change — the point is that you had to.
+    """
+
+    # method path -> "public" | "admin"
+    # "admin" means the handler consults the password gate. OPTIONS (CORS
+    # preflight) and HEAD (mirrors GET) are excluded as noise.
+    ROUTES = {
+        "STATIC /": "public",                  # the widget's own files
+        "GET /": "public",
+        "GET /health": "public",
+        "GET /live": "public",                 # what the call card renders
+        "GET /avatar/{persona_id}": "public",  # proxied so embeds work on https
+        "GET /sounds/{name}": "public",        # uploaded call sounds
+        "GET /sound-packs": "public",
+        "GET /pack-sounds/{pack}/{name}": "public",
+        "POST /token": "admin",                # guest code counts as a gate
+        "POST /call-ended": "public",          # releases a slot; no secrets
+        # The station does not sign its webhooks, so this cannot be
+        # authenticated. It is safe only because it treats the payload as
+        # untrusted data: store it, bust caches, never act on its contents.
+        # If that ever changes, this entry is the thing to argue with.
+        "POST /hooks/station": "public",
+        "POST /auth/guest": "public",          # verifying a code needs no code
+        "POST /auth/password": "admin",
+        "GET /settings": "admin",
+        "POST /settings": "admin",
+        "GET /settings/options": "admin",
+        "POST /settings/secrets": "admin",
+        "GET /settings/sounds": "admin",
+        "POST /settings/sounds": "admin",
+        "DELETE /settings/sounds/{name}": "admin",
+        "GET /prompt": "admin",
+        "GET /calls": "admin",
+        "GET /logs": "admin",
+        "GET /hooks/recent": "admin",
+        # Every test button costs money or reveals config.
+        "GET /test/station": "admin",
+        "POST /test/admin": "admin",
+        "POST /test/env": "admin",
+        "POST /test/llm": "admin",
+        "POST /test/tts": "admin",
+        "POST /test/speed": "admin",
+    }
+
+    # Station tools, and what unlocks each. "never" is the important column:
+    # those are not reachable at any setting, and moving one out of `never`
+    # hands a stranger on the phone a new capability.
+    TOOLS = {
+        "subwave_health": "read",
+        "subwave_now_playing": "read",
+        "subwave_station_state": "read",
+        "subwave_schedule": "read",
+        "subwave_session": "read",
+        "subwave_request_song": "allow_requests",
+        "subwave_request_status": "allow_requests",
+        "subwave_search_library": "allow_library_search",
+        "subwave_queue_track": "allow_exact_queue",
+        "subwave_dj_announce": "allow_announcements",
+        "subwave_list_skills": "allow_skills",
+        "subwave_run_skill": "allow_skills",
+        "subwave_skip_track": "never",
+        "subwave_dj_segment": "never",
+        "subwave_refresh_playlist": "never",
+        "subwave_list_sfx": "never",
+        "subwave_play_sfx": "never",
+    }
+
+    def _live_routes(self) -> dict:
+        import inspect
+
+        import token_server
+
+        found = {}
+        for route in token_server.build_app().router.routes():
+            if route.method in ("HEAD", "OPTIONS"):
+                continue
+            path = getattr(route.resource, "canonical", "")
+            key = f"{route.method} {path}" if path else "STATIC /"
+            try:
+                src = inspect.getsource(route.handler)
+            except (OSError, TypeError):
+                src = ""
+            gated = "_write_allowed" in src or "_check_admin" in src
+            found[key] = "admin" if gated else "public"
+        return found
+
+    def test_no_route_appears_or_changes_gate_unnoticed(self):
+        found = self._live_routes()
+        added = sorted(set(found) - set(self.ROUTES))
+        removed = sorted(set(self.ROUTES) - set(found))
+        changed = sorted(
+            f"{k}: pinned {self.ROUTES[k]}, now {found[k]}"
+            for k in set(found) & set(self.ROUTES) if found[k] != self.ROUTES[k]
+        )
+        self.assertEqual(
+            added, [],
+            "New route(s) exposed. If deliberate, add them to ROUTES — and "
+            "check whether they should be behind the password gate.")
+        self.assertEqual(removed, [], "Route(s) gone; the widget may still call them.")
+        self.assertEqual(changed, [], "A route's auth posture changed.")
+
+    def test_nothing_reachable_without_a_password_grows_quietly(self):
+        # The subset that matters most, stated on its own so it reads as the
+        # security claim it is rather than a line in a bigger diff.
+        public = {k for k, v in self._live_routes().items() if v == "public"}
+        expected = {k for k, v in self.ROUTES.items() if v == "public"}
+        self.assertEqual(
+            sorted(public - expected), [],
+            "Something new is reachable with no password at all.")
+
+    def test_the_station_tool_surface_is_what_we_think(self):
+        from call.tools.registry import TOOLS
+
+        live = {t.name: t.gate for t in TOOLS}
+        self.assertEqual(live, self.TOOLS, "The station tool surface changed.")
+
+    def test_destructive_tools_stay_unreachable_at_every_setting(self):
+        # The claim the README makes to operators: these are never exposed,
+        # whatever the permission switches say.
+        from call.tools.registry import blocked_names, mcp_allowlist, local_tool_names
+
+        never = {n for n, gate in self.TOOLS.items() if gate == "never"}
+        self.assertEqual(set(blocked_names()), never)
+
+        everything_on = {gate: True for gate in self.TOOLS.values()}
+        reachable = set(mcp_allowlist(everything_on)) | set(
+            local_tool_names(everything_on, local_search_available=True))
+        self.assertEqual(
+            reachable & never, set(),
+            "A tool marked `never` became reachable with every switch on.")
+
+
 class TestHttpSurface(_TempStores):
     """The routes, exercised the way a browser reaches them.
 
