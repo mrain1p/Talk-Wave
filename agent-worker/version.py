@@ -9,4 +9,4 @@ both say the same thing.
 Keep in step with the git tag (v0.9.0 -> "0.9.0") when cutting a release.
 """
 
-APP_VERSION = "0.9.79"
+APP_VERSION = "0.9.80"

@@ -198,7 +198,7 @@ through. Every field carries its own help text.
 | Call settings | **Call sounds** | Sound set, uploads or URLs, previews, volume |
 | Reference | **What callers can ask** | Derived from the permissions above, including what is never available |
 | Reference | **Station tools** | All 17 MCP tools and whether a caller can reach each |
-| Reference | **Embed** | Copyable iframe snippet and preview |
+| Reference | **Embed on another page** | Copyable iframe snippet and preview |
 
 Below settings, a **Diagnostics** block: pipeline check, speed test, recent
 calls, server logs. The running version is stamped underneath.
