@@ -3839,5 +3839,133 @@ class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
         self.assertIn("dj_segment", self.muzzled)
 
 
+class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
+    """A new module with no tests is the way coverage rots — quietly, one file
+    at a time, while the suite stays green and says nothing.
+
+    The bar here is deliberately low: every module must be *reached* by the
+    suite at all. It does not judge how well. It exists so that adding a file
+    is a decision to test it rather than an oversight, and it adapts on its own
+    — a module added tomorrow is covered by this rule the moment it lands.
+    """
+
+    def test_every_module_is_reached_by_the_suite(self):
+        here = Path(__file__).parent
+        suite_src = Path(__file__).read_text(encoding="utf-8")
+
+        untested = []
+        for path in sorted(here.rglob("*.py")):
+            if path.name in ("test_sidecar.py", "__init__.py"):
+                continue
+            if "__pycache__" in path.parts or ".venv" in path.parts:
+                continue
+            rel = path.relative_to(here)
+            dotted = str(rel.with_suffix("")).replace("\\", "/").replace("/", ".")
+            if dotted not in suite_src and path.stem not in suite_src:
+                untested.append(str(rel).replace("\\", "/"))
+
+        self.assertEqual(
+            untested, [],
+            "these modules are never imported or named anywhere in the suite, so "
+            "nothing here would notice if they broke. Write a test, or say in the "
+            f"test file why they cannot have one: {untested}",
+        )
+
+
+class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
+    """CLAUDE.md is loaded into every agent's context, so a stale path there is
+    worse than no path — it sends the next person (or model) confidently to a
+    file that moved. Prose cannot self-heal, but it can be made to fail loudly
+    when the tree moves underneath it.
+
+    Only source paths under agent-worker/ and web-widget/ are checked: those are
+    tracked, so this holds in CI and inside the image. The long-form design docs
+    are gitignored and deliberately not referenced this way.
+    """
+
+    def _claude_mds(self):
+        root = Path(__file__).parent.parent
+        return [p for p in (root / "CLAUDE.md",
+                            root / "agent-worker" / "CLAUDE.md",
+                            root / "web-widget" / "CLAUDE.md") if p.is_file()]
+
+    def test_every_source_path_they_name_exists(self):
+        import re
+
+        docs = self._claude_mds()
+        if not docs:
+            self.skipTest("no CLAUDE.md in this checkout (not copied into the image)")
+
+        root = Path(__file__).parent.parent
+        # Every source filename in the tree, so a doc may name a module the way
+        # a person would ("session.py") without spelling out its directory.
+        present = {
+            p.name
+            for d in ("agent-worker", "web-widget")
+            for p in (root / d).rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts
+        }
+
+        missing = []
+        checked = 0
+        for doc in docs:
+            base = doc.parent
+            for ref in re.findall(r"`([A-Za-z0-9_./-]+\.(?:py|js|html|css))`",
+                                  doc.read_text(encoding="utf-8")):
+                if ref.startswith("/"):
+                    continue        # a served route (/app.js), not a path on disk
+                # Resolve as a path relative to the doc or the repo root, else
+                # as a bare filename anywhere in the source tree.
+                if (base / ref).exists() or (root / ref).exists() \
+                        or Path(ref).name in present:
+                    checked += 1
+                    continue
+                missing.append(f"{doc.name} -> {ref}")
+
+        self.assertGreater(checked, 10, "found almost no paths to check — the "
+                                        "scan regex has probably stopped matching")
+        self.assertEqual(missing, [],
+                         f"CLAUDE.md names source files that do not exist: {missing}")
+
+
+class TestEverySkillWouldActuallyLoad(unittest.TestCase):
+    """A skill with broken frontmatter does not error — it is simply never
+    offered, which looks identical to the model choosing not to use it. That is
+    the worst failure mode available: silent, and indistinguishable from
+    working. Adapts on its own; a skill added tomorrow is checked by this.
+    """
+
+    def _skills(self):
+        d = Path(__file__).parent.parent / ".claude" / "skills"
+        return sorted(d.glob("*/SKILL.md")) if d.is_dir() else []
+
+    def test_frontmatter_is_present_and_names_match_their_directories(self):
+        import re
+
+        skills = self._skills()
+        if not skills:
+            self.skipTest(".claude/skills not in this checkout (not copied into the image)")
+
+        problems = []
+        for skill in skills:
+            text = skill.read_text(encoding="utf-8")
+            if not text.startswith("---"):
+                problems.append(f"{skill.parent.name}: no frontmatter block")
+                continue
+            name = re.search(r"^name:\s*(.+)$", text, re.M)
+            desc = re.search(r"^description:\s*(.+)$", text, re.M)
+            if not name or name.group(1).strip() != skill.parent.name:
+                problems.append(
+                    f"{skill.parent.name}: name field is "
+                    f"{name.group(1).strip() if name else 'missing'}, which does not "
+                    "match the directory, so the skill cannot be invoked by name")
+            if not desc or len(desc.group(1).strip()) < 40:
+                problems.append(
+                    f"{skill.parent.name}: description missing or too short to "
+                    "trigger on — it is the only part always in context")
+
+        self.assertEqual(problems, [], f"skills that would not load correctly: {problems}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
