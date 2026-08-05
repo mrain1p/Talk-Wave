@@ -558,8 +558,33 @@ async def handle_avatar(request: web.Request) -> web.StreamResponse:
         raise web.HTTPNotFound()
 
 
-async def handle_index(request: web.Request) -> web.FileResponse:
-    return web.FileResponse(WIDGET_DIR / "index.html")
+_index_cache: dict = {"mtime": 0.0, "html": ""}
+
+
+def _versioned_index() -> str:
+    """index.html with ?v=<version> on its own script and stylesheet.
+
+    The page itself must never be cached — that is what stopped operators
+    seeing a stale interface after an image update. But the 100KB of js and
+    css behind it can be cached forever *if the URL changes when they do*, and
+    the version already changes on every release. So the html stays fresh and
+    the heavy assets stop being re-downloaded on every single load.
+
+    Re-read when the file changes, so a local edit still shows up without a
+    restart.
+    """
+    path = WIDGET_DIR / "index.html"
+    mtime = path.stat().st_mtime
+    if _index_cache["mtime"] != mtime:
+        html = path.read_text(encoding="utf-8")
+        html = html.replace('src="/app.js"', f'src="/app.js?v={APP_VERSION}"')
+        html = html.replace('href="/style.css"', f'href="/style.css?v={APP_VERSION}"')
+        _index_cache.update(mtime=mtime, html=html)
+    return _index_cache["html"]
+
+
+async def handle_index(request: web.Request) -> web.Response:
+    return web.Response(text=_versioned_index(), content_type="text/html")
 
 
 # --- settings -------------------------------------------------------------
@@ -2000,21 +2025,56 @@ async def keep_station_warm(app: web.Application) -> None:
         task.cancel()
 
 
+# Compressible and worth compressing. Audio, images and fonts are already
+# compressed formats — running deflate over them costs CPU and saves nothing.
+_TEXTY = (".html", ".js", ".css", ".json", ".svg", ".map")
+
+
 @web.middleware
-async def _no_stale_assets(request: web.Request, handler):
-    """Browsers heuristically cache the widget's html/js/css, so after an
-    image update people saw the OLD interface until a hard refresh — and
-    nothing told them why. no-cache forces revalidation; unchanged files
-    still answer 304, so the cost is one conditional request."""
+async def _assets(request: web.Request, handler):
+    """Cache policy and compression for everything the browser downloads.
+
+    Two things were wrong here. Nothing was compressed — not even when the
+    browser asked — so every load pulled ~170KB of text off the wire. And
+    everything carried `no-cache`, which exists for a real reason: after an
+    image update people saw the OLD interface until a hard refresh, with
+    nothing to tell them why.
+
+    Both are now true at once. The html is still never cached, so a new
+    version is picked up immediately. It points at `/app.js?v=<version>` and
+    `/style.css?v=<version>`, and *those* are immutable for a year — a URL
+    that changes whenever its contents do can safely be cached forever. Ask
+    for them without the version (an old page, a direct link) and you get the
+    old revalidating behaviour, which is correct rather than merely safe.
+    """
     resp = await handler(request)
-    # Path-based: a FileResponse only learns its content type at send time.
-    if request.path == "/" or request.path.endswith((".html", ".js", ".css")):
+    path = request.path
+
+    if path == "/" or path.endswith(".html"):
         resp.headers["Cache-Control"] = "no-cache"
+    elif path.endswith((".js", ".css")):
+        if request.query.get("v") == APP_VERSION:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            resp.headers["Cache-Control"] = "no-cache"
+
+    # Negotiated: aiohttp only compresses when the client said it could, and
+    # skips it for a 304, which carries no body anyway.
+    if path == "/" or path.endswith(_TEXTY):
+        try:
+            resp.enable_compression()
+            # Because the body now depends on Accept-Encoding, and these are
+            # served with a year of `immutable`. Without this a shared cache
+            # is entitled to hand a compressed body to a client that never
+            # asked for one — which reads as a corrupt file.
+            resp.headers["Vary"] = "Accept-Encoding"
+        except (AttributeError, RuntimeError):
+            pass    # already sent, or a response type that cannot compress
     return resp
 
 
 def build_app() -> web.Application:
-    app = web.Application(middlewares=[_no_stale_assets])
+    app = web.Application(middlewares=[_assets])
     app.router.add_post("/token", handle_token)
     app.router.add_post("/call-ended", handle_call_ended)
     app.router.add_post("/hooks/station", handle_station_hook)

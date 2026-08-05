@@ -290,6 +290,36 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestAssetVersioning(unittest.TestCase):
+    """The html must point at versioned asset URLs.
+
+    This is the silent kind of failure: if index.html's script or link tag is
+    ever reformatted, the rewrite quietly matches nothing, the browser asks for
+    the bare /app.js, and the middleware correctly answers `no-cache` — so
+    every visitor silently goes back to re-downloading 150KB on every load with
+    nothing broken enough to notice.
+    """
+
+    def test_the_served_html_versions_its_own_assets(self):
+        import token_server
+        from version import APP_VERSION
+
+        token_server._index_cache.update(mtime=0.0, html="")
+        html = token_server._versioned_index()
+        self.assertIn(f'src="/app.js?v={APP_VERSION}"', html)
+        self.assertIn(f'href="/style.css?v={APP_VERSION}"', html)
+        self.assertNotIn('src="/app.js"', html)
+        self.assertNotIn('href="/style.css"', html)
+
+    def test_it_is_the_real_widget_html(self):
+        # Guards against the rewrite silently operating on an empty string.
+        import token_server
+
+        html = token_server._versioned_index()
+        self.assertIn("<html", html.lower())
+        self.assertGreater(len(html), 2000)
+
+
 class TestSoundPacks(unittest.TestCase):
     """Bundled sound assets: a pack is a folder, not a code change.
 
