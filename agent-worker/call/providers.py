@@ -179,14 +179,14 @@ def build_tts(cfg: dict, voice: str) -> AdapterTTS:
     # moved a directory down and crashed every call before the DJ spoke.
     adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
-    # settings.tts_mode drives the default adapter choice inside tts_adapter.
-    os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
 
     return AdapterTTS(
         voice=voice,
         base_url=cfg.get("tts_base_url") or os.environ.get("TTS_BASE_URL", ""),
         adapter_path=adapter_path,
         model=cfg.get("tts_model") or "",
+        # Passed, not smuggled through os.environ — see _default_adapter_path.
+        mode=str(cfg.get("tts_mode", "cloud")),
     )
 
 

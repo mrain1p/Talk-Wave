@@ -1551,10 +1551,10 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     # _credentials_travel_to.
     may_send, cred_note = _credentials_travel_to(cfg.get("tts_base_url"), saved_tts)
 
-    os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
     # `tts_adapter` arrives in the BODY of this request, so it names a file
     # only within tts-adapters/ — see tts_adapter.resolve_adapter.
     adapter_path = resolve_adapter(cfg.get("tts_adapter"))
+    tts_mode = str(cfg.get("tts_mode", "cloud"))
 
     voice = cfg.get("tts_voice") or ""
     if not voice:
@@ -1578,6 +1578,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
             allow_stored_key=may_send,
             adapter_path=adapter_path,
             model=cfg.get("tts_model") or "",
+            mode=tts_mode,
         )
         t0 = _time.perf_counter()
         first = None
@@ -1871,7 +1872,6 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     try:
         from tts_adapter import AdapterTTS
 
-        os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
         # Request-supplied, same as /test/tts — constrained to tts-adapters/.
         adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
@@ -1891,7 +1891,8 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         tts = AdapterTTS(voice=voice, base_url=cfg.get("tts_base_url") or "",
                          api_key=os.environ.get("TTS_API_KEY", "") if tts_key_ok else "",
                          allow_stored_key=tts_key_ok,
-                         adapter_path=adapter_path, model=cfg.get("tts_model") or "")
+                         adapter_path=adapter_path, model=cfg.get("tts_model") or "",
+                         mode=str(cfg.get("tts_mode", "cloud")))
         pcm = bytearray()
         tts_rate = 24000
         try:

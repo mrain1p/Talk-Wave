@@ -457,6 +457,39 @@
           <label for="greeting">Opening line</label>
           <input type="text" id="greeting" placeholder="default: greet in character, ask what they want to hear" />
         </div>
+
+        <h4 class="subhead">Call transcripts</h4>
+        <div class="check">
+          <input type="checkbox" id="record_calls" />
+          <label for="record_calls">Keep call transcripts</label>
+        </div>
+        <div class="row">
+          <label for="record_keep">Transcripts to keep</label>
+          <input type="number" id="record_keep" min="1" max="500" step="1" />
+        </div>
+      </div>
+    </details>
+    <details data-group="turns" class="sec">
+      <summary><span class="chev">▶</span>Turn-taking<span class="tag" id="tagTurns"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">When the DJ decides you have
+          finished speaking. This is the single biggest lever on whether a call
+          feels like a phone call or like a kiosk — and the one most worth
+          leaving alone until a real call tells you otherwise. <strong>0 on
+          either delay keeps the SDK's own tuned default</strong>; it does not
+          mean "no wait".</p>
+        <div class="row">
+          <label for="min_endpointing_delay">Wait before replying (s)</label>
+          <input type="number" id="min_endpointing_delay" min="0" max="5" step="0.1" />
+        </div>
+        <div class="row">
+          <label for="max_endpointing_delay">Longest wait (s)</label>
+          <input type="number" id="max_endpointing_delay" min="0" max="10" step="0.1" />
+        </div>
+        <div class="check">
+          <input type="checkbox" id="allow_interruptions" />
+          <label for="allow_interruptions">Let the caller talk over the DJ</label>
+        </div>
       </div>
     </details>
     <details data-group="context" class="sec">

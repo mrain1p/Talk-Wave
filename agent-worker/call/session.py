@@ -50,6 +50,25 @@ from .tools import (
 log = logging.getLogger("callin.agent")
 
 
+def _endpointing(cfg: dict) -> dict:
+    """The endpointing delays, only when the operator actually set them.
+
+    0 means "leave the SDK's own default alone", not "no delay". Passing a
+    literal zero would make the DJ answer the instant the caller stops making
+    sound, which is not patience, it is interrupting — so an unset value has
+    to pass nothing at all rather than pass zero.
+    """
+    out: dict = {}
+    for key in ("min_endpointing_delay", "max_endpointing_delay"):
+        try:
+            value = float(cfg.get(key) or 0)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            out[key] = value
+    return out
+
+
 class CallSession:
     def __init__(self, ctx: JobContext) -> None:
         self.ctx = ctx
@@ -85,12 +104,11 @@ class CallSession:
         """Resolve who answers and what they know. The caller hears every
         millisecond of this as ringing, which is why the station reads are one
         concurrent snapshot rather than six serial ones."""
-        # Publish the resolved mode before anything resolves a voice — the
-        # voice registries for cloud and local are not interchangeable, and
-        # this used to be set later (inside build_tts), so the first call of a
-        # session could resolve a voice against the wrong one.
-        os.environ["TTS_MODE"] = str(self.cfg.get("tts_mode", "cloud"))
-
+        # The last of the four places that published tts_mode into os.environ.
+        # It was here so voice resolution read the right registry — cloud and
+        # local voices are not interchangeable — but station_config asks
+        # settings.tts_mode(), which reads the settings file, and the adapter
+        # is told its mode directly now. Nothing reads the variable any more.
         snap = await self.station.snapshot(
             with_skills=bool(self.cfg.get("allow_skills"))
         )
@@ -193,6 +211,11 @@ class CallSession:
             # preemptive_generation argument, which warns on every call even
             # when you pass it False.
             turn_handling={"preemptive_generation": {"enabled": False}},
+            # Turn-taking. 0 on either delay means "leave the SDK's tuned
+            # default alone" rather than "no delay" — a zero here would be a
+            # worse answer than not answering, so an unset value passes nothing.
+            **_endpointing(self.cfg),
+            allow_interruptions=bool(self.cfg.get("allow_interruptions", True)),
         )
 
         await self.session.start(
@@ -294,7 +317,15 @@ class CallSession:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []
             self._note_if_nothing_was_heard(duration, final)
-            self.record.write(reason=reason)
+            if self.cfg.get("record_calls", True):
+                self.record.write(reason=reason,
+                                  keep=int(self.cfg.get("record_keep") or 0))
+            else:
+                # Built in memory either way — the problems it collects are
+                # what _note_if_nothing_was_heard writes into — but an operator
+                # who turned this off gets nothing on disk.
+                log.info("call transcripts are off — nothing written for %s",
+                         self.ctx.room.name)
 
         await lifecycle.release_call_slot(self.ctx.room.name)
         await lifecycle.send_on_air_callback(

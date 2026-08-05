@@ -41,14 +41,23 @@ log = logging.getLogger("callin.agent")
 ADAPTER_DIR = Path(__file__).parent / "tts-adapters"
 
 
-def _default_adapter_path() -> Path:
+def _default_adapter_path(mode: str = "") -> Path:
+    """The adapter to use when none was named.
+
+    `mode` is passed in now rather than read back out of os.environ. Four
+    different places used to write os.environ["TTS_MODE"] purely so this line
+    could read it — a setting laundered through process-global state with no
+    owner, and in the token server that state is shared by every concurrent
+    request, so two operators testing different backends raced each other.
+    The environment remains the fallback for a worker that has not been told.
+    """
     explicit = os.environ.get("TTS_ADAPTER_CONFIG")
     if explicit:
         return Path(explicit)
     # Default matches settings.py ("cloud"); these disagreed previously, so a
     # caller that hadn't set TTS_MODE got the local adapter while the rest of
     # the app assumed cloud.
-    mode = os.environ.get("TTS_MODE", "cloud").lower()
+    mode = (mode or os.environ.get("TTS_MODE", "cloud")).lower()
     return ADAPTER_DIR / ("local-vibevoice.json" if mode == "local" else "openai-cloud.json")
 
 
@@ -105,8 +114,8 @@ def resolve_adapter(value: str | None) -> str | None:
     return str(candidate) if candidate.is_file() else None
 
 
-def load_adapter(path: str | Path | None = None) -> dict:
-    p = Path(path) if path else _default_adapter_path()
+def load_adapter(path: str | Path | None = None, mode: str = "") -> dict:
+    p = Path(path) if path else _default_adapter_path(mode)
     with open(p, "r", encoding="utf-8") as f:
         cfg = json.load(f)
     cfg.setdefault("method", "POST")
@@ -129,6 +138,7 @@ class AdapterTTS(tts.TTS):
         adapter_path: str | Path | None = None,
         model: str = "",
         allow_stored_key: bool = True,
+        mode: str = "",
     ) -> None:
         """`allow_stored_key=False` synthesizes without the operator's key.
 
@@ -136,7 +146,7 @@ class AdapterTTS(tts.TTS):
         rather than from saved settings: a stored key is only ever sent to the
         host it is configured for.
         """
-        self._adapter = load_adapter(adapter_path)
+        self._adapter = load_adapter(adapter_path, mode=mode)
         audio = self._adapter["audio"]
 
         super().__init__(

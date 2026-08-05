@@ -3453,6 +3453,160 @@ class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
             '"Roads" by Portishead (Dummy, 1994)')
 
 
+class TestSettingsThatAreOnlyWrongTogether(_TempStores):
+    """Every field validated itself and nothing validated a pair, so a floor
+    above its own ceiling saved without complaint and what happened afterwards
+    was nobody's intention."""
+
+    def test_a_hangup_floor_above_the_ceiling_is_refused(self):
+        why = settings_store.complain(
+            {"min_call_seconds": 600, "max_call_seconds": 300})
+        self.assertIsNotNone(why)
+        self.assertIn("600", why)
+
+    def test_a_daily_cap_below_the_hourly_one_is_refused(self):
+        why = settings_store.complain(
+            {"calls_per_hour": 30, "calls_per_day": 10})
+        self.assertIsNotNone(why)
+        self.assertIn("meaningless", why)
+
+    def test_endpointing_delays_the_wrong_way_round_are_refused(self):
+        why = settings_store.complain(
+            {"min_endpointing_delay": 3.0, "max_endpointing_delay": 1.0})
+        self.assertIsNotNone(why)
+
+    def test_the_pair_is_checked_against_what_is_already_stored(self):
+        # A patch usually carries one half. Saving a ceiling under the floor
+        # already on disk has to be caught too.
+        settings_store.save({"min_call_seconds": 600})
+        self.assertIsNotNone(settings_store.complain({"max_call_seconds": 300}))
+
+    def test_sensible_pairs_still_save(self):
+        self.assertIsNone(settings_store.complain(
+            {"min_call_seconds": 60, "max_call_seconds": 600}))
+        # 0 means "no limit" on the caps, so it can never be the smaller one.
+        self.assertIsNone(settings_store.complain(
+            {"calls_per_hour": 30, "calls_per_day": 0}))
+
+
+class TestACallerCanBeToldNothingIsKept(_TempStores):
+    """A transcript is both sides of a stranger's conversation, kept on the
+    operator's disk. It is how a bad call gets diagnosed and the README says
+    so — but until now there was no way to say no, and no way to say for how
+    long. An operator who does not want that has to be able to have it."""
+
+    def setUp(self):
+        super().setUp()
+        from call import record
+
+        self.record = record
+        self._old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name) / "calls"
+
+    def tearDown(self):
+        self.record.CALLS_DIR = self._old
+        super().tearDown()
+
+    def _a_call(self, room="callin-abcdefghijkl"):
+        r = self.record.CallRecord(room, {"id": "p1", "name": "Wade"}, {})
+        r.turn("caller", "hello")
+        return r
+
+    def test_retention_is_the_setting_not_the_constant(self):
+        for i in range(8):
+            self._a_call(f"callin-{i:012d}").write(keep=3)
+        self.assertEqual(len(list(self.record.CALLS_DIR.glob("*.json"))), 3)
+
+    def test_zero_does_not_mean_delete_everything(self):
+        # Turning recording OFF is how you keep nothing; a 0 here would be a
+        # misreading, not an instruction.
+        self._a_call().write(keep=0)
+        self.assertEqual(len(list(self.record.CALLS_DIR.glob("*.json"))), 1)
+
+    def test_the_setting_exists_and_defaults_to_keeping_them(self):
+        cfg = settings_store.load()
+        self.assertIs(cfg["record_calls"], True)
+        self.assertEqual(cfg["record_keep"], 40)
+
+
+class TestTurnTakingDelaysAreOptOut(unittest.TestCase):
+    """0 means "leave the SDK's tuned default alone", not "no delay". Passing a
+    literal zero would make the DJ answer the instant the caller stopped making
+    sound, which is not patience — it is interrupting."""
+
+    def test_unset_passes_nothing_at_all(self):
+        from call.session import _endpointing
+
+        self.assertEqual(_endpointing({}), {})
+        self.assertEqual(
+            _endpointing({"min_endpointing_delay": 0,
+                          "max_endpointing_delay": 0}), {})
+
+    def test_a_real_value_is_passed_through(self):
+        from call.session import _endpointing
+
+        self.assertEqual(
+            _endpointing({"min_endpointing_delay": 0.8}),
+            {"min_endpointing_delay": 0.8})
+
+    def test_nonsense_is_ignored_rather_than_raised(self):
+        from call.session import _endpointing
+
+        self.assertEqual(_endpointing({"min_endpointing_delay": "soon"}), {})
+
+
+class TestOneSettingReplacingAnotherSaysSo(unittest.TestCase):
+    """Writing an Opening line overrides Greeting style completely — the
+    greeting code reads `cfg["greeting"] or the style default`. Showing both
+    with nothing saying which wins is the shape 0.9.61 took out of
+    front_access, and it was still here."""
+
+    def test_greeting_style_hides_once_an_opening_line_exists(self):
+        needs = settings_store.SCHEMA["greeting_style"].get("needs")
+        self.assertEqual(needs, ("greeting", False))
+
+    def test_the_widget_understands_that_rule(self):
+        # The panel is what actually hides it, and it lives in another
+        # language with no test runner — so this pins the one line that
+        # implements it.
+        js = (Path(__file__).parent.parent / "web-widget" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn("want === false", js,
+                      "app.js cannot honour a `needs` of False, so the field "
+                      "would stay visible and keep looking like it works")
+
+
+class TestNoSettingIsSmuggledThroughTheEnvironment(unittest.TestCase):
+    """tts_mode was written into os.environ by four different modules purely so
+    _default_adapter_path could read it back — a setting laundered through
+    process-global state with no owner. In the token server that state is
+    shared by every concurrent request, so two operators testing different
+    backends raced each other."""
+
+    def test_nothing_writes_tts_mode_into_the_environment(self):
+        import re
+
+        root = Path(__file__).parent
+        offenders = []
+        for path in list(root.glob("*.py")) + list(root.glob("call/*.py")):
+            if path.name == "test_sidecar.py":
+                continue
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                # Comments describing the old pattern are the point of the
+                # comments — only an actual assignment counts.
+                if line.strip().startswith("#"):
+                    continue
+                if re.search(r'os\.environ\[\s*[\"\']TTS_MODE[\"\']\s*\]\s*=', line):
+                    offenders.append(f"{path.name}:{n}")
+        self.assertEqual(offenders, [], f"tts_mode is being smuggled: {offenders}")
+
+    def test_the_adapter_is_told_its_mode(self):
+        from tts_adapter import _default_adapter_path
+
+        self.assertIn("local", _default_adapter_path("local").name)
+        self.assertIn("openai", _default_adapter_path("cloud").name)
+
+
 class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
     """/hooks/station cannot be authenticated — the station does not sign its
     hooks — so its body is arbitrary, and it was stored whole, fifty deep, in a

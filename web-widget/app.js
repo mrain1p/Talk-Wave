@@ -1440,6 +1440,11 @@
           ? (depEl.type === 'checkbox' ? depEl.checked : (depEl.value || resolved[dep]))
           : resolved[dep];
         if (want === true) visible = !!current;
+        // `false` means "only while the other field is EMPTY". Used where one
+        // setting replaces another: writing an Opening line overrides Greeting
+        // style entirely, and showing both with no sign of which wins is the
+        // shape 0.9.61 took out of front_access.
+        else if (want === false) visible = !current;
         else if (Array.isArray(want)) visible = want.indexOf(current) !== -1;
         else visible = current === want;
       }
