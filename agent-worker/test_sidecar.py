@@ -710,19 +710,42 @@ class TestAssetVersioning(unittest.TestCase):
         self.assertNotIn('src="/app.js"', html)
         self.assertNotIn('href="/style.css"', html)
 
-    def test_the_tag_follows_the_file_not_the_release(self):
+    def test_the_tag_changes_when_the_file_does(self):
         # The bug this prevents: assets are served `immutable` for a year, so
         # keying the URL on APP_VERSION meant any change to app.js without a
-        # version bump left every browser pinned to the old copy. Caught in
-        # development, where an edit silently kept serving the previous file.
-        import token_server
-        from version import APP_VERSION
+        # version bump left every browser pinned to the old copy.
+        #
+        # Tested by actually changing a file. An earlier version of this
+        # asserted that two different assets had different tags, which passed
+        # locally and failed in CI — a fresh checkout stamps every file with
+        # the same mtime, and sharing a tag was never the property that
+        # mattered anyway.
+        import os
+        import time
 
-        tag = token_server.asset_tag("app.js")
-        self.assertNotEqual(tag, APP_VERSION, "the tag is still release-keyed")
-        self.assertNotEqual(
-            tag, token_server.asset_tag("style.css"),
-            "both files share a tag, so one changing cannot bust the other")
+        import token_server
+
+        original = token_server.WIDGET_DIR
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            token_server.WIDGET_DIR = tmp
+            asset = tmp / "app.js"
+            asset.write_text("// one", encoding="utf-8")
+            before = token_server.asset_tag("app.js")
+
+            asset.write_text("// two", encoding="utf-8")
+            os.utime(asset, (time.time() + 5, time.time() + 5))
+            self.assertNotEqual(
+                token_server.asset_tag("app.js"), before,
+                "editing the file left the cache key unchanged")
+
+            # A missing file must not crash the page; it falls back.
+            from version import APP_VERSION
+
+            self.assertEqual(token_server.asset_tag("nope.js"), APP_VERSION)
+        finally:
+            token_server.WIDGET_DIR = original
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_it_is_the_real_widget_html(self):
         # Guards against the rewrite silently operating on an empty string.
