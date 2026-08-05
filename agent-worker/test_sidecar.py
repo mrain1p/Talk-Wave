@@ -2062,6 +2062,73 @@ class TestCallRecord(unittest.TestCase):
         r.finalise([])
         self.assertEqual(r.data["turns"][0]["text"], "something")
 
+    def test_a_history_entry_with_no_live_event_does_not_shift_the_rest(self):
+        """Taken from a real call (2026-08-05, room 1023dbeb3e28), where the
+        written transcript and the live log disagreed about who said what.
+
+        finalise used to pair the Nth live event with the Nth history entry.
+        The call opens with a primed `user` turn so the model has something to
+        answer, and that turn never produces a live event — so every caller
+        line landed on the NEXT line's timestamp, the last one was appended at
+        call-end time, and callerTurns came out one too high (which gates the
+        back-to-air mention). The record reported no problem while being wrong
+        about the whole call.
+
+        The prime is dropped at the source now; this pins the general case,
+        because any unmatched history entry did the same damage.
+        """
+        r = self.record.CallRecord("callin-x", {"id": "p1", "name": "Dawn"}, {})
+        r.turn("dj", "Yosemite FM, you're on with Dawn.")
+        r.turn("caller", "Can you play me a song?")
+        r.turn("caller", "Sit with.")
+        r.turn("caller", "Hello.")
+        stamps = {t["text"]: t["t"] for t in r.data["turns"]}
+
+        # An extra caller entry the events never saw, at the FRONT.
+        r.finalise([("caller", "[Call connected. You speak first.]"),
+                    ("dj", "Yosemite FM, you're on with Dawn."),
+                    ("caller", "Can you play me a song?"),
+                    ("caller", "Sit with."),
+                    ("caller", "Hello.")])
+
+        said = [(t["who"], t["text"]) for t in r.data["turns"]]
+        self.assertEqual(said, [
+            ("dj", "Yosemite FM, you're on with Dawn."),
+            ("caller", "Can you play me a song?"),
+            ("caller", "Sit with."),
+            ("caller", "Hello."),
+            # The unmatched entry is appended, never folded into a real turn.
+            ("caller", "[Call connected. You speak first.]"),
+        ])
+        # Every line the caller actually said keeps the time it was heard.
+        for text in ("Can you play me a song?", "Sit with.", "Hello."):
+            got = next(t["t"] for t in r.data["turns"] if t["text"] == text)
+            self.assertEqual(got, stamps[text],
+                             f"{text!r} was moved onto another line's timestamp")
+
+    def test_the_opening_prime_is_not_a_caller_turn(self):
+        """It sits in the history as a `user` message because that is the only
+        shape Gemini accepts a leading function call after — but the caller
+        neither said nor heard it. Counting it inflates callerTurns, which is
+        what `callback_min_turns` reads to decide whether a call was worth
+        mentioning on air."""
+        from call import lifecycle
+
+        class _Item:
+            def __init__(self, role, content):
+                self.role, self.content = role, content
+
+        class _Session:
+            history = type("H", (), {"items": [
+                _Item("user", lifecycle.CALL_OPENING_PRIME),
+                _Item("assistant", "Yosemite FM, you're on with Dawn."),
+                _Item("user", "Can you play me a song?"),
+            ]})()
+
+        got = lifecycle._transcript(_Session())
+        self.assertEqual(got, [("assistant", "Yosemite FM, you're on with Dawn."),
+                               ("user", "Can you play me a song?")])
+
     def test_problems_are_kept_with_the_call_that_had_them(self):
         r = self._a_call()
         r.problem("APIStatusError: gemini llm: client error 400")

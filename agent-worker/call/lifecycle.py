@@ -26,6 +26,18 @@ from .hangup import end_call
 
 log = logging.getLogger("callin.agent")
 
+# The user turn the call opens with, so the DJ has something to answer.
+#
+# Named rather than inline because two places have to agree about it: the
+# greeting sends it, and _transcript drops it. It is not something the caller
+# said — it describes the situation to the model — and anything that treats it
+# as a caller turn gets the transcript wrong. Bracketed, so the speech filter
+# strips it if it ever reaches the voice.
+CALL_OPENING_PRIME = (
+    "[Call connected. The caller is on the line and has not spoken yet — "
+    "you speak first.]"
+)
+
 
 async def cancel(task: asyncio.Task) -> None:
     task.cancel()
@@ -291,8 +303,7 @@ async def greet(session: AgentSession, cfg: dict) -> None:
         # the situation rather than putting words in the caller's mouth. It is
         # never spoken — bracketed text is stripped on its way to the voice.
         await session.generate_reply(
-            user_input="[Call connected. The caller is on the line and has not "
-                       "spoken yet — you speak first.]",
+            user_input=CALL_OPENING_PRIME,
             instructions=greeting,
         )
     except Exception as e:
@@ -331,7 +342,16 @@ async def release_call_slot(room: str) -> None:
 
 def _transcript(session: AgentSession, limit: int = 24) -> list[tuple[str, str]]:
     """Flatten the call into (role, text) pairs, whatever shape the SDK's
-    chat items happen to take."""
+    chat items happen to take.
+
+    The opening prime is dropped. It sits in the history as a `user` message
+    because that is the only shape Gemini accepts, but the caller never said
+    it and never heard it — counting it as something they said made every
+    later caller line in the written transcript inherit the NEXT line's
+    timestamp, and inflated callerTurns by one (which gates the back-to-air
+    mention). Everything downstream of here treats a `user` turn as the caller
+    speaking, so this is the place to say it wasn't.
+    """
     turns: list[tuple[str, str]] = []
     try:
         items = list(session.history.items)
@@ -349,8 +369,9 @@ def _transcript(session: AgentSession, limit: int = 24) -> list[tuple[str, str]]
             text = " ".join(c for c in content if isinstance(c, str))
         else:
             text = getattr(item, "text_content", "") or ""
-        if text.strip():
-            turns.append((role, text.strip()))
+        text = text.strip()
+        if text and text != CALL_OPENING_PRIME:
+            turns.append((role, text))
     return turns
 
 
