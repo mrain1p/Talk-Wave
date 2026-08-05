@@ -1,6 +1,6 @@
-# SUB/WAVE Call-In Sidecar
+# Wave Talk
 
-Live voice call-ins for a [SUB/WAVE] AI radio station. A listener presses one
+**Live voice call-ins for a [SUB/WAVE] AI radio station.** A listener presses one
 button in the browser, has a real back-and-forth conversation with whoever is
 live on air, and the DJ can act on the station mid-call — search the library,
 queue a request, put a shoutout on the broadcast.
@@ -47,7 +47,16 @@ library.
   pickup, hold, hang-up and an engaged tone when the booth can't take the
   call. Any one can be replaced with an uploaded file or a URL.
 - Reconnect handling, and graceful in-character timeouts for silent callers
-  and over-long calls.
+  and over-long calls. A caller who is thinking gets longer than one who has
+  simply gone quiet — being asked a question buys them three times the wait
+  before anyone checks on them.
+- The DJ closes the call itself: it notices when one has run its course,
+  checks whether there's anything else, and hangs up. Guarded in code against
+  ending one early — nothing can hang up in the first minute, whatever the
+  model decides.
+- Nobody has to answer. If the worker is down or never dispatched, the caller
+  gets an engaged tone after 40 seconds rather than ringing forever.
+- Every call is written down — see [Diagnosing a call](#diagnosing-a-call).
 
 **Station integration**
 - Tools come from the station's own MCP server, filtered through an
@@ -121,6 +130,22 @@ library.
 | `agent-worker` | LiveKit Agents worker: resolves the live persona, builds the prompt, runs the STT → LLM → TTS session with MCP tools attached |
 | `token-server` | Mints join tokens (the browser never sees LiveKit secrets), serves the widget + settings panel, proxies station reads, runs tests |
 | `web-widget` | The call page — full page with settings, or a compact embeddable card |
+
+Inside the worker, one call is one `CallSession`. Everything it needs lives
+under `agent-worker/call/`, each file named after its job:
+
+| Module | Owns |
+|---|---|
+| `session.py` | What a call knows about itself, in the order the caller experiences it: `prepare()` (heard as ringing) → `start()` (the DJ is on the line) → `greet()` |
+| `lifecycle.py` | One function per behaviour attached to a live session: dead-air recovery, transcript logging, the idle check-in, the time limit, the greeting, the on-air handoff |
+| `tools/registry.py` | The station's whole tool surface described **once** — name, what unlocks it, whether MCP or one of our wrappers serves it. The allowlist and the panel's reference both derive from it |
+| `tools/music.py`, `tools/broadcast.py`, `tools/control.py` | The wrappers themselves: the library and queue, anything that makes the on-air DJ speak, and ending the call |
+| `providers.py` | Which engine listens, thinks and speaks |
+| `air.py` | Whether the broadcast currently has the microphone — read by the reply gate, the on-air tools and the widget's status chip, so they can't disagree |
+| `actions.py`, `record.py`, `hangup.py`, `background.py` | The per-call action ledger, the written record, ending a call the same way from all three places that do, and fire-and-forget tasks that survive |
+
+`main.py` is wiring: connect, refuse probe rooms, run the three phases.
+Adding a tool is one entry in `registry.TOOLS` plus one function.
 
 **Providers** are pluggable per leg: LLM (OpenAI, Google, Anthropic,
 OpenRouter, Ollama), STT (Deepgram, OpenAI, Google, or in-process
@@ -199,7 +224,7 @@ Sections are grouped by the job you're doing, in the order you'd do it:
 | Connect | **API keys** | Provider keys (OpenAI, Google, Anthropic, OpenRouter, Deepgram, TTS), stored server-side, never shown back |
 | Models & voice | **Brains** | LLM provider/model (lists read live from each provider) and speech-to-text. A local Whisper is baked in and used by default — no key, no extra service — so this needs nothing set to work |
 | Models & voice | **Voice** | TTS backend (cloud/local), server URL, voice (default: mirrored per-persona from the station), adapter config |
-| Permissions & safety | **Caller permissions** | What a stranger on the line may trigger: requests, library search, announcements, running segments and (separately) whether the DJ may offer one — plus on-air overlap protection |
+| Permissions & safety | **Caller permissions** | What a stranger on the line may trigger: requests, library search, exact queueing of a track they picked, announcements, running segments and (separately) whether the DJ may offer one — plus whether a mood request comes back with options first, and on-air overlap protection |
 | Permissions & safety | **Usage controls** | Concurrent calls, calls per hour and per day, per-caller redial wait, actions per call, and the pause switch — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
 | Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream |
@@ -211,9 +236,10 @@ Sections are grouped by the job you're doing, in the order you'd do it:
 | Reference | **Station tools** | All 17 tools the station publishes over MCP, what each does, and whether a caller can reach it. Follows the permission switches as you flip them |
 | Reference | **Embed** | Copyable iframe snippet + compact preview |
 
-At the bottom: **Run full pipeline check** (11 stages in call order — each
-failure message names its fix) and **Speed test** (per-turn latency
-breakdown), with the running version stamped underneath.
+Below the settings, a **Diagnostics** block of four collapsed rows, each with
+its own run button: full pipeline check, speed test, recent calls and server
+logs. See [Diagnosing a call](#diagnosing-a-call). The running version is
+stamped underneath.
 
 ## Embedding
 
@@ -323,17 +349,45 @@ its failure messages name the fix. The classics:
   test reports the realtime factor; above ~1.0, lower your TTS engine's
   inference steps or use cloud for the live leg.
 
+## Diagnosing a call
+
+**Start with Recent calls**, under *Diagnostics* at the bottom of the panel.
+Each call writes one file as it ends — both sides of the conversation, every
+tool the DJ used with its result, the config it ran under, and anything that
+failed — rendered as one timeline:
+
+```
+2026-08-04 23:34:36  Dalia  ·  136s  ·  6 caller turns
+  google/gemini-3.1-flash-lite  stt=local/base.en  tts=local
+  ⚠ station 503 on /request
+23:34:45 DJ      You're through to the booth — what's on your mind?
+23:34:48 CALLER  Can you play something fun?
+23:34:49   tool  subwave_request_song → Added to the queue
+```
+
+That last column is the point: the DJ *saying* it did something is a claim,
+the tool line is the receipt. The config line ties a bad call to the setting
+that caused it. Files live in `data/calls/`, newest 40 kept.
+
+The other three diagnostics rows: **Full pipeline check** walks every leg in
+call order and names the first thing that would break; **Speed test** reports
+time to first audio per leg (over ~1.5s to first token sounds laggy);
+**Server logs** shows this service's recent activity.
+
 ## Logs & tests
 
 Local runs write timestamped rotating logs to `data/logs/` (worker,
 token-server, livekit). Under Docker the same lines go to container stdout
-(`docker compose logs -f agent-worker`). `/health` reports the running
-version.
+(`docker compose logs -f <stack>-wavetalk-worker-1`), where the worker logs
+its version at startup and every call as `heard:` / `said:` / `tool:` lines.
+`/health` reports the running version — check both containers match, since
+they ship as one image but run as two.
 
 ```bash
 cd agent-worker && python -m unittest test_sidecar
 ```
 
-covers the speech filter, settings precedence, secrets and password
-handling, the lockout ladder, usage limits, tool allowlists, and prompt
-assembly.
+covers the speech filter, settings precedence, secrets and password handling,
+the lockout ladder, usage limits, the tool registry, prompt assembly, the call
+record and the call's lifecycle seams. CI runs it before building an image, so
+a failing suite never reaches `:latest`.

@@ -25,8 +25,8 @@ import os
 import random
 import time
 
-from livekit.agents import AgentSession, JobContext, RoomInputOptions, mcp
-from livekit.agents.types import NOT_GIVEN
+from livekit.agents import AgentSession, JobContext, mcp
+from livekit.agents.voice.room_io import RoomOptions
 
 import prompts
 import settings as settings_store
@@ -163,29 +163,39 @@ class CallSession:
             client_session_timeout_seconds=15,
         )
 
+        # MCPToolset rather than the session's mcp_servers argument, which is
+        # deprecated: the toolset is just another entry in `tools`, so the
+        # station's tools and our own wrappers arrive by the same route.
+        toolset = mcp.MCPToolset(id="subwave", mcp_server=station_tools)
+
         self.session = AgentSession(
             stt=build_stt(self.cfg),
             llm=build_llm(self.cfg),
             tts=build_tts(self.cfg, self.voice),
             vad=self.ctx.proc.userdata["vad"],
-            mcp_servers=[station_tools],
-            tools=local_tools or NOT_GIVEN,
-            # preemptive_generation is OFF deliberately. It starts a reply from
-            # a PARTIAL transcript, and when that speculative turn contains a
-            # tool call the final user turn lands after it — leaving a function
-            # call followed by a user turn, which Gemini rejects outright:
+            tools=[*local_tools, toolset],
+            # Preemptive generation stays OFF. It starts a reply from a PARTIAL
+            # transcript, and when that speculative turn contains a tool call
+            # the final user turn lands after it — leaving a function call
+            # followed by a user turn, which Gemini rejects outright:
             #   "Please ensure that function call turn comes immediately after
             #    a user turn or after a function response turn." (400)
-            # The call then dies mid-conversation. It only started happening
-            # once the station tools were reachable and the DJ began actually
-            # calling them. It is also deprecated in this SDK.
-            preemptive_generation=False,
+            # The call then dies mid-conversation. It only surfaced once the
+            # station tools were reachable and the DJ started calling them.
+            #
+            # Expressed through turn_handling rather than the deprecated
+            # preemptive_generation argument, which warns on every call even
+            # when you pass it False.
+            turn_handling={"preemptive_generation": {"enabled": False}},
         )
 
         await self.session.start(
             agent=CallAgent(self.instructions, self.air),
             room=self.ctx.room,
-            room_input_options=RoomInputOptions(close_on_disconnect=True),
+            # RoomOptions replaces the deprecated RoomInputOptions/
+            # RoomOutputOptions pair. close_on_disconnect keeps its meaning:
+            # when the caller's browser goes, the session goes.
+            room_options=RoomOptions(close_on_disconnect=True),
         )
         self._attach_behaviours()
 

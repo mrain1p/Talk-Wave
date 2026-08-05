@@ -22,7 +22,33 @@ permissions:
   packages: write
 
 jobs:
+  # Nothing reaches :latest without the suite passing. Two broken images
+  # shipped in one afternoon — an unresolvable adapter path and a shadowed
+  # name — both of which the tests caught the moment they were asked to.
+  # The build is the expensive step; this gate costs about a minute.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r agent-worker/requirements.txt
+      - name: Unit tests
+        working-directory: agent-worker
+        env:
+          LOG_TO_FILE: "0"
+          # Point every writable path away from the checkout, so a test can
+          # never scribble on real settings, secrets or auth files.
+          SETTINGS_PATH: /tmp/ci-settings.json
+          SECRETS_PATH: /tmp/ci-secrets.json
+          ADMIN_AUTH_PATH: /tmp/ci-auth.json
+          CALLS_PATH: /tmp/ci-calls
+        run: python -m unittest test_sidecar -v
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
