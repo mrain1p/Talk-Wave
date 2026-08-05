@@ -69,6 +69,11 @@ class CallSession:
 
         self.started_at = time.time()
         self.heard = {"n": 0}
+        # Why the call ended, as the SDK saw it. ctx.shutdown_reason is empty
+        # when the caller simply hangs up, so the record could not tell "they
+        # rang off" from "the line dropped" — which is the first thing you want
+        # to know when someone reports a call cutting out.
+        self.ended = {"reason": ""}
         # Filled in once the persona is known — see prepare().
         self.record: CallRecord | None = None
 
@@ -212,6 +217,7 @@ class CallSession:
         air_task = asyncio.create_task(self.air.watch(session))
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
 
+        lifecycle.attach_close_reason(session, self.ended)
         lifecycle.attach_error_recovery(session, self.record)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air)
@@ -258,7 +264,11 @@ class CallSession:
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
         duration = time.time() - self.started_at
-        reason = getattr(self.ctx, "shutdown_reason", "") or ""
+        # Ours first — attach_time_limit and the idle goodbye set a real reason.
+        # The SDK's close reason fills the gap they leave, which is every call
+        # the caller ended themselves.
+        reason = (getattr(self.ctx, "shutdown_reason", "") or ""
+                  or self.ended.get("reason", ""))
 
         # One greppable line per call: what happened, at a glance.
         log.info(

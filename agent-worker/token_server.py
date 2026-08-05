@@ -222,8 +222,19 @@ def _caller_key(request: web.Request) -> str:
     if _peer_is_a_trusted_proxy(request.remote):
         hops = [h.strip() for h in
                 request.headers.get("X-Forwarded-For", "").split(",") if h.strip()]
+        # Walk back through the trusted ones. Taking the rightmost entry flat
+        # is right for a single proxy and wrong the moment there are two: with
+        # a CDN in front of the reverse proxy, the entry the proxy appended is
+        # the CDN's address, so every caller in the world collapses into one
+        # cooldown bucket and one lockout counter. Skipping hops we already
+        # trust lands on the first address none of them vouched for, which is
+        # the caller. Fails safe either way — if every hop is trusted there is
+        # nobody left to blame but the socket.
+        for hop in reversed(hops):
+            if not _peer_is_a_trusted_proxy(hop):
+                return hop
         if hops:
-            return hops[-1]
+            return hops[0]
     return request.remote or "unknown"
 
 
@@ -2522,8 +2533,28 @@ def build_app() -> web.Application:
     return app
 
 
+def warn_if_open_to_the_web() -> None:
+    """`*` means any page anywhere may mint a call token against this service.
+
+    It is the historical default and stays the default, because changing it
+    would silently stop embeds working on every deployment that never set the
+    variable — the same trap `front_access: auto` exists to avoid. But it is a
+    real exposure, so it is no longer possible to be in it without being told:
+    someone else's site can put your Call button on their page and spend your
+    API budget. `.env.example` ships it empty now.
+    """
+    if "*" in ALLOWED_ORIGINS:
+        log.warning(
+            "CALLIN_ALLOWED_ORIGINS is '*' — any page on the internet may "
+            "embed this widget and mint call tokens against it, which spends "
+            "your LLM and TTS budget. Set it to your own origin(s); leave it "
+            "empty if you do not embed the widget anywhere else."
+        )
+
+
 if __name__ == "__main__":
     log.info("call-in widget + token server on http://localhost:%s", PORT)
+    warn_if_open_to_the_web()
     log.info("browser will be told to connect to %s", LIVEKIT_PUBLIC_URL)
     settings_store.check_data_dir()
     web.run_app(build_app(), port=PORT, print=None)

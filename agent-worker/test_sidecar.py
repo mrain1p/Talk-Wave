@@ -3375,6 +3375,45 @@ class TestAConfigValueCannotNameAFileOnTheDisk(unittest.TestCase):
                 os.environ["TTS_ADAPTER_CONFIG"] = old
 
 
+class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
+    """Taking the rightmost X-Forwarded-For entry is right for one proxy and
+    wrong for two. With a CDN in front of the reverse proxy, the entry the
+    proxy appended is the CDN's address — so every caller on earth shares one
+    cooldown bucket and one lockout counter, and the per-caller limits stop
+    being per-caller. Walk back through the hops we already trust instead."""
+
+    def _key(self, peer, xff, trusted=""):
+        import types
+
+        import token_server
+
+        old = token_server._TRUSTED_PROXIES_RAW
+        token_server._TRUSTED_PROXIES_RAW = trusted
+        try:
+            return token_server._caller_key(types.SimpleNamespace(
+                headers={"X-Forwarded-For": xff}, remote=peer))
+        finally:
+            token_server._TRUSTED_PROXIES_RAW = old
+
+    def test_two_trusted_hops_still_find_the_caller(self):
+        # client -> CDN(10.0.0.9) -> proxy(10.0.0.8) -> here.
+        # The proxy appended the CDN; the CDN appended the caller.
+        self.assertEqual(
+            self._key("10.0.0.8", "8.8.4.4, 10.0.0.9", trusted="10.0.0.0/8"),
+            "8.8.4.4")
+
+    def test_one_hop_is_unchanged(self):
+        # The case that already worked must keep working.
+        self.assertEqual(
+            self._key("172.19.0.1", "1.2.3.4, 8.8.4.4"), "8.8.4.4")
+
+    def test_a_spoofed_private_address_cannot_hide_the_caller(self):
+        # A client writing a private address of its own does not get to make
+        # itself unattributable — the walk stops at the first untrusted entry.
+        self.assertEqual(
+            self._key("172.19.0.1", "10.0.0.5, 8.8.4.4"), "8.8.4.4")
+
+
 class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
     """/hooks/station cannot be authenticated — the station does not sign its
     hooks — so its body is arbitrary, and it was stored whole, fifty deep, in a

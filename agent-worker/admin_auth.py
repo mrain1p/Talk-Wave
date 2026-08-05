@@ -71,11 +71,14 @@ def unreadable() -> str | None:
     is treated as "a password IS configured, and nothing can satisfy it" —
     CALLIN_ADMIN_KEY is the way back in, which is what it is for.
     """
-    if not AUTH_PATH.exists():
-        return None
+    # One read, not two. is_set() and guest_is_set() both call this and then
+    # _read(), and both run on every gated request — so the file was being
+    # opened twice per check for an answer the first open already had.
     try:
         with open(AUTH_PATH, encoding="utf-8") as f:
             json.load(f)
+    except FileNotFoundError:
+        return None
     except PermissionError:
         return (f"{AUTH_PATH} exists but cannot be read — check the file's "
                 f"owner and mode. Set CALLIN_ADMIN_KEY to get back in.")
