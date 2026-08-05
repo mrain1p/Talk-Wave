@@ -1192,6 +1192,13 @@
   // schema arrives, before the slow provider lists have loaded, so every
   // read of this has to survive it being empty.
   let options = {}, overrides = {}, resolved = {}, secrets = {};
+  // Whether the panel has ever been filled. Its own flag rather than a
+  // truthiness test on `options`, which is how 0.9.58 silently emptied the
+  // whole panel: that commit changed `options` from null to {} for the
+  // paint-early fix, and the gear's "already loaded?" guard was reading it as
+  // "not loaded yet". {} is truthy, so the guard fired on the FIRST open and
+  // the settings were never fetched at all.
+  let loaded = false;
 
   // Browsers restore form state across reloads; since Save diffs against the
   // stored overrides, a restored value would look like a deliberate edit.
@@ -1542,8 +1549,16 @@
     paintSecurity();
     markClean();
 
+    // paint() runs once before the provider lists land, so this has to survive
+    // `options` being empty. It did not: reading .mirroringStation off an
+    // undefined voiceSource threw from inside the FIRST paint, which aborted
+    // loadSettings before the sounds, the provider lists and the version line —
+    // leaving a half-painted panel and "Could not load settings" in the corner.
+    // Nothing to say yet is a reason to say nothing, not to guess.
     const src = options.voiceSource, banner = $('mirrorBanner');
-    if (banner) {
+    if (banner && !src) {
+      banner.style.display = 'none';
+    } else if (banner) {
       banner.style.display = 'block';
       if (src.mirroringStation) {
         banner.className = 'banner ok';
@@ -1752,6 +1767,10 @@
     guestConfigured = !!s.guestConfigured;
     adoptSchema(s.schema);
     paint(); paintSecrets(); loadSounds();
+    // Loaded as of here: the panel is filled and usable. The provider lists
+    // below only add choices to dropdowns, and a failure there must not leave
+    // the gear trying to fetch everything again on every open.
+    loaded = true;
 
     // Then the provider lists, which only fill in the dropdowns. fill()
     // keeps whatever is already selected, so this cannot steal a choice made
@@ -2983,7 +3002,7 @@
   $('gearBtn').onclick = async () => {
     const panel = $('panel');
     panel.classList.toggle('open');
-    if (!panel.classList.contains('open') || options || loading) return;
+    if (!panel.classList.contains('open') || loaded || loading) return;
     loading = true;
     $('saveMsg').textContent = 'Loading from station, TTS server and Ollama…';
     $('saveBtn').disabled = true;

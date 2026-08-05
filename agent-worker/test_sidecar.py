@@ -1233,6 +1233,65 @@ class TestPanelMarkup(unittest.TestCase):
         )
         self.assertFalse(strays, f"settings in an unknown group: {strays}")
 
+
+class TestPanelLoadsOnOpen(unittest.TestCase):
+    """Opening the panel must actually fetch the settings.
+
+    0.9.61 shipped with an admin panel that had nothing in it: every dropdown
+    empty, no values, no section headers, and no login prompt either. The cause
+    was one word. The gear's "have I loaded already?" guard was
+    `if (... || options || loading) return;`, written when `options` started as
+    null — then 0.9.58 changed it to `{}` so the panel could paint before the
+    slow provider lists arrived. `{}` is truthy, so from that commit on the
+    guard fired on the very first open and `loadSettings()` was never called.
+
+    Nothing failed loudly: no request, no console error, no 401. There is no JS
+    test runner here, so this reads the source — in the same spirit as
+    TestPanelMarkup above. It is deliberately narrow: the loaded-flag must be
+    its own boolean, never a data container tested for truthiness."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (Path(__file__).parent.parent / "web-widget" / "app.js").read_text(
+            encoding="utf-8"
+        )
+
+    def _gear_handler(self) -> str:
+        start = self.js.index("$('gearBtn').onclick")
+        return self.js[start : self.js.index("};", start)]
+
+    def test_the_gear_guard_uses_a_dedicated_flag(self):
+        guard = self._gear_handler()
+        self.assertIn(
+            "loaded ||",
+            guard,
+            "the gear's skip-the-fetch guard must test the `loaded` flag",
+        )
+
+    def test_the_gear_guard_never_tests_a_data_container(self):
+        # The actual bug: any of these is an object that is truthy while empty,
+        # so using one as "already loaded" skips the fetch on the first open.
+        guard = self._gear_handler()
+        for name in ("options", "overrides", "resolved", "secrets", "SCHEMA"):
+            self.assertNotIn(
+                f"|| {name} ||",
+                guard,
+                f"`{name}` is truthy when empty — it cannot stand in for `loaded`",
+            )
+
+    def test_loading_the_settings_sets_the_flag(self):
+        start = self.js.index("async function loadSettings()")
+        body = self.js[start : self.js.index("\n  }", start)]
+        self.assertIn(
+            "loaded = true",
+            body,
+            "loadSettings must record that the panel is filled, or the gear "
+            "refetches everything on every open",
+        )
+
+    def test_the_flag_starts_false(self):
+        self.assertIn("let loaded = false;", self.js)
+
     def test_every_group_belongs_to_a_real_supergroup(self):
         known = {s for s, *_ in settings_store.SUPERGROUPS}
         strays = sorted(
