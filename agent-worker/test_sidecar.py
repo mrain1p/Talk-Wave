@@ -3031,7 +3031,8 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
         old = record.CALLS_DIR
         record.CALLS_DIR = Path(self._tmp.name) / "calls"
         try:
-            r = record.CallRecord(room="room-abcdefghijkl")
+            r = record.CallRecord("callin-abcdefghijkl", {"id": "p1", "name": "Wade"}, {})
+            r.turn("caller", "hello")
             r.write("test")
             written = list(record.CALLS_DIR.glob("*.json"))
             self.assertTrue(written, "no transcript was written")
