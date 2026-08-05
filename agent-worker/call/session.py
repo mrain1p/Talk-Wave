@@ -214,7 +214,7 @@ class CallSession:
 
         lifecycle.attach_error_recovery(session, self.record)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
-        lifecycle.attach_idle_watch(ctx, session, cfg)
+        lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air)
         lifecycle.attach_time_limit(ctx, session, cfg)
         ctx.add_shutdown_callback(self._on_shutdown)
 

@@ -2145,7 +2145,14 @@ class TestCallRecord(unittest.TestCase):
         # This runs during shutdown, just before the on-air handoff. A crash
         # here would cost that handoff for the sake of a diagnostic file.
         self.record.CALLS_DIR = Path("/nonexistent\x00/bad")
-        self._a_call().write()          # must not raise
+        r = self._a_call()
+        r.write()                       # must not raise
+        # And must actually have tried. Resting on "no exception" alone meant
+        # this passed for a write() that returned early — or did nothing at
+        # all — so it asserts the body ran and left the record complete.
+        self.assertIn("endedAt", r.data)
+        self.assertIn("durationSecs", r.data)
+        self.assertEqual(self.record.recent(), [])   # nothing landed anywhere
 
     def test_a_runaway_call_cannot_write_an_unbounded_file(self):
         r = self._a_call()
@@ -3134,6 +3141,128 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
             self.assertTrue(written[0].stat().st_mode & 0o400)
         finally:
             record.CALLS_DIR = old
+
+
+class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
+    """"Still there?" must not be asked about a silence the DJ is causing.
+
+    Seen on a real call (2026-08-05, room 1023dbeb3e28): the on-air DJ took the
+    microphone at 10:29:47, the call DJ was held until 10:30:15, and the idle
+    check-in fired at 10:30:11 — in the middle of the hold. The caller had done
+    nothing wrong; the DJ was deliberately silent and then asked them why they
+    were. The clock is already pinned while the DJ is speaking or thinking, but
+    during a hold the session still reads as `listening`, because it is waiting
+    on the broadcast rather than on the caller.
+    """
+
+    def _run(self, on_air: bool, seconds: float = 3.5):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        replies = []
+
+        class _Session:
+            agent_state = "listening"
+
+            def on(self, *a, **k):
+                pass
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+        air = types.SimpleNamespace(on_air=on_air)
+
+        async def go():
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": 2}, air=air,
+            )
+            await asyncio.sleep(seconds)
+
+        asyncio.run(go())
+        return replies
+
+    def test_no_check_in_while_the_broadcast_has_the_microphone(self):
+        self.assertEqual(
+            self._run(on_air=True), [],
+            "the DJ asked the caller why it was quiet during its own hold")
+
+    def test_the_check_in_still_fires_when_the_air_is_clear(self):
+        # The other half — pinning it must not disable the feature outright.
+        self.assertTrue(
+            self._run(on_air=False),
+            "the idle check-in stopped working when the air was clear")
+
+
+class TestTheSuiteIsNotQuietlyNotRunning(unittest.TestCase):
+    """A test that passes because it never ran is worse than no test.
+
+    Three file-mode tests were written `skipUnless(POSIX)`, so on the author's
+    Windows box they reported success while containing a broken constructor —
+    only CI, on Linux, ever executed them. That is the failure mode this
+    guards: the suite looking green while part of it is inert.
+
+    Deliberately narrow. It does not try to judge whether a test is any good;
+    it checks the two things that make one silently worthless — never
+    executing, and having no assertions at all.
+    """
+
+    def _classes(self):
+        import inspect
+        import test_sidecar
+
+        # Leading underscore is this suite's marker for a shared fixture
+        # (_TempStores), which is a base class and correctly has no tests.
+        return [
+            (name, obj) for name, obj in vars(test_sidecar).items()
+            if inspect.isclass(obj) and issubclass(obj, unittest.TestCase)
+            and not name.startswith("_")
+        ]
+
+    def test_every_test_class_actually_has_tests(self):
+        empty = sorted(
+            name for name, cls in self._classes()
+            if not [m for m in dir(cls) if m.startswith("test")]
+        )
+        self.assertFalse(empty, f"test classes with no tests in them: {empty}")
+
+    def test_every_test_asserts_something(self):
+        import inspect
+        import re
+
+        silent = []
+        for name, cls in self._classes():
+            for attr in dir(cls):
+                if not attr.startswith("test"):
+                    continue
+                try:
+                    src = inspect.getsource(getattr(cls, attr))
+                except (OSError, TypeError):
+                    continue
+                if not re.search(r"\bself\.(assert|fail)\w*\(", src):
+                    silent.append(f"{name}.{attr}")
+        self.assertFalse(
+            sorted(silent),
+            f"tests that assert nothing, so they cannot fail: {sorted(silent)}")
+
+    @unittest.skipUnless(hasattr(os, "getuid"), "POSIX-only tests are the point")
+    def test_the_posix_only_tests_are_reachable_somewhere(self):
+        # On POSIX — which is CI, and the container — nothing may be skipped
+        # for the POSIX reason. If this ever fails, a test is inert everywhere.
+        import test_sidecar
+
+        for name in ("TestWrittenFilesGetExplicitModes",):
+            cls = getattr(test_sidecar, name)
+            reason = getattr(cls, "__unittest_skip_why__", "")
+            self.assertFalse(
+                getattr(cls, "__unittest_skip__", False),
+                f"{name} is skipped on POSIX too, so it never runs: {reason}")
 
 
 class TestJoinTokensExpire(unittest.TestCase):

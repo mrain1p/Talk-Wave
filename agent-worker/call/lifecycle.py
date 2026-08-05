@@ -125,7 +125,9 @@ def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> N
     session.on("function_tools_executed", _log_tools)
 
 
-def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None:
+def attach_idle_watch(
+    ctx: JobContext, session: AgentSession, cfg: dict, air=None
+) -> None:
     """A caller who goes quiet gets checked on in character, then let go.
 
     Dead air on a phone call is worse than a graceful goodbye, and an abandoned
@@ -179,6 +181,15 @@ def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None
             # expire the timer mid-sentence, which used to fire a check-in on
             # the heels of the DJ's own turn.
             if getattr(session, "agent_state", None) != "listening":
+                state["last_words"] = time.time()
+                continue
+            # Nor while the DJ is deliberately holding for the broadcast. The
+            # session still reads as "listening" during a hold — it is waiting
+            # for clear air, not for the caller — so without this the clock ran
+            # and the DJ asked "still there?" for a silence it was causing
+            # itself. Seen on a real call: held 10:29:47-10:30:15, check-in
+            # fired at 10:30:11, and the caller had done nothing wrong.
+            if air is not None and getattr(air, "on_air", False):
                 state["last_words"] = time.time()
                 continue
             # Thinking time, not dead air: give a caller who was just asked
