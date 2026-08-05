@@ -2917,12 +2917,86 @@ class TestFirstRunIsNotOpenToTheWeb(_TempStores):
     def test_a_named_origin_can_be_opted_into(self):
         import token_server
 
-        old = token_server.ALLOWED_ORIGINS
-        token_server.ALLOWED_ORIGINS = ["https://radio.example"]
+        old = token_server.PANEL_ORIGINS
+        token_server.PANEL_ORIGINS = ["https://radio.example"]
         try:
             self.assertTrue(self._allowed("https://radio.example", "radio.example"))
         finally:
-            token_server.ALLOWED_ORIGINS = old
+            token_server.PANEL_ORIGINS = old
+
+    def test_permission_to_embed_is_not_permission_to_configure(self):
+        """CALLIN_ALLOWED_ORIGINS means 'this page may embed the widget and
+        mint call tokens'. It must not also mean 'this page may read the
+        settings and set the admin password' — the blast radius is API budget
+        in one case and the controls in the other, and a permission that moves
+        as a side effect of another one is the exact shape 0.9.61 removed."""
+        import token_server
+
+        old_embed = token_server.ALLOWED_ORIGINS
+        old_panel = token_server.PANEL_ORIGINS
+        token_server.ALLOWED_ORIGINS = ["https://someone-elses-blog.example"]
+        token_server.PANEL_ORIGINS = []
+        try:
+            self.assertFalse(
+                self._allowed("https://someone-elses-blog.example",
+                              "someone-elses-blog.example"))
+        finally:
+            token_server.ALLOWED_ORIGINS = old_embed
+            token_server.PANEL_ORIGINS = old_panel
+
+
+class TestAnUnreadablePasswordStoreFailsClosed(_TempStores):
+    """A password file that exists but will not open must not read as "no
+    password has been set".
+
+    Both used to come back as an empty dict, so is_set() went False,
+    _auth_configured() went False, and the panel dropped into first-run mode —
+    unauthenticated — with a perfectly good password sitting on disk. The gate
+    fell open on a configuration error, which is the one thing a gate must
+    never do.
+
+    This is not a hypothetical. Running the container as a non-root user
+    against a data/ whose files root wrote makes every store in it unreadable
+    at once, and that is exactly the hardening step this release adds.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+
+        self._old = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        self.admin_auth = admin_auth
+
+    def tearDown(self):
+        self.admin_auth.AUTH_PATH = self._old
+        super().tearDown()
+
+    def test_no_file_at_all_is_genuinely_unconfigured(self):
+        self.assertIsNone(self.admin_auth.unreadable())
+        self.assertFalse(self.admin_auth.is_set())
+
+    def test_a_normal_store_reads_normally(self):
+        self.admin_auth.set_password("a-real-password")
+        self.assertIsNone(self.admin_auth.unreadable())
+        self.assertTrue(self.admin_auth.is_set())
+        self.assertTrue(self.admin_auth.verify("a-real-password"))
+
+    def test_a_corrupt_store_counts_as_configured(self):
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        self.assertIsNotNone(self.admin_auth.unreadable())
+        # The point: configured, so the panel demands a password...
+        self.assertTrue(self.admin_auth.is_set())
+        # ...and nothing satisfies it, so it is shut rather than open.
+        self.assertFalse(self.admin_auth.verify("anything"))
+        self.assertFalse(self.admin_auth.verify(""))
+
+    def test_the_reason_names_the_file_and_the_way_back_in(self):
+        self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
+        why = self.admin_auth.unreadable()
+        self.assertIn("admin-auth.json", why)
+        # An operator staring at "wrong password" has no way to guess this.
+        self.assertIn("CALLIN_ADMIN_KEY", why)
 
 
 class TestJoinTokensExpire(unittest.TestCase):

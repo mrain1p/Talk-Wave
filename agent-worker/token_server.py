@@ -67,6 +67,26 @@ ALLOWED_ORIGINS = [
     o.strip() for o in os.environ.get("CALLIN_ALLOWED_ORIGINS", "*").split(",") if o.strip()
 ]
 
+# Origins that may reach the PANEL during first-run — before any password
+# exists. Deliberately NOT the same list as above.
+#
+# CALLIN_ALLOWED_ORIGINS says "this page may embed the widget and mint call
+# tokens". That is a caller-facing permission: what it costs you is API budget.
+# Reading the settings, seeing which keys are set and choosing the admin
+# password is a different thing entirely, and a site you were happy to let
+# embed a Call button is not automatically one you would hand the controls to.
+#
+# Same lesson as 0.9.61, where who may call the booth stopped being inferred
+# from whether a guest code happened to exist: a permission that moves as a
+# side effect of another setting is one nobody can reason about. So this is its
+# own list, and it is empty by default — the literal-address rule in
+# _write_allowed covers the ordinary first run (a LAN IP, or localhost), and
+# this exists only for an operator who reaches the panel by hostname and has
+# not set a password yet. Setting a password makes the whole path moot.
+PANEL_ORIGINS = [
+    o.strip() for o in os.environ.get("CALLIN_PANEL_ORIGINS", "").split(",") if o.strip()
+]
+
 
 def _cors(request: web.Request, resp: web.StreamResponse) -> web.StreamResponse:
     origin = request.headers.get("Origin", "")
@@ -838,6 +858,16 @@ def _check_admin(request: web.Request) -> bool:
     if _key_valid(key):
         _auth_clear(ip)
         return True
+    # A store that exists but will not open makes every password wrong, and
+    # "wrong password" sends the operator hunting for the wrong thing. Say what
+    # is actually broken — this is reachable only by someone already at the
+    # login prompt, and it names a file rather than revealing anything.
+    broken = admin_auth.unreadable()
+    if broken:
+        log.error("password store unreadable: %s", broken)
+        request["auth_error"] = broken
+        request["auth_required"] = True
+        return False
     # An absent key is a login prompt, not a brute-force attempt — only a
     # WRONG key counts toward the lockout.
     request["auth_error"] = _auth_fail(ip) if key else "password required"
@@ -942,7 +972,7 @@ def _write_allowed(request: web.Request) -> bool:
     from urllib.parse import urlparse
 
     parsed = urlparse(origin)
-    if origin in ALLOWED_ORIGINS:
+    if origin in PANEL_ORIGINS:
         return True
     if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
         return True
@@ -955,7 +985,7 @@ def _write_allowed(request: web.Request) -> bool:
     # keys are set) and can write them. A name is what makes that possible;
     # an IP or localhost cannot be rebound to something else. Operators who
     # front this with a real hostname and no password can name it in
-    # CALLIN_ALLOWED_ORIGINS, which is checked above — and setting a password
+    # CALLIN_PANEL_ORIGINS, which is checked above — and setting a password
     # bypasses all of this anyway.
     if parsed.netloc == request.host and _is_literal_address(parsed.hostname):
         return True
@@ -2477,4 +2507,5 @@ def build_app() -> web.Application:
 if __name__ == "__main__":
     log.info("call-in widget + token server on http://localhost:%s", PORT)
     log.info("browser will be told to connect to %s", LIVEKIT_PUBLIC_URL)
+    settings_store.check_data_dir()
     web.run_app(build_app(), port=PORT, print=None)

@@ -308,10 +308,13 @@ readable on the wire.
 can name. `X-Forwarded-For` is a list the client starts, so it is only read
 when the connection arrived from a reverse proxy you trust, and then only the
 entry that proxy appended — see `CALLIN_TRUSTED_PROXIES` in `.env.example`. It
-defaults to any loopback or private peer, which is the bundled compose exactly.
-Set it explicitly if this port is reachable directly from an untrusted network
-as well as through the proxy; otherwise the lockout is a header away from
-meaning nothing, in either direction.
+defaults to any loopback or private peer, which covers the normal deployment: a
+reverse proxy reaching the container over the docker bridge. Set it explicitly
+if this port is reachable directly from an untrusted network as well as through
+the proxy; otherwise the lockout is a header away from meaning nothing, in
+either direction. This reads one hop — the entry your proxy appended. With a
+CDN in front as well, that entry is the CDN's address rather than the caller's,
+so per-caller limits collapse into one shared bucket.
 
 **Stored keys only travel to the host they're saved for.** The panel can test a
 URL before saving it, and a test builds the real provider — so a URL supplied
@@ -326,13 +329,16 @@ reopened without passing either again.
 
 **Before exposing beyond your LAN:**
 
-1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page read
-   config endpoints and mint call tokens. Also name your origin here if you
-   reach the panel by hostname and have not set a password yet: with no
-   password the gate accepts same-origin requests only from a literal address,
-   because a *name* can be pointed at this box by someone else and a browser
-   would then present it as same-origin.
-2. Set the admin password, and a guest code if the page is public.
+1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page embed
+   the widget and mint call tokens. This is the *embed* permission and nothing
+   more: it does not open the settings panel.
+2. Set the admin password, and a guest code if the page is public. Do this
+   before you reach the panel by hostname — with no password set, the panel
+   accepts a same-origin request only from a literal address, because a *name*
+   can be pointed at this box by someone else and the browser would present
+   that as same-origin. If you need the named origin during setup, put it in
+   `CALLIN_PANEL_ORIGINS` (not the embed list — the two permissions are
+   different sizes and are kept apart).
 3. Fresh LiveKit keypair. Never deploy the example key.
 4. Real TLS on the front door, so visitors see no certificate warnings.
 5. Keep usage limits non-zero — every call spends real money. Set **calls per

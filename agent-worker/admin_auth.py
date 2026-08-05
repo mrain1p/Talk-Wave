@@ -47,8 +47,44 @@ def _read() -> dict:
         with open(AUTH_PATH, encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except FileNotFoundError:
         return {}
+    except (json.JSONDecodeError, OSError):
+        # Deliberately NOT the same answer as "no file". See unreadable().
+        return {}
+
+
+def unreadable() -> str | None:
+    """Why the password store cannot be read, or None if it can.
+
+    'No file' and 'a file we cannot read' both used to come back as an empty
+    dict, and an empty dict means "no password has been set". That is a gate
+    falling open on a configuration error: is_set() goes False,
+    _auth_configured() goes False, and the panel drops into first-run mode —
+    unauthenticated — while a perfectly good password sits on disk.
+
+    The way to produce one is not exotic. Run the container as a non-root user
+    against a data/ whose files root wrote, and every store in it becomes
+    unreadable at once. The phone already fails closed here; the panel did not.
+
+    So the two cases are told apart, and a store that exists but will not open
+    is treated as "a password IS configured, and nothing can satisfy it" —
+    CALLIN_ADMIN_KEY is the way back in, which is what it is for.
+    """
+    if not AUTH_PATH.exists():
+        return None
+    try:
+        with open(AUTH_PATH, encoding="utf-8") as f:
+            json.load(f)
+    except PermissionError:
+        return (f"{AUTH_PATH} exists but cannot be read — check the file's "
+                f"owner and mode. Set CALLIN_ADMIN_KEY to get back in.")
+    except json.JSONDecodeError:
+        return (f"{AUTH_PATH} is not valid JSON, so no password can be "
+                f"verified. Set CALLIN_ADMIN_KEY to get back in.")
+    except OSError as e:
+        return f"{AUTH_PATH} cannot be read ({e}). Set CALLIN_ADMIN_KEY to get back in."
+    return None
 
 
 def _slot(data: dict, scope: str) -> dict:
@@ -92,6 +128,11 @@ def _write(data: dict) -> None:
 
 
 def is_set() -> bool:
+    """True when a password is configured — including when the store exists
+    but will not open. An unreadable store is not an absent one, and guessing
+    'absent' is the guess that unlocks the panel."""
+    if unreadable():
+        return True
     return bool(_slot(_read(), "admin").get("hash"))
 
 
@@ -114,6 +155,14 @@ def verify_guest(password: str) -> bool:
 
 def set_password(password: str) -> None:
     with _lock:
+        # A store we could not read reads as {}, so writing here replaces it —
+        # including any guest code in it. That is the CALLIN_ADMIN_KEY recovery
+        # path doing its job (nothing else can reach this while the store is
+        # unreadable, since verify() cannot succeed), but it is a real loss and
+        # it should not happen quietly.
+        why = unreadable()
+        if why:
+            log.warning("replacing an unreadable password store — %s", why)
         data = _read()
         if _check(_slot(data, "guest"), password):
             raise ValueError("the admin password must differ from the guest password")

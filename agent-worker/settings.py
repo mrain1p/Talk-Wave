@@ -735,6 +735,53 @@ def _coerce(value: Any, default: Any) -> Any:
     return value
 
 
+def check_data_dir() -> None:
+    """Say so at startup if the data directory cannot be used.
+
+    Everything the operator sets lives in this one bind-mounted directory, and
+    each store fails soft on its own: settings fall back to env/defaults,
+    secrets come back empty, call records are not written. Three unrelated
+    symptoms, none of which names the cause — and the cause is almost always
+    the same single thing, ownership.
+
+    It matters most on the upgrade to a non-root container (see the
+    Dockerfile): files root wrote are not readable by the new runtime user, and
+    the operator's first clue would otherwise be a panel that has forgotten
+    everything. Both processes call this, because both read the same directory.
+
+    Windows has no getuid and no meaningful mode bits here, so it is a no-op
+    there — run-local.ps1 is not the deployment this protects.
+    """
+    if not hasattr(os, "getuid"):
+        return
+
+    import admin_auth
+    import secrets_store
+
+    data_dir = SETTINGS_PATH.parent
+    if not data_dir.exists():
+        return                      # first run; created on first write
+    uid = os.getuid()
+    if not os.access(data_dir, os.W_OK | os.X_OK):
+        log.error(
+            "%s is not writable by uid %s — settings, keys and call records "
+            "cannot be saved. On the host: chown -R %s %s",
+            data_dir, uid, uid, data_dir,
+        )
+    blocked = sorted(
+        p.name for p in (SETTINGS_PATH, admin_auth.AUTH_PATH, secrets_store.SECRETS_PATH)
+        if p.exists() and not os.access(p, os.R_OK)
+    )
+    if blocked:
+        log.error(
+            "unreadable in %s: %s — these exist but this process cannot open "
+            "them, so what is in them is NOT in effect. Almost always file "
+            "ownership after the switch to a non-root container: "
+            "chown -R %s %s",
+            data_dir, ", ".join(blocked), uid, data_dir,
+        )
+
+
 def _stored() -> dict:
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:

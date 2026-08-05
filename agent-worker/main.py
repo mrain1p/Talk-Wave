@@ -55,6 +55,13 @@ from version import APP_VERSION
 # what it was.
 log.info("wave-talk worker %s starting", APP_VERSION)
 
+# Both processes share the bind-mounted data/, and this is the one that reads
+# the settings on every call — so it has to say so too rather than quietly
+# running a caller on defaults.
+import settings as _settings_store
+
+_settings_store.check_data_dir()
+
 def prewarm(proc: JobProcess) -> None:
     """Load VAD once per worker process instead of once per call."""
     proc.userdata["vad"] = silero.VAD.load()
