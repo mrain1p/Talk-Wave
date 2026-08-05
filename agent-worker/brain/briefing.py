@@ -1,0 +1,278 @@
+"""What the DJ knows when the phone rings.
+
+Everything here turns a station read into a line of prompt: what's playing,
+what just played, what's queued, what the DJ has said on air tonight, which
+segments exist, what else is on today. Facts only — how to behave with them
+lives in `conduct`.
+
+Source of the persona text: the station itself. The original build notes
+assumed DJ Card / Show Card lived as markdown files on the NAS, but the
+controller already publishes both —
+
+    GET /dj         -> `soul`  == the DJ Card (voice, character, behaviour)
+    GET /schedule   -> show `topic` == the Show Card (mechanics, format)
+
+so cards are read live and always match what's actually on air. Nothing to
+mount, nothing to keep in sync.
+
+Budget discipline matters here: this is a realtime voice agent, so every
+token in the system prompt is paid on time-to-first-token for every single
+turn, not just at session start. Station reads are summarised, not dumped.
+"""
+
+from __future__ import annotations
+
+CARD_BUDGET = 2000  # chars, matches the station's own DJ/Show Card convention
+
+# Some station text (show topics especially) comes back double-encoded — an
+# em dash arrives as "â€”", a middot as "Â·". Left alone, that lands in the
+# prompt and the TTS reads it out as noise.
+_MOJIBAKE_MARKERS = ("â€", "Â", "Ã")
+
+
+def demojibake(text: str) -> str:
+    if not text or not any(m in text for m in _MOJIBAKE_MARKERS):
+        return text
+    try:
+        return text.encode("cp1252", errors="strict").decode("utf-8", errors="strict")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
+def clip(text: str, limit: int) -> str:
+    text = demojibake((text or "").strip())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def _fmt_now_playing(np: dict) -> str:
+    track = np.get("nowPlaying") or {}
+    ctx = np.get("context") or {}
+    bits = []
+
+    if track.get("title"):
+        line = f"Now playing: \"{track['title']}\""
+        if track.get("artist"):
+            line += f" by {track['artist']}"
+        # The station analyses tracks and publishes what it found. Without
+        # this the DJ could name the record but had nothing to SAY about it —
+        # and "what is this?" is one of the commonest things a caller asks.
+        detail = []
+        if track.get("album"):
+            detail.append(str(track["album"]))
+        if track.get("genre"):
+            detail.append(str(track["genre"]))
+        moods = track.get("moods") or []
+        if isinstance(moods, list) and moods:
+            detail.append(", ".join(str(m) for m in moods[:3]))
+        if track.get("bpm"):
+            detail.append(f"{track['bpm']} bpm")
+        if track.get("musicalKey"):
+            detail.append(str(track["musicalKey"]))
+        if detail:
+            line += " — " + "; ".join(detail)
+        bits.append(line + ".")
+    else:
+        bits.append("Nothing is playing this second (between tracks).")
+
+    clock = ctx.get("clock") or {}
+    weather = ctx.get("weather") or {}
+    time_ctx = ctx.get("time") or {}
+
+    where = []
+    if clock.get("display"):
+        where.append(clock["display"])
+    # `time` is a plain string ("evening") on some builds and an object with a
+    # `vibe` on others — take whichever this station sends.
+    if isinstance(time_ctx, dict) and time_ctx.get("vibe"):
+        where.append(str(time_ctx["vibe"]))
+    elif isinstance(time_ctx, str) and time_ctx:
+        where.append(time_ctx)
+    if isinstance(weather, dict) and weather.get("condition"):
+        temp = f", {weather['temp']}{weather.get('tempUnit', '')}" if weather.get("temp") else ""
+        where.append(f"{weather['condition']}{temp}")
+    elif isinstance(weather, str) and weather:
+        where.append(weather)
+    if where:
+        bits.append("It's " + ", ".join(where) + ".")
+
+    if ctx.get("dominantMood"):
+        bits.append(f"The room tonight is {ctx['dominantMood']}.")
+
+    # How many people are actually out there. A caller asking "is anyone even
+    # listening?" is asking a real question, and the station knows the answer.
+    listeners = np.get("listeners")
+    if isinstance(listeners, int):
+        bits.append(
+            "Nobody else is tuned in right now." if listeners <= 0
+            else f"{listeners} listener{'s' if listeners != 1 else ''} tuned in."
+        )
+
+    return " ".join(bits)
+
+
+def _tracks(items: list, limit: int) -> list[str]:
+    out = []
+    for t in (items or [])[:limit]:
+        if t.get("title"):
+            artist = t.get("artist")
+            out.append(f"\"{t['title']}\"" + (f" by {artist}" if artist else ""))
+    return out
+
+
+def _fmt_recent(state: dict, limit: int) -> str:
+    if limit <= 0:
+        return ""
+    played = _tracks(state.get("history") or [], limit)
+    return "Just played: " + ", ".join(played) + "." if played else ""
+
+
+def _fmt_upcoming(state: dict, limit: int) -> str:
+    """What's queued next, so the DJ can answer "what's coming up?" without
+    guessing — and won't request something already on its way."""
+    if limit <= 0:
+        return ""
+    queued = _tracks(state.get("upcoming") or state.get("queue") or [], limit)
+    return "Coming up: " + ", ".join(queued) + "." if queued else ""
+
+
+def _is_show_announcement(text: str, show_name: str, show_topic: str) -> bool:
+    """The station announces programme starts into the chatter feed ("Show X
+    begins — theme: ..."). The Show Card already carries that in full, so a
+    chatter line repeating it would put the same text in the prompt twice."""
+    t = demojibake(text.strip())
+    if t.startswith('Show "') and "begins" in t[:140]:
+        return True
+    if show_name and show_name in t and ("theme:" in t or "begins" in t):
+        return True
+    probe = demojibake((show_topic or "").strip())[:80]
+    return len(probe) > 30 and probe in t
+
+
+_BOOKKEEPING_KINDS = {"scenario", "pick", "play", "queue", "system"}
+_BOOKKEEPING_ROLES = {"event", "track"}
+
+# Lines the station spoke ABOUT a previous call — our own back-to-air handoff
+# goes out with kind "callin". Two reasons they must never reach the next
+# caller's prompt: privacy (the last caller's business is not this caller's),
+# and continuity (with them in, the DJ picks up where the LAST call left off
+# and greets a stranger as though the conversation were still running).
+_PRIVATE_KINDS = {"callin", "caller", "call"}
+
+
+def _is_spoken(m: dict) -> bool:
+    """Only actual DJ speech belongs in "things you said on air" — scenario
+    lines, picker decisions and track-play markers are bookkeeping, and a
+    track marker framed as the DJ's own words reads as nonsense."""
+    kind = str(m.get("kind") or "").lower()
+    role = str(m.get("role") or "").lower()
+    return kind not in _BOOKKEEPING_KINDS and role not in _BOOKKEEPING_ROLES
+
+
+def latest_programme_intro(session: dict) -> str:
+    """The DJ's spoken intro for the current programme — its own message kind
+    in the feed. Pinned into the prompt separately so it never scrolls out of
+    the chatter window mid-show: it frames the whole show's fiction."""
+    messages = session.get("messages") or session.get("turns") or []
+    for m in reversed(messages):
+        if str(m.get("kind") or "").lower() == "programme-intro":
+            return clip(m.get("text") or "", 450)
+    return ""
+
+
+def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str = "") -> str:
+    """The DJ's own recent on-air lines — handed over as live material to
+    carry into the call, not just a repetition hazard."""
+    if limit <= 0:
+        return ""
+    messages = session.get("messages") or session.get("turns") or []
+    lines = []
+    # Scan deeper than the limit so filtered bookkeeping doesn't shrink the
+    # window below what was asked for.
+    for m in messages[-(limit * 3):]:
+        text = m.get("text") or m.get("content") or ""
+        if not text or not _is_spoken(m):
+            continue
+        kind = str(m.get("kind") or "").lower()
+        # The programme intro is pinned separately — keep it out of here.
+        if kind == "programme-intro":
+            continue
+        # Anything the station said about an earlier CALL stays out: every
+        # call starts fresh, and the last caller's business isn't this one's.
+        if kind in _PRIVATE_KINDS:
+            continue
+        # Pattern fallback for payloads without kind fields.
+        if _is_show_announcement(text, show_name, show_topic):
+            continue
+        lines.append(clip(text, 220))
+    lines = lines[-limit:]
+    if not lines:
+        return ""
+    joined = "\n  ".join(lines)
+    return (
+        "Things YOU said on the broadcast in the last little while — the "
+        "caller may well have heard them:\n  " + joined
+    )
+
+
+def _fmt_skills(skills: list) -> str:
+    """The station's real segment catalogue, by name.
+
+    A DJ knows its own show. Without this the agent had to spend a turn asking
+    the station what segments exist — or, more often, guessed, and either
+    offered something this station doesn't have or answered "what can you do?"
+    with a vague list it wasn't sure of.
+    """
+    # Names only. The station enforces its own cooldowns and will say no if a
+    # segment isn't due — which the DJ already handles honestly. Telling it the
+    # intervals up front just made it ration segments itself and explain
+    # timings to callers, which is the opposite of running a show.
+    lines = []
+    for s in (skills or [])[:12]:
+        name = str(s.get("kind") or s.get("name") or "").strip()
+        if not name:
+            continue
+        label = str(s.get("label") or "").strip()
+        lines.append(name + (f" ({label})" if label and label.lower() != name else ""))
+    if not lines:
+        return ""
+    return (
+        "Segments you can run on air, by name — these and no others. Run one "
+        "whenever a caller asks; the station decides if it's due:\n  "
+        + "\n  ".join(lines)
+    )
+
+
+def _fmt_schedule(schedule: dict, active_id: str) -> str:
+    """The rest of today's line-up, for "what's on after this?"."""
+    shows = schedule.get("shows") or []
+    names = [
+        demojibake(s.get("name", ""))
+        for s in shows
+        if s.get("id") != active_id and s.get("name")
+    ][:4]
+    return "Other shows on this station: " + ", ".join(names) + "." if names else ""
+
+
+async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
+    """Everything true about the station right now, as prompt text.
+
+    The one station read that isn't already in the snapshot is the schedule,
+    and it only happens when the operator asked for it — hence the client.
+    """
+    parts = [
+        _fmt_now_playing(snap["now_playing"]),
+        _fmt_recent(snap["state"], int(cfg.get("context_recent_tracks", 3))),
+        _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2))),
+        _fmt_booth(snap["session"], int(cfg.get("context_booth_lines", 4)),
+                   demojibake(show.get("name", "")), show.get("topic", "")),
+    ]
+    if cfg.get("context_schedule"):
+        parts.append(_fmt_schedule(await station.schedule(), show.get("id", "")))
+    # Only when segments are actually enabled — otherwise it's a list of things
+    # the DJ is about to be told it can't do.
+    if cfg.get("allow_skills"):
+        parts.append(_fmt_skills(snap.get("skills") or []))
+
+    return "\n".join(filter(None, parts))

@@ -30,7 +30,7 @@ import secrets_store
 import settings as settings_store
 import station as station_mod
 from tts_adapter import ADAPTER_DIR
-from prompts import _demojibake
+from brain.briefing import demojibake
 from station import StationClient
 from station_config import StationConfig
 
@@ -338,7 +338,7 @@ async def handle_live(request: web.Request) -> web.Response:
                     # Served through our own origin so the widget works when
                     # embedded on an https page and off-LAN.
                     "avatar": f"/avatar/{persona['id']}" if persona["id"] else None,
-                    "show": _demojibake(show.get("name", "")) or None,
+                    "show": demojibake(show.get("name", "")) or None,
                     "track": (
                         f"{track.get('title')} — {track.get('artist')}"
                         if track.get("title")
@@ -1253,7 +1253,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
             status=401,
         ))
 
-    import prompts as prompts_mod
+    import brain
     from call.tools import effective_tools
 
     cfg = settings_store.load()
@@ -1263,7 +1263,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
         override = str(cfg.get("persona_override") or "").strip()
         roster = {p.get("id"): p for p in snap["personas"]}
         persona = roster.get(override) or station.persona_from(snap["dj"], snap["personas"])
-        text = await prompts_mod.build_system_prompt(station, persona, snapshot=snap)
+        text = await brain.build_system_prompt(station, persona, snapshot=snap)
     finally:
         await station.aclose()
 
@@ -1321,9 +1321,9 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
         t0 = _time.perf_counter()
         persona = st.persona_from(snap["dj"], snap["personas"])
-        import prompts as prompts_mod
+        import brain
 
-        prompt = await prompts_mod.build_system_prompt(st, persona, snapshot=snap)
+        prompt = await brain.build_system_prompt(st, persona, snapshot=snap)
         record("Prompt assembly", (_time.perf_counter() - t0) * 1000,
                f"{len(prompt)} chars (~{len(prompt)//4} tokens, paid every turn)",
                counts=False)

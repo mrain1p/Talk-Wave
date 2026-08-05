@@ -28,7 +28,7 @@ import time
 from livekit.agents import AgentSession, JobContext, mcp
 from livekit.agents.voice.room_io import RoomOptions
 
-import prompts
+import brain
 import settings as settings_store
 import speech_filter
 import station_config as station_config_mod
@@ -99,7 +99,7 @@ class CallSession:
             str(self.cfg.get("tts_voice") or "").strip()
             or await self.station_cfg.voice_for(self.persona["id"])
         )
-        self.instructions = await prompts.build_system_prompt(
+        self.instructions = await brain.build_system_prompt(
             self.station, self.persona, snapshot=snap
         )
         self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg)

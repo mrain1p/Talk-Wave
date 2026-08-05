@@ -147,6 +147,19 @@ under `agent-worker/call/`, each file named after its job:
 `main.py` is wiring: connect, refuse probe rooms, run the three phases.
 Adding a tool is one entry in `registry.TOOLS` plus one function.
 
+The prompt each call runs on is assembled next door, in `agent-worker/brain/`,
+split along the line that actually matters:
+
+| Module | Owns |
+|---|---|
+| `briefing.py` | What the DJ **knows**: now playing, what just played, what's queued, its own recent on-air lines, the segment catalogue, the rest of the line-up |
+| `conduct.py` | How the DJ **behaves**: momentum, triage, closing a call, tool etiquette, and the safety floor under all of it |
+| `assemble.py` | Joins the two onto the persona card, the show card and the operator's house style |
+
+The halves change for unrelated reasons — a new station field is an edit to
+`briefing.py`, a call that went wrong is an edit to `conduct.py` — so neither
+imports the other, and a test enforces that.
+
 **Providers** are pluggable per leg: LLM (OpenAI, Google, Anthropic,
 OpenRouter, Ollama), STT (Deepgram, OpenAI, Google, or in-process
 faster-whisper on CPU — no key, no network), TTS (any OpenAI-compatible

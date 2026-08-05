@@ -21,10 +21,11 @@ from pathlib import Path
 # test run pollutes the real data/logs/worker.log.
 os.environ["LOG_TO_FILE"] = "0"
 
-import prompts
+import brain
 import secrets_store
 import settings as settings_store
 import speech_filter
+from brain import briefing, conduct
 
 
 class TestSpeechFilter(unittest.TestCase):
@@ -171,13 +172,13 @@ class TestSpeechFilter(unittest.TestCase):
 
 class TestPrompts(unittest.TestCase):
     def test_demojibake_repairs_double_encoding(self):
-        self.assertEqual(prompts._demojibake("night â€” slow"), "night — slow")
+        self.assertEqual(briefing.demojibake("night â€” slow"), "night — slow")
 
     def test_demojibake_leaves_clean_text_alone(self):
-        self.assertEqual(prompts._demojibake("plain text — fine"), "plain text — fine")
+        self.assertEqual(briefing.demojibake("plain text — fine"), "plain text — fine")
 
     def test_clip_respects_budget_on_word_boundary(self):
-        out = prompts._clip("one two three four five", 13)
+        out = briefing.clip("one two three four five", 13)
         self.assertLessEqual(len(out), 14)  # budget + ellipsis
         self.assertTrue(out.endswith("…"))
 
@@ -360,6 +361,152 @@ class TestSecrets(_TempStores):
         self.assertEqual(os.environ.get("OPENAI_API_KEY"), "from-dotenv")
 
 
+class TestBrainSplit(_TempStores):
+    """Phase 3's seam: what the DJ KNOWS and how it BEHAVES are separable.
+
+    Each half has to be buildable and assertable without the other — that is
+    the whole point of the split, and the thing a later edit is most likely to
+    quietly undo by reaching for a station read from inside a rule.
+    """
+
+    FACT_MARKERS = ("Now playing", "Just played", "Coming up",
+                    "Other shows on this station", "Segments you can run")
+    RULE_MARKERS = ("# Running the call", "# Closing a call",
+                    "Keep the call moving", "# What you can do")
+
+    class _FakeStation:
+        """The only station call the briefing makes on its own."""
+
+        async def schedule(self):
+            return {"shows": [{"id": "s_other", "name": "Morning Drive"}]}
+
+    def _facts(self, cfg: dict, snap: dict | None = None) -> str:
+        import asyncio
+
+        snap = snap or {
+            "now_playing": {"nowPlaying": {"title": "Dreams", "artist": "Fleetwood Mac"}},
+            "state": {"history": [{"title": "Tusk", "artist": "Fleetwood Mac"}],
+                      "upcoming": [{"title": "Sara", "artist": "Fleetwood Mac"}]},
+            "session": {},
+            "skills": [{"kind": "weather", "label": "Weather"}],
+        }
+        return asyncio.run(
+            briefing.station_context(self._FakeStation(), cfg, snap, {"id": "s_now"})
+        )
+
+    def test_conduct_is_a_pure_function_of_settings(self):
+        # No station, no network, no settings file — if a rule ever needs a
+        # station read, the split has leaked and this stops compiling.
+        text = conduct.rules({})
+        for marker in self.RULE_MARKERS:
+            self.assertIn(marker, text)
+
+    def test_conduct_carries_no_station_facts(self):
+        text = conduct.rules({"allow_skills": True, "context_schedule": True})
+        for marker in self.FACT_MARKERS:
+            self.assertNotIn(marker, text)
+
+    def test_briefing_carries_no_rules(self):
+        text = self._facts({"allow_skills": True, "context_schedule": True})
+        for marker in self.RULE_MARKERS:
+            self.assertNotIn(marker, text)
+
+    def test_briefing_reports_what_the_station_is_doing(self):
+        text = self._facts({})
+        self.assertIn("Now playing: \"Dreams\" by Fleetwood Mac", text)
+        self.assertIn("Just played", text)
+        self.assertIn("Coming up", text)
+
+    def test_briefing_reads_the_schedule_only_when_asked(self):
+        self.assertNotIn("Morning Drive", self._facts({}))
+        self.assertIn("Morning Drive", self._facts({"context_schedule": True}))
+
+    def test_briefing_lists_segments_only_when_they_can_be_run(self):
+        self.assertNotIn("weather", self._facts({}))
+        self.assertIn("weather", self._facts({"allow_skills": True}))
+
+    def test_each_toggle_picks_exactly_one_fragment(self):
+        # The pairs contradict each other by design, so shipping both is the
+        # failure mode — that is how a caller gets asked what kind of fun they
+        # meant AND has something submitted anyway.
+        pairs = [
+            ({"confirm_requests": True},
+             "say it back and get a quick yes", "No need to confirm"),
+            ({"confirm_requests": False},
+             "No need to confirm", "say it back and get a quick yes"),
+            ({"shape_vague_requests": True},
+             "two or three real directions", "don't interrogate them"),
+            ({"shape_vague_requests": False},
+             "don't interrogate them", "two or three real directions"),
+            ({"ask_caller_name": True},
+             "ask once, briefly", "Don't ask the caller their name"),
+            ({"ask_caller_name": False},
+             "Don't ask the caller their name", "ask once, briefly"),
+        ]
+        for cfg, present, absent in pairs:
+            with self.subTest(cfg=cfg):
+                text = conduct.rules(cfg)
+                self.assertIn(present, text)
+                self.assertNotIn(absent, text)
+
+    def test_offering_a_segment_needs_both_switches(self):
+        self.assertNotIn("Offering a segment", conduct.rules({"offer_skills": True}))
+        self.assertNotIn("Offering a segment", conduct.rules({"allow_skills": True}))
+        self.assertIn(
+            "Offering a segment",
+            conduct.rules({"allow_skills": True, "offer_skills": True}),
+        )
+
+    def test_the_two_halves_do_not_import_each_other(self):
+        # Independence is the property worth protecting: a station field
+        # should never be an edit to conduct, and a bad call should never be
+        # an edit to briefing. Imports, not prose — the docstrings are allowed
+        # to point at each other.
+        import ast
+        import inspect
+
+        def imported(module) -> set[str]:
+            names: set[str] = set()
+            for node in ast.walk(ast.parse(inspect.getsource(module))):
+                if isinstance(node, ast.Import):
+                    names.update(a.name for a in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    names.add(node.module or "")
+                    names.update(f"{node.module}.{a.name}" for a in node.names)
+            return names
+
+        self.assertFalse([n for n in imported(briefing) if "conduct" in n])
+        self.assertFalse([n for n in imported(conduct) if "briefing" in n])
+        # Conduct imports nothing from the station at all — it is settings in,
+        # text out.
+        self.assertFalse([n for n in imported(conduct) if "station" in n])
+
+    def test_the_assembled_prompt_is_briefing_then_conduct(self):
+        import asyncio
+
+        from station import StationClient
+
+        snapshot = {"dj": {"station": "Yosemite FM"}, "personas": [],
+                    "now_playing": {"nowPlaying": {"title": "Dreams"}},
+                    "state": {}, "session": {}, "schedule": {}}
+
+        async def build() -> str:
+            station = StationClient()
+            try:
+                return await brain.build_system_prompt(
+                    station, {"id": "p", "name": "Dalia", "soul": "x"},
+                    snapshot=snapshot)
+            finally:
+                await station.aclose()
+
+        text = asyncio.run(build())
+        facts_at = text.index("Now playing")
+        rules_at = text.index("# Running the call")
+        self.assertLess(facts_at, rules_at)
+        # And the identity header still comes before both.
+        self.assertLess(text.index("a DJ on Yosemite FM"), facts_at)
+
+
 class TestPromptAssembly(_TempStores):
     def test_call_momentum_rules_are_always_in_the_prompt(self):
         # Observed on real calls: without this block the DJ interviews the
@@ -376,7 +523,7 @@ class TestPromptAssembly(_TempStores):
         async def build() -> str:
             station = StationClient()
             try:
-                return await prompts.build_system_prompt(
+                return await brain.build_system_prompt(
                     station, persona, snapshot=snapshot
                 )
             finally:
@@ -417,7 +564,7 @@ class TestCallPrivacy(_TempStores):
         async def build() -> str:
             station = StationClient()
             try:
-                return await prompts.build_system_prompt(
+                return await brain.build_system_prompt(
                     station, persona, snapshot=snapshot
                 )
             finally:
@@ -453,7 +600,7 @@ class TestCallPrivacy(_TempStores):
             async def go():
                 station = StationClient()
                 try:
-                    return await prompts.build_system_prompt(
+                    return await brain.build_system_prompt(
                         station, persona, snapshot=snapshot)
                 finally:
                     await station.aclose()
@@ -471,7 +618,7 @@ class TestCallPrivacy(_TempStores):
     def test_segment_list_names_only_no_cooldowns(self):
         # Telling the DJ the intervals made it ration segments itself and
         # explain timings to callers. The station decides if one is due.
-        out = prompts._fmt_skills([
+        out = briefing._fmt_skills([
             {"kind": "weather", "label": "Weather", "cooldownMin": 60},
             {"kind": "storytime", "label": "Story time", "cooldownMin": 45},
         ])
@@ -529,7 +676,7 @@ class TestCallPrivacy(_TempStores):
             async def go():
                 station = StationClient()
                 try:
-                    return await prompts.build_system_prompt(
+                    return await brain.build_system_prompt(
                         station, {"id": "p", "name": "Dalia", "soul": "x"},
                         snapshot=snapshot)
                 finally:
