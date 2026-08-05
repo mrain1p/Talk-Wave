@@ -34,6 +34,7 @@ import speech_filter
 import station_config as station_config_mod
 from station import StationClient
 from station_config import StationConfig
+from tts_adapter import available_voices, pick_speakable_voice
 
 from . import lifecycle
 from .actions import CallActions
@@ -126,6 +127,21 @@ class CallSession:
             self.station, self.persona, snapshot=snap
         )
         self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg)
+
+        # Checked against the backend BEFORE the first line, not discovered by
+        # the caller. See tts_adapter.pick_speakable_voice — a voice the
+        # backend does not have used to mean a call where the DJ never spoke
+        # at all, with a green pipeline check, because that check tests the
+        # CONFIGURED voice and never the one the on-air persona resolves to.
+        self.voice, why = pick_speakable_voice(
+            self.voice,
+            await available_voices(
+                str(self.cfg.get("tts_base_url") or "").strip()
+            ),
+        )
+        if why:
+            log.warning("%s", why)
+            self.record.problem(why)
 
     def _resolve_persona(self, snap: dict) -> dict:
         """One button, whoever is live answers — unless settings say otherwise."""

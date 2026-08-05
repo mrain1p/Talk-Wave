@@ -70,6 +70,61 @@ def _is_openai_host(base_url: str) -> bool:
     return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
+async def available_voices(base_url: str, timeout: float = 6.0) -> list[str]:
+    """What the TTS backend at `base_url` says it can actually speak in.
+
+    An empty list means "could not find out" and never "has none" — the caller
+    must treat those differently, because refusing to speak on a failed lookup
+    would turn a slow TTS server into a silent call.
+
+    Lives here rather than in token_server because the WORKER needs it too:
+    the panel showing a voice list the worker never consults is how a call
+    ends up trying a voice the backend does not have.
+    """
+    if not base_url:
+        return []
+    try:
+        async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as c:
+            r = await c.get("/v1/audio/voices")
+            r.raise_for_status()
+            data = r.json()
+            return sorted(v.get("id") for v in data.get("data", []) if v.get("id"))
+    except Exception as e:                                    # noqa: BLE001
+        log.info("voice list unavailable from %s (%s)", base_url, e)
+        return []
+
+
+def pick_speakable_voice(wanted: str, available: list[str]) -> tuple[str, str]:
+    """(voice to use, why it changed). An empty reason means it did not.
+
+    The station tells us which voice each DJ uses ON AIR, and mirroring that is
+    right — the call-in DJ should sound like the one broadcasting. But the
+    station's voice belongs to the station's TTS, and this service may be
+    pointed at a different one. Rosie's station voice is an ElevenLabs id;
+    against local VibeVoice every request 400s, so the DJ generated a perfectly
+    good greeting and the caller heard silence for the whole call. Even the
+    dead-air fallback was mute, because it speaks through the same backend.
+
+    A voice the backend does not have is therefore not a reason to say nothing.
+    It is a reason to say it in a different voice and to write down why.
+    """
+    wanted = str(wanted or "").strip()
+    if not available:
+        return wanted, ""            # lookup failed — not evidence of anything
+    if wanted and wanted in available:
+        return wanted, ""
+    fallback = available[0]
+    if not wanted:
+        return fallback, ""          # nothing asked for; nothing surprising
+    return fallback, (
+        f"The station uses voice {wanted!r} for this DJ, and the TTS backend "
+        f"does not have it — speaking as {fallback!r} instead. Every line would "
+        f"otherwise have failed and the caller would have heard nothing. Set "
+        f"Voice under Models & voice to choose deliberately, or point this at "
+        f"the TTS server the station itself uses."
+    )
+
+
 def resolve_adapter(value: str | None) -> str | None:
     """The adapter file a setting names, constrained to ADAPTER_DIR.
 

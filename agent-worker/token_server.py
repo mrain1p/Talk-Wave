@@ -33,6 +33,8 @@ import sounds as sound_assets
 import station as station_mod
 import tune_in
 from tts_adapter import ADAPTER_DIR, resolve_adapter
+from tts_adapter import available_voices as tts_voice_list
+from tts_adapter import pick_speakable_voice
 from brain.briefing import demojibake
 from station import StationClient
 from station_config import StationConfig
@@ -1225,22 +1227,18 @@ async def handle_post_settings(request: web.Request) -> web.Response:
 
 
 async def _tts_voices(base_url: str) -> list[str]:
-    """Ask the configured TTS server what voices it actually has. For an
-    OpenAI-compatible endpoint that's /v1/audio/voices; the public OpenAI API
-    has no such route, so fall back to the known stock list."""
+    """Ask the configured TTS server what voices it actually has.
+
+    The lookup itself lives in tts_adapter, because the WORKER consults the
+    same list before a call — a panel showing one set of voices while the
+    worker believes another is how a call ends up asking for a voice the
+    backend does not have. Here, an empty answer falls back to the stock
+    OpenAI names so the dropdown is never blank; the worker deliberately does
+    not, because "could not find out" must not read as "has none".
+    """
     if not base_url:
         return settings_store.OPENAI_VOICES
-    try:
-        async with httpx.AsyncClient(base_url=base_url, timeout=6.0) as c:
-            r = await c.get("/v1/audio/voices")
-            r.raise_for_status()
-            data = r.json()
-            voices = [v.get("id") for v in data.get("data", []) if v.get("id")]
-            if voices:
-                return sorted(voices)
-    except Exception as e:
-        log.info("voice list unavailable from %s (%s) — using stock list", base_url, e)
-    return settings_store.OPENAI_VOICES
+    return await tts_voice_list(base_url) or settings_store.OPENAI_VOICES
 
 
 async def _openai_models(api_key: str, base_url: str = "") -> list[str]:
@@ -1887,6 +1885,15 @@ async def handle_speed_test(request: web.Request) -> web.Response:
                 voice = await sc.voice_for(pv["id"])
             finally:
                 await sc.aclose()
+
+        # Say WHY, rather than letting it surface as a 400 from the backend.
+        # This stage resolves the voice the on-air DJ actually uses, so it is
+        # the one place that sees a station voice the backend cannot speak —
+        # which is a silent call, and used to read here as an opaque TTS error.
+        voice, voice_note = pick_speakable_voice(
+            voice, await tts_voice_list(cfg.get("tts_base_url") or ""))
+        if voice_note:
+            record("Voice availability", 0, voice_note, counts=False)
 
         tts = AdapterTTS(voice=voice, base_url=cfg.get("tts_base_url") or "",
                          api_key=os.environ.get("TTS_API_KEY", "") if tts_key_ok else "",

@@ -3713,6 +3713,68 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
             "both python services must mount the same data directory")
 
 
+class TestAVoiceTheBackendCannotSpeakIsNotSilence(unittest.TestCase):
+    """Observed on air 2026-08-05, room e7f9ff6f8252, and the record caught it
+    perfectly while nothing prevented it.
+
+    The station maps Rosie (p_default1) to `zmcVlqmyk3Jpn5AVYcAL`, an
+    ElevenLabs id, because that is what she is broadcast with. This service was
+    pointed at local VibeVoice, which has -Cliff1, Lily, Delia1 and no such
+    voice. Mirroring the station's voice is RIGHT — the call-in DJ should sound
+    like the one on air — but the voice belongs to the station's TTS, not
+    necessarily to ours.
+
+    So the DJ wrote a perfectly good greeting, every TTS request 400'd eight
+    times over, and the caller sat in silence for the whole call. The 0.9.20
+    dead-air fallback was mute too, because it speaks through the same backend.
+
+    A voice the backend does not have is not a reason to say nothing. It is a
+    reason to say it differently and write down why.
+    """
+
+    def test_the_station_voice_is_kept_when_the_backend_has_it(self):
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice("-Cliff1", ["-Brock1", "-Cliff1", "Lily"])
+        self.assertEqual(got, "-Cliff1")
+        self.assertEqual(why, "")
+
+    def test_rosie(self):
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice(
+            "zmcVlqmyk3Jpn5AVYcAL", ["-Brock1", "-Cliff1", "Lily"])
+        self.assertIn(got, ["-Brock1", "-Cliff1", "Lily"])
+        self.assertIn("zmcVlqmyk3Jpn5AVYcAL", why)
+        # The operator has to be able to act on it, so it says what to do.
+        self.assertIn("Voice", why)
+
+    def test_a_failed_lookup_never_changes_the_voice(self):
+        # The one that would be worse than the bug: an empty list means "could
+        # not find out", and treating that as "has none" would make a slow or
+        # unreachable TTS server rewrite every DJ's voice.
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice("zmcVlqmyk3Jpn5AVYcAL", [])
+        self.assertEqual(got, "zmcVlqmyk3Jpn5AVYcAL")
+        self.assertEqual(why, "")
+
+    def test_asking_for_nothing_is_not_worth_a_warning(self):
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice("", ["-Brock1", "Lily"])
+        self.assertEqual(got, "-Brock1")
+        self.assertEqual(why, "")
+
+    def test_the_worker_and_the_panel_share_one_voice_lookup(self):
+        # A panel showing one set of voices while the worker believes another
+        # is how a call asks for a voice that is not there. Same function.
+        import token_server
+        from tts_adapter import available_voices
+
+        self.assertIs(token_server.tts_voice_list, available_voices)
+
+
 class TestJoinTokensExpire(unittest.TestCase):
     def test_a_minted_token_is_short_lived(self):
         """A join token is the only thing between a stranger and an agent job.
