@@ -21,12 +21,29 @@ This is right when the change is server-side or on the call page. It needs `.env
 **The PC stack must be stopped while the NAS stack runs** — two sidecars hammer the same
 station. `./run-local.ps1 -Stop` first if in doubt.
 
-## When you need the settings panel: the stub server
+## When you need the settings panel: `tools/panel_dev_server.py`
 
-The panel calls `/settings/options`, which takes 10–15s when the station is unreachable and
-needs TTS/LLM hosts you won't have locally. Write a throwaway server in the scratchpad that
-serves the real `web-widget/` files plus fake `/settings`, `/settings/options`,
-`/settings/sounds`, `/health`, `/live`, and register it in `.claude/launch.json`.
+**Committed, not written from scratch each time.** It serves the real `web-widget/` files
+against the real settings schema with everything slow faked — `/settings`,
+`/settings/options`, `/settings/sounds`, `/logs`, `/health`, `/live` — so the panel paints in
+under a second instead of the 10–15s the real `/settings/options` takes when the station is
+unreachable. It points every writable path at a temp dir before importing `settings`, so
+driving the panel can never touch real settings.
+
+Add it to `.claude/launch.json` and `preview_start` it:
+
+```json
+{ "name": "panel-stub",
+  "runtimeExecutable": ".venv/Scripts/python.exe",
+  "runtimeArgs": ["tools/panel_dev_server.py"],
+  "port": 8123, "autoPort": true }
+```
+
+`autoPort` matters — 8100 and 8123 are usually already taken by another session. **Take the
+launch.json entry back out before committing**; it is scaffolding, not configuration.
+
+Its fixtures deliberately reproduce the 0.9.81 bug: the voice list has no entry for the
+station's `p_default1` voice, so voice-mismatch handling stays exercisable.
 
 Build the `/settings` payload by importing the **real** `agent-worker/settings.py` —
 `schema_payload()`, `load()`, `stored_only()` — so the stub cannot drift from the app. Point
