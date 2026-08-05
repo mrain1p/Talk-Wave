@@ -259,8 +259,7 @@ thing in words.
 
 ### Option 1 — LAN only
 
-Nobody outside your network can call. No inbound exposure whatsoever. Right for
-a station with no outside audience, and the honest default.
+No port forwarding, and nobody on IPv4 outside your network can call.
 
 `livekit.yaml` — see [`livekit.example.yaml`](livekit.example.yaml):
 
@@ -268,11 +267,40 @@ a station with no outside audience, and the honest default.
 rtc:
   udp_port: 7882
   tcp_port: 7881
-  use_external_ip: false     # don't even advertise a public address
+  use_external_ip: false     # no STUN discovery of your public address
 ```
 
-Nothing to open, nothing to maintain. Remote callers get ~15s of ringing and a
-dead line, so say so wherever you share the link.
+#### ⚠️ `use_external_ip: false` is not the same as "unreachable"
+
+**If your machine has a globally routable IPv6 address, callers on IPv6 can
+still reach it — from anywhere — with no port forwarding at all.**
+
+`use_external_ip` controls whether LiveKit *discovers* its public address via
+STUN. It does not control **host candidates**, which come from enumerating the
+network interfaces. A global IPv6 address on your interface is a host
+candidate, and IPv6 has no NAT, so it is directly reachable.
+
+You can see this in the ICE log: the IPv6 candidate is labelled `host`, not
+`srflx`, meaning it never came from STUN and turning STUN off does not remove
+it.
+
+```bash
+ip -o addr show <your interface> | grep inet6
+```
+
+An address starting `2000::/3` — anything beginning `2` or `3` — is global.
+`fe80::` is link-local and harmless. Many home ISPs (Verizon FiOS among them)
+hand out a global IPv6 by default, so this is common rather than exotic.
+
+**For genuinely no inbound reachability**, you need one of:
+
+- a host firewall rule dropping inbound UDP 7882 on IPv6, or
+- no global IPv6 on that interface, or
+- `interfaces.includes` pointing at an interface that has no global IPv6.
+
+Otherwise be honest with yourself that you are on "IPv6 callers can reach me,
+IPv4 callers cannot" — which is option 3 with half the audience missing, not
+option 1.
 
 ---
 
@@ -446,10 +474,88 @@ embed.
 Any page you embed on can mint call tokens, so treat an embed as publishing the
 phone. Set a guest code if that isn't what you want.
 
-## Security
+## Security and privacy
 
-**Two passwords, two jobs**, both under *Access → Passwords*, and the store
-refuses to let them match.
+### Exposing this safely — the whole checklist, in one place
+
+The answers used to be scattered across six sections, which is how a real
+deployment ended up reachable from the internet with no guest code and no
+redial limit — every individual setting was documented and nobody had a list.
+
+Work down it. Each line says what goes wrong if you skip it.
+
+**Before anyone outside your house can reach the page**
+
+- [ ] **Admin password set.** Until one exists the panel is open to same-origin
+      requests, which includes anyone who can load the page from a literal
+      address. → *Access → Passwords*
+- [ ] **Guest code set**, or `front_access` deliberately set to something else.
+      `auto` means *open until a code exists* — so no code is an open line, not
+      a closed one. → *Access → Passwords*
+- [ ] **TLS on the front door.** Passwords and the guest code travel with every
+      request; over plain http they are readable on the wire. Browsers also
+      refuse microphone access on non-HTTPS origins, so calls cannot work
+      anyway.
+- [ ] **`CALLIN_ALLOWED_ORIGINS`** set to your real origin(s), or empty. `*`
+      lets any page on the internet mint call tokens against you.
+- [ ] **Fresh LiveKit secret.** Never the example one.
+- [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable
+      without deleting files on the host.
+
+**Money and airtime — the limits that matter once the line is reachable**
+
+- [ ] **`calls_per_hour` non-zero.** 0 is unlimited. The daily cap alone still
+      allows a whole day's worth inside one hour.
+- [ ] **`calls_per_day` non-zero.** The hard ceiling on what a day can cost.
+- [ ] **`caller_cooldown_secs` non-zero.** 0 lets one person redial in a loop.
+- [ ] **`max_actions_per_call`** set. Caps requests, segments and on-air
+      messages from a single call.
+- [ ] **`allow_announcements`** — understand it before turning it on. It lets a
+      caller hand the on-air DJ a line to read *to everyone listening*. Off by
+      default since 0.9.89. The tool allowlist and the conduct prompt push
+      back, but that is a model declining, not a gate refusing.
+- [ ] **`allow_skip_track` / `allow_dj_segment`** — both reach every listener
+      rather than the caller. Off by default, and worth leaving off on a
+      station with an audience.
+
+**Privacy — what you keep about people who call**
+
+- [ ] **`record_calls`.** On by default, because it is how a bad call gets
+      diagnosed. It writes both sides of a stranger's conversation to
+      `data/calls/`. Turn it off if you do not want that; `record_keep`
+      controls how long the ones you keep survive.
+- [ ] **`ask_caller_name`** is off by default. A volunteered name is still used
+      and still ends up in the transcript.
+- [ ] **Transcripts are plain JSON on disk**, owner-readable only. So is
+      `data/secrets.json`. Protect the volume; never commit `data/`.
+- [ ] **Tell callers.** Nothing in the widget says a call is recorded. If you
+      keep transcripts and the line is public, that is your disclosure to make.
+
+**The network**
+
+- [ ] Decide which connectivity option you are on — see [Calling from outside
+      your network](#calling-from-outside-your-network) — rather than
+      discovering it from a failed call.
+- [ ] If you forwarded a port, **delete the rule** when you stop running this.
+
+### What is enforced rather than advised
+
+Worth knowing which of these the software will hold for you:
+
+- Passwords are PBKDF2 hashes; the store refuses a guest code equal to the
+  admin one; **an unreadable password file counts as configured**, so a file
+  permission fault locks the panel and the phone rather than opening them.
+- A stored API key is only ever sent to the host it is saved for — testing a
+  draft URL withholds it and says so.
+- A caller's address comes from the socket, not a header they control, unless
+  the connection came from a trusted proxy.
+- Destructive station tools are not on the call line at all, whatever the
+  settings say.
+- Join tokens last two minutes.
+
+### Two passwords, two jobs
+
+Both under *Access → Passwords*, and the store refuses to let them match.
 
 **Admin** protects the panel, API keys and test buttons. Whoever holds it
 controls the application and can spend your API keys. Until one is set the
