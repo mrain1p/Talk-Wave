@@ -59,9 +59,19 @@ def build_call_control_tools(
         conversation short."""
         elapsed = _t.time() - started_at
         if elapsed < MIN_CALL_SECS:
+            # The old wording here ("see what they actually want") was read as
+            # an instruction to go find something else to talk about, so a
+            # caller who said goodbye at forty seconds got a brand new line of
+            # questioning immediately after the DJ's own sign-off. Say what is
+            # actually true: the goodbye stands, only the timing is refused.
+            left = max(1, int(MIN_CALL_SECS - elapsed))
             return (
-                "Too early to hang up — you've barely picked up. Stay with the "
-                "caller and see what they actually want."
+                f"Not yet — the line can't close for another {left}s. This is a "
+                "timing rule, not a disagreement about the goodbye: if they're "
+                "done, they're done. Stay in the moment you were both already "
+                "in, one warm half-line, and let it breathe. Do NOT open a new "
+                "subject, ask what else they need, or start questioning someone "
+                "who has just said goodbye. Try again when they speak next."
             )
         if ending["done"]:
             return "Already wrapping up — just finish your sign-off."
@@ -82,9 +92,16 @@ def build_call_control_tools(
             await hang_up(ctx, f"the DJ wrapped up the call ({reason or 'done'})")
 
         spawn(_close())
+        # The sign-off is spoken in the SAME turn as this call, so by the time
+        # anyone reads this the caller has already been said goodbye to. Asking
+        # for one here produced a second, different farewell every time — the
+        # caller heard two. There is nothing left to say; if the model insists
+        # on speaking, cap it at a couple of words.
         return (
-            "Right — say your goodbye now, one line, in character. The line closes "
-            "as soon as you've finished speaking."
+            "The line is closing. Your goodbye has already been said and is "
+            "playing now — it is the last thing this caller hears. Do not say "
+            "it again and do not add a farewell. At most, two or three words "
+            "(\"night, now.\"). Anything longer and they hear two goodbyes."
         )
 
     return [end_call]

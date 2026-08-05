@@ -29,8 +29,9 @@ import admin_auth
 import secrets_store
 import settings as settings_store
 import station as station_mod
+import tune_in
 from tts_adapter import ADAPTER_DIR
-from prompts import _demojibake
+from brain.briefing import demojibake
 from station import StationClient
 from station_config import StationConfig
 
@@ -288,6 +289,11 @@ async def handle_live(request: web.Request) -> web.Response:
         on_air = reachable and bool(persona.get("id")) and persona["id"] != "default"
 
         cfg = settings_store.load()
+        # Cached inside tune_in, so a station that publishes a mount list is
+        # only asked for it every few minutes rather than on every /live.
+        stream_url, stream_alternates = await tune_in.resolve(
+            cfg, settings_store.station_base_url()
+        )
         payload = (
                 {
                     "reachable": reachable,
@@ -311,8 +317,14 @@ async def handle_live(request: web.Request) -> web.Response:
                     # The station's own audio stream, so the caller can be
                     # counted as a listener while on the line.
                     "stream": {
-                        "url": settings_store.station_base_url().rsplit("/api", 1)[0]
-                               + "/stream.mp3",
+                        # Derived only when nothing is configured, and that is
+                        # correct on a plain-http LAN deployment alone: behind
+                        # TLS the browser blocks an http stream as mixed
+                        # content, silently, and the call runs with no station
+                        # behind it. `alternates` are the station's other
+                        # published mounts, for the widget to fall back to.
+                        "url": stream_url,
+                        "alternates": stream_alternates,
                         "tuneIn": bool(cfg.get("tune_in_on_call")),
                         "volume": int(cfg.get("tune_in_volume") or 0),
                     },
@@ -338,7 +350,7 @@ async def handle_live(request: web.Request) -> web.Response:
                     # Served through our own origin so the widget works when
                     # embedded on an https page and off-LAN.
                     "avatar": f"/avatar/{persona['id']}" if persona["id"] else None,
-                    "show": _demojibake(show.get("name", "")) or None,
+                    "show": demojibake(show.get("name", "")) or None,
                     "track": (
                         f"{track.get('title')} — {track.get('artist')}"
                         if track.get("title")
@@ -1253,7 +1265,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
             status=401,
         ))
 
-    import prompts as prompts_mod
+    import brain
     from call.tools import effective_tools
 
     cfg = settings_store.load()
@@ -1263,7 +1275,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
         override = str(cfg.get("persona_override") or "").strip()
         roster = {p.get("id"): p for p in snap["personas"]}
         persona = roster.get(override) or station.persona_from(snap["dj"], snap["personas"])
-        text = await prompts_mod.build_system_prompt(station, persona, snapshot=snap)
+        text = await brain.build_system_prompt(station, persona, snapshot=snap)
     finally:
         await station.aclose()
 
@@ -1321,14 +1333,44 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
         t0 = _time.perf_counter()
         persona = st.persona_from(snap["dj"], snap["personas"])
-        import prompts as prompts_mod
+        import brain
 
-        prompt = await prompts_mod.build_system_prompt(st, persona, snapshot=snap)
+        prompt = await brain.build_system_prompt(st, persona, snapshot=snap)
         record("Prompt assembly", (_time.perf_counter() - t0) * 1000,
                f"{len(prompt)} chars (~{len(prompt)//4} tokens, paid every turn)",
                counts=False)
     finally:
         await st.aclose()
+
+    # --- tune-in (the caller's browser pulls this, not us) ---
+    # This failed silently for months: an http stream on an https page is
+    # blocked as mixed content, the widget logged it to the console and the
+    # call simply had no station behind it. Nothing else in the product would
+    # have told the operator.
+    if cfg.get("tune_in_on_call"):
+        t0 = _time.perf_counter()
+        stream_url, alternates = await tune_in.resolve(
+            cfg, settings_store.station_base_url())
+        secure_page = _secure_origin().startswith("https://")
+        note, ok = "", True
+        if secure_page and stream_url.startswith("http://"):
+            ok = False
+            note = ("BLOCKED: an https page cannot load an http stream — the "
+                    "caller hears no station. Set the station stream URL.")
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as c:
+                    async with c.stream("GET", stream_url) as r:
+                        kind = r.headers.get("content-type", "?")
+                        ok = r.status_code == 200 and "audio" in kind.lower()
+                        note = f"{r.status_code}, {kind}"
+            except Exception as e:                            # noqa: BLE001
+                ok, note = False, f"unreachable: {type(e).__name__}"
+            if ok and alternates:
+                note += f"; {len(alternates)} other mount(s) published"
+        record("Station stream" + ("" if ok else " — FAILING"),
+               (_time.perf_counter() - t0) * 1000,
+               f"{stream_url} — {note}", counts=False)
 
     # --- STT ---
     # For the local engine this is MEASURED, not estimated: the TTS stage

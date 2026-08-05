@@ -159,6 +159,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # on speakers, quiet enough not to bleed into the caller's own microphone
     # and be transcribed as if they had said it. Anything near 50 does both.
     "tune_in_volume":   (None, 10),
+    # Blank derives the stream from station_base_url, which is right for a
+    # LAN deployment and wrong for every other one: the widget is served over
+    # TLS through a reverse proxy, and a browser refuses to load a plain-http
+    # stream into an https page (mixed content) — silently, so the call simply
+    # has no station behind it. A LAN address is also unreachable to a caller
+    # who isn't on the LAN. Point this at the station's public https stream.
+    "tune_in_url":      ("SUBWAVE_STREAM_URL", ""),
 
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
@@ -362,6 +369,16 @@ SCHEMA: dict[str, dict] = {
              "refuses song requests when nobody is listening and a caller on the line "
              "doesn't otherwise count, and it sounds like a real phone-in, with the "
              "broadcast running quietly behind the conversation. Recommended."),
+    "tune_in_url": dict(group="call", kind="text", label="Station stream URL",
+        needs=("tune_in_on_call", True),
+        help="Where the caller's browser pulls the broadcast from. Leave blank to "
+             "derive it from the station address, which only works when the caller "
+             "is on the same network AND the page is served over plain http. If the "
+             "widget is behind TLS — anything through a reverse proxy — a browser "
+             "silently refuses to load an http stream into an https page, and the "
+             "call has no station behind it. Put the station's own https stream "
+             "address here (https://listen.example.com/stream.mp3). The pipeline "
+             "check tests it."),
     "tune_in_volume": dict(group="call", kind="number", label="Station volume",
         needs=("tune_in_on_call", True),
         help="How loud the broadcast sits behind the call, as a percentage. 10 is "

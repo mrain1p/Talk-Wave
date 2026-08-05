@@ -88,6 +88,10 @@ library.
 - The caller's browser is (optionally) tuned into the stream once the DJ
   picks up (never during ringing), so stations that refuse requests at zero
   listeners accept them, and the broadcast runs quietly behind the call.
+  **Set Station stream URL** (Call behaviour) to the station's public https
+  stream if the widget is served over TLS — see Troubleshooting. A bare origin
+  is enough: the mounts SubWave publishes are discovered, mp3 first, and the
+  widget falls back through the rest if one won't play.
 - Station webhooks are registered automatically for push updates; the widget
   falls back to polling when they're unavailable.
 
@@ -147,6 +151,19 @@ under `agent-worker/call/`, each file named after its job:
 `main.py` is wiring: connect, refuse probe rooms, run the three phases.
 Adding a tool is one entry in `registry.TOOLS` plus one function.
 
+The prompt each call runs on is assembled next door, in `agent-worker/brain/`,
+split along the line that actually matters:
+
+| Module | Owns |
+|---|---|
+| `briefing.py` | What the DJ **knows**: now playing, what just played, what's queued, its own recent on-air lines, the segment catalogue, the rest of the line-up |
+| `conduct.py` | How the DJ **behaves**: momentum, triage, closing a call, tool etiquette, and the safety floor under all of it |
+| `assemble.py` | Joins the two onto the persona card, the show card and the operator's house style |
+
+The halves change for unrelated reasons — a new station field is an edit to
+`briefing.py`, a call that went wrong is an edit to `conduct.py` — so neither
+imports the other, and a test enforces that.
+
 **Providers** are pluggable per leg: LLM (OpenAI, Google, Anthropic,
 OpenRouter, Ollama), STT (Deepgram, OpenAI, Google, or in-process
 faster-whisper on CPU — no key, no network), TTS (any OpenAI-compatible
@@ -189,6 +206,15 @@ LiveKit's advertised media address, the browser URL and the webhook
 callback. Beyond that, `.env` only genuinely needs the LiveKit keypair
 (matching `livekit.yaml`) — everything else can be set in the panel.
 
+**Set `SUBWAVE_STREAM_URL`** to the station's public `https://` stream (or set
+*Station stream URL* in the panel). Left blank it derives from the station's
+own address, which is plain http on the LAN — and because the widget must be
+served over TLS for the microphone to work at all, the browser then refuses
+that stream as mixed content and the caller hears no station behind the DJ. It
+fails silently, so it is worth setting before you wonder why. A bare origin
+(`https://live.example.com`) is enough: the mounts the station publishes are
+discovered, mp3 first. The pipeline check's *Station stream* stage confirms it.
+
 **Open `https://<HOST_IP>:8443`** — the bundled Caddy TLS front door.
 Browsers only allow the microphone on HTTPS origins; the first visit shows
 a one-time self-signed-certificate screen (Advanced → Proceed), then the
@@ -227,7 +253,7 @@ Sections are grouped by the job you're doing, in the order you'd do it:
 | Permissions & safety | **Caller permissions** | What a stranger on the line may trigger: requests, library search, exact queueing of a track they picked, announcements, running segments and (separately) whether the DJ may offer one — plus whether a mood request comes back with options first, and on-air overlap protection |
 | Permissions & safety | **Usage controls** | Concurrent calls, calls per hour and per day, per-caller redial wait, actions per call, and the pause switch — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
-| Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream |
+| Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream — including the **station stream URL**, which must be an `https://` one wherever the widget is served over TLS |
 | Call settings | **Station awareness** | How much live context (recent tracks, queue, on-air chatter, the rest of the line-up) the DJ carries — each item costs latency every turn |
 | Call settings | **House style** | Light steers on conversation, answering and sign-off, layered on the persona; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call ends |
@@ -323,6 +349,16 @@ its failure messages name the fix. The classics:
   guidance itself, with a link to the bundled TLS page
   (`https://<HOST_IP>:8443`) — or use the Chrome flag for single-machine
   testing. The *Microphone* pipeline stage reports the same thing.
+- **No station behind the call — the DJ is there, the music isn't** — the
+  caller's browser is being handed an `http://` stream on an `https://` page,
+  and browsers block that as mixed content. It is silent by design on their
+  side, so nothing looks broken; the same happens off-LAN, where a
+  `192.168.x.x` stream is simply unreachable. Fix: set **Station stream URL**
+  (Call behaviour) or `SUBWAVE_STREAM_URL` to the station's public https
+  stream. A bare origin (`https://live.example.com`) is enough — SubWave
+  publishes its mounts at `/listen.pls` and they're discovered, mp3 first. The
+  *Station stream* pipeline stage reports the status and content type, and
+  says outright when the scheme is the problem.
 - **Locked out of the settings panel** — set `CALLIN_ADMIN_KEY` in the
   environment (always accepted) or restart the app (clears IP bans). To
   remove the password entirely, delete `data/admin-auth.json` and restart.

@@ -21,10 +21,11 @@ from pathlib import Path
 # test run pollutes the real data/logs/worker.log.
 os.environ["LOG_TO_FILE"] = "0"
 
-import prompts
+import brain
 import secrets_store
 import settings as settings_store
 import speech_filter
+from brain import briefing, conduct
 
 
 class TestSpeechFilter(unittest.TestCase):
@@ -171,13 +172,13 @@ class TestSpeechFilter(unittest.TestCase):
 
 class TestPrompts(unittest.TestCase):
     def test_demojibake_repairs_double_encoding(self):
-        self.assertEqual(prompts._demojibake("night â€” slow"), "night — slow")
+        self.assertEqual(briefing.demojibake("night â€” slow"), "night — slow")
 
     def test_demojibake_leaves_clean_text_alone(self):
-        self.assertEqual(prompts._demojibake("plain text — fine"), "plain text — fine")
+        self.assertEqual(briefing.demojibake("plain text — fine"), "plain text — fine")
 
     def test_clip_respects_budget_on_word_boundary(self):
-        out = prompts._clip("one two three four five", 13)
+        out = briefing.clip("one two three four five", 13)
         self.assertLessEqual(len(out), 14)  # budget + ellipsis
         self.assertTrue(out.endswith("…"))
 
@@ -288,6 +289,84 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestTuneIn(unittest.TestCase):
+    """Where the caller's browser pulls the broadcast from.
+
+    This was silently broken on every TLS deployment: the URL was derived from
+    the station's LAN address over plain http, and a browser refuses to load
+    that into an https page. Nothing reported it — the widget logged to the
+    console and the call ran with no station behind it.
+    """
+
+    def setUp(self):
+        import tune_in
+        self.tune_in = tune_in
+        tune_in._cache.clear()
+
+    def test_a_full_mount_is_used_as_given(self):
+        import asyncio
+
+        url, alts = asyncio.run(self.tune_in.resolve(
+            {"tune_in_url": "https://live.example.com/stream.mp3"},
+            "http://192.168.1.245:7700/api"))
+        self.assertEqual(url, "https://live.example.com/stream.mp3")
+        self.assertEqual(alts, [])
+
+    def test_blank_falls_back_to_the_derived_lan_url(self):
+        import asyncio
+
+        url, alts = asyncio.run(self.tune_in.resolve(
+            {}, "http://192.168.1.245:7700/api"))
+        self.assertEqual(url, "http://192.168.1.245:7700/stream.mp3")
+        self.assertEqual(alts, [])
+
+    def test_a_bare_origin_discovers_the_published_mounts(self):
+        # SubWave publishes its mount list at /listen.pls — "the always-served
+        # MP3 mount first, appending any enabled optional mounts" — so an
+        # operator shouldn't have to know whether opus is switched on.
+        import asyncio
+
+        self.tune_in._cache["https://live.example.com"] = (
+            9e18,   # never expires during the test
+            ["https://live.example.com/stream.mp3",
+             "https://live.example.com/stream.opus"],
+        )
+        url, alts = asyncio.run(self.tune_in.resolve(
+            {"tune_in_url": "https://live.example.com"}, "http://x/api"))
+        self.assertEqual(url, "https://live.example.com/stream.mp3")
+        self.assertEqual(alts, ["https://live.example.com/stream.opus"])
+
+    def test_discovery_keeps_the_path_and_throws_away_the_host(self):
+        # The one that actually bit. A station generates its playlist from its
+        # own configured address, which is routinely internal — asked over a
+        # public https origin, the real deployment answered with
+        # http://192.168.1.245:7700/stream.mp3. Taking that whole would hand
+        # the browser the exact unreachable LAN address this setting exists to
+        # escape, so discovery would be worse than none at all.
+        out = self.tune_in._parse_playlist(
+            "#EXTM3U\n#EXTINF:-1,Yosemite FM\n"
+            "http://192.168.1.245:7700/stream.mp3\n")
+        self.assertEqual(out, ["/stream.mp3"])
+        self.assertNotIn("192.168", "".join(out))
+
+    def test_mp3_is_ordered_first_whatever_the_station_lists(self):
+        # Every browser plays mp3; Safari is unreliable on opus. The widget
+        # tries these in order, so the order is the whole point.
+        out = self.tune_in._parse_playlist(
+            "[playlist]\n"
+            "File1=https://live.example.com/stream.opus\n"
+            "File2=https://live.example.com/stream.mp3\n"
+        )
+        self.assertEqual(out[0], "/stream.mp3")
+
+    def test_a_mount_is_told_apart_from_an_origin(self):
+        self.assertTrue(self.tune_in.is_a_mount("https://a.example.com/stream.mp3"))
+        self.assertTrue(self.tune_in.is_a_mount("https://a.example.com/x/live.opus"))
+        self.assertFalse(self.tune_in.is_a_mount("https://a.example.com"))
+        self.assertFalse(self.tune_in.is_a_mount("https://a.example.com/"))
+        self.assertFalse(self.tune_in.is_a_mount(""))
+
+
 class TestPanelMarkup(unittest.TestCase):
     """The panel builds itself from the schema, but it can only fill in a
     control the markup actually contains — `byKind` skips any field with no
@@ -360,6 +439,152 @@ class TestSecrets(_TempStores):
         self.assertEqual(os.environ.get("OPENAI_API_KEY"), "from-dotenv")
 
 
+class TestBrainSplit(_TempStores):
+    """Phase 3's seam: what the DJ KNOWS and how it BEHAVES are separable.
+
+    Each half has to be buildable and assertable without the other — that is
+    the whole point of the split, and the thing a later edit is most likely to
+    quietly undo by reaching for a station read from inside a rule.
+    """
+
+    FACT_MARKERS = ("Now playing", "Just played", "Coming up",
+                    "Other shows on this station", "Segments you can run")
+    RULE_MARKERS = ("# Running the call", "# Closing a call",
+                    "Keep the call moving", "# What you can do")
+
+    class _FakeStation:
+        """The only station call the briefing makes on its own."""
+
+        async def schedule(self):
+            return {"shows": [{"id": "s_other", "name": "Morning Drive"}]}
+
+    def _facts(self, cfg: dict, snap: dict | None = None) -> str:
+        import asyncio
+
+        snap = snap or {
+            "now_playing": {"nowPlaying": {"title": "Dreams", "artist": "Fleetwood Mac"}},
+            "state": {"history": [{"title": "Tusk", "artist": "Fleetwood Mac"}],
+                      "upcoming": [{"title": "Sara", "artist": "Fleetwood Mac"}]},
+            "session": {},
+            "skills": [{"kind": "weather", "label": "Weather"}],
+        }
+        return asyncio.run(
+            briefing.station_context(self._FakeStation(), cfg, snap, {"id": "s_now"})
+        )
+
+    def test_conduct_is_a_pure_function_of_settings(self):
+        # No station, no network, no settings file — if a rule ever needs a
+        # station read, the split has leaked and this stops compiling.
+        text = conduct.rules({})
+        for marker in self.RULE_MARKERS:
+            self.assertIn(marker, text)
+
+    def test_conduct_carries_no_station_facts(self):
+        text = conduct.rules({"allow_skills": True, "context_schedule": True})
+        for marker in self.FACT_MARKERS:
+            self.assertNotIn(marker, text)
+
+    def test_briefing_carries_no_rules(self):
+        text = self._facts({"allow_skills": True, "context_schedule": True})
+        for marker in self.RULE_MARKERS:
+            self.assertNotIn(marker, text)
+
+    def test_briefing_reports_what_the_station_is_doing(self):
+        text = self._facts({})
+        self.assertIn("Now playing: \"Dreams\" by Fleetwood Mac", text)
+        self.assertIn("Just played", text)
+        self.assertIn("Coming up", text)
+
+    def test_briefing_reads_the_schedule_only_when_asked(self):
+        self.assertNotIn("Morning Drive", self._facts({}))
+        self.assertIn("Morning Drive", self._facts({"context_schedule": True}))
+
+    def test_briefing_lists_segments_only_when_they_can_be_run(self):
+        self.assertNotIn("weather", self._facts({}))
+        self.assertIn("weather", self._facts({"allow_skills": True}))
+
+    def test_each_toggle_picks_exactly_one_fragment(self):
+        # The pairs contradict each other by design, so shipping both is the
+        # failure mode — that is how a caller gets asked what kind of fun they
+        # meant AND has something submitted anyway.
+        pairs = [
+            ({"confirm_requests": True},
+             "say it back and get a quick yes", "No need to confirm"),
+            ({"confirm_requests": False},
+             "No need to confirm", "say it back and get a quick yes"),
+            ({"shape_vague_requests": True},
+             "two or three real directions", "don't interrogate them"),
+            ({"shape_vague_requests": False},
+             "don't interrogate them", "two or three real directions"),
+            ({"ask_caller_name": True},
+             "ask once, briefly", "Don't ask the caller their name"),
+            ({"ask_caller_name": False},
+             "Don't ask the caller their name", "ask once, briefly"),
+        ]
+        for cfg, present, absent in pairs:
+            with self.subTest(cfg=cfg):
+                text = conduct.rules(cfg)
+                self.assertIn(present, text)
+                self.assertNotIn(absent, text)
+
+    def test_offering_a_segment_needs_both_switches(self):
+        self.assertNotIn("Offering a segment", conduct.rules({"offer_skills": True}))
+        self.assertNotIn("Offering a segment", conduct.rules({"allow_skills": True}))
+        self.assertIn(
+            "Offering a segment",
+            conduct.rules({"allow_skills": True, "offer_skills": True}),
+        )
+
+    def test_the_two_halves_do_not_import_each_other(self):
+        # Independence is the property worth protecting: a station field
+        # should never be an edit to conduct, and a bad call should never be
+        # an edit to briefing. Imports, not prose — the docstrings are allowed
+        # to point at each other.
+        import ast
+        import inspect
+
+        def imported(module) -> set[str]:
+            names: set[str] = set()
+            for node in ast.walk(ast.parse(inspect.getsource(module))):
+                if isinstance(node, ast.Import):
+                    names.update(a.name for a in node.names)
+                elif isinstance(node, ast.ImportFrom):
+                    names.add(node.module or "")
+                    names.update(f"{node.module}.{a.name}" for a in node.names)
+            return names
+
+        self.assertFalse([n for n in imported(briefing) if "conduct" in n])
+        self.assertFalse([n for n in imported(conduct) if "briefing" in n])
+        # Conduct imports nothing from the station at all — it is settings in,
+        # text out.
+        self.assertFalse([n for n in imported(conduct) if "station" in n])
+
+    def test_the_assembled_prompt_is_briefing_then_conduct(self):
+        import asyncio
+
+        from station import StationClient
+
+        snapshot = {"dj": {"station": "Yosemite FM"}, "personas": [],
+                    "now_playing": {"nowPlaying": {"title": "Dreams"}},
+                    "state": {}, "session": {}, "schedule": {}}
+
+        async def build() -> str:
+            station = StationClient()
+            try:
+                return await brain.build_system_prompt(
+                    station, {"id": "p", "name": "Dalia", "soul": "x"},
+                    snapshot=snapshot)
+            finally:
+                await station.aclose()
+
+        text = asyncio.run(build())
+        facts_at = text.index("Now playing")
+        rules_at = text.index("# Running the call")
+        self.assertLess(facts_at, rules_at)
+        # And the identity header still comes before both.
+        self.assertLess(text.index("a DJ on Yosemite FM"), facts_at)
+
+
 class TestPromptAssembly(_TempStores):
     def test_call_momentum_rules_are_always_in_the_prompt(self):
         # Observed on real calls: without this block the DJ interviews the
@@ -376,7 +601,7 @@ class TestPromptAssembly(_TempStores):
         async def build() -> str:
             station = StationClient()
             try:
-                return await prompts.build_system_prompt(
+                return await brain.build_system_prompt(
                     station, persona, snapshot=snapshot
                 )
             finally:
@@ -417,7 +642,7 @@ class TestCallPrivacy(_TempStores):
         async def build() -> str:
             station = StationClient()
             try:
-                return await prompts.build_system_prompt(
+                return await brain.build_system_prompt(
                     station, persona, snapshot=snapshot
                 )
             finally:
@@ -453,7 +678,7 @@ class TestCallPrivacy(_TempStores):
             async def go():
                 station = StationClient()
                 try:
-                    return await prompts.build_system_prompt(
+                    return await brain.build_system_prompt(
                         station, persona, snapshot=snapshot)
                 finally:
                     await station.aclose()
@@ -471,7 +696,7 @@ class TestCallPrivacy(_TempStores):
     def test_segment_list_names_only_no_cooldowns(self):
         # Telling the DJ the intervals made it ration segments itself and
         # explain timings to callers. The station decides if one is due.
-        out = prompts._fmt_skills([
+        out = briefing._fmt_skills([
             {"kind": "weather", "label": "Weather", "cooldownMin": 60},
             {"kind": "storytime", "label": "Story time", "cooldownMin": 45},
         ])
@@ -484,12 +709,33 @@ class TestCallPrivacy(_TempStores):
     def test_prompt_tells_the_dj_how_to_close_a_call(self):
         text = self._prompt({})
         self.assertIn("Closing a call", text)
-        self.assertIn("anything else before I let you go?", text)
+        self.assertIn("anything else before i let you go?", text.lower())
         self.assertIn("end_call", text)
         # And the guard against closing early, which is the real risk.
         self.assertIn("is NOT a call to close", text)
         self.assertIn("nothing good about a short", text)
         self.assertIn("never end a call because it's gone quiet", text.lower())
+
+    def test_the_closing_check_is_the_end_not_a_full_stop_on_every_action(self):
+        # Measured against the live deployment: the closing question landed in
+        # eight of twelve turns, attached to every completed action. The model
+        # was reading "I did the thing" as "the call is over", and momentum
+        # agreed with it — so both places had to stop saying so.
+        text = self._prompt({})
+        self.assertIn("Calls end when the CALLER is finished", text)
+        self.assertIn("is the LAST thing you say in a call", text)
+        self.assertIn("nothing to angle for", text)
+        # Momentum must not undo it by asking for a wind-down after each action.
+        self.assertNotIn("wind toward a close", text)
+        self.assertIn("does NOT mean moving it", text)
+
+    def test_a_refused_hangup_does_not_invite_a_new_subject(self):
+        # A caller who says goodbye inside the first minute was getting the
+        # sign-off AND then a fresh line of questioning, because the refusal
+        # read as "go find something else to talk about".
+        text = self._prompt({})
+        self.assertIn("overruled on the timing, not on the goodbye", text)
+        self.assertIn("Do NOT open a new subject", text)
 
     def test_a_mood_request_either_ships_or_offers_options_never_both(self):
         # The two rules contradict each other, so exactly one must be in the
@@ -529,7 +775,7 @@ class TestCallPrivacy(_TempStores):
             async def go():
                 station = StationClient()
                 try:
-                    return await prompts.build_system_prompt(
+                    return await brain.build_system_prompt(
                         station, {"id": "p", "name": "Dalia", "soul": "x"},
                         snapshot=snapshot)
                 finally:
@@ -1376,7 +1622,11 @@ class TestMainToolLogic(_TempStores):
         end_call = tools[0]
         self.assertEqual(end_call.info.name, "end_call")
         out = asyncio.run(end_call(reason="done"))
-        self.assertIn("Too early", out)
+        self.assertIn("can't close for another", out)
+        # It must refuse the TIMING without inviting a new conversation at
+        # someone who has just said goodbye — that was the observed failure.
+        self.assertIn("not a disagreement about the goodbye", out)
+        self.assertIn("Do NOT open a new subject", out)
 
     def test_ending_a_settled_call_is_allowed_once(self):
         import asyncio, time
@@ -1386,7 +1636,12 @@ class TestMainToolLogic(_TempStores):
         tools = self.control.build_call_control_tools(None, lambda: None, time.time() - 600)
         end_call = tools[0]
         first = asyncio.run(end_call(reason="caller said goodbye"))
-        self.assertIn("say your goodbye", first.lower())
+        self.assertIn("the line is closing", first.lower())
+        # The sign-off is spoken in the same turn as the tool call, so asking
+        # for one here made the caller hear a second, different farewell every
+        # time — observed on a scripted run against the live deployment.
+        self.assertIn("Do not say it again", first)
+        self.assertIn("two or three words", first)
         # A second call must not stack another close task.
         second = asyncio.run(end_call(reason="again"))
         self.assertIn("Already wrapping up", second)
@@ -1415,7 +1670,7 @@ class TestMainToolLogic(_TempStores):
             tools = self.control.build_call_control_tools(
                 FakeCtx(), lambda: None, time.time() - 600)
             said = await tools[0](reason="caller said goodbye")
-            self.assertIn("say your goodbye", said.lower())
+            self.assertIn("the line is closing", said.lower())
             # The close runs in the background; give it room to finish.
             for _ in range(60):
                 await asyncio.sleep(0.1)
