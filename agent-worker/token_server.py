@@ -1382,35 +1382,10 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     finally:
         await st.aclose()
 
-    # --- tune-in (the caller's browser pulls this, not us) ---
-    # This failed silently for months: an http stream on an https page is
-    # blocked as mixed content, the widget logged it to the console and the
-    # call simply had no station behind it. Nothing else in the product would
-    # have told the operator.
-    if cfg.get("tune_in_on_call"):
-        t0 = _time.perf_counter()
-        stream_url, alternates = await tune_in.resolve(
-            cfg, settings_store.station_base_url())
-        secure_page = _secure_origin().startswith("https://")
-        note, ok = "", True
-        if secure_page and stream_url.startswith("http://"):
-            ok = False
-            note = ("BLOCKED: an https page cannot load an http stream — the "
-                    "caller hears no station. Set the station stream URL.")
-        else:
-            try:
-                async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as c:
-                    async with c.stream("GET", stream_url) as r:
-                        kind = r.headers.get("content-type", "?")
-                        ok = r.status_code == 200 and "audio" in kind.lower()
-                        note = f"{r.status_code}, {kind}"
-            except Exception as e:                            # noqa: BLE001
-                ok, note = False, f"unreachable: {type(e).__name__}"
-            if ok and alternates:
-                note += f"; {len(alternates)} other mount(s) published"
-        record("Station stream" + ("" if ok else " — FAILING"),
-               (_time.perf_counter() - t0) * 1000,
-               f"{stream_url} — {note}", counts=False)
+    # The station stream is checked in the PIPELINE, not here: it is a health
+    # question rather than a timing one, and the failure that matters — an
+    # http stream blocked as mixed content on an https page — only happens in
+    # the caller's browser, so that is the only place worth testing it.
 
     # --- STT ---
     # For the local engine this is MEASURED, not estimated: the TTS stage

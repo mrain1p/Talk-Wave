@@ -2341,6 +2341,39 @@
       },
     },
     {
+      // Tested HERE rather than on the server, because the failure only
+      // exists here: an http stream on an https page is blocked as mixed
+      // content, silently, and the call runs with no station behind it. The
+      // server can fetch that same URL perfectly well and learn nothing.
+      key: 'stream', name: 'Station stream',
+      run: async () => {
+        const s = (live && live.stream) || {};
+        if (!s.tuneIn) return { status: 'skip', detail: 'tune-in is off — callers hear only the DJ' };
+        if (!s.url) return { status: 'warn', detail: 'no stream URL resolved' };
+        const mixed = location.protocol === 'https:' && s.url.indexOf('http://') === 0;
+        const loaded = await new Promise((res) => {
+          const el = new Audio(); el.muted = true; el.volume = 0; el.preload = 'auto';
+          const done = (v) => { try { el.pause(); el.src = ''; } catch (e) {} res(v); };
+          el.addEventListener('loadeddata', () => done(true));
+          el.addEventListener('canplay', () => done(true));
+          el.addEventListener('error', () => done(false));
+          el.src = s.url; el.load();
+          setTimeout(() => done(false), 8000);
+        });
+        if (loaded) {
+          return { status: 'pass',
+            detail: s.url + ' — playing behind the call at ' + (s.volume || 0) + '%' };
+        }
+        return { status: 'fail',
+          detail: mixed
+            ? 'this page is https and the stream is http:// — the browser blocks '
+              + 'it as mixed content, silently, so the caller hears no station. '
+              + 'Set the station stream URL to an https one. (' + s.url + ')'
+            : s.url + ' would not load in this browser — callers hear no station '
+              + 'behind the DJ. Check the URL is reachable and serves audio.' };
+      },
+    },
+    {
       // Browsers only allow mic capture on HTTPS or localhost. Everything
       // else can pass while a call on a plain http:// LAN address connects
       // and instantly hangs up when capture fails.
@@ -2387,6 +2420,44 @@
     });
   }
 
+  // The same row layout the pipeline check uses, because these are the same
+  // kind of thing and were being rendered as padded monospace text — which
+  // fell apart the moment a stage had a long note (the STT stage quotes what
+  // it heard), taking the column alignment with it.
+  function renderTimings(out, d) {
+    out.className = 'result on ' + (d.turnMs < 2000 ? 'good' : 'bad');
+    out.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'stages timings on';
+
+    const row = (cls, ms, name, note) => {
+      const li = document.createElement('li');
+      li.className = cls;
+      li.innerHTML = '<span class="ms"></span><span class="nm"></span><span class="dt"></span>';
+      li.querySelector('.ms').textContent = ms;
+      li.querySelector('.nm').textContent = name;
+      li.querySelector('.dt').textContent = note || '';
+      ul.appendChild(li);
+    };
+
+    let oneOffs = 0;
+    d.stages.forEach((st) => {
+      if (!st.counts) oneOffs++;
+      row(st.counts ? '' : 'oneoff', st.ms + 'ms', st.name, st.note);
+    });
+    row('total', d.turnMs + 'ms', 'Per turn', d.verdict);
+    out.appendChild(ul);
+
+    if (oneOffs) {
+      const foot = document.createElement('p');
+      foot.className = 'hint';
+      foot.style.margin = '9px 0 0';
+      foot.textContent = 'Dimmed rows happen once per call, not on every turn, '
+        + 'so they are not in the per-turn total.';
+      out.appendChild(foot);
+    }
+  }
+
   // Stage-by-stage timing, and what they compound to for one turn.
   // The speed test writes to its OWN box so running it never wipes the
   // pipeline results — both stay visible side by side.
@@ -2401,18 +2472,7 @@
       }).then((r) => r.json());
       if (!d.ok) { showResult(out, false, 'Failed: ' + (d.error || 'unknown')); return; }
 
-      const lines = d.stages.map((st) => {
-        const ms = String(st.ms).padStart(6) + 'ms';
-        const mark = st.counts ? ' ' : '·';
-        return mark + ms + '  ' + st.name + (st.note ? '\n           ' + st.note : '');
-      });
-      const good = d.turnMs < 2000;
-      showResult(out, good,
-        lines.join('\n') +
-        '\n' + '─'.repeat(46) +
-        '\n' + String(d.turnMs).padStart(6) + 'ms  PER TURN (what the caller waits)' +
-        '\n           ' + d.verdict +
-        '\n\n· = one-off per call, not part of each turn');
+      renderTimings(out, d);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };

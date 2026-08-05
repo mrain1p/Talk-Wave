@@ -555,6 +555,29 @@
   .stages li.warn .dt { color: #d0a882; }
   .stages li.skip { opacity: .45; }
 
+  /* Timings reuse the stage rows, with the elapsed time where the status
+     icon sits. Right-aligned and tabular so the numbers line up as a column
+     without the padded-monospace trick that broke on long notes. */
+  /* Lives inside .result, which is monospace and pre-wrap — neither of which
+     suits a table of rows, so both are reset here. */
+  .result .stages.timings { white-space: normal; }
+  .stages.timings li { grid-template-columns: 64px 128px 1fr; }
+  .stages.timings .nm {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .stages.timings .ms {
+    text-align: right; font-family: ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums; color: var(--dim);
+  }
+  .stages.timings li.oneoff { opacity: .5; }
+  .stages.timings li.total {
+    border-bottom: none; border-top: 1px solid var(--line2);
+    margin-top: 3px; padding-top: 9px;
+  }
+  .stages.timings li.total .ms,
+  .stages.timings li.total .nm { color: var(--text); font-weight: 700; }
+  .stages.timings li.total .dt { color: var(--dim); }
+
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;
     padding: 11px; border-radius: 9px; border: 1px solid var(--line2);
