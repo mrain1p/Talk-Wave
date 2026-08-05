@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -34,6 +35,8 @@ import httpx
 from livekit.agents import APIConnectionError, APIConnectOptions, tts
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, NotGivenOr
 from livekit.agents.utils import shortuuid
+
+log = logging.getLogger("callin.agent")
 
 ADAPTER_DIR = Path(__file__).parent / "tts-adapters"
 
@@ -153,6 +156,17 @@ class AdapterTTS(tts.TTS):
             profanity_mode=str(cfg.get("profanity_mode", "mask")),
             profanity_words=words,
         )
+        # Cleaning can empty a line completely — a model that answers with
+        # nothing but "*shuffles records*" leaves an empty string once stage
+        # directions are stripped, which is the correct result. Sending it on
+        # is not: a TTS backend asked to say nothing errors, the agent retries
+        # the same empty text until it gives up, and the caller hears the
+        # dead-air fallback instead of the DJ. Observed on a real call — four
+        # 500s in four seconds, all with an empty body.
+        if not spoken.strip():
+            log.info("nothing left to say after cleaning %r — not calling TTS", text[:60])
+            return AdapterChunkedStream(
+                tts=self, input_text="", conn_options=conn_options, silent=True)
         return AdapterChunkedStream(tts=self, input_text=spoken, conn_options=conn_options)
 
     async def aclose(self) -> None:
@@ -160,12 +174,26 @@ class AdapterTTS(tts.TTS):
 
 
 class AdapterChunkedStream(tts.ChunkedStream):
-    def __init__(self, *, tts: AdapterTTS, input_text: str, conn_options: APIConnectOptions):
+    def __init__(self, *, tts: AdapterTTS, input_text: str,
+                 conn_options: APIConnectOptions, silent: bool = False):
         super().__init__(tts=tts, input_text=input_text, conn_options=conn_options)
         self._tts_impl = tts
+        self._silent = silent
 
     async def _run(self, output_emitter: tts.AudioEmitter) -> None:
         impl = self._tts_impl
+        if self._silent:
+            # An empty, well-formed segment. The session gets a normal
+            # "finished speaking" rather than an error, so the turn completes
+            # and the DJ carries on listening.
+            output_emitter.initialize(
+                request_id=shortuuid(),
+                sample_rate=impl.sample_rate,
+                num_channels=impl.num_channels,
+                mime_type=impl._adapter["audio"].get("mime_type", "audio/pcm"),
+                stream=False,
+            )
+            return
         adapter = impl._adapter
         body = impl._build_body(self.input_text)
         resp_cfg = adapter["response"]

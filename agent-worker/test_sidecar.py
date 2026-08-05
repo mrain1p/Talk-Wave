@@ -290,6 +290,57 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestNothingToSay(_TempStores):
+    """A line that cleans down to nothing must never reach the TTS backend.
+
+    Found on a real call. The model answered with a stage direction and
+    nothing else; speech hygiene stripped it to an empty string, which is
+    correct; that empty string was then sent to the voice server, which
+    errored, four times, until the agent gave up and the caller heard the
+    dead-air fallback instead of the DJ:
+
+        Generating speech (streaming) - Text:  | Voice: -Cliff1
+        ValueError: No valid speaker lines found in script
+        POST /v1/audio/speech 500
+    """
+
+    def _synth(self, lines: list[str]) -> list[tuple[bool, str]]:
+        """(silent?, what would be sent) for each line.
+
+        Runs in a loop because a livekit ChunkedStream starts a metrics task
+        on construction.
+        """
+        import asyncio
+
+        from tts_adapter import AdapterTTS
+
+        async def go():
+            engine = AdapterTTS(voice="-Cliff1", base_url="http://tts.invalid")
+            out = []
+            for text in lines:
+                s = engine.synthesize(text)
+                out.append((s._silent, s.input_text))
+                await s.aclose()
+            await engine.aclose()
+            return out
+
+        return asyncio.run(go())
+
+    def test_a_stage_direction_only_line_is_not_spoken(self):
+        settings_store.save({"strip_stage_directions": True})
+        lines = ["*shuffles records*", "(laughs)", "[pause]", "   "]
+        for line, (silent, sent) in zip(lines, self._synth(lines)):
+            with self.subTest(line=line):
+                self.assertTrue(silent, f"{line!r} would still reach the voice server")
+                self.assertEqual(sent, "")
+
+    def test_real_speech_is_still_spoken(self):
+        settings_store.save({"strip_stage_directions": True})
+        (silent, sent), = self._synth(["*grins* Alright, putting that in for you."])
+        self.assertFalse(silent)
+        self.assertIn("Alright", sent)
+
+
 class TestCallerContext(unittest.TestCase):
     """What we can say about a caller when a call goes wrong.
 

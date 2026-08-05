@@ -1039,7 +1039,10 @@
     decorateFields();
   }
 
-  let options = null, overrides = {}, resolved = {}, secrets = {};
+  // Starts empty rather than null: the panel now paints as soon as the
+  // schema arrives, before the slow provider lists have loaded, so every
+  // read of this has to survive it being empty.
+  let options = {}, overrides = {}, resolved = {}, secrets = {};
 
   // Browsers restore form state across reloads; since Save diffs against the
   // stored overrides, a restored value would look like a deliberate edit.
@@ -1088,7 +1091,7 @@
 
   function syncModels() {
     const llm = $('llm_provider').value || resolved.llm_provider;
-    const list = options.llmModels[llm] || [];
+    const list = (options.llmModels || {})[llm] || [];
     const liveList = (options.modelsDiscovered || {})[llm];
     const station = options.stationLlm || {};
 
@@ -1110,7 +1113,7 @@
     } else { note.textContent = ''; }
 
     const stt = $('stt_provider').value || resolved.stt_provider;
-    fill('stt_model', options.sttModels[stt] || []);
+    fill('stt_model', (options.sttModels || {})[stt] || []);
     $('stt_model').value = overrides.stt_model || '';
   }
 
@@ -1408,9 +1411,10 @@
     // "Random each call" sits alongside the roster because it's the same
     // choice: who answers the phone. Blank stays the honest default.
     const RANDOM = '__random__';
-    const ids = [RANDOM].concat(options.personas.map((p) => p.id));
+    const roster = options.personas || [];
+    const ids = [RANDOM].concat(roster.map((p) => p.id));
     const names = { [RANDOM]: 'Random each call' };
-    options.personas.forEach((p) => { names[p.id] = p.name; });
+    roster.forEach((p) => { names[p.id] = p.name; });
     fill('persona_override', ids, {
       blankLabel: 'Whoever is live on air', labels: names,
     });
@@ -1623,24 +1627,42 @@
   let authConfigured = false, guestConfigured = false;
 
   async function loadSettings() {
-    const [ro, rs] = await Promise.all([
-      afetch('/settings/options'),
-      afetch('/settings'),
-    ]);
+    // Two requests, wildly different costs: /settings is the schema and the
+    // current values (~190ms), /settings/options asks the station, the TTS
+    // server and Ollama what they can offer (~5s). Waiting for both left the
+    // panel showing its raw ungrouped markup for five seconds and then
+    // visibly rearranging itself. Only the fast one decides the layout.
+    const optionsSoon = afetch('/settings/options');
+    optionsSoon.catch(() => {});          // handled below; don't warn early
+    const rs = await afetch('/settings');
     // A 401 means the panel is password-protected and this tab isn't in yet.
-    const denied = [rs, ro].find((r) => r.status === 401);
-    if (denied) {
-      const body = await denied.json().catch(() => ({}));
+    if (rs.status === 401) {
+      const body = await rs.json().catch(() => ({}));
       const err = new Error(body.error || 'locked');
       err.auth = true; err.body = body;
       throw err;
     }
-    const o = await ro.json(); const s = await rs.json();
-    options = o; overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
+    const s = await rs.json();
+    overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
     authConfigured = !!s.authConfigured;
     guestConfigured = !!s.guestConfigured;
     adoptSchema(s.schema);
     paint(); paintSecrets(); loadSounds();
+
+    // Then the provider lists, which only fill in the dropdowns. fill()
+    // keeps whatever is already selected, so this cannot steal a choice made
+    // while it was in flight.
+    try {
+      const ro = await optionsSoon;
+      if (ro.status !== 401) {
+        options = await ro.json();
+        paint();
+      }
+    } catch (e) {
+      // The panel is still usable without them — every field keeps its
+      // current value, they just cannot be picked from a list.
+      console.info('provider lists unavailable:', e && e.message);
+    }
     // Which build is this? Anchors every bug report and change over time.
     fetch('/health').then((r) => r.json()).then((h) => {
       $('versionLine').textContent = 'Wave Talk v' + (h.version || '?')
