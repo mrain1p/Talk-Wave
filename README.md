@@ -347,6 +347,31 @@ reopened without passing either again.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
    Protect the volume; never commit `.env` or `data/`.
 
+### Upgrading to 0.9.65: the container is no longer root
+
+`data/` holds your API keys and password hashes as plain files, and it is bind
+mounted from the host — so the container running as root meant root on those
+files, and on anything else that mount could reach. It now runs as uid 1000.
+
+**Chown that directory before you pull**, because the files in it were written
+by root and the new user cannot read them:
+
+```
+chown -R 1000:1000 /path/to/wave-talk/data
+```
+
+Do it while the old container is still running — root ignores the mode bits, so
+the running deployment carries on unaffected and the new one comes up able to
+read its own files. If your host share uses a different uid, build with
+`--build-arg APP_UID=… --build-arg APP_GID=…` instead.
+
+Skip it and the app comes up unable to read its settings, keys or password
+store. That fails *shut*: an unreadable password file counts as "a password is
+set that nothing can satisfy", never as "no password set", so a permissions
+mistake cannot leave the panel open (0.9.64). `CALLIN_ADMIN_KEY` is the way
+back in, and both processes log the directory, the uid and the exact chown at
+startup.
+
 ## Known limitations
 
 - **IPv4-only callers can't connect** without a forwarded port or a relay — see
