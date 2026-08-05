@@ -3414,6 +3414,45 @@ class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
             self._key("172.19.0.1", "10.0.0.5, 8.8.4.4"), "8.8.4.4")
 
 
+class TestUploadedSoundsCannotFillTheVolume(unittest.TestCase):
+    """Each file was capped at 2MB and the collection at nothing, so the same
+    2MB could be uploaded until the volume filled — the volume the settings,
+    the keys and the call records live on."""
+
+    def test_the_caps_are_sane_for_five_sounds(self):
+        import token_server
+
+        self.assertGreaterEqual(token_server.MAX_SOUND_FILES, 5)
+        self.assertLessEqual(token_server.MAX_SOUND_FILES, 100)
+        self.assertLessEqual(
+            token_server.MAX_SOUND_TOTAL_BYTES,
+            token_server.MAX_SOUND_FILES * token_server.MAX_SOUND_BYTES,
+            "the total cap is higher than the per-file cap allows, so it can "
+            "never be the thing that stops an upload")
+
+
+class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
+    """Search results are capped at 8, but nothing capped the size of one.
+    Every field goes into the prompt, where length is latency on every
+    remaining turn and is paid for per token."""
+
+    def test_a_giant_field_is_trimmed(self):
+        from call.tools.music import _fmt_track
+
+        out = _fmt_track({"title": "x" * 5000, "artist": "y" * 5000,
+                          "album": "z" * 5000, "moods": ["m" * 900] * 9,
+                          "id": "i" * 900}, with_id=True)
+        self.assertLess(len(out), 700, f"one track rendered {len(out)} chars")
+
+    def test_an_ordinary_track_is_unchanged(self):
+        from call.tools.music import _fmt_track
+
+        self.assertEqual(
+            _fmt_track({"title": "Roads", "artist": "Portishead",
+                        "album": "Dummy", "year": 1994}),
+            '"Roads" by Portishead (Dummy, 1994)')
+
+
 class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
     """/hooks/station cannot be authenticated — the station does not sign its
     hooks — so its body is arbitrary, and it was stored whole, fifty deep, in a

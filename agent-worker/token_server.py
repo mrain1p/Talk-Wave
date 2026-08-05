@@ -63,8 +63,17 @@ LIVEKIT_PUBLIC_URL = os.environ.get("LIVEKIT_PUBLIC_URL", "ws://localhost:7880")
 
 # Which origins may embed / call the token endpoint. "*" is fine for local dev;
 # set CALLIN_ALLOWED_ORIGINS to a comma-separated list before exposing this.
+# Empty by default, which is same-origin only. The widget on this service's own
+# page needs no entry here; a value is only needed to embed it on another site.
+#
+# It used to default to "*" — any page on the internet may mint a call token
+# against this service and spend the operator's LLM and TTS budget. That was
+# kept through 0.9.76 to avoid silently breaking embeds on deployments that
+# never set the variable, and then deliberately changed: pre-1.0, with few
+# deployments, is exactly when to take that break rather than ship the
+# convenient default into 1.0 and be stuck with it.
 ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("CALLIN_ALLOWED_ORIGINS", "*").split(",") if o.strip()
+    o.strip() for o in os.environ.get("CALLIN_ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]
 
 # Origins that may reach the PANEL during first-run — before any password
@@ -559,6 +568,13 @@ SOUNDS_DIR = Path(
 SOUND_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
                ".m4a": "audio/mp4", ".aac": "audio/aac", ".webm": "audio/webm"}
 MAX_SOUND_BYTES = 2 * 1024 * 1024      # a call sound is a second or two
+# ...and a bound on the collection, not just on each file. Per-file was the
+# only limit, so nothing stopped the same 2MB being uploaded until the volume
+# filled — on a NAS that is the volume the settings, the keys and the call
+# records live on. There are five sounds a call can use; twenty files is
+# already generous room to keep alternatives around.
+MAX_SOUND_FILES = 20
+MAX_SOUND_TOTAL_BYTES = 20 * 1024 * 1024
 UPLOAD_PREFIX = "upload:"
 
 
@@ -660,6 +676,23 @@ async def handle_sound_upload(request: web.Request) -> web.Response:
 
         SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
         target = SOUNDS_DIR / name
+        # Checked before writing, and only for a NEW name — replacing a sound
+        # you already have must keep working once the shelf is full, or the
+        # only way to fix a bad upload would be to delete something else first.
+        existing = _uploaded_sounds()
+        if name not in existing:
+            used = sum((SOUNDS_DIR / f).stat().st_size for f in existing
+                       if (SOUNDS_DIR / f).is_file())
+            if len(existing) >= MAX_SOUND_FILES:
+                return _cors(request, web.json_response(
+                    {"error": f"that would be {len(existing) + 1} uploaded sounds; "
+                              f"the limit is {MAX_SOUND_FILES}. Delete one you are "
+                              f"no longer using."}, status=413))
+            if used >= MAX_SOUND_TOTAL_BYTES:
+                return _cors(request, web.json_response(
+                    {"error": f"uploaded sounds already use "
+                              f"{used // (1024 * 1024)} MB, which is the limit. "
+                              f"Delete one you are no longer using."}, status=413))
         tmp = target.with_suffix(target.suffix + ".part")
         size = 0
         with open(tmp, "wb") as f:
@@ -2536,12 +2569,10 @@ def build_app() -> web.Application:
 def warn_if_open_to_the_web() -> None:
     """`*` means any page anywhere may mint a call token against this service.
 
-    It is the historical default and stays the default, because changing it
-    would silently stop embeds working on every deployment that never set the
-    variable — the same trap `front_access: auto` exists to avoid. But it is a
-    real exposure, so it is no longer possible to be in it without being told:
-    someone else's site can put your Call button on their page and spend your
-    API budget. `.env.example` ships it empty now.
+    No longer the default — 0.9.77 changed it to empty, which is same-origin
+    only — but it is still a value an operator can choose, and choosing it
+    deserves saying out loud: someone else's site can put your Call button on
+    their page and spend your API budget.
     """
     if "*" in ALLOWED_ORIGINS:
         log.warning(

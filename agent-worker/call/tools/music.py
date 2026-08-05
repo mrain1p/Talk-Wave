@@ -75,16 +75,26 @@ def looks_like_a_vibe(q: str) -> bool:
 
 
 def _fmt_track(t: dict, with_id: bool = False) -> str:
-    bits = f"\"{t.get('title', '?')}\" by {t.get('artist', '?')}"
-    if t.get("album"):
-        bits += f" ({t['album']}" + (f", {t['year']})" if t.get("year") else ")")
+    # Every one of these fields comes from the station and goes into the
+    # prompt, where length is latency on every turn for the rest of the call
+    # and is paid for per token. The count is capped at 8 results; nothing
+    # capped the size of one, so a single malformed record — a title that is
+    # really a description, a tag dump in an album field — could dwarf the
+    # rest of the briefing. A track that needs more than this to name itself
+    # is not one the DJ can read out anyway.
+    def f(key: str, limit: int = 120) -> str:
+        return str(t.get(key) or "")[:limit].strip()
+
+    bits = f"\"{f('title') or '?'}\" by {f('artist') or '?'}"
+    if f("album"):
+        bits += f" ({f('album')}" + (f", {f('year', 12)})" if f("year", 12) else ")")
     # The station stores mood tags and an energy score per track and returns
     # them on every search hit. Dropping them left the DJ describing records it
     # had real information about purely from the title.
     feel = []
     moods = t.get("moods") or []
     if isinstance(moods, list) and moods:
-        feel.extend(str(m) for m in moods[:3])
+        feel.extend(str(m)[:40] for m in moods[:3])
     energy = t.get("energy")
     if isinstance(energy, (int, float)):
         feel.append("high energy" if energy >= 0.66
@@ -93,8 +103,8 @@ def _fmt_track(t: dict, with_id: bool = False) -> str:
         bits += " — " + ", ".join(feel)
     # The exact-queue tool needs the id the search returned. Without it in the
     # text the model has nothing to pass and silently falls back to guessing.
-    if with_id and t.get("id"):
-        bits += f"  [id: {t['id']}]"
+    if with_id and f("id", 64):
+        bits += f"  [id: {f('id', 64)}]"
     return bits
 
 
