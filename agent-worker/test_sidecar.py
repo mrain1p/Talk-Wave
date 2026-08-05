@@ -3967,5 +3967,36 @@ class TestEverySkillWouldActuallyLoad(unittest.TestCase):
         self.assertEqual(problems, [], f"skills that would not load correctly: {problems}")
 
 
+class TestTheCommitGateIsStillWiredUp(unittest.TestCase):
+    """A malformed .claude/settings.json does not raise — it silently disables
+    every setting in that file, the pre-commit gate included. The failure looks
+    exactly like a gate that decided everything was fine, which is the worst
+    kind available."""
+
+    def _settings(self):
+        return Path(__file__).parent.parent / ".claude" / "settings.json"
+
+    def test_it_is_valid_json_and_still_guards_commits(self):
+        path = self._settings()
+        if not path.is_file():
+            self.skipTest(".claude/ not in this checkout (not copied into the image)")
+
+        data = json.loads(path.read_text(encoding="utf-8"))   # raises if malformed
+        commands = [
+            hook.get("command", "")
+            for entry in data.get("hooks", {}).get("PreToolUse", [])
+            for hook in entry.get("hooks", [])
+        ]
+        gate = [c for c in commands if "test_sidecar" in c]
+        self.assertTrue(
+            gate, "no PreToolUse hook runs test_sidecar any more — commits are "
+                  "no longer gated on the suite")
+
+        # It must filter on its own stdin: the `if` field alone does not
+        # restrict, so without this the gate runs on every single Bash call.
+        self.assertIn("git commit", gate[0],
+                      "the hook does not check that the command is a commit")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

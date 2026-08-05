@@ -483,14 +483,45 @@ version — check both containers match, since they ship as one image but run as
 two.
 
 ```bash
-cd agent-worker && python -m unittest test_sidecar
+cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar
 ```
 
-covers the speech filter, settings precedence, secrets and passwords, the
-lockout ladder, usage limits, the tool registry, prompt assembly, sound packs,
-the call record and the call's lifecycle seams — plus the security posture
-itself: that a stored key only travels to a saved host, that a caller cannot
-name their own address, that an unreadable password store closes the panel and
-the phone rather than opening them, and that files written into `data/` set
-their own permissions. CI runs it before building an image, so a failing suite
-never reaches `:latest`.
+**Those environment variables are not optional.** Most test classes redirect
+their own paths, but `admin_auth` and the call record fall back to the real
+`data/` directory, so a bare run can write into your actual auth file and call
+transcripts. They point every writable path away from the checkout; CI sets the
+same set.
+
+The suite covers the speech filter, settings precedence, secrets and passwords,
+the lockout ladder, usage limits, the tool registry, prompt assembly, sound
+packs, the call record and the call's lifecycle seams — plus the security
+posture itself: that a stored key only travels to a saved host, that a caller
+cannot name their own address, that an unreadable password store closes the
+panel and the phone rather than opening them, and that files written into
+`data/` set their own permissions. CI runs it before building an image, so a
+failing suite never reaches `:latest`.
+
+Several checks derive what they test from the source tree rather than from a
+hand-maintained list, so they cover code that does not exist yet: that the
+widget only calls routes the token server actually serves and only reads
+elements that exist, that every writing station method is muzzled in the
+conduct harness, that every settings field has a control in the panel, and that
+every module is reached by the suite at all.
+
+## Working on this repo
+
+Instructions for coding agents live in the repo, so a fresh checkout does not
+have to rediscover the architecture:
+
+- `CLAUDE.md` at the root — the architecture, the invariants that must not be
+  broken, and the gotchas that have cost real time. Also one in `agent-worker/`
+  (test conventions) and `web-widget/` (why there is no JS toolchain).
+- `.claude/skills/` — task playbooks: `wavetalk-verify`, `-deploy`, `-release`,
+  `-test`, `-diagnose`, `-llm-bench` and `-standards-review`.
+- `.claude/settings.json` — a hook that runs the suite before a commit and
+  blocks it if the suite is red. It fails open, and only covers commits made
+  through the agent; CI is the real backstop.
+
+Operator-specific details (hosts, addresses, keys) belong in
+`.claude/OPERATOR.local.md`, which is gitignored. **This repository is public —
+never put a real host or credential in a committed file.**
