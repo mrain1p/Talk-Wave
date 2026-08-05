@@ -44,7 +44,10 @@ services:
     ports:
       - "7880:7880"                     # HTTP/WebSocket signaling
       - "7881:7881"                     # RTC TCP fallback
-      - "50000-50100:50000-50100/udp"   # RTC media
+      # ONE muxed UDP port for all call audio (rtc.udp_port in livekit.yaml).
+      # This is the only port that has to reach the internet for calls from
+      # outside your network — one firewall rule, not a hundred and one.
+      - "7882:7882/udp"                 # RTC media
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     networks:

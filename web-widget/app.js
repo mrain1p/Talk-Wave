@@ -794,7 +794,26 @@
       if (room) { try { await room.disconnect(); } catch (e) {} }
       const denied = err && (err.name === 'NotAllowedError'
         || /permission|not allowed|denied/i.test(err.message || ''));
-      setStatus(denied ? 'Microphone blocked — allow mic access' : 'Could not connect', 'error');
+      // Three failures wore the same "Could not connect" label, and the most
+      // common one is the least obvious: the room is joined and signalling is
+      // fine, but audio has no route — so it rings for ~15s and then dies.
+      // A caller told "could not connect" reasonably assumes the station is
+      // down. It isn't, and there is something they can actually try.
+      const noMediaPath = !denied && err
+        && /pc connection|ice|media|timeout|could not establish/i.test(
+          (err.message || '') + ' ' + (err.reason || ''));
+      if (noMediaPath) {
+        console.warn(
+          'Wave Talk: signalling connected but no media path was established. '
+          + 'The caller reached the room; audio could not flow. Usually the '
+          + 'network cannot reach the media port, or the caller is on an '
+          + 'IPv4-only network while the station only publishes IPv6.', err);
+      }
+      setStatus(
+        denied ? 'Microphone blocked — allow mic access'
+          : noMediaPath ? 'Reached the studio, but no audio path — try mobile data'
+            : 'Could not connect',
+        'error');
       $('rig').classList.remove('on');
       $('stateChip').hidden = true;
       stopTimer();
@@ -2089,6 +2108,68 @@
   // ------------------------------------------------- full pipeline check
   // Runs every leg a real call depends on, in call order, so the first red
   // line is the thing that would actually break the call.
+  // Which of the station's own addresses a caller could actually route to.
+  //
+  // Read from the live peer connection's remote candidates — the addresses
+  // the SERVER offered us — because that, not our own connectivity, is what
+  // decides whether a stranger can call. Reaches through the SDK for the
+  // RTCPeerConnection, so it is written to give up quietly: an unknown result
+  // reports the old pass/fail rather than a wrong diagnosis.
+  function classifyAddress(addr) {
+    if (!addr) return null;
+    if (addr.indexOf(':') >= 0) {
+      const a = addr.toLowerCase();
+      if (a.startsWith('fe80') || a.startsWith('::1')) return 'v6-local';
+      if (a.startsWith('fc') || a.startsWith('fd')) return 'v6-private';
+      return 'v6-public';
+    }
+    const o = addr.split('.').map(Number);
+    if (o.length !== 4 || o.some(isNaN)) return null;
+    if (o[0] === 10 || o[0] === 127 || (o[0] === 192 && o[1] === 168)
+      || (o[0] === 172 && o[1] >= 16 && o[1] <= 31)
+      || (o[0] === 169 && o[1] === 254)) return 'v4-private';
+    // Carrier-grade NAT: a real address, but not one anyone can reach in.
+    if (o[0] === 100 && o[1] >= 64 && o[1] <= 127) return 'v4-cgnat';
+    return 'v4-public';
+  }
+
+  function peerConnectionsOf(room) {
+    const pcs = [];
+    const push = (pc) => { if (pc && typeof pc.getStats === 'function') pcs.push(pc); };
+    try {
+      const eng = room.engine || {};
+      const mgr = eng.pcManager || {};
+      [mgr.publisher, mgr.subscriber, eng.publisher, eng.subscriber]
+        .forEach((t) => push(t && (t.pc || t._pc)));
+    } catch (e) { /* SDK internals moved — reported as unknown */ }
+    return pcs;
+  }
+
+  async function serverReachability(room) {
+    const kinds = new Set();
+    try {
+      const pcs = peerConnectionsOf(room);
+      if (!pcs.length) return { unknown: true };
+      for (const pc of pcs) {
+        const stats = await pc.getStats();
+        stats.forEach((s) => {
+          if (s.type !== 'remote-candidate') return;
+          const kind = classifyAddress(s.address || s.ip);
+          if (kind) kinds.add(kind);
+        });
+      }
+    } catch (e) {
+      return { unknown: true };
+    }
+    if (!kinds.size) return { unknown: true };
+    return {
+      unknown: false,
+      publicV4: kinds.has('v4-public'),
+      publicV6: kinds.has('v6-public'),
+      summary: Array.from(kinds).sort().join(', '),
+    };
+  }
+
   const PIPELINE = [
     {
       key: 'station', name: 'Station + tools',
@@ -2199,7 +2280,34 @@
             r.connect(url, token),
             new Promise((_, rej) => setTimeout(() => rej(new Error('no media connection within 10s')), 10000)),
           ]);
-          return { status: 'pass', detail: 'this browser connected to ' + url + ' — signalling and media both OK' };
+          // Connecting from HERE only proves it works from here. What decides
+          // whether strangers can call is which addresses the server offered:
+          // if the only publicly routable one is IPv6, everyone on an
+          // IPv4-only network gets fifteen seconds of ringing and a dead line,
+          // and nothing anywhere says so. That is roughly half of callers.
+          const reach = await serverReachability(r);
+          const base = 'this browser connected to ' + url;
+          if (reach.unknown) {
+            return { status: 'pass', detail: base + ' — signalling and media both OK' };
+          }
+          if (!reach.publicV4 && !reach.publicV6) {
+            return { status: 'warn',
+              detail: base + ', but the station only offered private addresses ('
+                + reach.summary + '). LAN calls work; nobody outside your network '
+                + 'can connect. Set use_external_ip: true and remove node_ip if it '
+                + 'points at a LAN address.' };
+          }
+          if (!reach.publicV4) {
+            return { status: 'warn',
+              detail: base + ', but the only public address offered is IPv6 ('
+                + reach.summary + '). IPv6 callers connect with no port forwarding; '
+                + 'IPv4-only callers — roughly half, and most office wifi — cannot '
+                + 'connect at all. Open UDP 7882 and make sure node_ip is not '
+                + 'pinned to a LAN address.' };
+          }
+          return { status: 'pass',
+            detail: base + ' — signalling and media OK, publicly reachable ('
+              + reach.summary + ')' };
         } catch (e) {
           // A wss endpoint on a different origin than this page usually
           // means a self-signed certificate the browser has never accepted —
@@ -2217,8 +2325,11 @@
           }
           return { status: 'fail',
             detail: 'browser could not establish media with ' + url + ' — '
-              + 'if LiveKit runs in docker, set rtc.node_ip to the host’s LAN IP '
-              + 'in livekit.yaml and check UDP 50000–50100 is open. ('
+              + 'signalling worked, audio had nowhere to flow. Check '
+              + 'rtc.udp_port (7882) is open to this machine, and that '
+              + 'livekit.yaml does NOT set node_ip to a LAN address: that '
+              + 'overrides the public address use_external_ip discovers and '
+              + 'breaks every caller who is not on your network. ('
               + ((e && e.message) || e) + ')' };
         } finally {
           try { r.disconnect(); } catch (e2) {}

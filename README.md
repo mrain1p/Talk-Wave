@@ -298,6 +298,45 @@ Panel uploads (`data/sounds/`) override bundled assets — they're
 per-deployment, the folder is per-build. Set `SOUND_ASSETS_PATH` to bind-mount
 packs without rebuilding.
 
+## Calling from outside your network
+
+Signalling rides your reverse proxy on 443, so the page loads for anyone.
+**Audio doesn't.** Media is a direct connection to whatever address LiveKit
+advertises, and if that address isn't reachable from the caller's network they
+get about fifteen seconds of ringing and a dead line. Three tiers, in
+increasing order of effort:
+
+**LAN only — nothing to do.** The default. Callers on your network connect to
+your LAN address; nobody else can.
+
+**IPv6 — also nothing to do.** With `use_external_ip: true` LiveKit advertises
+your public IPv6 address, and IPv6 has no NAT, so callers reach it directly
+with **no port forwarding at all**. If your ISP gives you IPv6, off-network
+calling may already work — and this is worth knowing, because it means "it
+works from my phone" is not evidence that it works for everyone.
+
+**IPv4 — one port.** Roughly half of internet users still have no IPv6, and
+office wifi is frequently IPv4-only, so those callers need a public IPv4 path:
+
+- forward **UDP 7882** (`rtc.udp_port`) to the machine running LiveKit — one
+  rule, because LiveKit muxes every call over it. **TCP 7881** as well if you
+  want a fallback for networks that block UDP;
+- set `use_external_ip: true`;
+- **do not set `node_ip`** unless you know you need it. It overrides the
+  public address STUN discovers, so pointing it at a LAN address silently
+  breaks every outside caller while working perfectly on your own network.
+
+**Or don't self-host the media.** Point `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET` and `LIVEKIT_PUBLIC_URL` at a LiveKit Cloud project and
+the audio relays through them — no inbound ports at all, and it includes TURN,
+which is the only thing that fixes restrictive corporate networks. Everything
+else (station, worker, panel, recordings) stays on your machine.
+
+**How to tell which tier you're on:** run the pipeline check. *Browser media
+path* now reports the addresses the station actually offered and warns when the
+only public one is IPv6 — the case where it works for you and fails for half of
+everyone else.
+
 ## Embedding
 
 ```html
@@ -373,7 +412,7 @@ its failure messages name the fix. The classics:
   (which feeds `--node-ip`) and recreate the livekit container; the same
   cause shows up as webhooks registered to a `172.x` address. The *Browser
   media path* stage exists precisely for this. If it still fails, check the
-  host firewall allows UDP 50000–50100 and TCP 7881.
+  host firewall allows **UDP 7882** and TCP 7881.
 - **"This page can't use the microphone"** — the page is on a plain
   `http://<lan-ip>` origin, where browsers refuse microphone capture
   (localhost is exempt, which is why local dev works). The widget shows this
@@ -402,13 +441,9 @@ its failure messages name the fix. The classics:
   no voice is configured anywhere; *Reload voice list* after switching
   backend. With station admin credentials set, per-persona voices mirror
   from the station automatically.
-- **Calls work on the LAN but not from outside** — signalling rides your
-  reverse proxy, but *media* is a direct UDP connection to the address
-  LiveKit advertises, which by default is your LAN IP. For outside callers:
-  set `use_external_ip: true` in `livekit.yaml`, run the livekit service
-  with `network_mode: host` (drop its `ports:` and `--node-ip`; point
-  `LIVEKIT_URL` at the host's LAN IP), and forward **UDP 50000–50100** and
-  **TCP 7881** on your router. Related: Chrome may ask LAN visitors to
+- **Calls work on the LAN but not from outside** — see [Calling from outside
+  your network](#calling-from-outside-your-network) below; it's common enough
+  to have its own section. Related: Chrome may ask LAN visitors to
   "connect to devices on your local network" — that's the browser's Private
   Network Access guard for a public page reaching a private IP; one-time
   and harmless.
