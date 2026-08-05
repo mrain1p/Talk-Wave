@@ -325,20 +325,90 @@ silent half-broken state:
    public address and then fails to validate it, and LiveKit falls back to
    advertising the LAN address — the exact half-broken state.
 
-**In your router,** one rule:
+#### ⚠️ Read this before opening the port
 
-| field | value |
-|---|---|
-| Name | `wavetalk-media` |
-| Protocol | **UDP** only |
-| External / WAN port | `7882` |
-| Internal / LAN IP | the LiveKit host, e.g. `192.168.1.245` |
-| Internal port | `7882` |
-| Source / remote | any |
+Forwarding a port is **not reversible by accident** — it stays open until you
+remove it, including after you stop caring about this project. Specifically:
 
-Do **not** forward the `50000–50100` range — that is what `udp_port` replaces.
-Do not forward TCP 7881 unless UDP proves insufficient; one rule is easier to
+- It exposes **LiveKit's media port to the entire internet.** Keeping LiveKit
+  patched becomes your job. A vulnerability in its ICE or DTLS handling would
+  be reachable before any authentication.
+- It answers unsolicited STUN, which makes it a weak (~2–4×) reflector. Not
+  useful enough to attract attackers on its own, but it will be scanned.
+- **It does not gate who can call.** That is `front_access` and your usage
+  limits. An open media port with no guest code and generous limits is an
+  invitation to spend your LLM and TTS budget. Set a guest code *first*.
+- If you later stop using Wave Talk, **delete the rule.** A forwarded port to
+  a host that no longer runs what you think it runs is how home networks get
+  into trouble.
+
+It does *not* expose anything else on that machine — forwarding is per-port,
+per-protocol, per-destination. And if you already run a reverse proxy on 443,
+you are already exposing a much larger surface than this.
+
+#### Before you start
+
+1. **Give the LiveKit host a static or DHCP-reserved IP.** If it is
+   `192.168.1.245` today and DHCP moves it tomorrow, the rule silently points
+   at nothing and calls fail with no error. Do this in the router's DHCP
+   section, not on the machine.
+2. **Check you are not behind CGNAT.** Compare the address your router shows as
+   its WAN/internet address against what a "what is my IP" site reports. If
+   they differ, your ISP is doing carrier-grade NAT and **port forwarding
+   cannot work at all** — use option 2 instead. An address in
+   `100.64.0.0 – 100.127.255.255` is CGNAT. (Confusingly, `100.0.0.0 – 100.63.x`
+   is *not*.)
+
+#### The rule
+
+Router admin pages call this **Port Forwarding**, **Virtual Server**,
+**NAT Forwarding**, or **Applications & Gaming** depending on the vendor. Add
+one rule:
+
+| Field | Value | Notes |
+|---|---|---|
+| Name / description | `wavetalk-media` | anything; for your own memory |
+| Protocol | **UDP** | not TCP, not "Both" |
+| External / WAN / public port | `7882` | single port, not a range |
+| Internal / LAN / private IP | e.g. `192.168.1.245` | the LiveKit host |
+| Internal / private port | `7882` | same as external |
+| Source / remote IP | any / blank | callers come from anywhere |
+| Enabled | yes | |
+
+Then **save and apply** — many routers stage changes until you do.
+
+Do **not** forward `50000–50100`. That range is what `udp_port: 7882` replaces,
+and forwarding it is a hundred needless holes. Do not forward TCP 7881 unless
+UDP turns out to be blocked on some caller's network; one rule is easier to
 reason about than two.
+
+#### Confirm it worked
+
+Restart LiveKit so it re-runs external-address discovery — a bind-mounted
+config is not reloaded by `up -d`:
+
+```bash
+docker compose restart livekit-server
+docker logs <livekit container> 2>&1 | grep "using external IPs"
+```
+
+**Before** the rule, the IPv4 entry is your LAN address, because LiveKit found
+the public one and could not validate it:
+
+```
+using external IPs  ["2600:4040:.../…", "192.168.1.245/192.168.1.245"]
+```
+
+**After**, it should be your public address:
+
+```
+using external IPs  ["2600:4040:.../…", "100.33.134.4/192.168.1.245"]
+```
+
+If it still shows the LAN address, the rule is not taking effect — check the
+internal IP matches the LiveKit host, that the protocol is UDP, and that you
+applied the change. Then have someone call from mobile data with wifi off,
+which is the only real proof.
 
 **What that exposes.** LiveKit's media port, and nothing else on the host —
 forwarding is per-port, per-protocol, per-destination. Getting audio in still
