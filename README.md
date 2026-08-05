@@ -50,10 +50,14 @@ back-and-forth, and a Beatles request resolved against the live library.
 
 **Station integration**
 - Tools come from the station's MCP server through an allowlist: requests
-  (optionally confirmed first), search, exact queueing (off by default),
-  announcements, segments. Track skipping, sound effects and station
-  programming are **never** exposed at any setting, and the panel lists all 17
-  tools with each one's status, so the boundary is visible.
+  (optionally confirmed first), search, exact queueing, announcements,
+  segments, and — off by default because they reach every listener rather than
+  the caller — skipping the current track and firing a programme beat. Sound
+  effects and playlist rebuilds are **never** exposed at any setting. The panel
+  lists all 17 tools with each one's status, so the boundary is visible.
+- Anything that changes something is a local wrapper, not a raw MCP call, so
+  **Actions per call** caps it. That distinction is the ceiling: a tool served
+  straight over MCP would have none.
 - The DJ knows genre, mood, BPM, key and listener count where the station
   publishes them. A queued request returns its position, so "third up, about
   ten minutes" replaces implying it's playing now.
@@ -177,7 +181,7 @@ through. Every field carries its own help text.
 | Connect | **API keys** | Provider keys, stored server-side, never shown back |
 | Models & voice | **Brains** | LLM provider/model and STT. A local Whisper is baked in and used by default |
 | Models & voice | **Voice** | TTS backend, URL, voice (default: mirrored per-persona from the station), adapter |
-| Permissions & safety | **Caller permissions** | What a stranger may trigger, and overlap protection |
+| Permissions & safety | **Caller permissions** | What a stranger may trigger, overlap protection, and the two station-wide switches (skip the current track, fire a programme beat) that reach every listener — both off by default |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call, pause — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
 | Call settings | **Call behaviour** | Who answers, greeting, time limits, idle check-ins, tune-in, **station stream URL** |

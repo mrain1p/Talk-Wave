@@ -314,7 +314,12 @@ class TestExposedSurface(unittest.TestCase):
         "GET /sounds/{name}": "public",        # uploaded call sounds
         "GET /sound-packs": "public",
         "GET /pack-sounds/{pack}/{name}": "public",
-        "POST /token": "admin",                # guest code counts as a gate
+        # Gated twice over, which this column is too coarse to say: a real
+        # call needs the guest code, a pipeline probe needs the admin one.
+        "POST /token": "admin",
+        # Frees a concurrency slot by room id. Unauthenticated on purpose —
+        # the widget calls it on hangup — and safe because the id is 48 bits
+        # of uuid4, so you cannot release a slot you were not already in.
         "POST /call-ended": "public",          # releases a slot; no secrets
         # The station does not sign its webhooks, so this cannot be
         # authenticated. It is safe only because it treats the payload as
@@ -359,8 +364,11 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_dj_announce": "allow_announcements",
         "subwave_list_skills": "allow_skills",
         "subwave_run_skill": "allow_skills",
-        "subwave_skip_track": "never",
-        "subwave_dj_segment": "never",
+        # Station-wide and opt-in: these reach every listener, not just the
+        # caller. Moved out of `never` deliberately in 0.9.54, off by default,
+        # and capped by Actions per call.
+        "subwave_skip_track": "allow_skip_track",
+        "subwave_dj_segment": "allow_dj_segment",
         "subwave_refresh_playlist": "never",
         "subwave_list_sfx": "never",
         "subwave_play_sfx": "never",
@@ -429,6 +437,95 @@ class TestExposedSurface(unittest.TestCase):
         self.assertEqual(
             reachable & never, set(),
             "A tool marked `never` became reachable with every switch on.")
+
+
+class TestStationWideTools(_TempStores):
+    """Skipping a track and firing a programme beat reach every listener.
+
+    They were `never` until 0.9.54. The operator's terms for opening them up
+    were: off by default, and capped. Both are load-bearing, so both are
+    tested — the default especially, because a permission that quietly
+    defaults to on is how someone else's station starts skipping tracks.
+    """
+
+    def _tools(self, cfg: dict) -> set[str]:
+        from call.tools import build_on_air_tools
+
+        class _Guard:
+            def mark_on_air(self, secs):
+                pass
+
+        from call.actions import CallActions
+
+        built = build_on_air_tools(
+            cfg, object(), CallActions(5), _Guard(), guarded=False)
+        return {t.info.name for t in built}
+
+    STATION_WIDE = {"subwave_skip_track", "subwave_dj_segment"}
+
+    def test_both_are_off_by_default(self):
+        # On the real defaults, not a hand-made dict — a permission that
+        # quietly defaults to on is how someone else's station starts
+        # skipping tracks. (Announcements ARE on by default; that predates
+        # this and is a caller talking, not the programme changing.)
+        cfg = settings_store.load()
+        self.assertFalse(cfg.get("allow_skip_track"))
+        self.assertFalse(cfg.get("allow_dj_segment"))
+        self.assertEqual(self._tools(cfg) & self.STATION_WIDE, set())
+
+    def test_each_appears_only_when_its_own_switch_is_on(self):
+        self.assertEqual(
+            self._tools({"allow_skip_track": True}) & self.STATION_WIDE,
+            {"subwave_skip_track"})
+        self.assertEqual(
+            self._tools({"allow_dj_segment": True}) & self.STATION_WIDE,
+            {"subwave_dj_segment"})
+
+    def test_they_are_local_wrappers_so_the_action_cap_applies(self):
+        # The whole reason they are not MCP allowlist entries. An MCP-served
+        # tool never consults CallActions, so it would have no ceiling.
+        from call.tools.registry import local_tool_names, mcp_allowlist
+
+        cfg = {"allow_skip_track": True, "allow_dj_segment": True}
+        served_locally = local_tool_names(cfg, local_search_available=True)
+        self.assertIn("subwave_skip_track", served_locally)
+        self.assertIn("subwave_dj_segment", served_locally)
+        over_mcp = mcp_allowlist(cfg, local_search_available=True)
+        self.assertNotIn("subwave_skip_track", over_mcp)
+        self.assertNotIn("subwave_dj_segment", over_mcp)
+
+    def test_they_refuse_once_the_call_has_spent_its_actions(self):
+        import asyncio
+
+        from call.actions import CallActions
+
+        class _Guard:
+            def mark_on_air(self, secs):
+                pass
+
+        class _Station:
+            called = False
+
+            async def skip_track(self):
+                _Station.called = True
+                return {"ok": True}
+
+        from call.tools import build_on_air_tools
+
+        spent = CallActions(1)
+        spent.note("request", "something earlier")
+        tools = {t.info.name: t for t in build_on_air_tools(
+            {"allow_skip_track": True}, _Station(), spent, _Guard(), guarded=False)}
+        out = asyncio.run(tools["subwave_skip_track"]())
+        self.assertIn("limit", out.lower())
+        self.assertFalse(_Station.called, "the station was called despite the cap")
+
+    def test_sound_effects_and_playlist_rebuilds_are_still_never(self):
+        from call.tools.registry import blocked_names
+
+        self.assertEqual(
+            set(blocked_names()),
+            {"subwave_refresh_playlist", "subwave_list_sfx", "subwave_play_sfx"})
 
 
 class TestHttpSurface(_TempStores):

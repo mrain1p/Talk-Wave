@@ -275,9 +275,18 @@
         <label class="check"><input type="checkbox" id="allow_skills" /> Run station segments when a caller asks</label>
         <label class="check"><input type="checkbox" id="offer_skills" /> …and let the DJ offer one when the moment fits</label>
         <p class="hint wide">Segments put audio on air on a caller’s say-so, so
-          they’re off by default. Track skipping, sound effects and direct
-          queueing are never available to callers, regardless of settings —
-          use “Test station + tools” to see the exact list.</p>
+          they’re off by default.</p>
+
+        <h4 class="subhead">Station-wide</h4>
+        <p class="hint wide" style="margin-top:0">These two land on
+          <em>everyone listening</em>, not just the caller who asked. Both need
+          station admin credentials, both are off by default, and both count
+          against Actions per call — which is the only thing pacing them.</p>
+        <label class="check"><input type="checkbox" id="allow_skip_track" /> Let a caller skip the current track</label>
+        <label class="check"><input type="checkbox" id="allow_dj_segment" /> Let a caller fire a programme beat (station ID, the hour, a link)</label>
+        <p class="hint wide">Sound effects and playlist rebuilds stay
+          unavailable to callers whatever you set here — use “Test station +
+          tools” for the exact list.</p>
 
         <h4 class="subhead">Sharing the microphone</h4>
         <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ

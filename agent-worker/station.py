@@ -405,6 +405,64 @@ class StationClient:
             log.warning("skill %s failed: %s", name, e)
             return {"ok": False, "error": str(e)[:120]}
 
+    async def skip_track(self) -> dict:
+        """Force-end whatever is playing. Admin-only, and station-wide.
+
+        The station's own API calls this an operator override and notes there
+        is deliberately no listener-facing skip. Exposing it to a caller is
+        therefore a decision the operator makes about their own station, which
+        is why the setting is off by default and capped per call.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        try:
+            r = await self._client.post(
+                "/dj/skip",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("skip slow to confirm (%s) — treating as done", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("skip failed: %s", e)
+            return {"ok": False, "error": str(e)[:120]}
+
+    async def dj_segment(self, kind: str) -> dict:
+        """Fire one of the station's scripted beats — station id, the hour, a
+        link, banter. Admin-only.
+
+        Distinct from `run_skill`: these are programme furniture rather than
+        content segments, and the station documents that an explicit press
+        bypasses its own frequency and budget gates. So the only thing pacing
+        them on a call is our per-call action cap.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        try:
+            r = await self._client.post(
+                "/dj/segment",
+                json={"type": kind},
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("segment %s slow to confirm (%s) — treating as running", kind, e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("segment %s failed: %s", kind, e)
+            return {"ok": False, "error": str(e)[:120]}
+
     async def active_show(self, now_playing: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).
 

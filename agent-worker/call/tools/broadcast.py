@@ -138,6 +138,64 @@ def build_on_air_tools(
 
         tools.append(run_skill)
 
+    # --- station-wide, opt-in ---------------------------------------------
+    # Both of these reach every listener rather than just the caller, which is
+    # why they are off by default. They are wrappers rather than allowlisted
+    # MCP tools on purpose: only a wrapper consults the per-call action cap,
+    # so served over MCP they would be unlimited.
+
+    if cfg.get("allow_dj_segment"):
+        @lk_llm.function_tool(name="subwave_dj_segment")
+        async def dj_segment(type: str) -> str:
+            """Fire one of the station's scripted beats on air: station-id,
+            hourly, link, banter, or a programme-intro/feature/outro. These are
+            the programme's own furniture, not a listener request — reach for
+            one only when the moment genuinely calls for it."""
+            if actions.at_limit():
+                return actions.refusal()
+            waited = await wait_for_clear_air()
+            result = await station.dj_segment(type)
+            if not result.get("ok"):
+                return (
+                    f"That segment didn't fire: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("segment", type)
+            secs = speaking_secs(result.get("spoken"), 30)
+            guard.mark_on_air(secs)
+            return after_action(
+                f"The {type} beat", waited, result.get("unconfirmed"), secs)
+
+        tools.append(dj_segment)
+
+    if cfg.get("allow_skip_track"):
+        @lk_llm.function_tool(name="subwave_skip_track")
+        async def skip_track() -> str:
+            """Cut the track that is playing right now and move to the next
+            one. This affects EVERYONE listening, not just the caller, so use
+            it when they have actually asked — never to make room for
+            something you are queueing."""
+            if actions.at_limit():
+                return actions.refusal()
+            result = await station.skip_track()
+            if not result.get("ok"):
+                return (
+                    f"That didn't skip: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("skip", "current track")
+            # No hold: skipping makes no speech of its own, so the DJ can keep
+            # talking. The next track simply starts.
+            return (
+                "Done — that track is ended and the next one is coming in. "
+                "Say so in your own words, and remember everyone listening "
+                "just had it cut short."
+            )
+
+        tools.append(skip_track)
+
     return tools
 
 

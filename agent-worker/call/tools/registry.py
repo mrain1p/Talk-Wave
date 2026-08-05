@@ -108,15 +108,28 @@ TOOLS: tuple[Tool, ...] = (
          "Station admin credentials required. The station rate-limits each "
          "segment, and decides whether one is due."),
 
-    # --- never on a call line ---------------------------------------------
-    Tool("subwave_skip_track", NEVER, NONE,
-         "Force-ends whatever is playing.",
-         "A stranger could cut off the track everyone else is listening to."),
-    Tool("subwave_dj_segment", NEVER, NONE,
+    # --- station-wide, and off by default ---------------------------------
+    # These reach every listener, not just the caller. They are opt-in for
+    # that reason, and served by local wrappers rather than over MCP so the
+    # per-call action cap applies — an MCP-served tool bypasses it entirely.
+    Tool("subwave_skip_track", "allow_skip_track", LOCAL,
+         "Force-ends whatever is playing, for everyone listening.",
+         "Station admin credentials required. OFF by default: a stranger on "
+         "the phone cutting off the track the rest of the audience is enjoying "
+         "is a real cost, and the station's own API calls skip an operator "
+         "override with no listener-facing equivalent. Counts against Actions "
+         "per call.",
+         needs_station_admin=True),
+    Tool("subwave_dj_segment", "allow_dj_segment", LOCAL,
          "Fires a scripted segment: station ID, the hour, a link, guest banter, "
          "a programme beat.",
-         "Station-level programming, and it bypasses the DJ's own frequency "
-         "gate. Ask if you want this opened up."),
+         "Station admin credentials required. OFF by default: this is "
+         "programme furniture rather than a request, and the station documents "
+         "that firing one explicitly bypasses its own frequency and budget "
+         "gates — so Actions per call is the only thing pacing it.",
+         needs_station_admin=True),
+
+    # --- never on a call line ---------------------------------------------
     Tool("subwave_refresh_playlist", NEVER, NONE,
          "Rebuilds the fallback auto-playlist for the current mood.",
          "Reshapes what everyone hears next, on one caller's say-so. It also "

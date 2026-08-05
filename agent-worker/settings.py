@@ -92,6 +92,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # me to spin you a story?") instead of waiting to be asked.
     "offer_skills":       (None, False),
 
+    # Station-wide, and off by default. Unlike a request, these two land on
+    # everyone listening rather than on the caller who asked. Both are served
+    # by local wrappers so "Actions per call" caps them — over MCP they would
+    # have no ceiling at all.
+    "allow_skip_track":   (None, False),
+    "allow_dj_segment":   (None, False),
+
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
     "strip_stage_directions": (None, True),
@@ -350,6 +357,22 @@ SCHEMA: dict[str, dict] = {
              "answering a request. With this off the DJ runs segments but never "
              "brings them up. Occasional by design, never a menu, and never a list "
              "of what's on offer."),
+    "allow_skip_track": dict(group="perms", kind="check",
+        label="Let a caller skip the current track",
+        help="Ends whatever is playing, for EVERYONE listening — not just the "
+             "caller who asked. Off by default, and worth leaving off on a station "
+             "with an audience: the station's own API treats skip as an operator "
+             "override and offers no listener-facing equivalent. Needs station "
+             "admin credentials, and each skip counts against Actions per call, "
+             "which is the only thing pacing it."),
+    "allow_dj_segment": dict(group="perms", kind="check",
+        label="Let a caller fire a programme beat",
+        help="Station ID, the hour, a link, guest banter, a programme intro or "
+             "outro. Different from segments above: this is the programme's own "
+             "furniture rather than content someone asked for, and the station "
+             "documents that firing one explicitly bypasses its own frequency and "
+             "budget limits — so Actions per call is the only ceiling. Needs "
+             "station admin credentials. Off by default."),
 
     # --- call behaviour ---
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
