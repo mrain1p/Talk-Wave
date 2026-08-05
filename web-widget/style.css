@@ -976,14 +976,18 @@
      flowing from the top. */
   body.compact { display: flex; flex-direction: column; }
   body.compact .card { flex: 1 0 auto; display: flex; flex-direction: column; }
-  body.compact .card:not(.oncall) .actionrow { margin-top: auto; }
+  /* Keyed on the RIG being up, not on .oncall. The rig appears the moment the
+     call starts ringing; .oncall is only set once it connects. Keyed on the
+     latter, every call spent its ringing seconds with the button pinned to the
+     bottom and the meters rendering underneath it. */
+  body.compact .card:not(:has(.rig.on)) .actionrow { margin-top: auto; }
   /* Measuring mode. The stretch above would otherwise make the widget report
      back the very height the frame gave it, and a frame sized from that can
      never shrink again once a call ends. notifyHeight() flips this on for a
      single synchronous read of the natural content height. */
   body.measuring { min-height: 0; }
   body.measuring .card { flex: 0 0 auto; }
-  body.measuring .card:not(.oncall) .actionrow { margin-top: 0; }
+  body.measuring .card:not(:has(.rig.on)) .actionrow { margin-top: 0; }
   body.compact .avatar { width: 38px; height: 38px; }
   body.compact .dj { font-size: 15px; }
   /* Compact drops the tagline, track and SETTINGS gear — the theme toggle
@@ -1025,6 +1029,29 @@
      most of that — so drop the label and put the row on one line. */
   body.compact .guestgate .glabel { display: none; }
   body.compact .guestgate .grow { flex-wrap: nowrap; }
+
+  /* --- narrow screens -----------------------------------------------------
+     A folded phone is ~320px, and a host column can be narrow on a desktop
+     too, so this is keyed on width rather than on the embed. Everything here
+     was already "fine" in the sense that it wrapped and nothing overflowed —
+     but wrapping is what made it read as scattered: a row would break into
+     fragments of different widths sitting at different left edges. Below 420
+     the rows stack deliberately, and anything sharing a row splits it evenly
+     so there is one left edge and one right edge down the whole widget. */
+  @media (max-width: 420px) {
+    /* The door code. At 320px the field you type into came out NARROWER than
+       the button next to it — 121px against 159px — because compact forces
+       this row not to wrap. Each takes the full width instead. */
+    body.compact .guestgate .grow { flex-wrap: wrap; }
+    .guestgate input, .guestgate button { flex: 1 1 100%; }
+    /* Volume and the call controls each take a row, and Mute / Hang up split
+       it evenly rather than huddling against the left edge. */
+    .vol, .controls { flex: 1 1 100%; }
+    .controls button { flex: 1 1 0; padding: 0 10px; }
+    /* Status chips likewise: they share one row edge to edge instead of
+       breaking into a ragged second line. */
+    .actionrow .pill { flex: 1 1 auto; justify-content: center; }
+  }
 
   /* §3 — nothing moves for anyone who asked for that. */
   @media (prefers-reduced-motion: reduce) {
