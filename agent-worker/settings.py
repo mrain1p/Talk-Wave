@@ -762,11 +762,18 @@ def check_data_dir() -> None:
     if not data_dir.exists():
         return                      # first run; created on first write
     uid = os.getuid()
+    # Both halves, always. Ownership alone is not enough: some filesystems
+    # (Synology shares among them) create files with mode 000, which root
+    # ignores and an owner cannot get past — so a chown that looks like it
+    # worked still leaves everything unreadable. An operator handed half the
+    # fix runs it, sees no change, and concludes the data is gone.
+    fix = (f"on the HOST: chown -R {uid}:{uid} <dir> && chmod -R u+rwX <dir> "
+           f"— <dir> is what is mounted here as {data_dir}")
+
     if not os.access(data_dir, os.W_OK | os.X_OK):
         log.error(
             "%s is not writable by uid %s — settings, keys and call records "
-            "cannot be saved. On the host: chown -R %s %s",
-            data_dir, uid, uid, data_dir,
+            "cannot be saved. %s", data_dir, uid, fix,
         )
     blocked = sorted(
         p.name for p in (SETTINGS_PATH, admin_auth.AUTH_PATH, secrets_store.SECRETS_PATH)
@@ -775,10 +782,9 @@ def check_data_dir() -> None:
     if blocked:
         log.error(
             "unreadable in %s: %s — these exist but this process cannot open "
-            "them, so what is in them is NOT in effect. Almost always file "
-            "ownership after the switch to a non-root container: "
-            "chown -R %s %s",
-            data_dir, ", ".join(blocked), uid, data_dir,
+            "them, so what is in them is NOT in effect. Almost always owner or "
+            "mode after the switch to a non-root container: %s",
+            data_dir, ", ".join(blocked), fix,
         )
 
 
