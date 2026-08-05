@@ -289,6 +289,42 @@ class TestSettings(_TempStores):
         self.assertNotIn("not_a_field", stored)
 
 
+class TestCallRecordTimestamps(unittest.TestCase):
+    """A call record has to say WHEN, unambiguously.
+
+    These were naive container-local times, and the container runs in UTC — so
+    an operator four hours west read every record four hours off, and nothing
+    could correct it because the string carried no offset at all.
+    """
+
+    def test_timestamps_carry_an_offset(self):
+        import datetime
+
+        from call.record import _iso
+
+        out = _iso(1770000000.0)
+        parsed = datetime.datetime.fromisoformat(out)
+        self.assertIsNotNone(parsed.tzinfo, f"{out} has no timezone")
+        self.assertEqual(parsed.utcoffset(), datetime.timedelta(0))
+
+    def test_the_instant_survives_the_round_trip(self):
+        import datetime
+
+        from call.record import _iso
+
+        ts = 1770000000.0
+        back = datetime.datetime.fromisoformat(_iso(ts)).timestamp()
+        self.assertAlmostEqual(back, ts, delta=1.0)
+
+    def test_records_still_sort_by_string(self):
+        # The panel merges speech and tool events and sorts them as plain
+        # strings, so the format must stay lexicographically ordered.
+        from call.record import _iso
+
+        stamps = [_iso(1770000000.0 + n) for n in (0, 5, 61, 3600)]
+        self.assertEqual(stamps, sorted(stamps))
+
+
 class TestTuneIn(unittest.TestCase):
     """Where the caller's browser pulls the broadcast from.
 

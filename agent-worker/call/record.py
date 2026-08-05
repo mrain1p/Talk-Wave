@@ -19,6 +19,7 @@ swallows its own errors.
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
@@ -138,7 +139,17 @@ class CallRecord:
 
 
 def _iso(ts: float) -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts))
+    """An instant, with the offset that makes it one.
+
+    This used to be naive container-local time. The container runs in UTC, so
+    an operator four hours west read every call record four hours off — and
+    nothing downstream could correct it, because a bare "2026-08-05T03:55:35"
+    doesn't say which zone it's in. Now it carries +00:00 and the panel renders
+    it in whatever zone the reader is actually sitting in.
+    """
+    return datetime.datetime.fromtimestamp(
+        ts, datetime.timezone.utc
+    ).isoformat(timespec="seconds")
 
 
 def _prune() -> None:

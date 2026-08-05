@@ -2404,8 +2404,21 @@
   // Renders a call as a call: who said what, in order, with the tools the DJ
   // reached for shown inline where they happened. Reading a raw JSON dump to
   // answer "why did that call go wrong" is most of the work.
+  // Call records store an instant with its UTC offset; the container runs in
+  // UTC, so rendering the raw string showed an operator in New York every
+  // timestamp four hours out. Records written before 0.9.49 have no offset —
+  // those parse as local and read exactly as they did before, so nothing
+  // moves for them.
+  function callTime(iso, withDate) {
+    const d = new Date(iso || '');
+    if (!iso || isNaN(d.getTime())) return (iso || '').slice(11, 19);
+    return withDate
+      ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' })
+      : d.toLocaleTimeString([], { hour12: false });
+  }
+
   function renderCall(c) {
-    const when = (c.startedAt || '').replace('T', ' ').slice(0, 19);
+    const when = callTime(c.startedAt, true);
     const head = [
       `${when}  ${c.persona?.name || 'DJ'}  ·  ${c.durationSecs || 0}s  ·  `
         + `${c.callerTurns || 0} caller turn${c.callerTurns === 1 ? '' : 's'}`,
@@ -2426,7 +2439,7 @@
 
     const label = { caller: 'CALLER', dj: 'DJ    ', tool: '  tool' };
     const body = events.map((e) =>
-      `${(e.t || '').slice(11)} ${label[e.kind] || e.kind}  ${e.text}`);
+      `${callTime(e.t)} ${label[e.kind] || e.kind}  ${e.text}`);
     return head.join('\n') + '\n' + (body.join('\n') || '  (no conversation)');
   }
 
