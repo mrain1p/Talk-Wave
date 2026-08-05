@@ -713,6 +713,12 @@ names the fix. The classics:
   allows **UDP 7882** and TCP 7881.
 - **"This page can't use the microphone"** — the page is on plain
   `http://<lan-ip>`, where browsers refuse capture. Use the TLS page.
+- **…but the widget IS on https and still says so** — then the page *embedding*
+  it is not. A secure context requires **every page in the chain** to be
+  secure, so an `https` iframe inside an `http` page is insecure and the
+  microphone is refused. The widget's own URL is fine; serve the host page over
+  https. Common when testing an embed from a LAN address like
+  `http://192.168.1.245:8090` while the iframe points at your real domain.
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://`
   page is blocked as mixed content, silently. Set **Station stream URL** to an
   https one; the *Station stream* stage says so outright.

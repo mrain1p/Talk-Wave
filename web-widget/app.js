@@ -362,6 +362,18 @@
         + 'LAN testing alternative: chrome://flags → “Insecure origins treated as secure” → add '
         + location.origin + '.';
       el.appendChild(alt);
+    } else if (window.self !== window.top && location.protocol === 'https:') {
+      // The widget is on https and STILL not a secure context, which means an
+      // ancestor is not: a secure context requires the WHOLE chain, so an
+      // https iframe inside an http page is insecure and the microphone is
+      // refused. Saying "this page (https://…) is not HTTPS" is both wrong and
+      // unactionable — the frame's own URL is the one thing that is fine, and
+      // the fix belongs to the page doing the embedding.
+      el.append('Calls need microphone access. This widget is on ' + location.origin
+        + ', which is fine — but it is embedded in a page served over http://, '
+        + 'and a browser only grants the microphone when EVERY page in the chain '
+        + 'is secure. Serve the embedding page over https and this clears. '
+        + 'See README → Troubleshooting.');
     } else {
       el.append('Calls need microphone access, which browsers only allow on HTTPS or localhost — '
         + 'this page (' + location.origin + ') has neither. See README → Troubleshooting.');
