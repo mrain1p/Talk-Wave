@@ -206,6 +206,15 @@ LiveKit's advertised media address, the browser URL and the webhook
 callback. Beyond that, `.env` only genuinely needs the LiveKit keypair
 (matching `livekit.yaml`) — everything else can be set in the panel.
 
+**Set `SUBWAVE_STREAM_URL`** to the station's public `https://` stream (or set
+*Station stream URL* in the panel). Left blank it derives from the station's
+own address, which is plain http on the LAN — and because the widget must be
+served over TLS for the microphone to work at all, the browser then refuses
+that stream as mixed content and the caller hears no station behind the DJ. It
+fails silently, so it is worth setting before you wonder why. A bare origin
+(`https://live.example.com`) is enough: the mounts the station publishes are
+discovered, mp3 first. The pipeline check's *Station stream* stage confirms it.
+
 **Open `https://<HOST_IP>:8443`** — the bundled Caddy TLS front door.
 Browsers only allow the microphone on HTTPS origins; the first visit shows
 a one-time self-signed-certificate screen (Advanced → Proceed), then the
@@ -244,7 +253,7 @@ Sections are grouped by the job you're doing, in the order you'd do it:
 | Permissions & safety | **Caller permissions** | What a stranger on the line may trigger: requests, library search, exact queueing of a track they picked, announcements, running segments and (separately) whether the DJ may offer one — plus whether a mood request comes back with options first, and on-air overlap protection |
 | Permissions & safety | **Usage controls** | Concurrent calls, calls per hour and per day, per-caller redial wait, actions per call, and the pause switch — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter, applied to every spoken line regardless of model |
-| Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream |
+| Call settings | **Call behaviour** | Who answers (live DJ / a pinned persona / random each call), greeting style, time limits, idle check-ins, tuning the caller into the stream — including the **station stream URL**, which must be an `https://` one wherever the widget is served over TLS |
 | Call settings | **Station awareness** | How much live context (recent tracks, queue, on-air chatter, the rest of the line-up) the DJ carries — each item costs latency every turn |
 | Call settings | **House style** | Light steers on conversation, answering and sign-off, layered on the persona; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call ends |

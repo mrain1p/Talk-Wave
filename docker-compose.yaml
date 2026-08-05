@@ -14,6 +14,11 @@
 #   - put a reverse proxy (Caddy/Traefik/nginx) in front of port 8100, set
 #     CALLIN_ALLOWED_ORIGINS to your real origins and CALLIN_ADMIN_KEY to a
 #     secret before this is reachable beyond your LAN
+#   - set SUBWAVE_STREAM_URL to the station's PUBLIC https stream. Serving the
+#     widget over TLS (which the bundled caddy below does, and which browsers
+#     require for the microphone) means the caller's browser will refuse the
+#     station's plain-http LAN stream as mixed content — silently, so the call
+#     runs with no music behind it. See Troubleshooting in the README.
 
 x-logging: &default-logging
   driver: json-file
@@ -96,6 +101,14 @@ services:
       # the page, so the one-time self-signed acceptance covers it.
       - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443
       - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station
+      # Where the CALLER'S BROWSER pulls the broadcast from while on the line.
+      # Only this service needs it — it builds /live, which is what the widget
+      # reads. Blank derives the station's own address, which is plain http on
+      # the LAN: correct for a plain-http deployment, and blocked as mixed
+      # content on any TLS one (including via the caddy service below), where
+      # the caller then hears no station at all. A bare origin works too — the
+      # mounts the station publishes are discovered, mp3 first.
+      - SUBWAVE_STREAM_URL=${SUBWAVE_STREAM_URL:-}
       - LOG_TO_FILE=0
     volumes:
       - ./data:/data
