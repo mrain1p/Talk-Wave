@@ -74,6 +74,32 @@
     });
   }
 
+  // Placed in viewport coordinates so it can sit over the page rather than
+  // being squeezed into whatever room the card has — on an embed that is
+  // almost none, and the list came out squashed and scrolling.
+  //
+  // Downwards by default, flipping above the button only when there is
+  // genuinely more room up there.
+  function placeAskPopup(btn, pop) {
+    pop.style.maxHeight = '';
+    const b = btn.getBoundingClientRect();
+    const GAP = 8, EDGE = 12;
+    const below = innerHeight - b.bottom - GAP - EDGE;
+    const above = b.top - GAP - EDGE;
+    const wanted = pop.scrollHeight;
+
+    const goUp = below < wanted && above > below;
+    const room = Math.max(140, Math.min(wanted, goUp ? above : below));
+    pop.style.maxHeight = room + 'px';
+
+    // Right-aligned to the button, then pulled back inside the viewport.
+    const width = pop.getBoundingClientRect().width;
+    let left = Math.min(b.right - width, innerWidth - width - EDGE);
+    pop.style.left = Math.max(EDGE, left) + 'px';
+    pop.style.top = goUp ? Math.max(EDGE, b.top - GAP - room) + 'px'
+                         : (b.bottom + GAP) + 'px';
+  }
+
   function setupAskPopup(canAsk) {
     const btn = $('helpBtn'), pop = $('askPop');
     if (!btn || !pop) return;
@@ -85,6 +111,7 @@
       const open = pop.hidden;
       pop.hidden = !open;
       btn.setAttribute('aria-expanded', String(open));
+      if (open) placeAskPopup(btn, pop);
     };
     $('askClose').onclick = close;
     // Escape and a click outside, because a popup with only an X is a trap on
