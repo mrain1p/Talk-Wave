@@ -304,10 +304,34 @@ until restart, with guest failures counted separately. Locked out? Set
 request, so beyond your LAN use the HTTPS front door — over plain http they are
 readable on the wire.
 
+**Which address** is the address the connection came from, not one the caller
+can name. `X-Forwarded-For` is a list the client starts, so it is only read
+when the connection arrived from a reverse proxy you trust, and then only the
+entry that proxy appended — see `CALLIN_TRUSTED_PROXIES` in `.env.example`. It
+defaults to any loopback or private peer, which is the bundled compose exactly.
+Set it explicitly if this port is reachable directly from an untrusted network
+as well as through the proxy; otherwise the lockout is a header away from
+meaning nothing, in either direction.
+
+**Stored keys only travel to the host they're saved for.** The panel can test a
+URL before saving it, and a test builds the real provider — so a URL supplied
+in a request could otherwise make this service post your OpenAI key, your TTS
+key or the station's admin password to whatever host was named, which is the
+one thing keeping keys server-side is meant to prevent. A draft URL is still
+tested; the key just stays home, and the result says so.
+
+**Join tokens last two minutes.** The guest code and the usage limits are
+checked when a token is minted, so a long-lived token is a line that can be
+reopened without passing either again.
+
 **Before exposing beyond your LAN:**
 
 1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page read
-   config endpoints and mint call tokens.
+   config endpoints and mint call tokens. Also name your origin here if you
+   reach the panel by hostname and have not set a password yet: with no
+   password the gate accepts same-origin requests only from a literal address,
+   because a *name* can be pointed at this box by someone else and a browser
+   would then present it as same-origin.
 2. Set the admin password, and a guest code if the page is public.
 3. Fresh LiveKit keypair. Never deploy the example key.
 4. Real TLS on the front door, so visitors see no certificate warnings.

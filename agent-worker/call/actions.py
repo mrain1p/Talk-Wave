@@ -31,6 +31,12 @@ class CallActions:
         "request": ("🎵", "Song request scheduled"),
         "announcement": ("📢", "Message sent to air"),
         "skill": ("🎙", "Station segment running"),
+        # Both reach every listener rather than the caller, so the receipt
+        # matters more here than anywhere else: these shipped without labels
+        # and showed the caller a bare "Action completed" for cutting off the
+        # record the rest of the audience was listening to.
+        "skip": ("⏭", "Current track cut short"),
+        "segment": ("📻", "Station beat on air"),
     }
 
     def __init__(self, limit: int, room=None) -> None:

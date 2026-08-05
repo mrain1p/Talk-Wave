@@ -52,6 +52,15 @@ def _default_adapter_path() -> Path:
     return ADAPTER_DIR / ("local-vibevoice.json" if mode == "local" else "openai-cloud.json")
 
 
+def _is_openai_host(base_url: str) -> bool:
+    """Is this URL actually OpenAI's own API, rather than something whose
+    hostname merely contains that string?"""
+    from urllib.parse import urlparse
+
+    host = (urlparse(str(base_url or "")).hostname or "").lower()
+    return host == "api.openai.com" or host.endswith(".api.openai.com")
+
+
 def load_adapter(path: str | Path | None = None) -> dict:
     p = Path(path) if path else _default_adapter_path()
     with open(p, "r", encoding="utf-8") as f:
@@ -75,7 +84,14 @@ class AdapterTTS(tts.TTS):
         api_key: NotGivenOr[str] = NOT_GIVEN,
         adapter_path: str | Path | None = None,
         model: str = "",
+        allow_stored_key: bool = True,
     ) -> None:
+        """`allow_stored_key=False` synthesizes without the operator's key.
+
+        Set by the panel's test button when the base URL came from the request
+        rather than from saved settings: a stored key is only ever sent to the
+        host it is configured for.
+        """
         self._adapter = load_adapter(adapter_path)
         audio = self._adapter["audio"]
 
@@ -90,7 +106,10 @@ class AdapterTTS(tts.TTS):
         self._base_url = (
             base_url if base_url is not NOT_GIVEN else os.environ.get("TTS_BASE_URL", "")
         ).rstrip("/")
-        self._api_key = api_key if api_key is not NOT_GIVEN else os.environ.get("TTS_API_KEY", "")
+        self._api_key = (
+            api_key if api_key is not NOT_GIVEN
+            else (os.environ.get("TTS_API_KEY", "") if allow_stored_key else "")
+        )
 
         if not self._base_url:
             raise ValueError("TTS_BASE_URL is not set and no base_url was passed")
@@ -99,7 +118,11 @@ class AdapterTTS(tts.TTS):
         # key covers cloud TTS, and /test/env accepts it as satisfying the
         # requirement — so honour that here rather than 401ing on the
         # documented happy path. TTS_API_KEY still wins when set.
-        if not self._api_key and "api.openai.com" in self._base_url:
+        #
+        # Matched on the HOST, not as a substring: `in self._base_url` also
+        # matched https://api.openai.com.example.net, which would have handed
+        # the OpenAI key to whoever owns example.net.
+        if not self._api_key and allow_stored_key and _is_openai_host(self._base_url):
             self._api_key = os.environ.get("OPENAI_API_KEY", "")
 
         self._client = httpx.AsyncClient(
