@@ -39,7 +39,11 @@
     <button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark">&#9681;</button>
     <button class="gear" id="gearBtn" title="Settings" aria-label="Settings">&#9881;</button>
 
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span></div>
+    <!-- The connection state lives in the header, beside ON AIR NOW, rather
+         than under the Call button: on a station page the button sits in a
+         row of the host's own buttons and a status line dangling below it
+         broke that row. -->
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -66,7 +70,6 @@
       <button id="callBtn" disabled>Call the DJ</button>
       <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
       <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
-      <div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
     </div>
 
     <!-- Opened by the ? button. Built from the same list the panel shows the

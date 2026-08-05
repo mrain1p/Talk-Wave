@@ -78,15 +78,20 @@
     font-family: var(--font-body);
     background: var(--pine); color: var(--alpenglow);
   }
-  /* No card (§4.1). The near-black slab with its own radius floating inside
-     the host's column is the single thing that made this read as a
-     third-party component. The widget is transparent and contributes no
-     inset; the page (standalone) or the frame padding (embed) provides it,
-     and bands separated by hairlines do the work the card used to do.
+  /* §4.1 said drop the card, and the first pass dropped it entirely — which
+     went too far: against a station palette the widget had nothing to stand
+     on and read as flat. So it keeps a surface, but a quiet one. The lift is
+     derived from the TEXT colour rather than from --granite, because a host
+     is free to send a --granite identical to its --pine and the widget would
+     vanish again; 4% of --alpenglow over the ground is guaranteed to differ
+     from the ground in all three modes, light included. Square, hairline
+     edge, no shadow — the separation is an edge, not a floating slab.
      Width still matches the settings panel so the page reads as one column. */
   .card {
-    width: min(620px, 100%); padding: 0; position: relative;
-    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    width: min(620px, 100%); padding: 0 13px; position: relative;
+    border: 1px solid var(--hairline); border-radius: 0;
+    background: color-mix(in srgb, var(--alpenglow) 4%, var(--pine));
+    box-shadow: none;
   }
   /* Avatar beside the text rather than stacked above it — the stacked version
      wasted vertical space and pushed the captions off screen. */
@@ -104,7 +109,14 @@
     text-transform: uppercase; font-weight: 700; color: var(--coral);
     height: 38px; margin: 0; border-bottom: 1px solid var(--hairline);
     display: flex; align-items: center; gap: 8px;
+    /* Room for the corner controls, which are absolutely positioned into
+       this band. Reserved whether or not ? is currently shown, so the status
+       beside it doesn't shift when the ask list arrives. */
+    padding-right: 92px;
   }
+  body.compact .eyebrow { padding-right: 62px; }
+  /* The connection state rides the right end of the header band. */
+  .eyebrow #status { margin-left: auto; }
   .eyebrow .pip {
     width: 7px; height: 7px; border-radius: 0; background: var(--coral);
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--coral) 60%, transparent);
@@ -953,8 +965,25 @@
   /* The embed. The card contributes no inset of its own (§4.1) — the frame
      padding is the inset, so the widget's bands run full-bleed to the edges
      the host can see. */
-  body.compact { padding: 0 12px; min-height: 0; }
-  body.compact .card { border: none; padding: 0; background: transparent; width: 100%; }
+  /* The widget's own surface fills the frame exactly — the host's panel
+     provides the inset around it, and doubling that up just wasted width. */
+  body.compact { padding: 0; min-height: 100vh; }
+  body.compact .card { width: 100%; }
+  /* Idle, the Call button sinks to the BOTTOM of whatever room the host gave
+     the frame, so it lines up with the host's own row of buttons instead of
+     floating halfway up a tall column with dead space under it. During a call
+     the meters and hang-up need that room, so the layout goes back to
+     flowing from the top. */
+  body.compact { display: flex; flex-direction: column; }
+  body.compact .card { flex: 1 0 auto; display: flex; flex-direction: column; }
+  body.compact .card:not(.oncall) .actionrow { margin-top: auto; }
+  /* Measuring mode. The stretch above would otherwise make the widget report
+     back the very height the frame gave it, and a frame sized from that can
+     never shrink again once a call ends. notifyHeight() flips this on for a
+     single synchronous read of the natural content height. */
+  body.measuring { min-height: 0; }
+  body.measuring .card { flex: 0 0 auto; }
+  body.measuring .card:not(.oncall) .actionrow { margin-top: 0; }
   body.compact .avatar { width: 38px; height: 38px; }
   body.compact .dj { font-size: 15px; }
   /* Compact drops the tagline, track and SETTINGS gear — the theme toggle

@@ -227,12 +227,23 @@
   // isn't looking at would size itself late.
   const framed = window.parent !== window;
   let lastPosted = 0;
+  let measuring = false;
 
   function notifyHeight() {
-    if (!framed) return;
+    if (!framed || measuring) return;
     const card = document.querySelector('.card');
     if (!card) return;
+    // Measure the CONTENT height, never the height we were handed. Idle, the
+    // card stretches to fill a tall host column so the Call button can sit at
+    // the bottom of it — and a stretched card reports the frame's own height
+    // straight back to the frame, after which it can only ever grow. The
+    // class drops the stretch for one synchronous read; the guard keeps the
+    // ResizeObserver that watches this element from re-entering.
+    measuring = true;
+    document.body.classList.add('measuring');
     const h = Math.ceil(card.getBoundingClientRect().height);
+    document.body.classList.remove('measuring');
+    measuring = false;
     if (h > 0 && h !== lastPosted) {
       lastPosted = h;
       window.parent.postMessage({ type: 'subwave-callin:height', px: h }, '*');
