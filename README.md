@@ -322,10 +322,14 @@ readable on the wire.
   gaps mid-sentence. The speed test measures it.
 - **One station per deployment** — everything is discovered from a single
   SUB/WAVE instance.
-- **Secrets are stored unencrypted on disk**, protected only by file
-  permissions and whatever guards the volume.
-- **One shared admin password, no user accounts** — no per-operator identity or
-  audit trail.
+- **API keys are stored unencrypted on disk.** `data/secrets.json` is written
+  `0600` where the OS honours it (Windows ACLs don't map cleanly) and kept
+  separate from `settings.json`, so settings stay safe to copy or paste. Keys
+  are never returned to the browser and never logged — but anyone who can read
+  the volume can read them, so the volume is the real protection.
+- **Two shared passwords, not user accounts.** One admin, one optional guest,
+  each a single secret shared by everyone who has it. No per-person identity,
+  so nothing attributes an action to a particular operator.
 - **Recent calls keeps the newest 40.** A diagnostic aid, not an archive.
 - **The panel is not built for hostile exposure.** It assumes an operator on a
   trusted network who has set a password.
