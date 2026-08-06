@@ -194,9 +194,17 @@ class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
 
     def _claude_mds(self):
         root = REPO
+        # The skills too, and for the same reason: a skill is instructions a
+        # model follows without checking. Splitting app.js and moving the panel
+        # to its own page left three of them naming files that no longer
+        # existed, and one still sent you to put a new settings control in
+        # index.html — where the panel would never have found it. All three
+        # were caught by reading, which is exactly what this class exists to
+        # stop being the mechanism.
         return [p for p in (root / "CLAUDE.md",
                             root / "agent-worker" / "CLAUDE.md",
-                            root / "web-widget" / "CLAUDE.md") if p.is_file()]
+                            root / "web-widget" / "CLAUDE.md") if p.is_file()] + \
+            sorted((root / ".claude" / "skills").glob("*/SKILL.md"))
 
     def test_every_source_path_they_name_exists(self):
         import re
@@ -229,12 +237,19 @@ class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
                         or Path(ref).name in present:
                     checked += 1
                     continue
-                missing.append(f"{doc.name} -> {ref}")
+                # Named by the doc that contains it, since a bare SKILL.md
+                # tells you nothing about which skill is wrong.
+                label = (doc.parent.name if doc.name == "SKILL.md"
+                         else f"{doc.parent.name}/{doc.name}")
+                missing.append(f"{label} -> {ref}")
 
         self.assertGreater(checked, 10, "found almost no paths to check — the "
                                         "scan regex has probably stopped matching")
-        self.assertEqual(missing, [],
-                         f"CLAUDE.md names source files that do not exist: {missing}")
+        self.assertEqual(
+            missing, [],
+            "instructions naming source files that do not exist. These are read "
+            "and followed without being checked, so a stale path is worse than "
+            f"no path: {missing}")
 
 
 class TestEverySkillWouldActuallyLoad(unittest.TestCase):

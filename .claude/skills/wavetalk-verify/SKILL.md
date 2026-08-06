@@ -52,11 +52,11 @@ Build the `/settings` payload by importing the **real** `agent-worker/settings.p
 Two traps, each of which has cost a full cycle:
 
 - **Use `ThreadingHTTPServer`, never `HTTPServer`.** Single-threaded, the preview harness holds
-  a probe connection open, `serve_forever` blocks, and only `GET /` is ever served — `app.js`
+  a probe connection open, `serve_forever` blocks, and only `GET /` is ever served — `call.js`
   and `style.css` are silently never requested and you debug a page that never loaded its code.
-- **Strip the jsdelivr `<script>` for livekit-client from `index.html`.** The sandbox blackholes
-  it, and a blocking script that never resolves stalls the parser before `app.js` runs. Replace
-  with `window.LivekitClient = {}` — the panel does not need it.
+- **Strip the jsdelivr `<script>` for livekit-client.** The sandbox blackholes it, and a
+  blocking script that never resolves stalls the parser before the page's own scripts run.
+  Replace with `window.LivekitClient = {}` — nothing but placing a real call needs it.
 
 Set `"autoPort": true` in the launch entry and have the stub read `PORT` from env; 8100 and 8123
 are often already taken by another session.
@@ -70,9 +70,13 @@ are often already taken by another session.
   never fires (anything awaiting a frame hangs for 30s), and attribute-driven CSS may not
   recalc. To verify CSS, enumerate `document.styleSheets` rules instead of measuring computed
   styles after flipping `data-theme`.
-- **The settings panel is lazy-loaded on the gear click**, not at page load. After clicking,
-  a 3–4s `setTimeout` snapshot is still too early — take the DOM snapshot in a **separate**
-  `javascript_tool` call afterwards.
+- **The panel is its own page at `/panel`** since 0.9.105 — navigate there rather than looking
+  for a gear to click. It loads its settings on arrival, but the fetches take a moment: a
+  `setTimeout` inside the same call is still too early, so take the DOM snapshot in a
+  **separate** `javascript_tool` call afterwards.
+- **The two pages load different scripts**, and that is worth checking rather than assuming:
+  `/` must load `shared.js` + `call.js` and no panel code; `/panel` loads `shared.js` +
+  `panel.js` + `panel-viewers.js`. `read_network_requests` shows this directly.
 - **`/live` is cached 30s server-side and the widget polls every 20s.** Stubbing `window.fetch`
   needs a ~21s wait per state you want to observe. There is no hook to force a repaint.
 

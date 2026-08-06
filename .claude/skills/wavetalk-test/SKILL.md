@@ -80,8 +80,19 @@ This suite is biased toward regressions that would be **audible on air**, **misr
 
 ## The widget
 
-There is no JS toolchain in this repo and none should be added. `web-widget/app.js` is guarded
-from the Python side by `TestWidgetServerContract`: every path `app.js` fetches must be a route
-`token_server.py` serves, and every DOM id it reaches for must exist in `index.html` or be
-assigned by `app.js` itself. **Rename a DOM id or add a `fetch()` and you must run the Python
-suite.**
+There is no JS toolchain in this repo and none should be added. The widget is guarded from the
+Python side by `TestWidgetServerContract`, which reads **every** `.js` in `web-widget/` — so a
+new file is covered the moment it lands — and checks DOM ids **per page**:
+
+| Page | Loads | Ids checked against |
+|---|---|---|
+| `index.html` at `/` | `shared.js`, `call.js` | `index.html` |
+| `panel.html` at `/panel` | `shared.js`, `panel.js`, `panel-viewers.js` | `panel.html` |
+
+Every path the widget fetches must be a route `token_server.py` serves, and every id it reaches
+for must exist in *its own* page or be assigned in JS. The test also pins which scripts each
+page loads and in what order, because `panel-viewers.js` reads a `window.Panel` that `panel.js`
+publishes.
+
+**Rename a DOM id, add a `fetch()`, or move code between the two surfaces, and you must run the
+Python suite.**

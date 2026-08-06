@@ -23,7 +23,7 @@ field with no matching DOM id — no error, no warning, the row just is not ther
    `needs` and `placeholder`. The `help` is the whole documentation of the setting; write why it
    exists and what to pick, not what it is called.
 
-3. **`web-widget/index.html`** — a control whose `id` is exactly the field name, inside the
+3. **`web-widget/panel.html`** — a control whose `id` is exactly the field name, inside the
    `<details data-group="...">` for its group. `kind` decides the markup: `check` is a
    `div.check` with a checkbox, everything else is a `div.row` with a label and an input/select.
    **Miss this and the setting exists, saves, and is invisible.**
