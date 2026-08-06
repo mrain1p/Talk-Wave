@@ -8,10 +8,11 @@ Keep it that way; the whole thing is served as static files by `token_server.py`
 | File | Served at | What it is |
 |---|---|---|
 | `index.html` | `/` | The call page. Loads `shared.js` + `call.js` |
-| `panel.html` | `/panel` | The operator's page. Loads `shared.js` + `panel.js` |
+| `panel.html` | `/panel` | The operator's page. Loads `shared.js` + `panel.js` + `panel-viewers.js` |
 | `shared.js` | `/shared.js` | What both pages need, published as the `Callin` global |
 | `call.js` | `/call.js` | The phone: the card, the meters, the captions, the call itself |
-| `panel.js` | `/panel.js` | The operator's surface: settings, `/test/*`, uploads, the viewers |
+| `panel.js` | `/panel.js` | The operator's surface: settings, secrets, `/test/*`, uploads |
+| `panel-viewers.js` | `/panel-viewers.js` | Reading back what happened: the log and call viewers |
 | `style.css` | `/style.css` | Both pages. Themed by `data-theme` on `<html>` |
 | `embed.js` | — | Drop-in `<script>` for third-party pages |
 | `embed-test.html` | — | Local harness for the embed path |
@@ -56,8 +57,12 @@ files lives in the Python suite (`test_sidecar.py`):
   other's, and asserts the call page contains no trace of the settings form.
 - `TestPanelMarkup`, `TestPanelLoadsOnOpen`, `TestAssetVersioning` — panel structure and
   cache-busting.
-- `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js` and `panel.js` are both still over the
-  600-line ceiling and carry waivers saying so. Neither may grow.
+- `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js` is over the 600-line ceiling and on the
+  `SPLITTING` list, so it may not grow. `panel.js` is over it and `EXEMPT`, which was *measured*
+  rather than assumed: the viewers needed two names from the rest of the panel and left, while
+  the test probes need fifteen and the pipeline check ten, because all three read the same
+  `draft` / `resolved` / `secrets` state. Splitting those would be the same module in more
+  files. If you are tempted to split `panel.js` again, measure the seam first.
 
 So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is what catches it.
 

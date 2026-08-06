@@ -408,6 +408,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "one module per job, and /test/* is genuinely one job: eight probes "
             "that all answer 'can this box reach that thing'. Splitting them "
             "would scatter one answer across eight files.",
+        "web-widget/panel.js":
+            "measured rather than assumed. The log and call viewers had a real "
+            "boundary and left in 0.9.106. What remains does not: the test "
+            "probes need fifteen names from the settings form and the pipeline "
+            "check ten, because all three read the same draft, resolved and "
+            "secrets state. Threading that many names across a seam is the "
+            "same module in more files, not a smaller one.",
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).
@@ -419,10 +426,6 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             1108, "the call surface, out of the old app.js. Still above the "
                   "ceiling: the captions, the meters and the LiveKit wiring "
                   "each want their own file."),
-        "web-widget/panel.js": (
-            2100, "the operator surface, out of the old app.js. The settings "
-                  "form, the /test/* probes, uploads, and the log and call "
-                  "viewers are four separable jobs sharing one file."),
         "web-widget/style.css": (
             1103, "themes both pages. Now that they ARE two pages the "
                   "panel-only rules can move to a panel.css, but which rules "
