@@ -15,7 +15,7 @@ containers**, plus LiveKit and Caddy:
 | Process | Entry | Job |
 |---|---|---|
 | agent worker | `agent-worker/main.py` | Registers with LiveKit, answers dispatched calls, runs the STT→LLM→TTS session |
-| token server | `agent-worker/token_server.py` | aiohttp app on :8100. Serves the widget, mints join tokens, hosts the whole settings/admin API |
+| token server | `agent-worker/token_server.py` + `api/` | aiohttp app on :8100. Serves the widget, mints join tokens, hosts the whole settings/admin API |
 | livekit-server | `livekit/livekit-server` image | WebRTC media |
 | caddy | `caddy:2` | TLS in front of :8100 |
 
@@ -28,6 +28,10 @@ other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactl
   registration must happen on the main thread).
 - `call/` — one call, decomposed. `session.py` is the call object (`prepare` → `start` →
   `greet`); `lifecycle.py` is what happens while it runs; `tools/` is what the DJ may do.
+- `api/` — the HTTP surface, decomposed the same way: one module per job (`auth.py`,
+  `tokens.py`, `live.py`, `sounds.py`, `settings.py`, `diagnostics.py`, `hooks.py`, …).
+  `token_server.py` is now only the routing table, and it is the *only* one — a handler
+  registered anywhere else is invisible to the widget's contract test.
 - `brain/` — assembles the system prompt (`assemble.py`, `briefing.py`, `conduct.py`).
 - `station.py` — **read-only** REST client for the SUB/WAVE controller. Reads only.
 - `station_config.py` — mirrors the station's own DJ/TTS config so the call-in DJ doesn't drift

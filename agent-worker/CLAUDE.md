@@ -7,7 +7,19 @@ the pieces fit together and for the invariants that hold across both processes.
 
 ```
 main.py            worker entrypoint — LiveKit job handler
-token_server.py    aiohttp app on :8100 — widget host + settings/admin API (2.5k lines)
+token_server.py    the routing table, and nothing else: URL -> handler in api/
+api/               the HTTP surface, one module per job
+  env.py           what the environment said (LiveKit creds, port)
+  wire.py          the HTTP edge — CORS, and who we believe a request is from
+  auth.py          the two gates: ADMIN (panel) and GUEST (the phone)
+  tokens.py        /token, /call-ended, and the ceilings on minting
+  live.py          the call card's payload; live_cache.py is what stales it
+  sounds.py        ring/pickup/hold/hangup, bundled and uploaded
+  widget.py        serving web-widget/, and how long a browser may keep it
+  settings.py      the settings API (the store itself is ../settings.py)
+  credentials.py   where a stored secret is allowed to travel
+  diagnostics.py   /test/*, /prompt, /logs, /calls
+  hooks.py         the station's webhooks, and the warm-ping loop
 call/
   session.py       the call object: prepare() -> start() -> greet()
   lifecycle.py     behaviours attached to a live session (dead air, timeout, quiet caller)
@@ -47,6 +59,9 @@ House rules for tests here, and they are firm:
 
 ## Adding an HTTP route
 
-Routes are registered in one block near the bottom of `token_server.py`. Anything the widget
-calls must be registered there — `TestWidgetServerContract` in the suite fails the build if
-`app.js` fetches a path the server does not serve.
+The handler goes in the `api/` module named after its job; the route goes in `build_app()` in
+`token_server.py`, which is the only routing table there is. Two tests hold that line:
+`TestWidgetServerContract` reads `token_server.py` alone and fails the build if `app.js`
+fetches a path the server does not serve, and `TestTheRoutingTableIsInOnePlace` fails if a
+handler exists that nothing routes, if a module registers routes of its own, or if anything
+under `api/` imports `token_server` back.

@@ -357,11 +357,11 @@ class TestFrontDoorPolicy(_TempStores):
 
     def _check(self, mode: str, key: str = "") -> str | None:
         import admin_auth  # noqa: F401  (imported for the reset in _TempStores)
-        import token_server
+        from api import auth as api_auth
 
         settings_store.save({"front_access": mode})
-        token_server._auth_state.clear()
-        return token_server._guest_check(key, "10.0.0.9")
+        api_auth._auth_state.clear()
+        return api_auth._guest_check(key, "10.0.0.9")
 
     def test_auto_is_the_old_behaviour_and_the_default(self):
         # The default has to leave existing deployments exactly as they were:
@@ -409,12 +409,12 @@ class TestFrontDoorPolicy(_TempStores):
         # is how a deployment ends up publicly callable while its operator
         # believes it is locked.
         import admin_auth
-        import token_server
+        from api import auth as api_auth
 
         # Isolated rather than relying on store state: this asserts the
         # no-password-configured branch specifically.
-        real_admin, real_guest = token_server._auth_configured, admin_auth.guest_is_set
-        token_server._auth_configured = lambda: False
+        real_admin, real_guest = api_auth._auth_configured, admin_auth.guest_is_set
+        api_auth._auth_configured = lambda: False
         admin_auth.guest_is_set = lambda: False
         try:
             for mode in ("guest", "admin"):
@@ -423,7 +423,7 @@ class TestFrontDoorPolicy(_TempStores):
                     self.assertIsNotNone(reason, "an unset gate fell open")
                     self.assertIn("isn't taking calls", reason)
         finally:
-            token_server._auth_configured = real_admin
+            api_auth._auth_configured = real_admin
             admin_auth.guest_is_set = real_guest
 
 
@@ -437,7 +437,7 @@ class TestCallerContext(unittest.TestCase):
     """
 
     def test_it_tells_the_browsers_apart(self):
-        from token_server import _describe_client
+        from api.tokens import _describe_client
 
         cases = {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:153.0) Gecko/20100101 Firefox/153.0":
@@ -456,7 +456,7 @@ class TestCallerContext(unittest.TestCase):
         # The point of the whole thing: a call that connects and then hears
         # nothing looks identical whether the caller was off-LAN with no media
         # path or simply silent. This separates them.
-        from token_server import _network_of
+        from api.tokens import _network_of
 
         for ip in ("192.168.1.51", "10.0.0.8", "172.19.0.4", "127.0.0.1"):
             with self.subTest(ip=ip):
@@ -832,13 +832,15 @@ class TestHttpSurface(_TempStores):
     def test_the_break_glass_key_opens_them_again(self):
         # Proves the previous test is measuring a gate rather than a 404.
         async def check(client, ts):
+            from api import auth as api_auth
+
             self.admin_auth.set_password("a-real-password")
-            ts.ADMIN_KEY = "break-glass"
+            api_auth.ADMIN_KEY = "break-glass"
             try:
                 r = await client.get("/settings", headers={"X-Admin-Key": "break-glass"})
                 return r.status
             finally:
-                ts.ADMIN_KEY = ""
+                api_auth.ADMIN_KEY = ""
 
         self.assertEqual(self._serve(check), 200)
 
@@ -855,7 +857,9 @@ class TestHttpSurface(_TempStores):
         # re-downloads 150KB on every load, or they get a stale interface
         # after an update — the bug no-cache existed to prevent.
         async def check(client, ts):
-            good = await client.get(f"/app.js?v={ts.asset_tag('app.js')}")
+            from api import widget as api_widget
+
+            good = await client.get(f"/app.js?v={api_widget.asset_tag('app.js')}")
             bare = await client.get("/app.js")
             stale = await client.get("/app.js?v=0.0.1")
             page = await client.get("/")
@@ -903,13 +907,13 @@ class TestAssetVersioning(unittest.TestCase):
     """
 
     def test_the_served_html_versions_its_own_assets(self):
-        import token_server
+        from api import widget as api_widget
 
-        token_server._index_cache.update(mtime=0.0, html="")
-        html = token_server._versioned_index()
-        self.assertIn(f'src="/app.js?v={token_server.asset_tag("app.js")}"', html)
+        api_widget._index_cache.update(mtime=0.0, html="")
+        html = api_widget._versioned_index()
+        self.assertIn(f'src="/app.js?v={api_widget.asset_tag("app.js")}"', html)
         self.assertIn(
-            f'href="/style.css?v={token_server.asset_tag("style.css")}"', html)
+            f'href="/style.css?v={api_widget.asset_tag("style.css")}"', html)
         self.assertNotIn('src="/app.js"', html)
         self.assertNotIn('href="/style.css"', html)
 
@@ -926,35 +930,35 @@ class TestAssetVersioning(unittest.TestCase):
         import os
         import time
 
-        import token_server
+        from api import widget as api_widget
 
-        original = token_server.WIDGET_DIR
+        original = api_widget.WIDGET_DIR
         tmp = Path(tempfile.mkdtemp())
         try:
-            token_server.WIDGET_DIR = tmp
+            api_widget.WIDGET_DIR = tmp
             asset = tmp / "app.js"
             asset.write_text("// one", encoding="utf-8")
-            before = token_server.asset_tag("app.js")
+            before = api_widget.asset_tag("app.js")
 
             asset.write_text("// two", encoding="utf-8")
             os.utime(asset, (time.time() + 5, time.time() + 5))
             self.assertNotEqual(
-                token_server.asset_tag("app.js"), before,
+                api_widget.asset_tag("app.js"), before,
                 "editing the file left the cache key unchanged")
 
             # A missing file must not crash the page; it falls back.
             from version import APP_VERSION
 
-            self.assertEqual(token_server.asset_tag("nope.js"), APP_VERSION)
+            self.assertEqual(api_widget.asset_tag("nope.js"), APP_VERSION)
         finally:
-            token_server.WIDGET_DIR = original
+            api_widget.WIDGET_DIR = original
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_it_is_the_real_widget_html(self):
         # Guards against the rewrite silently operating on an empty string.
-        import token_server
+        from api import widget as api_widget
 
-        html = token_server._versioned_index()
+        html = api_widget._versioned_index()
         self.assertIn("<html", html.lower())
         self.assertGreater(len(html), 2000)
 
@@ -1762,54 +1766,54 @@ class TestAdminAuth(unittest.TestCase):
         self.assertFalse(self.auth.verify_guest("guestcode"))
 
     def test_guest_gate_is_open_until_a_code_exists(self):
-        import token_server as ts
+        from api import auth as api_auth
 
-        self.assertIsNone(ts._guest_check("", "ip-a"))
+        self.assertIsNone(api_auth._guest_check("", "ip-a"))
         self.auth.set_guest_password("guestcode")
-        self.assertIsNotNone(ts._guest_check("", "ip-a"))
-        self.assertIsNotNone(ts._guest_check("wrong", "ip-a"))
-        self.assertIsNone(ts._guest_check("guestcode", "ip-a"))
-        ts._auth_state.pop("guest:ip-a", None)
+        self.assertIsNotNone(api_auth._guest_check("", "ip-a"))
+        self.assertIsNotNone(api_auth._guest_check("wrong", "ip-a"))
+        self.assertIsNone(api_auth._guest_check("guestcode", "ip-a"))
+        api_auth._auth_state.pop("guest:ip-a", None)
 
     def test_guest_failures_do_not_lock_the_operator_out(self):
         # A caller fumbling the door code must not ban the address from the
         # settings panel — the two live in separate buckets.
-        import token_server as ts
+        from api import auth as api_auth
 
         self.auth.set_guest_password("guestcode")
-        ts._auth_state.pop("ip-b", None)
-        ts._auth_state.pop("guest:ip-b", None)
+        api_auth._auth_state.pop("ip-b", None)
+        api_auth._auth_state.pop("guest:ip-b", None)
         for _ in range(10):
-            ts._guest_check("nope", "ip-b")
-        self.assertIsNotNone(ts._auth_gate("guest:ip-b"))
-        self.assertIsNone(ts._auth_gate("ip-b"))
-        ts._auth_state.pop("guest:ip-b", None)
+            api_auth._guest_check("nope", "ip-b")
+        self.assertIsNotNone(api_auth._auth_gate("guest:ip-b"))
+        self.assertIsNone(api_auth._auth_gate("ip-b"))
+        api_auth._auth_state.pop("guest:ip-b", None)
 
     def test_lockout_cooldown_then_ban(self):
         # 5 wrong tries -> cooldown; a second round of 5 -> banned until
         # restart. Uses the token server's pure helpers with a fake IP.
-        import token_server as ts
+        from api import auth as api_auth
 
         ip = "test-ip-1"
-        ts._auth_state.pop(ip, None)
+        api_auth._auth_state.pop(ip, None)
         for _ in range(4):
-            msg = ts._auth_fail(ip)
+            msg = api_auth._auth_fail(ip)
             self.assertIn("tr", msg)          # "N tries left"
-        msg = ts._auth_fail(ip)               # 5th -> cooldown starts
+        msg = api_auth._auth_fail(ip)               # 5th -> cooldown starts
         self.assertIn("try again", msg)
-        self.assertIsNotNone(ts._auth_gate(ip))
+        self.assertIsNotNone(api_auth._auth_gate(ip))
 
         # Simulate the cooldown expiring, then a second round of failures.
-        ts._auth_state[ip]["cooldown_until"] = 0
-        self.assertIsNone(ts._auth_gate(ip))
+        api_auth._auth_state[ip]["cooldown_until"] = 0
+        self.assertIsNone(api_auth._auth_gate(ip))
         for _ in range(5):
-            msg = ts._auth_fail(ip)
+            msg = api_auth._auth_fail(ip)
         self.assertIn("blocked until the app restarts", msg)
-        self.assertIn("blocked", ts._auth_gate(ip))
+        self.assertIn("blocked", api_auth._auth_gate(ip))
 
         # Success clears everything (and "restart" == fresh state).
-        ts._auth_clear(ip)
-        self.assertIsNone(ts._auth_gate(ip))
+        api_auth._auth_clear(ip)
+        self.assertIsNone(api_auth._auth_gate(ip))
 
 
 class _FakeRequest:
@@ -1825,11 +1829,13 @@ class TestUsageControls(unittest.TestCase):
     in-world, and 0 must mean unlimited."""
 
     def setUp(self):
-        import token_server as ts
-        self.ts = ts
-        ts._recent_mints[:] = []
-        ts._caller_last.clear()
-        ts._live_calls.clear()
+        from api import live as api_live
+        from api import tokens as api_tokens
+
+        self.ts, self.live = api_tokens, api_live
+        api_tokens._recent_mints[:] = []
+        api_tokens._caller_last.clear()
+        api_tokens._live_calls.clear()
 
     tearDown = setUp  # leave module state clean either way
 
@@ -1893,14 +1899,14 @@ class TestUsageControls(unittest.TestCase):
             _FakeRequest("5.6.7.8"), {"caller_cooldown_secs": 45}))
 
     def test_secure_origin_derivation(self):
-        old = self.ts.LIVEKIT_PUBLIC_URL
+        old = self.live.LIVEKIT_PUBLIC_URL
         try:
-            self.ts.LIVEKIT_PUBLIC_URL = "wss://192.168.1.245:8443"
-            self.assertEqual(self.ts._secure_origin(), "https://192.168.1.245:8443")
-            self.ts.LIVEKIT_PUBLIC_URL = "ws://localhost:7880"
-            self.assertEqual(self.ts._secure_origin(), "")
+            self.live.LIVEKIT_PUBLIC_URL = "wss://192.168.1.245:8443"
+            self.assertEqual(self.live._secure_origin(), "https://192.168.1.245:8443")
+            self.live.LIVEKIT_PUBLIC_URL = "ws://localhost:7880"
+            self.assertEqual(self.live._secure_origin(), "")
         finally:
-            self.ts.LIVEKIT_PUBLIC_URL = old
+            self.live.LIVEKIT_PUBLIC_URL = old
 
 
 class TestCallStructure(unittest.TestCase):
@@ -2785,17 +2791,17 @@ class TestCallerIdentityCannotBeChosen(unittest.TestCase):
     """
 
     def _key(self, peer, xff=None, trusted=""):
-        import token_server
+        from api import wire as api_wire
 
-        old = token_server._TRUSTED_PROXIES_RAW
-        token_server._TRUSTED_PROXIES_RAW = trusted
+        old = api_wire._TRUSTED_PROXIES_RAW
+        api_wire._TRUSTED_PROXIES_RAW = trusted
         try:
             headers = {"X-Forwarded-For": xff} if xff else {}
-            return token_server._caller_key(
+            return api_wire._caller_key(
                 types.SimpleNamespace(headers=headers, remote=peer)
             )
         finally:
-            token_server._TRUSTED_PROXIES_RAW = old
+            api_wire._TRUSTED_PROXIES_RAW = old
 
     def test_a_direct_caller_cannot_claim_another_address(self):
         # The peer is on the public internet, so nothing it says about who it
@@ -2842,25 +2848,25 @@ class TestStoredKeysStayHome(_TempStores):
     """
 
     def test_the_saved_host_is_credentialed(self):
-        import token_server
+        from api import credentials as api_credentials
 
-        may, note = token_server._credentials_travel_to(
+        may, note = api_credentials._credentials_travel_to(
             "https://api.openai.com/v1", "https://api.openai.com")
         self.assertTrue(may)
         self.assertEqual(note, "")
 
     def test_an_unsaved_host_is_not(self):
-        import token_server
+        from api import credentials as api_credentials
 
-        may, note = token_server._credentials_travel_to(
+        may, note = api_credentials._credentials_travel_to(
             "http://attacker.example/v1", "https://api.openai.com")
         self.assertFalse(may)
         self.assertIn("not the address in your saved settings", note)
 
     def test_supplying_nothing_leaves_the_saved_config_in_charge(self):
-        import token_server
+        from api import credentials as api_credentials
 
-        may, _ = token_server._credentials_travel_to("", "https://api.openai.com")
+        may, _ = api_credentials._credentials_travel_to("", "https://api.openai.com")
         self.assertTrue(may)
 
     # Where each SDK ends up keeping the key, so the assertion is about what
@@ -2957,26 +2963,26 @@ class TestFirstRunIsNotOpenToTheWeb(_TempStores):
             self.remote = "8.8.8.8"
 
     def _allowed(self, origin, host):
-        import token_server
+        from api import auth as api_auth
 
-        return token_server._write_allowed(self._Req(origin, host))
+        return api_auth._write_allowed(self._Req(origin, host))
 
     def setUp(self):
         super().setUp()
         import admin_auth
-        import token_server
+        from api import auth as api_auth
 
         self._old_auth = admin_auth.AUTH_PATH
         admin_auth.AUTH_PATH = Path(self._tmp.name) / "auth.json"
-        self._old_key = token_server.ADMIN_KEY
-        token_server.ADMIN_KEY = ""
+        self._old_key = api_auth.ADMIN_KEY
+        api_auth.ADMIN_KEY = ""
 
     def tearDown(self):
         import admin_auth
-        import token_server
+        from api import auth as api_auth
 
         admin_auth.AUTH_PATH = self._old_auth
-        token_server.ADMIN_KEY = self._old_key
+        api_auth.ADMIN_KEY = self._old_key
         super().tearDown()
 
     def test_a_rebound_name_is_refused(self):
@@ -2989,14 +2995,14 @@ class TestFirstRunIsNotOpenToTheWeb(_TempStores):
         self.assertTrue(self._allowed("http://localhost:8100", "localhost:8100"))
 
     def test_a_named_origin_can_be_opted_into(self):
-        import token_server
+        from api import wire as api_wire
 
-        old = token_server.PANEL_ORIGINS
-        token_server.PANEL_ORIGINS = ["https://radio.example"]
+        old = api_wire.PANEL_ORIGINS
+        api_wire.PANEL_ORIGINS = ["https://radio.example"]
         try:
             self.assertTrue(self._allowed("https://radio.example", "radio.example"))
         finally:
-            token_server.PANEL_ORIGINS = old
+            api_wire.PANEL_ORIGINS = old
 
     def test_permission_to_embed_is_not_permission_to_configure(self):
         """CALLIN_ALLOWED_ORIGINS means 'this page may embed the widget and
@@ -3004,19 +3010,19 @@ class TestFirstRunIsNotOpenToTheWeb(_TempStores):
         settings and set the admin password' — the blast radius is API budget
         in one case and the controls in the other, and a permission that moves
         as a side effect of another one is the exact shape 0.9.61 removed."""
-        import token_server
+        from api import wire as api_wire
 
-        old_embed = token_server.ALLOWED_ORIGINS
-        old_panel = token_server.PANEL_ORIGINS
-        token_server.ALLOWED_ORIGINS = ["https://someone-elses-blog.example"]
-        token_server.PANEL_ORIGINS = []
+        old_embed = api_wire.ALLOWED_ORIGINS
+        old_panel = api_wire.PANEL_ORIGINS
+        api_wire.ALLOWED_ORIGINS = ["https://someone-elses-blog.example"]
+        api_wire.PANEL_ORIGINS = []
         try:
             self.assertFalse(
                 self._allowed("https://someone-elses-blog.example",
                               "someone-elses-blog.example"))
         finally:
-            token_server.ALLOWED_ORIGINS = old_embed
-            token_server.PANEL_ORIGINS = old_panel
+            api_wire.ALLOWED_ORIGINS = old_embed
+            api_wire.PANEL_ORIGINS = old_panel
 
 
 class TestAnUnreadablePasswordStoreFailsClosed(_TempStores):
@@ -3090,12 +3096,12 @@ class TestAnUnreadablePasswordStoreFailsClosed(_TempStores):
     def test_the_gate_refuses_on_auto_when_the_store_is_unreadable(self):
         # End to end through the real gate, not just the store: `auto` is the
         # shipped default, so this is the path an ordinary deployment takes.
-        import token_server
+        from api import auth as api_auth
 
         settings_store.save({"front_access": "auto"})
         self.admin_auth.AUTH_PATH.write_text("{not json", encoding="utf-8")
-        self.assertIsNotNone(token_server._guest_check("", "1.2.3.4"))
-        self.assertIsNotNone(token_server._guest_check("any-code", "1.2.3.4"))
+        self.assertIsNotNone(api_auth._guest_check("", "1.2.3.4"))
+        self.assertIsNotNone(api_auth._guest_check("any-code", "1.2.3.4"))
 
 
 @unittest.skipUnless(hasattr(os, "getuid"), "POSIX modes only")
@@ -3385,15 +3391,15 @@ class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
     def _key(self, peer, xff, trusted=""):
         import types
 
-        import token_server
+        from api import wire as api_wire
 
-        old = token_server._TRUSTED_PROXIES_RAW
-        token_server._TRUSTED_PROXIES_RAW = trusted
+        old = api_wire._TRUSTED_PROXIES_RAW
+        api_wire._TRUSTED_PROXIES_RAW = trusted
         try:
-            return token_server._caller_key(types.SimpleNamespace(
+            return api_wire._caller_key(types.SimpleNamespace(
                 headers={"X-Forwarded-For": xff}, remote=peer))
         finally:
-            token_server._TRUSTED_PROXIES_RAW = old
+            api_wire._TRUSTED_PROXIES_RAW = old
 
     def test_two_trusted_hops_still_find_the_caller(self):
         # client -> CDN(10.0.0.9) -> proxy(10.0.0.8) -> here.
@@ -3420,13 +3426,13 @@ class TestUploadedSoundsCannotFillTheVolume(unittest.TestCase):
     the keys and the call records live on."""
 
     def test_the_caps_are_sane_for_five_sounds(self):
-        import token_server
+        from api import sounds as api_sounds
 
-        self.assertGreaterEqual(token_server.MAX_SOUND_FILES, 5)
-        self.assertLessEqual(token_server.MAX_SOUND_FILES, 100)
+        self.assertGreaterEqual(api_sounds.MAX_SOUND_FILES, 5)
+        self.assertLessEqual(api_sounds.MAX_SOUND_FILES, 100)
         self.assertLessEqual(
-            token_server.MAX_SOUND_TOTAL_BYTES,
-            token_server.MAX_SOUND_FILES * token_server.MAX_SOUND_BYTES,
+            api_sounds.MAX_SOUND_TOTAL_BYTES,
+            api_sounds.MAX_SOUND_FILES * api_sounds.MAX_SOUND_BYTES,
             "the total cap is higher than the per-file cap allows, so it can "
             "never be the thing that stops an upload")
 
@@ -3588,8 +3594,12 @@ class TestNoSettingIsSmuggledThroughTheEnvironment(unittest.TestCase):
 
         root = Path(__file__).parent
         offenders = []
-        for path in list(root.glob("*.py")) + list(root.glob("call/*.py")):
-            if path.name == "test_sidecar.py":
+        # The whole tree, not a list of directories: the /test/tts endpoint
+        # this was written about has since moved into api/, and a guard that
+        # has to be extended by hand every time a package appears is a guard
+        # that eventually stops looking where the code is.
+        for path in root.rglob("*.py"):
+            if path.name == "test_sidecar.py" or "__pycache__" in path.parts:
                 continue
             for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 # Comments describing the old pattern are the point of the
@@ -3615,18 +3625,18 @@ class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
     endpoint is a diagnostic list, and a trimmed rendering is all it was for."""
 
     def test_a_huge_body_is_not_retained_whole(self):
-        import token_server
+        from api import hooks as api_hooks
 
-        before = len(token_server._hook_events)
-        token_server._hook_events.append({
+        before = len(api_hooks._hook_events)
+        api_hooks._hook_events.append({
             "at": 0.0, "event": "track.changed",
             "data": {str(k)[:40]: str(v)[:120]
                      for k, v in list({"pad": "x" * 500_000}.items())[:12]},
         })
-        stored = token_server._hook_events[-1]
+        stored = api_hooks._hook_events[-1]
         self.assertLessEqual(len(str(stored)), 4000,
                              "the whole body was kept")
-        self.assertEqual(len(token_server._hook_events), before + 1)
+        self.assertEqual(len(api_hooks._hook_events), before + 1)
 
 
 class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
@@ -3642,40 +3652,40 @@ class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
     """
 
     def test_the_help_button_follows_its_setting(self):
-        import token_server
+        from api import live as api_live
 
-        self.assertTrue(token_server.corner_controls(
+        self.assertTrue(api_live.corner_controls(
             {"show_caller_help": True})["help"])
-        self.assertFalse(token_server.corner_controls(
+        self.assertFalse(api_live.corner_controls(
             {"show_caller_help": False})["help"])
 
     def test_pinning_a_theme_takes_the_toggle_away(self):
-        import token_server
+        from api import live as api_live
 
         for pinned in ("light", "dark"):
             with self.subTest(theme=pinned):
-                self.assertFalse(token_server.corner_controls(
+                self.assertFalse(api_live.corner_controls(
                     {"widget_theme": pinned})["theme"],
                     "a pinned theme leaves nothing to toggle")
 
     def test_auto_and_inherit_keep_the_toggle(self):
-        import token_server
+        from api import live as api_live
 
         # "inherit" is not a pinned theme: on the standalone page, where
         # there is no host to inherit from, it behaves as auto.
         for choice in ("auto", "inherit", "", None):
             with self.subTest(theme=choice):
-                self.assertTrue(token_server.corner_controls(
+                self.assertTrue(api_live.corner_controls(
                     {"widget_theme": choice})["theme"])
 
     def test_the_widget_reads_the_keys_the_server_writes(self):
         # The widget subtracts from these by name. A rename on one side only
         # would silently hide a control rather than raising anything.
-        import token_server
+        from api import live as api_live
 
         app_js = (Path(__file__).parent.parent / "web-widget" / "app.js"
                   ).read_text(encoding="utf-8")
-        for key in token_server.corner_controls({}):
+        for key in api_live.corner_controls({}):
             with self.subTest(key=key):
                 self.assertIn(f"c.{key} !== false", app_js,
                               f"app.js never reads controls.{key}")
@@ -3821,10 +3831,10 @@ class TestAVoiceTheBackendCannotSpeakIsNotSilence(unittest.TestCase):
     def test_the_worker_and_the_panel_share_one_voice_lookup(self):
         # A panel showing one set of voices while the worker believes another
         # is how a call asks for a voice that is not there. Same function.
-        import token_server
+        from api import settings as api_settings
         from tts_adapter import available_voices
 
-        self.assertIs(token_server.tts_voice_list, available_voices)
+        self.assertIs(api_settings.tts_voice_list, available_voices)
 
 
 class TestTheCloseReasonIsReadable(unittest.TestCase):
@@ -3877,9 +3887,9 @@ class TestJoinTokensExpire(unittest.TestCase):
         The door code and the usage limits are checked when it is MINTED, so a
         long-lived token is a line that can be reopened without passing either
         again. The SDK default is six hours."""
-        import token_server
+        from api import tokens as api_tokens
 
-        self.assertLessEqual(token_server.TOKEN_TTL.total_seconds(), 300)
+        self.assertLessEqual(api_tokens.TOKEN_TTL.total_seconds(), 300)
 
 
 class TestActionsAllHaveAReceipt(unittest.TestCase):
@@ -4572,6 +4582,135 @@ class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
         # rather than the caller, so they are the ones that must never regress.
         self.assertIn("skip_track", self.muzzled)
         self.assertIn("dj_segment", self.muzzled)
+
+
+class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
+    """`token_server.py` is a map and nothing else: every handler lives in
+    `api/`, and every route is registered in that one block.
+
+    Two things depend on it holding. TestWidgetServerContract reads
+    `token_server.py` alone to check that every path app.js fetches is served —
+    a route registered inside `api/` would be invisible to it, and the widget
+    would 404 with nothing to say so. And a handler nobody routes is the
+    failure mode this codebase keeps producing in other forms: the control
+    exists, the code is right, and there is no way to reach it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+
+        here = Path(__file__).parent
+        cls.server = (here / "token_server.py").read_text(encoding="utf-8")
+        cls.modules = sorted((here / "api").glob("*.py"))
+        cls.handlers = {}
+        for path in cls.modules:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in tree.body:
+                if (isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+                        and node.name.startswith("handle_")):
+                    cls.handlers[node.name] = path.name
+
+    def test_the_scan_found_the_package(self):
+        # A scan that quietly matched nothing would make the rest pass forever.
+        self.assertGreater(len(self.modules), 8)
+        self.assertGreater(len(self.handlers), 20)
+
+    def test_every_handler_in_the_package_is_routed(self):
+        orphans = sorted(f"{mod}:{name}" for name, mod in self.handlers.items()
+                         if name not in self.server)
+        self.assertEqual(
+            orphans, [],
+            "these handlers exist and nothing serves them — either register "
+            f"them in build_app() or delete them: {orphans}")
+
+    def test_no_module_registers_routes_of_its_own(self):
+        stray = sorted(p.name for p in self.modules
+                       if "router.add" in p.read_text(encoding="utf-8"))
+        self.assertEqual(
+            stray, [],
+            "routes registered outside token_server.py are invisible to the "
+            f"widget's contract test: {stray}")
+
+    def test_nothing_in_the_package_imports_the_server(self):
+        # An import back the other way is how a split quietly becomes one
+        # module in twelve files.
+        back = sorted(p.name for p in self.modules
+                      if "import token_server" in p.read_text(encoding="utf-8"))
+        self.assertEqual(back, [], f"api/ must not depend on its caller: {back}")
+
+
+class TestTheCardCacheHasOneHome(unittest.TestCase):
+    """Five modules stale the /live answer and one builds it. They must all be
+    holding the same dict — a second copy would mean a settings save, a new
+    ring tone or a password change clears a cache nobody reads, and the card
+    keeps insisting otherwise for up to half a minute."""
+
+    def test_every_module_that_stales_the_card_shares_the_dict(self):
+        from api import auth as api_auth
+        from api import hooks as api_hooks
+        from api import live as api_live
+        from api import live_cache
+        from api import settings as api_settings
+        from api import sounds as api_sounds
+
+        for mod in (api_auth, api_hooks, api_live, api_settings, api_sounds):
+            self.assertIs(
+                mod._live_cache, live_cache._live_cache,
+                f"{mod.__name__} busts a cache of its own")
+
+    def test_a_webhook_cannot_force_more_work_than_the_ttl_would(self):
+        from api import live_cache
+
+        self.assertLess(live_cache._LIVE_BUST_FLOOR, live_cache._LIVE_TTL)
+
+
+class TestTheCallRecordSaysWhoRang(_TempStores):
+    """The worker writes the transcript and never sees the browser that rang,
+    so what we knew at mint time is merged in when /calls is served.
+
+    It is the first question when a call connects and then hears nothing: an
+    off-LAN caller with no media path looks identical to a silent one from
+    inside the booth. The two halves live in different modules now — the mint
+    records it, diagnostics attaches it — which is exactly the join that a
+    refactor can drop without any route changing shape.
+    """
+
+    def test_what_we_knew_at_mint_time_reaches_the_panel(self):
+        import asyncio
+        import json
+
+        import admin_auth
+        import call.record
+        from api import auth as api_auth
+        from api import diagnostics as api_diagnostics
+        from api import tokens as api_tokens
+
+        api_tokens._mint_info["room-x"] = {
+            "client": "Firefox on Windows",
+            "network": "off-network",
+            "ip": "203.0.113.9",
+        }
+        # No password anywhere, so the panel gate opens for a request with no
+        # Origin — this is testing the merge, not the lock.
+        old_auth, admin_auth.AUTH_PATH = admin_auth.AUTH_PATH, Path(self._tmp.name) / "a.json"
+        old_key, api_auth.ADMIN_KEY = api_auth.ADMIN_KEY, ""
+        real = call.record.recent
+        call.record.recent = lambda n: [{"room": "room-x"}, {"room": "room-y"}]
+        try:
+            resp = asyncio.run(api_diagnostics.handle_calls(_FakeRequest()))
+        finally:
+            call.record.recent = real
+            admin_auth.AUTH_PATH = old_auth
+            api_auth.ADMIN_KEY = old_key
+            api_tokens._mint_info.pop("room-x", None)
+
+        calls = json.loads(resp.body)["calls"]
+        self.assertEqual(calls[0]["caller"]["network"], "off-network")
+        self.assertEqual(calls[0]["caller"]["client"], "Firefox on Windows")
+        # A call we have no mint record for is left alone rather than given an
+        # empty one, so the panel can tell "we don't know" from "same network".
+        self.assertNotIn("caller", calls[1])
 
 
 class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
