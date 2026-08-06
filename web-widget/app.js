@@ -2545,11 +2545,22 @@
     },
     {
       key: 'webhook', name: 'Station webhooks',
-      run: async (env) => env.webhook?.registered
-        ? { status: 'pass', detail: 'push events registered → ' + (env.webhook.url || '') }
-        : { status: 'warn',
-            detail: (env.webhook?.detail || 'not registered')
-              + ' — the card falls back to 20s polling' },
+      // "Registered" only ever meant the station accepted a row. Whether a
+      // push can get back to this box is a separate question, and with a
+      // receiver on a LAN address behind a NAS it is the one that actually
+      // fails — so ask the station to fire one and wait for it to land.
+      run: async (env) => {
+        const polling = ' · the card falls back to 20s polling';
+        if (!env.webhook?.registered) {
+          return { status: 'warn', detail: (env.webhook?.detail || 'not registered') + polling };
+        }
+        const d = await afetch('/hooks/test', { method: 'POST' })
+          .then((r) => r.json()).catch(() => null);
+        if (!d) return { status: 'warn', detail: 'registered, delivery untested' };
+        return d.ok
+          ? { status: 'pass', detail: d.detail }
+          : { status: 'warn', detail: d.detail + polling };
+      },
     },
     {
       key: 'listeners', name: 'Listeners',

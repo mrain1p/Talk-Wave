@@ -84,6 +84,32 @@ OPTIONS = {
     "ttsBaseUrls": settings_store.TTS_BASE_URLS,
 }
 
+# Fixtures for the pipeline check. Everything passes except the legs that
+# genuinely cannot exist here, so a red line is the panel's own doing.
+PIPELINE_ENV = {
+    "ok": True,
+    "livekit": {"ok": True, "url": "ws://stub"},
+    "livekitAuth": {"ok": True},
+    "admin": {"ok": True, "detail": "station admin credentials accepted"},
+    "webhook": {"registered": True, "id": "wave_talk", "received": 4,
+                "url": "http://192.168.1.40:8100/hooks/station",
+                "detail": "registered"},
+    "listeners": {"requestsOpen": True, "detail": "2 listening"},
+    "keys": {"ok": True, "missing": []},
+    "stt": {"ok": True, "detail": "local · base.en"},
+    "llm": {"ok": True, "detail": "google · gemini-3.1-flash-lite"},
+    "tts": {"ok": True, "detail": "local · -Cliff1"},
+}
+
+# Flip `ok` to see the other branch: a station that took the registration but
+# cannot route back to the receiver, which from the panel looks identical to
+# working until something asks.
+HOOK_TEST = {
+    "ok": True, "fired": True,
+    "url": "http://192.168.1.40:8100/hooks/station",
+    "detail": "the station's push reached http://192.168.1.40:8100/hooks/station",
+}
+
 LOG_RECORDS = [
     {"t": "11:20:01", "level": "INFO", "logger": "callin.token",
      "msg": "call-in widget + token server on http://localhost:8100"},
@@ -147,6 +173,17 @@ class Handler(BaseHTTPRequestHandler):
                 "levels": sorted({r["level"] for r in LOG_RECORDS}),
                 "sources": sorted({r["logger"] for r in LOG_RECORDS}),
             })
+        # The pipeline check. Answered from fixtures because it is the panel's
+        # slowest surface by far — a real run is a station read, a LiveKit
+        # round trip, an LLM call and a TTS call, none of which exist here.
+        if path == "/test/env":
+            return self._json(dict(PIPELINE_ENV))
+        if path == "/test/station":
+            return self._json({"ok": True, "liveDj": "Francesca", "toolCount": 9})
+        # Registration only ever proved the station accepted a row; this is the
+        # station pushing back at us, which is the half that fails in the wild.
+        if path == "/hooks/test":
+            return self._json(dict(HOOK_TEST))
         if path == "/health":
             return self._json({"ok": True, "version": "dev", "livekit": "ws://stub"})
         if path == "/live":

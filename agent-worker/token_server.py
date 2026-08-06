@@ -36,6 +36,7 @@ from api.diagnostics import (
 from api.env import LIVEKIT_PUBLIC_URL, PORT
 from api.hooks import (
     handle_hooks_recent,
+    handle_hooks_test,
     handle_station_hook,
     keep_station_warm,
 )
@@ -71,6 +72,11 @@ def build_app() -> web.Application:
     app.router.add_post("/call-ended", handle_call_ended)
     app.router.add_post("/hooks/station", handle_station_hook)
     app.router.add_get("/hooks/recent", handle_hooks_recent)
+    # Asks the station to push at us and waits for it to arrive — the only
+    # thing that can tell "the station accepted our row" from "the station can
+    # actually reach this box".
+    app.router.add_post("/hooks/test", handle_hooks_test)
+    app.router.add_options("/hooks/test", handle_options)
     app.router.add_get("/logs", handle_logs)
     app.router.add_get("/calls", handle_calls)
     # Operator housekeeping: the transcripts are a caller's words, so removing

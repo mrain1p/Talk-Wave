@@ -3,6 +3,10 @@
 The station can push track.play / dj.say / dj.link / request.received to a URL
 instead of us polling for them. Receiving them lets the on-air card refresh the
 moment something changes and gives later features a real event source.
+
+Registration is a reconcile, not an append: read the station's list, find our
+row, write the list back with ours in it. The station replaces the array
+wholesale, so every other row has to be carried through untouched.
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 
 import httpx
 from aiohttp import web
@@ -26,8 +31,52 @@ log = logging.getLogger("callin.token")
 
 from collections import deque
 
+# Our row's identity on the station, and the only thing that makes
+# registration idempotent. Sending no id means the station mints a fresh one
+# every time, so the same Wave Talk moving to a new LAN address left its old
+# row behind and added a second — and the station caps the list (16 in
+# SUB/WAVE 1.6.0), after which registration fails for good with nothing
+# obvious to point at. An env var because one station can serve two of these,
+# and two rows claiming one id is a collision the station resolves by dropping
+# one of them silently.
+HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "wave_talk"
+
+# The pushes the on-air card reacts to. Intersected with the station's own
+# advertised vocabulary before it is sent rather than assumed: the station
+# validates this list against an enum and refuses the WHOLE registration over
+# one name it doesn't know, so a station that renames or retires an event
+# would otherwise take our webhooks down with it.
+WANTED_EVENTS = ("track.play", "dj.say", "dj.link", "request.received")
+
+# Which arriving events are worth a cache bust, derived from what we asked for
+# rather than listed again — the two drifting apart is how you get a
+# subscription whose events change nothing on the card.
+_BUSTING_PREFIXES = frozenset(e.split(".")[0] for e in WANTED_EVENTS)
+
+# How long a transient failure is retried before standing down. Every attempt
+# carries the admin credentials, and unbounded retries have been observed
+# tripping a station's LOGIN rate limiter and locking the operator out of
+# their own admin UI.
+_MAX_ATTEMPTS = 5
+
+# How long a test fire waits for the push to come back. The station awaits its
+# own POST before answering us, so this is slack for the event loop rather
+# than a network budget.
+_DELIVERY_WAIT = 3.0
+
 _hook_events: deque = deque(maxlen=50)
-_hook_state: dict = {"registered": False, "url": "", "detail": "not attempted"}
+_hook_state: dict = {
+    "registered": False,
+    "url": "",
+    "id": HOOK_ID,
+    # Which station the registration is true OF. Empty until one accepts us.
+    "station": "",
+    "events": [],
+    # Pushes actually received. `registered` only ever meant the station
+    # accepted a row; this is the number that says packets are arriving.
+    "received": 0,
+    "detail": "not attempted",
+}
 
 
 def _lan_ip() -> str:
@@ -44,12 +93,56 @@ def _lan_ip() -> str:
         s.close()
 
 
+def _receiver_url() -> str:
+    return os.environ.get("CALLIN_HOOK_URL") or f"http://{_lan_ip()}:{PORT}/hooks/station"
+
+
+def _admin_client(user: str, password: str) -> httpx.AsyncClient:
+    """A client for the station's admin API, pointed at the station we are
+    configured for right now — settings can change while this runs."""
+    return httpx.AsyncClient(
+        base_url=settings_store.station_base_url(),
+        timeout=10.0,
+        auth=httpx.BasicAuth(user, password),
+    )
+
+
+def _station_said(r: httpx.Response) -> str:
+    """The station's own words for a rejection.
+
+    Since SUB/WAVE 1.6.0 the admin API validates at the route boundary and a
+    400 carries `{error, fieldErrors}`: `error` is a sentence written for an
+    operator ("URL must start with http:// or https://"), and fieldErrors maps
+    a dotted path to the same. Older stations send a flat `{error}`, and a
+    proxy in between may send neither, so take the first of those that is
+    actually there.
+
+    This used to be thrown away, and the panel reported "station did not
+    accept either registration shape" for every possible cause — which is
+    exactly the flat, unactionable error the field-level payload exists to
+    replace.
+    """
+    try:
+        body = r.json()
+    except Exception:
+        body = None
+    if isinstance(body, dict):
+        if body.get("error"):
+            return str(body["error"])[:200]
+        fields = body.get("fieldErrors")
+        if isinstance(fields, dict) and fields:
+            path, msg = next(iter(fields.items()))
+            if isinstance(msg, list):
+                msg = msg[0] if msg else ""
+            return f"{path}: {msg}"[:200]
+    text = (r.text or "").strip()
+    return text[:200] if text else f"HTTP {r.status_code}"
+
+
 async def handle_station_hook(request: web.Request) -> web.Response:
     """Receiver for the station's pushes. No auth — the station doesn't sign
     hooks — so treat payloads as untrusted data: store, bust caches, never act
     directly on their contents."""
-    import time as _time
-
     try:
         body = await request.json()
     except Exception:
@@ -62,11 +155,13 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     # read back as a diagnostic list, so a trimmed rendering is all it was
     # worth keeping.
     _hook_events.append({
-        "at": _time.time(),
+        "at": time.time(),
         "event": event,
         "data": {str(k)[:40]: str(v)[:120] for k, v in list(body.items())[:12]}
         if isinstance(body, dict) else {},
     })
+    # Saturates at the deque's length, so it cannot be counted from the list.
+    _hook_state["received"] = _hook_state.get("received", 0) + 1
     log.info("station webhook: %s", event)
 
     # Anything that changes what the card shows invalidates the cache — but not
@@ -77,29 +172,102 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     # reads. Left ungoverned, anyone who can reach this can make every open
     # widget hammer the station on every poll. The floor means a flood of
     # hooks costs the station no more than the normal 30-second refresh.
-    if event.split(".")[0] in ("track", "dj", "request"):
-        if _time.time() - _live_cache["at"] >= _LIVE_BUST_FLOOR:
+    if event.split(".")[0] in _BUSTING_PREFIXES:
+        if time.time() - _live_cache["at"] >= _LIVE_BUST_FLOOR:
             _live_cache["data"] = None
     return web.json_response({"ok": True})
+
+
+def _unauthorised(request: web.Request) -> web.Response:
+    return _cors(request, web.json_response(
+        {"error": request.get("auth_error") or "not allowed",
+         "authRequired": bool(request.get("auth_required"))},
+        status=401,
+    ))
 
 
 async def handle_hooks_recent(request: web.Request) -> web.Response:
     # Operator debugging surface — same gate as the rest of the panel.
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return _unauthorised(request)
     return _cors(request, web.json_response(
         {"registered": _hook_state, "events": list(_hook_events)[-15:]}
     ))
 
 
+async def handle_hooks_test(request: web.Request) -> web.Response:
+    """Prove a push can actually get from the station to us."""
+    if not _write_allowed(request):
+        return _unauthorised(request)
+    return _cors(request, web.json_response(await fire_test_hook()))
+
+
+def _our_row(rows: list[dict], url: str) -> dict | None:
+    """Our row in the station's list, if it holds one.
+
+    By id first, then by URL: a registration made before we started sending an
+    id carries a station-minted one, and matching only on id would leave that
+    row in place and add a second pointing at the same address.
+    """
+    for row in rows:
+        if row.get("id") == HOOK_ID:
+            return row
+    for row in rows:
+        if row.get("url") == url:
+            return row
+    return None
+
+
+def _registration_due() -> bool:
+    """Whether the warm tick should try again.
+
+    Not simply "have we registered": the station we registered AT is part of
+    the answer. Pointing the panel at a different station used to leave
+    `registered` true from the old one, so the new station never got a
+    receiver and the card silently fell back to polling for good.
+    """
+    station = settings_store.station_base_url()
+    if _hook_state.get("registered") and _hook_state.get("station") == station:
+        return False
+    if _hook_state.get("station") not in ("", station):
+        # A different station is a different question, so a previous refusal
+        # does not carry over to it.
+        _hook_state.update(registered=False, station="")
+        _hook_state.pop("gave_up", None)
+        _hook_state.pop("attempts", None)
+    return not _hook_state.get("gave_up")
+
+
+def _stand_down(detail: str, *, permanent: bool) -> None:
+    """Record why registration failed, and whether to stop trying.
+
+    A rejection is permanent for this station and this configuration: retrying
+    it every warm tick only rate-limits us against the station. A network
+    error might be a station that is merely down, so those get a few goes.
+    Either way a settings save re-arms it — see `_registration_due` and
+    api/settings.py.
+    """
+    _hook_state["detail"] = detail
+    if permanent:
+        _hook_state["gave_up"] = True
+        log.warning("webhook registration failed: %s", detail)
+        return
+    _hook_state["attempts"] = _hook_state.get("attempts", 0) + 1
+    log.warning("webhook registration failed: %s", detail)
+    if _hook_state["attempts"] >= _MAX_ATTEMPTS:
+        _hook_state["gave_up"] = True
+        log.warning("webhook registration standing down after %d failed attempts",
+                    _hook_state["attempts"])
+
+
 async def register_station_webhook() -> None:
-    """Register our receiver with the station, once, idempotently. The write
-    schema is undocumented, so try the two plausible shapes and verify by
-    reading the list back."""
+    """Register our receiver with the station, idempotently.
+
+    The write shape is `{"webhooks": [...]}` — the whole list, replaced
+    atomically. It is the only shape there has ever been: the handler reads
+    `req.body.webhooks` and nothing else, so the flat `{"url", "events"}` this
+    used to try first was accepted with a 200 and quietly changed nothing.
+    """
     from station_config import admin_credentials
 
     user, password = admin_credentials()
@@ -107,54 +275,152 @@ async def register_station_webhook() -> None:
         _hook_state["detail"] = "no admin credentials"
         return
 
-    url = os.environ.get("CALLIN_HOOK_URL") or f"http://{_lan_ip()}:{PORT}/hooks/station"
-    _hook_state["url"] = url
-    events = ["track.play", "dj.say", "dj.link", "request.received"]
-    base = settings_store.station_base_url()
-    auth = httpx.BasicAuth(user, password)
+    url = _receiver_url()
+    station = settings_store.station_base_url()
+    _hook_state.update(url=url, id=HOOK_ID)
 
     try:
-        async with httpx.AsyncClient(base_url=base, timeout=10.0, auth=auth) as c:
-            current = (await c.get("/webhooks")).json()
-            hooks = current.get("webhooks") or []
-            if any(h.get("url") == url for h in hooks if isinstance(h, dict)):
-                _hook_state.update(registered=True, detail="already registered")
+        async with _admin_client(user, password) as c:
+            read = await c.get("/webhooks")
+            if read.status_code >= 400:
+                # 401 is a credentials problem, which a settings save fixes;
+                # anything else here is the station being unhappy rather than
+                # us being wrong.
+                _stand_down(f"cannot read the webhook list: {_station_said(read)}",
+                            permanent=read.status_code not in (401, 403))
+                return
+            current = read.json()
+            if not isinstance(current, dict):
+                _stand_down("the station's webhook list came back in an unknown shape",
+                            permanent=True)
                 return
 
-            for shape in (
-                {"url": url, "events": events},
-                {"webhooks": hooks + [{"url": url, "events": events}]},
-            ):
-                r = await c.post("/webhooks", json=shape)
-                if r.status_code >= 400:
-                    continue
-                check = (await c.get("/webhooks")).json()
-                if any(h.get("url") == url
-                       for h in (check.get("webhooks") or []) if isinstance(h, dict)):
-                    _hook_state.update(registered=True, detail="registered")
-                    log.info("station webhook registered -> %s", url)
-                    return
+            rows = [r for r in (current.get("webhooks") or []) if isinstance(r, dict)]
+            # The station advertises its own event vocabulary on the same read.
+            # Trust that over our list where they disagree.
+            known = [e for e in (current.get("events") or []) if isinstance(e, str)]
+            events = [e for e in WANTED_EVENTS if e in known] or list(WANTED_EVENTS)
 
-            # A schema rejection is permanent for this station version —
-            # retrying every warm tick just rate-limits us against the
-            # station. Stand down until a restart or a credentials change.
-            _hook_state["gave_up"] = True
-            _hook_state["detail"] = "station did not accept either registration shape"
-            log.warning("webhook registration failed: %s", _hook_state["detail"])
-    except Exception as e:
-        _hook_state["detail"] = str(e)[:120]
-        log.warning("webhook registration failed: %s", e)
-        # Every attempt carries the admin credentials; unbounded retries have
-        # been observed tripping a station's LOGIN rate limiter and locking
-        # the operator out of their own admin UI. Stand down after a few
-        # failures; a restart or a credentials change re-arms it.
-        _hook_state["attempts"] = _hook_state.get("attempts", 0) + 1
-        if _hook_state["attempts"] >= 5:
-            _hook_state["gave_up"] = True
-            log.warning(
-                "webhook registration standing down after %d failed attempts",
-                _hook_state["attempts"],
+            mine = _our_row(rows, url)
+            # Everything we did not put there stays exactly as it was read,
+            # including the sentinel the station substitutes for a stored auth
+            # header — it resolves that back by row id, so an unchanged row
+            # round-trips without losing anyone's credentials.
+            desired = dict(mine or {})
+            desired["url"] = url
+            # Adopting a row means renaming it, and the station resolves the
+            # redacted auth header BY id — so a row carrying one would lose
+            # its credential in exchange for our tidier name. Not a trade
+            # worth making: it keeps the id it has, and the URL match finds it
+            # again next time.
+            desired["id"] = (mine.get("id") or HOOK_ID) if (
+                mine and mine.get("authHeader")) else HOOK_ID
+            desired.setdefault("enabled", True)
+            # Union rather than replace: an operator who subscribed our row to
+            # something extra in the station's own UI keeps it.
+            desired["events"] = sorted(
+                {e for e in desired.get("events") or [] if not known or e in known}
+                | set(events)
             )
+
+            # Sorted on both sides: the station returns the events in whatever
+            # order they were stored, and a write per boot to reorder a list
+            # is a write for nothing.
+            if mine is not None and desired == {
+                **mine, "events": sorted(mine.get("events") or [])
+            }:
+                _hook_state.update(registered=True, station=station,
+                                   events=desired["events"],
+                                   detail=_settled_detail(desired))
+                return
+
+            others = [r for r in rows if r is not mine]
+            write = await c.post("/webhooks", json={"webhooks": others + [desired]})
+            if write.status_code >= 400:
+                _stand_down(f"the station refused the registration: {_station_said(write)}",
+                            permanent=write.status_code not in (401, 403))
+                return
+
+            _hook_state.update(registered=True, station=station,
+                               events=desired["events"],
+                               detail=_settled_detail(desired))
+            _hook_state.pop("attempts", None)
+            log.info("station webhook registered as %r -> %s", HOOK_ID, url)
+    except Exception as e:
+        _stand_down(str(e)[:120], permanent=False)
+
+
+def _settled_detail(row: dict) -> str:
+    """What to say once the station holds our row.
+
+    A row can be present and switched off — the station keeps `enabled` per
+    hook and the admin UI can toggle it. Reporting that as plain "registered"
+    would have the panel claim push events work while nothing is ever sent.
+    """
+    if not row.get("enabled", True):
+        return "registered, but disabled in the station's admin"
+    return "registered"
+
+
+async def fire_test_hook() -> dict:
+    """Ask the station to push a test payload at our receiver, and watch for it.
+
+    `registered: true` only ever proved the station accepted a row. It could
+    not say whether a packet gets from the station back to us — which, with a
+    receiver on a LAN address behind a NAS, is the failure that actually
+    happens. The station's test endpoint fires at one hook by id and bypasses
+    the event subscription, so this exercises the whole path in both
+    directions.
+    """
+    from station_config import admin_credentials
+
+    user, password = admin_credentials()
+    if not (user and password):
+        return {"ok": False, "fired": False, "detail": "no station admin credentials"}
+    if not _hook_state.get("registered"):
+        return {"ok": False, "fired": False,
+                "detail": _hook_state.get("detail") or "not registered"}
+
+    hook_id = _hook_state.get("id") or HOOK_ID
+    url = _hook_state.get("url") or _receiver_url()
+    before = _hook_state.get("received", 0)
+
+    try:
+        async with _admin_client(user, password) as c:
+            r = await c.post(f"/webhooks/{hook_id}/test")
+    except Exception as e:
+        return {"ok": False, "fired": False,
+                "detail": f"could not reach the station: {str(e)[:120]}"}
+
+    if r.status_code == 404:
+        said = _station_said(r)
+        # The station 404s with "webhook not found" when the id is unknown;
+        # a station too old to have the endpoint 404s the path itself. Telling
+        # those apart is the difference between "re-register" and "upgrade".
+        if "not found" in said.lower():
+            _hook_state.update(registered=False,
+                               detail=f"the station no longer holds a webhook {hook_id!r}")
+            return {"ok": False, "fired": False,
+                    "detail": f"the station no longer holds a webhook {hook_id!r} — "
+                              "it will re-register on the next warm tick"}
+        return {"ok": False, "fired": False,
+                "detail": "this station has no webhook test endpoint"}
+    if r.status_code >= 400:
+        return {"ok": False, "fired": False, "detail": _station_said(r)}
+
+    # The station awaits its own POST before answering us, so the push has
+    # usually landed already — but it arrives on a separate connection handled
+    # by a separate task, so give the loop room to run it.
+    deadline = time.monotonic() + _DELIVERY_WAIT
+    while time.monotonic() < deadline:
+        if _hook_state.get("received", 0) > before:
+            return {"ok": True, "fired": True, "url": url,
+                    "detail": f"the station's push reached {url}"}
+        await asyncio.sleep(0.05)
+
+    return {"ok": False, "fired": True, "url": url,
+            "detail": f"the station accepted the test but nothing arrived at {url} — "
+                      "it cannot reach this address"}
 
 
 async def keep_station_warm(app: web.Application) -> None:
@@ -187,7 +453,7 @@ async def keep_station_warm(app: web.Application) -> None:
                 # startup — a station that was down at that moment, or admin
                 # credentials added later, left it unregistered until a
                 # restart. Piggyback on the warm tick until it sticks.
-                if not _hook_state.get("registered") and not _hook_state.get("gave_up"):
+                if _registration_due():
                     await register_station_webhook()
             except Exception as e:
                 log.debug("warm ping failed: %s", e)
