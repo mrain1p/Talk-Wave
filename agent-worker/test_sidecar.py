@@ -6020,22 +6020,49 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     must be a decision somebody wrote down". Everything below the ceiling is
     unaffected and always will be.
 
-    The waiver list is a ratchet, not an amnesty. Each entry records the size
-    when it was granted; the file may shrink freely, but growing past its own
-    recorded number fails. A waiver whose file has since come back under the
-    ceiling must be deleted, so the list can never drift into describing a
-    problem that no longer exists.
+    Two kinds of decision, deliberately kept apart, because treating them the
+    same produced friction with nothing on the other end of it:
+
+    EXEMPT is "this file is meant to be long, and that is the right answer".
+    A declaration table is the clear case: settings.py grows by a few lines
+    every time the station gains a setting, and making that ordinary act come
+    and edit a number in this file would be ceremony no reader ever benefits
+    from. Exempt files are not measured, only justified.
+
+    SPLITTING is debt: too long, known, and going to be dealt with. Those are
+    ratcheted — the recorded number is the size when the entry was written, and
+    the file may shrink freely but never grow past it. An entry whose file has
+    come back under the ceiling must be deleted, so the list cannot drift into
+    describing a problem that no longer exists.
+
+    The distinction matters in the other direction too. A ceiling that only
+    ever means "apologise" pushes toward splitting files to satisfy the number
+    rather than to help a reader, which is how you end up with a file per
+    function. Being long has to stay a legitimate permanent answer.
     """
 
     CEILING = 600
 
-    # path -> (lines when the waiver was granted, why it is allowed to be big).
+    # Long on purpose. Not measured — only required to still exist and still
+    # say why.
+    EXEMPT = {
+        "agent-worker/settings.py":
+            "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
+            "because the station has a lot of settings, and reading it top to "
+            "bottom is how you find one. It is supposed to grow.",
+        "agent-worker/api/diagnostics.py":
+            "one module per job, and /test/* is genuinely one job: eight probes "
+            "that all answer 'can this box reach that thing'. Splitting them "
+            "would scatter one answer across eight files.",
+    }
+
+    # path -> (lines when the entry was written, what it is waiting to become).
     # Shrinking is always fine and the number should be lowered when it happens.
     # Growing past the recorded size means: split it, or raise the number in the
     # same commit and say in the message what made that the right call.
-    WAIVED = {
+    SPLITTING = {
         "agent-worker/test_sidecar.py": (
-            6137, "the whole suite in one file, appended to chronologically "
+            6169, "the whole suite in one file, appended to chronologically "
                   "since the first commit. Being split by subject into tests/."),
         "web-widget/call.js": (
             1107, "the call surface, out of the old app.js. Still above the "
@@ -6051,13 +6078,6 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "web-widget/index.html": (
             755, "the call page and the panel in one document. The panel moves "
                  "to its own page next."),
-        "agent-worker/settings.py": (
-            1048, "mostly DEFAULTS and GROUPS — a declaration table, not logic. "
-                  "Long because the station has a lot of settings, and reading "
-                  "it top to bottom is how you find one."),
-        "agent-worker/api/diagnostics.py": (
-            977, "one module per job, and /test/* is genuinely one job: eight "
-                 "probes that all answer 'can this box reach that thing'."),
     }
 
     # Where shipped code lives. tools/ is developer scaffolding and docs are
@@ -6086,51 +6106,63 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         self.assertGreater(len(self.sizes), 40,
                            "the file scan has stopped finding the source tree")
 
-    def test_nothing_is_over_the_ceiling_without_a_waiver(self):
+    def test_nothing_is_over_the_ceiling_without_a_decision(self):
+        decided = set(self.EXEMPT) | set(self.SPLITTING)
         over = sorted(
             f"{path} ({n} lines)"
             for path, n in self.sizes.items()
-            if n > self.CEILING and path not in self.WAIVED
+            if n > self.CEILING and path not in decided
         )
         self.assertEqual(
             over, [],
             f"these are over the {self.CEILING}-line ceiling and nobody decided "
-            "that was right. Split them, or add a WAIVED entry saying why the "
-            f"size is the correct answer: {over}")
+            "that was right. Split them; or add them to SPLITTING if that is "
+            "coming, or to EXEMPT if being this long is the correct answer: "
+            f"{over}")
 
-    def test_no_waived_file_has_grown_since_its_waiver(self):
+    def test_nothing_is_being_split_and_exempt_at_once(self):
+        # The two lists mean opposite things — "this is debt" and "this is
+        # right". A file in both says nobody decided which.
+        both = sorted(set(self.EXEMPT) & set(self.SPLITTING))
+        self.assertEqual(both, [], f"listed as both debt and deliberate: {both}")
+
+    def test_no_file_being_split_has_grown(self):
         grown = sorted(
             f"{path} was {was}, is now {self.sizes[path]}"
-            for path, (was, _) in self.WAIVED.items()
+            for path, (was, _) in self.SPLITTING.items()
             if path in self.sizes and self.sizes[path] > was
         )
         self.assertEqual(
             grown, [],
-            "a waiver records a size, not a licence to keep growing. Shrink "
-            "these, or raise the recorded number in the same commit and say "
-            f"why that was the right call: {grown}")
+            "these are on the list because they are too long and being dealt "
+            "with, so the recorded size is a ceiling of its own. Shrink them, "
+            "or raise the number in the same commit and say why that was the "
+            f"right call: {grown}")
 
-    def test_no_waiver_outlives_the_problem_it_describes(self):
-        # Both halves of stale: a waiver for a file that has come back under the
-        # ceiling, and one for a file that no longer exists at all. Either way
-        # the list has started describing a repo that isn't this one.
+    def test_no_entry_outlives_the_thing_it_describes(self):
+        # Three ways an entry goes stale: the file is gone, or it has come back
+        # under the ceiling, or (for EXEMPT) it was never over it. Any of them
+        # and the list has started describing a repo that isn't this one.
         stale = sorted(
-            path for path, _ in self.WAIVED.items()
+            path for path in (set(self.EXEMPT) | set(self.SPLITTING))
             if path not in self.sizes or self.sizes[path] <= self.CEILING
         )
         self.assertEqual(
             stale, [],
-            "these waivers no longer describe anything — the file is gone or is "
+            "these entries no longer describe anything — the file is gone or is "
             f"back under the ceiling. Delete them: {stale}")
 
-    def test_every_waiver_says_why(self):
+    def test_every_entry_says_why(self):
         # An entry with no reason is indistinguishable from one added to make
         # the suite go green, which is precisely what this must not become.
-        thin = sorted(path for path, (_, why) in self.WAIVED.items()
+        reasons = dict(self.EXEMPT)
+        reasons.update({p: why for p, (_, why) in self.SPLITTING.items()})
+        thin = sorted(path for path, why in reasons.items()
                       if len(why.strip()) < 40)
         self.assertEqual(
             thin, [],
-            f"waivers must say why the size is right, not merely that it is: {thin}")
+            f"entries must say why the size is what it is, not merely that it "
+            f"is: {thin}")
 
 
 if __name__ == "__main__":

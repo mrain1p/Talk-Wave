@@ -130,12 +130,21 @@ are virtuous — because nothing here ever objected to a file getting longer, an
 old single app file reached 3,354 lines and `test_sidecar.py` 5,791 one entirely reasonable
 commit at a time.
 
-Above the ceiling is allowed, but it has to be a decision somebody wrote down: add an entry to
-`WAIVED` in `TestNoFileGrowsWithoutSomebodyDeciding` saying why that size is the right answer.
-The waiver records the file's size when granted, so it works as a ratchet — shrink freely,
-but growing past the recorded number fails until you either split the file or raise the number
-and justify it. A waiver whose file drops back under the ceiling must be deleted; the list is
-not allowed to describe a repo that no longer exists.
+Above the ceiling is allowed, but it has to be a decision somebody wrote down, in one of two
+lists in `TestNoFileGrowsWithoutSomebodyDeciding`:
+
+- **`EXEMPT`** — this file is *meant* to be long, and that is the right answer. Declaration
+  tables are the clear case: `settings.py` gains a few lines every time the station gains a
+  setting, and that ordinary act should not have to come and edit a test. Exempt files are not
+  measured, only justified.
+- **`SPLITTING`** — debt: too long, known, being dealt with. These are ratcheted. The recorded
+  number is the size when the entry was written; shrink freely, but growing past it fails until
+  you either split the file or raise the number and say why in the commit.
+
+Either way, an entry whose file drops back under the ceiling must be deleted — the lists are not
+allowed to describe a repo that no longer exists. And being long has to stay a legitimate
+permanent answer, or the ceiling starts pushing toward a file per function, which is worse than
+the problem it solves.
 
 ## How this is enforced
 
