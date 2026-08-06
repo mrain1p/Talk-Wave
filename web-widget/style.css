@@ -15,7 +15,28 @@
    The token names stay the host's (--pine, --coral…) because that is the map
    a station sends. The older names (--bg, --panel, --line…) are kept as
    ALIASES: the settings panel is ~450 lines written against them and is
-   full-page only, so it is not worth the churn of a rename. */
+   full-page only, so it is not worth the churn of a rename.
+
+   WHAT IS WHERE. Both pages load this file: only 193 of its lines are
+   panel-only, and 308 are used by both, so splitting it would leave two files
+   that still need each other. The sections below are the map instead.
+
+     tokens and theme          the colour contract above, as custom properties
+     base and typography       body, .micro
+     the call card             identity, on-air state, the track
+     buttons                   including every #callBtn state
+     on-call chrome            the rig, pills, timer, agent-state chip
+     level meters              the two bar meters
+     the call row              volume, mute, hang up, status
+     mic help and guest door   the two things that block a call before it starts
+     the connection dot
+     the ended bar             the collapsed transcript
+     captions                  what was said, and what the DJ did
+     corner controls           the three gear buttons and the ask popup
+     settings                  the panel page (panel.html) only
+*/
+  /* --- tokens and theme -------------------------------------------------- */
+  /* Named once. Nothing below may hardcode a colour — derive with color-mix(). */
   :root {
     color-scheme: light dark;
     /* Dark is the default look — it's a late-night radio booth. Light mode
@@ -76,6 +97,7 @@
 
   /* Micro-type: every label, button, chip and timer in the card. One spec,
      used by name, so they cannot drift apart again. */
+  /* --- base and typography ----------------------------------------------- */
   .micro {
     font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
     letter-spacing: .16em; text-transform: uppercase;
@@ -98,6 +120,7 @@
      The bottom inset is on the card: the bands inside it are separated by
      rules, and a rule sitting one pixel above a rounded corner reads as a
      rendering fault. */
+  /* --- the call card: identity, and what is on air ----------------------- */
   .card {
     width: min(620px, 100%); padding: 0 16px 16px; position: relative;
     border: 1px solid var(--edge); border-radius: 16px;
@@ -176,6 +199,7 @@
   /* The settings panel keeps the old button shape — it is full-page only and
      ~450 lines are written against it. Inside the card there are exactly TWO
      treatments (§4.7), and they differ only in fill. */
+  /* --- buttons, and what the Call button looks like in each state -------- */
   button {
     font: inherit; font-weight: 600; font-size: 11.5px;
     padding: 6px 13px; border-radius: 9px; border: none; cursor: pointer;
@@ -243,6 +267,7 @@
   }
 
   /* --- in-call rig --- */
+  /* --- on-call chrome: the rig, pills, the timer, the agent state chip --- */
   .rig { display: none; }
   .rig.on { display: block; }
 
@@ -307,6 +332,7 @@
      ten-bar spectrum was ten style writes per animation frame per meter and
      read as a dashed placeholder when idle, which is what it looked like in
      the screenshots. */
+  /* --- level meters ------------------------------------------------------ */
   .meters { display: flex; gap: var(--band-gap); padding: var(--band-gap) 0 0; }
   .meter { flex: 1; text-align: left; min-width: 0; }
   .meter .mlabel {
@@ -332,6 +358,7 @@
 
   /* Volume and the call buttons share a row — at full card width they fit
      side by side, which keeps the captions higher up the page. */
+  /* --- the call row: volume, mute and hang up, connection status --------- */
   .callrow {
     display: flex; align-items: center; gap: var(--band-gap);
     padding: var(--band-gap) 0; flex-wrap: wrap;
@@ -368,6 +395,7 @@
   /* In-place guidance when the page can't capture the mic (plain http on a
      LAN address). The whole point is a clickable way out, so it is a bordered
      block rather than a band — it has to read as an interruption. */
+  /* --- microphone help, and the guest code door -------------------------- */
   .michelp { margin: var(--band-gap) 0 0; font-size: 13.5px; line-height: 1.5;
              color: var(--amber); border: 1px solid var(--amber);
              border-radius: 0; padding: 10px 12px; }
@@ -408,6 +436,7 @@
   #loginGate input { width: 180px; }
   #loginMsg { font-size: 11.5px; color: var(--accent); }
 
+  /* --- the connection dot ------------------------------------------------ */
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 0; background: var(--sage-dim); vertical-align: middle; }
   .dot.connecting { background: var(--amber); animation: pulse 1s infinite; }
   .dot.connected { background: var(--ok); }
@@ -416,6 +445,7 @@
 
   /* Once a call ends the transcript collapses to a single row — still there
      if you want it, not taking up the card if you don't. */
+  /* --- the collapsed transcript bar, after a call ends ------------------- */
   .callended {
     width: 100%; margin: var(--band-gap) 0 0; padding: 0 12px;
     background: var(--pine); border: 1px solid var(--hairline);
@@ -441,6 +471,7 @@
      was reading it. A fixed height means the reported height stops changing
      during a call. States that genuinely need more room (the door code, a mic
      warning) still grow the frame; speech no longer does. */
+  /* --- captions: what was said, and what the DJ did while saying it ------ */
   .captions {
     display: none; margin: var(--band-gap) 0 0; padding: 11px 13px;
     text-align: left;
@@ -519,6 +550,7 @@
   /* Chrome, not actions — no border, no fill, never competing with the
      primary button. Which of these exist at all is the backend's call; see
      applyControls() in app.js. */
+  /* --- the corner controls and the ask popup ----------------------------- */
   .card .gear {
     width: 26px; height: 38px; padding: 0; border-radius: 0; border: 0;
     background: transparent; color: var(--sage-dim);

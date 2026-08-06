@@ -379,23 +379,32 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "check ten, because all three read the same draft, resolved and "
             "secrets state. Threading that many names across a seam is the "
             "same module in more files, not a smaller one.",
+        "web-widget/call.js":
+            "measured, and every candidate region is coupled BOTH ways. The "
+            "corner controls need two names out and owe fifteen back; the call "
+            "itself needs twenty-five. The best candidate, captions, is five "
+            "crossings for 140 lines and would still leave this file over the "
+            "ceiling. Every part of a call touches room, live, callBtn, capBox "
+            "and muted, because that is what a call is.",
+        "web-widget/style.css":
+            "both pages load it and splitting does not help: only 193 lines "
+            "are panel-only while 308 are used by both, so the split leaves "
+            "two files that still need each other and one still over the "
+            "ceiling. The real problem was that 1,103 lines carried one "
+            "comment; it has a table of contents and twelve section markers "
+            "now, which is what made it hard to read.",
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).
     # Shrinking is always fine and the number should be lowered when it happens.
     # Growing past the recorded size means: split it, or raise the number in the
     # same commit and say in the message what made that the right call.
-    SPLITTING = {
-        "web-widget/call.js": (
-            1108, "the call surface, out of the old app.js. Still above the "
-                  "ceiling: the captions, the meters and the LiveKit wiring "
-                  "each want their own file."),
-        "web-widget/style.css": (
-            1103, "themes both pages. Now that they ARE two pages the "
-                  "panel-only rules can move to a panel.css, but which rules "
-                  "those are needs reading per selector rather than guessing, "
-                  "and getting it wrong breaks a layout silently."),
-    }
+    # Empty, and that is a real state rather than a missing feature: every file
+    # over the ceiling has been measured and each one is over it for a reason
+    # that is not going to change. Add an entry here when something is too long
+    # AND has a seam worth cutting — the two splits that came out of 0.9.102
+    # and 0.9.106 both started as one.
+    SPLITTING = {}
 
     # Where shipped code lives. tools/ is developer scaffolding and docs are
     # prose, so neither is held to a source-file ceiling.

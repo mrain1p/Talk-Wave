@@ -24,13 +24,18 @@ could not be told apart by anything in front of the server. On its own URL they 
 box is reachable from outside your network, a rule in front of `/panel` in Caddy (an IP
 allowlist, or basic auth) is worth adding, and is the main reason the page exists separately.
 
-LiveKit's client SDK arrives from a CDN `<script>` tag in `index.html`, not from a package.
+LiveKit's client SDK arrives from a CDN `<script>` tag in both pages, not from a package. The
+panel needs it because the full-pipeline check really does place a call — it mints a token,
+connects, reads the ICE candidates and hangs up, which is the only way to tell "signalling
+works" from "media works".
 
 ## How it is structured
 
-Three script tags, not modules — there is **no build step, no bundler, no npm**, and the split
-was done in a way that keeps it that way. `shared.js` publishes one global, `Callin`, and the
-other two destructure what they need from it at the top of their own IIFE. `$` is
+Script tags, not modules — there is **no build step, no bundler, no npm**, and every split was
+done in a way that keeps it that way. `shared.js` publishes one global, `Callin`, and each page's
+scripts destructure what they need from it at the top of their own IIFE. `panel.js` publishes a
+second, `Panel`, carrying the two names `panel-viewers.js` needs (`afetch`, `showResult`) — which
+is why the script order in `panel.html` is load-bearing rather than cosmetic. `$` is
 `document.getElementById`.
 
 The seam is deliberately narrow. `shared.js` holds only what both surfaces genuinely want: the
@@ -57,12 +62,15 @@ files lives in the Python suite (`test_sidecar.py`):
   other's, and asserts the call page contains no trace of the settings form.
 - `TestPanelMarkup`, `TestPanelLoadsOnOpen`, `TestAssetVersioning` — panel structure and
   cache-busting.
-- `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js` is over the 600-line ceiling and on the
-  `SPLITTING` list, so it may not grow. `panel.js` is over it and `EXEMPT`, which was *measured*
-  rather than assumed: the viewers needed two names from the rest of the panel and left, while
-  the test probes need fifteen and the pipeline check ten, because all three read the same
-  `draft` / `resolved` / `secrets` state. Splitting those would be the same module in more
-  files. If you are tempted to split `panel.js` again, measure the seam first.
+- `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js`, `panel.js`, `panel.html` and
+  `style.css` are all over the 600-line ceiling and all `EXEMPT`, every one of them *measured*
+  rather than assumed. **If you are tempted to split one of these, measure the seam first** —
+  count the names a candidate region needs from the rest of the file and the names the rest
+  needs back. The two splits that did happen scored 6 and 2. What is left scores 5 (captions,
+  for 140 lines), 10 (the pipeline check) and 25 (the call itself), and every region of
+  `call.js` is coupled in both directions because every part of a call touches `room`,
+  `live`, `callBtn`, `capBox` and `muted`. `style.css` has 308 lines used by both pages
+  against 193 panel-only, so splitting leaves two files that still need each other.
 
 So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is what catches it.
 
