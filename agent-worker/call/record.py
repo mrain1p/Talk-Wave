@@ -203,6 +203,27 @@ def _prune(keep: int = KEEP) -> None:
         old.unlink(missing_ok=True)
 
 
+def clear() -> int:
+    """Delete every stored call record; returns how many went.
+
+    Unlike `_prune`, which trims to `record_keep` as each call ends, this is
+    the operator saying "these are stale, get rid of them" — the transcripts
+    are a caller's words, so being able to remove them on demand rather than
+    waiting for enough new calls to age them out is the point.
+    """
+    gone = 0
+    try:
+        for path in CALLS_DIR.glob("*.json"):
+            try:
+                path.unlink()
+                gone += 1
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return gone
+
+
 def recent(limit: int = 20) -> list[dict]:
     """Newest first, for the panel."""
     out = []

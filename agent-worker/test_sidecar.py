@@ -541,6 +541,8 @@ class TestExposedSurface(unittest.TestCase):
         "GET /prompt": "admin",
         "GET /calls": "admin",
         "GET /logs": "admin",
+        "DELETE /calls": "admin",
+        "DELETE /logs": "admin",
         "GET /hooks/recent": "admin",
         # Every test button costs money or reveals config.
         "GET /test/station": "admin",
@@ -3541,24 +3543,100 @@ class TestTurnTakingDelaysAreOptOut(unittest.TestCase):
     sound, which is not patience — it is interrupting."""
 
     def test_unset_passes_nothing_at_all(self):
-        from call.session import _endpointing
+        from call.session import turn_handling
 
-        self.assertEqual(_endpointing({}), {})
-        self.assertEqual(
-            _endpointing({"min_endpointing_delay": 0,
-                          "max_endpointing_delay": 0}), {})
+        self.assertNotIn("endpointing", turn_handling({}))
+        self.assertNotIn("endpointing", turn_handling(
+            {"min_endpointing_delay": 0, "max_endpointing_delay": 0}))
 
     def test_a_real_value_is_passed_through(self):
-        from call.session import _endpointing
+        from call.session import turn_handling
 
         self.assertEqual(
-            _endpointing({"min_endpointing_delay": 0.8}),
-            {"min_endpointing_delay": 0.8})
+            turn_handling({"min_endpointing_delay": 0.8})["endpointing"],
+            {"min_delay": 0.8})
 
     def test_nonsense_is_ignored_rather_than_raised(self):
-        from call.session import _endpointing
+        from call.session import turn_handling
 
-        self.assertEqual(_endpointing({"min_endpointing_delay": "soon"}), {})
+        self.assertNotIn(
+            "endpointing", turn_handling({"min_endpointing_delay": "soon"}))
+
+
+class TestTurnTakingSettingsReachTheCall(unittest.TestCase):
+    """The three turn-taking settings were in the panel, documented, saved —
+    and silently ignored on every call for as long as they have existed.
+
+    `AgentSession` accepts `allow_interruptions`, `min_endpointing_delay` and
+    `max_endpointing_delay` as arguments, but only reads them on the branch
+    where `turn_handling` was NOT passed. We passed both, so the SDK took the
+    dict and dropped the three on the floor: `allow_interruptions=False` still
+    resolved to `enabled: True`, and endpointing stayed at the stock 0.3/2.5.
+
+    That is why the DJ came back chopped mid-sentence on real calls —
+    `min_duration` is half a second of SOUND, not words, and the station stream
+    playing into the caller's room clears that bar. The documented remedy could
+    not be applied because the setting never arrived.
+
+    So this asserts against what the SDK RESOLVED, not against the dict we
+    built. A test that checks our own argument shape is exactly what passed
+    while this was broken.
+    """
+
+    def _resolved(self, cfg: dict):
+        import asyncio
+        import warnings
+
+        from livekit.agents import AgentSession
+
+        from call.session import turn_handling
+
+        # Built inside a loop: AgentSession.__init__ calls get_event_loop(), so
+        # constructing one at import-time depends on whichever test ran last
+        # leaving a loop lying around. It passed alone and errored in the suite.
+        async def build():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return AgentSession(turn_handling=turn_handling(cfg)).options
+
+        return asyncio.run(build())
+
+    def test_turning_interruptions_off_actually_turns_them_off(self):
+        self.assertIs(
+            self._resolved({"allow_interruptions": False}).interruption["enabled"],
+            False,
+            "the caller can still talk over the DJ with the setting off — the "
+            "operator's only remedy for the station bleeding into the mic",
+        )
+        self.assertIs(
+            self._resolved({"allow_interruptions": True}).interruption["enabled"],
+            True)
+
+    def test_the_endpointing_delays_arrive_as_set(self):
+        got = self._resolved(
+            {"min_endpointing_delay": 2.5, "max_endpointing_delay": 9.0}
+        ).endpointing
+        self.assertEqual((got["min_delay"], got["max_delay"]), (2.5, 9.0))
+
+    def test_unset_delays_leave_the_sdk_tuned_defaults_alone(self):
+        stock = self._resolved({}).endpointing
+        self.assertEqual((stock["min_delay"], stock["max_delay"]), (0.3, 2.5))
+
+    def test_the_interruption_floor_is_raisable(self):
+        # The fix for the chopped turns: how much SOUND it takes to stop the DJ.
+        self.assertEqual(
+            self._resolved({"min_interruption_secs": 1.6}).interruption["min_duration"],
+            1.6)
+        self.assertEqual(
+            self._resolved({}).interruption["min_duration"], 0.5,
+            "unset must leave the SDK's own floor alone")
+
+    def test_preemptive_generation_is_still_off(self):
+        # Folding three settings into the same dict must not lose the thing
+        # that dict was originally there for: a speculative turn carrying a
+        # tool call makes Gemini reject the whole conversation with a 400.
+        self.assertIs(
+            self._resolved({}).preemptive_generation["enabled"], False)
 
 
 class TestOneSettingReplacingAnotherSaysSo(unittest.TestCase):
@@ -4711,6 +4789,76 @@ class TestTheCallRecordSaysWhoRang(_TempStores):
         # A call we have no mint record for is left alone rather than given an
         # empty one, so the panel can tell "we don't know" from "same network".
         self.assertNotIn("caller", calls[1])
+
+
+class TestStaleRecordsCanBeThrownAway(unittest.TestCase):
+    """`record_keep` only trims as new calls arrive, so a deployment that has
+    gone quiet keeps whatever it last had forever. After a run of test calls
+    the panel is mostly conversations the operator has already read — and they
+    are a caller's words, so "wait for enough new calls to age them out" is the
+    wrong answer to wanting them gone."""
+
+    def setUp(self):
+        import call.record as record
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name)
+
+    def tearDown(self):
+        import call.record as record
+
+        record.CALLS_DIR = self._old
+        self._tmp.cleanup()
+
+    def test_clearing_removes_every_record_and_says_how_many(self):
+        import call.record as record
+
+        for n in range(3):
+            (record.CALLS_DIR / f"2026080{n}-x.json").write_text("{}", encoding="utf-8")
+        self.assertEqual(record.clear(), 3)
+        self.assertEqual(list(record.CALLS_DIR.glob("*.json")), [])
+        self.assertEqual(record.recent(), [])
+
+    def test_clearing_an_empty_store_is_not_an_error(self):
+        import call.record as record
+
+        self.assertEqual(record.clear(), 0)
+
+    def test_the_caller_context_goes_with_the_transcripts(self):
+        # It lives in memory on the token server rather than in the record, so
+        # clearing the files alone would leave the panel able to say which
+        # browser and which network rang for a call that no longer exists.
+        import asyncio
+        import json
+
+        import admin_auth
+        from api import auth as api_auth
+        from api import diagnostics as api_diagnostics
+        from api import tokens as api_tokens
+
+        api_tokens._mint_info["room-gone"] = {"client": "x", "network": "y", "ip": "z"}
+        old_auth, admin_auth.AUTH_PATH = admin_auth.AUTH_PATH, Path(self._tmp.name) / "a.json"
+        old_key, api_auth.ADMIN_KEY = api_auth.ADMIN_KEY, ""
+        try:
+            resp = asyncio.run(api_diagnostics.handle_clear_calls(_FakeRequest()))
+        finally:
+            admin_auth.AUTH_PATH = old_auth
+            api_auth.ADMIN_KEY = old_key
+            api_tokens._mint_info.pop("room-gone", None)
+
+        self.assertTrue(json.loads(resp.body)["ok"])
+        self.assertEqual(api_tokens._mint_info, {})
+
+    def test_clearing_the_log_buffer_empties_the_viewer(self):
+        import log_setup
+
+        log_setup.RECENT.clear()
+        for n in range(4):
+            log_setup.RECENT.append(
+                {"t": "12:00:00", "level": "INFO", "logger": "callin.test", "msg": str(n)})
+        self.assertEqual(log_setup.clear(), 4)
+        self.assertEqual(log_setup.recent_records(), [])
 
 
 class TestNewCodeDoesNotArriveUntested(unittest.TestCase):

@@ -791,6 +791,48 @@ async def handle_calls(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"calls": calls}))
 
 
+async def handle_clear_calls(request: web.Request) -> web.Response:
+    """Throw away every stored call record.
+
+    `record_keep` only trims as new calls arrive, so a deployment that has gone
+    quiet keeps whatever it last had indefinitely — and after a run of test
+    calls the panel is mostly stale conversations you have already read. This
+    is the operator saying so.
+
+    The mint-time caller context goes with them. It lives in memory here rather
+    than in the record, so clearing the records alone would leave the panel
+    able to say which browser and which network rang for a call whose
+    transcript no longer exists.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    from call.record import clear
+
+    gone = clear()
+    _mint_info.clear()
+    log.info("call records cleared by the operator (%d removed)", gone)
+    return _cors(request, web.json_response({"ok": True, "removed": gone}))
+
+
+async def handle_clear_logs(request: web.Request) -> web.Response:
+    """Empty the log viewer's buffer.
+
+    In memory only — docker still holds its own copy of this process's stdout,
+    so this clears what the panel shows rather than destroying the record.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    import log_setup
+
+    gone = log_setup.clear()
+    log.info("log buffer cleared by the operator (%d lines removed)", gone)
+    return _cors(request, web.json_response({"ok": True, "removed": gone}))
+
+
 async def handle_logs(request: web.Request) -> web.Response:
     """The web service's recent log lines, for the panel's log viewer —
     settings changes, tokens minted, station reads, webhook events. The

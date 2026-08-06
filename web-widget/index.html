@@ -503,6 +503,10 @@
           <input type="checkbox" id="allow_interruptions" />
           <label for="allow_interruptions">Let the caller talk over the DJ</label>
         </div>
+        <div class="row">
+          <label for="min_interruption_secs">Sound needed to interrupt (s)</label>
+          <input type="number" id="min_interruption_secs" min="0" max="5" step="0.1" />
+        </div>
       </div>
     </details>
     <details data-group="context" class="sec">
@@ -709,6 +713,13 @@
           conversations, with the tools the DJ used and anything that went
           wrong — written by the call agent as each call ends. This is the
           thing to read when a call didn't go the way you expected.</p>
+        <div class="diagbar" id="callBar" hidden>
+          <label class="pick"><input type="checkbox" id="callsOnlyBad" />
+            <span id="callsOnlyBadLabel">Only calls with problems</span></label>
+          <span class="grow"></span>
+          <span class="tag" id="callCount"></span>
+          <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>
+        </div>
         <div class="result scrolly" id="callsResult"></div>
       </div>
     </details>
@@ -721,12 +732,14 @@
           service — settings changes, call tokens, station reads, webhooks. The
           call agent's own logs live in its container:
           <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
-        <div class="logfilters" id="logFilters" hidden>
+        <div class="diagbar" id="logFilters" hidden>
           <label for="logLevels">Levels</label>
           <select id="logLevels" multiple size="3"></select>
           <input type="search" id="logSearch" placeholder="filter text…" />
-          <button type="button" class="runbtn" id="logClearFilters">Clear</button>
+          <button type="button" class="runbtn" id="logClearFilters">Reset</button>
+          <span class="grow"></span>
           <span class="tag" id="logCount"></span>
+          <button type="button" class="runbtn danger" id="logsClearBtn">Clear</button>
         </div>
         <div class="result scrolly logs" id="logsResult"></div>
       </div>

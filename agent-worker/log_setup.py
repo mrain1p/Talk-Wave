@@ -69,6 +69,19 @@ def recent_lines(n: int = 300) -> list[str]:
             for r in recent_records(n)]
 
 
+def clear() -> int:
+    """Empty the viewer's buffer; returns how many lines went.
+
+    In-memory only, which is the whole scope of it: this ring is what the
+    panel reads, and docker still holds its own copy of stdout. So this is
+    "clear what I am looking at", not "destroy the record" — worth knowing
+    before reaching for it to hide something.
+    """
+    gone = len(RECENT)
+    RECENT.clear()
+    return gone
+
+
 def setup(process_name: str, console: bool = True) -> None:
     """Call once at process start, before any logging happens.
 

@@ -132,6 +132,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "min_endpointing_delay": (None, 0.0),
     "max_endpointing_delay": (None, 0.0),
     "allow_interruptions":   (None, True),
+    "min_interruption_secs": (None, 0.0),
 
     # Whether both sides of a call are written to disk at all.
     #
@@ -545,6 +546,16 @@ SCHEMA: dict[str, dict] = {
         help="The ceiling on the above when someone is clearly mid-sentence — "
              "trailing off, or ending on a word that expects more. 0 leaves "
              "the default alone. Must not be below the minimum."),
+    "min_interruption_secs": dict(group="turns", kind="number",
+        needs=("allow_interruptions", True),
+        label="Sound needed to interrupt (s)",
+        help="How long a noise has to last before it stops the DJ mid-sentence. "
+             "The SDK's default is half a second of SOUND — not words — so on a "
+             "call where the station is playing into the room, half a second of "
+             "the record the caller is listening to cuts the DJ off. Real calls "
+             "came back with the DJ chopped into fragments because of it. Raise "
+             "this on a speakerphone or with tune-in on; 0 leaves the SDK's "
+             "default alone."),
     "allow_interruptions": dict(group="turns", kind="check",
         label="Let the caller talk over the DJ",
         help="On, a caller who starts talking stops the DJ mid-sentence, which "

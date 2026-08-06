@@ -3146,6 +3146,7 @@
       out.className = 'result on';
       out.innerHTML = '';
       if (!calls.length) {
+        $('callBar').hidden = true;
         out.textContent = 'No calls recorded yet. One file is written as each call ends.';
         return;
       }
@@ -3154,23 +3155,39 @@
       const list = document.createElement('div');
       list.className = 'calllist';
       calls.forEach((c) => list.appendChild(renderCallRow(c)));
+      out.appendChild(list);
 
-      // Filtering, kept small and out of the way: the common case is reading
-      // the last call, not hunting failures, so this is a checkbox rather
-      // than a mode the panel remembers.
+      // The toolbar is markup rather than built here, so it shares one shape
+      // with the log viewer's. The common case is reading the last call, not
+      // hunting failures, so the filter is a checkbox and not a remembered mode.
       const rough = calls.filter((c) => callVerdict(c).cls !== 'pass').length;
-      const bar = document.createElement('label');
-      bar.className = 'callfilter';
-      bar.innerHTML = '<input type="checkbox" /><span></span>';
-      bar.querySelector('span').textContent = rough
+      const box = $('callsOnlyBad');
+      $('callsOnlyBadLabel').textContent = rough
         ? `Only calls with problems (${rough} of ${calls.length})`
         : `Only calls with problems — none of the last ${calls.length}`;
-      const box = bar.querySelector('input');
       box.disabled = !rough;
+      box.checked = false;
       box.onchange = () => list.classList.toggle('onlybad', box.checked);
+      $('callCount').textContent = `${calls.length} call${calls.length === 1 ? '' : 's'}`;
+      $('callBar').hidden = false;
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
 
-      out.appendChild(bar);
-      out.appendChild(list);
+  // Clearing is destructive and the transcripts are a caller's words, so it
+  // asks first and says exactly what it removed rather than just emptying.
+  $('callsClearBtn').onclick = async () => {
+    if (!confirm('Delete every stored call transcript? This cannot be undone.')) return;
+    const btn = $('callsClearBtn'), out = $('callsResult');
+    btn.disabled = true;
+    try {
+      const d = await afetch('/calls', { method: 'DELETE' }).then((r) => r.json());
+      if (d.error) { showResult(out, false, d.error); return; }
+      $('callBar').hidden = true;
+      out.className = 'result on';
+      out.textContent = d.removed
+        ? `Cleared ${d.removed} call record${d.removed === 1 ? '' : 's'}.`
+        : 'There was nothing stored to clear.';
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
@@ -3255,6 +3272,22 @@
     [...$('logLevels').options].forEach((o) => { o.selected = false; });
     $('logSearch').value = '';
     paintLogs();
+  };
+
+  // No confirm here, unlike the call records: this buffer is in memory and
+  // docker still holds its own copy of stdout, so nothing is destroyed.
+  $('logsClearBtn').onclick = async () => {
+    const btn = $('logsClearBtn'), out = $('logsResult');
+    btn.disabled = true;
+    try {
+      const d = await afetch('/logs', { method: 'DELETE' }).then((r) => r.json());
+      if (d.error) { showResult(out, false, d.error); return; }
+      logRecords = [];
+      $('logLevels').innerHTML = '';
+      $('logSearch').value = '';
+      paintLogs();
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
   };
 
   $('copyEmbedBtn').onclick = async () => {

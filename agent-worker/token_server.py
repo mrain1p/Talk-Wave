@@ -22,6 +22,8 @@ import settings as settings_store
 from api import wire
 from api.diagnostics import (
     handle_calls,
+    handle_clear_calls,
+    handle_clear_logs,
     handle_logs,
     handle_prompt_preview,
     handle_speed_test,
@@ -71,6 +73,10 @@ def build_app() -> web.Application:
     app.router.add_get("/hooks/recent", handle_hooks_recent)
     app.router.add_get("/logs", handle_logs)
     app.router.add_get("/calls", handle_calls)
+    # Operator housekeeping: the transcripts are a caller's words, so removing
+    # them must not depend on enough new calls arriving to age them out.
+    app.router.add_delete("/calls", handle_clear_calls)
+    app.router.add_delete("/logs", handle_clear_logs)
     app.router.add_options("/call-ended", handle_options)
     app.router.add_options("/token", handle_options)
     app.router.add_get("/health", handle_health)

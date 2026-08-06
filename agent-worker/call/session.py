@@ -51,22 +51,70 @@ from .tools import (
 log = logging.getLogger("callin.agent")
 
 
-def _endpointing(cfg: dict) -> dict:
-    """The endpointing delays, only when the operator actually set them.
+def _number(cfg: dict, key: str) -> float:
+    """A configured number, or 0 when it is unset or unreadable.
 
     0 means "leave the SDK's own default alone", not "no delay". Passing a
     literal zero would make the DJ answer the instant the caller stops making
     sound, which is not patience, it is interrupting — so an unset value has
     to pass nothing at all rather than pass zero.
     """
-    out: dict = {}
-    for key in ("min_endpointing_delay", "max_endpointing_delay"):
-        try:
-            value = float(cfg.get(key) or 0)
-        except (TypeError, ValueError):
-            continue
+    try:
+        return float(cfg.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def turn_handling(cfg: dict) -> dict:
+    """Everything about who is talking, in ONE dict.
+
+    It has to be one dict. `AgentSession` accepts `allow_interruptions`,
+    `min_endpointing_delay` and `max_endpointing_delay` as separate arguments,
+    but it only reads them on the branch where `turn_handling` was NOT passed:
+
+        turn_handling = (
+            _migrate_turn_handling(..., allow_interruptions=..., ...)
+            if not is_given(turn_handling) else turn_handling
+        )
+
+    We passed both — `turn_handling` for preemptive generation, the three
+    kwargs for turn-taking — so the SDK took the dict and dropped the rest on
+    the floor. Every one of those three settings was in the panel, documented,
+    saved, and doing nothing: `allow_interruptions=False` still resolved to
+    `enabled: True`, and endpointing stayed at the stock 0.3/2.5.
+
+    That is the whole explanation for the DJ being chopped mid-sentence on real
+    calls. `min_duration` defaults to 0.5s of SOUND — not words — and with the
+    station stream playing into the caller's room, half a second of the record
+    they are listening to reads as an interruption. The operator's own remedy,
+    the one `allow_interruptions`' help text names, could not be applied.
+    """
+    interruption: dict = {"enabled": bool(cfg.get("allow_interruptions", True))}
+    hold = _number(cfg, "min_interruption_secs")
+    if hold > 0:
+        interruption["min_duration"] = hold
+
+    endpointing: dict = {}
+    for key, target in (("min_endpointing_delay", "min_delay"),
+                        ("max_endpointing_delay", "max_delay")):
+        value = _number(cfg, key)
         if value > 0:
-            out[key] = value
+            endpointing[target] = value
+
+    out = {
+        # Preemptive generation stays OFF. It starts a reply from a PARTIAL
+        # transcript, and when that speculative turn contains a tool call the
+        # final user turn lands after it — leaving a function call followed by
+        # a user turn, which Gemini rejects outright:
+        #   "Please ensure that function call turn comes immediately after a
+        #    user turn or after a function response turn." (400)
+        # The call then dies mid-conversation. It only surfaced once the
+        # station tools were reachable and the DJ started calling them.
+        "preemptive_generation": {"enabled": False},
+        "interruption": interruption,
+    }
+    if endpointing:
+        out["endpointing"] = endpointing
     return out
 
 
@@ -214,24 +262,9 @@ class CallSession:
             tts=build_tts(self.cfg, self.voice),
             vad=self.ctx.proc.userdata["vad"],
             tools=[*local_tools, toolset],
-            # Preemptive generation stays OFF. It starts a reply from a PARTIAL
-            # transcript, and when that speculative turn contains a tool call
-            # the final user turn lands after it — leaving a function call
-            # followed by a user turn, which Gemini rejects outright:
-            #   "Please ensure that function call turn comes immediately after
-            #    a user turn or after a function response turn." (400)
-            # The call then dies mid-conversation. It only surfaced once the
-            # station tools were reachable and the DJ started calling them.
-            #
-            # Expressed through turn_handling rather than the deprecated
-            # preemptive_generation argument, which warns on every call even
-            # when you pass it False.
-            turn_handling={"preemptive_generation": {"enabled": False}},
-            # Turn-taking. 0 on either delay means "leave the SDK's tuned
-            # default alone" rather than "no delay" — a zero here would be a
-            # worse answer than not answering, so an unset value passes nothing.
-            **_endpointing(self.cfg),
-            allow_interruptions=bool(self.cfg.get("allow_interruptions", True)),
+            # One dict, and it must stay one dict — see turn_handling() for
+            # what passing these alongside it silently did.
+            turn_handling=turn_handling(self.cfg),
         )
 
         await self.session.start(
