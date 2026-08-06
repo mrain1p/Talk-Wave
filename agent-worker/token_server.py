@@ -32,7 +32,9 @@ import settings as settings_store
 import sounds as sound_assets
 import station as station_mod
 import tune_in
-from tts_adapter import ADAPTER_DIR
+from tts_adapter import ADAPTER_DIR, resolve_adapter
+from tts_adapter import available_voices as tts_voice_list
+from tts_adapter import pick_speakable_voice
 from brain.briefing import demojibake
 from station import StationClient
 from station_config import StationConfig
@@ -63,8 +65,17 @@ LIVEKIT_PUBLIC_URL = os.environ.get("LIVEKIT_PUBLIC_URL", "ws://localhost:7880")
 
 # Which origins may embed / call the token endpoint. "*" is fine for local dev;
 # set CALLIN_ALLOWED_ORIGINS to a comma-separated list before exposing this.
+# Empty by default, which is same-origin only. The widget on this service's own
+# page needs no entry here; a value is only needed to embed it on another site.
+#
+# It used to default to "*" — any page on the internet may mint a call token
+# against this service and spend the operator's LLM and TTS budget. That was
+# kept through 0.9.76 to avoid silently breaking embeds on deployments that
+# never set the variable, and then deliberately changed: pre-1.0, with few
+# deployments, is exactly when to take that break rather than ship the
+# convenient default into 1.0 and be stuck with it.
 ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("CALLIN_ALLOWED_ORIGINS", "*").split(",") if o.strip()
+    o.strip() for o in os.environ.get("CALLIN_ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]
 
 # Origins that may reach the PANEL during first-run — before any password
@@ -222,8 +233,19 @@ def _caller_key(request: web.Request) -> str:
     if _peer_is_a_trusted_proxy(request.remote):
         hops = [h.strip() for h in
                 request.headers.get("X-Forwarded-For", "").split(",") if h.strip()]
+        # Walk back through the trusted ones. Taking the rightmost entry flat
+        # is right for a single proxy and wrong the moment there are two: with
+        # a CDN in front of the reverse proxy, the entry the proxy appended is
+        # the CDN's address, so every caller in the world collapses into one
+        # cooldown bucket and one lockout counter. Skipping hops we already
+        # trust lands on the first address none of them vouched for, which is
+        # the caller. Fails safe either way — if every hop is trusted there is
+        # nobody left to blame but the socket.
+        for hop in reversed(hops):
+            if not _peer_is_a_trusted_proxy(hop):
+                return hop
         if hops:
-            return hops[-1]
+            return hops[0]
     return request.remote or "unknown"
 
 
@@ -411,6 +433,31 @@ def _secure_origin() -> str:
     return ""
 
 
+def corner_controls(cfg: dict) -> dict:
+    """Which buttons the call card offers in its top-right corner.
+
+    One decision, made here, for both surfaces. It used to be three unrelated
+    mechanisms in the widget — the settings gear hidden by a CSS rule that
+    only existed for embeds, the theme toggle by an inline style set in two
+    different places, the help button by whether `canAsk` came back — so what
+    a caller was offered depended on which surface they happened to be
+    looking at, and nobody had decided that. It was just where the rules
+    happened to live.
+
+    The widget may still subtract from this, but only for things this side
+    cannot know: a host page that pinned ?theme= has already chosen, and an
+    embed never loads the settings panel at all, so a gear there opens
+    nothing.
+    """
+    return {
+        "help": bool(cfg.get("show_caller_help")),
+        # Pinned light or dark leaves a viewer nothing to toggle. "inherit"
+        # is not pinned: on the standalone page it behaves as auto.
+        "theme": str(cfg.get("widget_theme") or "auto") not in ("light", "dark"),
+        "settings": True,
+    }
+
+
 async def handle_live(request: web.Request) -> web.Response:
     """Who's on air, proxied so the widget doesn't depend on the station
     sending CORS headers to whatever origin the widget is embedded on."""
@@ -484,6 +531,8 @@ async def handle_live(request: web.Request) -> web.Response:
                     # attribute still wins — the host page knows more about
                     # itself than this setting does.
                     "theme": str(cfg.get("widget_theme") or "auto"),
+                    # Which controls the card puts in its top-right corner.
+                    "controls": corner_controls(cfg),
                     # What a caller may actually ask for. Sent only when the
                     # operator has switched the help button on, and only as
                     # the permissions themselves — the wording lives in the
@@ -548,6 +597,13 @@ SOUNDS_DIR = Path(
 SOUND_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
                ".m4a": "audio/mp4", ".aac": "audio/aac", ".webm": "audio/webm"}
 MAX_SOUND_BYTES = 2 * 1024 * 1024      # a call sound is a second or two
+# ...and a bound on the collection, not just on each file. Per-file was the
+# only limit, so nothing stopped the same 2MB being uploaded until the volume
+# filled — on a NAS that is the volume the settings, the keys and the call
+# records live on. There are five sounds a call can use; twenty files is
+# already generous room to keep alternatives around.
+MAX_SOUND_FILES = 20
+MAX_SOUND_TOTAL_BYTES = 20 * 1024 * 1024
 UPLOAD_PREFIX = "upload:"
 
 
@@ -649,6 +705,23 @@ async def handle_sound_upload(request: web.Request) -> web.Response:
 
         SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
         target = SOUNDS_DIR / name
+        # Checked before writing, and only for a NEW name — replacing a sound
+        # you already have must keep working once the shelf is full, or the
+        # only way to fix a bad upload would be to delete something else first.
+        existing = _uploaded_sounds()
+        if name not in existing:
+            used = sum((SOUNDS_DIR / f).stat().st_size for f in existing
+                       if (SOUNDS_DIR / f).is_file())
+            if len(existing) >= MAX_SOUND_FILES:
+                return _cors(request, web.json_response(
+                    {"error": f"that would be {len(existing) + 1} uploaded sounds; "
+                              f"the limit is {MAX_SOUND_FILES}. Delete one you are "
+                              f"no longer using."}, status=413))
+            if used >= MAX_SOUND_TOTAL_BYTES:
+                return _cors(request, web.json_response(
+                    {"error": f"uploaded sounds already use "
+                              f"{used // (1024 * 1024)} MB, which is the limit. "
+                              f"Delete one you are no longer using."}, status=413))
         tmp = target.with_suffix(target.suffix + ".part")
         size = 0
         with open(tmp, "wb") as f:
@@ -1181,22 +1254,18 @@ async def handle_post_settings(request: web.Request) -> web.Response:
 
 
 async def _tts_voices(base_url: str) -> list[str]:
-    """Ask the configured TTS server what voices it actually has. For an
-    OpenAI-compatible endpoint that's /v1/audio/voices; the public OpenAI API
-    has no such route, so fall back to the known stock list."""
+    """Ask the configured TTS server what voices it actually has.
+
+    The lookup itself lives in tts_adapter, because the WORKER consults the
+    same list before a call — a panel showing one set of voices while the
+    worker believes another is how a call ends up asking for a voice the
+    backend does not have. Here, an empty answer falls back to the stock
+    OpenAI names so the dropdown is never blank; the worker deliberately does
+    not, because "could not find out" must not read as "has none".
+    """
     if not base_url:
         return settings_store.OPENAI_VOICES
-    try:
-        async with httpx.AsyncClient(base_url=base_url, timeout=6.0) as c:
-            r = await c.get("/v1/audio/voices")
-            r.raise_for_status()
-            data = r.json()
-            voices = [v.get("id") for v in data.get("data", []) if v.get("id")]
-            if voices:
-                return sorted(voices)
-    except Exception as e:
-        log.info("voice list unavailable from %s (%s) — using stock list", base_url, e)
-    return settings_store.OPENAI_VOICES
+    return await tts_voice_list(base_url) or settings_store.OPENAI_VOICES
 
 
 async def _openai_models(api_key: str, base_url: str = "") -> list[str]:
@@ -1507,11 +1576,10 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     # _credentials_travel_to.
     may_send, cred_note = _credentials_travel_to(cfg.get("tts_base_url"), saved_tts)
 
-    os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
-    adapter_path = cfg.get("tts_adapter") or None
-    if adapter_path and not os.path.isabs(adapter_path):
-        candidate = ADAPTER_DIR / adapter_path
-        adapter_path = str(candidate) if candidate.exists() else None
+    # `tts_adapter` arrives in the BODY of this request, so it names a file
+    # only within tts-adapters/ — see tts_adapter.resolve_adapter.
+    adapter_path = resolve_adapter(cfg.get("tts_adapter"))
+    tts_mode = str(cfg.get("tts_mode", "cloud"))
 
     voice = cfg.get("tts_voice") or ""
     if not voice:
@@ -1535,6 +1603,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
             allow_stored_key=may_send,
             adapter_path=adapter_path,
             model=cfg.get("tts_model") or "",
+            mode=tts_mode,
         )
         t0 = _time.perf_counter()
         first = None
@@ -1828,11 +1897,8 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     try:
         from tts_adapter import AdapterTTS
 
-        os.environ["TTS_MODE"] = str(cfg.get("tts_mode", "cloud"))
-        adapter_path = cfg.get("tts_adapter") or None
-        if adapter_path and not os.path.isabs(adapter_path):
-            cand = ADAPTER_DIR / adapter_path
-            adapter_path = str(cand) if cand.exists() else None
+        # Request-supplied, same as /test/tts — constrained to tts-adapters/.
+        adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
         voice = cfg.get("tts_voice") or ""
         if not voice:
@@ -1847,10 +1913,20 @@ async def handle_speed_test(request: web.Request) -> web.Response:
             finally:
                 await sc.aclose()
 
+        # Say WHY, rather than letting it surface as a 400 from the backend.
+        # This stage resolves the voice the on-air DJ actually uses, so it is
+        # the one place that sees a station voice the backend cannot speak —
+        # which is a silent call, and used to read here as an opaque TTS error.
+        voice, voice_note = pick_speakable_voice(
+            voice, await tts_voice_list(cfg.get("tts_base_url") or ""))
+        if voice_note:
+            record("Voice availability", 0, voice_note, counts=False)
+
         tts = AdapterTTS(voice=voice, base_url=cfg.get("tts_base_url") or "",
                          api_key=os.environ.get("TTS_API_KEY", "") if tts_key_ok else "",
                          allow_stored_key=tts_key_ok,
-                         adapter_path=adapter_path, model=cfg.get("tts_model") or "")
+                         adapter_path=adapter_path, model=cfg.get("tts_model") or "",
+                         mode=str(cfg.get("tts_mode", "cloud")))
         pcm = bytearray()
         tts_rate = 24000
         try:
@@ -2238,8 +2314,19 @@ async def handle_station_hook(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         body = {}
-    event = str(body.get("event") or body.get("type") or "?")
-    _hook_events.append({"at": _time.time(), "event": event, "data": body})
+    event = str(body.get("event") or body.get("type") or "?")[:80]
+    # Summarised, not stored whole. This endpoint cannot be authenticated (the
+    # station does not sign its hooks), so `body` is arbitrary and unbounded up
+    # to aiohttp's 1MB limit — and the deque holds fifty of them, in a process
+    # already running near the SDK's own memory warning line. It is only ever
+    # read back as a diagnostic list, so a trimmed rendering is all it was
+    # worth keeping.
+    _hook_events.append({
+        "at": _time.time(),
+        "event": event,
+        "data": {str(k)[:40]: str(v)[:120] for k, v in list(body.items())[:12]}
+        if isinstance(body, dict) else {},
+    })
     log.info("station webhook: %s", event)
 
     # Anything that changes what the card shows invalidates the cache — but not
@@ -2291,7 +2378,17 @@ async def handle_logs(request: web.Request) -> web.Response:
         ))
     import log_setup
 
-    return _cors(request, web.json_response({"lines": log_setup.recent_lines(300)}))
+    records = log_setup.recent_records(300)
+    return _cors(request, web.json_response({
+        "records": records,
+        # The flattened form stays, so an older widget cached in a browser
+        # keeps working rather than showing an empty box after an upgrade.
+        "lines": log_setup.recent_lines(300),
+        # What is actually present, so the filter offers real choices rather
+        # than a fixed list of levels that may match nothing.
+        "levels": sorted({r["level"] for r in records}),
+        "sources": sorted({r["logger"] for r in records}),
+    }))
 
 
 async def handle_hooks_recent(request: web.Request) -> web.Response:
@@ -2514,8 +2611,26 @@ def build_app() -> web.Application:
     return app
 
 
+def warn_if_open_to_the_web() -> None:
+    """`*` means any page anywhere may mint a call token against this service.
+
+    No longer the default — 0.9.77 changed it to empty, which is same-origin
+    only — but it is still a value an operator can choose, and choosing it
+    deserves saying out loud: someone else's site can put your Call button on
+    their page and spend your API budget.
+    """
+    if "*" in ALLOWED_ORIGINS:
+        log.warning(
+            "CALLIN_ALLOWED_ORIGINS is '*' — any page on the internet may "
+            "embed this widget and mint call tokens against it, which spends "
+            "your LLM and TTS budget. Set it to your own origin(s); leave it "
+            "empty if you do not embed the widget anywhere else."
+        )
+
+
 if __name__ == "__main__":
     log.info("call-in widget + token server on http://localhost:%s", PORT)
+    warn_if_open_to_the_web()
     log.info("browser will be told to connect to %s", LIVEKIT_PUBLIC_URL)
     settings_store.check_data_dir()
     web.run_app(build_app(), port=PORT, print=None)

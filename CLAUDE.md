@@ -123,10 +123,14 @@ Three layers, in increasing order of "actually happens":
 1. **This file** is loaded into context every session. Advice — read and generally followed.
 2. **`.claude/skills/`** — `wavetalk-verify`, `-deploy`, `-release`, `-test`, `-diagnose`,
    `-llm-bench`, `-standards-review`. Invoked when the model judges them relevant.
-3. **`.claude/settings.json`** — a `PreToolUse` hook runs the suite before any `git commit` and
-   **denies the commit if it is red**. Executed by the harness, so it holds whether or not
-   anyone remembered. It fails open: no python, no repo, no test file, or a non-commit command
-   and it exits silently. Adds ~55s to a commit; nothing else.
+3. **`.claude/settings.json`** — two `PreToolUse` hooks on `git commit`, both executed by the
+   harness so they hold whether or not anyone remembered, and both failing open (no python, no
+   repo, no test file, or a non-commit command and they exit silently):
+   - **the suite must be green** — denies the commit if `test_sidecar` is red. Adds ~55s.
+   - **shipped code must bump the version** — denies a commit that touches `agent-worker/` or
+     `web-widget/` without staging `agent-worker/version.py`. Three commits in one afternoon
+     shipped as duplicate version numbers, in exactly the situation `version.py` exists to
+     disambiguate; leaving it to memory demonstrably does not work.
 
 If the hook ever needs to be bypassed, edit or remove it in `.claude/settings.json` — don't
 work around it, since CI runs the same suite and will refuse to build the image anyway.

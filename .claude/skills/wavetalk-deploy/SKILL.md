@@ -27,6 +27,40 @@ as two containers, and a redeploy that recreates one and not the other leaves th
 curl -s http://<host>:8100/health
 ```
 
+**Then confirm the worker actually registered.** A container that started is not a stack that
+works — see the bind-mount trap below:
+
+```bash
+docker logs <worker> 2>&1 | grep -E "registered worker|401|invalid"
+```
+
+## Changing anything in livekit.yaml: restart LiveKit explicitly
+
+`docker compose up -d` hashes **service definitions**, not the contents of bind-mounted files.
+Edit `livekit.yaml` and compose reports `livekit-server Running` and moves on, so the process
+keeps serving the config it loaded at boot.
+
+This bites hardest when rotating the API secret, because the two halves live in different
+places: the secret is in `livekit.yaml` (read once, at start) and in both Python services' env
+(read on recreate). Rotate both, run `up -d`, and you get the Python side on the new secret and
+LiveKit still on the old one:
+
+```
+worker:   401, message='Invalid response status', url='ws://.../agent'
+livekit:  invalid token: ... token signature is invalid
+```
+
+Nothing crashes. Both containers are "up". Every call fails until someone looks.
+
+```bash
+docker compose restart livekit-server
+```
+
+The worker's retry ladder (16 attempts, backing off) covers the gap, so fixing it inside a
+couple of minutes costs nothing. Observed 2026-08-05 during a secret rotation.
+
+The same applies to any bind-mounted config a service reads once at startup.
+
 ## First deploy — the checklist that actually matters
 
 1. `livekit.example.yaml` → `livekit.yaml` with a **fresh keypair**, `use_external_ip: true`.

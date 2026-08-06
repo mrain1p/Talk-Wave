@@ -75,7 +75,14 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # real options first. Costs one extra turn; makes the call a conversation
     # rather than a form.
     "shape_vague_requests": (None, False),
-    "allow_announcements": (None, True),
+    # OFF by default from 0.9.89. Unlike a request, this lands on everyone
+    # listening rather than on the caller who asked: a stranger hands the DJ a
+    # line and the station reads it, in persona, to the whole audience. The
+    # allowlist keeps the destructive tools off a call line and the conduct
+    # prompt pushes back — but that is a model declining, not a gate refusing,
+    # and a patient caller gets words onto the air. Defaulting it on meant
+    # every deployment shipped that way without choosing it.
+    "allow_announcements": (None, False),
     "allow_library_search": (None, True),
     # Let a caller who has picked a track out of the search results have THAT
     # recording queued, rather than the words being resolved a second time.
@@ -116,6 +123,25 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 
     "greeting_style":   (None, "inviting"),   # inviting | in-world
     "greeting":         (None, ""),
+
+    # Turn-taking. The SDK exposes these and nothing surfaced them, which left
+    # the single biggest lever on whether a call FEELS like a phone call
+    # unreachable. 0 on either delay means "leave the SDK's own default alone"
+    # rather than "no delay" — the defaults are tuned and a zero would be a
+    # worse answer than not answering.
+    "min_endpointing_delay": (None, 0.0),
+    "max_endpointing_delay": (None, 0.0),
+    "allow_interruptions":   (None, True),
+
+    # Whether both sides of a call are written to disk at all.
+    #
+    # On by default because it is how a bad call is diagnosed and the README
+    # says so — but it is a transcript of a stranger's conversation, kept on
+    # the operator's disk, and until now there was no way to say no. An
+    # operator who does not want that must be able to have it, and be able to
+    # say how long anything kept sticks around.
+    "record_calls":     (None, True),
+    "record_keep":      (None, 40),
     "max_call_seconds": (None, 600),
     # Floor on the DJ hanging up by itself. A model that decides a call is
     # finished after two words is worse than one that lingers, so nothing can
@@ -283,6 +309,7 @@ GROUPS = [
     ("speech",   "safety",  "Speech hygiene",     "What never reaches the speaker."),
 
     ("call",     "callcfg", "Call behaviour",     "How a call runs."),
+    ("turns",    "callcfg", "Turn-taking",        "When the DJ decides you've finished."),
     ("context",  "callcfg", "Station awareness",  "What the DJ knows before picking up."),
     ("style",    "callcfg", "House style",        "Light steers on top of the persona."),
     ("callback", "callcfg", "Back to air",        "What the station says after the call."),
@@ -485,7 +512,12 @@ SCHEMA: dict[str, dict] = {
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "
              "A volunteered name is still used to credit them on air."),
+    # Hidden once an opening line exists, because the opening line replaces it.
+    # Two controls where only one can win, with nothing saying which, is the
+    # shape 0.9.61 removed from `front_access` — the panel showed both and the
+    # style silently stopped mattering the moment you typed anything below.
     "greeting_style": dict(group="call", kind="select", label="Greeting style",
+        needs=("greeting", False),
         help="'Warm ask' picks up in persona and invites them in — what's on their "
              "mind, or something they'd like to hear. 'Mid-world' just answers the "
              "phone in character and lets the caller lead. Both carry the show; "
@@ -497,7 +529,41 @@ SCHEMA: dict[str, dict] = {
              "different DJ from the roster pick up each time."),
     "greeting": dict(group="call", kind="text", label="Opening line",
         placeholder="default: picks up in character and follows the greeting style above",
-        help="An instruction to the DJ, not a script it reads out."),
+        help="An instruction to the DJ, not a script it reads out. Writing one "
+             "REPLACES the greeting style above, which is why that field "
+             "disappears once there is anything here."),
+
+    "min_endpointing_delay": dict(group="turns", kind="number",
+        label="Wait before replying (s)",
+        help="How long the DJ waits after you stop making sound before it "
+             "decides you have finished. Lower feels snappier and interrupts "
+             "people who pause to think; higher feels patient and adds that "
+             "much to every single reply. 0 leaves the SDK's tuned default "
+             "alone, which is the right answer until a real call says otherwise."),
+    "max_endpointing_delay": dict(group="turns", kind="number",
+        label="Longest wait (s)",
+        help="The ceiling on the above when someone is clearly mid-sentence — "
+             "trailing off, or ending on a word that expects more. 0 leaves "
+             "the default alone. Must not be below the minimum."),
+    "allow_interruptions": dict(group="turns", kind="check",
+        label="Let the caller talk over the DJ",
+        help="On, a caller who starts talking stops the DJ mid-sentence, which "
+             "is how a phone call works. Off, the DJ finishes what it was "
+             "saying first — steadier on a speakerphone or a noisy line, where "
+             "the station's own audio bleeding back in can read as the caller "
+             "interrupting."),
+
+    "record_calls": dict(group="call", kind="check", label="Keep call transcripts",
+        help="Writes both sides of each call, every tool it used and the "
+             "settings it ran under, to data/calls — which is how a bad call "
+             "gets diagnosed. It is also a record of a stranger's conversation "
+             "on your disk. Off writes nothing at all; Recent calls then only "
+             "shows what is already there."),
+    "record_keep": dict(group="call", kind="number", label="Transcripts to keep",
+        needs=("record_calls", True),
+        help="Older ones are deleted as new calls land. A transcript is a few "
+             "kilobytes, so this is about how long a caller's words stay on "
+             "your disk rather than about space."),
 
     # --- usage ---
     "max_concurrent_calls": dict(group="usage", kind="number", label="Simultaneous calls",
@@ -752,13 +818,28 @@ def check_data_dir() -> None:
     Windows has no getuid and no meaningful mode bits here, so it is a no-op
     there — run-local.ps1 is not the deployment this protects.
     """
-    if not hasattr(os, "getuid"):
-        return
+    try:
+        _check_data_dir()
+    except Exception as e:
+        # This runs at module scope in the worker, before it registers with
+        # LiveKit. A diagnostic that can stop the thing it is diagnosing is
+        # worse than no diagnostic — same reasoning as record.write(), where a
+        # crash would cost the on-air handoff for the sake of a JSON file.
+        log.debug("could not check the data directory: %s", e)
 
+
+def _check_data_dir() -> None:
     import admin_auth
     import secrets_store
 
+    # Resolved before the platform gate on purpose, so the guard above is
+    # reachable on every platform and the test for it means something
+    # everywhere. When the gate came first, the only test for the guard was
+    # POSIX-only, was skipped on the author's machine, and reached CI broken —
+    # the third time in one afternoon that a skip hid a defect.
     data_dir = SETTINGS_PATH.parent
+    if not hasattr(os, "getuid"):
+        return                      # Windows: mode bits carry no meaning here
     if not data_dir.exists():
         return                      # first run; created on first write
     uid = os.getuid()
@@ -851,6 +932,35 @@ def complain(patch: dict) -> str | None:
             label = SCHEMA.get(field, {}).get("label", field)
             return (f"{label} must be a URL starting with http:// or https:// — "
                     f"got {value!r}. Leave it empty to use the default.")
+
+    # Pairs. Every field validated itself and nothing validated two together,
+    # so a floor above its own ceiling saved without complaint and the
+    # behaviour after that was nobody's intention. Merged against what is
+    # already stored, because a patch usually carries one half of a pair.
+    return _complain_about_pairs({**load(), **{
+        k: _coerce(v, FIELDS[k][1]) for k, v in patch.items()
+        if k in FIELDS and v not in ("", None)
+    }})
+
+
+def _complain_about_pairs(cfg: dict) -> str | None:
+    """Settings that are only wrong in company."""
+    lo, hi = cfg.get("min_call_seconds", 0), cfg.get("max_call_seconds", 0)
+    if lo and hi and lo > hi:
+        return (f"The DJ cannot be told to wait {lo}s before hanging up and "
+                f"also to hang up after {hi}s. Raise the hard limit, or lower "
+                f"the earliest it may close.")
+
+    hourly, daily = cfg.get("calls_per_hour", 0), cfg.get("calls_per_day", 0)
+    if hourly and daily and daily < hourly:
+        return (f"A daily cap of {daily} below the hourly cap of {hourly} makes "
+                f"the hourly one meaningless — the day runs out first. Raise "
+                f"the daily cap, or lower the hourly one.")
+
+    lo_d, hi_d = cfg.get("min_endpointing_delay", 0), cfg.get("max_endpointing_delay", 0)
+    if lo_d and hi_d and lo_d > hi_d:
+        return (f"The shortest wait before replying ({lo_d}s) is longer than "
+                f"the longest ({hi_d}s).")
     return None
 
 

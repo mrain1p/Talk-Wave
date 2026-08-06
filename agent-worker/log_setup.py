@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -33,15 +34,39 @@ RECENT: deque = deque(maxlen=500)
 
 
 class _RingHandler(logging.Handler):
+    """Keeps the parts, not the sentence.
+
+    This used to append `self.format(record)` — one string with the level and
+    the logger name baked into it. The panel could only ever print that back
+    verbatim, so a viewer that colours a warning differently from a station
+    read, or hides the 20-second poll to leave the calls visible, had nothing
+    to work with short of parsing its own log format back out again.
+    """
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            RECENT.append(self.format(record))
+            RECENT.append({
+                "t": time.strftime("%H:%M:%S", time.localtime(record.created)),
+                "level": record.levelname,
+                "logger": record.name,
+                # Formatted here: the arguments are only interpolated on
+                # demand, and doing it later means holding references to
+                # whatever they pointed at for as long as the buffer lives.
+                "msg": record.getMessage()[:2000],
+            })
         except Exception:
             pass
 
 
-def recent_lines(n: int = 300) -> list[str]:
+def recent_records(n: int = 300) -> list[dict]:
+    """Structured, for the panel's viewer."""
     return list(RECENT)[-n:]
+
+
+def recent_lines(n: int = 300) -> list[str]:
+    """The same thing flattened, for anything that wants plain text."""
+    return [f"{r['t']} {r['level']:7} {r['logger']}: {r['msg']}"
+            for r in recent_records(n)]
 
 
 def setup(process_name: str, console: bool = True) -> None:

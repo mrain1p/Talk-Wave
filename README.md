@@ -190,14 +190,15 @@ through. Every field carries its own help text.
 | Permissions & safety | **Caller permissions** | What a stranger may trigger, overlap protection, and the two station-wide switches (skip the current track, fire a programme beat) that reach every listener — both off by default |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call, pause — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
-| Call settings | **Call behaviour** | Who answers, greeting, how early the DJ may hang up and the hard limit, idle check-ins, tune-in, **station stream URL** |
+| Call settings | **Call behaviour** | Who answers, greeting, how early the DJ may hang up and the hard limit, idle check-ins, tune-in, **station stream URL**, and whether call transcripts are kept at all |
+| Call settings | **Turn-taking** | When the DJ decides you've finished speaking, and whether a caller may talk over it. The biggest lever on whether a call *feels* like a phone call |
 | Call settings | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
 | Call settings | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call |
 | Call settings | **Call sounds** | Sound set, uploads or URLs, previews, volume |
 | Reference | **What callers can ask** | Derived from the permissions above, including what is never available |
 | Reference | **Station tools** | All 17 MCP tools and whether a caller can reach each |
-| Reference | **Embed** | Copyable iframe snippet and preview |
+| Reference | **Embed on another page** | Copyable iframe snippet and preview |
 
 Below settings, a **Diagnostics** block: pipeline check, speed test, recent
 calls, server logs. The running version is stamped underneath.
@@ -234,38 +235,222 @@ Signalling rides your reverse proxy on 443, so the page loads for anyone.
 isn't reachable from the caller's network they get about fifteen seconds of
 ringing and a dead line.
 
-**LAN only — nothing to do.** The default.
+**Pick one of the three below deliberately.** The failure this section exists to
+prevent is not choosing: a config that half-works looks fine from your own
+house and drops every caller who isn't on IPv6, with no error anywhere.
 
-**IPv6 — also nothing to do.** With `use_external_ip: true` LiveKit advertises
-your public IPv6 address, and IPv6 has no NAT, so callers reach it directly
-with no port forwarding. If your ISP gives you IPv6, off-network calling may
-already work — worth knowing, because "it works from my phone" is then not
-evidence that it works for everyone.
+### Which am I on right now?
 
-**IPv4 — one port.** Roughly half of internet users still have no IPv6, and
-office wifi is frequently IPv4-only:
+```bash
+docker logs <livekit container> 2>&1 | grep "using external IPs"
+```
 
-- forward **UDP 7882** (`rtc.udp_port`) to the LiveKit host — one rule, since
-  LiveKit muxes every call over it. **TCP 7881** too as a fallback for networks
-  that block UDP;
-- set `use_external_ip: true`;
-- **do not set `node_ip`** unless you know you need it. It overrides the public
-  address STUN discovers, so a LAN value silently breaks every outside caller
-  while working perfectly on your own network.
+```
+using external IPs  ["2600:4040:.../…", "192.168.1.245/192.168.1.245"]
+                      ^ public IPv6, reachable    ^ LAN only, not reachable
+```
 
-**The risk of opening that port.** It exposes LiveKit's media port to the
-internet: yours to keep patched, and anyone who reaches it can attempt to
-consume bandwidth. Only open it if you actually want outside callers. A public
-port plus no guest code plus generous limits is an open invitation to spend
-your API budget — pair it with a guest code and non-zero limits.
+A **public** address on both lines is option 3. A LAN address on the IPv4 line
+means IPv4 callers cannot reach you — roughly half the internet, including most
+office wifi. The pipeline check's *Browser media path* stage says the same
+thing in words.
 
-**Or don't self-host the media.** Point `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET` and `LIVEKIT_PUBLIC_URL` at a LiveKit Cloud project and
-audio relays through them — no inbound ports, and it includes TURN, the only
-thing that fixes restrictive corporate networks. Everything else stays local.
+---
 
-**Which tier are you on?** Run the pipeline check. *Browser media path* reports
-the addresses the station offered and warns when the only public one is IPv6.
+### Option 1 — LAN only
+
+No port forwarding, and nobody on IPv4 outside your network can call.
+
+`livekit.yaml` — see [`livekit.example.yaml`](livekit.example.yaml):
+
+```yaml
+rtc:
+  udp_port: 7882
+  tcp_port: 7881
+  use_external_ip: false     # no STUN discovery of your public address
+```
+
+#### ⚠️ `use_external_ip: false` is not the same as "unreachable"
+
+**If your machine has a globally routable IPv6 address, callers on IPv6 can
+still reach it — from anywhere — with no port forwarding at all.**
+
+`use_external_ip` controls whether LiveKit *discovers* its public address via
+STUN. It does not control **host candidates**, which come from enumerating the
+network interfaces. A global IPv6 address on your interface is a host
+candidate, and IPv6 has no NAT, so it is directly reachable.
+
+You can see this in the ICE log: the IPv6 candidate is labelled `host`, not
+`srflx`, meaning it never came from STUN and turning STUN off does not remove
+it.
+
+```bash
+ip -o addr show <your interface> | grep inet6
+```
+
+An address starting `2000::/3` — anything beginning `2` or `3` — is global.
+`fe80::` is link-local and harmless. Many home ISPs (Verizon FiOS among them)
+hand out a global IPv6 by default, so this is common rather than exotic.
+
+**For genuinely no inbound reachability**, you need one of:
+
+- a host firewall rule dropping inbound UDP 7882 on IPv6, or
+- no global IPv6 on that interface, or
+- `interfaces.includes` pointing at an interface that has no global IPv6.
+
+Otherwise be honest with yourself that you are on "IPv6 callers can reach me,
+IPv4 callers cannot" — which is option 3 with half the audience missing, not
+option 1.
+
+---
+
+### Option 2 — LiveKit Cloud carries the media
+
+Everyone can call. **No inbound port**: the media path is outbound to Cloud.
+Costs an account, a bill, and the audio leaving your network. It also includes
+TURN, which is the only thing that fixes genuinely restrictive corporate
+networks — neither of the other options helps there.
+
+Drop the `livekit-server` service from
+[`docker-compose.yaml`](docker-compose.yaml) entirely and point the two Python
+services at Cloud in `.env`:
+
+```env
+LIVEKIT_URL=wss://<project>.livekit.cloud
+LIVEKIT_API_KEY=<from the Cloud dashboard>
+LIVEKIT_API_SECRET=<from the Cloud dashboard>
+LIVEKIT_PUBLIC_URL=wss://<project>.livekit.cloud
+```
+
+Everything else — the station, the panel, your keys, the transcripts — stays on
+your machine. Only the audio relay moves.
+
+---
+
+### Option 3 — one forwarded UDP port, self-hosted
+
+Everyone can call and the media stays yours. **One router rule.**
+
+`livekit.yaml`:
+
+```yaml
+rtc:
+  udp_port: 7882             # ONE muxed port — not a range
+  tcp_port: 7881
+  use_external_ip: true      # discover the public address via STUN
+  # node_ip:                 # MUST stay unset — see below
+```
+
+Three things have to be true together, and missing any one of them produces the
+silent half-broken state:
+
+1. **`udp_port`, not `port_range_start`/`end`.** A range means one firewall rule
+   per port. LiveKit muxes every call over the single port.
+2. **`node_ip` unset.** It pins the advertised address and *overrides* what
+   `use_external_ip` discovers, so a LAN value works perfectly on your own
+   network and breaks every outside caller.
+3. **The port actually forwarded.** Without it `use_external_ip` finds your
+   public address and then fails to validate it, and LiveKit falls back to
+   advertising the LAN address — the exact half-broken state.
+
+#### ⚠️ Read this before opening the port
+
+Forwarding a port is **not reversible by accident** — it stays open until you
+remove it, including after you stop caring about this project. Specifically:
+
+- It exposes **LiveKit's media port to the entire internet.** Keeping LiveKit
+  patched becomes your job. A vulnerability in its ICE or DTLS handling would
+  be reachable before any authentication.
+- It answers unsolicited STUN, which makes it a weak (~2–4×) reflector. Not
+  useful enough to attract attackers on its own, but it will be scanned.
+- **It does not gate who can call.** That is `front_access` and your usage
+  limits. An open media port with no guest code and generous limits is an
+  invitation to spend your LLM and TTS budget. Set a guest code *first*.
+- If you later stop using Wave Talk, **delete the rule.** A forwarded port to
+  a host that no longer runs what you think it runs is how home networks get
+  into trouble.
+
+It does *not* expose anything else on that machine — forwarding is per-port,
+per-protocol, per-destination. And if you already run a reverse proxy on 443,
+you are already exposing a much larger surface than this.
+
+#### Before you start
+
+1. **Give the LiveKit host a static or DHCP-reserved IP.** If it is
+   `192.168.1.245` today and DHCP moves it tomorrow, the rule silently points
+   at nothing and calls fail with no error. Do this in the router's DHCP
+   section, not on the machine.
+2. **Check you are not behind CGNAT.** Compare the address your router shows as
+   its WAN/internet address against what a "what is my IP" site reports. If
+   they differ, your ISP is doing carrier-grade NAT and **port forwarding
+   cannot work at all** — use option 2 instead. An address in
+   `100.64.0.0 – 100.127.255.255` is CGNAT. (Confusingly, `100.0.0.0 – 100.63.x`
+   is *not*.)
+
+#### The rule
+
+Router admin pages call this **Port Forwarding**, **Virtual Server**,
+**NAT Forwarding**, or **Applications & Gaming** depending on the vendor. Add
+one rule:
+
+| Field | Value | Notes |
+|---|---|---|
+| Name / description | `wavetalk-media` | anything; for your own memory |
+| Protocol | **UDP** | not TCP, not "Both" |
+| External / WAN / public port | `7882` | single port, not a range |
+| Internal / LAN / private IP | e.g. `192.168.1.245` | the LiveKit host |
+| Internal / private port | `7882` | same as external |
+| Source / remote IP | any / blank | callers come from anywhere |
+| Enabled | yes | |
+
+Then **save and apply** — many routers stage changes until you do.
+
+Do **not** forward `50000–50100`. That range is what `udp_port: 7882` replaces,
+and forwarding it is a hundred needless holes. Do not forward TCP 7881 unless
+UDP turns out to be blocked on some caller's network; one rule is easier to
+reason about than two.
+
+#### Confirm it worked
+
+Restart LiveKit so it re-runs external-address discovery — a bind-mounted
+config is not reloaded by `up -d`:
+
+```bash
+docker compose restart livekit-server
+docker logs <livekit container> 2>&1 | grep "using external IPs"
+```
+
+**Before** the rule, the IPv4 entry is your LAN address, because LiveKit found
+the public one and could not validate it:
+
+```
+using external IPs  ["2600:4040:.../…", "192.168.1.245/192.168.1.245"]
+```
+
+**After**, it should be your public address:
+
+```
+using external IPs  ["2600:4040:.../…", "100.33.134.4/192.168.1.245"]
+```
+
+If it still shows the LAN address, the rule is not taking effect — check the
+internal IP matches the LiveKit host, that the protocol is UDP, and that you
+applied the change. Then have someone call from mobile data with wifi off,
+which is the only real proof.
+
+**What that exposes.** LiveKit's media port, and nothing else on the host —
+forwarding is per-port, per-protocol, per-destination. Getting audio in still
+requires ICE credentials and a DTLS fingerprint issued per session over the
+authenticated signalling channel, so the port alone grants nothing. The real
+costs are that it answers unsolicited STUN (a weak ~2–4× reflector), and that
+LiveKit's pre-auth ICE/DTLS parsing becomes reachable from the internet.
+
+Weigh it against what you already expose: if port 443 is open, you are already
+running a public HTTP application with authentication, a settings API and file
+upload. This is a smaller surface than that.
+
+Pair it with a **guest code** and non-zero usage limits. A public media port,
+no guest code and generous limits is an invitation to spend your API budget.
 
 ## Embedding
 
@@ -289,10 +474,88 @@ embed.
 Any page you embed on can mint call tokens, so treat an embed as publishing the
 phone. Set a guest code if that isn't what you want.
 
-## Security
+## Security and privacy
 
-**Two passwords, two jobs**, both under *Access → Passwords*, and the store
-refuses to let them match.
+### Exposing this safely — the whole checklist, in one place
+
+The answers used to be scattered across six sections, which is how a real
+deployment ended up reachable from the internet with no guest code and no
+redial limit — every individual setting was documented and nobody had a list.
+
+Work down it. Each line says what goes wrong if you skip it.
+
+**Before anyone outside your house can reach the page**
+
+- [ ] **Admin password set.** Until one exists the panel is open to same-origin
+      requests, which includes anyone who can load the page from a literal
+      address. → *Access → Passwords*
+- [ ] **Guest code set**, or `front_access` deliberately set to something else.
+      `auto` means *open until a code exists* — so no code is an open line, not
+      a closed one. → *Access → Passwords*
+- [ ] **TLS on the front door.** Passwords and the guest code travel with every
+      request; over plain http they are readable on the wire. Browsers also
+      refuse microphone access on non-HTTPS origins, so calls cannot work
+      anyway.
+- [ ] **`CALLIN_ALLOWED_ORIGINS`** set to your real origin(s), or empty. `*`
+      lets any page on the internet mint call tokens against you.
+- [ ] **Fresh LiveKit secret.** Never the example one.
+- [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable
+      without deleting files on the host.
+
+**Money and airtime — the limits that matter once the line is reachable**
+
+- [ ] **`calls_per_hour` non-zero.** 0 is unlimited. The daily cap alone still
+      allows a whole day's worth inside one hour.
+- [ ] **`calls_per_day` non-zero.** The hard ceiling on what a day can cost.
+- [ ] **`caller_cooldown_secs` non-zero.** 0 lets one person redial in a loop.
+- [ ] **`max_actions_per_call`** set. Caps requests, segments and on-air
+      messages from a single call.
+- [ ] **`allow_announcements`** — understand it before turning it on. It lets a
+      caller hand the on-air DJ a line to read *to everyone listening*. Off by
+      default since 0.9.89. The tool allowlist and the conduct prompt push
+      back, but that is a model declining, not a gate refusing.
+- [ ] **`allow_skip_track` / `allow_dj_segment`** — both reach every listener
+      rather than the caller. Off by default, and worth leaving off on a
+      station with an audience.
+
+**Privacy — what you keep about people who call**
+
+- [ ] **`record_calls`.** On by default, because it is how a bad call gets
+      diagnosed. It writes both sides of a stranger's conversation to
+      `data/calls/`. Turn it off if you do not want that; `record_keep`
+      controls how long the ones you keep survive.
+- [ ] **`ask_caller_name`** is off by default. A volunteered name is still used
+      and still ends up in the transcript.
+- [ ] **Transcripts are plain JSON on disk**, owner-readable only. So is
+      `data/secrets.json`. Protect the volume; never commit `data/`.
+- [ ] **Tell callers.** Nothing in the widget says a call is recorded. If you
+      keep transcripts and the line is public, that is your disclosure to make.
+
+**The network**
+
+- [ ] Decide which connectivity option you are on — see [Calling from outside
+      your network](#calling-from-outside-your-network) — rather than
+      discovering it from a failed call.
+- [ ] If you forwarded a port, **delete the rule** when you stop running this.
+
+### What is enforced rather than advised
+
+Worth knowing which of these the software will hold for you:
+
+- Passwords are PBKDF2 hashes; the store refuses a guest code equal to the
+  admin one; **an unreadable password file counts as configured**, so a file
+  permission fault locks the panel and the phone rather than opening them.
+- A stored API key is only ever sent to the host it is saved for — testing a
+  draft URL withholds it and says so.
+- A caller's address comes from the socket, not a header they control, unless
+  the connection came from a trusted proxy.
+- Destructive station tools are not on the call line at all, whatever the
+  settings say.
+- Join tokens last two minutes.
+
+### Two passwords, two jobs
+
+Both under *Access → Passwords*, and the store refuses to let them match.
 
 **Admin** protects the panel, API keys and test buttons. Whoever holds it
 controls the application and can spend your API keys. Until one is set the
@@ -348,9 +611,14 @@ reopened without passing either again.
 
 **Before exposing beyond your LAN:**
 
-1. `CALLIN_ALLOWED_ORIGINS` — set your real origins. `*` lets any page embed
-   the widget and mint call tokens. This is the *embed* permission and nothing
-   more: it does not open the settings panel.
+1. `CALLIN_ALLOWED_ORIGINS` — **empty by default since 0.9.77**, which is
+   same-origin only and is what most deployments want: the widget on this
+   service's own page needs no entry. Set it only to embed the widget on
+   another site, and then to that site's origin. `*` lets *any* page on the
+   internet embed the widget and mint call tokens against you — it used to be
+   the default, and both processes now warn at startup if you choose it. This
+   is the *embed* permission and nothing more: it does not open the settings
+   panel.
 2. Set the admin password, and a guest code if the page is public. Do this
    before you reach the panel by hostname — with no password set, the panel
    accepts a same-origin request only from a literal address, because a *name*
@@ -365,6 +633,20 @@ reopened without passing either again.
    alone still permits 24× that in a day.
 6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
    Protect the volume; never commit `.env` or `data/`.
+
+### Upgrading to 0.9.77: `CALLIN_ALLOWED_ORIGINS` defaults to empty
+
+It used to default to `*` — any page on the internet could embed the widget and
+mint call tokens against your service, spending your LLM and TTS budget. Empty
+now, which is same-origin only.
+
+**Breaking only if you embed the widget on another site and never set the
+variable.** Set it to that site's origin and embeds work exactly as before. If
+you only ever open the widget on this service's own page, there is nothing to
+do — that is same-origin and needs no entry.
+
+Taken pre-1.0 deliberately: shipping the convenient default into 1.0 would have
+meant living with it.
 
 ### Upgrading to 0.9.65 or later: the container is no longer root
 
@@ -431,6 +713,12 @@ names the fix. The classics:
   allows **UDP 7882** and TCP 7881.
 - **"This page can't use the microphone"** — the page is on plain
   `http://<lan-ip>`, where browsers refuse capture. Use the TLS page.
+- **…but the widget IS on https and still says so** — then the page *embedding*
+  it is not. A secure context requires **every page in the chain** to be
+  secure, so an `https` iframe inside an `http` page is insecure and the
+  microphone is refused. The widget's own URL is fine; serve the host page over
+  https. Common when testing an embed from a LAN address like
+  `http://192.168.1.245:8090` while the iframe points at your real domain.
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://`
   page is blocked as mixed content, silently. Set **Station stream URL** to an
   https one; the *Station stream* stage says so outright.
@@ -455,7 +743,15 @@ names the fix. The classics:
 
 **Start with Recent calls**, under *Diagnostics*. Each call writes one file as
 it ends — both sides, every tool with its result, the config it ran under, and
-anything that failed:
+anything that failed.
+
+That file is a transcript of a stranger's conversation sitting on your disk, so
+it is a choice: **Keep call transcripts** under *Call behaviour* turns it off
+entirely, and **Transcripts to keep** decides how long the ones you do keep
+stick around (40 by default, deleted oldest-first as new calls land). With it
+off, nothing is written and Recent calls only shows what is already there — you
+are then diagnosing from the container logs, which is what this section exists
+to stop you doing.
 
 ```
 2026-08-04 23:34:36  Dalia  ·  136s  ·  6 caller turns

@@ -125,7 +125,48 @@ def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> N
     session.on("function_tools_executed", _log_tools)
 
 
-def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None:
+# What the SDK's close reasons mean in the record. Written out rather than
+# passed through raw, because "PARTICIPANT_DISCONNECTED" is the answer to a
+# question nobody asked — the operator wants to know whether the caller rang
+# off or the line dropped.
+_CLOSE_REASONS = {
+    "PARTICIPANT_DISCONNECTED": "the caller hung up",
+    "USER_INITIATED": "the DJ ended the call",
+    "TASK_COMPLETED": "the DJ ended the call",
+    "JOB_SHUTDOWN": "the worker shut down mid-call",
+    "ERROR": "the session failed",
+}
+
+
+def attach_close_reason(session: AgentSession, ended: dict) -> None:
+    """Record why the session closed.
+
+    `ctx.shutdown_reason` is empty for the commonest ending of all — the caller
+    closing the tab — so every ordinary call wrote an empty `endedBecause` and
+    the record could not tell a hang-up from a dropped line. The SDK does know:
+    its close event carries a CloseReason, and PARTICIPANT_DISCONNECTED is
+    exactly the distinction that was missing.
+    """
+    def _closed(ev) -> None:
+        raw = str(getattr(ev, "reason", "") or "")
+        # str() on the enum gives "CloseReason.USER_INITIATED", not the bare
+        # value — the assumption that it was a plain str subclass was wrong,
+        # and the first real call after 0.9.76 wrote that whole repr into the
+        # record instead of "the caller hung up". Take the last segment either
+        # way, so it works whichever the SDK hands over.
+        name = raw.rsplit(".", 1)[-1].strip().upper()
+        ended["reason"] = _CLOSE_REASONS.get(name, raw)
+
+    try:
+        session.on("close", _closed)
+    except Exception as e:                                    # noqa: BLE001
+        # An SDK that renames the event must not take the call with it.
+        log.debug("could not watch for the close reason: %s", e)
+
+
+def attach_idle_watch(
+    ctx: JobContext, session: AgentSession, cfg: dict, air=None
+) -> None:
     """A caller who goes quiet gets checked on in character, then let go.
 
     Dead air on a phone call is worse than a graceful goodbye, and an abandoned
@@ -179,6 +220,15 @@ def attach_idle_watch(ctx: JobContext, session: AgentSession, cfg: dict) -> None
             # expire the timer mid-sentence, which used to fire a check-in on
             # the heels of the DJ's own turn.
             if getattr(session, "agent_state", None) != "listening":
+                state["last_words"] = time.time()
+                continue
+            # Nor while the DJ is deliberately holding for the broadcast. The
+            # session still reads as "listening" during a hold — it is waiting
+            # for clear air, not for the caller — so without this the clock ran
+            # and the DJ asked "still there?" for a silence it was causing
+            # itself. Seen on a real call: held 10:29:47-10:30:15, check-in
+            # fired at 10:30:11, and the caller had done nothing wrong.
+            if air is not None and getattr(air, "on_air", False):
                 state["last_words"] = time.time()
                 continue
             # Thinking time, not dead air: give a caller who was just asked

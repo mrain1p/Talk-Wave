@@ -17,6 +17,18 @@ rtc:
   # false is for local dev (browser and server on the same host). Set true
   # when callers connect from anywhere else: LiveKit then discovers its
   # public address via STUN and offers it to callers.
+  #
+  # false does NOT mean unreachable. It only turns off STUN discovery; it does
+  # not touch HOST candidates, which come from enumerating your interfaces. If
+  # this machine has a global IPv6 address (anything starting 2 or 3 — many
+  # home ISPs hand one out), that address is offered as a host candidate and
+  # IPv6 callers reach it directly from anywhere, with no port forwarding.
+  # Verified on a real deployment: the IPv6 candidate is labelled `host`, not
+  # `srflx`, so turning STUN off never removed it.
+  #
+  # For genuinely no inbound reachability you need a host firewall rule on
+  # UDP 7882 for IPv6, or an interface with no global IPv6. See "Calling from
+  # outside your network" in the README.
   use_external_ip: false
 
   # DO NOT set node_ip unless you know you need it. It pins the address

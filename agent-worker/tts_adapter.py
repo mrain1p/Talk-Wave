@@ -41,14 +41,23 @@ log = logging.getLogger("callin.agent")
 ADAPTER_DIR = Path(__file__).parent / "tts-adapters"
 
 
-def _default_adapter_path() -> Path:
+def _default_adapter_path(mode: str = "") -> Path:
+    """The adapter to use when none was named.
+
+    `mode` is passed in now rather than read back out of os.environ. Four
+    different places used to write os.environ["TTS_MODE"] purely so this line
+    could read it — a setting laundered through process-global state with no
+    owner, and in the token server that state is shared by every concurrent
+    request, so two operators testing different backends raced each other.
+    The environment remains the fallback for a worker that has not been told.
+    """
     explicit = os.environ.get("TTS_ADAPTER_CONFIG")
     if explicit:
         return Path(explicit)
     # Default matches settings.py ("cloud"); these disagreed previously, so a
     # caller that hadn't set TTS_MODE got the local adapter while the rest of
     # the app assumed cloud.
-    mode = os.environ.get("TTS_MODE", "cloud").lower()
+    mode = (mode or os.environ.get("TTS_MODE", "cloud")).lower()
     return ADAPTER_DIR / ("local-vibevoice.json" if mode == "local" else "openai-cloud.json")
 
 
@@ -61,8 +70,107 @@ def _is_openai_host(base_url: str) -> bool:
     return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
-def load_adapter(path: str | Path | None = None) -> dict:
-    p = Path(path) if path else _default_adapter_path()
+async def available_voices(base_url: str, timeout: float = 6.0) -> list[str]:
+    """What the TTS backend at `base_url` says it can actually speak in.
+
+    An empty list means "could not find out" and never "has none" — the caller
+    must treat those differently, because refusing to speak on a failed lookup
+    would turn a slow TTS server into a silent call.
+
+    Lives here rather than in token_server because the WORKER needs it too:
+    the panel showing a voice list the worker never consults is how a call
+    ends up trying a voice the backend does not have.
+    """
+    if not base_url:
+        return []
+    try:
+        async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as c:
+            r = await c.get("/v1/audio/voices")
+            r.raise_for_status()
+            data = r.json()
+            return sorted(v.get("id") for v in data.get("data", []) if v.get("id"))
+    except Exception as e:                                    # noqa: BLE001
+        log.info("voice list unavailable from %s (%s)", base_url, e)
+        return []
+
+
+def pick_speakable_voice(wanted: str, available: list[str]) -> tuple[str, str]:
+    """(voice to use, why it changed). An empty reason means it did not.
+
+    The station tells us which voice each DJ uses ON AIR, and mirroring that is
+    right — the call-in DJ should sound like the one broadcasting. But the
+    station's voice belongs to the station's TTS, and this service may be
+    pointed at a different one. Rosie's station voice is an ElevenLabs id;
+    against local VibeVoice every request 400s, so the DJ generated a perfectly
+    good greeting and the caller heard silence for the whole call. Even the
+    dead-air fallback was mute, because it speaks through the same backend.
+
+    A voice the backend does not have is therefore not a reason to say nothing.
+    It is a reason to say it in a different voice and to write down why.
+    """
+    wanted = str(wanted or "").strip()
+    if not available:
+        return wanted, ""            # lookup failed — not evidence of anything
+    if wanted and wanted in available:
+        return wanted, ""
+    fallback = available[0]
+    if not wanted:
+        return fallback, ""          # nothing asked for; nothing surprising
+    return fallback, (
+        f"The station uses voice {wanted!r} for this DJ, and the TTS backend "
+        f"does not have it — speaking as {fallback!r} instead. Every line would "
+        f"otherwise have failed and the caller would have heard nothing. Set "
+        f"Voice under Models & voice to choose deliberately, or point this at "
+        f"the TTS server the station itself uses."
+    )
+
+
+def resolve_adapter(value: str | None) -> str | None:
+    """The adapter file a setting names, constrained to ADAPTER_DIR.
+
+    `tts_adapter` reaches this from saved settings *and* from the body of
+    /test/tts and /test/speed, which is a request. The resolution used to be
+    the same three lines copied into three modules, and all three read "join
+    it to ADAPTER_DIR unless it is absolute" — so an absolute path went
+    straight to open(), and a relative one with ../ in it walked out of the
+    directory before the exists() check ever looked. A request could name any
+    file on the disk and learn whether it existed and whether it parsed as
+    JSON, which in first-run mode needs no password at all.
+
+    Same shape as _safe_sound_name: one flat directory, a known extension,
+    nothing that can point elsewhere. The panel only ever offers a filename
+    out of ADAPTER_DIR.glob("*.json"), so nothing legitimate is lost.
+
+    The one exception is TTS_ADAPTER_CONFIG. That is set at deploy time by
+    whoever runs the container, not by a request, and pointing it at a mounted
+    file outside the image is a supported thing to do — so an absolute path is
+    honoured when it is *exactly* that value and never otherwise.
+    """
+    name = str(value or "").strip()
+    if not name:
+        return None
+
+    from_env = str(os.environ.get("TTS_ADAPTER_CONFIG") or "").strip()
+    if from_env and name == from_env:
+        return name
+
+    if name != Path(name).name or not name.lower().endswith(".json"):
+        log.warning(
+            "ignoring tts adapter %r — it must be a .json filename in %s, "
+            "with no path in it", name, ADAPTER_DIR,
+        )
+        return None
+    candidate = ADAPTER_DIR / name
+    try:
+        if candidate.resolve().parent != ADAPTER_DIR.resolve():
+            return None
+    except OSError:
+        return None
+    return str(candidate) if candidate.is_file() else None
+
+
+def load_adapter(path: str | Path | None = None, mode: str = "") -> dict:
+    p = Path(path) if path else _default_adapter_path(mode)
     with open(p, "r", encoding="utf-8") as f:
         cfg = json.load(f)
     cfg.setdefault("method", "POST")
@@ -85,6 +193,7 @@ class AdapterTTS(tts.TTS):
         adapter_path: str | Path | None = None,
         model: str = "",
         allow_stored_key: bool = True,
+        mode: str = "",
     ) -> None:
         """`allow_stored_key=False` synthesizes without the operator's key.
 
@@ -92,7 +201,7 @@ class AdapterTTS(tts.TTS):
         rather than from saved settings: a stored key is only ever sent to the
         host it is configured for.
         """
-        self._adapter = load_adapter(adapter_path)
+        self._adapter = load_adapter(adapter_path, mode=mode)
         audio = self._adapter["audio"]
 
         super().__init__(

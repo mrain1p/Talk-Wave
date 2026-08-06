@@ -23,15 +23,29 @@
 <!-- Pinned exactly: a floating @2 tag means a breaking client release lands
      silently on every visitor. Bump deliberately, test a call, then ship. -->
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.min.js"></script>
+<!-- No webfonts. 0.9.92 pulled Archivo and IBM Plex Mono from Google so the
+     widget's labels would match one particular station page — which is a
+     request to a third party from every embed, on somebody else's site, for
+     the sake of matching a page most of those embeds are not on. The design
+     is the mono uppercase micro-label against a sans body, and the system
+     stacks in style.css carry that anywhere. If the exact faces are ever
+     wanted back, self-host them here rather than reintroducing the CDN. -->
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="card">
-    <button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button>
-    <button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark">&#9681;</button>
-    <button class="gear" id="gearBtn" title="Settings" aria-label="Settings">&#9881;</button>
+    <!-- The connection state lives in the header, beside ON AIR NOW, rather
+         than under the Call button: on a station page the button sits in a
+         row of the host's own buttons and a status line dangling below it
+         broke that row.
 
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span></div>
+         The corner controls sit IN this row rather than being absolutely
+         positioned over it. Absolute meant each one owned a hardcoded `right`
+         offset, a second set of offsets for the embed, and a padding reserve
+         on the row to keep the status clear of them — three places to get
+         wrong every time the backend changed which controls a caller is
+         offered. In the flow, hiding one just closes the gap. -->
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9681;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -58,7 +72,6 @@
       <button id="callBtn" disabled>Call the DJ</button>
       <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
       <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
-      <div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
     </div>
 
     <!-- Opened by the ? button. Built from the same list the panel shows the
@@ -457,6 +470,39 @@
           <label for="greeting">Opening line</label>
           <input type="text" id="greeting" placeholder="default: greet in character, ask what they want to hear" />
         </div>
+
+        <h4 class="subhead">Call transcripts</h4>
+        <div class="check">
+          <input type="checkbox" id="record_calls" />
+          <label for="record_calls">Keep call transcripts</label>
+        </div>
+        <div class="row">
+          <label for="record_keep">Transcripts to keep</label>
+          <input type="number" id="record_keep" min="1" max="500" step="1" />
+        </div>
+      </div>
+    </details>
+    <details data-group="turns" class="sec">
+      <summary><span class="chev">▶</span>Turn-taking<span class="tag" id="tagTurns"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">When the DJ decides you have
+          finished speaking. This is the single biggest lever on whether a call
+          feels like a phone call or like a kiosk — and the one most worth
+          leaving alone until a real call tells you otherwise. <strong>0 on
+          either delay keeps the SDK's own tuned default</strong>; it does not
+          mean "no wait".</p>
+        <div class="row">
+          <label for="min_endpointing_delay">Wait before replying (s)</label>
+          <input type="number" id="min_endpointing_delay" min="0" max="5" step="0.1" />
+        </div>
+        <div class="row">
+          <label for="max_endpointing_delay">Longest wait (s)</label>
+          <input type="number" id="max_endpointing_delay" min="0" max="10" step="0.1" />
+        </div>
+        <div class="check">
+          <input type="checkbox" id="allow_interruptions" />
+          <label for="allow_interruptions">Let the caller talk over the DJ</label>
+        </div>
       </div>
     </details>
     <details data-group="context" class="sec">
@@ -675,7 +721,14 @@
           service — settings changes, call tokens, station reads, webhooks. The
           call agent's own logs live in its container:
           <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
-        <div class="result scrolly" id="logsResult"></div>
+        <div class="logfilters" id="logFilters" hidden>
+          <label for="logLevels">Levels</label>
+          <select id="logLevels" multiple size="3"></select>
+          <input type="search" id="logSearch" placeholder="filter text…" />
+          <button type="button" class="runbtn" id="logClearFilters">Clear</button>
+          <span class="tag" id="logCount"></span>
+        </div>
+        <div class="result scrolly logs" id="logsResult"></div>
       </div>
     </details>
 

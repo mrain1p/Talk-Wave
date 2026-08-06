@@ -2145,7 +2145,14 @@ class TestCallRecord(unittest.TestCase):
         # This runs during shutdown, just before the on-air handoff. A crash
         # here would cost that handoff for the sake of a diagnostic file.
         self.record.CALLS_DIR = Path("/nonexistent\x00/bad")
-        self._a_call().write()          # must not raise
+        r = self._a_call()
+        r.write()                       # must not raise
+        # And must actually have tried. Resting on "no exception" alone meant
+        # this passed for a write() that returned early — or did nothing at
+        # all — so it asserts the body ran and left the record complete.
+        self.assertIn("endedAt", r.data)
+        self.assertIn("durationSecs", r.data)
+        self.assertEqual(self.record.recent(), [])   # nothing landed anywhere
 
     def test_a_runaway_call_cannot_write_an_unbounded_file(self):
         r = self._a_call()
@@ -3134,6 +3141,734 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
             self.assertTrue(written[0].stat().st_mode & 0o400)
         finally:
             record.CALLS_DIR = old
+
+
+class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
+    """"Still there?" must not be asked about a silence the DJ is causing.
+
+    Seen on a real call (2026-08-05, room 1023dbeb3e28): the on-air DJ took the
+    microphone at 10:29:47, the call DJ was held until 10:30:15, and the idle
+    check-in fired at 10:30:11 — in the middle of the hold. The caller had done
+    nothing wrong; the DJ was deliberately silent and then asked them why they
+    were. The clock is already pinned while the DJ is speaking or thinking, but
+    during a hold the session still reads as `listening`, because it is waiting
+    on the broadcast rather than on the caller.
+    """
+
+    def _run(self, on_air: bool, seconds: float = 3.5):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        replies = []
+
+        class _Session:
+            agent_state = "listening"
+
+            def on(self, *a, **k):
+                pass
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+        air = types.SimpleNamespace(on_air=on_air)
+
+        async def go():
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": 2}, air=air,
+            )
+            await asyncio.sleep(seconds)
+
+        asyncio.run(go())
+        return replies
+
+    def test_no_check_in_while_the_broadcast_has_the_microphone(self):
+        self.assertEqual(
+            self._run(on_air=True), [],
+            "the DJ asked the caller why it was quiet during its own hold")
+
+    def test_the_check_in_still_fires_when_the_air_is_clear(self):
+        # The other half — pinning it must not disable the feature outright.
+        self.assertTrue(
+            self._run(on_air=False),
+            "the idle check-in stopped working when the air was clear")
+
+
+class TestTheDataDirCheckCannotStopTheWorker(unittest.TestCase):
+    """It runs at module scope in main.py, before the worker registers with
+    LiveKit, so anything it raises means no calls at all. A diagnostic written
+    to explain a broken data directory must not be able to break more than the
+    directory did — the same trade record.write() makes when it refuses to cost
+    the on-air handoff for the sake of a JSON file.
+
+    Deliberately NOT platform-gated. The first version of this test lived in a
+    POSIX-only class, was skipped on the author's machine, and reached CI
+    broken — the third time in one afternoon that a skip hid a defect. The
+    `hasattr(os, "getuid")` check moved inside the guarded function so the
+    swallow itself runs everywhere and this test means something everywhere.
+    """
+
+    def test_a_failure_inside_it_is_swallowed_and_logged(self):
+        class _Exploding:
+            @property
+            def parent(self):
+                raise RuntimeError("the data directory is unreachable")
+
+        original = settings_store.SETTINGS_PATH
+        try:
+            settings_store.SETTINGS_PATH = _Exploding()
+            # assertLogs IS the assertion: check_data_dir must not raise, and
+            # must have reached the swallow rather than returning early for
+            # some unrelated reason.
+            with self.assertLogs("callin.settings", level="DEBUG") as caught:
+                settings_store.check_data_dir()
+        finally:
+            settings_store.SETTINGS_PATH = original
+        self.assertTrue(
+            any("data directory" in m for m in caught.output),
+            f"something else was swallowed: {caught.output}")
+
+    def test_a_healthy_directory_says_nothing(self):
+        # The other half: it must not cry wolf on a directory that is fine.
+        with self.assertNoLogs("callin.settings", level="ERROR"):
+            settings_store.check_data_dir()
+
+
+class TestTheSuiteIsNotQuietlyNotRunning(unittest.TestCase):
+    """A test that passes because it never ran is worse than no test.
+
+    Three file-mode tests were written `skipUnless(POSIX)`, so on the author's
+    Windows box they reported success while containing a broken constructor —
+    only CI, on Linux, ever executed them. That is the failure mode this
+    guards: the suite looking green while part of it is inert.
+
+    Deliberately narrow. It does not try to judge whether a test is any good;
+    it checks the two things that make one silently worthless — never
+    executing, and having no assertions at all.
+    """
+
+    def _classes(self):
+        import inspect
+        import test_sidecar
+
+        # Leading underscore is this suite's marker for a shared fixture
+        # (_TempStores), which is a base class and correctly has no tests.
+        return [
+            (name, obj) for name, obj in vars(test_sidecar).items()
+            if inspect.isclass(obj) and issubclass(obj, unittest.TestCase)
+            and not name.startswith("_")
+        ]
+
+    def test_every_test_class_actually_has_tests(self):
+        empty = sorted(
+            name for name, cls in self._classes()
+            if not [m for m in dir(cls) if m.startswith("test")]
+        )
+        self.assertFalse(empty, f"test classes with no tests in them: {empty}")
+
+    def test_every_test_asserts_something(self):
+        import inspect
+        import re
+
+        silent = []
+        for name, cls in self._classes():
+            for attr in dir(cls):
+                if not attr.startswith("test"):
+                    continue
+                try:
+                    src = inspect.getsource(getattr(cls, attr))
+                except (OSError, TypeError):
+                    continue
+                if not re.search(r"\bself\.(assert|fail)\w*\(", src):
+                    silent.append(f"{name}.{attr}")
+        self.assertFalse(
+            sorted(silent),
+            f"tests that assert nothing, so they cannot fail: {sorted(silent)}")
+
+    @unittest.skipUnless(hasattr(os, "getuid"), "POSIX-only tests are the point")
+    def test_the_posix_only_tests_are_reachable_somewhere(self):
+        # On POSIX — which is CI, and the container — nothing may be skipped
+        # for the POSIX reason. If this ever fails, a test is inert everywhere.
+        import test_sidecar
+
+        for name in ("TestWrittenFilesGetExplicitModes",):
+            cls = getattr(test_sidecar, name)
+            reason = getattr(cls, "__unittest_skip_why__", "")
+            self.assertFalse(
+                getattr(cls, "__unittest_skip__", False),
+                f"{name} is skipped on POSIX too, so it never runs: {reason}")
+
+
+class TestAConfigValueCannotNameAFileOnTheDisk(unittest.TestCase):
+    """`tts_adapter` arrives in the BODY of /test/tts and /test/speed.
+
+    The resolution was the same three lines copied into three modules, and all
+    three read "join it to ADAPTER_DIR unless it is absolute" — so an absolute
+    path went straight to open(), and ../ in a relative one walked out of the
+    directory before exists() ever looked. A request could name any file on the
+    disk and learn whether it existed and whether it parsed as JSON; in
+    first-run mode that needs no password.
+
+    Same family as the withheld-key fix: configuration that ARRIVES in a
+    request was being treated as operator intent.
+    """
+
+    def test_an_absolute_path_is_refused(self):
+        from tts_adapter import resolve_adapter
+
+        for hostile in ("/etc/passwd", "/data/secrets.json",
+                        "C:\\Windows\\win.ini"):
+            with self.subTest(path=hostile):
+                self.assertIsNone(resolve_adapter(hostile))
+
+    def test_traversal_is_refused(self):
+        from tts_adapter import resolve_adapter
+
+        for hostile in ("../../etc/passwd", "../secrets.json",
+                        "sub/dir/openai-cloud.json", "..\\..\\secrets.json"):
+            with self.subTest(path=hostile):
+                self.assertIsNone(resolve_adapter(hostile))
+
+    def test_a_non_json_name_is_refused(self):
+        from tts_adapter import resolve_adapter
+
+        self.assertIsNone(resolve_adapter("openai-cloud.yaml"))
+        self.assertIsNone(resolve_adapter("secrets"))
+
+    def test_a_real_adapter_still_resolves(self):
+        # The other half. Refusing everything would be a silent outage: the
+        # DJ would fall back to the default adapter and sound wrong.
+        from tts_adapter import ADAPTER_DIR, resolve_adapter
+
+        shipped = sorted(p.name for p in ADAPTER_DIR.glob("*.json")
+                         if not p.name.startswith("_"))
+        self.assertTrue(shipped, "no adapters shipped — nothing to check")
+        for name in shipped:
+            with self.subTest(adapter=name):
+                got = resolve_adapter(name)
+                self.assertIsNotNone(got, f"{name} stopped resolving")
+                self.assertTrue(Path(got).is_file())
+
+    def test_the_deploy_time_env_escape_still_works(self):
+        # TTS_ADAPTER_CONFIG is set by whoever runs the container, not by a
+        # request, and pointing it at a mounted file outside the image is
+        # supported. Honoured only when it matches that value exactly.
+        from tts_adapter import resolve_adapter
+
+        old = os.environ.get("TTS_ADAPTER_CONFIG")
+        os.environ["TTS_ADAPTER_CONFIG"] = "/mnt/custom/adapter.json"
+        try:
+            self.assertEqual(resolve_adapter("/mnt/custom/adapter.json"),
+                             "/mnt/custom/adapter.json")
+            # ...and not for a different absolute path in the same request.
+            self.assertIsNone(resolve_adapter("/etc/passwd"))
+        finally:
+            if old is None:
+                os.environ.pop("TTS_ADAPTER_CONFIG", None)
+            else:
+                os.environ["TTS_ADAPTER_CONFIG"] = old
+
+
+class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
+    """Taking the rightmost X-Forwarded-For entry is right for one proxy and
+    wrong for two. With a CDN in front of the reverse proxy, the entry the
+    proxy appended is the CDN's address — so every caller on earth shares one
+    cooldown bucket and one lockout counter, and the per-caller limits stop
+    being per-caller. Walk back through the hops we already trust instead."""
+
+    def _key(self, peer, xff, trusted=""):
+        import types
+
+        import token_server
+
+        old = token_server._TRUSTED_PROXIES_RAW
+        token_server._TRUSTED_PROXIES_RAW = trusted
+        try:
+            return token_server._caller_key(types.SimpleNamespace(
+                headers={"X-Forwarded-For": xff}, remote=peer))
+        finally:
+            token_server._TRUSTED_PROXIES_RAW = old
+
+    def test_two_trusted_hops_still_find_the_caller(self):
+        # client -> CDN(10.0.0.9) -> proxy(10.0.0.8) -> here.
+        # The proxy appended the CDN; the CDN appended the caller.
+        self.assertEqual(
+            self._key("10.0.0.8", "8.8.4.4, 10.0.0.9", trusted="10.0.0.0/8"),
+            "8.8.4.4")
+
+    def test_one_hop_is_unchanged(self):
+        # The case that already worked must keep working.
+        self.assertEqual(
+            self._key("172.19.0.1", "1.2.3.4, 8.8.4.4"), "8.8.4.4")
+
+    def test_a_spoofed_private_address_cannot_hide_the_caller(self):
+        # A client writing a private address of its own does not get to make
+        # itself unattributable — the walk stops at the first untrusted entry.
+        self.assertEqual(
+            self._key("172.19.0.1", "10.0.0.5, 8.8.4.4"), "8.8.4.4")
+
+
+class TestUploadedSoundsCannotFillTheVolume(unittest.TestCase):
+    """Each file was capped at 2MB and the collection at nothing, so the same
+    2MB could be uploaded until the volume filled — the volume the settings,
+    the keys and the call records live on."""
+
+    def test_the_caps_are_sane_for_five_sounds(self):
+        import token_server
+
+        self.assertGreaterEqual(token_server.MAX_SOUND_FILES, 5)
+        self.assertLessEqual(token_server.MAX_SOUND_FILES, 100)
+        self.assertLessEqual(
+            token_server.MAX_SOUND_TOTAL_BYTES,
+            token_server.MAX_SOUND_FILES * token_server.MAX_SOUND_BYTES,
+            "the total cap is higher than the per-file cap allows, so it can "
+            "never be the thing that stops an upload")
+
+
+class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
+    """Search results are capped at 8, but nothing capped the size of one.
+    Every field goes into the prompt, where length is latency on every
+    remaining turn and is paid for per token."""
+
+    def test_a_giant_field_is_trimmed(self):
+        from call.tools.music import _fmt_track
+
+        out = _fmt_track({"title": "x" * 5000, "artist": "y" * 5000,
+                          "album": "z" * 5000, "moods": ["m" * 900] * 9,
+                          "id": "i" * 900}, with_id=True)
+        self.assertLess(len(out), 700, f"one track rendered {len(out)} chars")
+
+    def test_an_ordinary_track_is_unchanged(self):
+        from call.tools.music import _fmt_track
+
+        self.assertEqual(
+            _fmt_track({"title": "Roads", "artist": "Portishead",
+                        "album": "Dummy", "year": 1994}),
+            '"Roads" by Portishead (Dummy, 1994)')
+
+
+class TestSettingsThatAreOnlyWrongTogether(_TempStores):
+    """Every field validated itself and nothing validated a pair, so a floor
+    above its own ceiling saved without complaint and what happened afterwards
+    was nobody's intention."""
+
+    def test_a_hangup_floor_above_the_ceiling_is_refused(self):
+        why = settings_store.complain(
+            {"min_call_seconds": 600, "max_call_seconds": 300})
+        self.assertIsNotNone(why)
+        self.assertIn("600", why)
+
+    def test_a_daily_cap_below_the_hourly_one_is_refused(self):
+        why = settings_store.complain(
+            {"calls_per_hour": 30, "calls_per_day": 10})
+        self.assertIsNotNone(why)
+        self.assertIn("meaningless", why)
+
+    def test_endpointing_delays_the_wrong_way_round_are_refused(self):
+        why = settings_store.complain(
+            {"min_endpointing_delay": 3.0, "max_endpointing_delay": 1.0})
+        self.assertIsNotNone(why)
+
+    def test_the_pair_is_checked_against_what_is_already_stored(self):
+        # A patch usually carries one half. Saving a ceiling under the floor
+        # already on disk has to be caught too.
+        settings_store.save({"min_call_seconds": 600})
+        self.assertIsNotNone(settings_store.complain({"max_call_seconds": 300}))
+
+    def test_sensible_pairs_still_save(self):
+        self.assertIsNone(settings_store.complain(
+            {"min_call_seconds": 60, "max_call_seconds": 600}))
+        # 0 means "no limit" on the caps, so it can never be the smaller one.
+        self.assertIsNone(settings_store.complain(
+            {"calls_per_hour": 30, "calls_per_day": 0}))
+
+
+class TestACallerCanBeToldNothingIsKept(_TempStores):
+    """A transcript is both sides of a stranger's conversation, kept on the
+    operator's disk. It is how a bad call gets diagnosed and the README says
+    so — but until now there was no way to say no, and no way to say for how
+    long. An operator who does not want that has to be able to have it."""
+
+    def setUp(self):
+        super().setUp()
+        from call import record
+
+        self.record = record
+        self._old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name) / "calls"
+
+    def tearDown(self):
+        self.record.CALLS_DIR = self._old
+        super().tearDown()
+
+    def _a_call(self, room="callin-abcdefghijkl"):
+        r = self.record.CallRecord(room, {"id": "p1", "name": "Wade"}, {})
+        r.turn("caller", "hello")
+        return r
+
+    def test_retention_is_the_setting_not_the_constant(self):
+        for i in range(8):
+            self._a_call(f"callin-{i:012d}").write(keep=3)
+        self.assertEqual(len(list(self.record.CALLS_DIR.glob("*.json"))), 3)
+
+    def test_zero_does_not_mean_delete_everything(self):
+        # Turning recording OFF is how you keep nothing; a 0 here would be a
+        # misreading, not an instruction.
+        self._a_call().write(keep=0)
+        self.assertEqual(len(list(self.record.CALLS_DIR.glob("*.json"))), 1)
+
+    def test_the_setting_exists_and_defaults_to_keeping_them(self):
+        cfg = settings_store.load()
+        self.assertIs(cfg["record_calls"], True)
+        self.assertEqual(cfg["record_keep"], 40)
+
+
+class TestTurnTakingDelaysAreOptOut(unittest.TestCase):
+    """0 means "leave the SDK's tuned default alone", not "no delay". Passing a
+    literal zero would make the DJ answer the instant the caller stopped making
+    sound, which is not patience — it is interrupting."""
+
+    def test_unset_passes_nothing_at_all(self):
+        from call.session import _endpointing
+
+        self.assertEqual(_endpointing({}), {})
+        self.assertEqual(
+            _endpointing({"min_endpointing_delay": 0,
+                          "max_endpointing_delay": 0}), {})
+
+    def test_a_real_value_is_passed_through(self):
+        from call.session import _endpointing
+
+        self.assertEqual(
+            _endpointing({"min_endpointing_delay": 0.8}),
+            {"min_endpointing_delay": 0.8})
+
+    def test_nonsense_is_ignored_rather_than_raised(self):
+        from call.session import _endpointing
+
+        self.assertEqual(_endpointing({"min_endpointing_delay": "soon"}), {})
+
+
+class TestOneSettingReplacingAnotherSaysSo(unittest.TestCase):
+    """Writing an Opening line overrides Greeting style completely — the
+    greeting code reads `cfg["greeting"] or the style default`. Showing both
+    with nothing saying which wins is the shape 0.9.61 took out of
+    front_access, and it was still here."""
+
+    def test_greeting_style_hides_once_an_opening_line_exists(self):
+        needs = settings_store.SCHEMA["greeting_style"].get("needs")
+        self.assertEqual(needs, ("greeting", False))
+
+    def test_the_widget_understands_that_rule(self):
+        # The panel is what actually hides it, and it lives in another
+        # language with no test runner — so this pins the one line that
+        # implements it.
+        js = (Path(__file__).parent.parent / "web-widget" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertIn("want === false", js,
+                      "app.js cannot honour a `needs` of False, so the field "
+                      "would stay visible and keep looking like it works")
+
+
+class TestNoSettingIsSmuggledThroughTheEnvironment(unittest.TestCase):
+    """tts_mode was written into os.environ by four different modules purely so
+    _default_adapter_path could read it back — a setting laundered through
+    process-global state with no owner. In the token server that state is
+    shared by every concurrent request, so two operators testing different
+    backends raced each other."""
+
+    def test_nothing_writes_tts_mode_into_the_environment(self):
+        import re
+
+        root = Path(__file__).parent
+        offenders = []
+        for path in list(root.glob("*.py")) + list(root.glob("call/*.py")):
+            if path.name == "test_sidecar.py":
+                continue
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                # Comments describing the old pattern are the point of the
+                # comments — only an actual assignment counts.
+                if line.strip().startswith("#"):
+                    continue
+                if re.search(r'os\.environ\[\s*[\"\']TTS_MODE[\"\']\s*\]\s*=', line):
+                    offenders.append(f"{path.name}:{n}")
+        self.assertEqual(offenders, [], f"tts_mode is being smuggled: {offenders}")
+
+    def test_the_adapter_is_told_its_mode(self):
+        from tts_adapter import _default_adapter_path
+
+        self.assertIn("local", _default_adapter_path("local").name)
+        self.assertIn("openai", _default_adapter_path("cloud").name)
+
+
+class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
+    """/hooks/station cannot be authenticated — the station does not sign its
+    hooks — so its body is arbitrary, and it was stored whole, fifty deep, in a
+    worker already running near the SDK's own memory warning line (observed at
+    1076MB against a 1000MB threshold on a real call). Summarised now: the
+    endpoint is a diagnostic list, and a trimmed rendering is all it was for."""
+
+    def test_a_huge_body_is_not_retained_whole(self):
+        import token_server
+
+        before = len(token_server._hook_events)
+        token_server._hook_events.append({
+            "at": 0.0, "event": "track.changed",
+            "data": {str(k)[:40]: str(v)[:120]
+                     for k, v in list({"pad": "x" * 500_000}.items())[:12]},
+        })
+        stored = token_server._hook_events[-1]
+        self.assertLessEqual(len(str(stored)), 4000,
+                             "the whole body was kept")
+        self.assertEqual(len(token_server._hook_events), before + 1)
+
+
+class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
+    """The call card's corner controls are the server's decision, not the
+    stylesheet's.
+
+    Before 0.9.95 they were three unrelated mechanisms in the widget, and the
+    settings gear was hidden by a rule that existed only for embeds — so the
+    call page and an embed offered different controls, which nobody had
+    decided. Anything the widget subtracts from this it subtracts for a
+    reason this side cannot see (a host page that pinned a theme, an embed
+    with no panel loaded); it may never ADD one.
+    """
+
+    def test_the_help_button_follows_its_setting(self):
+        import token_server
+
+        self.assertTrue(token_server.corner_controls(
+            {"show_caller_help": True})["help"])
+        self.assertFalse(token_server.corner_controls(
+            {"show_caller_help": False})["help"])
+
+    def test_pinning_a_theme_takes_the_toggle_away(self):
+        import token_server
+
+        for pinned in ("light", "dark"):
+            with self.subTest(theme=pinned):
+                self.assertFalse(token_server.corner_controls(
+                    {"widget_theme": pinned})["theme"],
+                    "a pinned theme leaves nothing to toggle")
+
+    def test_auto_and_inherit_keep_the_toggle(self):
+        import token_server
+
+        # "inherit" is not a pinned theme: on the standalone page, where
+        # there is no host to inherit from, it behaves as auto.
+        for choice in ("auto", "inherit", "", None):
+            with self.subTest(theme=choice):
+                self.assertTrue(token_server.corner_controls(
+                    {"widget_theme": choice})["theme"])
+
+    def test_the_widget_reads_the_keys_the_server_writes(self):
+        # The widget subtracts from these by name. A rename on one side only
+        # would silently hide a control rather than raising anything.
+        import token_server
+
+        app_js = (Path(__file__).parent.parent / "web-widget" / "app.js"
+                  ).read_text(encoding="utf-8")
+        for key in token_server.corner_controls({}):
+            with self.subTest(key=key):
+                self.assertIn(f"c.{key} !== false", app_js,
+                              f"app.js never reads controls.{key}")
+
+
+class TestABadPlaylistStaysSmall(unittest.TestCase):
+    """Mount discovery reads whatever the station's playlist says, and every
+    mount is copied into /live — which every open widget polls. A station
+    answering with hundreds of URLs would otherwise become a payload this
+    service repeats to everybody."""
+
+    def test_a_flood_of_mounts_is_capped(self):
+        import tune_in
+
+        flood = "\n".join(f"http://s/mount{i}.mp3" for i in range(500))
+        got = tune_in._parse_playlist(flood)
+        self.assertLessEqual(len(got), tune_in._MAX_MOUNTS)
+        self.assertTrue(got, "capping must not throw the playlist away")
+
+    def test_an_absurdly_long_path_is_dropped(self):
+        import tune_in
+
+        got = tune_in._parse_playlist("http://s/" + "a" * 5000 + ".mp3")
+        self.assertEqual(got, [])
+
+    def test_a_normal_playlist_is_untouched(self):
+        import tune_in
+
+        got = tune_in._parse_playlist(
+            "#EXTM3U\nhttp://192.168.1.245:7700/stream.mp3\n"
+            "http://192.168.1.245:7700/stream.opus\n")
+        self.assertEqual(got, ["/stream.mp3", "/stream.opus"])
+
+
+class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
+    """Documentation drift, caught the same way everything else here is.
+
+    0.9.78 added a whole settings section and made call recording optional, and
+    the README went on describing neither — the settings table had no row for
+    Turn-taking, and "Diagnosing a call" still opened with "each call writes one
+    file as it ends", which had just stopped being unconditionally true. Both
+    were found by being asked, not by checking, which is the wrong order.
+
+    Deliberately mechanical: it checks that a thing is *mentioned*, not that it
+    is described well. A missing row is the failure that actually happens; bad
+    prose is a review problem and this cannot judge it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).parent.parent
+        cls.readme = (root / "README.md").read_text(encoding="utf-8")
+        cls.envex = (root / ".env.example").read_text(encoding="utf-8")
+
+    def test_every_settings_section_is_in_the_readme_table(self):
+        # The panel builds its sections from GROUPS; the README lists them by
+        # title. A new section that nobody can find in the docs may as well be
+        # the unreachable-setting bug one level up.
+        missing = [title for _, _, title, _ in settings_store.GROUPS
+                   if title.lower() not in self.readme.lower()]
+        self.assertFalse(
+            missing,
+            f"settings sections with no mention in README.md: {missing}")
+
+    def test_every_environment_variable_is_documented(self):
+        # Only the CURRENT name of each field. Legacy aliases (DEEPGRAM_MODEL)
+        # are deliberately undocumented — they exist so an old .env keeps
+        # working, not so a new one copies them.
+        wanted = set()
+        for env_var, _ in settings_store.FIELDS.values():
+            if isinstance(env_var, str) and env_var:
+                wanted.add(env_var)
+            elif isinstance(env_var, tuple) and env_var:
+                wanted.add(env_var[0])
+        missing = sorted(v for v in wanted if v not in self.envex)
+        self.assertFalse(
+            missing, f"env vars a setting reads but .env.example never names: "
+                     f"{missing}")
+
+    def test_the_shipped_compose_uses_the_data_directory_both_services_share(self):
+        # They are one image in two containers and must see the same data/,
+        # or a settings change never reaches the worker.
+        compose = (Path(__file__).parent.parent / "docker-compose.yaml").read_text(
+            encoding="utf-8")
+        self.assertEqual(
+            compose.count("./data:/data"), 2,
+            "both python services must mount the same data directory")
+
+
+class TestAVoiceTheBackendCannotSpeakIsNotSilence(unittest.TestCase):
+    """Observed on air 2026-08-05, room e7f9ff6f8252, and the record caught it
+    perfectly while nothing prevented it.
+
+    The station maps Rosie (p_default1) to `zmcVlqmyk3Jpn5AVYcAL`, an
+    ElevenLabs id, because that is what she is broadcast with. This service was
+    pointed at local VibeVoice, which has -Cliff1, Lily, Delia1 and no such
+    voice. Mirroring the station's voice is RIGHT — the call-in DJ should sound
+    like the one on air — but the voice belongs to the station's TTS, not
+    necessarily to ours.
+
+    So the DJ wrote a perfectly good greeting, every TTS request 400'd eight
+    times over, and the caller sat in silence for the whole call. The 0.9.20
+    dead-air fallback was mute too, because it speaks through the same backend.
+
+    A voice the backend does not have is not a reason to say nothing. It is a
+    reason to say it differently and write down why.
+    """
+
+    def test_the_station_voice_is_kept_when_the_backend_has_it(self):
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice("-Cliff1", ["-Brock1", "-Cliff1", "Lily"])
+        self.assertEqual(got, "-Cliff1")
+        self.assertEqual(why, "")
+
+    def test_rosie(self):
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice(
+            "zmcVlqmyk3Jpn5AVYcAL", ["-Brock1", "-Cliff1", "Lily"])
+        self.assertIn(got, ["-Brock1", "-Cliff1", "Lily"])
+        self.assertIn("zmcVlqmyk3Jpn5AVYcAL", why)
+        # The operator has to be able to act on it, so it says what to do.
+        self.assertIn("Voice", why)
+
+    def test_a_failed_lookup_never_changes_the_voice(self):
+        # The one that would be worse than the bug: an empty list means "could
+        # not find out", and treating that as "has none" would make a slow or
+        # unreachable TTS server rewrite every DJ's voice.
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice("zmcVlqmyk3Jpn5AVYcAL", [])
+        self.assertEqual(got, "zmcVlqmyk3Jpn5AVYcAL")
+        self.assertEqual(why, "")
+
+    def test_asking_for_nothing_is_not_worth_a_warning(self):
+        from tts_adapter import pick_speakable_voice
+
+        got, why = pick_speakable_voice("", ["-Brock1", "Lily"])
+        self.assertEqual(got, "-Brock1")
+        self.assertEqual(why, "")
+
+    def test_the_worker_and_the_panel_share_one_voice_lookup(self):
+        # A panel showing one set of voices while the worker believes another
+        # is how a call asks for a voice that is not there. Same function.
+        import token_server
+        from tts_adapter import available_voices
+
+        self.assertIs(token_server.tts_voice_list, available_voices)
+
+
+class TestTheCloseReasonIsReadable(unittest.TestCase):
+    """0.9.76 mapped the SDK's close reason to plain words and assumed the enum
+    stringified to its bare value. It does not: str() gives
+    "CloseReason.USER_INITIATED". The mapping therefore never matched, and the
+    first real call after it shipped wrote that whole repr into endedBecause —
+    the raw thing the mapping existed to avoid showing.
+
+    Caught by reading a real record (2026-08-05, 456758bdbbae), not by a test,
+    which is the wrong order and is why this one exists.
+    """
+
+    def _reason(self, raw):
+        import types
+
+        from call import lifecycle
+
+        ended = {"reason": ""}
+        captured = {}
+        session = types.SimpleNamespace(
+            on=lambda name, fn: captured.__setitem__(name, fn))
+        lifecycle.attach_close_reason(session, ended)
+        captured["close"](types.SimpleNamespace(reason=raw))
+        return ended["reason"]
+
+    def test_the_qualified_enum_form_is_understood(self):
+        self.assertEqual(
+            self._reason("CloseReason.PARTICIPANT_DISCONNECTED"),
+            "the caller hung up")
+
+    def test_the_bare_value_is_understood_too(self):
+        # Whichever the SDK hands over, since it has been both.
+        self.assertEqual(
+            self._reason("PARTICIPANT_DISCONNECTED"), "the caller hung up")
+
+    def test_an_unknown_reason_is_passed_through_rather_than_swallowed(self):
+        self.assertEqual(self._reason("CloseReason.SOMETHING_NEW"),
+                         "CloseReason.SOMETHING_NEW")
+
+    def test_a_broken_event_does_not_take_the_call_down(self):
+        # This runs on the way out of a call, after the audio is done but
+        # before the on-air handoff.
+        self.assertEqual(self._reason(None), "")
 
 
 class TestJoinTokensExpire(unittest.TestCase):

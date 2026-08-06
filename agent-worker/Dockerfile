@@ -40,7 +40,7 @@ ARG APP_UID=1000
 ARG APP_GID=1000
 RUN groupadd -g ${APP_GID} app 2>/dev/null || true \
  && useradd -u ${APP_UID} -g ${APP_GID} -m -d /home/app app 2>/dev/null || true \
- && mkdir -p /data /home/app \
+ && mkdir -p /data /home/app/.cache \
  && chown -R ${APP_UID}:${APP_GID} /data /home/app
 
 USER ${APP_UID}:${APP_GID}
@@ -48,6 +48,12 @@ USER ${APP_UID}:${APP_GID}
 # which this user cannot read — moving a 140MB download into the first call,
 # which is the exact cost the build-time fetch exists to avoid.
 ENV HOME=/home/app
+# /home/app/.cache exists and belongs to this user so a named volume mounted
+# there inherits that ownership. Local STT downloads its model here on first
+# use — 141MB, in the container's writable layer, so every recreate pays for it
+# again before the worker is ready. Mounting a volume fixes that; mounting one
+# onto a path docker had to create itself would give you a root-owned directory
+# and a download that fails instead.
 # /app belongs to root and is read-only to us; without this Python retries a
 # .pyc write on every import and silently gives up each time.
 ENV PYTHONDONTWRITEBYTECODE=1

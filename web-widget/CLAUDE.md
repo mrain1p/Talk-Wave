@@ -39,6 +39,16 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
   host page that forces `?theme=` hides the toggle entirely.
 - The operator's configured theme arrives with `/live`, long after first paint, so there are two
   code paths applying a theme and they must agree.
+- **Which corner controls exist is the server's answer, not a CSS rule.** `/live` carries
+  `controls: {help, theme, settings}` (`token_server.corner_controls`). `applyControls()` may
+  only *subtract* — a host that pinned `?theme=`, or an embed, which never loads the panel code
+  at all. Three separate mechanisms used to decide this and the two surfaces disagreed.
+- **`embed.js` and `app.js` talk over `postMessage`, both ways.** Widget → host:
+  `subwave-callin:height` (report my height) and `subwave-callin:overlay` (I need N px of room
+  for the ask list; 0 = done). Host → widget: `swtv:theme` (station palette, repaint in place —
+  never reload, that drops the call) and `swtv:overlay` (here is the room, and the direction).
+  The host owns the direction because only it can see the page. While overlaid the widget stops
+  reporting height and the host ignores it, or the frame adopts the overlay's size for good.
 
 ## Verifying a change
 

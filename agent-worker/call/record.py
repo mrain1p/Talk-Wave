@@ -141,7 +141,7 @@ class CallRecord:
                          "text": extra[:MAX_TEXT]}
                     )
 
-    def write(self, reason: str = "") -> None:
+    def write(self, reason: str = "", keep: int = 0) -> None:
         self.data["endedAt"] = _iso(time.time())
         self.data["durationSecs"] = round(time.time() - self.started, 1)
         self.data["endedBecause"] = reason
@@ -170,7 +170,7 @@ class CallRecord:
             except OSError:
                 pass
             tmp.replace(path)
-            _prune()
+            _prune(keep or KEEP)
             log.info("call transcript written: %s", path.name)
         except Exception as e:
             # A missing transcript is a nuisance; a crash here would cost the
@@ -192,9 +192,14 @@ def _iso(ts: float) -> str:
     ).isoformat(timespec="seconds")
 
 
-def _prune() -> None:
+def _prune(keep: int = KEEP) -> None:
+    # `record_keep` is how long a caller's words stay on the operator's disk,
+    # so it is a real setting rather than a constant. 0 would mean "delete
+    # everything", which is what turning recording off is for — treat it as
+    # the default instead of as an instruction.
+    keep = max(1, int(keep or KEEP))
     files = sorted(CALLS_DIR.glob("*.json"))
-    for old in files[:-KEEP]:
+    for old in files[:-keep]:
         old.unlink(missing_ok=True)
 
 

@@ -76,26 +76,117 @@
     iframe.setAttribute("title", "Call the SUB/WAVE DJ");
     iframe.style.border = "none";
     iframe.style.width = "100%";
+    // An iframe is inline by default, which leaves a few px of baseline gap
+    // under it — so the container measures taller than the frame it holds.
+    // That difference is invisible until something reads one and writes the
+    // other, and then it compounds: the overlay was restoring the frame to
+    // its CONTAINER's height, so every open-and-close of the ask list left
+    // the widget 3px taller than it started.
+    iframe.style.display = "block";
     iframe.style.height = height || (compact ? "190px" : "420px");
-    iframe.style.borderRadius = "14px";
+    // The widget's own card carries the radius and the frame is transparent
+    // around it, so this is belt and braces: it only shows if a host or a
+    // station palette ends up painting the frame's background.
+    iframe.style.borderRadius = "16px";
     if (theme) iframe.style.colorScheme = theme;
 
     el.appendChild(iframe);
 
-    // Unless the host pinned a height, follow the widget's own. A fixed
-    // height is a guess made before the widget knows whether it has to ask
-    // for a door code, show a microphone warning, or open captions — and the
-    // guess clips all three.
-    if (!height) {
-      window.addEventListener("message", function (e) {
-        if (e.source !== iframe.contentWindow) return;
-        var msg = e.data;
-        if (!msg || msg.type !== "subwave-callin:height") return;
+    // Station theming. The host page calls this when the on-air show changes,
+    // passing the same token map it dressed itself in:
+    //
+    //   document.getElementById("subwave-callin")
+    //     .setCallinTheme({ "--pine": "#1b1a2e", "--coral": "#ff7a5c" });
+    //
+    // The widget repaints in place. Do NOT reload the frame to change a
+    // theme — a reload drops whatever call is in progress.
+    el.setCallinTheme = function (tokens) {
+      if (!tokens || !iframe.contentWindow) return;
+      iframe.contentWindow.postMessage({ type: "swtv:theme", tokens: tokens }, origin);
+    };
+
+    // "What can I ask?" opens a list that is routinely taller than the whole
+    // frame, and a popup clipped by its own iframe is worse than no popup. So
+    // for as long as it is open the frame stops being a box in the layout and
+    // becomes an overlay: absolutely positioned, taller, above the page, with
+    // the container holding the old height so nothing on the host page moves.
+    //
+    // Direction is decided HERE, not in the widget. Only this side can see
+    // the page: the widget asking to open downwards has no idea whether
+    // downwards is the bottom of the viewport.
+    // The frame's height, and the slot it leaves in the host page. Kept
+    // apart deliberately: restoring the frame to the slot's height is the
+    // ratchet described above.
+    var baseHeight = 0, baseSlot = 0;
+
+    function endOverlay() {
+      if (!baseHeight) return;
+      el.style.minHeight = "";
+      iframe.style.position = "";
+      iframe.style.top = "";
+      iframe.style.bottom = "";
+      iframe.style.left = "";
+      iframe.style.zIndex = "";
+      iframe.style.height = baseHeight + "px";
+      baseHeight = baseSlot = 0;
+      // Tell the widget the frame is a box again, so it can let its card
+      // settle back to the top and start reporting its height once more.
+      iframe.contentWindow.postMessage(
+        { type: "swtv:overlay", px: 0, up: false }, origin);
+    }
+
+    function beginOverlay(wanted) {
+      var box = el.getBoundingClientRect();
+      var EDGE = 12;
+      var below = window.innerHeight - box.bottom - EDGE;
+      var above = box.top - EDGE;
+      // Down is the default and only loses it when down genuinely cannot
+      // hold the list and up can hold more of it.
+      var up = below < wanted && above > below;
+      var granted = Math.max(120, Math.min(wanted, up ? above : below));
+
+      if (!baseHeight) {
+        baseHeight = Math.round(iframe.getBoundingClientRect().height);
+        baseSlot = Math.round(box.height);
+      }
+      // The container carries the frame's old height so the host page's
+      // layout does not shift under the reader while they open a menu.
+      if (getComputedStyle(el).position === "static") el.style.position = "relative";
+      el.style.minHeight = baseSlot + "px";
+      iframe.style.position = "absolute";
+      iframe.style.left = "0";
+      iframe.style.width = "100%";
+      iframe.style.zIndex = "2147483000";
+      iframe.style.top = up ? "auto" : "0";
+      iframe.style.bottom = up ? "0" : "auto";
+      iframe.style.height = (baseHeight + granted) + "px";
+      iframe.contentWindow.postMessage(
+        { type: "swtv:overlay", px: granted, up: up }, origin);
+    }
+
+    window.addEventListener("message", function (e) {
+      if (e.source !== iframe.contentWindow) return;
+      var msg = e.data;
+      if (!msg) return;
+
+      if (msg.type === "subwave-callin:overlay") {
+        var wanted = Number(msg.px) || 0;
+        if (wanted > 0) beginOverlay(Math.min(wanted, 1400));
+        else endOverlay();
+        return;
+      }
+
+      // Unless the host pinned a height, follow the widget's own. A fixed
+      // height is a guess made before the widget knows whether it has to ask
+      // for a door code, show a microphone warning, or open captions — and
+      // the guess clips all three. Ignored while overlaid: the frame is
+      // deliberately the wrong size just now.
+      if (msg.type === "subwave-callin:height" && !height && !baseHeight) {
         var px = Number(msg.px);
         // Bounded on purpose: a frame must never be able to take over the
         // host page's layout.
         if (px > 80 && px < 2000) iframe.style.height = px + "px";
-      });
-    }
+      }
+    });
   });
 })();

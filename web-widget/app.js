@@ -13,8 +13,15 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // Declared up here because both the embed-height reporting and the ask
+  // popup's overlay handshake need it, and they sit at opposite ends of this
+  // file.
+  const framed = window.parent !== window;
+
   // Theme: an explicit choice is remembered and beats the OS setting. Embeds
   // can force one with ?theme=light|dark so the widget matches the host page.
+  const themeForcedByHost = !!params.get('theme');
+
   (function theme() {
     const forced = params.get('theme');
     const saved = forced || localStorage.getItem('callinTheme');
@@ -22,10 +29,7 @@
       document.documentElement.setAttribute('data-theme', saved);
     }
     const btn = document.getElementById('themeBtn');
-    if (!btn) return;
-    // A host page that forces a theme has decided — no toggle. Otherwise the
-    // toggle is available, embeds included.
-    if (forced) { btn.style.display = 'none'; return; }
+    if (!btn || forced) return;
     btn.onclick = () => {
       const now = document.documentElement.getAttribute('data-theme')
         || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
@@ -34,6 +38,27 @@
       localStorage.setItem('callinTheme', next);
     };
   })();
+
+  // ------------------------------------------------- the corner controls
+  // Which of the three the card offers is the BACKEND's call, sent with
+  // /live, and it is applied identically on the call page and on an embed.
+  // It used to be three unrelated mechanisms — the gear hidden by a CSS rule
+  // that only existed for embeds, the theme toggle hidden by an inline
+  // style set in two different places, the ? driven by whether canAsk came
+  // back — which is exactly how the two surfaces ended up offering different
+  // controls without anyone deciding they should.
+  //
+  // The widget only ever SUBTRACTS from what the backend offers, and only
+  // for facts the backend cannot know: a host page that forced ?theme= has
+  // already decided, and an embed never loads the settings panel at all
+  // (app.js returns above it), so a gear there would open nothing.
+  function applyControls(d) {
+    const c = (d && d.controls) || {};
+    const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
+    set('helpBtn', c.help !== false && !!(d && d.canAsk));
+    set('themeBtn', c.theme !== false && !themeForcedByHost);
+    set('gearBtn', c.settings !== false && !compact);
+  }
 
   // The operator's theme choice arrives with /live, long after the page has
   // painted, so the bootstrap above handles the immediate cases and this
@@ -44,17 +69,52 @@
   // see the page it sits in, so if inherit reaches us unresolved there is no
   // page to inherit from and auto is the honest answer.
   function applyConfiguredTheme(choice) {
-    if (params.get('theme')) return;            // the host page has decided
+    if (themeForcedByHost) return;              // the host page has decided
     const root = document.documentElement;
-    const btn = $('themeBtn');
     if (choice === 'light' || choice === 'dark') {
-      root.setAttribute('data-theme', choice);
-      if (btn) btn.style.display = 'none';      // forced: nothing to toggle
-      return;
+      root.setAttribute('data-theme', choice);  // forced: applyControls drops
+      return;                                   // the toggle to match
     }
-    if (btn) btn.style.display = '';
     if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
   }
+
+  // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
+  // show's palette, which changes when the show changes, and sends us the same
+  // token map. We repaint IN PLACE — the old mechanism was reloading the
+  // frame, and a reload during a call drops the call.
+  //
+  // Unknown keys are ignored and missing keys fall through to the CSS
+  // defaults, so a host that sends three tokens or thirty both work. Only
+  // custom-property names are accepted: this is a message from another origin,
+  // and nothing here should be able to set arbitrary style.
+  addEventListener('message', (e) => {
+    if (!framed || e.source !== window.parent) return;
+    const msg = e.data;
+    if (!msg) return;
+
+    // The host answering our request for room to open the ask list in. It is
+    // the authority on both the amount and the direction: it can see the
+    // page, and we cannot see past our own frame.
+    if (msg.type === 'swtv:overlay') {
+      const px = Math.max(0, Math.min(2000, Number(msg.px) || 0));
+      setOverlay(px, !!msg.up);
+      // px 0 is the host confirming it has put the frame back; there is
+      // nothing left to show. Otherwise wait for the frame to actually be
+      // resized, or the popup gets placed against the height we had a
+      // moment ago.
+      if (px) requestAnimationFrame(() => { if (askShow) askShow(); });
+      else notifyHeight();
+      return;
+    }
+
+    if (msg.type !== 'swtv:theme' || !msg.tokens) return;
+    const root = document.documentElement;
+    Object.keys(msg.tokens).forEach((k) => {
+      if (!/^--[a-z0-9-]+$/i.test(k)) return;
+      const v = String(msg.tokens[k]);
+      if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
+    });
+  });
 
   // "What can I ask?" — most people meeting a phone-in assume it only takes
   // requests. Built from the shared ASKS list and filtered to the permissions
@@ -100,18 +160,68 @@
                          : (b.bottom + GAP) + 'px';
   }
 
+  // The ask list is routinely taller than the whole widget, and inside an
+  // embed it was clipped by the frame — a list of eight things a caller can
+  // ask, in a 190px window, scrolling. So the frame itself gets out of the
+  // way: the widget asks the host for room, embed.js turns the frame into an
+  // overlay that reaches past the slot it was given, and the list opens over
+  // the host page. Downwards by default; embed.js flips it upwards when the
+  // page has no room below, because only the host can see the host.
+  //
+  // askRoom is the extra px the host granted, 0 when we are not overlaid.
+  let askRoom = 0, askWait = null, askShow = null, askClose = null;
+
+  function setOverlay(px, up) {
+    askRoom = px;
+    document.documentElement.style.setProperty('--overlay-px', px + 'px');
+    document.body.classList.toggle('overlay-up', px > 0 && up);
+  }
+
+  function requestOverlay(px) {
+    if (!framed) return;
+    parent.postMessage({ type: 'subwave-callin:overlay', px: px }, '*');
+  }
+
   function setupAskPopup(canAsk) {
     const btn = $('helpBtn'), pop = $('askPop');
     if (!btn || !pop) return;
-    if (!canAsk) { btn.hidden = true; pop.hidden = true; return; }
+    if (!canAsk) { pop.hidden = true; return; }   // applyControls owns the button
     paintAskPopup(canAsk);
-    btn.hidden = false;
-    const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+
+    const close = () => {
+      clearTimeout(askWait); askWait = null;
+      pop.hidden = true; pop.style.visibility = '';
+      btn.setAttribute('aria-expanded', 'false');
+      // The card's own offset is NOT dropped here. Opening upwards, the frame
+      // is anchored to the bottom of its slot and the card is held down by
+      // that offset; dropping it before the host has shrunk the frame back
+      // sends the card to the top of a still-tall frame for a frame or two,
+      // which reads as the widget jumping as you close the menu. The host
+      // echoes px:0 when it is done, and that is what clears it.
+      if (askRoom) requestOverlay(0);
+    };
+    askClose = close;
+
+    const show = () => {
+      clearTimeout(askWait); askWait = null;
+      placeAskPopup(btn, pop);
+      pop.style.visibility = '';
+    };
+    askShow = show;
+
     btn.onclick = () => {
-      const open = pop.hidden;
-      pop.hidden = !open;
-      btn.setAttribute('aria-expanded', String(open));
-      if (open) placeAskPopup(btn, pop);
+      if (!pop.hidden) return close();
+      btn.setAttribute('aria-expanded', 'true');
+      // Laid out but not yet painted, so scrollHeight is real while the
+      // popup cannot be seen sitting in the wrong place for a frame.
+      pop.style.visibility = 'hidden';
+      pop.hidden = false;
+      if (!framed) return show();
+      requestOverlay(pop.scrollHeight + 16);
+      // A host that framed us without embed.js will never answer. Rather
+      // than leaving the list invisible forever, open it inside the frame —
+      // which is exactly what it did before any of this existed.
+      askWait = setTimeout(show, 250);
     };
     $('askClose').onclick = close;
     // Escape and a click outside, because a popup with only an X is a trap on
@@ -204,14 +314,31 @@
   // than left to the ResizeObserver alone: observer callbacks ride animation
   // frames, which don't run in a background tab, so an embed the visitor
   // isn't looking at would size itself late.
-  const framed = window.parent !== window;
   let lastPosted = 0;
+  let measuring = false;
 
   function notifyHeight() {
-    if (!framed) return;
-    const card = document.querySelector('.card');
-    if (!card) return;
-    const h = Math.ceil(card.getBoundingClientRect().height);
+    // Silent while the ask list has the frame overlaid: the frame is
+    // deliberately taller than the widget just now, and reporting that back
+    // would make the host adopt the overlay's height permanently.
+    if (!framed || measuring || askRoom) return;
+    // The BODY, not the card: the card has an inset around it inside the
+    // frame, and reporting the card alone handed back a height 20px short of
+    // what the widget actually occupies, so the frame clipped its own bottom
+    // edge. Measuring the body keeps that number in the stylesheet where it
+    // belongs.
+    //
+    // Measure the CONTENT height, never the height we were handed. Idle, the
+    // card stretches to fill a tall host column so the Call button can sit at
+    // the bottom of it — and a stretched card reports the frame's own height
+    // straight back to the frame, after which it can only ever grow. The
+    // class drops the stretch for one synchronous read; the guard keeps the
+    // ResizeObserver that watches this element from re-entering.
+    measuring = true;
+    document.body.classList.add('measuring');
+    const h = Math.ceil(document.body.getBoundingClientRect().height);
+    document.body.classList.remove('measuring');
+    measuring = false;
     if (h > 0 && h !== lastPosted) {
       lastPosted = h;
       window.parent.postMessage({ type: 'subwave-callin:height', px: h }, '*');
@@ -362,6 +489,18 @@
         + 'LAN testing alternative: chrome://flags → “Insecure origins treated as secure” → add '
         + location.origin + '.';
       el.appendChild(alt);
+    } else if (window.self !== window.top && location.protocol === 'https:') {
+      // The widget is on https and STILL not a secure context, which means an
+      // ancestor is not: a secure context requires the WHOLE chain, so an
+      // https iframe inside an http page is insecure and the microphone is
+      // refused. Saying "this page (https://…) is not HTTPS" is both wrong and
+      // unactionable — the frame's own URL is the one thing that is fine, and
+      // the fix belongs to the page doing the embedding.
+      el.append('Calls need microphone access. This widget is on ' + location.origin
+        + ', which is fine — but it is embedded in a page served over http://, '
+        + 'and a browser only grants the microphone when EVERY page in the chain '
+        + 'is secure. Serve the embedding page over https and this clears. '
+        + 'See README → Troubleshooting.');
     } else {
       el.append('Calls need microphone access, which browsers only allow on HTTPS or localhost — '
         + 'this page (' + location.origin + ') has neither. See README → Troubleshooting.');
@@ -397,6 +536,7 @@
       if (first) {
         applyConfiguredTheme(d.theme);
         setupAskPopup(d.canAsk);
+        applyControls(d);
       }
       if (typeof d.sounds?.volume === 'number' && !room) {
         volume = d.sounds.volume;
@@ -457,6 +597,11 @@
       }
     } catch (e) {
       live = live || {};
+      // The controls still have to appear. An unreachable station is the case
+      // where the operator most needs the gear, and driving the corner
+      // controls off /live means a failed /live would otherwise leave the
+      // card with no way into settings at all.
+      applyControls(null);
       paintOffAir('offline');
       setStatus('Station unreachable', 'error');
     }
@@ -504,10 +649,13 @@
   }
 
   // ------------------------------------------------------------ level meters
-  const BAR_COUNT = 14;
+  // One trough, one fill (HOST-STYLE-GUIDE §4.6). This was fourteen <i>
+  // elements whose heights were rewritten every animation frame — twenty-eight
+  // style writes per frame across both meters, and at rest it read as a row of
+  // dashes rather than as a level. Now it is one width per meter per frame.
   function buildBars(host) {
     host.innerHTML = '';
-    for (let i = 0; i < BAR_COUNT; i++) host.appendChild(document.createElement('i'));
+    host.appendChild(document.createElement('i'));
   }
   buildBars($('barsYou')); buildBars($('barsDj'));
 
@@ -535,14 +683,13 @@
   }
 
   function paintBars(host, lvl, active) {
-    const bars = host.children;
-    for (let i = 0; i < bars.length; i++) {
-      // Rough spectrum shape: middle bars run taller than the edges.
-      const shape = 0.55 + 0.45 * Math.sin((i / (bars.length - 1)) * Math.PI);
-      const h = active ? Math.max(0.12, Math.min(1, lvl * shape * 1.9)) : 0.12;
-      bars[i].style.height = (h * 100) + '%';
-      bars[i].classList.toggle('hot', active && h > 0.2);
-    }
+    const fill = host.firstElementChild;
+    if (!fill) return;
+    // Idle sits at zero rather than at a token 12%: an empty trough is an
+    // honest "nothing is coming through", and the old floor made a dead mic
+    // look the same as a quiet one.
+    const w = active ? Math.max(0, Math.min(1, lvl * 1.35)) : 0;
+    fill.style.width = (w * 100) + '%';
   }
 
   function tick() {
@@ -632,13 +779,36 @@
   const capNodes = new Map();
   const lastByWho = {};   // { who: {node, text, at} }
 
+  // A new line should register as movement, not as text that was simply
+  // different when you looked back (HOST-STYLE-GUIDE §5). The forced reflow
+  // is load-bearing: without it the class is still present on the second
+  // update and the animation never replays. CSS kills this entirely under
+  // prefers-reduced-motion.
+  function rollIn(el) {
+    el.classList.remove('roll');
+    void el.offsetWidth;
+    el.classList.add('roll');
+  }
+  // The ticker row is aligned on the baseline of its text, and an EMPTY line
+  // box has no baseline — so the row that was reserving two lines' height
+  // measured 4px taller empty than it did with speech in it, and the host
+  // frame twitched on the first word of every call. A zero-width space is a
+  // line box with a baseline and nothing to read.
+  const NBSP_LINE = '​';
+  function setLine(el, text) {
+    const t = text || NBSP_LINE;
+    if (!el || el.textContent === t) return;      // only animate real changes
+    el.textContent = t;
+    if (text) rollIn(el);                         // never animate the blank
+  }
+
   let tickerTimer = null;
   function showTicker(who, text) {
     const t = $('ticker');
     if (!t) return;
     t.querySelector('.who').textContent =
       who === 'dj' ? 'DJ' : (who === 'sys' ? '•' : 'You');
-    t.querySelector('.line').textContent = text;
+    setLine(t.querySelector('.line'), text);
     t.hidden = false;
     t.classList.add('show');
     t.classList.toggle('sys', who === 'sys');
@@ -679,6 +849,10 @@
       node.querySelector('.who').textContent = who === 'dj' ? 'DJ' : 'You';
       capBox.appendChild(node);
       capNodes.set(id, node);
+      // Only a NEW turn rises in. An interim transcript rewrites the same
+      // node every few hundred ms, and replaying the animation on each of
+      // those would shake the line while someone is still speaking.
+      rollIn(node);
     }
     node.querySelector('.said').textContent = text;
     node.classList.toggle('interim', !final);
@@ -786,7 +960,15 @@
     if (captionsMode === 'full') {
       capBox.classList.add('on');
       capBox.innerHTML = '<p class="capempty">Captions will appear here as you talk…</p>';
+    } else if (captionsMode === 'ticker') {
+      // Claim the ticker's reserved two lines NOW, empty, so the frame
+      // settles once at the start of the call instead of jumping when the
+      // first word arrives. From here the height is constant for the rest of
+      // the call however long anyone talks.
+      const t = $('ticker');
+      if (t) { setLine(t.querySelector('.line'), ''); t.hidden = false; }
     }
+    notifyHeight();
 
     ctx();          // unlock audio inside the click gesture
     startRinging();
@@ -1440,6 +1622,11 @@
           ? (depEl.type === 'checkbox' ? depEl.checked : (depEl.value || resolved[dep]))
           : resolved[dep];
         if (want === true) visible = !!current;
+        // `false` means "only while the other field is EMPTY". Used where one
+        // setting replaces another: writing an Opening line overrides Greeting
+        // style entirely, and showing both with no sign of which wins is the
+        // shape 0.9.61 took out of front_access.
+        else if (want === false) visible = !current;
         else if (Array.isArray(want)) visible = want.indexOf(current) !== -1;
         else visible = current === want;
       }
@@ -2988,18 +3175,86 @@
     finally { btn.disabled = false; }
   };
 
+  // The log viewer. Records rather than pre-formatted lines, so a warning can
+  // look different from a station read and the 20-second poll can be hidden to
+  // leave the calls visible — neither of which is possible against a string.
+  let logRecords = [];
+
+  // Levels in severity order, so the filter reads as a scale rather than as
+  // whatever order the server happened to see them in.
+  const LEVEL_ORDER = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+
+  function paintLogs() {
+    const out = $('logsResult');
+    const chosen = [...$('logLevels').selectedOptions].map((o) => o.value);
+    const needle = ($('logSearch').value || '').toLowerCase();
+    const rows = logRecords.filter((r) =>
+      (!chosen.length || chosen.indexOf(r.level) !== -1)
+      && (!needle || (r.msg + ' ' + r.logger).toLowerCase().indexOf(needle) !== -1));
+
+    out.innerHTML = '';
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'capempty';
+      p.textContent = logRecords.length
+        ? 'Nothing matches that filter.' : 'No log lines yet.';
+      out.appendChild(p);
+    } else {
+      rows.forEach((r) => {
+        const line = document.createElement('div');
+        line.className = 'logline lvl-' + String(r.level || 'INFO').toLowerCase();
+        line.innerHTML = '<span class="lt"></span><span class="ll"></span>'
+          + '<span class="lg"></span><span class="lm"></span>';
+        line.querySelector('.lt').textContent = r.t || '';
+        line.querySelector('.ll').textContent = (r.level || '')[0] || '·';
+        line.querySelector('.ll').title = r.level || '';
+        // The callin. prefix is on every line of ours and earns no width.
+        line.querySelector('.lg').textContent =
+          String(r.logger || '').replace(/^callin\./, '');
+        line.querySelector('.lm').textContent = r.msg || '';
+        out.appendChild(line);
+      });
+    }
+    $('logCount').textContent = rows.length === logRecords.length
+      ? `${rows.length} lines`
+      : `${rows.length} of ${logRecords.length}`;
+    out.scrollTop = out.scrollHeight;
+  }
+
   $('viewLogsBtn').onclick = async () => {
     const btn = $('viewLogsBtn'), out = $('logsResult');
     btn.disabled = true;
-    out.className = 'result on'; out.textContent = 'Fetching…';
+    out.className = 'result on logs'; out.textContent = 'Fetching…';
     try {
       const d = await afetch('/logs').then((r) => r.json());
       if (d.error) { showResult(out, false, d.error); return; }
-      out.className = 'result on';
-      out.textContent = (d.lines || []).join('\n') || 'No log lines yet.';
-      out.scrollTop = out.scrollHeight;
+      // Fall back to the flat lines if this is an older server, so the viewer
+      // degrades to what it used to be rather than to nothing.
+      logRecords = d.records || (d.lines || []).map((l) => ({
+        t: '', level: 'INFO', logger: '', msg: l,
+      }));
+      const present = d.levels || [];
+      const keep = [...$('logLevels').selectedOptions].map((o) => o.value);
+      $('logLevels').innerHTML = '';
+      LEVEL_ORDER.filter((l) => present.indexOf(l) !== -1).forEach((l) => {
+        const o = document.createElement('option');
+        o.value = l; o.textContent = l[0] + l.slice(1).toLowerCase();
+        o.selected = keep.indexOf(l) !== -1;
+        $('logLevels').appendChild(o);
+      });
+      $('logFilters').hidden = false;
+      out.className = 'result on logs';
+      paintLogs();
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
+  };
+
+  $('logLevels').onchange = paintLogs;
+  $('logSearch').oninput = paintLogs;
+  $('logClearFilters').onclick = () => {
+    [...$('logLevels').options].forEach((o) => { o.selected = false; });
+    $('logSearch').value = '';
+    paintLogs();
   };
 
   $('copyEmbedBtn').onclick = async () => {
