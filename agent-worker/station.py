@@ -473,6 +473,15 @@ class StationClient:
 
         Accepts an already-fetched /now-playing payload so prompt assembly
         doesn't request it twice per call.
+
+        The two records are merged rather than one replacing the other, and
+        that is the whole point. /now-playing carries the show as it is
+        actually RUNNING — resolved guest personas, this episode's angle, the
+        genre/mood/energy filters picks are judged against. /schedule carries
+        it as CONFIGURED — personaId, guestPersonaIds, mood. A measured swap
+        against a live station traded fifteen fields for three, and it did the
+        most damage on programme shows, which are the ones with an episode
+        angle and guests to lose.
         """
         np = now_playing if now_playing is not None else await self.now_playing()
         active = (np.get("context") or {}).get("activeShow") or {}
@@ -482,5 +491,9 @@ class StationClient:
 
         for show in (await self.schedule()).get("shows", []):
             if show.get("id") == show_id:
-                return show
+                # The schedule still wins wherever it has something to say, so
+                # nothing already reaching the prompt changes shape; it just
+                # stops taking the live record's fields down with it.
+                stated = {k: v for k, v in show.items() if v not in (None, "", [], {})}
+                return {**active, **stated}
         return active

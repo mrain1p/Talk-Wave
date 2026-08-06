@@ -1527,6 +1527,32 @@ class TestPromptAssembly(_TempStores):
         settings_store.save({"offer_skills": ""})
         self.assertNotIn("Offering a segment", asyncio.run(build()))
 
+    def test_tonights_episode_is_its_own_block(self):
+        # The Show Card is the standing format the show runs every week;
+        # `episodeAngle` is what THIS episode is about. It gets its own block
+        # rather than hanging off the card, so a station that can't resolve
+        # the show still keeps the one piece of framing it did publish.
+        import asyncio
+
+        class _Station:
+            async def active_show(self, now_playing=None):
+                return {"id": "s_pub", "name": "Donovan's Pub",
+                        "topic": "Irish folk and trad.",
+                        "episodeAngle": "A relaxed morning session."}
+
+            async def schedule(self):
+                raise AssertionError("assembling a prompt read the schedule")
+
+        snapshot = {"dj": {}, "personas": [], "now_playing": {},
+                    "state": {}, "session": {}, "schedule": {}}
+        text = asyncio.run(brain.build_system_prompt(
+            _Station(), {"id": "p_danny", "name": "Danny", "soul": "A soul."},
+            snapshot=snapshot))
+
+        self.assertIn("Tonight's episode in particular", text)
+        self.assertIn("A relaxed morning session.", text)
+        self.assertIn("Irish folk and trad.", text)
+
 
 class TestCallPrivacy(_TempStores):
     """Every call is a first call. The back-to-air line from the LAST caller
@@ -5057,6 +5083,153 @@ class TestTheDJDescribesRecordsItHasInformationAbout(unittest.TestCase):
 
         self.assertIn("[id: t-42]", _fmt_track(track, with_id=True))
         self.assertNotIn("t-42", _fmt_track(track, with_id=False))
+
+
+class TestTheLiveShowRecordSurvivesTheScheduleLookup(unittest.TestCase):
+    """`active_show` reads the show twice and merges the two answers.
+
+    Measured against a live station before this was fixed: the schedule lookup
+    REPLACED the running record, trading fifteen fields for three. The losses
+    were `episodeAngle`, `guests` and the genre/mood/energy filters — all of
+    which only exist on programme shows, so the lookup did the most damage
+    exactly where the show had the most to say about itself.
+    """
+
+    def _client(self, schedule_shows):
+        import station as station_mod
+
+        client = station_mod.StationClient.__new__(station_mod.StationClient)
+
+        async def schedule():
+            return {"shows": schedule_shows}
+
+        client.schedule = schedule
+        return client
+
+    LIVE = {
+        "now_playing": {"context": {"activeShow": {
+            "id": "s_pub", "name": "DONOVAN'S PUB", "topic": "Irish folk and trad.",
+            "episodeAngle": "A relaxed morning session.",
+            "guests": [{"id": "p_seamus", "name": "Seamus"}],
+            "genres": ["folk", "trad"], "energies": ["low"],
+            "filtersStrict": True, "themeId": "donovan-s-pub",
+        }}},
+    }
+    CONFIGURED = [{
+        "id": "s_pub", "name": "DONOVAN'S PUB", "topic": "Irish folk and trad.",
+        "personaId": "p_danny", "guestPersonaIds": [], "mood": "warm",
+    }]
+
+    def test_the_running_record_is_not_thrown_away(self):
+        import asyncio
+
+        show = asyncio.run(
+            self._client(self.CONFIGURED).active_show(self.LIVE["now_playing"]))
+
+        self.assertEqual(show["episodeAngle"], "A relaxed morning session.")
+        self.assertEqual([g["name"] for g in show["guests"]], ["Seamus"])
+        self.assertEqual(show["genres"], ["folk", "trad"])
+        self.assertTrue(show["filtersStrict"])
+
+    def test_the_schedule_still_contributes_what_only_it_knows(self):
+        import asyncio
+
+        show = asyncio.run(
+            self._client(self.CONFIGURED).active_show(self.LIVE["now_playing"]))
+
+        self.assertEqual(show["personaId"], "p_danny")
+        self.assertEqual(show["mood"], "warm")
+
+    def test_an_empty_scheduled_field_does_not_erase_a_live_one(self):
+        # The scheduled record carries empty lists for filters it doesn't
+        # override. Merging them blind would blank the live show's own.
+        import asyncio
+
+        configured = [dict(self.CONFIGURED[0], genres=[], topic="")]
+        show = asyncio.run(
+            self._client(configured).active_show(self.LIVE["now_playing"]))
+
+        self.assertEqual(show["genres"], ["folk", "trad"])
+        self.assertEqual(show["topic"], "Irish folk and trad.")
+
+    def test_an_unmatched_show_still_returns_the_live_record(self):
+        import asyncio
+
+        show = asyncio.run(
+            self._client([{"id": "s_other"}]).active_show(self.LIVE["now_playing"]))
+        self.assertEqual(show["episodeAngle"], "A relaxed morning session.")
+
+
+class TestTheDJKnowsWhoIsListening(unittest.TestCase):
+    """The listener count reaches the prompt whatever shape it arrives in.
+
+    This read insisted on a bare int at `listeners`. A real station answers
+    with `{"current": 0, "peak": 3}` there and `{"count": 0}` under `context`,
+    so the line never once reached a prompt — and "is anyone even listening?"
+    is one of the commonest things a caller asks.
+    """
+
+    def _facts(self, np: dict) -> str:
+        from brain.briefing import _fmt_now_playing
+
+        return _fmt_now_playing(dict(np, nowPlaying={"title": "Stand"}))
+
+    def test_the_shape_a_live_station_actually_sends(self):
+        self.assertIn("3 listeners tuned in",
+                      self._facts({"listeners": {"current": 3, "peak": 9}}))
+
+    def test_the_count_under_context(self):
+        self.assertIn("2 listeners tuned in",
+                      self._facts({"context": {"listeners": {"count": 2}}}))
+
+    def test_a_bare_int_still_works(self):
+        self.assertIn("1 listener tuned in", self._facts({"listeners": 1}))
+
+    def test_an_empty_station_says_so(self):
+        self.assertIn("Nobody else is tuned in",
+                      self._facts({"listeners": {"current": 0}}))
+
+    def test_a_station_that_does_not_say_is_not_guessed_at(self):
+        # No claim either way — "nobody is listening" is a real thing for a DJ
+        # to say out loud, and it must not be invented from a missing field.
+        out = self._facts({})
+        self.assertNotIn("tuned in", out)
+        self.assertNotIn("Nobody else", out)
+
+
+class TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays(unittest.TestCase):
+    """Both come off the live show record and neither was read.
+
+    A DJ hosting alongside a guest persona had no idea they were there, and
+    the DJ could promise a caller a record the show's own filters would refuse.
+    """
+
+    def test_guests_are_named(self):
+        from brain.briefing import _fmt_guests
+
+        self.assertEqual(
+            _fmt_guests({"guests": [{"name": "Seamus"}, {"name": "Maeve"}]}),
+            "In the booth with you: Seamus and Maeve.")
+
+    def test_a_solo_show_says_nothing(self):
+        from brain.briefing import _fmt_guests
+
+        self.assertEqual(_fmt_guests({"guests": []}), "")
+        self.assertEqual(_fmt_guests({}), "")
+
+    def test_the_show_shape_reaches_the_prompt(self):
+        from brain.briefing import _fmt_show_shape
+
+        out = _fmt_show_shape({"genres": ["folk"], "energies": ["low"],
+                               "filtersStrict": True})
+        self.assertIn("folk", out)
+        self.assertIn("low energy", out)
+        self.assertIn("strictly", out)
+
+    def test_an_unfiltered_show_says_nothing(self):
+        from brain.briefing import _fmt_show_shape
+
+        self.assertEqual(_fmt_show_shape({"genres": [], "moods": []}), "")
 
 
 class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):

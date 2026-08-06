@@ -49,6 +49,14 @@ async def build_system_prompt(
     if show_name or show_card:
         show_block = f"\n# The show you're hosting: {show_name}\n{show_card}\n"
 
+    # The Show Card is the standing format; this is what tonight's episode is
+    # actually about. It only exists on programme shows, and it was being
+    # thrown away by the schedule lookup in `active_show` — so the DJ knew the
+    # show it hosts every week and nothing about the one it was hosting.
+    episode = clip(show.get("episodeAngle", ""), 600)
+    if episode:
+        show_block += f"\nTonight's episode in particular:\n  {episode}\n"
+
     # The programme intro is pinned independently of the Show Card. It used to
     # hang off the show block, so a station that couldn't resolve the active
     # show dropped the DJ's own framing of the night entirely — the one piece

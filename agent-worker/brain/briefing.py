@@ -102,14 +102,81 @@ def _fmt_now_playing(np: dict) -> str:
 
     # How many people are actually out there. A caller asking "is anyone even
     # listening?" is asking a real question, and the station knows the answer.
-    listeners = np.get("listeners")
-    if isinstance(listeners, int):
+    listeners = _listener_count(np)
+    if listeners is not None:
         bits.append(
             "Nobody else is tuned in right now." if listeners <= 0
             else f"{listeners} listener{'s' if listeners != 1 else ''} tuned in."
         )
 
     return " ".join(bits)
+
+
+def _listener_count(np: dict) -> int | None:
+    """How many people are tuned in, whichever shape the station sends.
+
+    This used to insist on a bare int at `listeners`. A live station answers
+    with `{"current": 0, "peak": 3}` there and `{"count": 0}` under `context`,
+    so the test never passed and the line has never once reached a prompt —
+    the DJ has been unable to answer "is anyone even listening?" the whole
+    time, silently, because a missing fact looks exactly like a quiet station.
+
+    "Everyone else" is the honest reading: the prompt is assembled before the
+    caller's own browser tunes in (see `tune_in_on_call`), and the station's
+    count lags a fresh listener by seconds either way.
+    """
+    for value in (np.get("listeners"), (np.get("context") or {}).get("listeners")):
+        # bool is an int, and a `listeners: false` would otherwise read as 0.
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        if isinstance(value, dict):
+            for key in ("current", "count"):
+                if isinstance(value.get(key), int):
+                    return int(value[key])
+    return None
+
+
+def _fmt_guests(show: dict) -> str:
+    """Who else is in the booth.
+
+    The station resolves guest personas onto the live show record, and nothing
+    read them: a DJ hosting alongside someone had no idea they were there, so
+    a caller who greeted the guest by name got a blank back from the one
+    person who should have known.
+    """
+    names = [
+        demojibake(str(g.get("name") or "")).strip()
+        for g in (show.get("guests") or [])
+        if isinstance(g, dict) and g.get("name")
+    ]
+    names = [n for n in names if n][:3]
+    if not names:
+        return ""
+    joined = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    return f"In the booth with you: {joined}."
+
+
+# The show's musical shape, in the order it reads naturally aloud.
+_SHAPE_FIELDS = (("genres", ""), ("moods", ""), ("eras", ""), ("energies", " energy"))
+
+
+def _fmt_show_shape(show: dict) -> str:
+    """What this show will actually accept.
+
+    The station judges its picks against these filters, so a request outside
+    them is refused after the DJ has already promised it. Knowing the shape up
+    front is the difference between steering a caller somewhere that will
+    play and a request that quietly never turns up.
+    """
+    bits = []
+    for key, suffix in _SHAPE_FIELDS:
+        values = [str(v).strip() for v in (show.get(key) or []) if str(v).strip()]
+        if values:
+            bits.append(", ".join(values[:4]) + suffix)
+    if not bits:
+        return ""
+    strict = " The station holds to that strictly tonight." if show.get("filtersStrict") else ""
+    return "This show plays: " + "; ".join(bits) + "." + strict
 
 
 def _tracks(items: list, limit: int) -> list[str]:
@@ -263,6 +330,11 @@ async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
     """
     parts = [
         _fmt_now_playing(snap["now_playing"]),
+        # Both come off the live show record, so they cost no extra read — and
+        # both are a line at most, which is what earns them a place in a prompt
+        # paid for on every turn.
+        _fmt_guests(show),
+        _fmt_show_shape(show),
         _fmt_recent(snap["state"], int(cfg.get("context_recent_tracks", 3))),
         _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2))),
         _fmt_booth(snap["session"], int(cfg.get("context_booth_lines", 4)),
