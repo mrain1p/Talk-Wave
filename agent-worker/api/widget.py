@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 
 from aiohttp import web
@@ -42,7 +43,7 @@ def asset_tag(name: str) -> str:
 
 
 def _versioned_index() -> str:
-    """index.html with ?v=<tag> on its own script and stylesheet.
+    """index.html with ?v=<tag> on every script and stylesheet it references.
 
     The page itself must never be cached — that is what stopped operators
     seeing a stale interface after an image update. But the 100KB of js and
@@ -53,15 +54,23 @@ def _versioned_index() -> str:
     Re-read when the file changes, so an edit shows up without a restart.
     """
     path = WIDGET_DIR / "index.html"
-    js, css = asset_tag("app.js"), asset_tag("style.css")
-    # Keyed on all three, because the html embeds the other two files' tags —
-    # cache it on its own mtime alone and an app.js edit would keep serving
-    # the previous tag, which is the exact bug this is here to prevent.
-    key = (path.stat().st_mtime, js, css)
+    html = path.read_text(encoding="utf-8")
+
+    # Whatever the page actually references, rather than two names spelled out
+    # here. When app.js was split into shared/call/panel the hardcoded version
+    # would have kept tagging a file that no longer existed and silently left
+    # the three real ones uncached — the failure this whole mechanism exists
+    # to prevent, reintroduced by the very change that split the file.
+    assets = sorted(set(re.findall(r'(?:src|href)="/([\w.-]+\.(?:js|css))"', html)))
+    tags = {name: asset_tag(name) for name in assets}
+
+    # Keyed on the html AND every tag it embeds — cache it on its own mtime
+    # alone and an edit to one of the assets would keep serving the previous
+    # tag, which is the exact bug this is here to prevent.
+    key = (path.stat().st_mtime, tuple(sorted(tags.items())))
     if _index_cache["mtime"] != key:
-        html = path.read_text(encoding="utf-8")
-        html = html.replace('src="/app.js"', f'src="/app.js?v={js}"')
-        html = html.replace('href="/style.css"', f'href="/style.css?v={css}"')
+        for name, tag in tags.items():
+            html = html.replace(f'"/{name}"', f'"/{name}?v={tag}"')
         _index_cache.update(mtime=key, html=html)
     return _index_cache["html"]
 

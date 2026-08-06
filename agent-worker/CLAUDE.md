@@ -61,7 +61,7 @@ House rules for tests here, and they are firm:
 
 The handler goes in the `api/` module named after its job; the route goes in `build_app()` in
 `token_server.py`, which is the only routing table there is. Two tests hold that line:
-`TestWidgetServerContract` reads `token_server.py` alone and fails the build if `app.js`
+`TestWidgetServerContract` reads `token_server.py` alone and fails the build if the widget
 fetches a path the server does not serve, and `TestTheRoutingTableIsInOnePlace` fails if a
 handler exists that nothing routes, if a module registers routes of its own, or if anything
 under `api/` imports `token_server` back.

@@ -31,6 +31,22 @@ import speech_filter
 from brain import briefing, conduct
 
 
+def widget_js(exclude=("embed.js",)) -> dict:
+    """Every JS file the widget's own pages load, by filename.
+
+    Discovered rather than listed, because the contract tests below used to
+    name `app.js` directly and that file has since been split into shared.js,
+    call.js and panel.js. A named file silently stops covering the code that
+    moved out of it; a glob picks the new one up the moment it lands.
+
+    embed.js is excluded by default: it is the third-party drop-in, it fetches
+    nothing and it reaches for no id in this repo's markup.
+    """
+    d = Path(__file__).parent.parent / "web-widget"
+    return {p.name: p.read_text(encoding="utf-8")
+            for p in sorted(d.glob("*.js")) if p.name not in exclude}
+
+
 class TestSpeechFilter(unittest.TestCase):
     def test_strips_asterisk_stage_directions(self):
         out = speech_filter.strip_stage_directions(
@@ -758,7 +774,7 @@ class TestHttpSurface(_TempStores):
         ("GET", "/logs"),
     ]
     # Reachable by anyone: the widget itself, and what it reads to render.
-    PUBLIC = ["/health", "/", "/app.js", "/style.css", "/embed.js"]
+    PUBLIC = ["/health", "/", "/call.js", "/style.css", "/embed.js"]
 
     def _serve(self, coro):
         import asyncio
@@ -799,7 +815,7 @@ class TestHttpSurface(_TempStores):
     def test_served_assets_match_the_files_on_disk(self):
         async def check(client, ts):
             out = {}
-            for name in ("app.js", "style.css", "embed.js"):
+            for name in ("call.js", "style.css", "embed.js"):
                 r = await client.get("/" + name)
                 out[name] = len(await r.read())
             return out
@@ -864,9 +880,9 @@ class TestHttpSurface(_TempStores):
         async def check(client, ts):
             from api import widget as api_widget
 
-            good = await client.get(f"/app.js?v={api_widget.asset_tag('app.js')}")
-            bare = await client.get("/app.js")
-            stale = await client.get("/app.js?v=0.0.1")
+            good = await client.get(f"/call.js?v={api_widget.asset_tag('call.js')}")
+            bare = await client.get("/call.js")
+            stale = await client.get("/call.js?v=0.0.1")
             page = await client.get("/")
             return {
                 "versioned": good.headers.get("Cache-Control"),
@@ -885,8 +901,8 @@ class TestHttpSurface(_TempStores):
         # Forcing it would corrupt the response for a client that can't
         # decode; never offering it was the 0.9.53 bug.
         async def check(client, ts):
-            asked = await client.get("/app.js", headers={"Accept-Encoding": "gzip, deflate"})
-            plain = await client.get("/app.js", headers={"Accept-Encoding": "identity"})
+            asked = await client.get("/call.js", headers={"Accept-Encoding": "gzip, deflate"})
+            plain = await client.get("/call.js", headers={"Accept-Encoding": "identity"})
             return {
                 "encoding": asked.headers.get("Content-Encoding"),
                 "vary": asked.headers.get("Vary"),
@@ -906,7 +922,7 @@ class TestAssetVersioning(unittest.TestCase):
 
     This is the silent kind of failure: if index.html's script or link tag is
     ever reformatted, the rewrite quietly matches nothing, the browser asks for
-    the bare /app.js, and the middleware correctly answers `no-cache` — so
+    the bare /call.js, and the middleware correctly answers `no-cache` — so
     every visitor silently goes back to re-downloading 150KB on every load with
     nothing broken enough to notice.
     """
@@ -916,15 +932,15 @@ class TestAssetVersioning(unittest.TestCase):
 
         api_widget._index_cache.update(mtime=0.0, html="")
         html = api_widget._versioned_index()
-        self.assertIn(f'src="/app.js?v={api_widget.asset_tag("app.js")}"', html)
+        self.assertIn(f'src="/call.js?v={api_widget.asset_tag("call.js")}"', html)
         self.assertIn(
             f'href="/style.css?v={api_widget.asset_tag("style.css")}"', html)
-        self.assertNotIn('src="/app.js"', html)
+        self.assertNotIn('src="/call.js"', html)
         self.assertNotIn('href="/style.css"', html)
 
     def test_the_tag_changes_when_the_file_does(self):
         # The bug this prevents: assets are served `immutable` for a year, so
-        # keying the URL on APP_VERSION meant any change to app.js without a
+        # keying the URL on APP_VERSION meant any change to call.js without a
         # version bump left every browser pinned to the old copy.
         #
         # Tested by actually changing a file. An earlier version of this
@@ -941,14 +957,14 @@ class TestAssetVersioning(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         try:
             api_widget.WIDGET_DIR = tmp
-            asset = tmp / "app.js"
+            asset = tmp / "call.js"
             asset.write_text("// one", encoding="utf-8")
-            before = api_widget.asset_tag("app.js")
+            before = api_widget.asset_tag("call.js")
 
             asset.write_text("// two", encoding="utf-8")
             os.utime(asset, (time.time() + 5, time.time() + 5))
             self.assertNotEqual(
-                api_widget.asset_tag("app.js"), before,
+                api_widget.asset_tag("call.js"), before,
                 "editing the file left the cache key unchanged")
 
             # A missing file must not crash the page; it falls back.
@@ -1266,7 +1282,7 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.js = (Path(__file__).parent.parent / "web-widget" / "app.js").read_text(
+        cls.js = (Path(__file__).parent.parent / "web-widget" / "panel.js").read_text(
             encoding="utf-8"
         )
 
@@ -3686,10 +3702,10 @@ class TestOneSettingReplacingAnotherSaysSo(unittest.TestCase):
         # The panel is what actually hides it, and it lives in another
         # language with no test runner — so this pins the one line that
         # implements it.
-        js = (Path(__file__).parent.parent / "web-widget" / "app.js").read_text(
+        js = (Path(__file__).parent.parent / "web-widget" / "panel.js").read_text(
             encoding="utf-8")
         self.assertIn("want === false", js,
-                      "app.js cannot honour a `needs` of False, so the field "
+                      "panel.js cannot honour a `needs` of False, so the field "
                       "would stay visible and keep looking like it works")
 
 
@@ -4163,12 +4179,12 @@ class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
         # would silently hide a control rather than raising anything.
         from api import live as api_live
 
-        app_js = (Path(__file__).parent.parent / "web-widget" / "app.js"
-                  ).read_text(encoding="utf-8")
+        call_js = (Path(__file__).parent.parent / "web-widget" / "call.js"
+                   ).read_text(encoding="utf-8")
         for key in api_live.corner_controls({}):
             with self.subTest(key=key):
-                self.assertIn(f"c.{key} !== false", app_js,
-                              f"app.js never reads controls.{key}")
+                self.assertIn(f"c.{key} !== false", call_js,
+                              f"call.js never reads controls.{key}")
 
 
 class TestABadPlaylistStaysSmall(unittest.TestCase):
@@ -5489,11 +5505,14 @@ class TestWidgetServerContract(unittest.TestCase):
     """The widget is plain browser JS with no toolchain and no test harness of
     its own, so this is what guards it.
 
-    Two ways it has broken before: a route renamed on the server while app.js
-    kept calling the old path, and a DOM id changed in index.html while app.js
-    kept reaching for the old one. Both leave a green suite and a widget that
-    silently does nothing — the exact failure mode this project treats as a bug
-    rather than a nitpick.
+    Two ways it has broken before: a route renamed on the server while the
+    widget kept calling the old path, and a DOM id changed in index.html while
+    the widget kept reaching for the old one. Both leave a green suite and a
+    widget that silently does nothing — the exact failure mode this project
+    treats as a bug rather than a nitpick.
+
+    Reads every file in web-widget/ rather than one named file, so the split
+    into shared.js / call.js / panel.js did not quietly shrink what is covered.
     """
 
     @classmethod
@@ -5501,26 +5520,39 @@ class TestWidgetServerContract(unittest.TestCase):
         import re
 
         root = Path(__file__).parent.parent
-        cls.app_js = (root / "web-widget" / "app.js").read_text(encoding="utf-8")
+        cls.sources = widget_js()
+        cls.js = "\n".join(cls.sources.values())
         cls.html = (root / "web-widget" / "index.html").read_text(encoding="utf-8")
         server = (Path(__file__).parent / "token_server.py").read_text(encoding="utf-8")
 
         cls.routes = set(re.findall(
             r'router\.add_(?:get|post|put|delete)\(\s*"([^"]+)"', server))
-        cls.fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", cls.app_js))
-        cls.wanted_ids = set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", cls.app_js)) | set(
-            re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", cls.app_js))
+        cls.fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", cls.js))
+        cls.wanted_ids = set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", cls.js)) | set(
+            re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", cls.js))
         cls.declared_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', cls.html))
-        # Some elements are built by app.js when first needed rather than
-        # sitting in the markup (the first-run banner, the password nudge).
+        # Some elements are built in JS when first needed rather than sitting
+        # in the markup (the first-run banner, the password nudge).
         cls.built_ids = set(re.findall(
-            r"\.id\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]", cls.app_js))
+            r"\.id\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]", cls.js))
 
     def test_the_scan_found_something_to_check(self):
         # A silently-empty scan would make every assertion below pass forever.
         self.assertGreater(len(self.routes), 10)
         self.assertGreater(len(self.fetched), 10)
         self.assertGreater(len(self.wanted_ids), 50)
+
+    def test_the_page_loads_every_script_the_widget_is_split_into(self):
+        # A file that exists but nothing loads is the split's own failure mode:
+        # the code is right, the tests above still read it, and the browser
+        # never sees it. Only files the call page is meant to load count.
+        import re
+
+        loaded = set(re.findall(r'<script src="/([\w.-]+\.js)"', self.html))
+        orphans = sorted(set(self.sources) - loaded)
+        self.assertEqual(
+            orphans, [],
+            f"these ship in web-widget/ but index.html loads none of them: {orphans}")
 
     def test_every_path_the_widget_calls_is_a_route_the_server_serves(self):
         static = {r.rstrip("/") for r in self.routes if "{" not in r}
@@ -5532,28 +5564,32 @@ class TestWidgetServerContract(unittest.TestCase):
         )
         self.assertEqual(
             missing, [],
-            "app.js calls paths token_server.py does not serve — the widget "
-            f"will 404 with nothing to say so: {missing}",
+            "the widget calls paths token_server.py does not serve — it will "
+            f"404 with nothing to say so: {missing}",
         )
 
     def test_every_element_the_widget_reaches_for_exists(self):
         missing = sorted(self.wanted_ids - self.declared_ids - self.built_ids)
         self.assertEqual(
             missing, [],
-            "app.js reads element ids that index.html does not declare and "
-            f"app.js never creates — those controls are dead: {missing}",
+            "the widget reads element ids that index.html does not declare and "
+            f"never creates — those controls are dead: {missing}",
         )
 
     def test_the_widget_is_still_dependency_free(self):
-        # No build step, no bundler, no node_modules. The moment app.js needs
-        # one, everything above stops being enough and the deploy story changes.
+        # No build step, no bundler, no node_modules. The moment the widget
+        # needs one, everything above stops being enough and the deploy story
+        # changes. The split into three files is script tags, not modules,
+        # precisely so this stays true.
         root = Path(__file__).parent.parent
         self.assertFalse(
             list(root.glob("package.json")) + list((root / "web-widget").glob("package.json")),
             "a package.json appeared — the widget is meant to stay toolchain-free",
         )
-        self.assertNotIn("require(", self.app_js)
-        self.assertNotIn("import ", self.app_js.split("//")[0][:200])
+        for name, src in self.sources.items():
+            with self.subTest(file=name):
+                self.assertNotIn("require(", src)
+                self.assertNotIn("import ", src.split("//")[0][:200])
 
 
 class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
@@ -5620,7 +5656,7 @@ class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
     `api/`, and every route is registered in that one block.
 
     Two things depend on it holding. TestWidgetServerContract reads
-    `token_server.py` alone to check that every path app.js fetches is served —
+    `token_server.py` alone to check that every path the widget fetches is served —
     a route registered inside `api/` would be invisible to it, and the widget
     would 404 with nothing to say so. And a handler nobody routes is the
     failure mode this codebase keeps producing in other forms: the control
@@ -5888,7 +5924,7 @@ class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
             for ref in re.findall(r"`([A-Za-z0-9_./-]+\.(?:py|js|html|css))`",
                                   doc.read_text(encoding="utf-8")):
                 if ref.startswith("/"):
-                    continue        # a served route (/app.js), not a path on disk
+                    continue        # a served route (/call.js), not a path on disk
                 # Resolve as a path relative to the doc or the repo root, else
                 # as a bare filename anywhere in the source tree.
                 if (base / ref).exists() or (root / ref).exists() \
@@ -5999,17 +6035,22 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # same commit and say in the message what made that the right call.
     WAIVED = {
         "agent-worker/test_sidecar.py": (
-            6096, "the whole suite in one file, appended to chronologically "
+            6137, "the whole suite in one file, appended to chronologically "
                   "since the first commit. Being split by subject into tests/."),
-        "web-widget/app.js": (
-            3354, "the call widget and the settings panel in one IIFE. There is "
-                  "no bundler here by choice, so the split is into separate "
-                  "script files, not modules. Being split."),
+        "web-widget/call.js": (
+            1107, "the call surface, out of the old app.js. Still above the "
+                  "ceiling: the captions, meters and LiveKit wiring each want "
+                  "their own file. Next after the panel."),
+        "web-widget/panel.js": (
+            2105, "the operator surface, out of the old app.js. Settings form, "
+                  "the /test/* probes, uploads and the log and call viewers are "
+                  "four separable jobs sharing one file. Being split."),
         "web-widget/style.css": (
-            1094, "themes both surfaces. Splits with app.js."),
+            1094, "themes both surfaces. Splits when the panel gets its own "
+                  "page and can take its own stylesheet with it."),
         "web-widget/index.html": (
-            753, "the call page and the panel in one document. Splits with "
-                 "app.js."),
+            755, "the call page and the panel in one document. The panel moves "
+                 "to its own page next."),
         "agent-worker/settings.py": (
             1048, "mostly DEFAULTS and GROUPS — a declaration table, not logic. "
                   "Long because the station has a lot of settings, and reading "

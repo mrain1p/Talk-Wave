@@ -41,8 +41,11 @@ other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactl
 
 ### web-widget/ — the phone
 
-Plain browser JS, no build step, no toolchain. `token_server` serves `index.html` at `/` and
-`app.js` at `/app.js`. `embed.js` is the drop-in `<script>` for third-party pages; it resolves
+Plain browser JS, no build step, no toolchain. `token_server` serves `index.html` at `/`, and
+behind it three script tags: `shared.js` (what both surfaces need, published as the `Callin`
+global), `call.js` (the phone) and `panel.js` (the operator's settings surface). Script tags,
+not modules — the split kept the no-bundler promise rather than trading it away.
+`embed.js` is the drop-in `<script>` for third-party pages; it resolves
 `?theme=inherit` against the host page before the iframe loads, because a cross-origin frame
 can't read the page it sits in.
 
@@ -123,8 +126,9 @@ Work happens on the `dev` branch, not `main`. `main` is what `:latest` ships fro
 ### How long a file may be
 
 **600 lines**, for anything under `agent-worker/` or `web-widget/`. Not because short files
-are virtuous — because nothing here ever objected to a file getting longer, and `app.js`
-reached 3,354 lines and `test_sidecar.py` 5,791 one entirely reasonable commit at a time.
+are virtuous — because nothing here ever objected to a file getting longer, and the widget's
+old single app file reached 3,354 lines and `test_sidecar.py` 5,791 one entirely reasonable
+commit at a time.
 
 Above the ceiling is allowed, but it has to be a decision somebody wrote down: add an entry to
 `WAIVED` in `TestNoFileGrowsWithoutSomebodyDeciding` saying why that size is the right answer.
