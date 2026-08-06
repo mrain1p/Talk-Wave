@@ -27,13 +27,29 @@ class TestAssetVersioning(unittest.TestCase):
     def test_the_served_html_versions_its_own_assets(self):
         from api import widget as api_widget
 
-        api_widget._index_cache.update(mtime=0.0, html="")
-        html = api_widget._versioned_index()
+        api_widget._page_cache.clear()
+        html = api_widget._versioned_page("index.html")
         self.assertIn(f'src="/call.js?v={api_widget.asset_tag("call.js")}"', html)
         self.assertIn(
             f'href="/style.css?v={api_widget.asset_tag("style.css")}"', html)
         self.assertNotIn('src="/call.js"', html)
         self.assertNotIn('href="/style.css"', html)
+
+    def test_both_pages_version_their_own_scripts(self):
+        # The two pages load different scripts. A cache keyed on one name, or a
+        # hardcoded asset list, would leave the other page's scripts untagged
+        # and therefore uncached — silently, which is this test's whole subject.
+        from api import widget as api_widget
+
+        api_widget._page_cache.clear()
+        for page, script in (("index.html", "call.js"), ("panel.html", "panel.js")):
+            with self.subTest(page=page):
+                html = api_widget._versioned_page(page)
+                self.assertIn(
+                    f'src="/{script}?v={api_widget.asset_tag(script)}"', html)
+                self.assertIn(
+                    f'src="/shared.js?v={api_widget.asset_tag("shared.js")}"', html)
+                self.assertNotIn(f'src="/{script}"', html)
 
     def test_the_tag_changes_when_the_file_does(self):
         # The bug this prevents: assets are served `immutable` for a year, so
@@ -76,7 +92,7 @@ class TestAssetVersioning(unittest.TestCase):
         # Guards against the rewrite silently operating on an empty string.
         from api import widget as api_widget
 
-        html = api_widget._versioned_index()
+        html = api_widget._versioned_page("index.html")
         self.assertIn("<html", html.lower())
         self.assertGreater(len(html), 2000)
 
@@ -85,13 +101,13 @@ class TestPanelMarkup(unittest.TestCase):
     """The panel builds itself from the schema, but it can only fill in a
     control the markup actually contains — `byKind` skips any field with no
     matching element id. So a setting declared in settings.py with no input in
-    index.html is simply unreachable, with nothing to say so. That shipped
+    panel.html is simply unreachable, with nothing to say so. That shipped
     twice (avoid_on_air_overlap, on_air_quiet_secs)."""
 
     def setUp(self):
         import re
 
-        html = (REPO / "web-widget" / "index.html").read_text(
+        html = (REPO / "web-widget" / "panel.html").read_text(
             encoding="utf-8"
         )
         self.ids = set(re.findall(r'id="([^"]+)"', html))
@@ -101,7 +117,7 @@ class TestPanelMarkup(unittest.TestCase):
         missing = sorted(f for f in settings_store.SCHEMA if f not in self.ids)
         self.assertFalse(
             missing,
-            "settings with no input in index.html — they cannot be changed from "
+            "settings with no input in panel.html — they cannot be changed from "
             f"the panel: {missing}",
         )
 
@@ -131,7 +147,11 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
     Nothing failed loudly: no request, no console error, no 401. There is no JS
     test runner here, so this reads the source — in the same spirit as
     TestPanelMarkup above. It is deliberately narrow: the loaded-flag must be
-    its own boolean, never a data container tested for truthiness."""
+    its own boolean, never a data container tested for truthiness.
+
+    Since 0.9.105 the panel is its own page, so the trigger is arriving rather
+    than clicking a gear — the guard moved into `open_()` and is still exactly
+    as capable of being written the wrong way round."""
 
     @classmethod
     def setUpClass(cls):
@@ -139,22 +159,22 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
             encoding="utf-8"
         )
 
-    def _gear_handler(self) -> str:
-        start = self.js.index("$('gearBtn').onclick")
-        return self.js[start : self.js.index("};", start)]
+    def _open_handler(self) -> str:
+        start = self.js.index("async function open_()")
+        return self.js[start : self.js.index("\n  }", start)]
 
-    def test_the_gear_guard_uses_a_dedicated_flag(self):
-        guard = self._gear_handler()
+    def test_the_open_guard_uses_a_dedicated_flag(self):
+        guard = self._open_handler()
         self.assertIn(
             "loaded ||",
             guard,
-            "the gear's skip-the-fetch guard must test the `loaded` flag",
+            "the skip-the-fetch guard must test the `loaded` flag",
         )
 
-    def test_the_gear_guard_never_tests_a_data_container(self):
+    def test_the_open_guard_never_tests_a_data_container(self):
         # The actual bug: any of these is an object that is truthy while empty,
         # so using one as "already loaded" skips the fetch on the first open.
-        guard = self._gear_handler()
+        guard = self._open_handler()
         for name in ("options", "overrides", "resolved", "secrets", "SCHEMA"):
             self.assertNotIn(
                 f"|| {name} ||",
@@ -162,14 +182,23 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
                 f"`{name}` is truthy when empty — it cannot stand in for `loaded`",
             )
 
+    def test_arriving_on_the_page_actually_loads_it(self):
+        # The panel used to be opened by a click. Now nothing clicks anything,
+        # so if this call is ever dropped the page renders an empty form with
+        # no error — the same silent failure as 0.9.61, by a different route.
+        self.assertRegex(
+            self.js, r"\n  open_\(\);",
+            "panel.js defines open_() but never calls it, so the page loads "
+            "nothing")
+
     def test_loading_the_settings_sets_the_flag(self):
         start = self.js.index("async function loadSettings()")
         body = self.js[start : self.js.index("\n  }", start)]
         self.assertIn(
             "loaded = true",
             body,
-            "loadSettings must record that the panel is filled, or the gear "
-            "refetches everything on every open",
+            "loadSettings must record that the panel is filled, or arriving "
+            "refetches everything every time",
         )
 
     def test_the_flag_starts_false(self):
@@ -194,14 +223,23 @@ class TestWidgetServerContract(unittest.TestCase):
     its own, so this is what guards it.
 
     Two ways it has broken before: a route renamed on the server while the
-    widget kept calling the old path, and a DOM id changed in index.html while
-    the widget kept reaching for the old one. Both leave a green suite and a
+    widget kept calling the old path, and a DOM id changed in the markup while
+    the script kept reaching for the old one. Both leave a green suite and a
     widget that silently does nothing — the exact failure mode this project
     treats as a bug rather than a nitpick.
 
-    Reads every file in web-widget/ rather than one named file, so the split
-    into shared.js / call.js / panel.js did not quietly shrink what is covered.
+    Checked PER PAGE since the panel moved to /panel. That is stricter than
+    the old whole-widget check, not looser: panel.js reaching for an id that
+    only exists on the call page used to pass, because both surfaces were one
+    document and every id was in scope. Now it fails, which is right — those
+    two pages never load each other's script.
     """
+
+    # page -> the scripts that page loads, in load order.
+    PAGES = {
+        "index.html": ("shared.js", "call.js"),
+        "panel.html": ("shared.js", "panel.js"),
+    }
 
     @classmethod
     def setUpClass(cls):
@@ -210,37 +248,59 @@ class TestWidgetServerContract(unittest.TestCase):
         root = REPO
         cls.sources = widget_js()
         cls.js = "\n".join(cls.sources.values())
-        cls.html = (root / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.pages = {
+            name: (root / "web-widget" / name).read_text(encoding="utf-8")
+            for name in cls.PAGES
+        }
         server = (AGENT_WORKER / "token_server.py").read_text(encoding="utf-8")
 
         cls.routes = set(re.findall(
             r'router\.add_(?:get|post|put|delete)\(\s*"([^"]+)"', server))
         cls.fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", cls.js))
-        cls.wanted_ids = set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", cls.js)) | set(
-            re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", cls.js))
-        cls.declared_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', cls.html))
-        # Some elements are built in JS when first needed rather than sitting
-        # in the markup (the first-run banner, the password nudge).
-        cls.built_ids = set(re.findall(
-            r"\.id\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]", cls.js))
+
+    @staticmethod
+    def _ids_wanted(src):
+        import re
+
+        return set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", src)) | set(
+            re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", src))
 
     def test_the_scan_found_something_to_check(self):
         # A silently-empty scan would make every assertion below pass forever.
         self.assertGreater(len(self.routes), 10)
         self.assertGreater(len(self.fetched), 10)
-        self.assertGreater(len(self.wanted_ids), 50)
+        self.assertEqual(set(self.sources), {"shared.js", "call.js", "panel.js"})
 
-    def test_the_page_loads_every_script_the_widget_is_split_into(self):
+    def test_every_script_belongs_to_a_page_and_every_page_loads_its_own(self):
         # A file that exists but nothing loads is the split's own failure mode:
-        # the code is right, the tests above still read it, and the browser
-        # never sees it. Only files the call page is meant to load count.
+        # the code is right, the tests still read it, and the browser never
+        # sees it. The reverse matters just as much now — a page that started
+        # loading the other surface's script would undo the whole point of
+        # giving the panel its own URL.
         import re
 
-        loaded = set(re.findall(r'<script src="/([\w.-]+\.js)"', self.html))
-        orphans = sorted(set(self.sources) - loaded)
+        for page, expected in self.PAGES.items():
+            with self.subTest(page=page):
+                loaded = re.findall(r'<script src="/([\w.-]+\.js)"', self.pages[page])
+                self.assertEqual(
+                    tuple(loaded), expected,
+                    f"{page} loads {loaded}, expected {list(expected)}")
+
+        covered = {s for scripts in self.PAGES.values() for s in scripts}
+        orphans = sorted(set(self.sources) - covered)
         self.assertEqual(
             orphans, [],
-            f"these ship in web-widget/ but index.html loads none of them: {orphans}")
+            f"these ship in web-widget/ but no page loads them: {orphans}")
+
+    def test_the_call_page_does_not_ship_the_operator_interface(self):
+        # The reason the panel got its own page. index.html carried the entire
+        # settings form until 0.9.105, so every anonymous caller downloaded it.
+        html = self.pages["index.html"]
+        for marker in ('id="panel"', "Call-in settings", 'id="saveBtn"'):
+            with self.subTest(marker=marker):
+                self.assertNotIn(
+                    marker, html,
+                    "the operator interface is back on the caller's page")
 
     def test_every_path_the_widget_calls_is_a_route_the_server_serves(self):
         static = {r.rstrip("/") for r in self.routes if "{" not in r}
@@ -256,13 +316,22 @@ class TestWidgetServerContract(unittest.TestCase):
             f"404 with nothing to say so: {missing}",
         )
 
-    def test_every_element_the_widget_reaches_for_exists(self):
-        missing = sorted(self.wanted_ids - self.declared_ids - self.built_ids)
-        self.assertEqual(
-            missing, [],
-            "the widget reads element ids that index.html does not declare and "
-            f"never creates — those controls are dead: {missing}",
-        )
+    def test_every_element_a_page_reaches_for_exists_on_that_page(self):
+        import re
+
+        for page, scripts in self.PAGES.items():
+            src = "\n".join(self.sources[s] for s in scripts)
+            declared = set(re.findall(r'id="([A-Za-z0-9_-]+)"', self.pages[page]))
+            # Some elements are built in JS when first needed rather than
+            # sitting in the markup (the first-run banner, the password nudge).
+            built = set(re.findall(r"\.id\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]", src))
+            missing = sorted(self._ids_wanted(src) - declared - built)
+            with self.subTest(page=page):
+                self.assertEqual(
+                    missing, [],
+                    f"{'/'.join(scripts)} reads element ids that {page} does not "
+                    f"declare and never creates — those controls are dead: "
+                    f"{missing}")
 
     def test_the_widget_is_still_dependency_free(self):
         # No build step, no bundler, no node_modules. The moment the widget

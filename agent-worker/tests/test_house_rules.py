@@ -399,6 +399,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
             "because the station has a lot of settings, and reading it top to "
             "bottom is how you find one. It is supposed to grow.",
+        "web-widget/panel.html":
+            "a settings form with eighty-odd controls is this long. There is no "
+            "build step here by choice, so there is no include mechanism to "
+            "break it up with, and splitting the markup across pages would "
+            "scatter one form the operator reads top to bottom.",
         "agent-worker/api/diagnostics.py":
             "one module per job, and /test/* is genuinely one job: eight probes "
             "that all answer 'can this box reach that thing'. Splitting them "
@@ -411,19 +416,18 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # same commit and say in the message what made that the right call.
     SPLITTING = {
         "web-widget/call.js": (
-            1107, "the call surface, out of the old app.js. Still above the "
-                  "ceiling: the captions, meters and LiveKit wiring each want "
-                  "their own file. Next after the panel."),
+            1108, "the call surface, out of the old app.js. Still above the "
+                  "ceiling: the captions, the meters and the LiveKit wiring "
+                  "each want their own file."),
         "web-widget/panel.js": (
-            2105, "the operator surface, out of the old app.js. Settings form, "
-                  "the /test/* probes, uploads and the log and call viewers are "
-                  "four separable jobs sharing one file. Being split."),
+            2100, "the operator surface, out of the old app.js. The settings "
+                  "form, the /test/* probes, uploads, and the log and call "
+                  "viewers are four separable jobs sharing one file."),
         "web-widget/style.css": (
-            1094, "themes both surfaces. Splits when the panel gets its own "
-                  "page and can take its own stylesheet with it."),
-        "web-widget/index.html": (
-            755, "the call page and the panel in one document. The panel moves "
-                 "to its own page next."),
+            1103, "themes both pages. Now that they ARE two pages the "
+                  "panel-only rules can move to a panel.css, but which rules "
+                  "those are needs reading per selector rather than guessing, "
+                  "and getting it wrong breaks a layout silently."),
     }
 
     # Where shipped code lives. tools/ is developer scaffolding and docs are

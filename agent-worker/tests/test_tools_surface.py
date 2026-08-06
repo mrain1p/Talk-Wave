@@ -30,6 +30,12 @@ class TestExposedSurface(unittest.TestCase):
     ROUTES = {
         "STATIC /": "public",                  # the widget's own files
         "GET /": "public",
+        # Markup only, and deliberately public: every endpoint the panel calls
+        # checks admin auth for itself, so serving the form to someone with no
+        # password gets them an empty form and a login prompt. It is its own
+        # URL so that a reverse proxy CAN put a rule in front of it — which is
+        # the operator's choice to make, not something this route assumes.
+        "GET /panel": "public",
         "GET /health": "public",
         "GET /live": "public",                 # what the call card renders
         "GET /avatar/{persona_id}": "public",  # proxied so embeds work on https

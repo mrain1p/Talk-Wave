@@ -41,10 +41,12 @@ other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactl
 
 ### web-widget/ — the phone
 
-Plain browser JS, no build step, no toolchain. `token_server` serves `index.html` at `/`, and
-behind it three script tags: `shared.js` (what both surfaces need, published as the `Callin`
-global), `call.js` (the phone) and `panel.js` (the operator's settings surface). Script tags,
-not modules — the split kept the no-bundler promise rather than trading it away.
+Plain browser JS, no build step, no toolchain. Two pages that never load each other's script:
+`token_server` serves `index.html` at `/` (the phone: `shared.js` + `call.js`) and
+`panel.html` at `/panel` (the operator: `shared.js` + `panel.js`). `shared.js` publishes one
+global, `Callin`. Script tags, not modules — the split kept the no-bundler promise rather than
+trading it away. The panel has its own URL so a reverse proxy can put a rule in front of the
+admin surface that it could never put in front of the phone.
 `embed.js` is the drop-in `<script>` for third-party pages; it resolves
 `?theme=inherit` against the host page before the iframe loads, because a cross-origin frame
 can't read the page it sits in.

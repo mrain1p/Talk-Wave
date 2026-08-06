@@ -3,15 +3,25 @@
 The phone. Plain browser JavaScript — **no build step, no bundler, no npm, no node_modules.**
 Keep it that way; the whole thing is served as static files by `token_server.py`.
 
+**Two pages, and they never load each other's script.**
+
 | File | Served at | What it is |
 |---|---|---|
-| `index.html` | `/` | The call page and the settings panel, one document |
-| `shared.js` | `/shared.js` | What both surfaces need, published as the `Callin` global |
+| `index.html` | `/` | The call page. Loads `shared.js` + `call.js` |
+| `panel.html` | `/panel` | The operator's page. Loads `shared.js` + `panel.js` |
+| `shared.js` | `/shared.js` | What both pages need, published as the `Callin` global |
 | `call.js` | `/call.js` | The phone: the card, the meters, the captions, the call itself |
 | `panel.js` | `/panel.js` | The operator's surface: settings, `/test/*`, uploads, the viewers |
-| `style.css` | `/style.css` | Themed by `data-theme` on `<html>` |
+| `style.css` | `/style.css` | Both pages. Themed by `data-theme` on `<html>` |
 | `embed.js` | — | Drop-in `<script>` for third-party pages |
 | `embed-test.html` | — | Local harness for the embed path |
+
+The panel was a section of `index.html` until 0.9.105, which meant **every anonymous caller
+downloaded the whole operator interface** to look at a page with one button on it. Nothing
+leaked — every endpoint behind the panel checks admin auth for itself — but the two audiences
+could not be told apart by anything in front of the server. On its own URL they can be: if this
+box is reachable from outside your network, a rule in front of `/panel` in Caddy (an IP
+allowlist, or basic auth) is worth adding, and is the main reason the page exists separately.
 
 LiveKit's client SDK arrives from a CDN `<script>` tag in `index.html`, not from a package.
 
@@ -26,20 +36,24 @@ The seam is deliberately narrow. `shared.js` holds only what both surfaces genui
 query-param and theme setup, the `ASKS`/`NEVER` lists, `CALL_KEY`, and the synthesized sound
 engine. Anything only one surface uses belongs in that surface's file.
 
-**The dependency runs one way.** `panel.js` may call `window.Callin.refreshLive()` if the call
-page happens to be on the same document, and does nothing when it isn't — that hook is the only
-thing crossing between them, and it exists so the panel does not have to know whether there is a
-card to repaint. The sound engine is *fed* (`setSounds`) rather than read from, which is why a
-sound preview in the panel no longer briefly changes what a live caller would hear.
+**Nothing crosses between `call.js` and `panel.js`.** They are never on the same page, so there
+is no hook, no shared state and no direction to get wrong. Each fetches `/live` for itself. The
+sound engine in `shared.js` is *fed* (`setSounds`) rather than read from, which is why a sound
+preview in the panel no longer briefly changes what a live caller would hear — it used to reach
+into the call page's own `/live` object and put it back 1.5 seconds later.
+
+A settings save no longer repaints the call card, because there is no card on that page. The
+call page's own 20-second `/live` poll picks the change up instead.
 
 There is still **no JS unit-test harness and no toolchain to add one to.** What guards these
 files lives in the Python suite (`test_sidecar.py`):
 
 - `TestWidgetServerContract` — reads *every* `.js` in this directory, so a fourth file is covered
-  the moment it lands. Every path the widget fetches is a route `token_server.py` serves; every
-  DOM id it reaches for exists in `index.html` or is assigned in JS (`firstRun` and `pwNudge` are
-  built on the fly; that is fine and the test knows it); and `index.html` must actually load each
-  file, because a script nothing loads is this split's own failure mode.
+  the moment it lands, and checks DOM ids **per page**: `call.js` against `index.html`,
+  `panel.js` against `panel.html`. That is stricter than the old whole-widget check — reaching
+  for an id that lives on the other page used to pass, because both surfaces were one document.
+  It also pins which scripts each page loads, in order, so neither page can start shipping the
+  other's, and asserts the call page contains no trace of the settings form.
 - `TestPanelMarkup`, `TestPanelLoadsOnOpen`, `TestAssetVersioning` — panel structure and
   cache-busting.
 - `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js` and `panel.js` are both still over the

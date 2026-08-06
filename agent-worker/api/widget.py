@@ -23,7 +23,9 @@ WIDGET_DIR = Path(
 )
 
 
-_index_cache: dict = {"mtime": 0.0, "html": ""}
+# name -> (cache key, rendered html). Keyed per page because index.html and
+# panel.html reference different scripts and must not share a slot.
+_page_cache: dict = {}
 
 
 def asset_tag(name: str) -> str:
@@ -42,41 +44,56 @@ def asset_tag(name: str) -> str:
         return APP_VERSION
 
 
-def _versioned_index() -> str:
-    """index.html with ?v=<tag> on every script and stylesheet it references.
+def _versioned_page(name: str) -> str:
+    """One of our html pages, with ?v=<tag> on every script and stylesheet.
 
     The page itself must never be cached — that is what stopped operators
-    seeing a stale interface after an image update. But the 100KB of js and
-    css behind it can be cached forever *if the URL changes when they do*. So
-    the html stays fresh and the heavy assets stop being re-downloaded on
-    every single load.
+    seeing a stale interface after an image update. But the js and css behind
+    it can be cached forever *if the URL changes when they do*. So the html
+    stays fresh and the heavy assets stop being re-downloaded on every load.
 
     Re-read when the file changes, so an edit shows up without a restart.
     """
-    path = WIDGET_DIR / "index.html"
+    path = WIDGET_DIR / name
     html = path.read_text(encoding="utf-8")
 
-    # Whatever the page actually references, rather than two names spelled out
-    # here. When app.js was split into shared/call/panel the hardcoded version
+    # Whatever the page actually references, rather than names spelled out
+    # here. When app.js was split into shared/call/panel a hardcoded list
     # would have kept tagging a file that no longer existed and silently left
     # the three real ones uncached — the failure this whole mechanism exists
-    # to prevent, reintroduced by the very change that split the file.
+    # to prevent, reintroduced by the very change that split the file. The
+    # same reasoning is why this takes the page as an argument: index.html and
+    # panel.html do not load the same scripts and must not share a cache slot.
     assets = sorted(set(re.findall(r'(?:src|href)="/([\w.-]+\.(?:js|css))"', html)))
-    tags = {name: asset_tag(name) for name in assets}
+    tags = {asset: asset_tag(asset) for asset in assets}
 
     # Keyed on the html AND every tag it embeds — cache it on its own mtime
     # alone and an edit to one of the assets would keep serving the previous
     # tag, which is the exact bug this is here to prevent.
     key = (path.stat().st_mtime, tuple(sorted(tags.items())))
-    if _index_cache["mtime"] != key:
-        for name, tag in tags.items():
-            html = html.replace(f'"/{name}"', f'"/{name}?v={tag}"')
-        _index_cache.update(mtime=key, html=html)
-    return _index_cache["html"]
+    cached = _page_cache.get(name)
+    if not cached or cached[0] != key:
+        for asset, tag in tags.items():
+            html = html.replace(f'"/{asset}"', f'"/{asset}?v={tag}"')
+        _page_cache[name] = (key, html)
+    return _page_cache[name][1]
 
 
 async def handle_index(request: web.Request) -> web.Response:
-    return web.Response(text=_versioned_index(), content_type="text/html")
+    return web.Response(text=_versioned_page("index.html"),
+                        content_type="text/html")
+
+
+async def handle_panel(request: web.Request) -> web.Response:
+    """The operator's page. Deliberately its own URL rather than a section of
+    the call page: that is what lets a reverse proxy put an IP allowlist or a
+    basic-auth rule in front of the admin surface without also putting one in
+    front of the phone. The panel's own password still applies either way —
+    every endpoint behind it checks admin auth for itself, and this route
+    serves markup, not settings.
+    """
+    return web.Response(text=_versioned_page("panel.html"),
+                        content_type="text/html")
 
 
 # Compressible and worth compressing. Audio, images and fonts are already

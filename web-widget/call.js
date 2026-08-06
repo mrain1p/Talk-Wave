@@ -1098,10 +1098,11 @@
   refreshLive();
   setInterval(() => { if (!room) refreshLive(); }, 20000);
 
-  // The one thing the panel is allowed to ask of the call page: repaint the
-  // card, because a saved setting can change what the card says. Published as
-  // a hook rather than reached for, so when the panel becomes its own page it
-  // simply finds nothing here and skips it — no call page, no card to repaint.
-  window.Callin.refreshLive = refreshLive;
+  // The gear is a link now, not a toggle. The panel is its own page, so there
+  // is nothing on this one to slide open — and a settings save no longer has
+  // to reach back here to repaint the card, because the poll above picks the
+  // change up within twenty seconds on its own.
+  const gear = $('gearBtn');
+  if (gear) gear.onclick = () => { location.href = '/panel'; };
 })();
 

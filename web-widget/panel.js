@@ -1,19 +1,16 @@
-/* The settings panel: the operator's surface.
+/* The settings panel: the operator's surface, served at /panel.
 
-   Served as /panel.js. Never loaded by the call page and never by an embed —
-   it used to ship to every anonymous caller as dead weight inside app.js.
+   Loaded only by panel.html. The call page does not load it and an embed
+   cannot reach it — it used to ship to every anonymous caller as dead weight
+   inside app.js, and the question "is this an embed?" had to be asked in
+   javascript because there was no other way to tell the two apart.
 
    Shared foundation comes from shared.js via the Callin global. */
 (function () {
   const {
-    $, compact, ASKS, NEVER, CALL_KEY,
+    $, ASKS, NEVER, CALL_KEY,
     ctx, playSound, pack, setSounds, getVolume,
   } = window.Callin;
-
-  // An embed is a phone and nothing else. While the panel shared a file with
-  // the call page this was a bare `return` partway down app.js; it stays until
-  // the panel has its own page and the question stops being askable.
-  if (compact) return;
 
   // The panel's own copy of /live. It used to read the call page's, which is
   // the only reason previewSound had to borrow the call's sound config and put
@@ -23,9 +20,6 @@
     try { live = await fetch('/live').then((r) => r.json()); }
     catch (e) { live = live || {}; }
     setSounds(live && live.sounds);
-    // Repaint the caller's card too, if there is one on this page. When the
-    // panel becomes its own page this finds nothing and correctly does nothing.
-    if (window.Callin.refreshLive) await window.Callin.refreshLive();
     return live;
   }
 
@@ -2060,17 +2054,17 @@
   };
   $('previewEmbedBtn').onclick = () => window.open('/?compact=1', '_blank', 'width=430,height=430');
 
+  // This used to hang off the gear button, because the panel was a section of
+  // the call page that slid open over it. On its own page there is nothing to
+  // open — arriving here IS the request to load, so it runs once at startup.
   let loading = false;
-  $('gearBtn').onclick = async () => {
-    const panel = $('panel');
-    panel.classList.toggle('open');
-    if (!panel.classList.contains('open') || loaded || loading) return;
+  async function open_() {
+    if (loaded || loading) return;
     loading = true;
     $('saveMsg').textContent = 'Loading from station, TTS server and Ollama…';
     $('saveBtn').disabled = true;
-    // Fetched here rather than at page load: while the panel shares a document
-    // with the call page, doing it on load meant every caller who never opened
-    // the panel paid for a second /live they had no use for.
+    // The pipeline check reads live.stream and live.secureOrigin, so this has
+    // to land before any of it can run.
     try { await refreshLiveData(); } catch (e) { /* the pipeline check will say */ }
     try { await loadSettings(); $('saveMsg').textContent = ''; }
     catch (e) {
@@ -2078,7 +2072,7 @@
       else $('saveMsg').textContent = 'Could not load settings — ' + e.message;
     }
     finally { loading = false; $('saveBtn').disabled = false; }
-  };
+  }
 
   $('saveBtn').onclick = () => {
     const patch = pendingPatch();
@@ -2101,5 +2095,6 @@
     await loadSettings();
   };
 
+  open_();
 })();
 

@@ -204,11 +204,14 @@ class Handler(BaseHTTPRequestHandler):
                 "stream": {"url": "", "alternates": [], "tuneIn": False, "volume": 10},
             })
 
-        name = "index.html" if path == "/" else path.lstrip("/")
+        # Same two extensionless routes token_server serves. /panel is the
+        # operator's page since 0.9.105; without it here, driving the panel in
+        # a browser silently tests a 404.
+        name = {"/": "index.html", "/panel": "panel.html"}.get(path, path.lstrip("/"))
         f = WIDGET / name
         if not f.is_file():
             return self._send(404, "not found", "text/plain")
-        if name == "index.html":
+        if f.suffix == ".html":
             html = f.read_text(encoding="utf-8").replace(
                 LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
             return self._send(200, html, "text/html")

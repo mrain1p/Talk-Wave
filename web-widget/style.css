@@ -571,6 +571,15 @@
      a theme via data-theme); positioning lives with the other card chrome. */
 
   /* --- settings --- */
+  /* The panel's own header row. It has one since 0.9.105, when the panel
+     stopped being a section of the call page and lost access to that page's
+     corner controls — without this there is no way back to the phone and no
+     theme toggle, on the surface an operator sits in front of longest. */
+  .panelbar {
+    display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px;
+  }
+  .panelbar .gear { text-decoration: none; }
+
   .panel {
     width: min(620px, 100%); margin-top: 14px; display: none;
     border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
