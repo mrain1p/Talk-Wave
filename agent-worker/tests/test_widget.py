@@ -353,16 +353,17 @@ class TestWidgetServerContract(unittest.TestCase):
                 self.assertNotIn("import ", src.split("//")[0][:200])
 
 
-class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
+class TestEachSurfaceIsAnsweredDeliberately(unittest.TestCase):
     """The call card's corner controls are the server's decision, not the
-    stylesheet's.
+    stylesheet's — and from 0.9.111 the server is asked twice.
 
     Before 0.9.95 they were three unrelated mechanisms in the widget, and the
     settings gear was hidden by a rule that existed only for embeds — so the
     call page and an embed offered different controls, which nobody had
-    decided. Anything the widget subtracts from this it subtracts for a
-    reason this side cannot see (a host page that pinned a theme, an embed
-    with no panel loaded); it may never ADD one.
+    decided. They may differ now, which is the opposite of an accident: the
+    operator answers a two-column matrix. What has not changed is that the
+    widget may only ever SUBTRACT from what it is sent, for reasons this side
+    cannot see (a host page that pinned a theme, an embed with no panel).
     """
 
     def test_the_help_button_follows_its_setting(self):
@@ -373,24 +374,73 @@ class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
         self.assertFalse(api_live.corner_controls(
             {"show_caller_help": False})["help"])
 
+    def test_the_defaults_leave_an_existing_deployment_alone(self):
+        # Thirteen new switches arrived at once. Every one of them defaults
+        # on, because turning something off has to be somebody's decision and
+        # not an upgrade's — an operator who pulls this image and reads
+        # nothing must see the card they saw yesterday.
+        import settings as settings_store
+        from api import live as api_live
+
+        cfg = {k: v for k, (_env, v) in settings_store.FIELDS.items()}
+        for embed in (False, True):
+            with self.subTest(embed=embed):
+                controls = api_live.corner_controls(cfg, embed=embed)
+                self.assertTrue(controls["help"])
+                self.assertTrue(controls["theme"])
+                self.assertEqual(controls["settings"], not embed)
+                self.assertEqual(
+                    set(api_live.card_identity(cfg, embed=embed).values()),
+                    {True})
+        self.assertEqual(api_live.call_button_label(cfg, "Francesca"),
+                         "Call the DJ")
+
+    def test_each_surface_reads_its_own_answer(self):
+        from api import live as api_live
+
+        cfg = {
+            "show_caller_help": True, "embed_caller_help": False,
+            "show_theme_toggle": True, "embed_theme_toggle": False,
+        }
+        page = api_live.corner_controls(cfg)
+        embed = api_live.corner_controls(cfg, embed=True)
+        self.assertTrue(page["help"])
+        self.assertFalse(embed["help"])
+        self.assertTrue(page["theme"])
+        self.assertFalse(embed["theme"])
+
+    def test_an_embed_never_gets_a_gear(self):
+        # Not a setting, and deliberately so: an embed does not load the
+        # panel's code, so the gear would open nothing whichever way an
+        # operator set it. The panel shows a dash in that cell for the same
+        # reason.
+        from api import live as api_live
+
+        self.assertFalse(api_live.corner_controls(
+            {"show_settings_gear": True}, embed=True)["settings"])
+        self.assertTrue(api_live.corner_controls(
+            {"show_settings_gear": True})["settings"])
+
     def test_pinning_a_theme_takes_the_toggle_away(self):
         from api import live as api_live
 
         for pinned in ("light", "dark"):
             with self.subTest(theme=pinned):
                 self.assertFalse(api_live.corner_controls(
-                    {"widget_theme": pinned})["theme"],
+                    {"widget_theme": pinned, "show_theme_toggle": True})["theme"],
                     "a pinned theme leaves nothing to toggle")
 
     def test_auto_and_inherit_keep_the_toggle(self):
         from api import live as api_live
 
         # "inherit" is not a pinned theme: on the standalone page, where
-        # there is no host to inherit from, it behaves as auto.
+        # there is no host to inherit from, it behaves as auto. Both gates
+        # have to pass — the operator's switch AND there being two themes to
+        # switch between.
         for choice in ("auto", "inherit", "", None):
             with self.subTest(theme=choice):
                 self.assertTrue(api_live.corner_controls(
-                    {"widget_theme": choice})["theme"])
+                    {"widget_theme": choice, "show_theme_toggle": True})["theme"])
 
     def test_the_widget_reads_the_keys_the_server_writes(self):
         # The widget subtracts from these by name. A rename on one side only
@@ -403,6 +453,95 @@ class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(f"c.{key} !== false", call_js,
                               f"call.js never reads controls.{key}")
+
+    def test_the_widget_reads_the_card_keys_too(self):
+        # Same trap, one payload along: a renamed card key would blank a line
+        # of the card rather than raising.
+        from api import live as api_live
+
+        call_js = (REPO / "web-widget" / "call.js"
+                   ).read_text(encoding="utf-8")
+        for key in api_live.card_identity({}):
+            with self.subTest(key=key):
+                self.assertIn(f"parts.{key} === false", call_js,
+                              f"call.js never reads card.{key}")
+
+
+class TestTheStatusChipDescribesTheCallNotTheSDK(unittest.TestCase):
+    """What the chip says is for the caller, not for whoever is debugging.
+
+    "On air" sat on a card whose header already reads ON AIR NOW, so it read
+    as the station's state — which does not change during a call — rather than
+    as the reason the DJ has stopped talking. And before the DJ has said a
+    word, "Thinking" and "Connecting" describe machinery: from the caller's
+    end everything up to first speech is one thing, a phone ringing somewhere.
+
+    There is no JS test harness in this repo (see web-widget/CLAUDE.md), so
+    this is a text check. It cannot prove the logic runs; it can stop the
+    wording being reverted by accident, which is what it is for.
+    """
+
+    def setUp(self):
+        self.js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+
+    def test_the_on_air_hold_says_working_the_booth(self):
+        self.assertIn("onair: 'Working the booth'", self.js)
+
+    def test_everything_before_first_speech_says_reaching_the_booth(self):
+        self.assertIn("Reaching the booth", self.js)
+        self.assertIn("djHasSpoken", self.js)
+
+    def test_the_ringing_latch_is_cleared_at_both_ends_of_a_call(self):
+        # Three writes: the declaration, the reset when a call starts, and the
+        # reset in endCall. Missing the second means a second call never
+        # rings; missing the third leaves the chip mid-call after the line has
+        # dropped. Counted rather than parsed — there is no JS harness here —
+        # so the number is stated with what it is made of.
+        self.assertEqual(self.js.count("djHasSpoken = false"), 3)
+        self.assertIn("let djOnAir = false, lastAgentState = 'idle', djHasSpoken = false;",
+                      self.js)
+        self.assertIn("djOnAir = false; djHasSpoken = false;", self.js)   # endCall
+
+
+class TestTheCallButtonSaysWhatTheOperatorChose(unittest.TestCase):
+    """The label is resolved server-side so the two surfaces cannot drift, and
+    so "use the DJ's name" follows the live roster without the widget knowing
+    the rule."""
+
+    def test_the_default_is_unchanged(self):
+        from api import live as api_live
+
+        self.assertEqual(api_live.call_button_label({}, "Francesca"),
+                         "Call the DJ")
+
+    def test_a_typed_label_wins_over_the_default(self):
+        from api import live as api_live
+
+        self.assertEqual(
+            api_live.call_button_label({"call_button_label": "Ring the booth"},
+                                       "Francesca"),
+            "Ring the booth")
+
+    def test_the_name_replaces_the_typed_label(self):
+        # They are alternatives, not layers — the panel hides the text box
+        # while this is on, and nothing may quietly combine them.
+        from api import live as api_live
+
+        self.assertEqual(
+            api_live.call_button_label(
+                {"call_button_label": "Ring the booth",
+                 "call_button_uses_name": True},
+                "Francesca"),
+            "Call Francesca")
+
+    def test_a_missing_name_falls_back_rather_than_saying_call(self):
+        # "Call " with nothing after it is worse than the generic label, and
+        # the persona name is genuinely absent when nobody is on air.
+        from api import live as api_live
+
+        self.assertEqual(
+            api_live.call_button_label({"call_button_uses_name": True}, ""),
+            "Call the DJ")
 
 
 class TestSoundPacks(unittest.TestCase):

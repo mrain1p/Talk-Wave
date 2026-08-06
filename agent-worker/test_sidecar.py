@@ -45,23 +45,29 @@ from tests.test_http import (  # noqa: F401
 )
 from tests.test_widget import (  # noqa: F401
     TestAssetVersioning,
-    TestBothSurfacesOfferTheSameControls,
+    TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
     TestSoundPacks,
+    TestTheCallButtonSaysWhatTheOperatorChose,
+    TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
 )
 from tests.test_call_record import (  # noqa: F401
     TestCallPrivacy,
     TestCallRecord,
     TestStaleRecordsCanBeThrownAway,
+    TestTheCallerGetsAVerdict,
     TestTheCallRecordHearsBothSides,
     TestTheCallRecordSaysWhoRang,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestACallerWhoWasNeverHeardIsToldSo,
+    TestALineThatFailsToGenerateIsStillSpoken,
     TestBackgroundWorkIsNotGarbageCollected,
     TestCallRecordTimestamps,
     TestCallStructure,
+    TestComingBackFromAirIsAnnounced,
     TestEndingACallDisconnectsTheCaller,
     TestNothingToSay,
     TestSilentCallIsRecorded,

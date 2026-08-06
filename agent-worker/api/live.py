@@ -41,7 +41,7 @@ def _secure_origin() -> str:
     return ""
 
 
-def corner_controls(cfg: dict) -> dict:
+def corner_controls(cfg: dict, embed: bool = False) -> dict:
     """Which buttons the call card offers in its top-right corner.
 
     One decision, made here, for both surfaces. It used to be three unrelated
@@ -52,18 +52,63 @@ def corner_controls(cfg: dict) -> dict:
     looking at, and nobody had decided that. It was just where the rules
     happened to live.
 
+    Still one decision, but now it is asked twice: the standalone page and an
+    embed on somebody else's site are different audiences, and answering both
+    with one switch made every answer a compromise. `/live` carries both, and
+    the widget picks by whether it is in a frame — the server cannot know
+    that, and the answer is cached for 30 seconds across every caller anyway.
+
     The widget may still subtract from this, but only for things this side
     cannot know: a host page that pinned ?theme= has already chosen, and an
     embed never loads the settings panel at all, so a gear there opens
     nothing.
     """
     return {
-        "help": bool(cfg.get("show_caller_help")),
-        # Pinned light or dark leaves a viewer nothing to toggle. "inherit"
-        # is not pinned: on the standalone page it behaves as auto.
-        "theme": str(cfg.get("widget_theme") or "auto") not in ("light", "dark"),
-        "settings": True,
+        "help": bool(cfg.get("embed_caller_help" if embed else "show_caller_help")),
+        # Two gates, and both have to pass. The operator can switch the toggle
+        # off outright; pinning light or dark also removes it, because there is
+        # then nothing to toggle between. "inherit" is not pinned — on the
+        # standalone page it behaves as auto.
+        "theme": (
+            bool(cfg.get("embed_theme_toggle" if embed else "show_theme_toggle"))
+            and str(cfg.get("widget_theme") or "auto") not in ("light", "dark")
+        ),
+        # Never in an embed, and not a setting there: an embed does not load
+        # the panel's code, so the gear would open nothing whichever way an
+        # operator set it.
+        "settings": False if embed else bool(cfg.get("show_settings_gear")),
     }
+
+
+def card_identity(cfg: dict, embed: bool = False) -> dict:
+    """Which lines of the "who is on air" block the card paints.
+
+    An embed sits in a column beside the host page's own now-playing ticker
+    and show heading, so a second copy of both is noise — but on the
+    standalone page they are the only thing saying who you are about to ring.
+    Hence one answer each. The DJ's NAME is not switchable: a call card that
+    doesn't say who answers isn't a call card.
+    """
+    p = "embed_" if embed else "show_"
+    return {
+        "avatar": bool(cfg.get(p + "dj_avatar")),
+        "show": bool(cfg.get(p + "dj_show")),
+        "tagline": bool(cfg.get(p + "dj_tagline")),
+        "track": bool(cfg.get(p + "now_playing")),
+    }
+
+
+def call_button_label(cfg: dict, persona_name: str = "") -> str:
+    """What the Call button says before a call starts.
+
+    Resolved here rather than in the widget so the two surfaces cannot drift,
+    and so "use the DJ's name" follows the live roster without the widget
+    having to know the rule. Falls back the moment the name is missing —
+    "Call " with nothing after it is worse than the generic label.
+    """
+    if cfg.get("call_button_uses_name") and str(persona_name or "").strip():
+        return f"Call {str(persona_name).strip()}"
+    return str(cfg.get("call_button_label") or "").strip() or "Call the DJ"
 
 
 async def handle_live(request: web.Request) -> web.Response:
@@ -139,8 +184,19 @@ async def handle_live(request: web.Request) -> web.Response:
                     # attribute still wins — the host page knows more about
                     # itself than this setting does.
                     "theme": str(cfg.get("widget_theme") or "auto"),
-                    # Which controls the card puts in its top-right corner.
+                    # Which controls the card puts in its top-right corner,
+                    # and which lines of the who's-on-air block it paints.
+                    # Both surfaces are sent because /live is cached across
+                    # every caller and cannot know which one is asking; the
+                    # widget picks by whether it is in a frame.
                     "controls": corner_controls(cfg),
+                    "embedControls": corner_controls(cfg, embed=True),
+                    "card": card_identity(cfg),
+                    "embedCard": card_identity(cfg, embed=True),
+                    "callLabel": call_button_label(cfg, persona.get("name")),
+                    # Whether to ask the caller how it went once the line
+                    # drops. See api/tokens.handle_call_feedback.
+                    "askFeedback": bool(cfg.get("ask_call_feedback")),
                     # What a caller may actually ask for. Sent only when the
                     # operator has switched the help button on, and only as
                     # the permissions themselves — the wording lives in the

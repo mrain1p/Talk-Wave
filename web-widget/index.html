@@ -122,6 +122,19 @@
     </div>
 
     <button class="callended" id="endedBar" hidden></button>
+
+    <!-- Shown after a call, and only if the operator asked for it. Two
+         buttons and nothing else: the answer is stored against that call's
+         own transcript so a bad one can be found and read back, which needs
+         one character, not a comment box. -->
+    <div class="rate" id="rateBar" hidden>
+      <span class="rlabel" id="rateLabel">How was that call?</span>
+      <span class="rbtns" id="rateBtns">
+        <button id="rateUp" title="That went well" aria-label="That went well">&#128077;</button>
+        <button id="rateDown" title="That went badly" aria-label="That went badly">&#128078;</button>
+      </span>
+    </div>
+
     <div class="captions" id="captions"></div>
   </div>
 

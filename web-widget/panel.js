@@ -465,6 +465,7 @@
     syncModels();
     applyVisibility();
     setEmbedSnippet();
+    paintAdminNeeded();
     paintAsks();
     paintTools();
     paintTags();
@@ -794,6 +795,39 @@
     });
   }
 
+  // Some of these switches do nothing at all without the station's own admin
+  // username and password — the station refuses the call and our client
+  // returns an empty list or a soft failure, which from the panel looks
+  // exactly like a feature that is on and simply never happens. So each one
+  // says up front that it needs them.
+  //
+  // The tag is always present, and only its COLOUR reads as a warning: coral
+  // while the credentials are missing, grey once they are stored. Both facts
+  // are worth having, and a tag that appears and disappears would leave an
+  // operator wondering whether they had imagined it.
+  function paintAdminNeeded() {
+    const have = !!(secrets.subwave_admin_user && secrets.subwave_admin_user.set
+                    && secrets.subwave_admin_pass && secrets.subwave_admin_pass.set);
+    Object.keys(SCHEMA.fields).forEach((f) => {
+      const el = $(f);
+      if (!el || !SCHEMA.fields[f].admin) return;
+      const anchor = el.closest('.row') || el.closest('.check');
+      if (!anchor) return;
+      let tag = anchor.querySelector('.needsadmin');
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'needsadmin';
+        tag.textContent = 'Station admin';
+        anchor.appendChild(tag);
+      }
+      tag.classList.toggle('missing', !have);
+      tag.title = have
+        ? 'Uses the station admin credentials stored under API keys.'
+        : 'Needs the station admin username and password under API keys. '
+          + 'Without them this stays switched on and quietly never happens.';
+    });
+  }
+
   // Inject the schema's help text under each field, so the explanation lives
   // beside the definition rather than being duplicated in the markup.
   function decorateFields() {
@@ -801,7 +835,13 @@
       const el = $(f);
       if (!el) return;
       const meta = SCHEMA.fields[f];
-      const anchor = el.closest('.row') || el.closest('.check');
+      // A .prow is one row of the Player settings matrix and holds TWO
+      // fields, so it names the one whose help it wants — otherwise both
+      // would insert a hint and the second would sit under the first,
+      // describing a checkbox two lines above it.
+      const prow = el.closest('.prow');
+      const anchor = prow || el.closest('.row') || el.closest('.check');
+      if (prow && prow.dataset.help !== f) return;
       if (!anchor || !meta.help) return;
       let hint = anchor.nextElementSibling;
       if (!hint || !hint.classList.contains('hint') || !hint.dataset.fromSchema) {

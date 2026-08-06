@@ -30,9 +30,9 @@ through. Every field carries its own help text.
 | Call settings | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | Call settings | **Back to air** | The one-line on-air mention after a call |
 | Call settings | **Call sounds** | Sound set, uploads or URLs, previews, volume |
+| Call settings | **Player settings** | What the card shows, answered separately for this page and for an embed; the Call button's label; theme; the post-call thumbs up/down; and the copyable iframe snippet |
 | Reference | **What callers can ask** | Derived from the permissions above, including what is never available |
 | Reference | **Station tools** | The station's whole tool surface — the 17 MCP tools plus the two takeover actions we serve ourselves — and whether a caller can reach each |
-| Reference | **Embed on another page** | Copyable iframe snippet and preview |
 
 Below settings, a **Diagnostics** block: pipeline check, speed test, recent
 calls, server logs. The running version is stamped underneath.

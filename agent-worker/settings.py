@@ -235,6 +235,46 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # inherit  match the page the widget is embedded in
     "widget_theme":     (None, "auto"),
 
+    # --- what the card shows, answered separately per surface -------------
+    # The standalone page and an embed on somebody else's site are different
+    # audiences looking at the same card. The page is the operator's own front
+    # door and can afford to explain itself; an embed sits in a column beside
+    # the host's own furniture, where a second copy of the show name is noise.
+    # One answer for both meant every choice was a compromise, so each control
+    # is asked twice. `show_*` is the page, `embed_*` is the frame.
+    #
+    # All default True, which is what both surfaces already did — turning one
+    # off has to be somebody's decision, not an upgrade's.
+    "embed_caller_help":  (None, True),
+    "show_theme_toggle":  (None, True),
+    "embed_theme_toggle": (None, True),
+    # No `embed_settings_gear`. An embed never loads the panel's code, so a
+    # gear there opens nothing — offering the operator a switch for it would
+    # be offering a switch that does nothing whichever way it is set.
+    "show_settings_gear": (None, True),
+    "show_dj_avatar":     (None, True),
+    "embed_dj_avatar":    (None, True),
+    "show_dj_show":       (None, True),
+    "embed_dj_show":      (None, True),
+    "show_dj_tagline":    (None, True),
+    "embed_dj_tagline":   (None, True),
+    "show_now_playing":   (None, True),
+    "embed_now_playing":  (None, True),
+
+    # What the Call button says. Blank keeps "Call the DJ" — the honest label
+    # when the card is showing whoever happens to be on air. `uses_name` swaps
+    # it for the live DJ's own name, which reads better on a station whose
+    # listeners know the roster, and re-resolves as the roster changes.
+    "call_button_label":     (None, ""),
+    "call_button_uses_name": (None, False),
+
+    # After the line drops, ask the caller whether that went well. Two
+    # buttons, stored against the call's own record, so a bad call can be
+    # found and read rather than remembered. Off by default: it is a prompt
+    # every caller sees, and an operator who is not going to read the answers
+    # should not be collecting them.
+    "ask_call_feedback": (None, False),
+
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
     # deliberately brief — a passing mention, not a recap.
@@ -292,7 +332,7 @@ SUPERGROUPS = [
     ("models",  "Models & voice",       "What listens, what thinks, and how it sounds."),
     ("safety",  "Permissions & safety", "What a caller may trigger, and the limits around it."),
     ("callcfg", "Call settings",        "How a call runs and how the DJ talks."),
-    ("ref",     "Reference",            "What to expect, and how to put it on another page."),
+    ("ref",     "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
 
 # (id, supergroup, title, blurb). Order within a supergroup is the order here.
@@ -319,10 +359,15 @@ GROUPS = [
     ("style",    "callcfg", "House style",        "Light steers on top of the persona."),
     ("callback", "callcfg", "Back to air",        "What the station says after the call."),
     ("sounds",   "callcfg", "Call sounds",        "Ring, pickup and hang-up."),
+    # Was "Embed on another page", under Reference, and held nothing but the
+    # snippet. Everything that decides what the card LOOKS like was scattered
+    # through Call behaviour, where it sat between settings about how the DJ
+    # talks. The snippet stayed here because the page you paste it into is the
+    # second surface these answers are for.
+    ("player",   "callcfg", "Player settings",    "What the card shows, on this page and in an embed."),
 
     ("ask",      "ref",     "What callers can ask", "Driven by the permissions above."),
     ("tools",    "ref",     "Station tools",       "Every tool the station publishes, and who can reach it."),
-    ("embed",    "ref",     "Embed on another page", "Drop the widget into any page."),
 ]
 
 SCHEMA: dict[str, dict] = {
@@ -398,11 +443,13 @@ SCHEMA: dict[str, dict] = {
              "letting the caller pick is what makes it a conversation. One round "
              "only either way — the DJ never asks twice."),
     "allow_library_search": dict(group="perms", kind="check", label="Search the music library",
+        admin=True,
         help="Lets the DJ check a track really exists before promising it, and correct "
              "a caller who has the artist wrong. Works without station credentials; "
              "with them it also retries awkward phrasing like 'X by Y' before "
              "reporting a miss."),
     "allow_exact_queue": dict(group="perms", kind="check", label="Queue the exact track they picked",
+        admin=True,
         needs=("allow_library_search", True),
         help="When a caller chooses a track from what the DJ found, queue THAT "
              "recording instead of sending the words back through the matcher — no "
@@ -411,23 +458,26 @@ SCHEMA: dict[str, dict] = {
              "holding a caller back is Actions per call under Usage controls. Needs "
              "station admin credentials and library search."),
     "allow_announcements": dict(group="perms", kind="check", label="Put messages on air",
+        admin=True,
         help="Hands a line to the on-air DJ to read in persona. Needs admin credentials."),
     # These two read as the same switch until you see them side by side. They
     # are not: one is about what a caller may ASK FOR, the other about whether
     # the DJ may BRING IT UP first.
     "allow_skills": dict(group="perms", kind="check", label="Run segments when asked",
+        admin=True,
         help="Weather, news, dedications, story time. The caller asks — \"what's the "
              "weather doing?\" — and the DJ runs the station's real segment on air. "
              "With this off the DJ has no way to run one at all. The station "
              "rate-limits each segment (25–60 min), so callers can't spam them."),
     "offer_skills": dict(group="perms", kind="check", label="…and let the DJ offer one",
+        admin=True,
         needs=("allow_skills", True),
         help="The other half: whether the DJ may raise a segment ITSELF when the "
              "moment fits — \"want me to spin you a story?\" — instead of only "
              "answering a request. With this off the DJ runs segments but never "
              "brings them up. Occasional by design, never a menu, and never a list "
              "of what's on offer."),
-    "allow_skip_track": dict(group="perms", kind="check",
+    "allow_skip_track": dict(group="perms", kind="check", admin=True,
         label="Let a caller skip the current track",
         help="Ends whatever is playing, for EVERYONE listening — not just the "
              "caller who asked. Off by default, and worth leaving off on a station "
@@ -435,7 +485,7 @@ SCHEMA: dict[str, dict] = {
              "override and offers no listener-facing equivalent. Needs station "
              "admin credentials, and each skip counts against Actions per call, "
              "which is the only thing pacing it."),
-    "allow_dj_segment": dict(group="perms", kind="check",
+    "allow_dj_segment": dict(group="perms", kind="check", admin=True,
         label="Let a caller fire a programme beat",
         help="Station ID, the hour, a link, guest banter, a programme intro or "
              "outro. Different from segments above: this is the programme's own "
@@ -443,7 +493,7 @@ SCHEMA: dict[str, dict] = {
              "documents that firing one explicitly bypasses its own frequency and "
              "budget limits — so Actions per call is the only ceiling. Needs "
              "station admin credentials. Off by default."),
-    "allow_takeover": dict(group="perms", kind="check",
+    "allow_takeover": dict(group="perms", kind="check", admin=True,
         label="Let a caller put a different show on air",
         help="The station's own takeover: pins a show ahead of the weekly "
              "schedule — a different DJ, for everyone listening — for an hour "
@@ -470,13 +520,73 @@ SCHEMA: dict[str, dict] = {
              "the phone to callers entirely — useful while you are still "
              "setting up. Choosing Guest or Admin without having set that "
              "password means nobody can call, and the panel says so."),
-    "show_caller_help": dict(group="call", kind="check",
-        label="Show callers what they can ask",
-        help="Adds a small button to the call card that opens the same live "
-             "reference this panel shows you — filtered to the permissions "
-             "actually enabled, so it can never suggest something the DJ would "
-             "refuse. Most callers assume a phone-in only takes requests."),
-    "widget_theme": dict(group="call", kind="select", label="Widget theme",
+    # --- player settings: what the card shows, per surface ----------------
+    # Every row here is asked twice, once for this page and once for an embed.
+    # The panel lays them out as a two-column matrix, which is why the labels
+    # are short: the column heading carries the surface, not the label.
+    "show_caller_help": dict(group="player", kind="check",
+        label="“What can I ask?” button",
+        help="A small button on the card that opens the same live reference "
+             "this panel shows you — filtered to the permissions actually "
+             "enabled, so it can never suggest something the DJ would refuse. "
+             "Most callers assume a phone-in only takes requests."),
+    "embed_caller_help": dict(group="player", kind="check",
+        label="“What can I ask?” button (embed)",
+        help="The same button, in a frame on somebody else's page."),
+    "show_theme_toggle": dict(group="player", kind="check",
+        label="Light / dark toggle",
+        help="Lets a viewer flip the card between light and dark and remembers "
+             "the choice. Forcing a theme below hides this either way — there "
+             "is nothing to toggle between."),
+    "embed_theme_toggle": dict(group="player", kind="check",
+        label="Light / dark toggle (embed)",
+        help="Usually worth turning OFF: an embed inherits the host page's "
+             "colours, and a caller flipping the card to light on a dark site "
+             "gets a bright rectangle in the middle of it."),
+    "show_settings_gear": dict(group="player", kind="check",
+        label="Settings gear",
+        help="The way into this panel from the call card. Turning it off does "
+             "not secure anything — /panel is still reachable by URL and still "
+             "asks for the admin password — it just stops advertising it to "
+             "whoever is looking at the phone."),
+    "show_dj_avatar": dict(group="player", kind="check", label="DJ photo",
+        help="The persona's picture, served through this origin so it still "
+             "loads from an https page off your network."),
+    "embed_dj_avatar": dict(group="player", kind="check", label="DJ photo (embed)",
+        help="Off if the host page already shows the same photo beside it."),
+    "show_dj_show": dict(group="player", kind="check", label="Show name",
+        help="The programme currently on air, above the tagline."),
+    "embed_dj_show": dict(group="player", kind="check", label="Show name (embed)",
+        help="Off if the host page already says what show is on."),
+    "show_dj_tagline": dict(group="player", kind="check", label="DJ tagline",
+        help="The persona's one-line blurb, as the station publishes it."),
+    "embed_dj_tagline": dict(group="player", kind="check", label="DJ tagline (embed)",
+        help="Off if the host page already says what show is on."),
+    "show_now_playing": dict(group="player", kind="check", label="Now playing",
+        help="The track on air right now. It updates on the card's own poll, "
+             "which is every 20 seconds — slower than a host page's own ticker, "
+             "so two of them side by side will briefly disagree."),
+    "embed_now_playing": dict(group="player", kind="check", label="Now playing (embed)",
+        help="Off if the host page already has a now-playing line."),
+    "call_button_label": dict(group="player", kind="text", label="Call button",
+        needs=("call_button_uses_name", False),
+        placeholder="Call the DJ",
+        help="What the button says before a call starts. Blank is “Call the "
+             "DJ”, which is the honest label when the card shows whoever "
+             "happens to be on air."),
+    "call_button_uses_name": dict(group="player", kind="check",
+        label="…or use the live DJ's name",
+        help="Says “Call Francesca” instead, and follows the roster as the "
+             "show changes. Reads better on a station whose listeners know "
+             "the DJs by name; it replaces the label above rather than "
+             "combining with it."),
+    "ask_call_feedback": dict(group="player", kind="check",
+        label="Ask how the call went",
+        help="After the line drops, offers the caller a thumbs up or down. The "
+             "answer is stored against that call's own transcript, so a bad "
+             "call can be found and read back instead of remembered. Nothing "
+             "else is collected and the caller can ignore it."),
+    "widget_theme": dict(group="player", kind="select", label="Widget theme",
         help="How the call card is coloured, including the Call, mute and hang-up "
              "buttons. Auto follows the viewer's own light/dark setting and keeps "
              "the in-widget toggle. Light and dark force one and hide the toggle. "
@@ -643,7 +753,8 @@ SCHEMA: dict[str, dict] = {
         help="e.g. 'mention what's coming up next before you hang up'."),
 
     # --- back to air ---
-    "callback_enabled": dict(group="callback", kind="check", label="Mention the call on air",
+    "callback_enabled": dict(group="callback", kind="check", admin=True,
+        label="Mention the call on air",
         help="One passing line between tracks after the caller hangs up. "
              "Needs admin credentials."),
     "callback_max_words": dict(group="callback", kind="number", label="Length (words)",
@@ -764,6 +875,12 @@ def schema_payload() -> dict:
                 "help": meta.get("help", ""),
                 "placeholder": meta.get("placeholder", ""),
                 "needs": list(meta["needs"]) if meta.get("needs") else None,
+                # Whether this reaches the station through an endpoint that
+                # needs its admin credentials. Without them the station
+                # refuses and our client returns an empty list or a soft
+                # failure, so from the panel a switched-on feature that never
+                # happens is indistinguishable from one that is working.
+                "admin": bool(meta.get("admin")),
                 "choices": _choices_for(name),
             }
             for name, meta in SCHEMA.items()

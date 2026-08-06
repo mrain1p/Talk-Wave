@@ -224,6 +224,55 @@ def clear() -> int:
     return gone
 
 
+def rate(room: str, rating: str) -> bool:
+    """Attach the caller's own verdict to that call's record.
+
+    Written by the TOKEN SERVER, not the worker — the two are separate
+    containers sharing this directory, and the caller's thumbs arrive over
+    HTTP after the worker has already finished and gone. So this merges into
+    a file somebody else wrote, and must not assume it is there yet: the
+    caller can click before the worker's shutdown callback has run. The
+    caller retries; this just reports whether it found anything.
+
+    Only the rating is stored. Not who, not when they clicked, not a comment
+    box — the record is already a transcript of a stranger's conversation,
+    and one character is all that is needed to find the bad ones.
+    """
+    rating = str(rating or "").strip().lower()
+    if rating not in ("up", "down"):
+        return False
+    # The room is `callin-<12 hex>` and the filename ends in those 12
+    # characters — matching on the suffix rather than reconstructing the
+    # timestamp, which this side does not know.
+    tail = str(room or "")[-12:]
+    if len(tail) < 6:
+        return False
+    try:
+        matches = sorted(CALLS_DIR.glob(f"*-{tail}.json"), reverse=True)
+    except OSError:
+        return False
+    if not matches:
+        return False
+    path = matches[0]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["rating"] = rating
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1, ensure_ascii=False)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(path)
+        log.info("call %s rated %s by the caller", path.stem, rating)
+        return True
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("could not store the caller's rating: %s", e)
+        return False
+
+
 def recent(limit: int = 20) -> list[dict]:
     """Newest first, for the panel."""
     out = []

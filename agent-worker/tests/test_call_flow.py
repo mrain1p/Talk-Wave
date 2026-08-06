@@ -285,6 +285,171 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestACallerWhoWasNeverHeardIsToldSo(unittest.TestCase):
+    """A caller nothing has ever arrived from is a different problem from a
+    caller who has gone quiet, and until 0.9.111 they got the same treatment.
+
+    From the transcripts of 2026-08-06: four of the last six calls had
+    `callerTurns: 0`. On one of them (18:01:41) the DJ greeted, said "Still
+    with me?" 63 seconds later, and said nothing else for another 60 seconds
+    until the caller gave up — the goodbye the code does generate was still
+    two minutes away. Nothing it said ever named the actual problem, which the
+    caller was the only person who could fix.
+
+    Two changes, both defended here: the patient triple-length window does not
+    apply when there is no answer coming, and both lines say what is wrong.
+    """
+
+    def _run(self, heard_n: int, seconds: float = 3.5, nudges: int = 2):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        said = []
+
+        class _Session:
+            agent_state = "listening"
+
+            def on(self, *a, **k):
+                pass
+
+            async def generate_reply(self, **kw):
+                said.append(str(kw.get("instructions", "")))
+
+            async def say(self, *a, **k):
+                said.append(str(a[0]) if a else "")
+
+        ctx = types.SimpleNamespace(
+            add_shutdown_callback=lambda *a: None,
+            api=types.SimpleNamespace(room=types.SimpleNamespace(
+                delete_room=_noop_async)),
+            room=types.SimpleNamespace(name="callin-test"),
+            shutdown=lambda **k: None,
+        )
+
+        async def go():
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": nudges},
+                heard={"n": heard_n},
+            )
+            await asyncio.sleep(seconds)
+
+        asyncio.run(go())
+        return said
+
+    def test_the_first_line_names_the_microphone(self):
+        lines = self._run(heard_n=0)
+        self.assertTrue(lines, "nothing was said to a caller who was never heard")
+        self.assertIn("microphone", lines[0].lower())
+
+    def test_a_caller_who_has_been_talking_gets_the_gentle_version(self):
+        # The other half: this must not turn every ordinary pause into a
+        # lecture about somebody's microphone.
+        lines = self._run(heard_n=4)
+        self.assertTrue(lines)
+        self.assertNotIn("microphone", lines[0].lower())
+
+    def test_the_goodbye_says_why_when_nothing_was_ever_heard(self):
+        # One nudge configured means the first strike IS the last, which is
+        # the shortest path to the sign-off.
+        lines = self._run(heard_n=0, nudges=1)
+        self.assertTrue(lines)
+        self.assertIn("microphone", " ".join(lines).lower())
+
+
+class TestALineThatFailsToGenerateIsStillSpoken(unittest.TestCase):
+    """The whole complaint being fixed is the DJ saying NOTHING.
+
+    An idle goodbye that dies in the provider used to leave the caller
+    listening to a line that then simply closed — `generate_reply` raised, the
+    warning went to the log, and only the goodbye had a fallback. Now every
+    line the DJ is made to say has a plain one behind it.
+    """
+
+    def _speak(self, explode: bool):
+        import asyncio
+
+        from call import lifecycle
+
+        spoken = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                if explode:
+                    raise RuntimeError("provider is having a day")
+                spoken.append(("generated", kw.get("instructions")))
+
+            async def say(self, text, *a, **k):
+                spoken.append(("canned", text))
+
+        asyncio.run(lifecycle._say_something(
+            _Session(), "be charming about it", "Still with me?"))
+        return spoken
+
+    def test_the_generated_line_is_preferred(self):
+        self.assertEqual(self._speak(explode=False)[0][0], "generated")
+
+    def test_a_failed_generation_falls_back_to_something_audible(self):
+        spoken = self._speak(explode=True)
+        self.assertEqual(spoken, [("canned", "Still with me?")],
+                         "the caller heard nothing at all")
+
+
+class TestComingBackFromAirIsAnnounced(unittest.TestCase):
+    """The hand-over line tells the caller to hold. Nothing told them the hold
+    was over.
+
+    So the DJ went quiet mid-conversation, came back, and then waited for the
+    caller to speak first — which from the caller's end is indistinguishable
+    from the line having dropped. `_come_back` closes that, and only for a
+    caller who actually heard the hand-over: the gate also closes for someone
+    who dialled in mid-link, and "I'm back" to them is a line about nothing.
+    """
+
+    def test_the_dj_says_it_is_back(self):
+        import asyncio
+        import types
+
+        from call.air import OnAirGuard
+
+        said = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                said.append(str(kw.get("instructions", "")))
+
+        guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        asyncio.run(guard._come_back(_Session()))
+        self.assertTrue(said)
+        self.assertIn("back", said[0].lower())
+
+    def test_it_still_speaks_when_the_model_will_not(self):
+        import asyncio
+        import types
+
+        from call.air import OnAirGuard
+
+        spoken = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                raise RuntimeError("no")
+
+            def say(self, text, **kw):
+                spoken.append(text)
+
+        guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        asyncio.run(guard._come_back(_Session()))
+        self.assertEqual(len(spoken), 1)
+        self.assertIn("back", spoken[0].lower())
+
+
+async def _noop_async(*a, **k):
+    return None
+
+
 class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
     """The call DJ and the on-air DJ are the same voice.
 

@@ -49,6 +49,12 @@ class TestExposedSurface(unittest.TestCase):
         # the widget calls it on hangup — and safe because the id is 48 bits
         # of uuid4, so you cannot release a slot you were not already in.
         "POST /call-ended": "public",          # releases a slot; no secrets
+        # Public deliberately: the only person with an opinion about a call is
+        # the anonymous stranger who was just on it, and there is no
+        # credential they could hold. All it can do is set one of two words on
+        # a record that already exists, keyed by a per-call room id the writer
+        # had to have been handed.
+        "POST /call-feedback": "public",
         # The station does not sign its webhooks, so this cannot be
         # authenticated. It is safe only because it treats the payload as
         # untrusted data: store it, bust caches, never act on its contents.

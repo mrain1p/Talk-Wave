@@ -356,23 +356,6 @@
           <label for="tune_in_volume">Station volume</label>
           <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
         </div>
-        <h4 class="subhead">The card itself</h4>
-        <div class="row">
-          <label for="widget_theme">Widget theme</label>
-          <select id="widget_theme"></select>
-        </div>
-        <p class="hint wide">Colours the whole card, Call and hang-up buttons
-          included. <strong>Auto</strong> follows the viewer and keeps the
-          light/dark toggle; <strong>light</strong> and <strong>dark</strong>
-          force one and hide it; <strong>inherit</strong> matches the page the
-          widget is embedded in, which is the right choice on a site with its
-          own colours. An embed’s own <code>data-theme</code> still wins.</p>
-        <label class="check"><input type="checkbox" id="show_caller_help" /> Show callers what they can ask</label>
-        <p class="hint wide">Adds a small <strong>?</strong> button to the card
-          opening the same live reference below — filtered to the permissions
-          you’ve enabled, so it can never suggest something the DJ would
-          refuse.</p>
-
         <div class="row">
           <label for="min_call_seconds">Earliest hang-up (s)</label>
           <input type="number" id="min_call_seconds" min="0" step="15" />
@@ -588,10 +571,85 @@
         <ul class="toollist" id="toolList"></ul>
       </div>
     </details>
-    <details data-group="embed" class="sec">
-      <summary><span class="chev">▶</span>Embed on another page</summary>
+    <!-- Player settings. Was "Embed on another page" and held nothing but the
+         snippet; everything deciding what the card LOOKS like was scattered
+         through Call behaviour between settings about how the DJ talks.
+
+         The matrix is two answers per row because the two surfaces are two
+         audiences: this page is the operator's own front door, an embed sits
+         in a column next to the host's own show heading and now-playing
+         ticker, where a second copy of both is noise. The gear's embed cell
+         is a dash rather than a checkbox — an embed never loads this panel's
+         code, so the switch would do nothing whichever way it was set. -->
+    <details data-group="player" class="sec">
+      <summary><span class="chev">▶</span>Player settings</summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Drops an iframe into the target div.
+        <p class="hint wide" style="margin-top:0">What the call card shows. The
+          two columns are the two places it appears: <strong>this page</strong>
+          (the standalone phone at <code>/</code>) and an <strong>embed</strong>
+          in a frame on somebody else’s site.</p>
+
+        <div class="pmatrix">
+          <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
+
+          <div class="prow" data-help="show_caller_help">
+            <span class="plabel">“What can I ask?” button</span>
+            <input type="checkbox" id="show_caller_help" aria-label="Ask button on the page" />
+            <input type="checkbox" id="embed_caller_help" aria-label="Ask button in an embed" />
+          </div>
+          <div class="prow" data-help="show_theme_toggle">
+            <span class="plabel">Light / dark toggle</span>
+            <input type="checkbox" id="show_theme_toggle" aria-label="Theme toggle on the page" />
+            <input type="checkbox" id="embed_theme_toggle" aria-label="Theme toggle in an embed" />
+          </div>
+          <div class="prow" data-help="show_settings_gear">
+            <span class="plabel">Settings gear</span>
+            <input type="checkbox" id="show_settings_gear" aria-label="Settings gear on the page" />
+            <span class="pnone" title="An embed never loads this panel's code, so a gear there would open nothing.">—</span>
+          </div>
+
+          <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
+
+          <div class="prow" data-help="show_dj_avatar">
+            <span class="plabel">DJ photo</span>
+            <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />
+            <input type="checkbox" id="embed_dj_avatar" aria-label="DJ photo in an embed" />
+          </div>
+          <div class="prow" data-help="show_dj_show">
+            <span class="plabel">Show name</span>
+            <input type="checkbox" id="show_dj_show" aria-label="Show name on the page" />
+            <input type="checkbox" id="embed_dj_show" aria-label="Show name in an embed" />
+          </div>
+          <div class="prow" data-help="show_dj_tagline">
+            <span class="plabel">DJ tagline</span>
+            <input type="checkbox" id="show_dj_tagline" aria-label="Tagline on the page" />
+            <input type="checkbox" id="embed_dj_tagline" aria-label="Tagline in an embed" />
+          </div>
+          <div class="prow" data-help="show_now_playing">
+            <span class="plabel">Now playing</span>
+            <input type="checkbox" id="show_now_playing" aria-label="Now playing on the page" />
+            <input type="checkbox" id="embed_now_playing" aria-label="Now playing in an embed" />
+          </div>
+        </div>
+
+        <h4 class="subhead">The Call button</h4>
+        <div class="row">
+          <label for="call_button_label">Call button</label>
+          <input type="text" id="call_button_label" />
+        </div>
+        <label class="check"><input type="checkbox" id="call_button_uses_name" /> …or use the live DJ’s name</label>
+
+        <h4 class="subhead">Colours</h4>
+        <div class="row">
+          <label for="widget_theme">Widget theme</label>
+          <select id="widget_theme"></select>
+        </div>
+
+        <h4 class="subhead">After the call</h4>
+        <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
+
+        <h4 class="subhead">Embed on another page</h4>
+        <p class="hint wide">Drops an iframe into the target div.
           <code>allow="microphone"</code> is set for you — without it the mic silently
           fails inside a frame.</p>
         <textarea class="snippet" id="embedSnippet" readonly rows="3"></textarea>

@@ -393,6 +393,31 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "ceiling. The real problem was that 1,103 lines carried one "
             "comment; it has a table of contents and twelve section markers "
             "now, which is what made it hard to read.",
+        # The three test modules that crossed the ceiling in 0.9.111, and they
+        # are here for one reason that applies to all of tests/: this ceiling
+        # and agent-worker/CLAUDE.md's placement rule point in opposite
+        # directions for a test file. That rule says a test goes in the module
+        # whose SUBJECT it defends, and that a subject with no home is a new
+        # subject rather than an excuse to use whichever file is shortest.
+        # Obeying the ceiling instead means moving a test away from its
+        # subject to satisfy a number, which is the failure mode the ceiling's
+        # own docstring warns about — a file per function, arrived at from the
+        # other end. Subject placement wins; these grow with coverage.
+        #
+        # What still holds them: they are one subject each, and the day one of
+        # them stops being one subject is the day it gets split — which is
+        # what happened to test_sidecar.py at 5,791 lines, and that split was
+        # by subject, not by size.
+        "agent-worker/tests/test_call_flow.py":
+            "one subject: a call while it runs. Answering, holding for the "
+            "broadcast, coming back from it, the silence ladder, ending.",
+        "agent-worker/tests/test_call_record.py":
+            "one subject: what is written down about a call, and what is "
+            "deliberately not — now including the caller's own verdict.",
+        "agent-worker/tests/test_widget.py":
+            "one subject: the browser half, guarded from here. It is the "
+            "substitute for the JS unit tests this repo has no toolchain to "
+            "run, so it carries text checks the widget cannot make itself.",
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).

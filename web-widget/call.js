@@ -27,12 +27,32 @@
   // for facts the backend cannot know: a host page that forced ?theme= has
   // already decided, and an embed never loads the settings panel at all
   // (app.js returns above it), so a gear there would open nothing.
+  //
+  // The backend sends BOTH surfaces' answers, because /live is cached across
+  // every caller and cannot know which one is asking. `framed` is the test:
+  // an embed is a widget in somebody else's iframe, which is the same thing
+  // the operator was answering for in the panel's Embed column.
+  function surfaceControls(d) {
+    if (!d) return {};
+    return (framed ? d.embedControls : d.controls) || d.controls || {};
+  }
+
   function applyControls(d) {
-    const c = (d && d.controls) || {};
+    const c = surfaceControls(d);
     const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
     set('gearBtn', c.settings !== false && !compact);
+  }
+
+  // Which lines of the who's-on-air block this surface paints. Same shape and
+  // the same reason as the corner controls: an embed sits beside the host
+  // page's own show heading and now-playing ticker, and a second copy of
+  // either is noise. Missing means show it — a /live from an older server, or
+  // a failed one, must not blank the card.
+  function cardParts(d) {
+    if (!d) return {};
+    return (framed ? d.embedCard : d.card) || d.card || {};
   }
 
   // The operator's theme choice arrives with /live, long after the page has
@@ -278,6 +298,14 @@
     dot.className = 'dot' + (state ? ' ' + state : '');
   }
 
+  // What the Call button says at rest. Resolved SERVER-side — the operator
+  // may have typed a label, or asked for the live DJ's name, and the rule for
+  // which wins belongs in one place rather than in each of the four spots
+  // here that put the button back to its resting state.
+  function callLabel() {
+    return (live && live.callLabel) || 'Call the DJ';
+  }
+
   // ------------------------------------------------------- embed height
   // A host page sizes its iframe before the widget knows whether it has to
   // ask for a door code, warn about the microphone, or open captions — so a
@@ -416,13 +444,20 @@
 
       $('eyebrow').className = 'eyebrow';
       $('eyebrowText').textContent = 'On air now';
+      // The NAME is never switchable: a call card that doesn't say who
+      // answers isn't a call card. Everything below it is the operator's
+      // call, per surface. Emptied rather than hidden — these are text nodes
+      // whose parent collapses on its own once they carry nothing.
+      const parts = cardParts(d);
       $('djName').textContent = d.name || 'The DJ';
-      $('djShow').textContent = d.show || '';
-      $('djTagline').textContent = d.tagline || '';
-      $('npTrack').textContent = d.track ? '♪ ' + d.track : '';
+      $('djShow').textContent = parts.show === false ? '' : (d.show || '');
+      $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
+      $('npTrack').textContent =
+        (parts.track === false || !d.track) ? '' : '♪ ' + d.track;
 
       const img = $('djAvatar');
-      if (d.avatar) {
+      if (parts.avatar === false) { img.classList.add('hidden'); }
+      else if (d.avatar) {
         if (img.dataset.pid !== d.personaId) {
           img.dataset.pid = d.personaId || '';
           img.src = d.avatar + '?v=' + (d.personaId || '');
@@ -446,7 +481,7 @@
           callBtn.textContent = 'Enter the code';
         } else {
           callBtn.disabled = false;
-          callBtn.textContent = 'Call the DJ';
+          callBtn.textContent = callLabel();
         }
       }
       paintGuestGate();
@@ -574,25 +609,49 @@
     thinking: 'Thinking', speaking: 'Speaking', reconnecting: 'Reconnecting',
     // Not an SDK state. The DJ on the call and the DJ on the broadcast are
     // the same person, so while the station has the microphone the call DJ
-    // waits — and the caller is told that's what the silence is.
-    onair: 'On air',
+    // waits — and the caller is told that's what the silence is. "On air"
+    // was ambiguous on a card whose header already says ON AIR NOW: it read
+    // as the station's state, which never changes during a call, rather than
+    // as the reason this particular silence is happening.
+    onair: 'Working the booth',
   };
+
+  // Before the DJ has said a word, the SDK's own states describe machinery
+  // the caller has no use for: "Thinking" and "Connecting" while a line is
+  // ringing look like something has stalled. Everything up to first speech is
+  // one thing from the caller's side — the phone is ringing somewhere.
+  const REACHING = 'Reaching the booth';
 
   // The worker sets this participant attribute while the broadcast is live.
   // It outranks the SDK's own state: the DJ may well be "listening" as far as
   // the session is concerned, but what the caller needs to know is that it
   // can't answer yet.
-  let djOnAir = false, lastAgentState = 'idle';
+  let djOnAir = false, lastAgentState = 'idle', djHasSpoken = false;
 
   function paintAgentState() {
     const state = djOnAir ? 'onair' : lastAgentState;
     const chip = $('stateChip');
     chip.dataset.state = state || 'idle';
-    $('stateText').textContent = STATE_TEXT[state] || 'Idle';
+    // The chip, not `room`: it goes up the moment Call is pressed and comes
+    // down in endCall before this runs, so it covers the whole window from
+    // ringing to first word. `room` is only set once signalling succeeds,
+    // which would leave the actual ring showing "Connecting".
+    //
+    // On air outranks even this: a caller who dials in mid-link is held
+    // before the greeting, and "Reaching the booth" would be the wrong story
+    // for a silence the broadcast is causing. So does reconnecting, which is
+    // a real fault and must not be dressed up as a ring.
+    const reaching = !djHasSpoken && !djOnAir && state !== 'reconnecting'
+      && !$('stateChip').hidden;
+    $('stateText').textContent =
+      reaching ? REACHING : (STATE_TEXT[state] || 'Idle');
   }
 
   function setAgentState(state) {
     lastAgentState = state || 'idle';
+    // Latched, not derived: once the DJ has spoken the call is underway for
+    // good, and a later thinking pause is a pause rather than a ring.
+    if (state === 'speaking') djHasSpoken = true;
     paintAgentState();
     // The first time the DJ actually speaks, the call is properly underway:
     // the button flips from Answering to a green On the line for the rest
@@ -818,11 +877,13 @@
     callBtn.classList.add('ringing');
     $('rig').classList.add('on');
     $('stateChip').hidden = false;
+    djHasSpoken = false;          // a second call rings like the first one did
     setAgentState('initializing');
     startTimer();
     notifyHeight();
     setStatus('Connecting…', 'connecting');
     $('endedBar').hidden = true;
+    $('rateBar').hidden = true;      // last call's verdict, not this one's
     capNodes.clear();
     if (captionsMode === 'full') {
       capBox.classList.add('on');
@@ -865,7 +926,7 @@
         stopTimer();
         capBox.classList.remove('on');
         callBtn.classList.remove('ringing', 'answering');
-        callBtn.textContent = res.status === 401 ? 'Enter the code' : 'Call the DJ';
+        callBtn.textContent = res.status === 401 ? 'Enter the code' : callLabel();
         callBtn.disabled = res.status === 401;
         room = null;
         return;
@@ -963,7 +1024,7 @@
       stopTimer();
       capBox.classList.remove('on');
       callBtn.classList.remove('ringing', 'answering');
-      callBtn.textContent = 'Call the DJ';
+      callBtn.textContent = callLabel();
       callBtn.disabled = false;
       room = null;
     }
@@ -1027,6 +1088,11 @@
     stopRinging();
     clearNoAnswerTimer();
     tuneOut();
+    // Kept past the reset below: the feedback buttons post against this
+    // call's room, and by the time anyone clicks them currentRoom is long
+    // cleared. A room id is minted per call and deleted at the end of one, so
+    // holding it here outlives nothing.
+    const endedRoom = currentRoom;
     if (currentRoom) {
       // Release the concurrency slot now instead of waiting for it to age out.
       fetch('/call-ended', {
@@ -1039,7 +1105,7 @@
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     anYou = anDj = null; djEl = null;
-    djOnAir = false;
+    djOnAir = false; djHasSpoken = false;
     document.querySelector('.card').classList.remove('onair');
     paintBars($('barsYou'), 0, false); paintBars($('barsDj'), 0, false);
     $('djAvatar').classList.remove('talking');
@@ -1050,7 +1116,8 @@
     const ticker = $('ticker');
     if (ticker) { ticker.classList.remove('show'); ticker.hidden = true; }
     collapseTranscript();
-    callBtn.textContent = 'Call the DJ';
+    offerFeedback(endedRoom);
+    callBtn.textContent = callLabel();
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
     document.querySelector('.card').classList.remove('oncall');
@@ -1072,6 +1139,40 @@
     const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     bar.innerHTML = '<span class="chev">▶</span><span>Call ended · ' + lines
       + ' line' + (lines === 1 ? '' : 's') + '</span><span class="when">' + t + '</span>';
+    notifyHeight();
+  }
+
+  // ------------------------------------------------------ was that any good?
+  // Two buttons, offered once per call and only when the operator asked for
+  // them. Deliberately not a modal: a popup over the card the moment a call
+  // ends is in the way of the transcript, and the one thing a caller might
+  // want after a bad call is to read what was said.
+  //
+  // The answer lands on that call's own transcript, so "find me the bad ones"
+  // is a question the panel can answer. Nothing else is collected.
+  function offerFeedback(endedRoom) {
+    const bar = $('rateBar');
+    if (!bar) return;
+    if (!endedRoom || !(live && live.askFeedback)) { bar.hidden = true; return; }
+    $('rateLabel').textContent = 'How was that call?';
+    $('rateBtns').hidden = false;
+    bar.hidden = false;
+
+    const send = (rating) => {
+      // Thanked before the request resolves, on purpose. Whether the record
+      // was there to write to is the operator's problem, not the caller's —
+      // and the worker may still be writing it, which is why the server side
+      // retries rather than answering straight away.
+      $('rateBtns').hidden = true;
+      $('rateLabel').textContent = 'Thanks — noted.';
+      notifyHeight();
+      fetch('/call-feedback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: endedRoom, rating: rating }),
+      }).catch(() => {});
+    };
+    $('rateUp').onclick = () => send('up');
+    $('rateDown').onclick = () => send('down');
     notifyHeight();
   }
 

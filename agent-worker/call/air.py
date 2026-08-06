@@ -95,6 +95,43 @@ class OnAirGuard:
             self._clear.set()
         return time.time() - started
 
+    async def _come_back(self, session: AgentSession) -> None:
+        """Say something on the way back from the broadcast.
+
+        The hand-over line told the caller to hold; nothing told them the hold
+        was over. So the DJ went quiet mid-conversation, came back, and then
+        waited for the caller to speak first — from the caller's end that is
+        indistinguishable from the line having dropped, and it is the point at
+        which they hang up. Observed on the calls of 2026-08-06, where the
+        silences a caller could not account for are the whole story.
+
+        `generate_reply` rather than a canned line, because the useful version
+        picks the thread back up ("right, I'm back — you were saying about the
+        rock") and only the model knows what was being said. The canned line
+        is the fallback: coming back saying SOMETHING beats coming back
+        silently, which is the failure being fixed.
+        """
+        try:
+            await session.generate_reply(instructions=(
+                "You just stepped away to let something go out on air, and "
+                "you're back on the call now. Say so in one short line — "
+                "\"alright, I'm back\" — and pick the conversation up where "
+                "you left it, in your own voice. Don't apologise at length, "
+                "don't recap, and don't start a new topic."
+            ))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.debug("could not generate the back-from-air line: %s", e)
+            try:
+                session.say(
+                    "Alright, I'm back — where were we?",
+                    allow_interruptions=True,
+                    add_to_chat_ctx=False,
+                )
+            except Exception:
+                pass
+
     async def watch(self, session: AgentSession) -> None:
         """Poll the station and flip the gate. Started as a task for the life
         of the call."""
@@ -105,6 +142,11 @@ class OnAirGuard:
         # waits) without the greeting being cut off by a hand-over line for a
         # broadcast that was already running when they picked up the phone.
         first = True
+        # Whether we actually cut the caller off for this link. Only then is
+        # there anything to come back FROM: the gate also closes for a caller
+        # who dialled in mid-link, and telling them "I'm back" when they never
+        # heard a hand-over is a line about nothing.
+        stepped_away = False
         while True:
             try:
                 since = await self.station.seconds_since_on_air_speech()
@@ -136,11 +178,15 @@ class OnAirGuard:
                                 # tool call follows it.
                                 add_to_chat_ctx=False,
                             )
+                            stepped_away = True
                         except Exception as e:
                             log.debug("could not hand over to air cleanly: %s", e)
                 else:
                     self._clear.set()
                     log.info("air is clear — the call DJ has the floor again")
+                    if stepped_away:
+                        stepped_away = False
+                        await self._come_back(session)
             first = False
             await asyncio.sleep(self.POLL_SECS)
 

@@ -421,6 +421,83 @@ class TestTheCallRecordSaysWhoRang(_TempStores):
         self.assertNotIn("caller", calls[1])
 
 
+class TestTheCallerGetsAVerdict(unittest.TestCase):
+    """The caller's thumbs, merged into a record somebody else wrote.
+
+    The worker writes the transcript in its shutdown callback; the rating
+    arrives over HTTP at the TOKEN SERVER, a separate container. So this is a
+    read-modify-write of a file this process did not create, and the two
+    things it must not do are invent a record that isn't there and accept
+    anything other than the two words the buttons send.
+    """
+
+    def setUp(self):
+        from call import record
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name)
+
+    def tearDown(self):
+        from call import record
+
+        record.CALLS_DIR = self._old
+        self._tmp.cleanup()
+
+    def _seed(self, room="callin-abc123def456"):
+        from call import record as call_record
+
+        call_record.CALLS_DIR.mkdir(parents=True, exist_ok=True)
+        path = call_record.CALLS_DIR / f"20260806-120000-{room[-12:]}.json"
+        path.write_text(json.dumps({"room": room, "turns": []}),
+                        encoding="utf-8")
+        return path
+
+    def test_a_rating_lands_on_that_calls_record(self):
+        from call import record as call_record
+
+        path = self._seed()
+        self.assertTrue(call_record.rate("callin-abc123def456", "down"))
+        self.assertEqual(
+            json.loads(path.read_text(encoding="utf-8"))["rating"], "down")
+
+    def test_the_rest_of_the_record_survives(self):
+        # A read-modify-write that dropped the transcript would be worse than
+        # no rating at all.
+        from call import record as call_record
+
+        path = self._seed()
+        call_record.rate("callin-abc123def456", "up")
+        self.assertEqual(
+            json.loads(path.read_text(encoding="utf-8"))["room"],
+            "callin-abc123def456")
+
+    def test_only_up_and_down_are_accepted(self):
+        from call import record as call_record
+
+        self._seed()
+        for junk in ("sideways", "", None, "UP; DROP TABLE"):
+            with self.subTest(rating=junk):
+                self.assertFalse(call_record.rate("callin-abc123def456", junk))
+
+    def test_an_unknown_room_writes_nothing(self):
+        from call import record as call_record
+
+        self._seed()
+        self.assertFalse(call_record.rate("callin-000000000000", "up"))
+        self.assertEqual(
+            len(list(call_record.CALLS_DIR.glob("*.json"))), 1,
+            "a rating for a call we have no record of invented a file")
+
+    def test_a_room_too_short_to_identify_is_refused(self):
+        # The match is on the last 12 characters of the room name. A short
+        # one would glob far more than the call it was meant for.
+        from call import record as call_record
+
+        self._seed()
+        self.assertFalse(call_record.rate("x", "up"))
+
+
 class TestStaleRecordsCanBeThrownAway(unittest.TestCase):
     """`record_keep` only trims as new calls arrive, so a deployment that has
     gone quiet keeps whatever it last had forever. After a run of test calls

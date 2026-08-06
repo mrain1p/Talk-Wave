@@ -41,6 +41,7 @@ The README is the short version. The detail lives here:
 | **[Calling from outside your network](docs/networking.md)** | The three topologies, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
+| **[Voicemail](docs/VOICEMAIL.md)** | Designed, not built: what happens when the line can't be answered |
 
 
 ## Features
@@ -55,10 +56,17 @@ The README is the short version. The detail lives here:
 - Synthesized ring, pickup, hold, hang-up and engaged tones, each replaceable
   — see [Call sounds](#call-sounds).
 - In-character timeouts for silence and over-long calls; a caller who was just
-  asked a question gets three times the usual wait. If no worker answers, an
-  engaged tone after 40 seconds rather than endless ringing.
+  asked a question gets three times the usual wait — unless nothing has ever
+  been heard from them, in which case the DJ says so, names the microphone as
+  the likely cause, and lets them go promptly rather than patiently. If no
+  worker answers, an engaged tone after 40 seconds rather than endless ringing.
+- Every line the DJ is made to say has a plain one behind it, so a model
+  outage can never turn a goodbye into silence.
 - The DJ closes the call itself, with a configurable floor (60s by default)
   stopping it hanging up early whatever the model decides.
+- Optionally, a thumbs up or down when the line drops. The answer is stored
+  against that call's own transcript, so "find me the bad ones" is a question
+  the panel can answer.
 - Every call is written down — see [Diagnosing a call](#diagnosing-a-call).
 
 **Station integration**
@@ -206,6 +214,13 @@ copy livekit.example.yaml livekit.yaml
 Renders the compact card in an iframe with `allow="microphone"` set (its
 absence is the classic silent embed failure). The panel never ships in an
 embed.
+
+**What the card shows in an embed is answered separately** from what it shows
+on the standalone page — see **Player settings** in the panel. The host page
+usually has its own show heading and now-playing line, and a second copy of
+both inside the frame is noise. The settings gear is the one thing that is
+never offered here at any setting: an embed does not load the panel's code, so
+it would open nothing.
 
 | Attribute | Effect |
 |---|---|

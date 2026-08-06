@@ -7,6 +7,7 @@ freshly-named room, and returns it along with the public LiveKit URL.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import uuid
@@ -145,6 +146,45 @@ async def handle_call_ended(request: web.Request) -> web.Response:
     except Exception:
         pass
     return _cors(request, web.json_response({"ok": True}))
+
+
+async def handle_call_feedback(request: web.Request) -> web.Response:
+    """The caller's thumbs up or down, stored against that call's transcript.
+
+    Unauthenticated on purpose, and it is worth saying why: the person with an
+    opinion about the call is the anonymous stranger who was just on it, and
+    there is no credential they could hold. What stops it being an open write
+    is the shape — the only thing it can do is set one of two words on a
+    record that already exists, keyed by a room id the writer had to have been
+    given, and rooms are minted per call and deleted at the end of one.
+
+    The retry is not politeness. The worker writes the record in its shutdown
+    callback, in the OTHER container, and the widget shows these buttons the
+    moment the line drops — so a caller with a fast finger can beat the file
+    into existence. Waiting a few seconds costs one idle request and is the
+    difference between the feature working and it working most of the time.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    room = str((body or {}).get("room") or "")
+    rating = str((body or {}).get("rating") or "")
+    if rating not in ("up", "down") or not room:
+        return _cors(request, web.json_response(
+            {"error": "room and rating (up|down) are required"}, status=400))
+
+    from call import record as call_record
+
+    for attempt in range(20):            # ~10s, then give up quietly
+        if call_record.rate(room, rating):
+            return _cors(request, web.json_response({"ok": True}))
+        if attempt < 19:
+            await asyncio.sleep(0.5)
+    # Recording may simply be switched off, which is not an error worth
+    # showing a caller who has just been thanked for answering.
+    log.info("no call record to attach a rating to (room=%s)", room)
+    return _cors(request, web.json_response({"ok": False, "stored": False}))
 
 
 async def handle_token(request: web.Request) -> web.Response:

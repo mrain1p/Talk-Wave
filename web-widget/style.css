@@ -99,7 +99,7 @@
      used by name, so they cannot drift apart again. */
   /* --- base and typography ----------------------------------------------- */
   .micro {
-    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
     letter-spacing: .16em; text-transform: uppercase;
   }
   * { box-sizing: border-box; }
@@ -139,7 +139,7 @@
      that sit in it. No rule under it — the who-row below already draws one,
      and two rules 38px apart made the name look like a table row. */
   .eyebrow {
-    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--coral);
     height: 38px; margin: 0;
     display: flex; align-items: center; gap: 8px;
@@ -174,8 +174,8 @@
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--coral) 16%, transparent);
   }
   .dj {
-    font-family: var(--font-body); font-size: 17px; font-weight: 600;
-    color: var(--alpenglow); margin: 0 0 3px; letter-spacing: 0;
+    font-family: var(--font-body); font-size: 15px; font-weight: 600;
+    color: var(--alpenglow); margin: 0 0 2px; letter-spacing: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .show {
@@ -184,7 +184,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tagline {
-    font-size: 13.5px; line-height: 1.5; color: var(--sage); margin: 3px 0 0;
+    font-size: 12.5px; line-height: 1.45; color: var(--sage); margin: 2px 0 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   /* Now-playing sits in the spare space to the right of the DJ block. */
@@ -255,7 +255,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     height: var(--control-h); min-width: 0; padding: 0 13px;
     border-radius: 0; background: transparent; opacity: 1; cursor: default;
-    font: 700 10.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: uppercase;
   }
   #callBtn.ringing, #callBtn:disabled.ringing {
@@ -286,7 +286,7 @@
     display: inline-flex; align-items: center; gap: 7px; height: var(--control-h);
     padding: 0 12px; border-radius: 0;
     background: transparent; border: 1px solid var(--hairline); color: var(--sage-dim);
-    font: 700 10.5px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
     transition: color .2s, border-color .2s;
   }
   .pill[hidden] { display: none; }
@@ -370,8 +370,8 @@
   }
   .vol input[type=range] { flex: 1; accent-color: var(--coral); min-width: 0; height: var(--control-h); }
   .vol .pct {
-    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
-    color: var(--sage-dim); width: 38px; text-align: right;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-weight: 700; color: var(--sage-dim); width: 38px; text-align: right;
     font-variant-numeric: tabular-nums;
   }
 
@@ -396,11 +396,11 @@
      LAN address). The whole point is a clickable way out, so it is a bordered
      block rather than a band — it has to read as an interruption. */
   /* --- microphone help, and the guest code door -------------------------- */
-  .michelp { margin: var(--band-gap) 0 0; font-size: 13.5px; line-height: 1.5;
+  .michelp { margin: var(--band-gap) 0 0; font-size: 12.5px; line-height: 1.45;
              color: var(--amber); border: 1px solid var(--amber);
              border-radius: 0; padding: 10px 12px; }
   .michelp a { color: inherit; font-weight: 600; }
-  .michelp .alt { display: block; margin-top: 4px; font-size: 12.5px;
+  .michelp .alt { display: block; margin-top: 4px; font-size: 11px;
                   color: var(--sage-dim); }
 
   /* The caller's door code, when the operator has set one. Sits above the
@@ -409,7 +409,7 @@
   .guestgate {
     margin: var(--band-gap) 0 0; padding: 11px 12px; text-align: left;
     border: 1px solid var(--edge); border-radius: 0; background: var(--pine);
-    font-size: 13.5px; line-height: 1.5;
+    font-size: 12.5px; line-height: 1.45;
   }
   .guestgate .glabel { display: block; color: var(--sage); margin-bottom: 9px; }
   .guestgate .grow { display: flex; gap: var(--band-gap); flex-wrap: wrap; }
@@ -418,14 +418,14 @@
   .guestgate input {
     flex: 1 1 140px; min-width: 0;
     height: var(--control-h); padding: 0 10px; border-radius: 0;
-    font: 13.5px var(--font-body);
+    font: 12.5px var(--font-body);
     border: 1px solid var(--hairline); background: var(--granite-hi);
     color: var(--alpenglow);
   }
-  .guestgate input::placeholder { color: var(--sage-dim); font-size: 11.5px; }
+  .guestgate input::placeholder { color: var(--sage-dim); font-size: 11px; }
   .guestgate input:focus { outline: none; border-color: var(--amber); }
   .guestgate button { flex: 0 0 auto; }
-  #guestMsg { display: block; margin-top: 7px; color: var(--amber); font-size: 12.5px; }
+  #guestMsg { display: block; margin-top: 7px; color: var(--amber); font-size: 11px; }
   #guestMsg:empty { display: none; }
 
   /* Locked panel: the login banner is the only thing shown. */
@@ -447,18 +447,54 @@
      if you want it, not taking up the card if you don't. */
   /* --- the collapsed transcript bar, after a call ends ------------------- */
   .callended {
-    width: 100%; margin: var(--band-gap) 0 0; padding: 0 12px;
+    width: 100%; margin: var(--band-gap) 0 0; padding: 0 11px;
     background: var(--pine); border: 1px solid var(--hairline);
     border-radius: 0; color: var(--sage); text-align: left;
     display: flex; align-items: center; gap: 9px; cursor: pointer;
   }
   .callended[hidden] { display: none; }
-  .card .callended { height: 38px; color: var(--sage); }
+  /* Specificity, not preference: this is a <button> inside .card, so `.card
+     button` (0,1,1) beats a bare `.callended` (0,1,0) whatever the order —
+     which is why the ended bar was wearing the primary button's 11px type and
+     control height. It is a label on a closed drawer, not an action, so it
+     takes the 9.5px micro-label the transcript's own speaker labels use and
+     comes down from 38px to 30. */
+  .card .callended {
+    height: 30px; color: var(--sage);
+    font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .16em; text-transform: uppercase;
+  }
   .card .callended:hover { background: var(--pine); color: var(--alpenglow);
                            border-color: var(--edge); }
   .callended .chev { font-size: 9px; transition: transform .18s ease; }
   .callended.open .chev { transform: rotate(90deg); }
   .callended .when { margin-left: auto; color: var(--sage-dim); }
+
+  /* --- was that any good? ------------------------------------------------ */
+  /* Sits under the ended bar, same band width, same quiet register — the
+     point is that it is easy to ignore. A caller who has just been hung up on
+     by a robot should not also be blocked by a modal about it. */
+  .rate {
+    display: flex; align-items: center; gap: 10px;
+    margin: 8px 0 0; min-height: 26px;
+  }
+  .rate[hidden] { display: none; }
+  .rate .rlabel {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+  }
+  .rate .rbtns { display: inline-flex; gap: 6px; margin-left: auto; }
+  .rate .rbtns[hidden] { display: none; }
+  /* Out-specifies `.card button`, which would otherwise put a coral outline
+     and 18px of padding around an emoji. */
+  .card .rate button {
+    height: 26px; width: 30px; padding: 0; font-size: 13px; line-height: 1;
+    border: 1px solid var(--hairline); background: transparent;
+    color: var(--sage); letter-spacing: 0;
+  }
+  .card .rate button:hover:not(:disabled) {
+    border-color: var(--edge); background: var(--pine); filter: none;
+  }
 
   /* --- captions --- */
   /* Captions: speaker in a narrow left column so the transcript reads as a
@@ -477,17 +513,21 @@
     text-align: left;
     background: var(--pine); border: 1px solid var(--hairline); border-radius: 0;
     height: 210px; overflow-y: auto; overflow-x: hidden;
-    font-family: var(--font-body); font-size: 13.5px; line-height: 1.5;
+    font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   }
   .captions.on { display: block; }
   .captions::-webkit-scrollbar { width: 8px; }
   .captions::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 0; }
-  /* An 86px gutter, matching the host, so both speakers' text starts on the
-     same edge and the transcript reads as a script rather than two columns. */
+  /* A gutter wide enough for the longest label and no wider. It was 86px,
+     which is roughly twice what "CALLER" needs — in a 430px card that is a
+     fifth of the width spent on whitespace, and it is the transcript's own
+     text that pays for it in wrapped lines. 62px still lets both speakers'
+     text start on the same edge, which is what makes this read as a script
+     rather than as two columns. */
   .cap {
-    display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--band-gap);
-    margin: 0 0 7px; align-items: baseline;
+    display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px;
+    margin: 0 0 6px; align-items: baseline;
     /* minmax(0,1fr) plus the min-width/white-space below is what actually
        stops a long turn from pushing the grid wider than its container. */
     max-width: 100%;
@@ -505,12 +545,12 @@
   .cap .said {
     color: var(--alpenglow); min-width: 0; max-width: 100%;
     white-space: normal; overflow-wrap: break-word; word-break: break-word;
-    font-size: 13.5px; font-weight: 400; line-height: 1.5;
+    font-size: 12.5px; font-weight: 400; line-height: 1.45;
   }
   .cap.dj .said { color: var(--alpenglow); }
   .cap.you .said { color: var(--sage); }
   .cap.interim .said { color: var(--sage-dim); font-style: italic; }
-  .capempty { color: var(--sage-dim); font-size: 13.5px; font-style: italic; }
+  .capempty { color: var(--sage-dim); font-size: 12.5px; font-style: italic; }
 
   /* A change should register as movement, not as text that was simply
      different when you looked back. Same rise-and-fade the host uses for
@@ -532,7 +572,7 @@
     grid-template-columns: 20px minmax(0, 1fr); gap: 9px;
     align-items: start;
   }
-  .cap.sys .ico { font-size: 13px; line-height: 1.2; text-align: center; }
+  .cap.sys .ico { font-size: 12.5px; line-height: 1.2; text-align: center; }
   .cap.sys .what {
     display: block; color: var(--coral); font-weight: 700;
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
@@ -580,7 +620,7 @@
   }
   .askpop-head {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 6px; font-size: 13px; color: var(--text);
+    margin-bottom: 6px; font-size: 12.5px; color: var(--text);
   }
   .askpop-close {
     background: transparent; border: 0; color: var(--dimmer);
@@ -594,7 +634,7 @@
   .askpop-list li:last-child { border-bottom: none; }
   .askpop-list .say { display: block; color: var(--text); line-height: 1.4; }
   .askpop-list .why {
-    display: block; color: var(--dimmer); font-size: 11.5px; margin-top: 2px;
+    display: block; color: var(--dimmer); font-size: 11px; margin-top: 2px;
     line-height: 1.45;
   }
   /* The settings gear on the full page only — the panel is never embedded. */
@@ -693,6 +733,51 @@
   .check input { width: 15px; height: 15px; accent-color: var(--accent); }
   .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 138px; line-height: 1.4; }
   .hint.wide { margin-left: 0; }
+
+  /* "Needs the station's own admin credentials." Coral while they are
+     missing, grey once they are stored — a switch that quietly never happens
+     is the failure this exists to name, and the colour is the difference
+     between the two states. Deliberately a small outlined tag rather than a
+     red banner: it is a prerequisite, not a warning. */
+  .needsadmin {
+    margin-left: auto; flex: 0 0 auto; cursor: help;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700;
+    padding: 2px 6px; border-radius: 999px;
+    color: var(--dimmer); border: 1px solid var(--line);
+  }
+  .needsadmin.missing {
+    color: color-mix(in srgb, var(--accent) 78%, var(--dim));
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+
+  /* --- the Player settings matrix: one row, two surfaces ---------------- */
+  /* A grid rather than two stacked columns of checkboxes, because the whole
+     point of the section is comparing the two answers for one control. The
+     column headings carry the surface, so the labels don't have to repeat it
+     eight times. */
+  .pmatrix { margin: 0 0 4px; }
+  .phead, .prow {
+    display: grid; grid-template-columns: minmax(0, 1fr) 54px 54px;
+    align-items: center; gap: 8px;
+  }
+  .phead {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+    padding: 10px 0 5px; border-bottom: 1px solid var(--line);
+  }
+  .phead span:not(:first-child), .prow input, .prow .pnone { justify-self: center; }
+  .phead:first-child { padding-top: 0; }
+  .prow { padding: 7px 0; font-size: 12.5px; color: var(--text); }
+  .prow input { width: 15px; height: 15px; accent-color: var(--accent); }
+  /* Not a disabled checkbox: a disabled box still reads as a setting that
+     could be enabled, and this one can't be. The dash says "no such thing
+     here", and the title says why. */
+  .pnone { color: var(--dimmer); cursor: help; }
+  /* The schema's help sits under its row, indented to the label column so a
+     wall of eight rows still scans as rows. */
+  .prow + .hint { margin: -2px 0 4px; }
   /* Louder than .hint, quieter than .banner. For the switches that change the
      station rather than the call: in grey body text they read as three more
      checkboxes, which is how one gets ticked on the way past. */

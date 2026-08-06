@@ -56,7 +56,7 @@ from api.sounds import (
     handle_sound_upload,
     handle_sounds_list,
 )
-from api.tokens import handle_call_ended, handle_token
+from api.tokens import handle_call_ended, handle_call_feedback, handle_token
 from api.widget import WIDGET_DIR, _assets, handle_index, handle_panel
 from api.wire import handle_options
 
@@ -70,6 +70,7 @@ def build_app() -> web.Application:
     app = web.Application(middlewares=[_assets])
     app.router.add_post("/token", handle_token)
     app.router.add_post("/call-ended", handle_call_ended)
+    app.router.add_post("/call-feedback", handle_call_feedback)
     app.router.add_post("/hooks/station", handle_station_hook)
     app.router.add_get("/hooks/recent", handle_hooks_recent)
     # Asks the station to push at us and waits for it to arrive — the only
@@ -84,6 +85,7 @@ def build_app() -> web.Application:
     app.router.add_delete("/calls", handle_clear_calls)
     app.router.add_delete("/logs", handle_clear_logs)
     app.router.add_options("/call-ended", handle_options)
+    app.router.add_options("/call-feedback", handle_options)
     app.router.add_options("/token", handle_options)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/live", handle_live)

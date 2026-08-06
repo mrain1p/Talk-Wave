@@ -86,9 +86,13 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
 - The operator's configured theme arrives with `/live`, long after first paint, so there are two
   code paths applying a theme and they must agree.
 - **Which corner controls exist is the server's answer, not a CSS rule.** `/live` carries
-  `controls: {help, theme, settings}` (`token_server.corner_controls`). `applyControls()` may
-  only *subtract* — a host that pinned `?theme=`, or an embed, which never loads the panel code
-  at all. Three separate mechanisms used to decide this and the two surfaces disagreed.
+  `controls` AND `embedControls` (`api/live.corner_controls`), plus `card`/`embedCard` for the
+  who's-on-air lines and a resolved `callLabel`. `/live` is cached across every caller and
+  cannot know which surface is asking, so it sends both and the widget picks on `framed`.
+  `applyControls()` may still only *subtract* — a host that pinned `?theme=`, or an embed,
+  which never loads the panel code at all. Three separate mechanisms used to decide this and
+  the two surfaces disagreed by accident; they may differ now, but only because an operator
+  filled in two columns.
 - **`embed.js` and `call.js` talk over `postMessage`, both ways.** Widget → host:
   `subwave-callin:height` (report my height) and `subwave-callin:overlay` (I need N px of room
   for the ask list; 0 = done). Host → widget: `swtv:theme` (station palette, repaint in place —
