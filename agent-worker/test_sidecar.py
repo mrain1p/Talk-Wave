@@ -119,12 +119,14 @@ from tests.test_voice import (  # noqa: F401
     TestVoiceDiscoveryIsNotHardcodedToOneShape,
     TestWhatTheBackendSaidReachesTheOperator,
 )
+from tests.test_docs import (  # noqa: F401
+    TestTheDocsKeepUpWithTheCode,
+)
 from tests.test_house_rules import (  # noqa: F401
     TestEverySkillWouldActuallyLoad,
     TestNewCodeDoesNotArriveUntested,
     TestNoFileGrowsWithoutSomebodyDeciding,
     TestTheCommitGateIsStillWiredUp,
-    TestTheDocsKeepUpWithTheCode,
     TestTheLogKeepsTheLinesThatMatter,
     TestTheRoutingTableIsInOnePlace,
     TestTheSuiteIsNotQuietlyNotRunning,

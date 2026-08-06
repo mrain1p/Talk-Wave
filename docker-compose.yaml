@@ -152,6 +152,18 @@ services:
       - ./data:/data
     ports:
       - "8100:8100"     # widget + token mint; put a reverse proxy in front
+    # /health is the one endpoint that answers without auth and without
+    # touching the station, so it says "this process is up and serving" and
+    # nothing more — which is exactly what a healthcheck should mean. Caddy
+    # waits on this rather than on the container merely having been created,
+    # so a restart cannot put the TLS front door in front of nothing.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     depends_on:
       - livekit-server
     networks:
@@ -172,8 +184,13 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
     depends_on:
-      - token-server
-      - livekit-server
+      token-server:
+        # Not just "created" — Caddy proxies to it, and coming up first meant
+        # the first load after a restart got a 502 from a front door pointing
+        # at a process that had not finished starting.
+        condition: service_healthy
+      livekit-server:
+        condition: service_started
     networks:
       - callin-net
 

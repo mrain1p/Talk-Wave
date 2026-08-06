@@ -1,4 +1,8 @@
-"""Tests about this repo rather than about the product: the structure, the docs, the skills and the commit gate. If one of these fails, something about how the project is kept has slipped.
+"""Tests about this repo rather than about the product: its structure, its
+skills and its commit gate. If one of these fails, something about how the
+project is kept has slipped rather than something a caller would hear.
+
+Documentation drift lives next door in test_docs.py.
 
 Split out of test_sidecar.py; see tests/__init__.py.
 """
@@ -76,61 +80,6 @@ class TestTheSuiteIsNotQuietlyNotRunning(unittest.TestCase):
             self.assertFalse(
                 getattr(cls, "__unittest_skip__", False),
                 f"{name} is skipped on POSIX too, so it never runs: {reason}")
-
-
-class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
-    """Documentation drift, caught the same way everything else here is.
-
-    0.9.78 added a whole settings section and made call recording optional, and
-    the README went on describing neither — the settings table had no row for
-    Turn-taking, and "Diagnosing a call" still opened with "each call writes one
-    file as it ends", which had just stopped being unconditionally true. Both
-    were found by being asked, not by checking, which is the wrong order.
-
-    Deliberately mechanical: it checks that a thing is *mentioned*, not that it
-    is described well. A missing row is the failure that actually happens; bad
-    prose is a review problem and this cannot judge it.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        root = REPO
-        cls.readme = (root / "README.md").read_text(encoding="utf-8")
-        cls.envex = (root / ".env.example").read_text(encoding="utf-8")
-
-    def test_every_settings_section_is_in_the_readme_table(self):
-        # The panel builds its sections from GROUPS; the README lists them by
-        # title. A new section that nobody can find in the docs may as well be
-        # the unreachable-setting bug one level up.
-        missing = [title for _, _, title, _ in settings_store.GROUPS
-                   if title.lower() not in self.readme.lower()]
-        self.assertFalse(
-            missing,
-            f"settings sections with no mention in README.md: {missing}")
-
-    def test_every_environment_variable_is_documented(self):
-        # Only the CURRENT name of each field. Legacy aliases (DEEPGRAM_MODEL)
-        # are deliberately undocumented — they exist so an old .env keeps
-        # working, not so a new one copies them.
-        wanted = set()
-        for env_var, _ in settings_store.FIELDS.values():
-            if isinstance(env_var, str) and env_var:
-                wanted.add(env_var)
-            elif isinstance(env_var, tuple) and env_var:
-                wanted.add(env_var[0])
-        missing = sorted(v for v in wanted if v not in self.envex)
-        self.assertFalse(
-            missing, f"env vars a setting reads but .env.example never names: "
-                     f"{missing}")
-
-    def test_the_shipped_compose_uses_the_data_directory_both_services_share(self):
-        # They are one image in two containers and must see the same data/,
-        # or a settings change never reaches the worker.
-        compose = (REPO / "docker-compose.yaml").read_text(
-            encoding="utf-8")
-        self.assertEqual(
-            compose.count("./data:/data"), 2,
-            "both python services must mount the same data directory")
 
 
 class TestTheRoutingTableIsInOnePlace(unittest.TestCase):

@@ -57,7 +57,8 @@ tests/test_brain.py              prompt assembly and the speech filter
 tests/test_station.py            what the station says, and what the card says about it
 tests/test_webhooks.py           registering for pushes, and proving one arrived
 tests/test_voice.py              TTS and STT backends
-tests/test_house_rules.py        tests about this repo: structure, docs, skills, the gate
+tests/test_docs.py               whether README.md and docs/ still describe the code
+tests/test_house_rules.py        tests about this repo: structure, skills, the commit gate
 ```
 
 The directory listing is the map. It cannot go stale the way a written index would.
