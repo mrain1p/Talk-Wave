@@ -37,8 +37,34 @@ tts_adapter.py     pluggable TTS, configured by tts-adapters/*.json
 
 ## Tests
 
-`test_sidecar.py` is the whole suite — 200+ tests. It gates CI: no image reaches `:latest`
-without it green.
+`tests/` is the suite — 400+ tests, one module per subject. `test_sidecar.py` is the aggregator
+that imports every class from it, so **the command has not changed** and neither has anything
+that names it: CI, the pre-commit hook, the `wavetalk-test` skill. It gates CI: no image reaches
+`:latest` without it green.
+
+```
+tests/__init__.py        sets LOG_TO_FILE before anything that logs is imported
+tests/support.py         _TempStores, _FakeRequest, and where the repo root is
+tests/test_settings.py           the layered config, and turn-taking reaching the call
+tests/test_secrets_and_auth.py   keys not leaving, and the two passwords
+tests/test_http.py               the HTTP edge, caller identity, minting ceilings
+tests/test_widget.py             the browser half, guarded from here
+tests/test_call_record.py        what is written down about a call, and what is not
+tests/test_call_flow.py          a call while it runs: answering, holding, ending
+tests/test_tools_surface.py      which tools reach a caller at all — the allowlist
+tests/test_tools_logic.py        what a tool does, and what it may claim afterwards
+tests/test_brain.py              prompt assembly and the speech filter
+tests/test_station.py            what the station says, and what the card says about it
+tests/test_webhooks.py           registering for pushes, and proving one arrived
+tests/test_voice.py              TTS and STT backends
+tests/test_house_rules.py        tests about this repo: structure, docs, skills, the gate
+```
+
+The directory listing is the map. It cannot go stale the way a written index would.
+
+**Find where a test belongs by subject, not by scrolling.** A new test goes in the module whose
+subject it defends; if none fits, that is a signal the subject is new, not that it belongs in
+whichever file is shortest.
 
 ```bash
 LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar -v

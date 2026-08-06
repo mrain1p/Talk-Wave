@@ -5,8 +5,19 @@ description: Run the Wave Talk test suite, or write new tests in this repo's hou
 
 # Test Wave Talk
 
-`agent-worker/test_sidecar.py` is the entire suite. It gates CI: no image reaches `:latest`
-without it green.
+`agent-worker/tests/` is the suite — one module per subject. `agent-worker/test_sidecar.py` is
+the aggregator that imports every class from it, so the command below is unchanged and so is
+every reference to a class by name. It gates CI: no image reaches `:latest` without it green.
+
+**A new test goes in the module whose subject it defends** — `tests/test_settings.py`,
+`tests/test_call_flow.py`, `tests/test_house_rules.py` and so on; the directory listing is the
+map. Two things to remember when adding one:
+
+- If the class is new, add it to the matching `from tests.… import (…)` block in
+  `test_sidecar.py`, or it will never run. `TestTheSuiteIsNotQuietlyNotRunning` reads the
+  aggregator, so a class nobody imported is invisible to it too.
+- Paths are `REPO` and `AGENT_WORKER` from `tests/support.py`, never `Path(__file__).parent` —
+  from inside `tests/` that is one directory short of what it used to mean.
 
 ## Running it
 

@@ -31,7 +31,8 @@ field with no matching DOM id — no error, no warning, the row just is not ther
 4. **Whatever reads it** — `call/`, `brain/`, `token_server.py`. If nothing reads it, you have
    added a control that does nothing, which is worse than no control.
 
-5. **`test_sidecar.py`** — see below.
+5. **`tests/test_settings.py`** — see below. (`test_sidecar.py` is only the aggregator now;
+   the tests live in `agent-worker/tests/`, one module per subject.)
 
 ## Rules that have been learned the hard way
 
