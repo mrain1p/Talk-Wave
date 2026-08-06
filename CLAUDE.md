@@ -120,6 +120,19 @@ Two rules for committing here, both learned the hard way:
 
 Work happens on the `dev` branch, not `main`. `main` is what `:latest` ships from.
 
+### How long a file may be
+
+**600 lines**, for anything under `agent-worker/` or `web-widget/`. Not because short files
+are virtuous — because nothing here ever objected to a file getting longer, and `app.js`
+reached 3,354 lines and `test_sidecar.py` 5,791 one entirely reasonable commit at a time.
+
+Above the ceiling is allowed, but it has to be a decision somebody wrote down: add an entry to
+`WAIVED` in `TestNoFileGrowsWithoutSomebodyDeciding` saying why that size is the right answer.
+The waiver records the file's size when granted, so it works as a ratchet — shrink freely,
+but growing past the recorded number fails until you either split the file or raise the number
+and justify it. A waiver whose file drops back under the ceiling must be deleted; the list is
+not allowed to describe a repo that no longer exists.
+
 ## How this is enforced
 
 Three layers, in increasing order of "actually happens":

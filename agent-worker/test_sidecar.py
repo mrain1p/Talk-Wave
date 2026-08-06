@@ -5973,5 +5973,124 @@ class TestTheCommitGateIsStillWiredUp(unittest.TestCase):
                       "the hook does not check that the command is a commit")
 
 
+class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
+    """Nothing in this repo has ever objected to a file getting longer, and it
+    shows: app.js reached 3,354 lines and this suite 5,791, one reasonable
+    commit at a time. No single one of those commits was wrong. That is the
+    whole problem — a file only becomes unreadable in increments small enough
+    that nobody stops.
+
+    So the rule is not "files must be short". It is "a file above the ceiling
+    must be a decision somebody wrote down". Everything below the ceiling is
+    unaffected and always will be.
+
+    The waiver list is a ratchet, not an amnesty. Each entry records the size
+    when it was granted; the file may shrink freely, but growing past its own
+    recorded number fails. A waiver whose file has since come back under the
+    ceiling must be deleted, so the list can never drift into describing a
+    problem that no longer exists.
+    """
+
+    CEILING = 600
+
+    # path -> (lines when the waiver was granted, why it is allowed to be big).
+    # Shrinking is always fine and the number should be lowered when it happens.
+    # Growing past the recorded size means: split it, or raise the number in the
+    # same commit and say in the message what made that the right call.
+    WAIVED = {
+        "agent-worker/test_sidecar.py": (
+            6096, "the whole suite in one file, appended to chronologically "
+                  "since the first commit. Being split by subject into tests/."),
+        "web-widget/app.js": (
+            3354, "the call widget and the settings panel in one IIFE. There is "
+                  "no bundler here by choice, so the split is into separate "
+                  "script files, not modules. Being split."),
+        "web-widget/style.css": (
+            1094, "themes both surfaces. Splits with app.js."),
+        "web-widget/index.html": (
+            753, "the call page and the panel in one document. Splits with "
+                 "app.js."),
+        "agent-worker/settings.py": (
+            1048, "mostly DEFAULTS and GROUPS — a declaration table, not logic. "
+                  "Long because the station has a lot of settings, and reading "
+                  "it top to bottom is how you find one."),
+        "agent-worker/api/diagnostics.py": (
+            977, "one module per job, and /test/* is genuinely one job: eight "
+                 "probes that all answer 'can this box reach that thing'."),
+    }
+
+    # Where shipped code lives. tools/ is developer scaffolding and docs are
+    # prose, so neither is held to a source-file ceiling.
+    ROOTS = ("agent-worker", "web-widget")
+    SUFFIXES = (".py", ".js", ".css", ".html")
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).parent.parent
+        cls.root = root
+        cls.sizes = {}
+        for name in cls.ROOTS:
+            for path in sorted((root / name).rglob("*")):
+                if not path.is_file() or path.suffix not in cls.SUFFIXES:
+                    continue
+                if "__pycache__" in path.parts or ".venv" in path.parts:
+                    continue
+                rel = str(path.relative_to(root)).replace("\\", "/")
+                cls.sizes[rel] = len(
+                    path.read_text(encoding="utf-8", errors="replace").splitlines())
+
+    def test_the_scan_found_the_source_tree(self):
+        # A scan that quietly matched nothing would make every check below pass
+        # forever, which is the failure mode this suite keeps guarding against.
+        self.assertGreater(len(self.sizes), 40,
+                           "the file scan has stopped finding the source tree")
+
+    def test_nothing_is_over_the_ceiling_without_a_waiver(self):
+        over = sorted(
+            f"{path} ({n} lines)"
+            for path, n in self.sizes.items()
+            if n > self.CEILING and path not in self.WAIVED
+        )
+        self.assertEqual(
+            over, [],
+            f"these are over the {self.CEILING}-line ceiling and nobody decided "
+            "that was right. Split them, or add a WAIVED entry saying why the "
+            f"size is the correct answer: {over}")
+
+    def test_no_waived_file_has_grown_since_its_waiver(self):
+        grown = sorted(
+            f"{path} was {was}, is now {self.sizes[path]}"
+            for path, (was, _) in self.WAIVED.items()
+            if path in self.sizes and self.sizes[path] > was
+        )
+        self.assertEqual(
+            grown, [],
+            "a waiver records a size, not a licence to keep growing. Shrink "
+            "these, or raise the recorded number in the same commit and say "
+            f"why that was the right call: {grown}")
+
+    def test_no_waiver_outlives_the_problem_it_describes(self):
+        # Both halves of stale: a waiver for a file that has come back under the
+        # ceiling, and one for a file that no longer exists at all. Either way
+        # the list has started describing a repo that isn't this one.
+        stale = sorted(
+            path for path, _ in self.WAIVED.items()
+            if path not in self.sizes or self.sizes[path] <= self.CEILING
+        )
+        self.assertEqual(
+            stale, [],
+            "these waivers no longer describe anything — the file is gone or is "
+            f"back under the ceiling. Delete them: {stale}")
+
+    def test_every_waiver_says_why(self):
+        # An entry with no reason is indistinguishable from one added to make
+        # the suite go green, which is precisely what this must not become.
+        thin = sorted(path for path, (_, why) in self.WAIVED.items()
+                      if len(why.strip()) < 40)
+        self.assertEqual(
+            thin, [],
+            f"waivers must say why the size is right, not merely that it is: {thin}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
