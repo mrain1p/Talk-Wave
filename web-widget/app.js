@@ -2175,10 +2175,16 @@
         : rtf < 0.7 ? '\n✓ Fast enough for a live call.'
         : rtf < 1.0 ? '\n⚠ Tight — usable but little headroom.'
         : '\n✗ Slower than realtime: playback will starve and gap.';
-      showResult(out, rtf != null && rtf < 1.0,
+      // A declared sample rate that disagrees with the audio is silent
+      // everywhere else — it plays at the wrong speed and pitch and nothing
+      // errors — so it has to be able to fail this test on its own, whatever
+      // the realtime factor says.
+      const rateWrong = d.measuredSampleRate && d.measuredSampleRate !== d.sampleRate;
+      showResult(out, rtf != null && rtf < 1.0 && !rateWrong,
         withNote('voice ' + d.voice + '\nfirst audio ' + d.firstAudioMs + 'ms' +
         '\ngenerated ' + d.audioSec + 's in ' + d.wallMs + 'ms' +
-        '\nrealtime factor ' + rtf + verdict, d));
+        '\nrealtime factor ' + rtf + verdict +
+        (d.sampleRateNote ? '\n' + d.sampleRateNote : ''), d));
       if (d.pcmBase64) playPcm(d.pcmBase64, d.sampleRate);
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }

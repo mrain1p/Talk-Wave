@@ -355,14 +355,22 @@ SCHEMA: dict[str, dict] = {
         help="'local' uses your VibeVoice persona voices but may be slower than "
              "realtime; 'cloud' is fast but won't match the on-air timbre."),
     "tts_base_url": dict(group="voice", kind="text", label="Server URL",
-        help="Any OpenAI-compatible speech endpoint."),
+        help="Any OpenAI-compatible speech endpoint. This and the adapter below "
+             "are separate settings and nothing makes them agree — pointing "
+             "this at a new engine while leaving the old engine's adapter in "
+             "place is the classic way to get audio at the wrong sample rate, "
+             "which sounds broken and logs nothing. Press Test voice after "
+             "changing either: it measures the rate rather than trusting it."),
     "tts_voice": dict(group="voice", kind="select", label="Voice",
         help="Leave on default to use the station's own voice for whoever is live."),
     "tts_model": dict(group="voice", kind="text", label="TTS model",
         needs=("tts_mode", "cloud"),
         help="Provider-specific. Blank uses the adapter's default."),
     "tts_adapter": dict(group="voice", kind="select", label="Adapter",
-        help="Describes a backend's request shape. Only needed for a non-standard API."),
+        help="Describes a backend end to end: the request shape, where it lists "
+             "its voices, and what sample rate its audio really is. Only needed "
+             "for a non-standard API — but it must match the server URL above, "
+             "because a mismatched one fails quietly rather than loudly."),
 
     # --- permissions ---
     "allow_requests": dict(group="perms", kind="check", label="Take song requests",

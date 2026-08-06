@@ -120,6 +120,15 @@ every token is paid on time-to-first-token every turn. Local TTS and STT are
 measured honestly — the pipeline check reports realtime factors and warns when
 a backend can't keep pace with playback.
 
+**The TTS checks assume nothing.** Swapping speech engines fails quietly more
+often than loudly, so the test buttons measure rather than trust: the declared
+sample rate is checked against the rate in the backend's own wav header (get it
+wrong and audio plays at the wrong speed and pitch with no error anywhere), the
+voice list is read from the path the adapter names in whatever shape the
+backend answers in, every persona's voice is checked against that list rather
+than only the DJ who happens to be on air, and when a backend refuses, what it
+actually said is what you read.
+
 ## Getting started
 
 ### Docker (recommended)

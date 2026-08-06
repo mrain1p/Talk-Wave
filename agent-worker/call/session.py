@@ -34,7 +34,7 @@ import speech_filter
 import station_config as station_config_mod
 from station import StationClient
 from station_config import StationConfig
-from tts_adapter import available_voices, pick_speakable_voice
+from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
 from . import lifecycle
 from .actions import CallActions
@@ -184,7 +184,9 @@ class CallSession:
         self.voice, why = pick_speakable_voice(
             self.voice,
             await available_voices(
-                str(self.cfg.get("tts_base_url") or "").strip()
+                str(self.cfg.get("tts_base_url") or "").strip(),
+                adapter_path=resolve_adapter(self.cfg.get("tts_adapter")),
+                mode=str(self.cfg.get("tts_mode", "")),
             ),
         )
         if why:

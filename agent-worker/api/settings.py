@@ -26,6 +26,7 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import ADAPTER_DIR
 from tts_adapter import available_voices as tts_voice_list
+from tts_adapter import resolve_adapter
 
 log = logging.getLogger("callin.token")
 
@@ -119,19 +120,28 @@ async def handle_post_settings(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"resolved": resolved}))
 
 
-async def _tts_voices(base_url: str) -> list[str]:
+async def _tts_voices(base_url: str, cfg: dict | None = None) -> list[str]:
     """Ask the configured TTS server what voices it actually has.
 
     The lookup itself lives in tts_adapter, because the WORKER consults the
     same list before a call — a panel showing one set of voices while the
     worker believes another is how a call ends up asking for a voice the
-    backend does not have. Here, an empty answer falls back to the stock
-    OpenAI names so the dropdown is never blank; the worker deliberately does
-    not, because "could not find out" must not read as "has none".
+    backend does not have. That includes the ADAPTER: discovery is described
+    there now, so looking it up without one would put the panel back on a
+    different path from the call it is configuring. Here, an empty answer
+    falls back to the stock OpenAI names so the dropdown is never blank; the
+    worker deliberately does not, because "could not find out" must not read
+    as "has none".
     """
     if not base_url:
         return settings_store.OPENAI_VOICES
-    return await tts_voice_list(base_url) or settings_store.OPENAI_VOICES
+    cfg = cfg or {}
+    found = await tts_voice_list(
+        base_url,
+        adapter_path=resolve_adapter(cfg.get("tts_adapter")),
+        mode=str(cfg.get("tts_mode", "")),
+    )
+    return found or settings_store.OPENAI_VOICES
 
 
 async def _openai_models(api_key: str, base_url: str = "") -> list[str]:
@@ -299,7 +309,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         ) = await asyncio.gather(
             station.personas(),
             station_cfg.voice_source(),
-            _tts_voices(cfg.get("tts_base_url", "")),
+            _tts_voices(cfg.get("tts_base_url", ""), cfg),
             _ollama_models(cfg.get("llm_base_url", "")),
             _openai_models(secrets_store.get("openai_api_key")),
             _openrouter_models(),

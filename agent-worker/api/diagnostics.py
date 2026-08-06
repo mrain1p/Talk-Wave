@@ -39,6 +39,99 @@ log = logging.getLogger("callin.token")
 
 TEST_LINE = "You're on the air. What are we playing tonight?"
 
+# Natural speech sits near 11 characters a second. The band either side of it
+# here is deliberately enormous, because inferring a sample rate from speaking
+# pace is a trap: a persona written to talk in fast clipped fragments produces
+# a fraction of the audio a normal voice does for the same text, and a single
+# measurement against one reads as several octaves out. Only a rate this far
+# from plausible is worth raising, and even then only as "check it".
+_CHARS_PER_SEC_FLOOR = 3.0
+_CHARS_PER_SEC_CEILING = 30.0
+
+
+async def _persona_voice_audit(available: list[str]) -> str:
+    """Which DJs this TTS backend cannot speak as — all of them, not just the
+    one currently on air.
+
+    pick_speakable_voice only ever sees the persona a call actually reached,
+    so a persona whose voice the backend does not have stays invisible until
+    someone rings in while that DJ is live. It then falls back and says why,
+    which is the right behaviour but the wrong moment to find out: the caller
+    reaches the station's DJ in somebody else's voice, and the whole point of
+    mirroring the on-air voice is gone.
+
+    The roster is already fetched for the panel, so checking the whole of it
+    turns "discovered on the first call to that DJ" into "discovered when the
+    operator presses the button".
+    """
+    if not available:
+        return ""            # lookup failed — not evidence about any persona
+    sc = StationConfig()
+    try:
+        voices = await sc.persona_voices()
+    except Exception as e:                                    # noqa: BLE001
+        return f"could not read the persona roster to check it ({e})"[:160]
+    finally:
+        await sc.aclose()
+
+    if not voices:
+        return ""
+    have = set(available)
+    missing = sorted(pid for pid, voice in voices.items() if voice and voice not in have)
+    if not missing:
+        return f"all {len(voices)} personas have a voice this backend can speak"
+    return (
+        f"{len(missing)} of {len(voices)} personas use a voice this backend does "
+        f"not have ({', '.join(missing[:6])}"
+        f"{', …' if len(missing) > 6 else ''}) — a caller reaching one of those "
+        f"DJs hears a substitute voice, not theirs. Either point this at the TTS "
+        f"server the station uses, or add those voices to this one."
+    )
+
+
+def _sample_rate_verdict(
+    declared: int, measured: int | None, why_not: str, text: str, audio_sec: float
+) -> str:
+    """Whether the rate in the adapter matches the audio the backend sent.
+
+    A sample rate is a label attached to the samples rather than something
+    carried in them, so getting it wrong produces no error anywhere: audio
+    plays at the wrong speed and pitch and every component reports success.
+    Declaring 24000 for a backend producing 48000 is half speed an octave
+    down. The same engine commonly reports one rate on a GPU and half of it on
+    a CPU, so the adapter that is correct on one host is silently wrong on the
+    next — which is exactly the case documentation cannot fix and a
+    measurement can.
+    """
+    if measured:
+        if measured == declared:
+            return f"sample rate {declared} Hz confirmed against the backend's own wav header"
+        # Speed is declared/measured, not the other way round: the player
+        # consumes `declared` samples a second from audio that carries
+        # `measured` of them, so declaring HALF the real rate plays at half
+        # speed and an octave down — the slow draggy DJ, not the chipmunk.
+        speed = declared / measured if measured else 0
+        return (
+            f"✗ SAMPLE RATE MISMATCH — the adapter declares {declared} Hz and the "
+            f"backend produced {measured} Hz. Playback will run at "
+            f"{speed:.2g}× speed, pitched to match, and nothing anywhere will "
+            f"report an error. Set audio.sample_rate to {measured} in the adapter."
+        )
+
+    if audio_sec > 0 and text:
+        pace = len(text) / audio_sec
+        if pace < _CHARS_PER_SEC_FLOOR or pace > _CHARS_PER_SEC_CEILING:
+            likely = int(declared * pace / 11.0)
+            return (
+                f"⚠ Could not measure the sample rate ({why_not}), and the "
+                f"declared {declared} Hz implies {pace:.0f} characters of speech "
+                f"a second, against about 11 for natural speech. Something near "
+                f"{likely} Hz would be plausible — but confirm by ear before "
+                f"changing it, because a voice that speaks unusually fast or "
+                f"slow will produce this reading while being perfectly correct."
+            )
+    return ""
+
 
 async def handle_test_tts(request: web.Request) -> web.Response:
     """Synthesize one line and report whether the backend can keep up with a
@@ -95,10 +188,11 @@ async def handle_test_tts(request: web.Request) -> web.Response:
             model=cfg.get("tts_model") or "",
             mode=tts_mode,
         )
+        spoken = body.get("text") or TEST_LINE
         t0 = _time.perf_counter()
         first = None
         pcm = bytearray()
-        stream = tts.synthesize(body.get("text") or TEST_LINE)
+        stream = tts.synthesize(spoken)
         async for ev in stream:
             if first is None:
                 first = _time.perf_counter() - t0
@@ -107,6 +201,13 @@ async def handle_test_tts(request: web.Request) -> web.Response:
 
         wall = _time.perf_counter() - t0
         audio_sec = len(pcm) / 2 / tts.sample_rate if tts.sample_rate else 0
+
+        # AFTER the timed run, never inside it — this is a second request and
+        # folding it in would make first-audio and realtime factor lie.
+        measured, why_not = await tts.probe_sample_rate()
+        rate_note = _sample_rate_verdict(
+            tts.sample_rate, measured, why_not, spoken, audio_sec)
+
         return _cors(
             request,
             web.json_response(
@@ -119,6 +220,8 @@ async def handle_test_tts(request: web.Request) -> web.Response:
                     "audioSec": round(audio_sec, 2),
                     "realtimeFactor": round(wall / audio_sec, 2) if audio_sec else None,
                     "sampleRate": tts.sample_rate,
+                    "measuredSampleRate": measured,
+                    "sampleRateNote": rate_note,
                     "pcmBase64": _b64.b64encode(bytes(pcm)).decode(),
                 }
             ),
@@ -127,7 +230,13 @@ async def handle_test_tts(request: web.Request) -> web.Response:
         msg = str(e)
         # By far the most common failure: a voice id from one backend sent to
         # the other (stock cloud names vs the local sample registry).
-        if "400" in msg and voice:
+        #
+        # Only when the backend did not already say so itself. This hint is a
+        # guess, and it exists because the response body used to be discarded;
+        # now that the body comes through, a backend that names the voice in
+        # its own error has explained itself and appending a guess underneath
+        # is noise.
+        if "400" in msg and voice and voice not in msg:
             msg += (
                 f"\n\nThe backend rejected voice '{voice}'. Cloud voices "
                 f"(alloy, onyx, …) and local sample ids (-Trevor2, -Delia1, …) "
@@ -407,10 +516,19 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         # This stage resolves the voice the on-air DJ actually uses, so it is
         # the one place that sees a station voice the backend cannot speak —
         # which is a silent call, and used to read here as an opaque TTS error.
-        voice, voice_note = pick_speakable_voice(
-            voice, await tts_voice_list(cfg.get("tts_base_url") or ""))
+        available = await tts_voice_list(
+            cfg.get("tts_base_url") or "",
+            adapter_path=adapter_path,
+            mode=str(cfg.get("tts_mode", "")),
+        )
+        voice, voice_note = pick_speakable_voice(voice, available)
         if voice_note:
             record("Voice availability", 0, voice_note, counts=False)
+
+        # Every persona, not only the one who happens to be on air now.
+        roster_note = await _persona_voice_audit(available)
+        if roster_note:
+            record("Persona voices", 0, roster_note, counts=False)
 
         tts = AdapterTTS(voice=voice, base_url=cfg.get("tts_base_url") or "",
                          api_key=os.environ.get("TTS_API_KEY", "") if tts_key_ok else "",
