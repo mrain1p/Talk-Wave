@@ -1,5 +1,29 @@
 # Restyling the call-in widget to belong to its host page
 
+> **Superseded in part, as of 0.9.95. Read this before following anything below.**
+>
+> This document was written from one station page, and 0.9.92–0.9.94 implemented it
+> literally. On that page the result was right. Everywhere else the widget had no edge, no
+> surface to stand on, and a cream-and-pine palette that announced whose page it had been
+> built for — which is the same complaint this document opens with, pointed the other way.
+>
+> What still holds, and is the valuable half: **§2's theming contract** (token names,
+> nothing hardcoded, derive tints with `color-mix()`), **§5** (the transcript must not
+> resize the frame), **§7** (the widget never caps its own height), **§3** (reduced
+> motion), and the control work in **§4.7** (two button treatments, exactly one filled).
+>
+> What is reversed, and why:
+>
+> | § | Says | Now |
+> |---|---|---|
+> | 4.1 | Drop the card; bands on a transparent root | The card is back — `--granite` surface, `--edge` border, 16px radius. It is the widget's edge, and on a page that is not the station's there was nothing else telling you where it ended |
+> | — | Square everything | Controls stay square. Only the card and the ask popup are rounded |
+> | 2 | Palette tuned to the host's own values | Light and dark are **neutral**. Station colour is a third theme the host posts in over `setCallinTheme()`, layered on the neutral base |
+> | 4.4 | Live states are coral; green is not in the palette | Green means the line is open, amber the DJ is thinking, coral the DJ is talking. Collapsing open and talking into one colour stopped the chip reporting the transition a caller waits on |
+> | — | `body.compact` is a smaller second design | There is no second design. The embed **is** the call page, minus the settings gear and defaulting to the ticker |
+>
+> Anything below that contradicts this box loses.
+
 Handoff spec for `web-widget/` (`index.html`, `app.js`, `style.css`).
 
 The widget currently reads as a third-party component pasted onto the station page rather
@@ -105,9 +129,13 @@ transparent)` rather than a new hex. A hardcoded colour is a bug in station mode
 
 ### Fonts
 
-The host loads Archivo and IBM Plex Mono. A cross-origin iframe does **not** inherit them —
-the widget must load them itself or the mono labels will silently fall back to Courier.
-Ship the same two families and keep the same fallback stacks.
+**Reversed in 0.9.95 — the widget ships no webfonts.** This section is correct that a
+cross-origin iframe inherits nothing, and 0.9.92 acted on it by pulling Archivo and IBM Plex
+Mono from Google. That is a third-party request from every embed, on somebody else's site,
+to match a page most embeds are not on. What actually carries the design is the *shape* of
+the type — mono uppercase micro-labels against a sans body — and the system stacks in
+`style.css` carry that everywhere. If the exact faces are ever wanted back, self-host them
+from `token_server`; do not reintroduce the CDN.
 
 ---
 
@@ -354,4 +382,5 @@ frame must not resize *per line of speech*.
 - [ ] Exactly one primary (filled) button visible in any state.
 - [ ] Every button and input measures `--control-h` tall.
 - [ ] Longest button label doesn't widen its row.
-- [ ] Mono labels render in IBM Plex Mono, not Courier.
+- [ ] Mono labels render in the platform's UI monospace, not Courier. (No webfont since
+      0.9.95 — see §2 Fonts.)

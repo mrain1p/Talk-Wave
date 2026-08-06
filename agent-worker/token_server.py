@@ -433,6 +433,31 @@ def _secure_origin() -> str:
     return ""
 
 
+def corner_controls(cfg: dict) -> dict:
+    """Which buttons the call card offers in its top-right corner.
+
+    One decision, made here, for both surfaces. It used to be three unrelated
+    mechanisms in the widget — the settings gear hidden by a CSS rule that
+    only existed for embeds, the theme toggle by an inline style set in two
+    different places, the help button by whether `canAsk` came back — so what
+    a caller was offered depended on which surface they happened to be
+    looking at, and nobody had decided that. It was just where the rules
+    happened to live.
+
+    The widget may still subtract from this, but only for things this side
+    cannot know: a host page that pinned ?theme= has already chosen, and an
+    embed never loads the settings panel at all, so a gear there opens
+    nothing.
+    """
+    return {
+        "help": bool(cfg.get("show_caller_help")),
+        # Pinned light or dark leaves a viewer nothing to toggle. "inherit"
+        # is not pinned: on the standalone page it behaves as auto.
+        "theme": str(cfg.get("widget_theme") or "auto") not in ("light", "dark"),
+        "settings": True,
+    }
+
+
 async def handle_live(request: web.Request) -> web.Response:
     """Who's on air, proxied so the widget doesn't depend on the station
     sending CORS headers to whatever origin the widget is embedded on."""
@@ -506,6 +531,8 @@ async def handle_live(request: web.Request) -> web.Response:
                     # attribute still wins — the host page knows more about
                     # itself than this setting does.
                     "theme": str(cfg.get("widget_theme") or "auto"),
+                    # Which controls the card puts in its top-right corner.
+                    "controls": corner_controls(cfg),
                     # What a caller may actually ask for. Sent only when the
                     # operator has switched the help button on, and only as
                     # the permissions themselves — the wording lives in the

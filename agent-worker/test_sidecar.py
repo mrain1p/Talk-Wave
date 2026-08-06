@@ -3629,6 +3629,58 @@ class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
         self.assertEqual(len(token_server._hook_events), before + 1)
 
 
+class TestBothSurfacesOfferTheSameControls(unittest.TestCase):
+    """The call card's corner controls are the server's decision, not the
+    stylesheet's.
+
+    Before 0.9.95 they were three unrelated mechanisms in the widget, and the
+    settings gear was hidden by a rule that existed only for embeds — so the
+    call page and an embed offered different controls, which nobody had
+    decided. Anything the widget subtracts from this it subtracts for a
+    reason this side cannot see (a host page that pinned a theme, an embed
+    with no panel loaded); it may never ADD one.
+    """
+
+    def test_the_help_button_follows_its_setting(self):
+        import token_server
+
+        self.assertTrue(token_server.corner_controls(
+            {"show_caller_help": True})["help"])
+        self.assertFalse(token_server.corner_controls(
+            {"show_caller_help": False})["help"])
+
+    def test_pinning_a_theme_takes_the_toggle_away(self):
+        import token_server
+
+        for pinned in ("light", "dark"):
+            with self.subTest(theme=pinned):
+                self.assertFalse(token_server.corner_controls(
+                    {"widget_theme": pinned})["theme"],
+                    "a pinned theme leaves nothing to toggle")
+
+    def test_auto_and_inherit_keep_the_toggle(self):
+        import token_server
+
+        # "inherit" is not a pinned theme: on the standalone page, where
+        # there is no host to inherit from, it behaves as auto.
+        for choice in ("auto", "inherit", "", None):
+            with self.subTest(theme=choice):
+                self.assertTrue(token_server.corner_controls(
+                    {"widget_theme": choice})["theme"])
+
+    def test_the_widget_reads_the_keys_the_server_writes(self):
+        # The widget subtracts from these by name. A rename on one side only
+        # would silently hide a control rather than raising anything.
+        import token_server
+
+        app_js = (Path(__file__).parent.parent / "web-widget" / "app.js"
+                  ).read_text(encoding="utf-8")
+        for key in token_server.corner_controls({}):
+            with self.subTest(key=key):
+                self.assertIn(f"c.{key} !== false", app_js,
+                              f"app.js never reads controls.{key}")
+
+
 class TestABadPlaylistStaysSmall(unittest.TestCase):
     """Mount discovery reads whatever the station's playlist says, and every
     mount is copied into /live — which every open widget polls. A station

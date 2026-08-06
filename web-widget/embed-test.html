@@ -7,10 +7,13 @@
   Not shipped to users; a bench for the embed path, which is otherwise only
   testable by dropping the widget on a real third-party page.
 
-  Covers the three things that actually break:
+  Covers the things that actually break:
     * data-theme="inherit" reading the HOST page's background
     * the frame following the widget's height instead of a fixed guess
     * a pinned data-height still winning
+    * "What can I ask?" overlaying PAST the frame — down by default, up when
+      the page has no room below. Sections 4 and 5 are the two directions;
+      open the ? in each and nothing on this page should move.
 
   Serve it from the widget origin:  http://localhost:8100/embed-test.html
 -->
@@ -23,6 +26,11 @@
   .light { background: #fbfbf9; color: #222; }
   .pad   { padding: 20px; border-radius: 12px; }
   code { font-size: 12px; opacity: .7; }
+  .ruler { margin-top: 12px; padding: 40px 12px; background: repeating-linear-gradient(
+             45deg, #e8e4dc, #e8e4dc 10px, #dcd7cd 10px, #dcd7cd 20px);
+           color: #555; font-size: 12px; }
+  /* Section 5 sits far enough down that there is no room under it. */
+  .tail { margin-top: 60vh; }
 </style>
 </head>
 <body class="light">
@@ -49,6 +57,23 @@
     <div id="subwave-callin-c" data-theme="dark" data-height="150px"></div>
   </div>
   <code>data-height="150px" — stays 150px whatever the widget reports</code>
+</section>
+
+<section>
+  <h2>4 — ask list opens DOWN (room below)</h2>
+  <div class="dark pad">
+    <div id="subwave-callin-d" data-theme="dark"></div>
+  </div>
+  <code>press ? — the list should cover the ruled block below, not scroll inside the frame</code>
+  <div class="ruler">this must not move, and must be covered by the list</div>
+</section>
+
+<section class="tail">
+  <h2>5 — ask list opens UP (no room below)</h2>
+  <div class="dark pad">
+    <div id="subwave-callin-e" data-theme="dark"></div>
+  </div>
+  <code>same widget at the bottom of the page — the list should flip above it</code>
 </section>
 
 <script src="/embed.js"></script>

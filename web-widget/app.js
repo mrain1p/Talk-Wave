@@ -13,8 +13,15 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // Declared up here because both the embed-height reporting and the ask
+  // popup's overlay handshake need it, and they sit at opposite ends of this
+  // file.
+  const framed = window.parent !== window;
+
   // Theme: an explicit choice is remembered and beats the OS setting. Embeds
   // can force one with ?theme=light|dark so the widget matches the host page.
+  const themeForcedByHost = !!params.get('theme');
+
   (function theme() {
     const forced = params.get('theme');
     const saved = forced || localStorage.getItem('callinTheme');
@@ -22,10 +29,7 @@
       document.documentElement.setAttribute('data-theme', saved);
     }
     const btn = document.getElementById('themeBtn');
-    if (!btn) return;
-    // A host page that forces a theme has decided — no toggle. Otherwise the
-    // toggle is available, embeds included.
-    if (forced) { btn.style.display = 'none'; return; }
+    if (!btn || forced) return;
     btn.onclick = () => {
       const now = document.documentElement.getAttribute('data-theme')
         || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
@@ -34,6 +38,27 @@
       localStorage.setItem('callinTheme', next);
     };
   })();
+
+  // ------------------------------------------------- the corner controls
+  // Which of the three the card offers is the BACKEND's call, sent with
+  // /live, and it is applied identically on the call page and on an embed.
+  // It used to be three unrelated mechanisms — the gear hidden by a CSS rule
+  // that only existed for embeds, the theme toggle hidden by an inline
+  // style set in two different places, the ? driven by whether canAsk came
+  // back — which is exactly how the two surfaces ended up offering different
+  // controls without anyone deciding they should.
+  //
+  // The widget only ever SUBTRACTS from what the backend offers, and only
+  // for facts the backend cannot know: a host page that forced ?theme= has
+  // already decided, and an embed never loads the settings panel at all
+  // (app.js returns above it), so a gear there would open nothing.
+  function applyControls(d) {
+    const c = (d && d.controls) || {};
+    const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
+    set('helpBtn', c.help !== false && !!(d && d.canAsk));
+    set('themeBtn', c.theme !== false && !themeForcedByHost);
+    set('gearBtn', c.settings !== false && !compact);
+  }
 
   // The operator's theme choice arrives with /live, long after the page has
   // painted, so the bootstrap above handles the immediate cases and this
@@ -44,15 +69,12 @@
   // see the page it sits in, so if inherit reaches us unresolved there is no
   // page to inherit from and auto is the honest answer.
   function applyConfiguredTheme(choice) {
-    if (params.get('theme')) return;            // the host page has decided
+    if (themeForcedByHost) return;              // the host page has decided
     const root = document.documentElement;
-    const btn = $('themeBtn');
     if (choice === 'light' || choice === 'dark') {
-      root.setAttribute('data-theme', choice);
-      if (btn) btn.style.display = 'none';      // forced: nothing to toggle
-      return;
+      root.setAttribute('data-theme', choice);  // forced: applyControls drops
+      return;                                   // the toggle to match
     }
-    if (btn) btn.style.display = '';
     if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
   }
 
@@ -66,9 +88,26 @@
   // custom-property names are accepted: this is a message from another origin,
   // and nothing here should be able to set arbitrary style.
   addEventListener('message', (e) => {
-    if (window.parent === window || e.source !== window.parent) return;
+    if (!framed || e.source !== window.parent) return;
     const msg = e.data;
-    if (!msg || msg.type !== 'swtv:theme' || !msg.tokens) return;
+    if (!msg) return;
+
+    // The host answering our request for room to open the ask list in. It is
+    // the authority on both the amount and the direction: it can see the
+    // page, and we cannot see past our own frame.
+    if (msg.type === 'swtv:overlay') {
+      const px = Math.max(0, Math.min(2000, Number(msg.px) || 0));
+      setOverlay(px, !!msg.up);
+      // px 0 is the host confirming it has put the frame back; there is
+      // nothing left to show. Otherwise wait for the frame to actually be
+      // resized, or the popup gets placed against the height we had a
+      // moment ago.
+      if (px) requestAnimationFrame(() => { if (askShow) askShow(); });
+      else notifyHeight();
+      return;
+    }
+
+    if (msg.type !== 'swtv:theme' || !msg.tokens) return;
     const root = document.documentElement;
     Object.keys(msg.tokens).forEach((k) => {
       if (!/^--[a-z0-9-]+$/i.test(k)) return;
@@ -121,18 +160,68 @@
                          : (b.bottom + GAP) + 'px';
   }
 
+  // The ask list is routinely taller than the whole widget, and inside an
+  // embed it was clipped by the frame — a list of eight things a caller can
+  // ask, in a 190px window, scrolling. So the frame itself gets out of the
+  // way: the widget asks the host for room, embed.js turns the frame into an
+  // overlay that reaches past the slot it was given, and the list opens over
+  // the host page. Downwards by default; embed.js flips it upwards when the
+  // page has no room below, because only the host can see the host.
+  //
+  // askRoom is the extra px the host granted, 0 when we are not overlaid.
+  let askRoom = 0, askWait = null, askShow = null, askClose = null;
+
+  function setOverlay(px, up) {
+    askRoom = px;
+    document.documentElement.style.setProperty('--overlay-px', px + 'px');
+    document.body.classList.toggle('overlay-up', px > 0 && up);
+  }
+
+  function requestOverlay(px) {
+    if (!framed) return;
+    parent.postMessage({ type: 'subwave-callin:overlay', px: px }, '*');
+  }
+
   function setupAskPopup(canAsk) {
     const btn = $('helpBtn'), pop = $('askPop');
     if (!btn || !pop) return;
-    if (!canAsk) { btn.hidden = true; pop.hidden = true; return; }
+    if (!canAsk) { pop.hidden = true; return; }   // applyControls owns the button
     paintAskPopup(canAsk);
-    btn.hidden = false;
-    const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+
+    const close = () => {
+      clearTimeout(askWait); askWait = null;
+      pop.hidden = true; pop.style.visibility = '';
+      btn.setAttribute('aria-expanded', 'false');
+      // The card's own offset is NOT dropped here. Opening upwards, the frame
+      // is anchored to the bottom of its slot and the card is held down by
+      // that offset; dropping it before the host has shrunk the frame back
+      // sends the card to the top of a still-tall frame for a frame or two,
+      // which reads as the widget jumping as you close the menu. The host
+      // echoes px:0 when it is done, and that is what clears it.
+      if (askRoom) requestOverlay(0);
+    };
+    askClose = close;
+
+    const show = () => {
+      clearTimeout(askWait); askWait = null;
+      placeAskPopup(btn, pop);
+      pop.style.visibility = '';
+    };
+    askShow = show;
+
     btn.onclick = () => {
-      const open = pop.hidden;
-      pop.hidden = !open;
-      btn.setAttribute('aria-expanded', String(open));
-      if (open) placeAskPopup(btn, pop);
+      if (!pop.hidden) return close();
+      btn.setAttribute('aria-expanded', 'true');
+      // Laid out but not yet painted, so scrollHeight is real while the
+      // popup cannot be seen sitting in the wrong place for a frame.
+      pop.style.visibility = 'hidden';
+      pop.hidden = false;
+      if (!framed) return show();
+      requestOverlay(pop.scrollHeight + 16);
+      // A host that framed us without embed.js will never answer. Rather
+      // than leaving the list invisible forever, open it inside the frame —
+      // which is exactly what it did before any of this existed.
+      askWait = setTimeout(show, 250);
     };
     $('askClose').onclick = close;
     // Escape and a click outside, because a popup with only an X is a trap on
@@ -225,14 +314,20 @@
   // than left to the ResizeObserver alone: observer callbacks ride animation
   // frames, which don't run in a background tab, so an embed the visitor
   // isn't looking at would size itself late.
-  const framed = window.parent !== window;
   let lastPosted = 0;
   let measuring = false;
 
   function notifyHeight() {
-    if (!framed || measuring) return;
-    const card = document.querySelector('.card');
-    if (!card) return;
+    // Silent while the ask list has the frame overlaid: the frame is
+    // deliberately taller than the widget just now, and reporting that back
+    // would make the host adopt the overlay's height permanently.
+    if (!framed || measuring || askRoom) return;
+    // The BODY, not the card: the card has an inset around it inside the
+    // frame, and reporting the card alone handed back a height 20px short of
+    // what the widget actually occupies, so the frame clipped its own bottom
+    // edge. Measuring the body keeps that number in the stylesheet where it
+    // belongs.
+    //
     // Measure the CONTENT height, never the height we were handed. Idle, the
     // card stretches to fill a tall host column so the Call button can sit at
     // the bottom of it — and a stretched card reports the frame's own height
@@ -241,7 +336,7 @@
     // ResizeObserver that watches this element from re-entering.
     measuring = true;
     document.body.classList.add('measuring');
-    const h = Math.ceil(card.getBoundingClientRect().height);
+    const h = Math.ceil(document.body.getBoundingClientRect().height);
     document.body.classList.remove('measuring');
     measuring = false;
     if (h > 0 && h !== lastPosted) {
@@ -441,6 +536,7 @@
       if (first) {
         applyConfiguredTheme(d.theme);
         setupAskPopup(d.canAsk);
+        applyControls(d);
       }
       if (typeof d.sounds?.volume === 'number' && !room) {
         volume = d.sounds.volume;
@@ -501,6 +597,11 @@
       }
     } catch (e) {
       live = live || {};
+      // The controls still have to appear. An unreachable station is the case
+      // where the operator most needs the gear, and driving the corner
+      // controls off /live means a failed /live would otherwise leave the
+      // card with no way into settings at all.
+      applyControls(null);
       paintOffAir('offline');
       setStatus('Station unreachable', 'error');
     }
@@ -688,10 +789,17 @@
     void el.offsetWidth;
     el.classList.add('roll');
   }
+  // The ticker row is aligned on the baseline of its text, and an EMPTY line
+  // box has no baseline — so the row that was reserving two lines' height
+  // measured 4px taller empty than it did with speech in it, and the host
+  // frame twitched on the first word of every call. A zero-width space is a
+  // line box with a baseline and nothing to read.
+  const NBSP_LINE = '​';
   function setLine(el, text) {
-    if (!el || el.textContent === text) return;   // only animate real changes
-    el.textContent = text;
-    rollIn(el);
+    const t = text || NBSP_LINE;
+    if (!el || el.textContent === t) return;      // only animate real changes
+    el.textContent = t;
+    if (text) rollIn(el);                         // never animate the blank
   }
 
   let tickerTimer = null;
@@ -858,7 +966,7 @@
       // first word arrives. From here the height is constant for the rest of
       // the call however long anyone talks.
       const t = $('ticker');
-      if (t) { t.querySelector('.line').textContent = ''; t.hidden = false; }
+      if (t) { setLine(t.querySelector('.line'), ''); t.hidden = false; }
     }
     notifyHeight();
 

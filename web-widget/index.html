@@ -23,27 +23,29 @@
 <!-- Pinned exactly: a floating @2 tag means a breaking client release lands
      silently on every visitor. Bump deliberately, test a call, then ship. -->
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.min.js"></script>
-<!-- The host page's two faces. A cross-origin iframe inherits NOTHING from
-     the page it sits in, so the widget has to load these itself or every mono
-     label silently falls back to Courier and stops matching the station page.
-     display=swap: the widget paints in the fallback stack immediately rather
-     than holding a blank card while a font downloads. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=IBM+Plex+Mono:wght@400;700&display=swap">
+<!-- No webfonts. 0.9.92 pulled Archivo and IBM Plex Mono from Google so the
+     widget's labels would match one particular station page — which is a
+     request to a third party from every embed, on somebody else's site, for
+     the sake of matching a page most of those embeds are not on. The design
+     is the mono uppercase micro-label against a sans body, and the system
+     stacks in style.css carry that anywhere. If the exact faces are ever
+     wanted back, self-host them here rather than reintroducing the CDN. -->
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="card">
-    <button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button>
-    <button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark">&#9681;</button>
-    <button class="gear" id="gearBtn" title="Settings" aria-label="Settings">&#9881;</button>
-
     <!-- The connection state lives in the header, beside ON AIR NOW, rather
          than under the Call button: on a station page the button sits in a
          row of the host's own buttons and a status line dangling below it
-         broke that row. -->
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div></div>
+         broke that row.
+
+         The corner controls sit IN this row rather than being absolutely
+         positioned over it. Absolute meant each one owned a hardcoded `right`
+         offset, a second set of offsets for the embed, and a padding reserve
+         on the row to keep the status clear of them — three places to get
+         wrong every time the backend changed which controls a caller is
+         offered. In the flow, hiding one just closes the gap. -->
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9681;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />

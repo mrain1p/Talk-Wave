@@ -154,6 +154,16 @@ class Handler(BaseHTTPRequestHandler):
                 "reachable": True, "onAir": True, "guestRequired": False,
                 "callsPaused": False, "degraded": False,
                 "secureOrigin": "", "theme": "auto",
+                "name": "Francesca", "show": "The Piazza · Golden-era pop",
+                "tagline": "Velvet Harmonies & Mediterranean Dreams.",
+                "track": "I Want You — The Cadets",
+                # Everything switched on, so the ask list is at its tallest —
+                # which is the case the overlay exists for.
+                "canAsk": {"allow_requests": True, "allow_library_search": True,
+                           "allow_exact_queue": True, "allow_announcements": True,
+                           "allow_skills": True},
+                "controls": {"help": True, "theme": True, "settings": True},
+                "limits": {"maxCallSeconds": 480, "idlePromptSecs": 20},
                 "stream": {"url": "", "alternates": [], "tuneIn": False, "volume": 10},
             })
 
