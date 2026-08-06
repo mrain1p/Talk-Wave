@@ -21,7 +21,7 @@ through. Every field carries its own help text.
 | Connect | **API keys** | Provider keys, stored server-side, never shown back |
 | Models & voice | **Brains** | LLM provider/model and STT. A local Whisper is baked in and used by default |
 | Models & voice | **Voice** | TTS backend, URL, voice (default: mirrored per-persona from the station), adapter |
-| Permissions & safety | **Caller permissions** | What a stranger may trigger, overlap protection, and the two station-wide switches (skip the current track, fire a programme beat) that reach every listener — both off by default |
+| Permissions & safety | **Caller permissions** | What a stranger may trigger, overlap protection, and the three station-wide switches (skip the current track, fire a programme beat, put a different show on air) that reach every listener — all off by default |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call, pause — the guard on API spend |
 | Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
 | Call settings | **Call behaviour** | Who answers, greeting, how early the DJ may hang up and the hard limit, idle check-ins, tune-in, **station stream URL**, and whether call transcripts are kept at all |
@@ -31,7 +31,7 @@ through. Every field carries its own help text.
 | Call settings | **Back to air** | The one-line on-air mention after a call |
 | Call settings | **Call sounds** | Sound set, uploads or URLs, previews, volume |
 | Reference | **What callers can ask** | Derived from the permissions above, including what is never available |
-| Reference | **Station tools** | All 17 MCP tools and whether a caller can reach each |
+| Reference | **Station tools** | The station's whole tool surface — the 17 MCP tools plus the two takeover actions we serve ourselves — and whether a caller can reach each |
 | Reference | **Embed on another page** | Copyable iframe snippet and preview |
 
 Below settings, a **Diagnostics** block: pipeline check, speed test, recent

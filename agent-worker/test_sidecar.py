@@ -82,6 +82,13 @@ from tests.test_tools_logic import (  # noqa: F401
     TestMainToolLogic,
     TestSearchingForWhatTheCallerActuallySaid,
 )
+from tests.test_takeover import (  # noqa: F401
+    TestCancellingATakeover,
+    TestNamingAShowTheCallerSaid,
+    TestPinningAShow,
+    TestTheCallerCannotDoThisAllNight,
+    TestTheStationEndpointsAreTheOnesUpstreamServes,
+)
 from tests.test_brain import (  # noqa: F401
     TestACallerCanBeToldNothingIsKept,
     TestBrainSplit,

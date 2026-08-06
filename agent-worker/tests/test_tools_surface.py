@@ -101,6 +101,12 @@ class TestExposedSurface(unittest.TestCase):
         # and capped by Actions per call.
         "subwave_skip_track": "allow_skip_track",
         "subwave_dj_segment": "allow_dj_segment",
+        # Further-reaching than either, and the only caller action whose effect
+        # outlives the call: it puts a different show, and so a different DJ,
+        # on air for an hour. Not an MCP tool — the station exposes takeover
+        # over admin REST only — so these two are ours end to end.
+        "subwave_takeover_show": "allow_takeover",
+        "subwave_cancel_takeover": "allow_takeover",
         "subwave_refresh_playlist": "never",
         "subwave_list_sfx": "never",
         "subwave_play_sfx": "never",
@@ -172,12 +178,14 @@ class TestExposedSurface(unittest.TestCase):
 
 
 class TestStationWideTools(_TempStores):
-    """Skipping a track and firing a programme beat reach every listener.
+    """Skipping a track, firing a programme beat and pinning a show reach every
+    listener.
 
-    They were `never` until 0.9.54. The operator's terms for opening them up
-    were: off by default, and capped. Both are load-bearing, so both are
-    tested — the default especially, because a permission that quietly
-    defaults to on is how someone else's station starts skipping tracks.
+    The first two were `never` until 0.9.54, the takeover until 0.9.110. The
+    operator's terms for opening any of them up were the same: off by default,
+    and capped. Both are load-bearing, so both are tested — the default
+    especially, because a permission that quietly defaults to on is how
+    someone else's station starts skipping tracks.
     """
 
     def _tools(self, cfg: dict) -> set[str]:
@@ -193,9 +201,10 @@ class TestStationWideTools(_TempStores):
             cfg, object(), CallActions(5), _Guard(), guarded=False)
         return {t.info.name for t in built}
 
-    STATION_WIDE = {"subwave_skip_track", "subwave_dj_segment"}
+    STATION_WIDE = {"subwave_skip_track", "subwave_dj_segment",
+                    "subwave_takeover_show", "subwave_cancel_takeover"}
 
-    def test_both_are_off_by_default(self):
+    def test_all_of_them_are_off_by_default(self):
         # On the real defaults, not a hand-made dict — a permission that
         # quietly defaults to on is how someone else's station starts
         # skipping tracks. (Announcements ARE on by default; that predates
@@ -203,6 +212,7 @@ class TestStationWideTools(_TempStores):
         cfg = settings_store.load()
         self.assertFalse(cfg.get("allow_skip_track"))
         self.assertFalse(cfg.get("allow_dj_segment"))
+        self.assertFalse(cfg.get("allow_takeover"))
         self.assertEqual(self._tools(cfg) & self.STATION_WIDE, set())
 
     def test_each_appears_only_when_its_own_switch_is_on(self):
@@ -212,19 +222,40 @@ class TestStationWideTools(_TempStores):
         self.assertEqual(
             self._tools({"allow_dj_segment": True}) & self.STATION_WIDE,
             {"subwave_dj_segment"})
+        # Both halves of the takeover ride one switch on purpose: cancelling
+        # the operator's own pin is a station-wide change too, so it must not
+        # be reachable on a line that was never given the pin.
+        self.assertEqual(
+            self._tools({"allow_takeover": True}) & self.STATION_WIDE,
+            {"subwave_takeover_show", "subwave_cancel_takeover"})
 
     def test_they_are_local_wrappers_so_the_action_cap_applies(self):
         # The whole reason they are not MCP allowlist entries. An MCP-served
         # tool never consults CallActions, so it would have no ceiling.
         from call.tools.registry import local_tool_names, mcp_allowlist
 
-        cfg = {"allow_skip_track": True, "allow_dj_segment": True}
+        cfg = {"allow_skip_track": True, "allow_dj_segment": True,
+               "allow_takeover": True}
         served_locally = local_tool_names(cfg, local_search_available=True)
-        self.assertIn("subwave_skip_track", served_locally)
-        self.assertIn("subwave_dj_segment", served_locally)
         over_mcp = mcp_allowlist(cfg, local_search_available=True)
-        self.assertNotIn("subwave_skip_track", over_mcp)
-        self.assertNotIn("subwave_dj_segment", over_mcp)
+        for name in sorted(self.STATION_WIDE):
+            self.assertIn(name, served_locally)
+            self.assertNotIn(name, over_mcp)
+
+    def test_the_takeover_is_not_claimed_without_station_credentials(self):
+        # It is admin REST end to end, so with no credentials it cannot be
+        # built at all. The panel must not list it as available — that is the
+        # exact bug the exact-queue wrapper shipped with.
+        import station_config
+        from call.tools.registry import effective_tools
+
+        original = station_config.admin_credentials
+        try:
+            station_config.admin_credentials = lambda: ("", "")
+            listed = " ".join(effective_tools({"allow_takeover": True})["local"])
+            self.assertNotIn("subwave_takeover_show", listed)
+        finally:
+            station_config.admin_credentials = original
 
     def test_they_refuse_once_the_call_has_spent_its_actions(self):
         import asyncio

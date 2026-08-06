@@ -49,6 +49,13 @@ Work down it. Each line says what goes wrong if you skip it.
 - [ ] **`allow_skip_track` / `allow_dj_segment`** — both reach every listener
       rather than the caller. Off by default, and worth leaving off on a
       station with an audience.
+- [ ] **`allow_takeover`** — the furthest-reaching switch here, and the only
+      one whose effect outlives the call: it pins a show ahead of the weekly
+      schedule, so a different DJ is on air for an hour (longer if the caller
+      asks) and keeps going after they hang up. It also lets a caller cancel a
+      takeover *you* set from the station's own admin page. Off by default.
+      Needs station admin credentials, and Actions per call is the only thing
+      pacing it.
 
 **Privacy — what you keep about people who call**
 

@@ -119,6 +119,20 @@ async def fake_segment(self, kind):
     return {"ok": True, "spoken": f"[{kind} beat]"}
 
 
+# The takeover. Worth more care than the two above: a scripted run that really
+# reached the station would not just make a noise for a moment, it would leave
+# a different show pinned for an hour after the script had finished — and the
+# cancel would clear a pin the operator had set themselves.
+async def fake_pin(self, show_id, minutes):
+    STATION_CALLS.append(("pin_show", {"showId": show_id, "minutes": minutes}))
+    return {"ok": True}
+
+
+async def fake_clear_pin(self):
+    STATION_CALLS.append(("clear_pinned_show", {}))
+    return {"ok": True}
+
+
 def muzzle_the_station() -> None:
     StationClient.search_library = fake_search
     StationClient.submit_request = fake_submit
@@ -128,6 +142,8 @@ def muzzle_the_station() -> None:
     StationClient.run_skill = fake_skill
     StationClient.skip_track = fake_skip
     StationClient.dj_segment = fake_segment
+    StationClient.pin_show = fake_pin
+    StationClient.clear_pinned_show = fake_clear_pin
 
 
 # ------------------------------------------------------------------- scenarios

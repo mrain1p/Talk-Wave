@@ -214,6 +214,8 @@ window.Callin = (function () {
       why: 'Runs the dedication or shoutout segment.' },
     { need: 'allow_skills', say: '“Tell us a story about the old days.”',
       why: 'Story time / remembrance segments, in the DJ’s own voice.' },
+    { need: 'allow_takeover', say: '“Any chance of putting the late show on?”',
+      why: 'Pins that show ahead of the schedule for an hour — for everyone listening, from the end of this record.' },
     { need: null, say: '“Who is this? What’s the story behind this record?”',
       why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
     { need: null, say: '“How long have you been doing the night shift?”',
@@ -222,10 +224,16 @@ window.Callin = (function () {
 
   // The other half of the truth: what a caller CANNOT do, and why. Without
   // this the permissions list reads as if anything might be one toggle away.
+  // Everything here must be true at EVERY setting, which is the whole value of
+  // the list. "Start or end a show, or hand over to another DJ" lived here
+  // until show takeover shipped as an opt-in permission — at which point it
+  // was a promise the software no longer kept. What is left is the part that
+  // stays true: a caller can move a show to the front of the queue, never
+  // define, edit or delete one.
   const NEVER = [
     ['Skip or stop the current track', 'a stranger could cut off what everyone else is listening to'],
     ['Fire sound effects or stingers', 'nothing to add to a call, plenty to disrupt on air'],
-    ['Start or end a show, or hand over to another DJ', 'station-level programming is the operator’s'],
+    ['Create, edit or delete a show, or change the weekly schedule', 'the programming itself is the operator’s'],
     ['Rebuild the playlist', 'one caller should not reshape the night for everyone'],
   ];
 

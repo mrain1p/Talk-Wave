@@ -105,6 +105,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # have no ceiling at all.
     "allow_skip_track":   (None, False),
     "allow_dj_segment":   (None, False),
+    # Further-reaching than either, and the only caller action whose effect
+    # outlives the call: it puts a different show — a different DJ — on air for
+    # an hour by default. Off by default for the obvious reason.
+    "allow_takeover":     (None, False),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -439,6 +443,18 @@ SCHEMA: dict[str, dict] = {
              "documents that firing one explicitly bypasses its own frequency and "
              "budget limits — so Actions per call is the only ceiling. Needs "
              "station admin credentials. Off by default."),
+    "allow_takeover": dict(group="perms", kind="check",
+        label="Let a caller put a different show on air",
+        help="The station's own takeover: pins a show ahead of the weekly "
+             "schedule — a different DJ, for everyone listening — for an hour "
+             "by default, longer if the caller asks. Read that again before "
+             "turning it on: every other permission here is over inside a "
+             "minute, and this one keeps running after the caller has hung up. "
+             "The DJ can also cancel a takeover, including one YOU set from the "
+             "station's own admin page. The switch lands at the end of the "
+             "record playing at the time, not instantly. Needs station admin "
+             "credentials, counts against Actions per call, and is off by "
+             "default."),
 
     # --- call behaviour ---
     "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",

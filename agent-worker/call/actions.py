@@ -37,6 +37,10 @@ class CallActions:
         # record the rest of the audience was listening to.
         "skip": ("⏭", "Current track cut short"),
         "segment": ("📻", "Station beat on air"),
+        # The one action that outlives the call. The receipt matters most here
+        # for the same reason: the caller cannot hear it land (it takes over at
+        # the next track boundary), so the DJ saying it worked is all they have.
+        "takeover": ("🔀", "Show takeover set"),
     }
 
     def __init__(self, limit: int, room=None) -> None:

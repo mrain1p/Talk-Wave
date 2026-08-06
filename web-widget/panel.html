@@ -244,12 +244,19 @@
           they’re off by default.</p>
 
         <h4 class="subhead">Station-wide</h4>
-        <p class="hint wide" style="margin-top:0">These two land on
-          <em>everyone listening</em>, not just the caller who asked. Both need
-          station admin credentials, both are off by default, and both count
-          against Actions per call — which is the only thing pacing them.</p>
+        <p class="alert wide"><strong>These change the station, not the call.</strong>
+          Everything above happens to the caller who asked; everything below
+          lands on <em>everyone listening</em>, on the say-so of a stranger on
+          the phone. All three need station admin credentials, all three are off
+          by default, and Actions per call is the only thing pacing them.</p>
         <label class="check"><input type="checkbox" id="allow_skip_track" /> Let a caller skip the current track</label>
         <label class="check"><input type="checkbox" id="allow_dj_segment" /> Let a caller fire a programme beat (station ID, the hour, a link)</label>
+        <label class="check"><input type="checkbox" id="allow_takeover" /> Let a caller put a different show on air</label>
+        <p class="alert wide"><strong>The takeover is the far end of this.</strong>
+          A skip costs one record and a beat costs thirty seconds — a takeover
+          hands the station to a different DJ for an hour, keeps running long
+          after the caller has hung up, and can cancel a takeover you set
+          yourself from the station's admin page.</p>
         <p class="hint wide">Sound effects and playlist rebuilds stay
           unavailable to callers whatever you set here — use “Test station +
           tools” for the exact list.</p>

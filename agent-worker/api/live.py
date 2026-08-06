@@ -149,7 +149,7 @@ async def handle_live(request: web.Request) -> web.Response:
                         {k: bool(cfg.get(k)) for k in (
                             "allow_requests", "allow_library_search",
                             "allow_exact_queue", "allow_announcements",
-                            "allow_skills",
+                            "allow_skills", "allow_takeover",
                         )}
                         if cfg.get("show_caller_help") else None
                     ),
