@@ -389,9 +389,23 @@ class TestMainToolLogic(_TempStores):
             def shutdown(self, reason=""):
                 deleted["shutdown"] = reason
 
+        # A session that actually says its sign-off and then stops. `None`
+        # would do for the shadowing bug above, but the close now WAITS for
+        # the goodbye to be heard — see hangup.await_sign_off — so a fake with
+        # no agent_state waits out the whole grace period before hanging up,
+        # which is right behaviour and a useless test.
+        class FakeSession:
+            def __init__(self):
+                self.reads = 0
+
+            @property
+            def agent_state(self):
+                self.reads += 1
+                return "speaking" if self.reads <= 6 else "listening"
+
         async def run():
             tools = self.control.build_call_control_tools(
-                FakeCtx(), lambda: None, time.time() - 600)
+                FakeCtx(), FakeSession, time.time() - 600)
             said = await tools[0](reason="caller said goodbye")
             self.assertIn("the line is closing", said.lower())
             # The close runs in the background; give it room to finish.

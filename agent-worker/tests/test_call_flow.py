@@ -359,6 +359,86 @@ class TestACallerWhoWasNeverHeardIsToldSo(unittest.TestCase):
         self.assertIn("microphone", " ".join(lines).lower())
 
 
+class TestTheSignOffIsHeardBeforeTheLineCloses(unittest.TestCase):
+    """The DJ's last word was being cut off every time it hung up itself.
+
+    From the transcripts of 2026-08-06 the final DJ turn was "Fair", "Right"
+    and "I'll" — three calls, three one-word sign-offs, each followed at once
+    by the room being deleted. The old wait slept a second and then broke out
+    of its poll the moment the agent was NOT speaking, which it reads as "the
+    goodbye has finished". One second after the tool call it means the
+    opposite: the tool call and the sign-off come from the SAME model turn, so
+    the agent is still thinking and has not started talking yet.
+
+    So the wait is two phases — wait for speech to start, then wait for it to
+    stop and stay stopped — and this is the test that says so.
+    """
+
+    def _run(self, states, start_grace=1.0, quiet=0.15):
+        """`states` is what agent_state returns on successive reads."""
+        import asyncio
+
+        from call import hangup
+
+        seq = list(states)
+        reads = {"n": 0}
+
+        class _Session:
+            @property
+            def agent_state(self):
+                i = min(reads["n"], len(seq) - 1)
+                reads["n"] += 1
+                return seq[i]
+
+        old = (hangup.SPEECH_START_GRACE, hangup.QUIET_CONFIRM,
+               hangup.FINAL_BEAT, hangup.SPEECH_MAX)
+        hangup.SPEECH_START_GRACE = start_grace
+        hangup.QUIET_CONFIRM = quiet
+        hangup.FINAL_BEAT = 0.0
+        hangup.SPEECH_MAX = 3.0
+        try:
+            asyncio.run(hangup.await_sign_off(_Session()))
+        finally:
+            (hangup.SPEECH_START_GRACE, hangup.QUIET_CONFIRM,
+             hangup.FINAL_BEAT, hangup.SPEECH_MAX) = old
+        return reads["n"]
+
+    def test_it_waits_through_thinking_for_speech_to_start(self):
+        # The exact shape of the bug: thinking first, speaking after. A wait
+        # that treats "not speaking" as "finished" returns during the
+        # thinking run and the goodbye is cut off at the first syllable.
+        reads = self._run(
+            ["thinking"] * 4 + ["speaking"] * 6 + ["listening"] * 6)
+        self.assertGreaterEqual(
+            reads, 11,
+            "the wait returned before the sign-off had finished playing")
+
+    def test_it_returns_once_speech_has_stopped_and_stayed_stopped(self):
+        # And it must not hang on forever afterwards — dead air at the end of
+        # a call is the failure in the other direction.
+        reads = self._run(["speaking"] * 3 + ["listening"] * 20)
+        self.assertLess(reads, 24)
+
+    def test_a_gap_between_sentences_is_not_the_end(self):
+        # An agent between two sentences reads as not-speaking for a moment.
+        # A single sample would take that for the end of the goodbye and hang
+        # up in the middle of it.
+        reads = self._run(
+            ["speaking"] * 3 + ["listening"] + ["speaking"] * 5
+            + ["listening"] * 6, quiet=0.5)
+        self.assertGreaterEqual(
+            reads, 10, "hung up in the gap between two sentences")
+
+    def test_a_dj_that_says_nothing_does_not_hold_the_line(self):
+        # The grace period is a ceiling, not a wait: a model that emitted the
+        # tool call and no words must not leave the caller on an open line.
+        import time
+
+        started = time.time()
+        self._run(["listening"] * 50, start_grace=0.5)
+        self.assertLess(time.time() - started, 2.0)
+
+
 class TestALineThatFailsToGenerateIsStillSpoken(unittest.TestCase):
     """The whole complaint being fixed is the DJ saying NOTHING.
 

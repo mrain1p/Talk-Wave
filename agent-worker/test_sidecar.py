@@ -74,6 +74,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheAirGuardHoldsTheCallDJBack,
     TestTheCloseReasonIsReadable,
     TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack,
+    TestTheSignOffIsHeardBeforeTheLineCloses,
 )
 from tests.test_tools_surface import (  # noqa: F401
     TestActionsAllHaveAReceipt,

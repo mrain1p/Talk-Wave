@@ -22,7 +22,7 @@ from livekit.agents import AgentSession, JobContext
 from station import StationClient
 
 from .background import spawn
-from .hangup import end_call
+from .hangup import await_sign_off, end_call
 
 log = logging.getLogger("callin.agent")
 
@@ -342,7 +342,10 @@ def attach_idle_watch(
                     ),
                     what="idle goodbye",
                 )
-                await asyncio.sleep(6)  # let the goodbye actually play
+                # Was a flat six seconds, which is a guess that clips a long
+                # goodbye and leaves dead air after a short one. Same wait the
+                # DJ's own hang-up uses now.
+                await await_sign_off(session, "the idle goodbye")
                 await end_call(ctx, "caller could not be heard" if dead_line
                                else "caller went quiet")
                 return
@@ -376,7 +379,7 @@ def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict) -> None
                 "That's my time — thanks for calling in.",
                 what="time-limit sign-off",
             )
-            await asyncio.sleep(6)  # let the sign-off actually play
+            await await_sign_off(session, "the time-limit sign-off")
         except asyncio.CancelledError:
             return
         except Exception as e:

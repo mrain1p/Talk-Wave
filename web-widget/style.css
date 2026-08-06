@@ -268,8 +268,14 @@
 
   /* --- in-call rig --- */
   /* --- on-call chrome: the rig, pills, the timer, the agent state chip --- */
-  .rig { display: none; }
-  .rig.on { display: block; }
+  /* Reserved from first paint, not grown into. The card used to be one height
+     idle and another on a call, so pressing Call resized the widget — and
+     inside an embed that means the HOST page moves, under whoever is reading
+     it, at the exact moment they are trying to listen. The space the meters
+     and the call row need is theirs whether or not a call is running.
+     `visibility` keeps the box and takes it out of the accessibility tree. */
+  .rig { visibility: hidden; }
+  .rig.on { visibility: visible; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -289,7 +295,10 @@
     font: 700 11px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
     transition: color .2s, border-color .2s;
   }
-  .pill[hidden] { display: none; }
+  /* Same reservation as the rig. These wrap onto a second row in a narrow
+     embed, so appearing at pickup moved everything below them by a whole
+     control height. */
+  .pill[hidden] { visibility: hidden; }
   /* The elapsed timer is data, not a warning — it only takes a colour once
      the call is genuinely near its limit. Amber from 0:00 taught you to
      ignore amber by the time it meant something. */
@@ -381,9 +390,15 @@
   .controls button.on { color: var(--amber); border-color: var(--amber); }
 
   /* §4.5: this is a sentence, not a label. */
+  /* A sentence, not a label — but it sits inside .eyebrow, which is a label,
+     and it was inheriting that band's uppercase and 700 weight on top of its
+     own larger body size. So "Call ended" came out BIGGER and heavier than
+     the "ON AIR NOW" it sits next to, which is backwards: this is the
+     secondary half of that row. Explicitly not-a-label, and a step quieter. */
   #status {
     display: inline-flex; align-items: center; gap: 8px;
-    font-family: var(--font-body); font-size: 12.5px; color: var(--sage);
+    font-family: var(--font-body); font-size: 11px; font-weight: 400;
+    text-transform: none; letter-spacing: 0; color: var(--sage-dim);
   }
   #logsResult { max-height: 320px; overflow-y: auto; }
 
@@ -1107,7 +1122,11 @@
   }
   @media (max-width: 600px) {
     .avatar { width: 56px; height: 56px; }
-    .dj { font-size: 19px; }
+    /* Was 19px, which is two steps off the scale and the largest thing in the
+       widget by a distance. The scale is 9.5 / 11 / 12.5 / 15 and the name is
+       already the top of it — a narrow screen is a reason to spend the width
+       differently, not to introduce a fifth size. */
+    .dj { font-size: 15px; }
     /* Idle, the call button IS the page's action — give it the full row.
        Height stays --control-h: the spec has no exceptions to that, and a
        taller-on-mobile button was one of the four treatments this replaced.
@@ -1119,15 +1138,28 @@
     .cap, .ticker { grid-template-columns: 60px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
        wraps onto new lines, and the now-playing track takes a full row of
-       its own instead of a squeezed corner. */
+       its own instead of a squeezed corner.
+
+       But wrapping freely is the OTHER thing that resizes an embed, and this
+       one fires on its own: the track changes every three or four minutes,
+       and "Sweetest Pie (David Guetta Dance Remix Extended) — Megan Thee
+       Stallion" is three lines where the track before it was one. The host
+       page moved with it, with nobody touching anything. So each line still
+       wraps, and each has a fixed number of lines to wrap into. */
     .who-row { flex-wrap: wrap; }
     .dj, .show, .tagline {
-      white-space: normal; overflow: visible; text-overflow: clip;
+      white-space: normal; overflow: hidden; text-overflow: clip;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
     }
     .track {
       flex: 1 0 100%; max-width: 100%; text-align: left; padding-left: 0;
-      margin: 10px 0 0; white-space: normal; overflow: visible;
+      margin: 10px 0 0; white-space: normal; overflow: hidden;
       text-overflow: clip; font-size: 12px;
+      /* Two lines, always — the commonest length, and long enough that a
+         remix credit still reads. Reserved on the element holding the text
+         so a one-line track cannot collapse the row. */
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+      min-height: calc(1.45em * 2); line-height: 1.45;
     }
   }
 
@@ -1183,12 +1215,18 @@
      station page mid-call. The row is always two lines tall whether it holds
      nothing, one line or a paragraph, so the frame stops moving. */
   .ticker {
-    display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--band-gap);
+    display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px;
     align-items: baseline; padding: var(--band-gap) 0;
-    font-family: var(--font-body); font-size: 13.5px; line-height: 1.5;
+    font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
   }
-  .ticker[hidden] { display: none; }
+  /* Reserved, not removed. This is the caption surface an EMBED uses, so it
+     is the one that was making the host page jump: the row appeared on the
+     first spoken word and the frame grew under whoever was reading it. It now
+     holds its two lines from the moment the page loads, empty or not.
+     `visibility` rather than `display` so it is still skipped by a screen
+     reader while it has nothing in it. */
+  .ticker[hidden] { display: grid; visibility: hidden; }
   .ticker.show { opacity: 1; }
   .ticker .who {
     font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
@@ -1198,7 +1236,7 @@
   /* Reserved on the element that HOLDS the text, not an ancestor — reserving
      on the row lets a clamped one-line message collapse the block anyway. */
   .ticker .line {
-    min-height: calc(1.5em * 2);
+    min-height: calc(1.45em * 2);
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
     white-space: normal; overflow: hidden;
   }
