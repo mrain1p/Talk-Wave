@@ -118,6 +118,17 @@
 
     <div class="michelp" id="micHelp" hidden></div>
 
+    <!-- Everything a call needs, in one wrapper with one switch, because the
+         whole lot has to hold its space whether or not anybody is on the
+         line — see .rig in style.css.
+
+         The always-visible things live IN here rather than after it, purely
+         so the ORDER comes out right: the volume and the call buttons are
+         the last row of the card on every surface, under the transcript,
+         where a phone's controls belong and where the eye is not asked to
+         step over them to read what was said. `visibility` is inherited but
+         a child may declare its own, so each of them says `visible` and the
+         reservation still applies to the rest. -->
     <div class="rig" id="rig">
       <div class="meters">
         <div class="meter you" id="meterYou">
@@ -130,36 +141,22 @@
         </div>
       </div>
 
-      <div class="callrow">
-        <div class="vol">
-          <label for="volSlider">Vol</label>
-          <input type="range" id="volSlider" min="0" max="100" value="100" />
-          <span class="pct" id="volPct">100%</span>
-        </div>
-        <div class="controls">
-          <button id="spkBtn" title="Loudspeaker or earpiece" aria-pressed="true">Speaker</button>
-          <button id="muteBtn">Mute</button>
-          <button id="hangBtn">Hang up</button>
-        </div>
+      <button class="callended" id="endedBar" hidden></button>
+
+      <!-- Shown after a call, and only if the operator asked for it. Two
+           buttons and nothing else: the answer is stored against that call's
+           own transcript so a bad one can be found and read back, which needs
+           one character, not a comment box. -->
+      <div class="rate" id="rateBar" hidden>
+        <span class="rlabel" id="rateLabel">How was that call?</span>
+        <span class="rbtns" id="rateBtns">
+          <button id="rateUp" title="That went well" aria-label="That went well">&#128077; Good</button>
+          <button id="rateDown" title="That went badly" aria-label="That went badly">&#128078; Bad</button>
+        </span>
       </div>
-    </div>
-
-    <button class="callended" id="endedBar" hidden></button>
-
-    <!-- Shown after a call, and only if the operator asked for it. Two
-         buttons and nothing else: the answer is stored against that call's
-         own transcript so a bad one can be found and read back, which needs
-         one character, not a comment box. -->
-    <div class="rate" id="rateBar" hidden>
-      <span class="rlabel" id="rateLabel">How was that call?</span>
-      <span class="rbtns" id="rateBtns">
-        <button id="rateUp" title="That went well" aria-label="That went well">&#128077; Good</button>
-        <button id="rateDown" title="That went badly" aria-label="That went badly">&#128078; Bad</button>
-      </span>
-    </div>
 
     <!-- The line area. One box, one job: whatever this card has to say to the
-         caller right now. Three lines of speech while a call is running, and
+         caller right now. Two lines of speech while a call is running, and
          between calls the connection state — "Not connected", "No answer",
          "Call ended" — in the same place, because a message that appears in
          the header while the words appear at the bottom is two places to
@@ -177,6 +174,21 @@
            saying nothing. -->
       <div class="ticker" id="ticker" hidden><span class="who"></span><span class="line"></span></div>
       <p id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></p>
+    </div>
+
+      <!-- The last row of the card, on every surface. -->
+      <div class="callrow">
+        <div class="vol">
+          <label for="volSlider">Vol</label>
+          <input type="range" id="volSlider" min="0" max="100" value="100" />
+          <span class="pct" id="volPct">100%</span>
+        </div>
+        <div class="controls">
+          <button id="spkBtn" title="Loudspeaker or earpiece" aria-pressed="true">Speaker</button>
+          <button id="muteBtn">Mute</button>
+          <button id="hangBtn">Hang up</button>
+        </div>
+      </div>
     </div>
   </div>
 

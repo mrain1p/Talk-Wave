@@ -509,6 +509,41 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # call left for the resize to interrupt.
         self.assertIn(".linebox.open { height: 200px; }", self.css)
 
+    def test_the_call_row_is_the_last_row_of_the_card(self):
+        # Volume, Mute and Hang up sit under the transcript on every surface —
+        # where a phone's controls belong, and where the eye is not asked to
+        # step over them to read what was said. They are inside .rig only so
+        # they inherit its reservation; the always-visible things in there
+        # declare their own visibility to opt back out.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        order = [html.index(m) for m in ('class="meters"', 'id="lineBox"',
+                                         'class="callrow"')]
+        self.assertEqual(order, sorted(order),
+                         "the call row must come after the line area")
+        self.assertIn(".rig > .linebox, .rig > .callended, .rig > .rate "
+                      "{ visibility: visible; }", self.css)
+
+    def test_a_phone_gets_a_third_line_and_an_embed_does_not(self):
+        # `:not(.compact)` is load-bearing: the query fires on the FRAME's
+        # width, so a narrow embed column on a desktop matches it too — and
+        # there the box is borrowing room from a station page's own layout.
+        self.assertIn("body:not(.compact) { --lines-h: 75px; }", self.css)
+
+    def test_the_volume_slider_is_not_the_browsers_own(self):
+        # `accent-color` on a native range is a fat rounded bar with a big
+        # round knob: at full volume, a bright solid stripe across the widest
+        # row of the card, out-shouting the Call button next to it. It is a
+        # setting nobody changes. It takes the same 3px trough every other
+        # level in this card uses.
+        self.assertNotIn("accent-color: var(--coral)", self.css)
+        self.assertIn("::-webkit-slider-runnable-track", self.css)
+        self.assertIn("::-moz-range-progress", self.css)
+        # webkit cannot style the filled half of a range, so the fill is a
+        # gradient stop fed from JS. Without this the trough is always empty.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("setProperty('--vol'", call_js)
+        self.assertIn("var(--vol, 100%)", self.css)
+
     def test_no_rule_grows_the_card_when_a_call_starts(self):
         # The 0.9.117 shape, named so it cannot come back by accident: bands
         # that appear on `.rig.on` are bands that were not there before it.

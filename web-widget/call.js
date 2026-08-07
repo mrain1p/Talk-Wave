@@ -612,7 +612,7 @@
       if (typeof d.sounds?.volume === 'number' && !room) {
         setVolume(d.sounds.volume);
         $('volSlider').value = getVolume();
-        $('volPct').textContent = getVolume() + '%';
+        applyVolume();
       }
 
       if (!d.reachable) { paintOffAir('offline'); return; }
@@ -1070,6 +1070,10 @@
 
   function applyVolume() {
     $('volPct').textContent = getVolume() + '%';
+    // The slider draws its own trough and fill (see .vol in style.css) —
+    // webkit has no way to style the filled part of a range, so the fill is
+    // a gradient stop and this is where the stop comes from.
+    $('volSlider').style.setProperty('--vol', getVolume() + '%');
     if (djEl) djEl.volume = Math.min(1, getVolume() / 100);
     if (streamEl) {
       const level = stationLevel();
@@ -1078,6 +1082,7 @@
     }
   }
   $('volSlider').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
+  applyVolume();      // paint the fill at whatever volume we start on
 
   async function startCall() {
     // Browsers only allow microphone capture on HTTPS or localhost. On a

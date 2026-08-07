@@ -301,6 +301,11 @@
      bands below have been cut to what they actually need instead. */
   .rig { visibility: hidden; }
   .rig.on { visibility: visible; }
+  /* These live inside the rig only so the call row comes out UNDER them —
+     the volume and the call buttons are the last row of the card on every
+     surface. Visibility is inherited but a child may declare its own, so
+     they stay visible while everything around them is reserved-but-hidden. */
+  .rig > .linebox, .rig > .callended, .rig > .rate { visibility: visible; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -417,9 +422,39 @@
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; color: var(--sage-dim); font-weight: 700;
   }
-  /* --action-h, not --control-h: this row is reserved whether or not anyone
-     is on a call, so every pixel of it is spent on every idle embed too. */
-  .vol input[type=range] { flex: 1; accent-color: var(--coral); min-width: 0; height: var(--action-h); }
+  /* A 3px trough with a fill in the accent — the same shape as every other
+     level in this card, and the same shape §4.6 specifies. It was the
+     browser's own slider tinted coral with `accent-color`, which on every
+     platform is a fat rounded bar with a big round knob: at full volume that
+     is a bright solid stripe across the widest row of the card, and it
+     out-shouted the Call button. It is a setting nobody changes, sitting
+     next to the two controls that matter.
+     The element keeps a taller box than the trough so there is still
+     something a finger can hit. */
+  .vol input[type=range] {
+    flex: 1; min-width: 0; height: 18px;
+    -webkit-appearance: none; appearance: none;
+    background: transparent; cursor: pointer;
+  }
+  /* --vol is written by applyVolume(); webkit has no ::-moz-range-progress
+     equivalent, so the fill is a hard-stop gradient on the track itself. */
+  .vol input[type=range]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 0;
+    background: linear-gradient(to right,
+      var(--coral) var(--vol, 100%), var(--hairline) var(--vol, 100%));
+  }
+  .vol input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 9px; height: 9px; border-radius: 0; border: 0;
+    background: var(--coral); margin-top: -3px;
+  }
+  .vol input[type=range]::-moz-range-track { height: 3px; background: var(--hairline); }
+  .vol input[type=range]::-moz-range-progress { height: 3px; background: var(--coral); }
+  .vol input[type=range]::-moz-range-thumb {
+    width: 9px; height: 9px; border-radius: 0; border: 0; background: var(--coral);
+  }
+  .vol input[type=range]:focus { outline: none; }
+  .vol input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--amber); }
   .vol .pct {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     font-weight: 700; color: var(--sage-dim); width: 38px; text-align: right;
@@ -1481,9 +1516,13 @@
        taller-on-mobile button was one of the four treatments this replaced.
        The in-call chip states keep their own width. */
     #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
-    /* Two lines here as well. A phone is the surface with the LEAST room to
-       give away, so it is the last place to spend a third line on a box that
-       is empty whenever nobody is on the line. */
+    /* Three lines on a phone, and only on a phone. `:not(.compact)` is
+       load-bearing: this query fires on the FRAME's width, so a 360px embed
+       column on a desktop matches it too — and there the box is borrowing
+       room from a station page's own layout, where two lines is right. On
+       the standalone page the card is the only thing on screen, and the
+       reading surface is what the extra 18px is worth spending on. */
+    body:not(.compact) { --lines-h: 75px; }
     .linebox.open { height: 44vh; }
     .cap, .ticker { grid-template-columns: 60px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
