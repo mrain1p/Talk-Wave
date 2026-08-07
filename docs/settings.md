@@ -26,13 +26,14 @@ links, one per group below.
 | Configuration | **Ears** | STT — speech-to-text provider and model, listed on the same key rule, plus the Deepgram key. A local Whisper is baked in and used by default |
 | Permissions & safety | **Access** | Call-in access (automatic, open, guest code, admin only), the admin password for this panel, and the optional guest code for the phone. `CALLIN_ADMIN_KEY` is the recovery override. A guest-code expiry (hours, default 24) for shared machines — the card also offers a lock button to forget the code immediately |
 | Permissions & safety | **Caller permissions** | What a caller may trigger, and **which caller** — each row is set to the least trusted tier that gets it (off / anyone / guest code / admin), including the three station-wide switches (skip the current track, fire a programme beat, put a different show on air) that reach every listener. See [security](security.md) |
-| Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call — the guard on API spend |
-| The conversation | **Who answers** | Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name |
+| Permissions & safety | **Usage controls** | Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend |
+| Permissions & safety | **Call length** | The hard ceiling on one call — one more spend limit, beside the others |
+| Permissions & safety | **Speech hygiene** | Stage-direction stripping and the expletive filter |
+| The conversation | **Greeting** | Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name |
+| The conversation | **Closing the call** | Greeting's mirror: the sign-off steer, the idle check-ins, and how early the DJ may hang up — how a call ends, in character |
 | The conversation | **Turn-taking** | When the DJ decides you've finished speaking, and whether a caller may talk over it. The biggest lever on whether a call *feels* like a phone call |
 | The conversation | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | The conversation | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
-| The conversation | **Speech hygiene** | Stage-direction stripping and the expletive filter |
-| Running the line | **Call length** | How early the DJ may hang up, the hard limit, and idle check-ins |
 | Running the line | **Sharing the microphone** | Overlap protection: the call DJ and the on-air DJ are one voice |
 | Running the line | **Tune the caller in** | Whether the caller's browser pulls the broadcast during a call, the **stream URL**, and how loud it sits behind the DJ |
 | Running the line | **Back to air** | The one-line on-air mention after a call |

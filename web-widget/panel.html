@@ -419,19 +419,19 @@
           busy”, never an error code.</p>
         <div class="grid2">
           <div class="row narrow">
-            <label for="max_concurrent_calls">At once</label>
+            <label for="max_concurrent_calls">Calls at once</label>
             <input type="number" id="max_concurrent_calls" min="0" max="20" step="1" />
           </div>
           <div class="row narrow">
-            <label for="calls_per_hour">Per hour</label>
+            <label for="calls_per_hour">Calls per hour</label>
             <input type="number" id="calls_per_hour" min="0" max="500" step="5" />
           </div>
           <div class="row narrow">
-            <label for="calls_per_day">Per day</label>
+            <label for="calls_per_day">Calls per day</label>
             <input type="number" id="calls_per_day" min="0" max="5000" step="10" />
           </div>
           <div class="row narrow">
-            <label for="caller_cooldown_secs">Redial wait (s)</label>
+            <label for="caller_cooldown_secs">Redial wait time (s)</label>
             <input type="number" id="caller_cooldown_secs" min="0" max="600" step="15" />
           </div>
           <div class="row narrow">
@@ -559,14 +559,24 @@
     <details data-group="limits" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Call length</span><em class="secblurb"></em><span class="tag" id="tagLimits"></span></summary>
       <div class="body">
+        <div class="row narrow">
+          <label for="max_call_seconds">Hang up after (s)</label>
+          <input type="number" id="max_call_seconds" min="30" step="30" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="closing" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Closing the call</span><em class="secblurb"></em><span class="tag" id="tagClosing"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="style_signoff">Signing off</label>
+          <input type="text" id="style_signoff" />
+        </div>
         <div class="grid2">
           <div class="row narrow">
             <label for="min_call_seconds">Earliest hang-up (s)</label>
             <input type="number" id="min_call_seconds" min="0" step="15" />
-          </div>
-          <div class="row narrow">
-            <label for="max_call_seconds">Hang up after (s)</label>
-            <input type="number" id="max_call_seconds" min="30" step="30" />
           </div>
           <div class="row narrow">
             <label for="idle_prompt_secs">Check in after (s)</label>
