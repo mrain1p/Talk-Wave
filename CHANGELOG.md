@@ -3,6 +3,29 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.142
+
+### Voicemail behaves like an answering machine
+
+- **The mic only opens after the beep.** The worker announces the beep to
+  the card, which holds the caller's microphone closed until then — the
+  machine cannot hear anyone before it says it is listening.
+- **Push to talk applies to voicemail** like any call; the bar reads "Wait
+  for the beep…" until the machine is ready.
+- **No more hanging up right after the beep**: the nobody-spoke window used
+  to start counting before the greeting, so it had expired by beep time.
+  It starts at the beep now. (Voicemails stay bounded by the same hourly
+  and daily caps as calls — that was already true.)
+
+### The panel
+
+- A **search box** above the sections: type, and only the settings whose
+  label or help mention it remain, their sections opened; clearing restores
+  the panel exactly as it stood.
+- The dashboard's **On air tile shows the DJ's photo**, and a new **Recent
+  calls tile** counts the night — calls, voicemails, problems, thumbs — and
+  jumps to the records.
+
 ## 0.9.141
 
 - Usage-control labels grow their noun — **Calls at once / per hour / per

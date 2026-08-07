@@ -181,6 +181,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestTheBeepCanBeTheOperators,
     TestTheBeepVerdictIsVisible,
     TestTheDjOnlySpeaksOnce,
+    TestTheMachineOnlyListensAfterTheBeep,
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,

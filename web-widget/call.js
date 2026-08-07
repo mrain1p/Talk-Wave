@@ -1327,6 +1327,7 @@
 
   async function startCall(asVoicemail) {
     vmCall = !!asVoicemail;
+    vmBeepHeard = false;
 
     // Browsers only allow microphone capture on HTTPS or localhost. On a
     // plain http:// LAN address the call would connect and then immediately
@@ -1439,6 +1440,16 @@
           callBtn.textContent = 'Recording…';
           setStatus('Speak after the beep — transcript only, no audio is kept',
                     'connected');
+          // A worker from before the vm-beep topic never sends it; after
+          // the longest plausible greeting, act as though it beeped rather
+          // than leave the caller talking into a closed mic.
+          setTimeout(() => {
+            if (vmCall && !vmBeepHeard && room) {
+              vmBeepHeard = true;
+              if (!pttOn()) setMicOpen(true);
+              paintPtt();
+            }
+          }, 15000);
         } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
@@ -1493,6 +1504,18 @@
       wireCaptions(room);
       watchAgentState(room);
       watchActions(room);
+      room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
+        if (topic !== 'vm-beep' || !vmCall || vmBeepHeard) return;
+        vmBeepHeard = true;
+        if (pttOn()) {
+          // The bar arms now — pressing it before the beep did nothing.
+          paintPtt();
+          setStatus('Recording — hold the bar and speak', 'connected');
+        } else {
+          setMicOpen(true);
+          setStatus('Recording — go ahead, transcript only', 'connected');
+        }
+      });
 
       await room.connect(url, token);
       // Enabled first even under push to talk: this is the moment the
@@ -1500,11 +1523,16 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
-      if (pttOn() && !vmCall && !pttOpen) {
+      if (vmCall) {
+        // Closed until the machine beeps — see the vm-beep data topic. A
+        // worker too old to send it gets the fallback timer at pickup, so
+        // a skewed deploy degrades to the old behaviour, not to dead air.
+        await setMicOpen(false);
+      } else if (pttOn() && !pttOpen) {
         // Closed only if the caller has not already pressed the bar during
         // the ring — a latch made early is a decision, not a race to lose.
         await setMicOpen(false);
-      } else if (pttOn() && !vmCall) {
+      } else if (pttOn()) {
         paintPtt();
       }
 
@@ -1790,6 +1818,10 @@
   // /live so the card can offer "Leave a message" exactly where it paints a
   // refusal — every closed line used to be a dead end.
   let vmCall = false;
+  // The worker announces the beep over the data channel; until it does, a
+  // voicemail caller's mic stays CLOSED — the machine must not hear anyone
+  // before it says it is listening.
+  let vmBeepHeard = false;
   function vmPolicy() {
     return ((shown || live || {}).voicemailWhen) || 'never';
   }
@@ -1843,8 +1875,10 @@
     if (!bar) return;
     bar.classList.toggle('on', pttOpen);
     bar.setAttribute('aria-pressed', pttOpen ? 'true' : 'false');
-    $('pttMain').textContent = pttOpen ? "You're live — tap to go quiet"
-                                       : 'Tap to talk';
+    $('pttMain').textContent = (vmCall && !vmBeepHeard && room)
+      ? 'Wait for the beep…'
+      : pttOpen ? "You're live — tap to go quiet"
+                : 'Tap to talk';
     // The meter tells the same story as the bar, in the vocabulary the mute
     // button already taught it.
     if (room && pttOn()) {
@@ -1859,7 +1893,8 @@
     let downAt = 0, openBeforePress = false, pressed = false;
 
     bar.addEventListener('pointerdown', (e) => {
-      if (!room || vmCall) return;   // the queue makes a ring-time press safe
+      if (!room) return;             // the queue makes a ring-time press safe
+      if (vmCall && !vmBeepHeard) return;   // nothing to open before the beep
       e.preventDefault();
       bar.setPointerCapture?.(e.pointerId);
       pressed = true;

@@ -314,7 +314,22 @@ async def answer(ctx: JobContext) -> None:
     except Exception as e:                                    # noqa: BLE001
         log.warning("voicemail greeting playback failed: %s", e)
 
+    # Tell the widget the beep has sounded, so it can hold the caller's mic
+    # CLOSED until this moment — the machine should not be able to hear
+    # anyone before it says it is listening. Fail-soft: an old widget just
+    # ignores the topic and keeps its previous behaviour.
+    try:
+        await ctx.room.local_participant.publish_data(
+            b"beep", reliable=True, topic="vm-beep")
+    except Exception as e:                                    # noqa: BLE001
+        log.info("could not signal the beep to the widget: %s", e)
+
     # --- one message, bounded ---------------------------------------------
+    # The quiet clock restarts HERE. It used to start when STT was wired —
+    # before the greeting — so by the time the beep finished, the 8-second
+    # nobody-spoke window had already elapsed and the machine hung up almost
+    # immediately after beeping. Operator-reported, from a real attempt.
+    last_event.update(at=time.monotonic(), final=False)
     started = time.monotonic()
     try:
         while True:

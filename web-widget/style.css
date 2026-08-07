@@ -967,6 +967,20 @@
   .calllist.onlyup .callrow:not([data-rating="up"]) { display: none; }
   .runbtn.on { border-color: var(--accent); color: var(--accent); }
   /* set / not set beside a credential heading */
+  .settingsearch {
+    display: block; width: 100%; max-width: 340px; margin: 0 0 10px;
+    font: inherit; font-size: 12.5px; padding: 7px 10px;
+    border-radius: 7px; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text);
+  }
+  .settingsearch:focus { outline: none; border-color: var(--accent); }
+  /* the on-air face, riding the tile's right edge */
+  .tile { position: relative; }
+  .tile .tavatar {
+    position: absolute; top: 10px; right: 10px;
+    width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+  }
+
   .setchip {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700; margin-left: 8px;

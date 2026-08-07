@@ -95,6 +95,10 @@
     <!-- Jump links, one per super-group, built from the schema. The panel is
          six screens long and every way of reaching the bottom of it was
          scrolling past everything in between. -->
+    <!-- Sixty settings deserve a faster answer than category archaeology:
+         type, and only the rows whose label or help mention it remain. -->
+    <input type="search" id="settingsSearch" class="settingsearch"
+           placeholder="Find a setting…" autocomplete="off" />
     <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
 
     <!-- The dashboard. The kill switch lives here — out of Usage controls and
@@ -132,7 +136,11 @@
       </div>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
+          <img class="tavatar" id="tileOnAirImg" alt="" hidden />
           <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileNight">
+          <span class="tk">Recent calls</span><span class="tv">—</span><span class="tn"></span>
         </button>
         <button type="button" class="tile" id="tileStation" data-jump="station">
           <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
