@@ -1713,6 +1713,83 @@
     finally { btn.disabled = false; }
   };
 
+  // Hear the selected voice THROUGH the selected effect. The DSP constants
+  // mirror call.js's FX table — the caller's browser is the canonical copy,
+  // and this is a preview of it, kept in step by eye and by ear.
+  const FX_PREVIEW = {
+    telephone: { hp: 300, lp: 3400, grit: 0 },
+    cb:        { hp: 400, lp: 2500, grit: 26 },
+    walkie:    { hp: 500, lp: 2800, grit: 55 },
+  };
+
+  function fxCurve(amount) {
+    const n = 512, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2) / n - 1;
+      curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180))
+        / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
+  }
+
+  function playPcmWithEffect(b64, sampleRate, kind) {
+    const spec = FX_PREVIEW[kind];
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const pcm = new Int16Array(bytes.buffer);
+    const c = ctx();
+    const buf = c.createBuffer(1, pcm.length, sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    let node = src;
+    if (spec) {
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = spec.hp;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = spec.lp;
+      const chain = [hp, lp];
+      if (spec.grit) {
+        const sh = c.createWaveShaper();
+        sh.curve = fxCurve(spec.grit); sh.oversample = '2x';
+        chain.push(sh);
+      }
+      chain.forEach((n) => { node.connect(n); node = n; });
+    }
+    node.connect(c.destination);
+    src.start();
+  }
+
+  if ($('fxTestBtn')) {
+    $('fxTestBtn').onclick = async () => {
+      const btn = $('fxTestBtn'), out = $('ttsResult');
+      const kind = $('voice_effect').value || resolved.voice_effect || 'none';
+      btn.disabled = true;
+      out.className = 'result on';
+      out.textContent = 'Rendering one line, then playing it through the '
+        + (kind === 'none' ? 'clean path' : kind + ' effect') + '…';
+      try {
+        const r = await afetch('/test/tts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(draft()),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.pcmBase64) {
+          showResult(out, false, d.error || 'The voice test failed.');
+          return;
+        }
+        playPcmWithEffect(d.pcmBase64, d.sampleRate || 24000, kind);
+        showResult(out, true, kind === 'none'
+          ? 'Playing clean — pick an effect to hear the difference.'
+          : 'Playing through the ' + kind + ' effect. The broadcast never '
+            + 'hears this; only callers do.');
+      } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+      finally { btn.disabled = false; }
+    };
+  }
+
   // Sound previews use the DRAFT values — the pack you've just picked and the
   // file you've just chosen — so you hear what you're about to save, not what
   // is currently live.

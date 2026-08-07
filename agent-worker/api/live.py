@@ -224,6 +224,7 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # Like controls/card: /live is cached across every caller and cannot
         # know which surface is asking, so both answers travel and the widget
         # picks on `framed`.
+        "liveCalls": bool(cfg.get("live_calls_enabled", True)),
         "vmBtn": bool(cfg.get("show_voicemail_button")),
         "embedVmBtn": bool(cfg.get("embed_voicemail_button")),
         "ptt": bool(cfg.get("show_push_to_talk")),
@@ -322,7 +323,11 @@ async def handle_live(request: web.Request) -> web.Response:
         # station read on a payload that already makes four, and a palette
         # nobody is going to paint with is not worth the round trip.
         palette = None
-        if str(cfg.get("widget_theme") or "") == "station":
+        # Resolved whenever the station will say, not only when the operator
+        # chose station colours: the card's theme cycle offers the palette as
+        # a VIEWER choice now, and a cycle entry that only exists on some
+        # deployments has to know which ones.
+        if True:
             try:
                 palette = station_palette(await station.themes())
             except Exception as e:

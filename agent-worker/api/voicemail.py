@@ -49,6 +49,7 @@ async def handle_voicemail_status(request: web.Request) -> web.Response:
         await station.aclose()
 
     station_name = str((dj or {}).get("station") or "")
+    show_name = str((dj or {}).get("show") or (dj or {}).get("showName") or "")
     index = greetings.read_index()
     from station_config import StationConfig
 
@@ -60,7 +61,8 @@ async def handle_voicemail_status(request: web.Request) -> web.Response:
             continue
         name = str(p.get("name") or pid)
         voice = await sc.voice_for(pid)
-        text = greetings.greeting_text_for(pid, cfg, station_name, name)
+        text = greetings.greeting_text_for(pid, cfg, station_name, name,
+                                           show_name)
         key = greetings.render_key(text, voice, str(cfg.get("tts_mode", "")),
                                   str(cfg.get("tts_adapter") or ""))
         entry = index.get(pid) or {}
@@ -76,6 +78,23 @@ async def handle_voicemail_status(request: web.Request) -> web.Response:
             "current": entry.get("key") == key and greetings.clip_path(pid).is_file(),
             "renderedAt": entry.get("renderedAt") or "",
         })
+    # The station's own row — the voice that answers when nobody is on air.
+    text = greetings.greeting_text_for(greetings.STATION_ID, cfg,
+                                       station_name, "", show_name)
+    voice = str(cfg.get("tts_voice") or "")
+    key = greetings.render_key(text, voice, str(cfg.get("tts_mode", "")),
+                              str(cfg.get("tts_adapter") or ""))
+    entry = index.get(greetings.STATION_ID) or {}
+    out.append({
+        "id": greetings.STATION_ID, "name": "The station (no DJ live)",
+        "text": text,
+        "voice": voice or "default voice",
+        "overridden": greetings.STATION_ID in greetings.read_overrides(),
+        "staged": greetings.clip_path(greetings.STATION_ID).is_file(),
+        "current": entry.get("key") == key
+                   and greetings.clip_path(greetings.STATION_ID).is_file(),
+        "renderedAt": entry.get("renderedAt") or "",
+    })
     await sc.aclose()
     return _cors(request, web.json_response({
         "personas": out,
@@ -111,6 +130,7 @@ async def handle_voicemail_stage(request: web.Request) -> web.Response:
     await station.aclose()
 
     station_name = str((dj or {}).get("station") or "")
+    show_name = str((dj or {}).get("show") or (dj or {}).get("showName") or "")
     from station_config import StationConfig
 
     sc = StationConfig(base_url=cfg.get("station_base_url"))
@@ -137,7 +157,15 @@ async def handle_voicemail_stage(request: web.Request) -> web.Response:
     # whether the button took.
     only = str(request.query.get("persona") or "")
     results, ids = [], []
-    for p in personas:
+    # The roster plus the station itself: with no DJ on air the machine
+    # answers in the operator's configured default voice rather than
+    # borrowing whichever persona's clip sorts first — a named DJ who is
+    # not actually there is a small lie the caller can hear.
+    roster = list(personas) + [{
+        "id": greetings.STATION_ID, "name": "The station (no DJ live)",
+        "voice": str(cfg.get("tts_voice") or ""),
+    }]
+    for p in roster:
         pid = str(p.get("id") or "")
         if not pid:
             continue
@@ -145,8 +173,14 @@ async def handle_voicemail_stage(request: web.Request) -> web.Response:
         if only and pid != only:
             continue
         name = str(p.get("name") or pid)
-        voice = await sc.voice_for(pid)
-        text = greetings.greeting_text_for(pid, cfg, station_name, name)
+        if pid == greetings.STATION_ID:
+            voice = str(p.get("voice") or "")
+            text = greetings.greeting_text_for(pid, cfg, station_name, "",
+                                               show_name)
+        else:
+            voice = await sc.voice_for(pid)
+            text = greetings.greeting_text_for(pid, cfg, station_name, name,
+                                               show_name)
         key = greetings.render_key(text, voice, str(cfg.get("tts_mode", "")),
                                   str(cfg.get("tts_adapter") or ""))
         if not greetings.needs_render(pid, key):

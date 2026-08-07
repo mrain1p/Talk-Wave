@@ -145,7 +145,19 @@ disabled. That is the whole user-facing change on the card.
 
 The derived greeting is *"You've reached {station}. {DJ} is on the air right now — leave a
 request after the beep."* Blank means derived, per the settings invariant; a typed greeting
-replaces it and the staging job re-renders every clip.
+replaces it and the staging job re-renders every clip. Typed greetings and per-persona
+overrides may use `{station}`, `{dj}` and `{show}` — filled at render time, with an empty or
+unknown placeholder simply disappearing rather than crashing a pickup into the beep.
+
+Two later decisions, both from operating it:
+
+- **The station answers when nobody is on air.** The staging run also renders a station-level
+  clip ("You've reached {station}…") in the operator's default voice, and the pickup fallback
+  order is: this persona's clip → the station clip → any clip → the beep. A named DJ who is
+  not actually there is a small lie the caller can hear.
+- **`voicemail_greeting_mode`** chooses `staged` (instant, the default) or `fresh` — one model
+  line written in the persona's own voice at pickup, budgeted at six seconds, with the staged
+  clip as the backup for a model or TTS that cannot make it in time.
 
 ## Where the code would go
 

@@ -235,7 +235,7 @@ it would open nothing.
 
 | Attribute | Effect |
 |---|---|
-| `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. Omit for OS preference |
+| `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. The toggle cycles light → dark → the station's show colours (when the panel has them on offer) → match the page. Omit for OS preference |
 | `data-lock-theme="true"` | Pin `data-theme` outright and remove the toggle, for a page that needs one look |
 
 **The station's own colours** are not an embed attribute — set **Player

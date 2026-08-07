@@ -167,6 +167,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestAVoicemailIsACallEntryToo,
     TestEachPersonaCanHaveItsOwnLine,
     TestTheMachineHasATierDoor,
+    TestTheStationAnswersWhenNobodyIsOnAir,
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,

@@ -57,6 +57,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     "tts_mode": "local", "front_access": "guest",
     "show_push_to_talk": True,
     "show_voicemail_button": True,
+    "live_calls_enabled": True,
     "voicemail_when": "closed",
 }), encoding="utf-8")
 
@@ -211,6 +212,11 @@ class Handler(BaseHTTPRequestHandler):
                  "current": False, "renderedAt": "2026-08-01 09:00:00",
                  "voice": "Lily", "overridden": True,
                  "text": "Dawn here — say your piece after the tone."},
+                {"id": "_station", "name": "The station (no DJ live)",
+                 "staged": False, "current": False, "renderedAt": "",
+                 "voice": "-Cliff1", "overridden": False,
+                 "text": "You've reached Yosemite FM. Leave a request "
+                         "after the beep."},
             ], "messages": 2})
         if path.startswith("/voicemail/greeting/"):
             return self._json({"ok": True})
@@ -273,6 +279,11 @@ class Handler(BaseHTTPRequestHandler):
                     settings_store.load(), "Francesca"),
                 "limits": {"maxCallSeconds": 480, "idlePromptSecs": 20},
                 "stream": {"url": "", "alternates": [], "tuneIn": False, "volume": 10},
+                # A show palette, so the theme cycle's third stop exists here.
+                "stationTheme": {"mode": "dark", "tokens": {
+                    "--bg": "#1a2320", "--card": "#22302a", "--ink": "#e8efe9",
+                    "--muted": "#9fb3a8", "--line": "#33443c",
+                    "--accent": "#d9a441", "--accent-ink": "#141a17"}},
             })
 
         # Same two extensionless routes token_server serves. /panel is the
