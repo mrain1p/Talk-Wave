@@ -33,6 +33,7 @@ admin_auth.py      PBKDF2 password store, ADMIN + GUEST
 station.py         read-only SUB/WAVE REST client
 station_config.py  mirrors the station's DJ/TTS config
 tts_adapter.py     pluggable TTS, configured by tts-adapters/*.json
+tts_pace.py        whether a backend generates fast enough to be on a phone call
 ```
 
 ## Tests
@@ -54,7 +55,8 @@ tests/test_call_flow.py          a call while it runs: answering, holding, endin
 tests/test_tools_surface.py      which tools reach a caller at all — the allowlist
 tests/test_tools_logic.py        what a tool does, and what it may claim afterwards
 tests/test_takeover.py           putting a show on air: the one action that outlives the call
-tests/test_brain.py              prompt assembly and the speech filter
+tests/test_brain.py              prompt assembly and what the DJ is told
+tests/test_speech_filter.py      what is allowed to reach the caller's ears
 tests/test_station.py            what the station says, and what the card says about it
 tests/test_webhooks.py           registering for pushes, and proving one arrived
 tests/test_voice.py              TTS and STT backends

@@ -29,12 +29,16 @@ import base64
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import httpx
 from livekit.agents import APIConnectionError, APIConnectOptions, tts
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, NotGivenOr
 from livekit.agents.utils import shortuuid
+
+from log_setup import describe
+from tts_pace import PaceMeter, seconds_of_pcm
 
 log = logging.getLogger("callin.agent")
 
@@ -137,13 +141,18 @@ async def available_voices(
     """
     if not base_url:
         return []
+    # A trailing slash here produced `http://host:8001//v1/audio/voices`, which
+    # some servers route and some 404 — so whether the panel could list voices
+    # at all depended on a character nobody could see. AdapterTTS already
+    # strips it; this was the one path that didn't.
+    base_url = base_url.rstrip("/")
     path = "/v1/audio/voices"
     try:
         path = str(load_adapter(adapter_path, mode=mode).get("voices_path") or path)
     except Exception as e:                                    # noqa: BLE001
         # An unreadable adapter is the caller's problem to report, not a
         # reason to skip the lookup with the default path.
-        log.info("adapter unreadable for voice discovery (%s)", e)
+        log.info("adapter unreadable for voice discovery (%s)", describe(e))
     try:
         async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as c:
             r = await c.get(path)
@@ -341,6 +350,9 @@ class AdapterTTS(tts.TTS):
 
         self._voice = voice
         self._model = model or self._adapter.get("default_model", "")
+        # How this backend has kept up, over the whole call. One AdapterTTS is
+        # built per call, so this needs no key and cannot mix two callers.
+        self._pace = PaceMeter()
         self._base_url = (
             base_url if base_url is not NOT_GIVEN else os.environ.get("TTS_BASE_URL", "")
         ).rstrip("/")
@@ -482,6 +494,10 @@ class AdapterTTS(tts.TTS):
                 tts=self, input_text="", conn_options=conn_options, silent=True)
         return AdapterChunkedStream(tts=self, input_text=spoken, conn_options=conn_options)
 
+    def pace_report(self) -> str:
+        """What the call record should say about how this backend kept up."""
+        return self._pace.report()
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
@@ -492,6 +508,15 @@ class AdapterChunkedStream(tts.ChunkedStream):
         super().__init__(tts=tts, input_text=input_text, conn_options=conn_options)
         self._tts_impl = tts
         self._silent = silent
+
+    def _note_pace(self, bytes_out: int, wall: float) -> None:
+        """Feed one synthesised line to the pace meter. See tts_pace."""
+        impl = self._tts_impl
+        # Only raw samples convert to seconds; see seconds_of_pcm.
+        if str(impl._adapter["audio"].get("encoding", "")).lower() != "pcm":
+            return
+        impl._pace.note(
+            wall, seconds_of_pcm(bytes_out, impl.sample_rate, impl.num_channels))
 
     async def _run(self, output_emitter: tts.AudioEmitter) -> None:
         impl = self._tts_impl
@@ -523,6 +548,7 @@ class AdapterChunkedStream(tts.ChunkedStream):
             stream=streaming,
         )
 
+        started, produced = time.monotonic(), 0
         try:
             if streaming:
                 # In stream mode the emitter requires an explicit segment
@@ -537,8 +563,10 @@ class AdapterChunkedStream(tts.ChunkedStream):
                     await _raise_for_status(r)
                     async for chunk in r.aiter_bytes():
                         if chunk:
+                            produced += len(chunk)
                             output_emitter.push(chunk)
                 output_emitter.end_segment()
+                self._note_pace(produced, time.monotonic() - started)
                 return
 
             r = await impl._client.request(
@@ -551,17 +579,22 @@ class AdapterChunkedStream(tts.ChunkedStream):
 
             kind = resp_cfg["type"]
             if kind == "raw_audio":
+                produced = len(r.content)
                 output_emitter.push(r.content)
             elif kind == "json_field":
-                output_emitter.push(base64.b64decode(r.json()[resp_cfg["field"]]))
+                audio_bytes = base64.b64decode(r.json()[resp_cfg["field"]])
+                produced = len(audio_bytes)
+                output_emitter.push(audio_bytes)
             elif kind == "json_url":
                 audio = await impl._client.get(r.json()[resp_cfg["field"]])
                 await _raise_for_status(audio)
+                produced = len(audio.content)
                 output_emitter.push(audio.content)
             else:
                 raise ValueError(f"unknown adapter response type: {kind}")
 
             output_emitter.flush()
+            self._note_pace(produced, time.monotonic() - started)
 
         except httpx.HTTPError as e:
-            raise APIConnectionError(f"TTS backend request failed: {e}") from e
+            raise APIConnectionError(f"TTS backend request failed: {describe(e)}") from e

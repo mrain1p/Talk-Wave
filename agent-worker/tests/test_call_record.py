@@ -645,3 +645,137 @@ class TestTheCallRecordHearsBothSides(unittest.TestCase):
             function_call_outputs=[],
         ))
         self.assertEqual(record.tools, [("subwave_skip_track", "")])
+
+
+class TestOneUtteranceIsOneLineInTheRecord(unittest.TestCase):
+    """The SDK merges two live transcripts into one committed turn.
+
+    A caller saying "yeah... maybe a mood" produced two `user_input_transcribed`
+    events and one history entry. The first live event matched "Yeah Maybe a
+    mood" and claimed it; the second, being the tail rather than the head,
+    matched nothing and survived with its own wording. The record then read
+
+        caller: Yeah Maybe a mood
+        caller: Maybe a mood
+
+    for something said once — and counted it, which is how one real call logged
+    `caller_turns=5` and `only 4 caller turn(s)` one line apart.
+    """
+
+    def _record(self, live):
+        from call.record import CallRecord
+
+        rec = CallRecord("callin-a-abc", {"id": "p_1", "name": "Cliff"}, {})
+        for who, text in live:
+            rec.turn(who, text)
+        return rec
+
+    def test_the_tail_of_a_merged_turn_is_not_a_second_turn(self):
+        rec = self._record([
+            ("dj", "What kind of tune are you after?"),
+            ("caller", "Yeah"),
+            ("caller", "Maybe a mood"),
+            ("caller", "Something relaxing."),
+        ])
+        rec.finalise([
+            ("dj", "What kind of tune are you after?"),
+            ("caller", "Yeah Maybe a mood"),
+            ("caller", "Something relaxing."),
+        ])
+        said = [t["text"] for t in rec.data["turns"] if t["who"] == "caller"]
+        self.assertEqual(said, ["Yeah Maybe a mood", "Something relaxing."])
+
+    def test_the_count_agrees_with_the_lines(self):
+        rec = self._record([("caller", "Yeah"), ("caller", "Maybe a mood")])
+        rec.finalise([("caller", "Yeah Maybe a mood")])
+        rec.write()
+        self.assertEqual(rec.data["callerTurns"], 1)
+
+    def test_a_caller_who_really_repeats_themselves_is_kept_twice(self):
+        # Two committed entries means the second live turn finds one of its
+        # own to match, so nothing is dropped. Deleting a genuine repeat would
+        # be the same class of bug in the other direction.
+        rec = self._record([("caller", "Maybe a mood"), ("caller", "Maybe a mood")])
+        rec.finalise([("caller", "Maybe a mood"), ("caller", "Maybe a mood")])
+        said = [t["text"] for t in rec.data["turns"] if t["who"] == "caller"]
+        self.assertEqual(said, ["Maybe a mood", "Maybe a mood"])
+
+    def test_an_unmatched_turn_that_is_not_a_fragment_survives(self):
+        rec = self._record([("caller", "play some jazz"), ("caller", "actually, funk")])
+        rec.finalise([("caller", "play some jazz")])
+        said = [t["text"] for t in rec.data["turns"] if t["who"] == "caller"]
+        self.assertEqual(said, ["play some jazz", "actually, funk"])
+
+
+class TestTheRecordAndItsProblemsShareOneClock(unittest.TestCase):
+    """A record built when the persona resolved, several seconds of ringing
+    after the caller arrived, timed itself from there — so one real call wrote
+    `durationSecs: 27.1` next to its own problem line saying "44s on the line".
+    Two clocks, one of which the caller never experienced."""
+
+    def test_the_call_start_is_what_gets_timed(self):
+        import time as _time
+
+        from call.record import CallRecord
+
+        began = _time.time() - 40
+        rec = CallRecord("callin-a-abc", {"id": "p_1", "name": "Cliff"}, {},
+                         started=began)
+        rec.write()
+        self.assertGreaterEqual(rec.data["durationSecs"], 40)
+
+    def test_it_still_times_itself_when_nobody_says_when(self):
+        from call.record import CallRecord
+
+        rec = CallRecord("callin-a-abc", {"id": "p_1", "name": "Cliff"}, {})
+        rec.write()
+        self.assertLess(rec.data["durationSecs"], 5)
+
+
+class TestASwallowedRequestIsWrittenDown(unittest.TestCase):
+    """The speech filter keeps a typed tool call off the air, but silently —
+    and from the caller's side that is indistinguishable from the DJ agreeing
+    and then doing nothing at all."""
+
+    def _attach(self):
+        from call.lifecycle import attach_heard_logging
+
+        class _Session:
+            def __init__(self):
+                self.handlers = {}
+
+            def on(self, name, fn):
+                self.handlers[name] = fn
+
+        class _Record:
+            def __init__(self):
+                self.turns, self.tools, self.problems = [], [], []
+
+            def turn(self, who, text):
+                self.turns.append((who, text))
+
+            def tool(self, name, result=""):
+                self.tools.append((name, result))
+
+            def problem(self, what):
+                self.problems.append(what)
+
+        session, record = _Session(), _Record()
+        attach_heard_logging(session, {"n": 0}, record)
+        return session, record
+
+    def _said(self, session, text):
+        session.handlers["conversation_item_added"](types.SimpleNamespace(
+            item=types.SimpleNamespace(role="assistant", text_content=text)))
+
+    def test_a_typed_tool_call_becomes_a_problem(self):
+        session, record = self._attach()
+        self._said(session, "tool_code\nprint(default_api.subwave_request_song("
+                            "request='Something relaxing'))")
+        self.assertEqual(len(record.problems), 1)
+        self.assertIn("typed a tool call", record.problems[0])
+
+    def test_an_ordinary_turn_is_not_a_problem(self):
+        session, record = self._attach()
+        self._said(session, "Sure thing, I'll get that on for you.")
+        self.assertEqual(record.problems, [])

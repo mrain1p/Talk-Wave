@@ -22,6 +22,7 @@ from api.credentials import _is_saved_host
 from api.hooks import _hook_state, register_station_webhook
 from api.live_cache import _live_cache
 from api.wire import _cors
+from log_setup import describe
 from station import StationClient
 from station_config import StationConfig
 from tts_adapter import ADAPTER_DIR
@@ -161,7 +162,7 @@ async def _openai_models(api_key: str, base_url: str = "") -> list[str]:
                 and not any(x in i for x in ("audio", "realtime", "transcribe", "tts", "image"))
             )
     except Exception as e:
-        log.info("openai model list unavailable (%s)", e)
+        log.info("openai model list unavailable (%s)", describe(e))
         return []
 
 
@@ -195,7 +196,7 @@ async def _google_models(api_key: str) -> list[str]:
                 out.append(name)
             return sorted(set(out))
     except Exception as e:
-        log.info("google model list unavailable (%s)", e)
+        log.info("google model list unavailable (%s)", describe(e))
         return []
 
 
@@ -212,7 +213,7 @@ async def _anthropic_models(api_key: str) -> list[str]:
             r.raise_for_status()
             return sorted(m["id"] for m in r.json().get("data", []) if m.get("id"))
     except Exception as e:
-        log.info("anthropic model list unavailable (%s)", e)
+        log.info("anthropic model list unavailable (%s)", describe(e))
         return []
 
 
@@ -235,14 +236,14 @@ async def _openrouter_models(api_key: str = "") -> list[str]:
                 out.append(mid)
             return sorted(out)
     except Exception as e:
-        log.info("openrouter model list unavailable (%s)", e)
+        log.info("openrouter model list unavailable (%s)", describe(e))
         return []
 
 
 async def _ollama_models(base_url: str) -> list[str]:
     """Whatever is actually pulled on that Ollama box. Far more useful than a
     hardcoded list — it's where the station's own DJ model shows up."""
-    root = (base_url or settings_store.PROVIDER_BASE_URLS["ollama"]).rstrip("/")
+    root = (base_url or settings_store.provider_base_urls()["ollama"]).rstrip("/")
     if root.endswith("/v1"):
         root = root[: -len("/v1")]
     try:
@@ -251,7 +252,7 @@ async def _ollama_models(base_url: str) -> list[str]:
             r.raise_for_status()
             return sorted(m["name"] for m in r.json().get("models", []) if m.get("name"))
     except Exception as e:
-        log.info("ollama model list unavailable at %s (%s)", root, e)
+        log.info("ollama model list unavailable at %s (%s)", root, describe(e))
         return []
 
 
@@ -361,8 +362,8 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         # this, and a model list for a provider that cannot be selected is
         # weight on the wire for a dropdown nobody can reach.
         "llmModels": {p: models.get(p, []) for p in llm_providers},
-        "providerBaseUrls": settings_store.PROVIDER_BASE_URLS,
-        "ttsBaseUrls": settings_store.TTS_BASE_URLS,
+        "providerBaseUrls": settings_store.provider_base_urls(),
+        "ttsBaseUrls": settings_store.tts_base_urls(),
         "sttProviders": stt_providers,
         "sttModels": {p: settings_store.STT_MODEL_CHOICES.get(p, [])
                       for p in stt_providers},

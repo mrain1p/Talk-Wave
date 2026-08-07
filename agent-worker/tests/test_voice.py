@@ -517,3 +517,59 @@ class TestTheSttModelIsLoadedOnceForTheWholeProcess(unittest.TestCase):
         caps = local_stt.LocalWhisperSTT(model="test-fake.en").capabilities
         self.assertFalse(caps.streaming)
         self.assertFalse(caps.interim_results)
+
+
+class TestABackendTooSlowToBeOnAPhoneCallSaysSo(unittest.TestCase):
+    """The failure with no symptom from in here.
+
+    Time to first audio was measured at a healthy ~1.5s while the same backend
+    ran at 1.6-2.3x realtime — so the DJ started speaking on cue and then fell
+    further behind with every sentence. Audible to the caller as gaps and drag,
+    invisible in the transcript, and nothing anywhere errored. The only evidence
+    that existed was the operator saying calls "felt laggy".
+    """
+
+    def _meter(self, pairs):
+        from tts_pace import PaceMeter
+
+        m = PaceMeter()
+        for wall, plays in pairs:
+            m.note(wall, plays)
+        return m
+
+    def test_a_backend_that_keeps_up_says_nothing(self):
+        self.assertEqual(self._meter([(1.8, 2.0), (5.0, 6.0)]).report(), "")
+
+    def test_a_backend_that_falls_behind_reports_the_ratio(self):
+        said = self._meter([(4.3, 1.9), (11.3, 6.8)]).report()
+        self.assertIn("could not keep up", said)
+        self.assertIn("1.79x realtime", said)
+
+    def test_one_line_is_not_enough_to_judge_a_call_on(self):
+        self.assertEqual(self._meter([(9.0, 2.0)]).report(), "")
+
+    def test_a_line_too_short_to_measure_is_ignored(self):
+        # One buffer's jitter dominates a sub-second line; counting it would
+        # make a healthy backend look broken on a call full of short answers.
+        m = self._meter([(0.9, 0.4), (0.9, 0.3)])
+        self.assertEqual(m.lines, 0)
+        self.assertEqual(m.report(), "")
+
+    def test_a_little_overrun_is_not_called_a_fault(self):
+        # Buffering absorbs a brief overrun, and on a single-GPU host the
+        # station's own renders contend for the same card.
+        self.assertEqual(self._meter([(2.1, 2.0), (5.2, 5.0)]).report(), "")
+
+    def test_pcm_bytes_become_seconds(self):
+        from tts_pace import seconds_of_pcm
+
+        # 24kHz, 16-bit, mono: two bytes a sample.
+        self.assertAlmostEqual(seconds_of_pcm(48000, 24000, 1), 1.0)
+
+    def test_the_call_asks_the_backend_how_it_did(self):
+        # The seam session.py reaches for at the end of a call. If this method
+        # is renamed the report is silently never written, which is the exact
+        # class of failure this whole measurement exists to end.
+        from tts_adapter import AdapterTTS
+
+        self.assertTrue(callable(getattr(AdapterTTS, "pace_report", None)))

@@ -282,7 +282,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     may_send, cred_note = _credentials_travel_to(
         cfg.get("llm_base_url"),
         saved_llm,
-        settings_store.PROVIDER_BASE_URLS.get(str(cfg.get("llm_provider", "")).lower(), ""),
+        settings_store.provider_base_urls().get(str(cfg.get("llm_provider", "")).lower(), ""),
     )
 
     try:
@@ -411,7 +411,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     llm_key_ok, llm_note = _credentials_travel_to(
         cfg.get("llm_base_url"),
         saved_llm,
-        settings_store.PROVIDER_BASE_URLS.get(str(cfg.get("llm_provider", "")).lower(), ""),
+        settings_store.provider_base_urls().get(str(cfg.get("llm_provider", "")).lower(), ""),
     )
     tts_key_ok, tts_note = _credentials_travel_to(cfg.get("tts_base_url"), saved_tts)
 

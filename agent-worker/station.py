@@ -19,6 +19,7 @@ import time
 import httpx
 
 import settings as settings_store
+from log_setup import describe
 
 log = logging.getLogger("callin.station")
 
@@ -94,10 +95,11 @@ class StationClient:
                 return r.json()
             except Exception as e:
                 if attempt < retries:
-                    log.info("station read %s failed (%s) — retrying", path, e)
+                    log.info("station read %s failed (%s) — retrying",
+                             path, describe(e))
                     continue
                 _read_stats["consecutive_failures"] += 1
-                log.warning("station read %s failed: %s", path, e)
+                log.warning("station read %s failed: %s", path, describe(e))
                 return {}
         return {}
 
@@ -260,7 +262,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("on-air line slow to confirm (%s) — treating as sent", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("on-air handoff failed: %s", e)
+            log.warning("on-air handoff failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
     async def search_library(self, q: str) -> list[dict]:
@@ -279,7 +281,7 @@ class StationClient:
             items = d if isinstance(d, list) else (d.get("results") or d.get("tracks") or [])
             return items if isinstance(items, list) else []
         except Exception as e:
-            log.warning("library search failed: %s", e)
+            log.warning("library search failed: %s", describe(e))
             return []
 
     async def queue_track(self, track: dict) -> dict:
@@ -313,7 +315,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("queue-track slow to confirm (%s) — treating as queued", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("queue-track failed: %s", e)
+            log.warning("queue-track failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
     async def submit_request(self, text: str, name: str = "") -> dict:
@@ -393,7 +395,7 @@ class StationClient:
             items = d.get("skills") or d.get("result") or []
             return items if isinstance(items, list) else []
         except Exception as e:
-            log.info("skill catalogue unavailable: %s", e)
+            log.info("skill catalogue unavailable: %s", describe(e))
             return []
 
     async def run_skill(self, name: str) -> dict:
@@ -417,7 +419,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("skill %s slow to confirm (%s) — treating as running", name, e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("skill %s failed: %s", name, e)
+            log.warning("skill %s failed: %s", name, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def skip_track(self) -> dict:
@@ -445,7 +447,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("skip slow to confirm (%s) — treating as done", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("skip failed: %s", e)
+            log.warning("skip failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def dj_segment(self, kind: str) -> dict:
@@ -475,7 +477,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("segment %s slow to confirm (%s) — treating as running", kind, e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("segment %s failed: %s", kind, e)
+            log.warning("segment %s failed: %s", kind, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     # The station's own bounds on a takeover window (OVERRIDE_MIN/MAX_MINUTES
@@ -516,7 +518,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("takeover %s slow to confirm (%s) — treating as set", show_id, e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("takeover %s failed: %s", show_id, e)
+            log.warning("takeover %s failed: %s", show_id, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def clear_pinned_show(self) -> dict:
@@ -542,7 +544,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("takeover cancel slow to confirm (%s) — treating as done", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("takeover cancel failed: %s", e)
+            log.warning("takeover cancel failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def active_show(self, now_playing: dict | None = None) -> dict:

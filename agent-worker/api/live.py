@@ -22,6 +22,7 @@ from api.live_cache import _LIVE_TTL, _live_cache
 from api.sounds import _resolved_sound
 from api.wire import _cors
 from brain.briefing import demojibake
+from log_setup import describe
 from station import StationClient
 from version import APP_VERSION
 
@@ -312,7 +313,7 @@ async def handle_live(request: web.Request) -> web.Response:
                 # The card still has to paint. Falling back to the neutral
                 # base is the honest answer for a station that will not say
                 # what colour it is.
-                log.info("station palette unavailable (%s)", e)
+                log.info("station palette unavailable (%s)", describe(e))
         # Cached inside tune_in, so a station that publishes a mount list is
         # only asked for it every few minutes rather than on every /live.
         stream_url, stream_alternates = await tune_in.resolve(
@@ -460,5 +461,5 @@ async def handle_avatar(request: web.Request) -> web.StreamResponse:
                 headers={"Cache-Control": "public, max-age=300"},
             )
     except Exception as e:
-        log.info("avatar fetch failed for %s: %s", persona_id, e)
+        log.info("avatar fetch failed for %s: %s", persona_id, describe(e))
         raise web.HTTPNotFound()

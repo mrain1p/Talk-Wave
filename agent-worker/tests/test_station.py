@@ -392,3 +392,45 @@ class TestTheCardCacheHasOneHome(unittest.TestCase):
         from api import live_cache
 
         self.assertLess(live_cache._LIVE_BUST_FLOOR, live_cache._LIVE_TTL)
+
+
+class TestAFailedReadSaysWhyItFailed(unittest.TestCase):
+    """`str(httpx.ReadTimeout())` is the empty string, and httpx raises its
+    timeouts bare — so every station read failure on the operator's deployment
+    logged as
+
+        station read /state failed:
+
+    and stopped. The fact was recorded, the reason was not, and a timeout was
+    indistinguishable from a refused connection and from a bug in the logging.
+    """
+
+    def test_an_exception_with_no_message_still_names_itself(self):
+        import httpx
+
+        from log_setup import describe
+
+        self.assertEqual(describe(httpx.ReadTimeout("")), "ReadTimeout")
+        self.assertEqual(describe(httpx.ConnectTimeout("")), "ConnectTimeout")
+
+    def test_an_exception_with_a_message_keeps_it(self):
+        from log_setup import describe
+
+        self.assertEqual(describe(ValueError("bad url")), "ValueError: bad url")
+
+    def test_the_station_client_logs_through_it(self):
+        import logging
+
+        import httpx
+
+        import station as station_mod
+
+        class _Boom:
+            async def get(self, path):
+                raise httpx.ReadTimeout("")
+
+        client = station_mod.StationClient.__new__(station_mod.StationClient)
+        client._client = _Boom()
+        with self.assertLogs("callin.station", level=logging.WARNING) as caught:
+            self.assertEqual(asyncio.run(client._get("/state")), {})
+        self.assertIn("ReadTimeout", "\n".join(caught.output))

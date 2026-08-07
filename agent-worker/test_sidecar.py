@@ -17,11 +17,13 @@ import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
     TestAConfigValueCannotNameAFileOnTheDisk,
+    TestANeighbouringServiceIsNotOnLocalhost,
     TestNoSettingIsSmuggledThroughTheEnvironment,
     TestOneSettingReplacingAnotherSaysSo,
     TestSettings,
     TestSettingsThatAreOnlyWrongTogether,
     TestTheDataDirCheckCannotStopTheWorker,
+    TestTheModelWarmedIsTheModelUsed,
     TestTurnTakingDelaysAreOptOut,
     TestTurnTakingSettingsReachTheCall,
     TestUploadedSoundsCannotFillTheVolume,
@@ -44,6 +46,7 @@ from tests.test_http import (  # noqa: F401
     TestUsageControls,
 )
 from tests.test_widget import (  # noqa: F401
+    TestAnIdleCardIsNotMostlyEmptyBoxes,
     TestAssetVersioning,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
@@ -65,12 +68,15 @@ from tests.test_caller_tiers import (  # noqa: F401
     TestUpgradingKeepsTheStationExactlyAsItWas,
 )
 from tests.test_call_record import (  # noqa: F401
+    TestASwallowedRequestIsWrittenDown,
     TestCallPrivacy,
     TestCallRecord,
+    TestOneUtteranceIsOneLineInTheRecord,
     TestStaleRecordsCanBeThrownAway,
     TestTheCallerGetsAVerdict,
     TestTheCallRecordHearsBothSides,
     TestTheCallRecordSaysWhoRang,
+    TestTheRecordAndItsProblemsShareOneClock,
 )
 from tests.test_call_flow import (  # noqa: F401
     TestACallerWhoWasNeverHeardIsToldSo,
@@ -114,11 +120,15 @@ from tests.test_brain import (  # noqa: F401
     TestOneBadTrackCannotSwallowThePrompt,
     TestPromptAssembly,
     TestPrompts,
-    TestSpeechFilter,
     TestTheConductHarnessCannotReachTheRealStation,
+)
+from tests.test_speech_filter import (  # noqa: F401
+    TestATypedToolCallNeverReachesTheSpeaker,
+    TestSpeechFilter,
 )
 from tests.test_station import (  # noqa: F401
     TestABadPlaylistStaysSmall,
+    TestAFailedReadSaysWhyItFailed,
     TestStationConfig,
     TestTheCardCacheHasOneHome,
     TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays,
@@ -137,6 +147,7 @@ from tests.test_webhooks import (  # noqa: F401
     TestWeOnlyAskForEventsTheStationKnows,
 )
 from tests.test_voice import (  # noqa: F401
+    TestABackendTooSlowToBeOnAPhoneCallSaysSo,
     TestADeclaredSampleRateIsMeasuredNotTrusted,
     TestAVoiceTheBackendCannotSpeakIsNotSilence,
     TestEveryPersonaIsCheckedNotOnlyTheOneOnAir,

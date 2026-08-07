@@ -24,6 +24,7 @@ from api.auth import _write_allowed
 from api.env import PORT
 from api.live_cache import _LIVE_BUST_FLOOR, _live_cache
 from api.wire import _cors
+from log_setup import describe
 from station import StationClient
 
 log = logging.getLogger("callin.token")
@@ -456,7 +457,7 @@ async def keep_station_warm(app: web.Application) -> None:
                 if _registration_due():
                     await register_station_webhook()
             except Exception as e:
-                log.debug("warm ping failed: %s", e)
+                log.debug("warm ping failed: %s", describe(e))
             await asyncio.sleep(interval)
 
     task = asyncio.create_task(loop())

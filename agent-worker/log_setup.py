@@ -25,6 +25,26 @@ from pathlib import Path
 
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
+
+def describe(e: BaseException) -> str:
+    """An exception, in words, even when it brought none of its own.
+
+    `str(httpx.ReadTimeout())` is the empty string, and httpx raises its
+    timeouts bare — so `log.warning("station read %s failed: %s", path, e)`
+    printed
+
+        station read /state failed:
+
+    and stopped. Every station read failure on the operator's deployment logged
+    like that for weeks: the fact recorded, the reason not, with a timeout and a
+    refused connection indistinguishable from each other and from a bug in the
+    logging. The class name is the missing half, so use this at any site
+    logging an exception that came over the network.
+    """
+    text = str(e).strip()
+    name = type(e).__name__
+    return f"{name}: {text}" if text else name
+
 # Last few hundred formatted lines, kept in memory regardless of file/stdout
 # settings — this is what the settings panel's log viewer reads, so an
 # operator can check "what just happened" without docker access.

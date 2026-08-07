@@ -1,7 +1,7 @@
 """
 Last line of defence between the model and the speaker.
 
-Two problems this solves, both observed on real calls:
+Three problems this solves, all observed on real calls:
 
 1. **Stage directions.** Models narrate themselves — "*Sound of shuffling
    through records.*", "(laughs)", "[pause]" — and the TTS reads it out loud,
@@ -12,8 +12,10 @@ Two problems this solves, both observed on real calls:
 2. **Expletives.** A live broadcast wants a filter that doesn't depend on the
    model choosing to behave.
 
-Both run on the text on its way to synthesis, so they apply no matter which
-provider or model is in use.
+3. **Tool calls typed out as speech.** See `strip_tool_code`.
+
+All three run on the text on its way to synthesis, so they apply no matter
+which provider or model is in use.
 """
 
 from __future__ import annotations
@@ -113,6 +115,60 @@ def strip_speaker_labels(text: str) -> str:
         log.info("stripped a speaker label before speaking")
     return cleaned.strip()
 
+# A tool call the model TYPED instead of making. Observed on a real call on
+# gemini-2.5-flash-lite, as the whole of the DJ's final turn:
+#
+#     tool_code
+#     print(default_api.subwave_request_song(request='Something relaxing'))
+#
+# The caller had asked for something relaxing; the record shows no tool ran and
+# no song was ever requested, and this went to the TTS, so what they actually
+# heard was Python being read aloud. The real fix is a model that routes tools
+# properly — but "the model regressed" is the one thing this file exists to
+# survive, and a DJ must never be able to speak code down the line.
+#
+# Three shapes, because the models that do this do not agree on one:
+# a fenced block, a bare `tool_code` marker line, and the call itself.
+_CODE_FENCE = re.compile(r"```[\s\S]*?(?:```|$)")
+_TOOL_MARKER = re.compile(
+    r"(?:^|\n)[ \t]*(?:tool_code|tool_outputs|tool_call)[ \t]*(?=\n|$)",
+    re.IGNORECASE,
+)
+# `print(default_api.foo(...))`, or the bare `default_api.foo(...)`. Anchored on
+# the namespace the providers use, so ordinary speech containing a bracket is
+# untouched.
+_TOOL_CALL = re.compile(
+    r"(?:^|\n)[ \t]*(?:print[ \t]*\([ \t]*)?"
+    r"(?:default_api|functions|tool_api)\.[A-Za-z_]\w*[ \t]*\([^\n]*"
+)
+
+
+def looks_like_tool_code(text: str) -> bool:
+    """Did the model type a tool call instead of making one?
+
+    Exposed so the call record can say so — a turn that vanishes here is a
+    turn where the caller asked for something and nothing happened, and that
+    is worth a line in the transcript rather than silence.
+    """
+    if not text:
+        return False
+    return bool(_TOOL_MARKER.search(text) or _TOOL_CALL.search(text))
+
+
+def strip_tool_code(text: str) -> str:
+    """Remove anything the model wrote as code rather than as speech."""
+    if not text:
+        return text
+    cleaned = _CODE_FENCE.sub(" ", text)
+    cleaned = _TOOL_CALL.sub(" ", cleaned)
+    cleaned = _TOOL_MARKER.sub(" ", cleaned)
+    if cleaned != text:
+        log.warning(
+            "the model typed a tool call instead of making one — not speaking it"
+        )
+    return _WHITESPACE.sub(" ", cleaned).strip()
+
+
 # Deliberately compact. The intent is broadcast hygiene, not exhaustive
 # censorship — a longer list belongs in settings where you can see it.
 DEFAULT_PROFANITY = [
@@ -174,6 +230,10 @@ def clean_for_speech(
     # Labels first: "Francesca: *adjusts headphones* right then" needs the
     # label gone before the direction rules look at what's left.
     out = strip_speaker_labels(out)
+    # Not behind `strip_directions`. That toggle is a matter of taste — an
+    # operator can reasonably want "(laughs)" spoken by a theatrical persona.
+    # There is no setting under which reading out a function call is wanted.
+    out = strip_tool_code(out)
     if strip_directions:
         before = out
         out = strip_stage_directions(out)

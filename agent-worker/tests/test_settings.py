@@ -418,3 +418,64 @@ class TestTurnTakingSettingsReachTheCall(unittest.TestCase):
         # tool call makes Gemini reject the whole conversation with a 400.
         self.assertIs(
             self._resolved({}).preemptive_generation["enabled"], False)
+
+
+class TestANeighbouringServiceIsNotOnLocalhost(_TempStores):
+    """`localhost` was the autofill for Ollama and for local TTS, and it is
+    wrong by construction: this runs in a container, so localhost is the
+    container itself and never where those servers live. The panel offered it
+    anyway, and the log filled with `ollama model list unavailable at
+    http://localhost:11434` with nothing saying why."""
+
+    def test_the_default_follows_the_station(self):
+        settings_store.save({"station_base_url": "http://192.168.1.245:7700"})
+        self.assertEqual(
+            settings_store.provider_base_urls()["ollama"],
+            "http://192.168.1.245:11434/v1",
+        )
+        self.assertEqual(
+            settings_store.tts_base_urls()["local"], "http://192.168.1.245:8001"
+        )
+
+    def test_an_explicit_environment_variable_still_wins(self):
+        settings_store.save({"station_base_url": "http://192.168.1.245:7700"})
+        os.environ["OLLAMA_BASE_URL"] = "http://elsewhere:11434/v1"
+        try:
+            self.assertEqual(
+                settings_store.provider_base_urls()["ollama"],
+                "http://elsewhere:11434/v1",
+            )
+        finally:
+            os.environ.pop("OLLAMA_BASE_URL", None)
+
+    def test_the_cloud_entries_are_untouched(self):
+        urls = settings_store.provider_base_urls()
+        self.assertEqual(urls["openrouter"], "https://openrouter.ai/api/v1")
+        self.assertEqual(urls["openai"], "")
+        self.assertEqual(settings_store.tts_base_urls()["cloud"],
+                         "https://api.openai.com")
+
+
+class TestTheModelWarmedIsTheModelUsed(_TempStores):
+    """Switching STT provider without also changing the model left "nova-3" —
+    a Deepgram name — going to faster-whisper, which rejected it: `Invalid
+    model size 'nova-3'`, prewarm skipped, and the first caller paid the ~7s
+    load mid-conversation anyway. The prewarm has to resolve the model the same
+    way the call does, or it warms a different one."""
+
+    def test_a_model_from_another_provider_does_not_reach_the_prewarm(self):
+        from call.providers import effective_stt
+
+        provider, model, note = effective_stt(
+            {"stt_provider": "local", "stt_model": "nova-3"}
+        )
+        self.assertEqual(provider, "local")
+        self.assertEqual(model, "base.en")
+        self.assertIn("nova-3", note)
+
+    def test_the_prewarm_asks_the_same_question_the_call_does(self):
+        # Mutation guard: reading cfg["stt_model"] directly here is the bug.
+        source = (AGENT_WORKER / "main.py").read_text(encoding="utf-8")
+        prewarm = source.split("def prewarm(")[1].split("\nasync def ")[0]
+        self.assertIn("effective_stt(cfg)", prewarm)
+        self.assertNotIn('cfg.get("stt_model")', prewarm)

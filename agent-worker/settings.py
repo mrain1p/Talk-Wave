@@ -1066,19 +1066,53 @@ def providers_with_keys(mapping: dict[str, str | None], keep: str = "") -> list[
     return out
 
 
-# Default endpoint per provider, offered by the settings UI as an autofill.
-PROVIDER_BASE_URLS = {
-    "ollama": os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-    "openrouter": "https://openrouter.ai/api/v1",
-    "openai": "",
-    "google": "",
-    "anthropic": "",
-}
+def _sidecar_default(env_var: str, port: int, path: str = "") -> str:
+    """A neighbouring service's URL, guessed from where the station is.
 
-TTS_BASE_URLS = {
-    "cloud": "https://api.openai.com",
-    "local": os.environ.get("LOCAL_TTS_URL", "http://localhost:8001"),
-}
+    `localhost` is the wrong guess and always was. This runs in a container,
+    so localhost is the container itself — never where Ollama or a local TTS
+    server lives — and the panel offered it as the autofill anyway, so the
+    model list was permanently empty with `ollama model list unavailable at
+    http://localhost:11434` in the log and nothing saying why.
+
+    The station's own URL is the one address this deployment definitely knows
+    and definitely resolves, and on every deployment this project targets the
+    local model servers sit beside it. So default to the station's host with
+    the neighbour's port. Still only a default: an explicit env var or a saved
+    setting wins, and localhost remains the fallback for a dev machine with no
+    station configured.
+    """
+    override = os.environ.get(env_var, "").strip()
+    if override:
+        return override
+    host = ""
+    try:
+        from urllib.parse import urlparse
+
+        host = urlparse(station_base_url()).hostname or ""
+    except Exception:                                         # noqa: BLE001
+        host = ""
+    return f"http://{host or 'localhost'}:{port}{path}"
+
+
+def provider_base_urls() -> dict:
+    """Default endpoint per LLM provider, offered by the settings UI as an
+    autofill. A function rather than a constant because the ollama default is
+    derived from the configured station, which is not known at import time."""
+    return {
+        "ollama": _sidecar_default("OLLAMA_BASE_URL", 11434, "/v1"),
+        "openrouter": "https://openrouter.ai/api/v1",
+        "openai": "",
+        "google": "",
+        "anthropic": "",
+    }
+
+
+def tts_base_urls() -> dict:
+    return {
+        "cloud": "https://api.openai.com",
+        "local": _sidecar_default("LOCAL_TTS_URL", 8001),
+    }
 
 STT_MODEL_CHOICES = {
     # In-process faster-whisper. No container, no key, no network — and CPU

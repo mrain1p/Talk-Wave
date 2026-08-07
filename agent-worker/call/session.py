@@ -31,6 +31,7 @@ from livekit.agents.voice.room_io import RoomOptions
 import brain
 import settings as settings_store
 import speech_filter
+from log_setup import describe
 import station_config as station_config_mod
 from station import StationClient
 from station_config import StationConfig
@@ -182,7 +183,8 @@ class CallSession:
         self.instructions = await brain.build_system_prompt(
             self.station, self.persona, snapshot=snap, cfg=self.cfg
         )
-        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg, self.tier)
+        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg,
+                                 self.tier, started=self.started_at)
 
         # Checked against the backend BEFORE the first line, not discovered by
         # the caller. See tts_adapter.pick_speakable_voice — a voice the
@@ -343,6 +345,30 @@ class CallSession:
             "— see off-LAN calling in the README."
         )
 
+    def _note_if_the_voice_fell_behind(self) -> None:
+        """Say so, in the record, when the TTS could not keep up with playback.
+
+        This is the failure that has no symptom from in here. Time to first
+        audio was measured at a healthy 1.5s while the same backend ran at
+        1.6-2.3x realtime, so the DJ started speaking on cue and then fell
+        further behind with every sentence — audible to the caller as gaps and
+        drag, invisible in the transcript, and nothing anywhere errored. The
+        operator could only report that calls "felt laggy", which is not
+        something anyone can act on.
+        """
+        tts = getattr(self.session, "tts", None)
+        report = getattr(tts, "pace_report", None)
+        if not self.record or not callable(report):
+            return
+        try:
+            said = report()
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not read the TTS pace (harmless): %s", describe(e))
+            return
+        if said:
+            log.warning("%s", said)
+            self.record.problem(said)
+
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
@@ -377,6 +403,7 @@ class CallSession:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []
             self._note_if_nothing_was_heard(duration, final)
+            self._note_if_the_voice_fell_behind()
             if self.cfg.get("record_calls", True):
                 self.record.write(reason=reason,
                                   keep=int(self.cfg.get("record_keep") or 0))

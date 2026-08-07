@@ -80,8 +80,8 @@ OPTIONS = {
                  {"id": "p_e28f6a", "name": "Dawn"}],
     "voiceSource": {"adminConfigured": True, "mirroringStation": True, "count": 18},
     "stationLlm": {"model": "gemini-3.1-flash-lite"},
-    "providerBaseUrls": settings_store.PROVIDER_BASE_URLS,
-    "ttsBaseUrls": settings_store.TTS_BASE_URLS,
+    "providerBaseUrls": settings_store.provider_base_urls(),
+    "ttsBaseUrls": settings_store.tts_base_urls(),
 }
 
 # Fixtures for the pipeline check. Everything passes except the legs that

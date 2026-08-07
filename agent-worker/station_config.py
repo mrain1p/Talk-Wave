@@ -33,6 +33,8 @@ from typing import Any
 
 import httpx
 
+from log_setup import describe
+
 log = logging.getLogger("callin.station_config")
 
 FALLBACK_VOICES_PATH = Path(__file__).parent / "persona-voices.json"
@@ -216,7 +218,7 @@ class StationConfig:
             r.raise_for_status()
             data = r.json()
         except Exception as e:
-            log.warning("station config read %s failed: %s", path, e)
+            log.warning("station config read %s failed: %s", path, describe(e))
             return {}
         self._cache[path] = data
         return data

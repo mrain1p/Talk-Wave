@@ -19,6 +19,7 @@ import time
 
 from livekit.agents import AgentSession, JobContext
 
+import speech_filter
 from station import StationClient
 
 from .background import spawn
@@ -108,6 +109,16 @@ def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> N
             log.info("said: %s", text[:160])
             if record:
                 record.turn("dj", text)
+                # Kept off the air by the speech filter, but silently — and to
+                # the caller a typed tool call looks exactly like the DJ
+                # agreeing and then doing nothing. See strip_tool_code.
+                if speech_filter.looks_like_tool_code(text):
+                    record.problem(
+                        "The model typed a tool call instead of making one, so "
+                        "nothing ran and the caller's request was dropped (it "
+                        "was not spoken). A model-side failure — check the LLM "
+                        "setting against one with proven tool routing."
+                    )
 
     session.on("conversation_item_added", _log_said)
 
@@ -587,5 +598,3 @@ async def send_on_air_callback(
         await fresh.dj_say(line, mode="styled", kind="callin")
     finally:
         await fresh.aclose()
-
-
