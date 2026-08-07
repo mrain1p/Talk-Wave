@@ -3,6 +3,29 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.138
+
+### The panel reads at a glance
+
+- Player-matrix help now flows on the **same line as its label** instead of
+  a band per row — the operator's ask, and it halves the section's height.
+- Section headers carry their state in **colour**: green for on, dimmed for
+  off, instead of "on" and "off" in the same grey.
+- The panel's theme control is the **same four-stop cycle as the card** —
+  light, dark, the station's show colours, match the device — with the same
+  icons and the same remembered choice.
+
+### Call sounds
+
+- A **Voicemail beep preview button** joins the other five, playing your
+  uploaded WAV or the synthesized tone.
+- The beep's dropdown lists **WAV uploads only**, and its Upload button
+  refuses anything else up front — an m4a could only ever become the
+  fallback tone, silently. Its convertibility verdict now shows here, in
+  Call sounds, rather than among the staging results.
+- Per-DJ greeting rows are **one line each** — name, state, the editable
+  line and the buttons across.
+
 ## 0.9.137
 
 - The voice effect gains an **intensity dial** (0–100): full character down

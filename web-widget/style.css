@@ -602,14 +602,19 @@
 
   /* One staged greeting per row: who and which voice, the words the clip
      speaks (editable), and the three things you can do about it. */
+  /* One row per DJ — name, state, the editable line and the three buttons
+     across, wrapping only when the width genuinely runs out. Two bands per
+     persona doubled the list's height for nothing; operator-reported. */
   .soundlist li.vmrow { flex-wrap: wrap; }
+  .vmrow .sname { flex: 0 1 auto; white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; max-width: 220px; }
   .vmrow .vmstate {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
     text-transform: uppercase; font-weight: 700; color: var(--warn);
   }
   .vmrow .vmstate.ok { color: var(--ok); }
   .vmrow .vmline {
-    flex: 1 1 100%; order: 5; min-width: 0;
+    flex: 1 1 160px; order: 0; min-width: 0;
     font: 12px var(--font-body); padding: 5px 8px; border-radius: 6px;
     border: 1px solid var(--line2); background: var(--card); color: var(--text);
   }
@@ -949,6 +954,15 @@
   .row.moot select, .row.moot input, .check.moot input {
     pointer-events: none; text-decoration: line-through;
   }
+
+  /* Matrix help, inside the label cell: same muted voice as every hint,
+     flowing after the label on its own line's terms. */
+  .plabel .hint.inlabel {
+    display: inline; margin: 0 0 0 8px; font-weight: 400;
+  }
+  /* The section tag carries its state in colour — see setTag(). */
+  .tag[data-state="on"] { color: var(--sage); }
+  .tag[data-state="off"] { color: var(--sage-dim); opacity: .65; }
 
   .fieldonly {
     position: absolute; width: 1px; height: 1px; overflow: hidden;

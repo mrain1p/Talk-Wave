@@ -1047,9 +1047,12 @@ SCHEMA: dict[str, dict] = {
     "sound_vm_beep": dict(group="sounds", kind="text", label="Voicemail beep",
         placeholder="default: the classic tone",
         help="The answering machine's beep. Unlike the sounds above it is "
-             "played by the server, so only an uploaded file applies — a "
-             "short mono 16-bit WAV, ideally 24 kHz. Anything it cannot "
-             "play falls back to the tone, never to silence."),
+             "played by the server, so only an uploaded WAV applies — the "
+             "dropdown lists nothing else. m4a/mp3 work for the browser "
+             "sounds above but not here, and m4p is Apple-DRM'd audio "
+             "nothing outside iTunes can play. Anything the server cannot "
+             "convert falls back to the tone, never to silence — the "
+             "Voicemail section reports the verdict."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
 }
