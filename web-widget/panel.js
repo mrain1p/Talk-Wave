@@ -622,6 +622,19 @@
   // Only show configuration that applies to the current selection. A local-model
   // URL box is noise when you're on a hosted provider, and vice versa.
   function applyVisibility() {
+    // A voicemail-only line has no live Call button, so the options that
+    // shape one are moot. Dashed rather than hidden — the operator can
+    // still see what comes back when live calls do.
+    const vmSel = $('voicemail_when');
+    const vmAlways = (vmSel ? (vmSel.value || resolved.voicemail_when)
+                            : resolved.voicemail_when) === 'always';
+    const liveChk = $('live_calls_enabled');
+    const liveOn = liveChk ? liveChk.checked
+                           : resolved.live_calls_enabled !== false;
+    const liveOff = vmAlways || !liveOn;
+    const MOOT_WITHOUT_LIVE = ['call_button_mode', 'call_button_label',
+                               'show_push_to_talk', 'embed_push_to_talk'];
+
     // Every rule comes from the schema: a field declares what it depends on,
     // and advanced fields stay hidden until asked for.
     Object.keys(SCHEMA.fields).forEach((f) => {
@@ -630,6 +643,13 @@
       const meta = SCHEMA.fields[f];
       const anchor = el.closest('.row') || el.closest('.check');
       if (!anchor) return;
+
+      if (MOOT_WITHOUT_LIVE.indexOf(f) !== -1) {
+        anchor.classList.toggle('moot', liveOff);
+        anchor.title = liveOff
+          ? 'The line is voicemail-only — there is no live Call button for '
+            + 'this to apply to.' : '';
+      }
 
       let visible = true;
       if (meta.needs) {
@@ -1259,6 +1279,17 @@
     $('previewPage').onclick = () => setPreviewSurface('page');
     $('previewEmbed').onclick = () => setPreviewSurface('embed');
     $('previewFrame').onload = pushPreview;
+    // The frame is the real widget, and the real widget reports its own
+    // height — the same subwave-callin:height contract embed.js consumes.
+    // Sizing the box from it shows the whole card with no scrollbar, on
+    // either surface tab; the fixed 300px in the stylesheet is only the
+    // pre-report placeholder. Clamped because a report is still input.
+    addEventListener('message', (e) => {
+      const f = $('previewFrame');
+      if (!f || !e.data || e.data.type !== 'subwave-callin:height') return;
+      if (e.source !== f.contentWindow) return;
+      f.style.height = Math.max(220, Math.min(760, e.data.px | 0)) + 'px';
+    });
   }
 
   let eventsBound = false;
@@ -1837,7 +1868,9 @@
   const UPLOAD_PREFIX = 'upload:';
   let uploaded = [];
 
-  const SOUND_SLOTS = ['ring', 'pickup', 'hold', 'hangup', 'failed'];
+  // vm_beep is server-played (the worker beeps into the room), so its
+  // dropdown offers uploads only — a URL would have no browser to play it.
+  const SOUND_SLOTS = ['ring', 'pickup', 'hold', 'hangup', 'failed', 'vm_beep'];
 
   function paintSounds() {
     const host = $('soundList');

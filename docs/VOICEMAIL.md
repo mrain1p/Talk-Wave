@@ -158,6 +158,13 @@ Two later decisions, both from operating it:
 - **`voicemail_greeting_mode`** chooses `staged` (instant, the default) or `fresh` — one model
   line written in the persona's own voice at pickup, budgeted at six seconds, with the staged
   clip as the backup for a model or TTS that cannot make it in time.
+- **The ceiling closes the ROOM, not just the job.** `ctx.shutdown()` alone ends the agent and
+  leaves the caller connected to an empty room with the timer counting — which an operator read,
+  correctly, as the 30-second limit not being honored. The leg deletes the room the way a live
+  call ends, and the card's timer counts against `voicemail_max_seconds` rather than the live
+  call's limit.
+- **`sound_vm_beep`** replaces the synthesized beep with an uploaded WAV (Call sounds section).
+  Server-played, so uploads only; wrong rate or shape falls back to the tone, never silence.
 
 ## Where the code would go
 

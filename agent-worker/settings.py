@@ -367,6 +367,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "sound_hold":       (None, ""),
     "sound_hangup":     (None, ""),
     "sound_failed":     (None, ""),
+    # The machine's beep is the one SERVER-side sound: the worker plays it
+    # into the room at pickup, so only an uploaded file applies — there is
+    # no browser on that end to fetch a URL.
+    "sound_vm_beep":    (None, ""),
     "call_volume":      (None, 100),
 }
 
@@ -521,10 +525,6 @@ SUPERGROUPS = [
 # caller references — are listed too, so ordering lives in exactly one place.
 # Their markup carries a matching data-group attribute.
 GROUPS = [
-    # Access first: the panel needs an admin password before anything below it
-    # is worth setting, and burying it under Connect meant a fresh install's
-    # first screen was a station URL rather than a lock.
-    ("security", "config", "Access",        "Who opens this panel, and who can call."),
     ("station",  "config", "SUB/WAVE Station", "Which station this answers for."),
     # There is no "Connections" section any more. It held every API key on one
     # screen, away from the provider dropdowns those keys decide the contents
@@ -538,6 +538,12 @@ GROUPS = [
     # rows where four of them were about something else.
     ("ears",     "config", "Ears",          "STT — how the DJ hears."),
 
+    # Access leads Permissions & safety — the operator's call: passwords and
+    # door codes are questions about who may do things, and they read better
+    # beside the permissions they guard than at the top of Configuration.
+    # A fresh install still isn't stranded: the first-run password nudge is
+    # its own banner at the top of the page, wherever this section sits.
+    ("security", "safety", "Access",        "Who opens this panel, and who can call."),
     ("perms",    "safety", "Caller permissions", "The station actions a caller can trigger."),
     ("usage",    "safety", "Usage controls",     "Generous limits that stop runaway use."),
 
@@ -1024,9 +1030,16 @@ SCHEMA: dict[str, dict] = {
     "sound_hangup": dict(group="sounds", kind="text", label="Hang up",
         needs=("call_sounds", True), placeholder="default: the sound set above"),
     "sound_failed": dict(group="sounds", kind="text", label="Can't connect",
-        needs=("call_sounds", True), placeholder="default: the sound set above",
+        needs=("call_sounds", True),
+        placeholder="default: the sound set above",
         help="Engaged tone: the line is busy, the limit is reached, or the call "
              "couldn't connect."),
+    "sound_vm_beep": dict(group="sounds", kind="text", label="Voicemail beep",
+        placeholder="default: the classic tone",
+        help="The answering machine's beep. Unlike the sounds above it is "
+             "played by the server, so only an uploaded file applies — a "
+             "short mono 16-bit WAV, ideally 24 kHz. Anything it cannot "
+             "play falls back to the tone, never to silence."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
 }

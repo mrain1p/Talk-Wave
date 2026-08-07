@@ -309,13 +309,15 @@
   .rig { visibility: hidden; }
   .rig.on { visibility: visible; }
   /* The rows that hold their place AND stay visible between calls: the line
-     area (it carries the card's own messages), the meters (idle they show
-     the trough, which reads as a booth rather than as reserved emptiness),
-     and the action row (the Call button is the card's last row on every
-     surface). Only the call row — volume, mute, hang up — is
-     reserved-but-hidden, because those controls are meaningless off a call.
+     area (it carries the card's own messages), the meters band (idle the
+     bars show the trough, which reads as a booth rather than as reserved
+     emptiness — the volume in the middle of it is only meaningful on a call
+     and stays rig-gated), and the action row (the Call button is the card's
+     last row on every surface). The state and talk rows are reserved-but-
+     hidden, because their controls are meaningless off a call.
      Visibility is inherited but a child may declare its own. */
   .rig > .linebox, .rig > .meters, .rig > .actionrow { visibility: visible; }
+  .rig:not(.on) .meters .vol { visibility: hidden; }
   /* Hang up shares the action row but only exists mid-call; display, not
      visibility, because Call takes its place rather than leaving a gap. */
   .actionrow > [hidden] { display: none; }
@@ -427,14 +429,13 @@
   .meter.muted .mlabel { color: var(--coral); }
   .rig.on .meter.muted .bars i { background: var(--hairline); }
 
-  /* Volume and the call buttons share a row — at full card width they fit
-     side by side, which keeps the captions higher up the page. */
-  /* --- the call row: volume, mute and hang up, connection status --------- */
-  .callrow {
-    display: flex; align-items: center; gap: 9px;
-    padding: 9px 0; flex-wrap: wrap;
-  }
-  .vol { display: flex; align-items: center; gap: 10px; flex: 1 1 190px; min-width: 0; }
+  /* --- volume ------------------------------------------------------------
+     Lives INSIDE the meters band since 0.9.134 — you | vol | DJ. It had a
+     row of its own, and on an embed that row was ~41px of mostly air, which
+     was part of what stretched a real station page's player column. Bottom-
+     aligned so the rail sits level with the meter bars beside it. */
+  .meters .vol { align-self: flex-end; padding-bottom: 3px; }
+  .vol { display: flex; align-items: center; gap: 10px; flex: 1.3 1 130px; min-width: 0; }
   .vol label {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; color: var(--sage-dim); font-weight: 700;
@@ -940,6 +941,15 @@
      both remove it from the form in ways that have surprised people before —
      but it must not be clickable, focusable or visible, because clicking it
      would change the value without posting it. */
+  /* Moot rows: readable, visibly out of play, and not editable — a
+     voicemail-only line has no live Call button for these to configure.
+     Dashed, per the operator's ask, not hidden: hiding them would read as
+     the feature being gone rather than waiting. */
+  .row.moot, .check.moot { opacity: .4; }
+  .row.moot select, .row.moot input, .check.moot input {
+    pointer-events: none; text-decoration: line-through;
+  }
+
   .fieldonly {
     position: absolute; width: 1px; height: 1px; overflow: hidden;
     clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
@@ -1784,6 +1794,48 @@
   }
   body.compact #hangBtn { height: 44px; }
   body.compact .ticker .line { -webkit-line-clamp: 2; }
+  /* THE HEIGHT BUDGET. A real station page gives its player column 400px and
+     stretches its own marquee to match whatever this frame reports — every
+     pixel here reappeared on that page as blank space between the sleeve and
+     "Up next". The compact card owes the host a total (card + the host's own
+     caption row) under that 400, so every band gets a pinned height, cut to
+     what it shows. Pinned also means a call cannot change any of them: the
+     in-call controls appear INSIDE these fixed rows, never as new ones. */
+  body.compact .card { padding-bottom: 10px; }
+  body.compact .eyebrow { height: 30px; font-size: 10px; }
+  /* Two lines, at EVERY width: name + show inline on the first, the track
+     clamped to one on the second. The row's height must never depend on how
+     wide the host made the frame — at 300px the track used to wrap under
+     the meta block and hand the card 22px it then owed the host page. */
+  body.compact .who-row { padding: 6px 0; row-gap: 3px; }
+  body.compact .who-row .avatar { width: 30px; height: 30px; }
+  /* The tagline is the host page's own line on most embeds — the station
+     page already introduces the show in its own type one column over. */
+  body.compact .tagline { display: none; }
+  body.compact .dj { font-size: 14px; display: inline; margin: 0; }
+  body.compact .who-row .show { display: inline; margin-left: 7px; }
+  /* One line however long the show's name runs — an inline pair that wraps
+     hands the row back its width-dependence through the side door. On the
+     children too: the phone media block sets them back to `normal`, and an
+     inherited nowrap loses to that. */
+  body.compact .who-row .meta {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  body.compact .dj, body.compact .who-row .show { white-space: nowrap; }
+  body.compact .track {
+    flex: 1 1 100%; margin-top: 0; font-size: 10px;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
+    overflow: hidden;
+  }
+  body.compact .staterow { padding: 4px 0 0; min-height: 24px; }
+  body.compact .staterow .pill { height: 20px; padding: 0 8px; font-size: 9px; }
+  body.compact .meters { padding: 5px 0 0; }
+  body.compact .bars { height: 14px; }
+  body.compact .talkrow { padding: 5px 0 0; }
+  body.compact .card .pttbar { height: 31px; }
+  body.compact .pttbar .pttsub { display: none; }
+  body.compact .card .talkrow #spkBtn,
+  body.compact .card .talkrow #muteBtn { height: 31px; }
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.

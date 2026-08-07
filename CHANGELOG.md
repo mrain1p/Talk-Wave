@@ -3,6 +3,29 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.134
+
+- **The embed fits the page it sits on.** The compact card now runs a hard
+  height budget — 328px measured, against the 400px a station page's player
+  column reserves — so the blank band the frame used to open between the
+  sleeve and "Up next" is gone. Volume moved into the meters band (you ·
+  vol · DJ) instead of holding a row of its own, the identity block is two
+  fixed lines at every width, and every band is pinned: a call cannot change
+  the card's height by a pixel — its controls appear inside the same rows.
+- The panel's card preview sizes itself from the widget's own height report,
+  so the whole card is visible with no scrollbar on either surface tab.
+- On a voicemail-only line the Call-button and push-to-talk options show as
+  dashed rather than editable — there is no live button for them to shape.
+- **Access moved under Permissions & safety**, beside the permissions its
+  passwords and door codes guard.
+- **The voicemail ceiling really hangs up now.** The recording always stopped
+  at the limit, but the room stayed open — the caller sat on a dead line with
+  the timer counting. The machine closes the room like a live call ends, and
+  the card's timer counts against the machine's own clock ("/ 0:30"), not the
+  live call's.
+- **The beep is a call sound.** Upload a short WAV under Call sounds →
+  Voicemail beep; anything unplayable falls back to the classic tone.
+
 ## 0.9.133
 
 - Tests for 0.9.132's seams: the voicemail-only line's refusal, the fresh

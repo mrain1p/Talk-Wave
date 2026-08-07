@@ -1569,8 +1569,13 @@
   }
 
   // Elapsed against the hard limit, so a caller isn't surprised by the cutoff.
+  // A voicemail counts against ITS ceiling, not the live call's — the card
+  // showed "/ 10:00" on a 30-second machine, which read as the limit being
+  // ignored (and the room really did outlive it; the worker closes it now).
   function startTimer() {
-    const max = (live && live.limits && live.limits.maxCallSeconds) || 0;
+    const max = vmCall
+      ? ((live && live.limits && live.limits.voicemailMaxSeconds) || 0)
+      : ((live && live.limits && live.limits.maxCallSeconds) || 0);
     callStarted = Date.now();
     $('timeChip').hidden = false;
     $('timeMax').textContent = max ? '/ ' + fmt(max) : '';
