@@ -65,6 +65,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheWidgetActuallyParses,
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
+    TestThePaletteTravelsForTheCycle,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestATierIncludesTheOnesBelowIt,
@@ -168,6 +169,8 @@ from tests.test_voicemail import (  # noqa: F401
     TestEachPersonaCanHaveItsOwnLine,
     TestTheMachineHasATierDoor,
     TestTheStationAnswersWhenNobodyIsOnAir,
+    TestTheLineHasModes,
+    TestAFreshGreetingIsBudgeted,
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,

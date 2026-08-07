@@ -79,6 +79,23 @@ are often already taken by another session.
   `panel.js` + `panel-viewers.js`. `read_network_requests` shows this directly.
 - **`/live` is cached 30s server-side and the widget polls every 20s.** Stubbing `window.fetch`
   needs a ~21s wait per state you want to observe. There is no hook to force a repaint.
+- **The panel's per-DJ greeting list paints only when the Voicemail section is OPENED** — the
+  `toggle` listener is the load trigger. An empty `vmStatusList` on a freshly loaded page is
+  the lazy path working, not a regression; set the section's `details.open` and wait before
+  reading it. That mistake has already cost a diagnosis cycle.
+
+## Surfaces with a specific flow to drive
+
+- **The theme control cycles, not toggles**: light → dark → station colours (only when `/live`
+  carries `stationTheme.tokens` — the stub's fixture does) → match-the-page. Click through all
+  four and check `data-theme`, the inline `--` tokens, and `localStorage.callinTheme` at each
+  stop; the glyph shows the NEXT state, not the current one.
+- **Line modes**: `live_calls_enabled` off turns the Call button into the machine's; check the
+  card's button text against the `liveCalls` flag in `/live`, on both surfaces.
+- **The compact card must report its content height**, not the height it was handed: run the
+  `.measuring` read (`document.body.classList.add('measuring')`, measure, remove) and compare
+  against the un-measured height — if they match while the card fills a tall viewport, the
+  stretch-drop is broken and every embed will ratchet taller.
 
 ## After ANY edit to a web-widget .js file
 

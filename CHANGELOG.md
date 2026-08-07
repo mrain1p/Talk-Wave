@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.133
+
+- Tests for 0.9.132's seams: the voicemail-only line's refusal, the fresh
+  greeting's six-second budget and its fall-back to the staged clip, and the
+  station palette staying available to the viewer's theme cycle whatever
+  colours the operator chose. The verify skill records the flows to drive.
+
 ## 0.9.132
 
 ### The line has modes

@@ -1210,3 +1210,25 @@ class TestTheWidgetActuallyParses(unittest.TestCase):
                     0, proc.returncode,
                     f"{path.name} does not parse:\n{proc.stderr.strip()}",
                 )
+
+
+class TestThePaletteTravelsForTheCycle(unittest.TestCase):
+    """The theme control cycles light / dark / station colours / match the
+    page, and the station stop only exists when /live carries the palette.
+    It used to be resolved only when the OPERATOR chose station colours;
+    re-gating it that way would silently drop the viewer's third stop on
+    every deployment where the operator picked something else."""
+
+    def test_the_palette_is_not_gated_on_the_operators_choice(self):
+        live_py = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        i = live_py.index("station_palette(await station.themes())")
+        setup = live_py[:i].rsplit("palette = None", 1)[-1]
+        self.assertNotIn("widget_theme", setup,
+                         "palette resolution re-gated on the colour setting")
+
+    def test_the_widget_only_offers_the_stop_when_it_exists(self):
+        js = widget_js()["call.js"]
+        options = js[js.index("function themeOptions"):]
+        options = options[:options.index("\n  }")]
+        self.assertIn("stationTheme", options)
+        self.assertIn("tokens", options)

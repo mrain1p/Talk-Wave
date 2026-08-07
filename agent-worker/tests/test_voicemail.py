@@ -321,3 +321,67 @@ class TestTheStationAnswersWhenNobodyIsOnAir(_VmDirs):
         g.write_clip(g.STATION_ID, "k", "hi", "v", b"\x00\x00" * 240, 24000)
         self.assertEqual(g.clip_path(g.STATION_ID),
                          g.staged_clip("nobody-home"))
+
+
+class TestTheLineHasModes(unittest.TestCase):
+    """Take live calls and the voicemail switch together are the line's mode:
+    phone, phone with a machine, voicemail-only, or closed. The half that can
+    rot silently is the refusal — a hand-built client asking for a live call
+    on a voicemail-only line must get the same answer the widget shows."""
+
+    def test_a_voicemail_only_line_refuses_a_live_mint(self):
+        import inspect
+
+        from api import tokens
+
+        source = inspect.getsource(tokens.handle_token)
+        gate = source[source.index("live_calls_enabled") - 400:]
+        self.assertIn('voicemail_when', gate.split("live_calls_enabled")[0],
+                      "the two switches must be one gate — either alone "
+                      "refusing would strand the other's mode")
+        self.assertIn("taking messages tonight", gate)
+
+    def test_the_defaults_leave_upgrades_unchanged(self):
+        import settings as settings_store
+
+        self.assertTrue(settings_store.FIELDS["live_calls_enabled"][1])
+        self.assertEqual("staged",
+                         settings_store.FIELDS["voicemail_greeting_mode"][1])
+
+    def test_the_card_is_told_which_line_it_is(self):
+        from api.live import look_payload
+
+        self.assertFalse(
+            look_payload({"live_calls_enabled": False}, "X")["liveCalls"])
+        self.assertTrue(look_payload({}, "X")["liveCalls"])
+
+
+class TestAFreshGreetingIsBudgeted(unittest.TestCase):
+    """'Fresh each call' is a model line plus a TTS render at pickup — the
+    exact cost staging exists to avoid — so the caller of it owns a hard
+    clock, and anything short of success falls back to the staged clip."""
+
+    def test_the_fresh_branch_has_a_clock(self):
+        import inspect
+
+        from voicemail import capture
+
+        source = inspect.getsource(capture.answer)
+        branch = source[source.index("voicemail_greeting_mode"):]
+        self.assertIn("asyncio.wait_for", branch)
+        self.assertIn("_fresh_greeting", branch)
+        # The fallback order survives: a missed budget still reaches the
+        # staged clip, never straight to the beep.
+        self.assertIn("staged_clip", branch)
+        self.assertLess(branch.index("asyncio.wait_for"),
+                        branch.index("staged_clip"))
+
+    def test_a_strange_model_answer_falls_back_to_the_template(self):
+        import inspect
+
+        from voicemail import capture
+
+        source = inspect.getsource(capture._fresh_greeting)
+        self.assertIn("greeting_text_for", source,
+                      "the template must be the floor under the model line")
+        self.assertIn("8 <= len(line)", source)
