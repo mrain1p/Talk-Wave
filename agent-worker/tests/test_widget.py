@@ -1300,3 +1300,30 @@ class TestTheEmbedIsJustTheCard(unittest.TestCase):
     def test_the_overlay_offset_carries_no_dead_inset(self):
         self.assertIn("body.overlay-up { padding-top: var(--overlay-px, 0px); }",
                       self.css)
+
+
+class TestTheEffectHasADial(unittest.TestCase):
+    """voice_effect_level, 0-100: the effect at full character down to a
+    hint of radio. The caller's chain and the panel's Test with effect run
+    the same interpolation — a preview at a different intensity than the
+    call would be a lie."""
+
+    def test_the_level_travels_with_the_effect(self):
+        import settings as settings_store
+        from api.live import look_payload
+
+        self.assertEqual(100, settings_store.FIELDS["voice_effect_level"][1])
+        self.assertEqual(40, look_payload(
+            {"voice_effect": "cb", "voice_effect_level": 40},
+            "X")["voiceEffectLevel"])
+        # Out-of-range values are clamped, not trusted.
+        self.assertEqual(100, look_payload(
+            {"voice_effect_level": 400}, "X")["voiceEffectLevel"])
+
+    def test_both_ends_interpolate_the_same_way(self):
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        panel_js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        shared_maths = "lp + (16000 - spec.lp) * (1 - t)"
+        self.assertIn(shared_maths, call_js)
+        self.assertIn(shared_maths, panel_js)
+        self.assertIn("voiceEffectLevel", call_js)

@@ -230,6 +230,8 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
         "voiceEffect": str(cfg.get("voice_effect") or "none"),
+        "voiceEffectLevel": max(0, min(100,
+            int(cfg.get("voice_effect_level") or 100))),
         # In look_payload as well as /live: the panel's preview exists to
         # show what a setting does to the card, and this one can turn the
         # Call button into "Leave a message".

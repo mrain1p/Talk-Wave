@@ -305,6 +305,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # part of the DJ's character, and a DJ who is CB on the page and clean in
     # an embed is two characters.
     "voice_effect":       (None, "none"),
+    # How hard the effect leans in, 0-100. 100 is the effect as designed;
+    # lower opens the filters back toward the clean voice.
+    "voice_effect_level": (None, 100),
     # Shape, not visibility — so it is one answer for both surfaces rather
     # than a third column in a matrix of on/off switches. Round is the
     # default because a portrait in a circle reads as a person and a portrait
@@ -752,7 +755,14 @@ SCHEMA: dict[str, dict] = {
         help="A radio colour on the DJ's voice, applied in the caller's "
              "browser — the broadcast never hears it. On phones it plays "
              "through the default output, so the Speaker/earpiece button has "
-             "nothing to route while an effect is on."),
+             "nothing to route while an effect is on. Hear it with 'Test "
+             "with effect' below."),
+    "voice_effect_level": dict(group="voice", kind="number",
+        label="Effect intensity",
+        needs=("voice_effect", ["telephone", "cb", "walkie"]),
+        help="0–100. 100 is the effect at full character; lower settles it "
+             "toward the clean voice — 40 is a hint of radio rather than a "
+             "costume. Test with effect uses this number."),
     "show_dj_avatar": dict(group="player", kind="check", label="DJ photo",
         help="Served through this origin, so it still loads from an https page "
              "off your network."),

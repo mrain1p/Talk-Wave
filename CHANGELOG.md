@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.137
+
+- The voice effect gains an **intensity dial** (0–100): full character down
+  to a hint of radio. The caller's browser and the panel's **Test with
+  effect** button run the same maths, so what you preview is what callers
+  hear.
+
 ## 0.9.136
 
 - **A voicemail-only line has one door.** With the message button up, the
