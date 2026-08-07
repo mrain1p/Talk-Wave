@@ -86,26 +86,62 @@ def beep_pcm(sample_rate: int, freq: int = 1000, ms: int = 400,
     return bytes(out)
 
 
+# A beep that runs longer than this is a jingle holding the line hostage —
+# the caller is waiting to be told to speak.
+_BEEP_MAX_SECS = 8.0
+
+
+def _wav_as_mono16(path: Path, want_rate: int) -> bytes:
+    """Any ordinary PCM WAV, converted to what the line plays: mono, 16-bit,
+    `want_rate`. The first uploaded beep in the wild was a 44.1kHz file, and
+    rejecting it for its rate produced the worst kind of failure — the tone
+    played, nothing said why, and the setting looked ignored."""
+    with wave.open(str(path), "rb") as w:
+        ch, width, rate = w.getnchannels(), w.getsampwidth(), w.getframerate()
+        frames = w.readframes(min(w.getnframes(),
+                                  int(rate * _BEEP_MAX_SECS)))
+    if width == 2:
+        samples = list(struct.unpack("<%dh" % (len(frames) // 2), frames))
+    elif width == 1:                       # unsigned 8-bit
+        samples = [(b - 128) << 8 for b in frames]
+    elif width == 4:                       # 32-bit int PCM
+        samples = [v >> 16 for v in
+                   struct.unpack("<%di" % (len(frames) // 4), frames)]
+    else:
+        raise ValueError(f"{width * 8}-bit WAV is not PCM this can play")
+    if ch > 1:
+        samples = [sum(samples[i:i + ch]) // ch
+                   for i in range(0, len(samples) - ch + 1, ch)]
+    if rate != want_rate and samples:
+        # Linear resample: good enough for a beep, no dependencies.
+        n = int(len(samples) * want_rate / rate)
+        out = []
+        for i in range(n):
+            pos = i * (len(samples) - 1) / max(1, n - 1)
+            lo = int(pos)
+            hi = min(lo + 1, len(samples) - 1)
+            frac = pos - lo
+            out.append(int(samples[lo] * (1 - frac) + samples[hi] * frac))
+        samples = out
+    return struct.pack("<%dh" % len(samples),
+                       *[max(-32768, min(32767, s)) for s in samples])
+
+
 def custom_beep(cfg: dict, want_rate: int) -> bytes | None:
     """The operator's own beep, when they uploaded one and it can play.
 
     Server-side sound: the worker beeps into the room, so only an uploaded
-    file applies — there is no browser here to fetch a URL. Wrong rate or
-    shape fails soft to the synthesized tone, never to silence: the line is
-    open and a caller is waiting to be told to speak.
-    """
+    file applies — there is no browser here to fetch a URL. Anything wave
+    can't read (mp3 under a .wav name, compressed WAV) fails soft to the
+    synthesized tone, never to silence."""
     name = str(cfg.get("sound_vm_beep") or "")
     if not name.startswith("upload:"):
         return None
     try:
         from api.sounds import SOUNDS_DIR
 
-        pcm, rate = read_wav(SOUNDS_DIR / name[len("upload:"):])
-        if rate != want_rate:
-            log.warning("voicemail beep %s is %dHz but this line is %dHz — "
-                        "using the tone", name, rate, want_rate)
-            return None
-        return pcm
+        return _wav_as_mono16(SOUNDS_DIR / name[len("upload:"):],
+                              want_rate) or None
     except Exception as e:                                    # noqa: BLE001
         log.warning("voicemail beep %s unplayable (%s) — using the tone",
                     name, e)

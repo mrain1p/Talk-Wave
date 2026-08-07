@@ -1957,10 +1957,24 @@
       // the wrong row. Operator-reported as "not intuitive", correctly.
       row.insertBefore(up, field.nextSibling);
     });
+    // The default labels name the selected set, so they go stale the moment
+    // the operator picks the other one.
+    if ($('sound_pack') && !$('sound_pack').dataset.syncBound) {
+      $('sound_pack').dataset.syncBound = '1';
+      $('sound_pack').addEventListener('change', syncSoundPickers);
+    }
     syncSoundPickers();
   }
 
   function syncSoundPickers() {
+    // "Sound set default" answered the wrong question — the operator asked
+    // WHICH sound that is (Exchange? Handset?). Name the set that is
+    // actually selected, and for the beep — which no set carries; the
+    // default is synthesized by the server — say exactly that.
+    const packSel = $('sound_pack');
+    const packName = packSel && packSel.selectedIndex >= 0
+      ? packSel.options[packSel.selectedIndex].textContent.split('—')[0].trim()
+      : 'sound set';
     SOUND_SLOTS.forEach((slot) => {
       const field = $('sound_' + slot), pick = $('soundpick_' + slot);
       if (!field || !pick) return;
@@ -1971,7 +1985,9 @@
         o.value = v; o.textContent = label;
         pick.appendChild(o);
       };
-      add('', 'Sound set default');
+      add('', slot === 'vm_beep'
+        ? 'Classic tone — synthesized (default)'
+        : 'Default — the ' + packName + ' set’s ' + slot.replace('_', ' '));
       uploaded.forEach((n) => add(UPLOAD_PREFIX + n, 'Uploaded — ' + n));
       // A slot pointing at a file that was deleted must say so, not silently
       // show the default while the caller hears the fallback.
