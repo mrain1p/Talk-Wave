@@ -21,6 +21,10 @@
 > | 2 | Palette tuned to the host's own values | Light and dark are **neutral**. Station colour is a third theme the host posts in over `setCallinTheme()`, layered on the neutral base |
 > | 4.4 | Live states are coral; green is not in the palette | Green means the line is open, amber the DJ is thinking, coral the DJ is talking. Collapsing open and talking into one colour stopped the chip reporting the transition a caller waits on |
 > | — | `body.compact` is a smaller second design | There is no second design. The embed **is** the call page, minus the settings gear and defaulting to the ticker |
+> | 4.3 | Avatar: square, 44px | Round, 60px, and the shape is the operator's answer (`avatar_style`). The square rule is about controls and chips; the one photograph on the card is a person, and 44px is a favicon of a face |
+> | 4.5 | The connection line is its own line | It is not a line any more, it is the **line area** — the box at the foot of the card that carries speech while a call runs and the card's own messages the rest of the time. A message in the header while the words are at the bottom is two places to watch |
+> | 4.6 | A 3px trough and one fill | A 16-segment spectrum. A horizontal bar that grows is the shape of a download; what the meter has to say is "there is a voice here". The cost that got the spectrum removed the first time is paid by writing a segment only when its height actually changed |
+> | 5 | The transcript is the caption surface | Still true, and it is now **three lines**, not fourteen. During a call the card's subject is the last thing that was said; reading back the rest is a click on the drawer, which is the one thing allowed to change that height |
 >
 > Anything below that contradicts this box loses.
 

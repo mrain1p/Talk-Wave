@@ -467,6 +467,165 @@ class TestEachSurfaceIsAnsweredDeliberately(unittest.TestCase):
                               f"call.js never reads card.{key}")
 
 
+class TestTheServiceWorkerStaysOutOfTheWay(unittest.TestCase):
+    """A phone-in answered from a cache is not a phone-in.
+
+    sw.js is the one file here that can break the app without breaking the
+    page: it sits between the widget and the server and can go on doing so
+    long after anyone remembers installing it. A cached /live paints a DJ who
+    went off air hours ago; a cached /token mints nothing. So the list of
+    paths it refuses to touch is a contract, not a preference — it is checked
+    here because the widget has no runner of its own to check it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sw = (REPO / "web-widget" / "sw.js").read_text(encoding="utf-8")
+        cls.index = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+
+    def test_nothing_live_is_ever_cached(self):
+        # /live and /token are the two that would be actively wrong. /panel is
+        # here because the operator's surface is not part of the installed app
+        # and has no business in its cache.
+        for path in ("/live", "/token", "/call-ended", "/panel", "/settings"):
+            with self.subTest(path=path):
+                self.assertIn(
+                    f"'{path}'", self.sw,
+                    f"{path} is not in the worker's never-touch list — it "
+                    "would be answered from a cache")
+
+    def test_the_worker_only_installs_on_the_real_page(self):
+        # An embed on somebody else's site installing a worker for this origin
+        # is a surprise nobody asked for, and it outlives the frame.
+        self.assertIn("!framed", self.call_js.split("serviceWorker'")[1][:400])
+
+    def test_the_page_is_actually_installable(self):
+        # Each of these is individually load-bearing: no manifest and the
+        # browser never offers to install; no apple-touch-icon and iOS puts a
+        # screenshot on the home screen instead of the icon.
+        for needle in ('rel="manifest"', "apple-touch-icon",
+                       'name="theme-color"', "viewport-fit=cover"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, self.index)
+
+    def test_the_manifest_is_valid_json_and_points_at_real_icons(self):
+        import json
+
+        m = json.loads((REPO / "web-widget" / "manifest.webmanifest").read_text(
+            encoding="utf-8"))
+        self.assertEqual(m["start_url"], "/")
+        self.assertTrue(m["icons"], "a manifest with no icons is not installable")
+        for icon in m["icons"]:
+            with self.subTest(icon=icon["src"]):
+                self.assertTrue(
+                    (REPO / "web-widget" / icon["src"].lstrip("/")).is_file(),
+                    f"{icon['src']} is in the manifest but not in web-widget/")
+        # Maskable is the one that stops Android drawing a white ring around
+        # the icon, and it is easy to drop in a refactor because nothing
+        # visibly breaks on any other platform.
+        self.assertIn("maskable", [i.get("purpose") for i in m["icons"]])
+
+
+class TestThePreviewCannotDisagreeWithTheCard(unittest.TestCase):
+    """The panel's preview resolves the look through the same code a caller
+    does.
+
+    The alternative was the panel working out in JavaScript which corner
+    controls appear, which lines each surface paints and what the Call button
+    says — three rules that already exist in api/live.py. Two copies agree
+    until one of them changes, and a preview that is quietly wrong about the
+    thing you opened it to check is worse than no preview at all.
+    """
+
+    def test_live_and_the_preview_answer_from_one_function(self):
+        from api import live as api_live
+
+        cfg = dict(settings_store.load())
+        look = api_live.look_payload(cfg, "Francesca")
+        for key in ("controls", "embedControls", "card", "embedCard",
+                    "avatarStyle", "speakerDefault", "callLabel", "theme"):
+            with self.subTest(key=key):
+                self.assertIn(key, look)
+
+    def test_the_real_live_payload_is_built_from_it(self):
+        # Spread into the payload rather than restated. If someone ever
+        # re-inlines these keys, /live and the preview can drift apart again.
+        src = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        self.assertIn("**look_payload(cfg", src)
+
+    def test_a_patch_changes_the_answer_without_saving_anything(self):
+        from api import live as api_live
+
+        cfg = dict(settings_store.load())
+        cfg["avatar_style"] = "square"
+        self.assertEqual(api_live.look_payload(cfg)["avatarStyle"], "square")
+        # And the stored config is untouched — the handler copies before it
+        # updates, so a preview can never become a save by accident.
+        self.assertNotEqual(settings_store.load().get("avatar_style"), "square")
+
+    def test_the_preview_frame_is_inert(self):
+        # It is a real call card inside the settings page. Pressing Call in it
+        # would ring the actual DJ from inside the settings form.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("!room && !previewMode", call_js)
+
+    def test_a_preview_message_is_same_origin_only(self):
+        # It can change what the card OFFERS, unlike swtv:theme which is
+        # colour. A station page embedding the widget must never be able to
+        # send it.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        block = call_js.split("swtv:preview")[1][:400]
+        self.assertIn("e.origin !== location.origin", block)
+        self.assertIn("!previewMode", block)
+
+
+class TestTheCallerCanChooseWhichWayOut(unittest.TestCase):
+    """A live microphone puts the phone into its voice-call audio session,
+    which routes to the earpiece — so music playing out loud goes private the
+    moment the DJ answers. Wrong for a radio phone-in someone is listening to
+    in a car.
+
+    There is no one API for this and iOS Safari publishes none at all, so the
+    button is the half that always works. What is guarded here is that the
+    default is a setting, that it reaches the widget, and that the button is
+    hidden rather than dead where nothing can move the audio.
+    """
+
+    def test_the_default_reaches_the_widget(self):
+        from api import live as api_live
+
+        self.assertTrue(api_live.look_payload({"default_to_speaker": True})
+                        ["speakerDefault"])
+        self.assertFalse(api_live.look_payload({"default_to_speaker": False})
+                         ["speakerDefault"])
+
+    def test_loudspeaker_is_the_default(self):
+        # A phone-in is not a private call. Changing this changes what every
+        # existing deployment does on the next call, so it is pinned.
+        self.assertTrue(settings_store.FIELDS["default_to_speaker"][1])
+
+    def test_the_widget_reads_it(self):
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("d.speakerDefault !== false", call_js)
+
+    def test_the_button_is_hidden_where_nothing_can_move_the_audio(self):
+        # A control that provably cannot do anything is worse than no control:
+        # the caller presses it, nothing happens, and they conclude the call
+        # is broken rather than that their browser is old.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("b.hidden = !canRouteAudio()", call_js)
+
+    def test_wanting_the_loudspeaker_does_not_ask_for_play_and_record(self):
+        # The Audio Session spec says play-and-record is the type that may be
+        # routed to the receiver. Asking for it while wanting the speaker is
+        # the exact bug this whole thing exists to fix, and it reads as
+        # correct — it is the "I am on a call" type.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        block = call_js.split("navigator.audioSession.type =")[1][:120]
+        self.assertIn("'playback' : 'play-and-record'", block)
+
+
 class TestTheStatusChipDescribesTheCallNotTheSDK(unittest.TestCase):
     """What the chip says is for the caller, not for whoever is debugging.
 

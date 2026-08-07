@@ -8,6 +8,7 @@ tag that changes exactly when the file does.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import os
 import re
 from pathlib import Path
@@ -17,6 +18,12 @@ from aiohttp import web
 from version import APP_VERSION
 
 log = logging.getLogger("callin.token")
+
+# Not in the stdlib's table, and aiohttp's static handler answers with
+# application/octet-stream for anything it cannot name. A manifest served as
+# a binary download is not read as a manifest, so the page is silently not
+# installable — with a passing suite and nothing in the log.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 WIDGET_DIR = Path(
     os.environ.get("WIDGET_DIR", Path(__file__).parent.parent.parent / "web-widget")

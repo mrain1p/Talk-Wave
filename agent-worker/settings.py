@@ -267,6 +267,19 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "show_settings_gear": (None, True),
     "show_dj_avatar":     (None, True),
     "embed_dj_avatar":    (None, True),
+    # Shape, not visibility — so it is one answer for both surfaces rather
+    # than a third column in a matrix of on/off switches. Round is the
+    # default because a portrait in a circle reads as a person and a portrait
+    # in a square reads as a thumbnail, and this one is a person.
+    "avatar_style":       (None, "round"),
+    # Which way out the DJ's voice goes on a phone. A browser puts a call with
+    # a live microphone into the platform's voice-call audio session, and that
+    # session routes to the EARPIECE — so a caller who was listening on
+    # speaker, in a car or a kitchen, has to lift the phone to their head the
+    # moment the DJ picks up. This is a phone-in to a radio station, not a
+    # private call: loudspeaker is the right default. See routeAudio() in
+    # call.js for what each platform actually lets us do about it.
+    "default_to_speaker": (None, True),
     "show_dj_show":       (None, True),
     "embed_dj_show":      (None, True),
     "show_dj_tagline":    (None, True),
@@ -664,6 +677,19 @@ SCHEMA: dict[str, dict] = {
              "off your network."),
     "embed_dj_avatar": dict(group="player", kind="check", label="DJ photo (embed)",
         help="Off if the host page already shows the same photo."),
+    "default_to_speaker": dict(group="player", kind="check",
+        label="Start calls on loudspeaker",
+        help="A live microphone puts the phone into its voice-call audio mode, "
+             "which routes to the earpiece — so music playing out loud goes "
+             "quiet and private the moment the DJ answers, which is wrong in a "
+             "car. The caller can flip it either way mid-call with the Speaker "
+             "button. What the browser will actually allow varies: iOS Safari "
+             "publishes no audio-routing API at all, so there the button asks "
+             "and the platform decides."),
+    "avatar_style": dict(group="player", kind="select", label="DJ photo shape",
+        help="Applies wherever the photo is shown. Round suits a portrait and "
+             "is what the card was built around; square matches a host page "
+             "whose own artwork has corners."),
     "show_dj_show": dict(group="player", kind="check", label="Show name",
         help="The programme currently on air."),
     "embed_dj_show": dict(group="player", kind="check", label="Show name (embed)",
@@ -915,6 +941,10 @@ STATIC_CHOICES = {
         ("default", "“Call the DJ”"),
         ("name", "The live DJ's name — “Call Francesca”"),
         ("custom", "Something else…"),
+    ],
+    "avatar_style": [
+        ("round", "Round — a portrait"),
+        ("square", "Square — a thumbnail"),
     ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),

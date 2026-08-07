@@ -62,6 +62,10 @@ class TestExposedSurface(unittest.TestCase):
         "POST /hooks/station": "public",
         "POST /auth/guest": "public",          # verifying a code needs no code
         "POST /auth/password": "admin",
+        # Takes an arbitrary settings patch and says what it resolves to.
+        # Writes nothing — but it answers questions about the stored config
+        # to whoever asks, which is the operator's business alone.
+        "POST /live/preview": "admin",
         "GET /settings": "admin",
         "POST /settings": "admin",
         "GET /settings/options": "admin",

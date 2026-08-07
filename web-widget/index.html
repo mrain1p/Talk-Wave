@@ -2,8 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- viewport-fit=cover so the card can reach under a notch; style.css pays
+     that back with safe-area padding, or the Hang up row sits under the home
+     indicator on an installed iPhone. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Wave Talk</title>
+
+<!-- Installable. The point is not offline — a phone-in is useless offline —
+     it is that a caller gets a home-screen icon and a window with no browser
+     chrome in it, which is what a phone should look like. sw.js says what is
+     and is not cached, and it is deliberately very little.
+     Two theme-colors: the installed window's own furniture follows the same
+     light/dark the card does, rather than always being the dark one. -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#f6f5f3" media="(prefers-color-scheme: light)" />
+<link rel="icon" href="/favicon.png" sizes="32x32" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<!-- iOS reads neither the manifest's display mode nor its name. -->
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Wave Talk" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <!--
   The call surface, and only the call surface. Loads directly, or inside an
   <iframe> via embed.js.
@@ -41,18 +61,22 @@
 <body>
 <body>
   <div class="card">
-    <!-- The connection state lives in the header, beside ON AIR NOW, rather
-         than under the Call button: on a station page the button sits in a
-         row of the host's own buttons and a status line dangling below it
-         broke that row.
-
-         The corner controls sit IN this row rather than being absolutely
+    <!-- The corner controls sit IN this row rather than being absolutely
          positioned over it. Absolute meant each one owned a hardcoded `right`
          offset, a second set of offsets for the embed, and a padding reserve
          on the row to keep the status clear of them — three places to get
          wrong every time the backend changed which controls a caller is
-         offered. In the flow, hiding one just closes the gap. -->
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><div id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9681;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
+         offered. In the flow, hiding one just closes the gap.
+
+         The label spacer is what pins them right. They used to follow
+         #status, which carried the `margin-left:auto` — so on a live call,
+         where the status is hidden, nothing pushed them anywhere and the
+         three icons collected next to ON AIR NOW. The spacer eats the free
+         space whatever else is in the row.
+
+         The connection state is NOT in this row any more; it lives in the
+         line area at the bottom of the card. See there. -->
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9681;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -94,8 +118,6 @@
 
     <div class="michelp" id="micHelp" hidden></div>
 
-    <div class="ticker" id="ticker" hidden><span class="who"></span><span class="line"></span></div>
-
     <div class="rig" id="rig">
       <div class="meters">
         <div class="meter you" id="meterYou">
@@ -115,6 +137,7 @@
           <span class="pct" id="volPct">100%</span>
         </div>
         <div class="controls">
+          <button id="spkBtn" title="Loudspeaker or earpiece" aria-pressed="true">Speaker</button>
           <button id="muteBtn">Mute</button>
           <button id="hangBtn">Hang up</button>
         </div>
@@ -135,7 +158,26 @@
       </span>
     </div>
 
-    <div class="captions" id="captions"></div>
+    <!-- The line area. One box, one job: whatever this card has to say to the
+         caller right now. Three lines of speech while a call is running, and
+         between calls the connection state — "Not connected", "No answer",
+         "Call ended" — in the same place, because a message that appears in
+         the header while the words appear at the bottom is two places to
+         watch and the caller is already listening to a third.
+
+         Its height is RESERVED, not grown into: speech used to lengthen the
+         card, which made the widget report a taller frame, which moved the
+         host page under whoever was reading it. -->
+    <div class="linebox" id="lineBox">
+      <div class="captions" id="captions"></div>
+      <!-- The embed's caption surface: the latest line only. It lives in the
+           same box as the full transcript because it is the same thing said
+           more briefly, and an embed that reserved room for BOTH — a ticker
+           up by the meters and a message box down here — spent two bands
+           saying nothing. -->
+      <div class="ticker" id="ticker" hidden><span class="who"></span><span class="line"></span></div>
+      <p id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></p>
+    </div>
   </div>
 
 <script src="/shared.js"></script>

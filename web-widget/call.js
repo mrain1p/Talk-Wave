@@ -114,6 +114,24 @@
     const msg = e.data;
     if (!msg) return;
 
+    // The settings panel, showing the operator what their unsaved changes
+    // would look like. Two gates, and both are required: the frame has to
+    // have been opened as a preview (?preview=1), and the message has to
+    // come from THIS origin. A station page that embeds the widget is
+    // another origin and can never send this — it gets swtv:theme, which is
+    // colour only. This one can change what the card offers, so it is for
+    // the operator's own page and nothing else.
+    //
+    // The payload is resolved server-side by /live/preview, so the rules for
+    // which control appears and what the Call button says exist once, in
+    // api/live.py, rather than once there and once here.
+    if (msg.type === 'swtv:preview') {
+      if (!previewMode || e.origin !== location.origin) return;
+      preview = msg.live || null;
+      paintLive(Object.assign({}, live || {}, preview || {}), true);
+      return;
+    }
+
     // The host answering our request for room to open the ask list in. It is
     // the authority on both the amount and the direction: it can see the
     // page, and we cannot see past our own frame.
@@ -255,6 +273,17 @@
   let room = null, muted = false, live = null;
   let djEl = null, rafId = null, streamEl = null;
 
+  // `live` is what the server last said. `shown` is what is on the card,
+  // which is `live` with the settings panel's unsaved preview laid over it —
+  // the same object in every case except inside the panel's preview frame.
+  let shown = null, preview = null;
+
+  // This copy of the card is a picture of a card, inside the settings page.
+  // It paints exactly like the real one and does nothing else: pressing Call
+  // in a preview would ring the actual DJ from inside the settings form, and
+  // the gear would open the panel inside the panel.
+  const previewMode = params.get('preview') === '1';
+
   // Tune the caller into the station for the duration of the call. The station
   // refuses song requests when nobody is listening, and a caller on the phone
   // isn't pulling the stream — so without this, the people most likely to
@@ -315,6 +344,87 @@
     streamEl = null;
   }
 
+  // ------------------------------------------------------- which way out
+  // A browser with a live microphone hands the call to the platform's
+  // voice-call audio session, and that session routes to the EARPIECE. On a
+  // desktop nobody notices. On a phone it means music that was playing out
+  // loud goes quiet and private the instant the DJ picks up — which is the
+  // right behaviour for a phone call and the wrong one for a radio phone-in
+  // you are listening to in a car.
+  //
+  // There is no one API for this, so this tries what each platform has, in
+  // order, and reports honestly whether anything took:
+  //
+  //   navigator.audioSession  the only standardised lever (Audio Session API,
+  //                           Safari-only so far). `play-and-record` is
+  //                           specified as the one that may route to the
+  //                           receiver rather than the speaker, so wanting the
+  //                           loudspeaker means NOT asking for it.
+  //   setSinkId               real device selection, where it exists — Chrome
+  //                           and Firefox. Not implemented in iOS Safari,
+  //                           which is exactly the platform that needs it.
+  //
+  // Neither is guaranteed. iOS Safari publishes nothing that forces the
+  // route, so on an iPhone this is a request, not a command — which is why
+  // there is a button rather than only a setting: the caller can always ask
+  // again, and on the platforms with no API their own Control Centre or the
+  // handset's speaker key is the fallback that always works.
+  let onSpeaker = true;
+
+  function audioSessionSupported() {
+    return !!(navigator.audioSession && 'type' in navigator.audioSession);
+  }
+
+  async function routeAudio(toSpeaker) {
+    onSpeaker = !!toSpeaker;
+    let moved = false;
+
+    if (audioSessionSupported()) {
+      try {
+        // "playback" is the speaker-facing type; "play-and-record" is the one
+        // the spec says may be routed to the receiver. The mic keeps
+        // capturing either way — the type is a hint about what the page is
+        // doing, not a capture permission.
+        navigator.audioSession.type = onSpeaker ? 'playback' : 'play-and-record';
+        moved = true;
+      } catch (e) { /* the platform kept its own answer */ }
+    }
+
+    // Only worth asking when the caller wants the loudspeaker: the default
+    // output IS the speaker on every platform that implements this, and
+    // there is no "earpiece" device id to switch back to.
+    if (onSpeaker && djEl && typeof djEl.setSinkId === 'function') {
+      try { await djEl.setSinkId(''); moved = true; } catch (e) { /* no */ }
+    }
+
+    paintSpeakerBtn();
+    return moved;
+  }
+
+  // Offered only where there is a lever to pull. A button that provably
+  // cannot move the audio anywhere is worse than no button: the caller
+  // presses it, nothing happens, and they conclude the call is broken rather
+  // than that their browser is old.
+  function canRouteAudio() {
+    return audioSessionSupported()
+      || (window.HTMLMediaElement
+          && typeof HTMLMediaElement.prototype.setSinkId === 'function');
+  }
+
+  function paintSpeakerBtn() {
+    const b = $('spkBtn');
+    if (!b) return;
+    b.hidden = !canRouteAudio();
+    b.textContent = onSpeaker ? 'Speaker' : 'Phone';
+    b.setAttribute('aria-pressed', onSpeaker ? 'true' : 'false');
+    // Coloured for the EARPIECE, not the speaker. Loudspeaker is the normal
+    // state here and normal states are not warnings; the earpiece is the one
+    // worth noticing, because it is the one where a caller who put the phone
+    // down can no longer hear the DJ.
+    b.classList.toggle('on', !onSpeaker);
+  }
+  paintSpeakerBtn();
+
   function setStatus(text, state) {
     statusText.textContent = text;
     dot.className = 'dot' + (state ? ' ' + state : '');
@@ -325,7 +435,7 @@
   // which wins belongs in one place rather than in each of the four spots
   // here that put the button back to its resting state.
   function callLabel() {
-    return (live && live.callLabel) || 'Call the DJ';
+    return (shown && shown.callLabel) || 'Call the DJ';
   }
 
   // ------------------------------------------------------- embed height
@@ -444,9 +554,32 @@
       const d = await r.json();
       const first = !live;
       live = d;
+      paintLive(preview ? Object.assign({}, d, preview) : d, first);
+    } catch (e) {
+      live = live || {};
+      // The controls still have to appear. An unreachable station is the case
+      // where the operator most needs the gear, and driving the corner
+      // controls off /live means a failed /live would otherwise leave the
+      // card with no way into settings at all.
+      applyControls(null);
+      paintOffAir('offline');
+      setStatus('Station unreachable', 'error');
+    }
+  }
+
+  function paintLive(d, first) {
+    try {
+      // What is actually on screen, which is `live` plus any preview overlay
+      // on top of it. Everything that asks "what does the card say right now"
+      // has to read THIS, not `live` — in the panel's preview those two
+      // deliberately differ, and reading the wrong one is how a preview ends
+      // up half-applied.
+      shown = d;
       // Operator choices that shape the card itself, applied once — /live is
       // polled, and re-running these every few seconds would fight the
       // viewer's own theme toggle and rebuild the popup under their finger.
+      // A preview repaint passes first=true deliberately: changing those
+      // choices IS what it is for.
       if (first) {
         applyConfiguredTheme(d.theme, d.stationTheme);
         setupAskPopup(d.canAsk);
@@ -476,6 +609,19 @@
       $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
       $('npTrack').textContent =
         (parts.track === false || !d.track) ? '' : '♪ ' + d.track;
+
+      // Shape is one answer for both surfaces — an embed and the page show
+      // the same photograph, and nobody has ever wanted it round in one and
+      // square in the other. Re-read on every poll rather than once, because
+      // it costs an attribute write and it means changing it in the panel
+      // shows up on the card within the poll instead of on reload.
+      document.querySelector('.card').dataset.avatar =
+        d.avatarStyle === 'square' ? 'square' : 'round';
+
+      // Which way out the next call starts. Never mid-call: the caller may
+      // have pressed the button themselves, and a poll landing 20 seconds
+      // later has no business overruling them.
+      if (!room) { onSpeaker = d.speakerDefault !== false; paintSpeakerBtn(); }
 
       const img = $('djAvatar');
       if (parts.avatar === false) { img.classList.add('hidden'); }
@@ -520,14 +666,10 @@
         }
       }
     } catch (e) {
-      live = live || {};
-      // The controls still have to appear. An unreachable station is the case
-      // where the operator most needs the gear, and driving the corner
-      // controls off /live means a failed /live would otherwise leave the
-      // card with no way into settings at all.
-      applyControls(null);
-      paintOffAir('offline');
-      setStatus('Station unreachable', 'error');
+      // A repaint that throws must not take the poll down with it — the next
+      // one would never be scheduled and the card would be frozen on
+      // whatever it was showing.
+      console.warn('Wave Talk: could not paint the card —', e);
     }
   }
 
@@ -573,13 +715,19 @@
   }
 
   // ------------------------------------------------------------ level meters
-  // One trough, one fill (HOST-STYLE-GUIDE §4.6). This was fourteen <i>
-  // elements whose heights were rewritten every animation frame — twenty-eight
-  // style writes per frame across both meters, and at rest it read as a row of
-  // dashes rather than as a level. Now it is one width per meter per frame.
+  // A spectrum, not a progress bar. §4.6 had this as one trough and one fill,
+  // which is cheaper and honest about level — but a horizontal bar that grows
+  // is the shape of a download, and what this has to say is "there is a voice
+  // here". The segmented meter says it at a glance.
+  //
+  // The reason it was collapsed in the first place was cost: a height written
+  // per segment per meter per animation frame. paintMeter writes one only when
+  // the rounded value actually changed, which in practice is a handful of the
+  // sixteen on any given frame.
+  const SEGMENTS = 16;
   function buildBars(host) {
     host.innerHTML = '';
-    host.appendChild(document.createElement('i'));
+    for (let i = 0; i < SEGMENTS; i++) host.appendChild(document.createElement('i'));
   }
   buildBars($('barsYou')); buildBars($('barsDj'));
 
@@ -598,32 +746,62 @@
   let anYou = null, anDj = null;
   const bufYou = new Uint8Array(128), bufDj = new Uint8Array(128);
 
-  function level(an, buf) {
-    if (!an) return 0;
-    an.getByteFrequencyData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) sum += buf[i];
-    return Math.min(1, (sum / buf.length) / 96);
-  }
+  // The floor a silent segment sits at, as a percentage of the meter's
+  // height. Not zero: the meter's own shape has to be visible before anyone
+  // speaks, or the row looks broken until it isn't. It reads as silence
+  // rather than as quiet because off-call the segments are the trough colour
+  // — that is a CSS rule keyed on .rig.on, not something painted here.
+  const FLOOR = 12;
 
-  function paintBars(host, lvl, active) {
-    const fill = host.firstElementChild;
-    if (!fill) return;
-    // Idle sits at zero rather than at a token 12%: an empty trough is an
-    // honest "nothing is coming through", and the old floor made a dead mic
-    // look the same as a quiet one.
-    const w = active ? Math.max(0, Math.min(1, lvl * 1.35)) : 0;
-    fill.style.width = (w * 100) + '%';
+  // Only the bottom half of the FFT is worth looking at: speech has next to
+  // nothing above ~8kHz, and mapping the whole range put six dead segments on
+  // the right of every meter.
+  const BAND_TOP = 64;
+
+  // Returns the overall level, 0..1, and paints the segments as a side
+  // effect. One pass over the buffer for both — the caller needs the level
+  // for the avatar glow and the bands for the meter, and reading the analyser
+  // twice per frame is how they used to disagree.
+  function paintMeter(host, an, buf, active) {
+    const kids = host.children;
+    if (!an || !active) {
+      for (let i = 0; i < kids.length; i++) {
+        if (kids[i].style.height !== FLOOR + '%') kids[i].style.height = FLOOR + '%';
+      }
+      return 0;
+    }
+    an.getByteFrequencyData(buf);
+    const per = BAND_TOP / SEGMENTS;
+    let total = 0;
+    for (let s = 0; s < SEGMENTS; s++) {
+      let sum = 0;
+      const from = Math.floor(s * per), to = Math.floor((s + 1) * per);
+      for (let i = from; i < to; i++) sum += buf[i];
+      const band = (sum / Math.max(1, to - from)) / 255;
+      total += band;
+      // Rounded to whole percent before it is compared: the analyser jitters
+      // in the third decimal even in silence, and without this every segment
+      // is a style write on every frame — which is the cost that got the
+      // spectrum removed the first time.
+      const h = Math.round(FLOOR + Math.min(1, band * 2.6) * (100 - FLOOR));
+      const px = h + '%';
+      if (kids[s].style.height !== px) kids[s].style.height = px;
+    }
+    return Math.min(1, (total / SEGMENTS) * 2.6);
   }
 
   function tick() {
-    const you = muted ? 0 : level(anYou, bufYou);
-    const dj  = level(anDj, bufDj);
-    paintBars($('barsYou'), you, !muted);
-    paintBars($('barsDj'), dj, true);
+    paintMeter($('barsYou'), anYou, bufYou, !muted);
+    const dj = paintMeter($('barsDj'), anDj, bufDj, true);
     $('djAvatar').classList.toggle('talking', dj > 0.06);
     rafId = requestAnimationFrame(tick);
   }
+
+  function clearMeters() {
+    paintMeter($('barsYou'), null, null, false);
+    paintMeter($('barsDj'), null, null, false);
+  }
+  clearMeters();
 
   // ------------------------------------------------------------- agent state
   const STATE_TEXT = {
@@ -771,8 +949,6 @@
       return;
     }
     capBox.classList.add('on');
-    const empty = capBox.querySelector('.capempty');
-    if (empty) empty.remove();
     let node = capNodes.get(id);
 
     // A turn can arrive as an interim stream and then a final one, each with
@@ -820,8 +996,6 @@
       return;
     }
     capBox.classList.add('on');
-    const empty = capBox.querySelector('.capempty');
-    if (empty) empty.remove();
 
     const node = document.createElement('p');
     node.className = 'cap sys';
@@ -907,9 +1081,15 @@
     $('endedBar').hidden = true;
     $('rateBar').hidden = true;      // last call's verdict, not this one's
     capNodes.clear();
+    $('lineBox').classList.remove('open');
     if (captionsMode === 'full') {
-      capBox.classList.add('on');
-      capBox.innerHTML = '<p class="capempty">Captions will appear here as you talk…</p>';
+      // Emptied and left OFF. The box does not go blank while it waits — the
+      // status line underneath it is showing "Connecting…", which is both
+      // truer and in the place the caller is already looking. It used to say
+      // "Captions will appear here as you talk…" in one box while the header
+      // said something about the connection in another.
+      capBox.innerHTML = '';
+      capBox.classList.remove('on');
     } else if (captionsMode === 'ticker') {
       // Claim the ticker's reserved two lines NOW, empty, so the frame
       // settles once at the start of the call instead of jumping when the
@@ -980,7 +1160,15 @@
         callBtn.textContent = 'Answering…';
         djEl = track.attach();
         djEl.volume = Math.min(1, getVolume() / 100);
+        // Without playsinline, iOS takes an audio element it considers
+        // "media" full-screen-ish and applies its own routing on top of
+        // whatever we asked for.
+        djEl.setAttribute('playsinline', '');
         djEl.play?.();
+        // The DJ's element only exists from here, so this is the first moment
+        // setSinkId has anything to act on. Fire and forget: a platform that
+        // refuses is not a reason to interrupt a call that is otherwise up.
+        routeAudio(onSpeaker);
         anDj = analyserFor(track.mediaStreamTrack);
         setStatus('Connected — go ahead, talk', 'connected');
       });
@@ -1145,7 +1333,7 @@
     anYou = anDj = null; djEl = null;
     djOnAir = false; djHasSpoken = false;
     document.querySelector('.card').classList.remove('onair');
-    paintBars($('barsYou'), 0, false); paintBars($('barsDj'), 0, false);
+    clearMeters();
     $('djAvatar').classList.remove('talking');
     $('rig').classList.remove('on');
     $('stateChip').hidden = true;
@@ -1170,12 +1358,17 @@
   function collapseTranscript() {
     const lines = capBox.querySelectorAll('.cap').length;
     const bar = $('endedBar');
-    if (!lines) { capBox.classList.remove('on'); bar.hidden = true; return; }
+    $('lineBox').classList.remove('open');
     capBox.classList.remove('on');
+    if (!lines) { bar.hidden = true; return; }
     bar.hidden = false;
     bar.classList.remove('open');
     const t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    bar.innerHTML = '<span class="chev">▶</span><span>Call ended · ' + lines
+    // "Transcript", not "Call ended". The line area below is already saying
+    // the call ended, in a sentence, and a drawer that repeats it is a second
+    // announcement of the same fact — which is what made the two of them read
+    // as an error message.
+    bar.innerHTML = '<span class="chev">▶</span><span>Transcript · ' + lines
       + ' line' + (lines === 1 ? '' : 's') + '</span><span class="when">' + t + '</span>';
     notifyHeight();
   }
@@ -1219,11 +1412,18 @@
     const open = !capBox.classList.contains('on');
     capBox.classList.toggle('on', open);
     bar.classList.toggle('open', open);
+    // The line area is three lines while a call is running and nothing is
+    // allowed to change that. Reading back a FINISHED call is the one
+    // exception, because it is a deliberate click by someone who wants the
+    // room — and by then there is no call for the resize to interrupt.
+    $('lineBox').classList.toggle('open', open);
     notifyHeight();
   };
 
-  callBtn.onclick = () => { if (!room) startCall(); };
+  callBtn.onclick = () => { if (!room && !previewMode) startCall(); };
   hangBtn.onclick = () => endCall(false);
+  $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };
+
   muteBtn.onclick = async () => {
     if (!room) return;
     muted = !muted;
@@ -1234,6 +1434,20 @@
     $('youLabel').textContent = muted ? 'You — muted' : 'You';
   };
 
+  // ------------------------------------------------------------ installable
+  // Only on the standalone page, and only over TLS. An embed installing a
+  // service worker for this origin from inside a frame on somebody else's
+  // site is a surprise nobody asked for, and the worker would go on serving
+  // that origin long after the frame was gone. A failed registration is not
+  // worth telling a caller about — the page works exactly as before without
+  // one — so it is logged and dropped.
+  if ('serviceWorker' in navigator && !framed && window.isSecureContext) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(
+        (e) => console.info('Wave Talk: no service worker —', e.message));
+    });
+  }
+
   refreshLive();
   setInterval(() => { if (!room) refreshLive(); }, 20000);
 
@@ -1242,6 +1456,8 @@
   // to reach back here to repaint the card, because the poll above picks the
   // change up within twenty seconds on its own.
   const gear = $('gearBtn');
-  if (gear) gear.onclick = () => { location.href = '/panel'; };
+  // Inert in a preview: the frame is already inside the panel, and following
+  // the link would load the settings page into a corner of the settings page.
+  if (gear) gear.onclick = () => { if (!previewMode) location.href = '/panel'; };
 })();
 

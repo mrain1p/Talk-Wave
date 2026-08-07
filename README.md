@@ -114,7 +114,7 @@ cross-origin writes refused. See [Security](#security).
 | `livekit-server` | WebRTC media — one room per call |
 | `agent-worker` | Resolves the persona, builds the prompt, runs STT → LLM → TTS with MCP tools attached |
 | `token-server` | Mints join tokens (the browser never sees LiveKit secrets), serves widget and panel, proxies station reads |
-| `web-widget` | The call page — full page with settings, or a compact embeddable card |
+| `web-widget` | The call page — installable to a phone's home screen, or a compact embeddable card |
 
 Inside the worker, one call is one `CallSession` and every file under
 `agent-worker/call/` is named after its job: the session and its lifecycle, the

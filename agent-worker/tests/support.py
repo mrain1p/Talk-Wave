@@ -65,7 +65,7 @@ class _FakeRequest:
         self.remote = ip
 
 
-def widget_js(exclude=("embed.js",)) -> dict:
+def widget_js(exclude=("embed.js", "sw.js")) -> dict:
     """Every JS file the widget's own pages load, by filename.
 
     Discovered rather than listed, because the contract tests below used to
@@ -73,8 +73,13 @@ def widget_js(exclude=("embed.js",)) -> dict:
     call.js and panel.js. A named file silently stops covering the code that
     moved out of it; a glob picks the new one up the moment it lands.
 
-    embed.js is excluded by default: it is the third-party drop-in, it fetches
-    nothing and it reaches for no id in this repo's markup.
+    Two are excluded, and both for the same reason — no page loads them with a
+    `<script src>`, so the per-page contract checks have nothing to check them
+    against. embed.js is the third-party drop-in, running on somebody else's
+    page against markup that is not in this repo. sw.js is the service worker,
+    fetched by `navigator.serviceWorker.register()` rather than by a script
+    tag; it has no DOM at all, and its own contract (which paths it must never
+    answer for) is guarded by TestTheServiceWorkerStaysOutOfTheWay.
     """
     d = REPO / "web-widget"
     return {p.name: p.read_text(encoding="utf-8")

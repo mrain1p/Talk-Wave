@@ -16,7 +16,7 @@ import admin_auth
 import settings as settings_store
 import station as station_mod
 import tune_in
-from api.auth import caller_tier
+from api.auth import _write_allowed, caller_tier
 from api.env import LIVEKIT_PUBLIC_URL
 from api.live_cache import _LIVE_TTL, _live_cache
 from api.sounds import _resolved_sound
@@ -193,6 +193,64 @@ def call_button_label(cfg: dict, persona_name: str = "") -> str:
     return "Call the DJ"
 
 
+def look_payload(cfg: dict, persona_name: str = "") -> dict:
+    """Everything about the card that is a LOOK rather than a fact.
+
+    Split out so the settings panel's live preview and a real caller's /live
+    resolve it through the same code. The panel previews unsaved settings, and
+    the alternative was the panel reimplementing corner_controls,
+    card_identity and call_button_label in JavaScript — three rules that
+    already exist here, in a file whose whole job is being the one place they
+    exist. A preview that disagrees with the card is worse than no preview:
+    it is confidently wrong about the thing you opened it to check.
+
+    Nothing here reads the station. It is settings in, appearance out.
+    """
+    return {
+        "theme": str(cfg.get("widget_theme") or "auto"),
+        "controls": corner_controls(cfg),
+        "embedControls": corner_controls(cfg, embed=True),
+        "card": card_identity(cfg),
+        "embedCard": card_identity(cfg, embed=True),
+        "avatarStyle": (
+            "square" if str(cfg.get("avatar_style")) == "square" else "round"
+        ),
+        "speakerDefault": bool(cfg.get("default_to_speaker")),
+        "callLabel": call_button_label(cfg, persona_name),
+        "askFeedback": bool(cfg.get("ask_call_feedback")),
+    }
+
+
+async def handle_live_preview(request: web.Request) -> web.Response:
+    """What the card would look like with these settings, without saving them.
+
+    Admin only, and deliberately so: it takes an arbitrary settings patch and
+    tells you what it resolves to. Nothing is written and no cache is stalled
+    — the values are merged over the stored config in memory and thrown away.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
+    try:
+        patch = await request.json()
+    except Exception:
+        return _cors(request, web.json_response({"error": "invalid JSON"}, status=400))
+    if not isinstance(patch, dict):
+        return _cors(request, web.json_response(
+            {"error": "expected an object"}, status=400))
+
+    cfg = dict(settings_store.load())
+    # Only keys the settings store actually knows. An unknown key here would
+    # be quietly previewed and then quietly dropped by save(), which is a
+    # preview of something that can never be saved.
+    cfg.update({k: v for k, v in patch.items() if k in settings_store.FIELDS})
+    return _cors(request, web.json_response(
+        look_payload(cfg, str(patch.get("_personaName") or ""))))
+
+
 def _for_this_caller(request: web.Request, payload: dict) -> dict:
     """The one part of /live that cannot be shared between callers.
 
@@ -300,28 +358,24 @@ async def handle_live(request: web.Request) -> web.Response:
                         "tuneIn": bool(cfg.get("tune_in_on_call")),
                         "volume": int(cfg.get("tune_in_volume") or 0),
                     },
-                    # How the card is coloured. An embed's own data-theme
-                    # attribute still wins — the host page knows more about
-                    # itself than this setting does.
-                    "theme": str(cfg.get("widget_theme") or "auto"),
+                    # Everything that is a look rather than a fact — the theme,
+                    # the corner controls, which lines of the who's-on-air
+                    # block each surface paints, the photo's shape, the Call
+                    # button's label. All of it via look_payload, because the
+                    # panel's live preview resolves the very same settings
+                    # through the very same function; a preview that disagrees
+                    # with the card is worse than no preview.
+                    #
+                    # Both surfaces' answers go out because /live is cached
+                    # across every caller and cannot know which one is asking;
+                    # the widget picks by whether it is in a frame.
+                    **look_payload(cfg, persona.get("name")),
                     # The on-air show's own palette, already translated into
                     # this widget's token names, when "the station's own
                     # colours" is the choice. Null every other time, including
-                    # when the station could not be asked.
+                    # when the station could not be asked. Not in look_payload:
+                    # it comes from the STATION, not from settings.
                     "stationTheme": palette,
-                    # Which controls the card puts in its top-right corner,
-                    # and which lines of the who's-on-air block it paints.
-                    # Both surfaces are sent because /live is cached across
-                    # every caller and cannot know which one is asking; the
-                    # widget picks by whether it is in a frame.
-                    "controls": corner_controls(cfg),
-                    "embedControls": corner_controls(cfg, embed=True),
-                    "card": card_identity(cfg),
-                    "embedCard": card_identity(cfg, embed=True),
-                    "callLabel": call_button_label(cfg, persona.get("name")),
-                    # Whether to ask the caller how it went once the line
-                    # drops. See api/tokens.handle_call_feedback.
-                    "askFeedback": bool(cfg.get("ask_call_feedback")),
                     # What a caller may actually ask for. Sent only when the
                     # operator has switched the help button on, and only as
                     # the permissions themselves — the wording lives in the

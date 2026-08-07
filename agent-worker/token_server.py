@@ -41,7 +41,12 @@ from api.hooks import (
     keep_station_warm,
 )
 from api.auth import handle_guest_login, handle_set_password
-from api.live import handle_avatar, handle_health, handle_live
+from api.live import (
+    handle_avatar,
+    handle_health,
+    handle_live,
+    handle_live_preview,
+)
 from api.settings import (
     handle_get_settings,
     handle_post_secrets,
@@ -89,6 +94,11 @@ def build_app() -> web.Application:
     app.router.add_options("/token", handle_options)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/live", handle_live)
+    # What the card WOULD look like with these settings. Admin only, writes
+    # nothing — it exists so the panel's preview resolves the look through the
+    # same code a real caller does instead of reimplementing it in JS.
+    app.router.add_post("/live/preview", handle_live_preview)
+    app.router.add_options("/live/preview", handle_options)
     app.router.add_get("/settings", handle_get_settings)
     app.router.add_post("/settings", handle_post_settings)
     app.router.add_options("/settings", handle_options)

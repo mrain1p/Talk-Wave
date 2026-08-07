@@ -56,6 +56,14 @@
     --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
                  sans-serif;
     --control-h: 31px; --band-gap: 12px;
+    /* The action row — Call, the state chip, the timer — is a status ribbon
+       you read, not a row of things you press three of. At full control
+       height it was the tallest band on a card whose actual subject is the
+       conversation below it. */
+    --action-h: 26px;
+    /* Three lines of 12.5px/1.45 speech, plus the box's own 10px padding and
+       its border. Reserved from first paint — see .linebox. */
+    --lines-h: 76px;
 
     /* Legacy aliases — settings panel only. */
     --bg: var(--pine); --panel: var(--granite);
@@ -144,9 +152,12 @@
     height: 38px; margin: 0;
     display: flex; align-items: center; gap: 8px;
   }
-  /* The connection state rides the right end of the header band, and the
-     corner controls follow it. */
-  .eyebrow #status { margin-left: auto; }
+  /* The corner controls are pinned right by a spacer that eats the free
+     space, NOT by a margin on whatever happens to precede them. It was
+     `margin-left:auto` on #status — which is hidden during a call — so the
+     moment a call connected the three icons slid left and sat against
+     ON AIR NOW. A spacer is in the row whatever else is. */
+  .eyebrow .spacer { flex: 1 1 auto; }
   .corner { display: flex; align-items: center; margin-left: 10px; }
   .eyebrow .pip {
     width: 7px; height: 7px; border-radius: 0; background: var(--coral);
@@ -160,12 +171,20 @@
   .eyebrow.off { color: var(--sage-dim); }
   .eyebrow.off .pip { background: var(--sage-dim); animation: none; }
 
-  /* Square, hairline-framed, 44px (§4.3). */
+  /* 60px, and round unless the operator asked for square (`avatar_style`).
+     §4.3 said square at 44px, on the reasoning that every other corner in
+     the card is square. It was the wrong call for this one element: 44px is
+     a favicon of a face, and the shape rule is about controls and chips —
+     the one photograph on the card is a person, not a control. Shape is the
+     operator's answer now because a host page whose own artwork has corners
+     has a real case for square; the size is not, because too small was
+     nobody's intention. */
   .avatar {
-    width: 44px; height: 44px; border-radius: 0; object-fit: cover; flex: 0 0 auto;
+    width: 60px; height: 60px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
     border: 1px solid var(--hairline); background: var(--granite-hi); display: block;
     transition: border-color .25s ease, box-shadow .25s ease;
   }
+  .card[data-avatar="square"] .avatar { border-radius: 0; }
   .avatar.hidden { display: none; }
   /* The one permitted glow: the DJ is speaking. Derived, not literal — the
      hardcoded rgba() here stayed the old coral through two palette changes. */
@@ -282,8 +301,15 @@
      absent or a bordered block of its own, and a rule that sometimes ends the
      card and sometimes doesn't is worse than no rule. */
   .actionrow {
-    display: flex; align-items: center; gap: var(--band-gap); flex-wrap: wrap;
-    padding: var(--band-gap) 0 0;
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    padding: 9px 0 0;
+  }
+  /* Slimmer than every other control, on purpose — see --action-h. The id
+     selectors are here to out-specify #callBtn's own state rules, which pin
+     the control height while a call is being placed; a bare .actionrow
+     button would lose to them and the row would change height at pickup. */
+  .actionrow #callBtn, .actionrow #callBtn:disabled, .actionrow .pill {
+    height: var(--action-h);
   }
   /* Square, transparent, hairline-bordered, control height. Colour carries
      state; fill never does (§4.4) — the only filled thing in any state is the
@@ -333,37 +359,45 @@
   .card.onair .avatar { border-color: var(--amber); }
   @keyframes blink { 50% { opacity: .25; } }
 
-  /* While a call is live the pills are the status — the bottom line would
-     just say the same thing twice. */
-  .card.oncall #status { display: none; }
 
-  /* §4.6: a 3px trough and a fill in the speaker's identity colour. The old
-     ten-bar spectrum was ten style writes per animation frame per meter and
-     read as a dashed placeholder when idle, which is what it looked like in
-     the screenshots. */
+  /* A spectrum, not a progress bar. §4.6 collapsed this to a 3px trough and
+     one fill — cheaper to paint and honest about level, but a horizontal bar
+     that grows is the shape of a download, and what it has to say is "there
+     is a voice here". The segmented meter says that at a glance and reads as
+     a booth. The cost is real (SEGMENTS style writes per meter per frame,
+     against one) so paintMeter writes a segment only when its height
+     actually changed.
+     Idle is a row of floor-height segments rather than an empty box: the
+     meter's own shape has to be visible before anyone speaks, or the row
+     looks broken until it isn't. */
   /* --- level meters ------------------------------------------------------ */
-  .meters { display: flex; gap: var(--band-gap); padding: var(--band-gap) 0 0; }
+  .meters { display: flex; gap: var(--band-gap); padding: 10px 0 0; }
   .meter { flex: 1; text-align: left; min-width: 0; }
   .meter .mlabel {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
-    margin-bottom: 6px;
+    margin-bottom: 5px;
   }
   .bars {
-    display: block; height: 3px; background: var(--hairline);
-    border-radius: 0; overflow: hidden;
+    display: flex; align-items: flex-end; gap: 2px;
+    height: 20px; border-radius: 0;
   }
   .bars i {
-    display: block; height: 100%; width: 0;
+    flex: 1 1 0; min-width: 0; height: 12%;
     background: currentColor; border-radius: 0;
-    transition: width .07s linear;
+    transition: height .08s linear;
   }
   /* You and the DJ never share a colour — the two meters sit side by side and
      the whole point is telling at a glance which one is moving. */
   .meter.you { color: var(--cool); }
   .meter.dj { color: var(--coral); }
+  /* Off the call the segments are the trough colour, not a dimmed voice: a
+     dead meter must not look like a quiet one. Keyed on the rig rather than
+     a class of their own, so there is nothing for JS to forget to clear. */
+  .meter .bars i { background: var(--hairline); }
+  .rig.on .meter .bars i { background: currentColor; }
   .meter.muted .mlabel { color: var(--coral); }
-  .meter.muted .bars i { background: var(--hairline); }
+  .rig.on .meter.muted .bars i { background: var(--hairline); }
 
   /* Volume and the call buttons share a row — at full card width they fit
      side by side, which keeps the captions higher up the page. */
@@ -384,22 +418,16 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .controls { display: flex; gap: var(--band-gap); flex: 0 0 auto; }
+  .controls { display: flex; gap: 9px; flex: 0 0 auto; flex-wrap: wrap; }
+  /* Which way out the DJ's voice goes. Hidden outright on a browser with no
+     routing API at all — see canRouteAudio(). */
+  #spkBtn[hidden] { display: none; }
   /* Muted is a state, so it colours the label — it does not fill the button,
      which would put two filled controls in the row. */
   .controls button.on { color: var(--amber); border-color: var(--amber); }
 
-  /* §4.5: this is a sentence, not a label. */
-  /* A sentence, not a label — but it sits inside .eyebrow, which is a label,
-     and it was inheriting that band's uppercase and 700 weight on top of its
-     own larger body size. So "Call ended" came out BIGGER and heavier than
-     the "ON AIR NOW" it sits next to, which is backwards: this is the
-     secondary half of that row. Explicitly not-a-label, and a step quieter. */
-  #status {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-family: var(--font-body); font-size: 11px; font-weight: 400;
-    text-transform: none; letter-spacing: 0; color: var(--sage-dim);
-  }
+  /* #status is styled with the line area it now lives in, further down —
+     it stopped being a fragment of the header band in 0.9.117. */
   /* No #logsResult height here. It used to be pinned to 320px from this
      block — in the middle of the call card's rules, three hundred lines from
      the log viewer it governs — and being an id it silently outranked every
@@ -534,17 +562,48 @@
      made embed.js resize the frame — so the host page moved while somebody
      was reading it. A fixed height means the reported height stops changing
      during a call. States that genuinely need more room (the door code, a mic
-     warning) still grow the frame; speech no longer does. */
-  /* --- captions: what was said, and what the DJ did while saying it ------ */
-  .captions {
-    display: none; margin: var(--band-gap) 0 0; padding: 11px 13px;
+     warning) still grow the frame; speech no longer does.
+
+     Three lines, not fourteen. It was 210px — a transcript window on a card
+     whose only job during a call is the last thing that was said, and the
+     rest of it scrolled past unread anyway. The whole back-and-forth is
+     still there and still scrolls; the drawer below opens it to full height
+     when someone actually wants to read back. */
+  /* --- the line area: what the card has to say right now ----------------- */
+  .linebox {
+    position: relative; margin: var(--band-gap) 0 0; padding: 10px 13px;
     text-align: left;
     background: var(--pine); border: 1px solid var(--hairline); border-radius: 0;
-    height: 210px; overflow-y: auto; overflow-x: hidden;
+    height: var(--lines-h);
+  }
+  /* Reading back a finished call is a deliberate click, so it may have the
+     room. Nothing else in here is allowed to change this height. */
+  .linebox.open { height: 210px; }
+  .captions {
+    display: none; height: 100%; overflow-y: auto; overflow-x: hidden;
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   }
   .captions.on { display: block; }
+  /* The one message surface. "Not connected", "No answer — the booth didn't
+     pick up", "Call ended" all land here, where the caller is already
+     looking, instead of in the header band next to ON AIR NOW where a
+     sentence sat inside a row of labels and read as one.
+     Absolutely placed so it shares the box with the transcript rather than
+     stacking above it — either the card is saying something or the DJ is,
+     never both. */
+  #status {
+    position: absolute; inset: 10px 13px;
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-body); font-size: 12.5px; font-weight: 400;
+    text-transform: none; letter-spacing: 0; color: var(--sage);
+    margin: 0;
+  }
+  /* Speech wins the box the moment there is any. `.on` is in the test on
+     purpose: after a call the lines are still in the DOM, just collapsed
+     behind the drawer, and that is exactly when "Call ended" has to show. */
+  .linebox:has(.captions.on .cap) #status,
+  .linebox:has(.ticker.show) #status { display: none; }
   .captions::-webkit-scrollbar { width: 8px; }
   .captions::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 0; }
   /* A gutter wide enough for the longest label and no wider. It was 86px,
@@ -578,7 +637,6 @@
   .cap.dj .said { color: var(--alpenglow); }
   .cap.you .said { color: var(--sage); }
   .cap.interim .said { color: var(--sage-dim); font-style: italic; }
-  .capempty { color: var(--sage-dim); font-size: 12.5px; font-style: italic; }
 
   /* A change should register as movement, not as text that was simply
      different when you looked back. Same rise-and-fade the host uses for
@@ -1362,7 +1420,7 @@
     .card, .panel { width: 100%; }
   }
   @media (max-width: 600px) {
-    .avatar { width: 56px; height: 56px; }
+    .avatar { width: 52px; height: 52px; }
     /* Was 19px, which is two steps off the scale and the largest thing in the
        widget by a distance. The scale is 9.5 / 11 / 12.5 / 15 and the name is
        already the top of it — a narrow screen is a reason to spend the width
@@ -1373,9 +1431,11 @@
        taller-on-mobile button was one of the four treatments this replaced.
        The in-call chip states keep their own width. */
     #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
-    /* Spend the freed space where a call actually needs it. Fixed, not
-       capped — see §5. */
-    .captions { height: 44vh; }
+    /* One more line than the desktop card, and no more: the point of the box
+       is the last thing that was said, and on a phone the drawer is the
+       right way to read back the rest. Fixed, not capped — see §5. */
+    :root { --lines-h: 94px; }
+    .linebox.open { height: 44vh; }
     .cap, .ticker { grid-template-columns: 60px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
        wraps onto new lines, and the now-playing track takes a full row of
@@ -1457,7 +1517,7 @@
      nothing, one line or a paragraph, so the frame stops moving. */
   .ticker {
     display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px;
-    align-items: baseline; padding: var(--band-gap) 0;
+    align-items: baseline; padding: 0;
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
   }
@@ -1502,6 +1562,52 @@
     /* Status chips likewise: they share one row edge to edge instead of
        breaking into a ragged second line. */
     .actionrow .pill { flex: 1 1 auto; justify-content: center; }
+  }
+
+  /* --- the panel's live preview ------------------------------------------
+     Panel-only. The frame holds the real call page, so everything inside it
+     is styled by the rules above rather than by anything here — which is the
+     point: there is no second set of preview styles to drift. */
+  .preview {
+    margin: 12px 0 4px; border: 1px solid var(--line2); border-radius: 9px;
+    background: var(--bg); overflow: hidden;
+  }
+  .previewbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 7px 10px; border-bottom: 1px solid var(--line);
+  }
+  .previewbar .plabel {
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .previewbar .pnote { font-size: 11px; color: var(--dimmer); margin-left: auto; }
+  .preview .segs { display: inline-flex; }
+  .preview .seg {
+    font-size: 11px; padding: 3px 10px; border-radius: 0;
+    border: 1px solid var(--line2); background: transparent; color: var(--dim);
+  }
+  .preview .seg:first-child { border-radius: 7px 0 0 7px; }
+  .preview .seg:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+  .preview .seg.on { color: var(--accent); border-color: var(--accent); }
+  .preview .seg.on + .seg { border-left-color: var(--accent); }
+  /* Tall enough for the card at its tallest — the door code and the mic
+     warning both grow it — so switching a toggle never scrolls the frame. */
+  #previewFrame { display: block; width: 100%; height: 470px; border: 0; }
+
+  /* --- installed as an app -----------------------------------------------
+     No browser chrome, so the widget is the whole window and owns the edges
+     the browser used to keep clear. The viewport is `viewport-fit=cover` so
+     the background reaches under a notch; without these insets the Hang up
+     row sits under an iPhone's home indicator and the header under the
+     status bar. Vertically centred is also wrong here — a full-screen app
+     that floats its one card in the middle of a phone reads as a web page
+     that failed to load. */
+  @media (display-mode: standalone), (display-mode: minimal-ui) {
+    body {
+      justify-content: flex-start;
+      padding: calc(14px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+               calc(24px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    }
   }
 
   /* §3 — nothing moves for anyone who asked for that. */

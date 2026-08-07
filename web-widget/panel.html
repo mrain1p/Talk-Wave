@@ -642,6 +642,25 @@
           (the phone at <code>/</code>) and an <strong>embed</strong> in a frame
           on somebody else’s site.</p>
 
+        <!-- The real call card, in a frame, driven by the form above it
+             before anything is saved. It is the actual widget rather than a
+             drawing of one, and what it shows is resolved by /live/preview —
+             the same code that answers a real caller — so it cannot drift
+             from the thing it is previewing. Call and the gear are inert
+             inside it; see previewMode in call.js. -->
+        <div class="preview" id="previewWrap">
+          <div class="previewbar">
+            <span class="plabel">Preview</span>
+            <span class="segs" role="group" aria-label="Which surface to preview">
+              <button type="button" id="previewPage" class="seg on">Page</button>
+              <button type="button" id="previewEmbed" class="seg">Embed</button>
+            </span>
+            <span class="pnote" id="previewNote">unsaved changes shown live</span>
+          </div>
+          <iframe id="previewFrame" title="Live preview of the call card"
+                  src="/?preview=1" loading="lazy"></iframe>
+        </div>
+
         <div class="pmatrix">
           <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
 
@@ -685,6 +704,11 @@
           </div>
         </div>
 
+        <div class="row">
+          <label for="avatar_style">DJ photo shape</label>
+          <select id="avatar_style"></select>
+        </div>
+
         <h4 class="subhead">The Call button</h4>
         <div class="row">
           <label for="call_button_mode">Call button</label>
@@ -700,6 +724,9 @@
           <label for="widget_theme">Colours</label>
           <select id="widget_theme"></select>
         </div>
+
+        <h4 class="subhead">On the caller's phone</h4>
+        <label class="check"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
 
         <h4 class="subhead">After the call</h4>
         <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>

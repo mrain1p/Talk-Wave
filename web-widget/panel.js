@@ -940,6 +940,88 @@
     $('saveBtn').classList.toggle('clean', n === 0);
     $('saveBtn').textContent = n ? 'Save ' + n + ' change' + (n > 1 ? 's' : '') : 'Save';
   }
+  // ------------------------------------------------------- the live preview
+  // A real call card in a frame, repainted from the form as it is edited.
+  //
+  // It resolves through /live/preview rather than working the rules out here.
+  // Whether the gear appears, which lines of the who's-on-air block each
+  // surface paints, what the Call button says — those rules already exist in
+  // api/live.py and are already answered per surface. A second copy in
+  // JavaScript would agree with the first one right up until somebody changed
+  // one of them, and a preview that quietly disagrees with the card is worse
+  // than no preview: it is confidently wrong about the one thing you opened
+  // it to check.
+  //
+  // Which fields matter is read from the SCHEMA rather than listed, so a look
+  // setting added later is previewed without anyone remembering to come here.
+  const LOOK_GROUPS = new Set(['player']);
+  function isLookField(f) {
+    return !!(SCHEMA.fields[f] && LOOK_GROUPS.has(SCHEMA.fields[f].group));
+  }
+
+  let previewSurface = 'page';
+  let previewTimer = null;
+
+  function previewFrame() {
+    const f = $('previewFrame');
+    return f && f.contentWindow ? f : null;
+  }
+
+  async function pushPreview() {
+    const f = previewFrame();
+    if (!f) return;
+    try {
+      const r = await afetch('/live/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingPatch()),
+      });
+      if (!r.ok) return;
+      const look = await r.json();
+      // The frame renders as whichever surface is selected, so it is handed
+      // that surface's answers under BOTH names. The widget picks by whether
+      // it is in a frame, and a preview is always in a frame — which would
+      // otherwise make the Page tab quietly show the embed's answers.
+      const controls = previewSurface === 'embed' ? look.embedControls : look.controls;
+      const card = previewSurface === 'embed' ? look.embedCard : look.card;
+      f.contentWindow.postMessage({
+        type: 'swtv:preview',
+        live: Object.assign({}, look, {
+          controls: controls, embedControls: controls,
+          card: card, embedCard: card,
+        }),
+      }, location.origin);
+    } catch (e) { /* the preview is a nicety; never let it break the form */ }
+  }
+
+  // Coalesced: typing in the Call button's label field fires per keystroke,
+  // and each one is a request.
+  function queuePreview() {
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(pushPreview, 180);
+  }
+
+  function setPreviewSurface(which) {
+    previewSurface = which;
+    $('previewPage').classList.toggle('on', which === 'page');
+    $('previewEmbed').classList.toggle('on', which === 'embed');
+    const f = $('previewFrame');
+    if (!f) return;
+    // compact=1 is what makes the widget render as an embed, and it is read
+    // at load, so this is a reload rather than a message.
+    f.src = which === 'embed' ? '/?preview=1&compact=1' : '/?preview=1';
+    // The frame pushes nothing on its own; it paints from its own /live and
+    // then waits. The load event is the earliest it can be told about the
+    // unsaved changes.
+    f.onload = pushPreview;
+  }
+
+  if ($('previewPage')) {
+    $('previewPage').onclick = () => setPreviewSurface('page');
+    $('previewEmbed').onclick = () => setPreviewSurface('embed');
+    $('previewFrame').onload = pushPreview;
+  }
+
   let eventsBound = false;
   function bindFieldEvents() {
     if (eventsBound) return;
@@ -961,6 +1043,10 @@
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'perms') {
           paintAsks(); paintTools(); paintTags();
         }
+        // The card in the frame follows the form, not the save button. That
+        // is the entire point: you find out what "DJ photo off" looks like
+        // before you commit it to everyone who rings.
+        if (isLookField(f)) queuePreview();
       };
       el.addEventListener('input', onChange);
       el.addEventListener('change', onChange);

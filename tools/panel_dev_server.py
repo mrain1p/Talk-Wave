@@ -151,6 +151,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
 
+        # The panel's live preview. Answered through the REAL look_payload so
+        # the stub cannot drift from the thing it is standing in for — which
+        # is the same reason /settings below is built from the real schema.
+        if path == "/live/preview":
+            from api.live import look_payload
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                patch = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                patch = {}
+            cfg = dict(settings_store.load())
+            cfg.update({k: v for k, v in patch.items()
+                        if k in settings_store.FIELDS})
+            return self._json(look_payload(cfg, "Francesca"))
+
         if path == "/settings":
             return self._json({
                 "schema": settings_store.schema_payload(),
@@ -199,7 +214,10 @@ class Handler(BaseHTTPRequestHandler):
                 "canAsk": {"allow_requests": True, "allow_library_search": True,
                            "allow_exact_queue": True, "allow_announcements": True,
                            "allow_skills": True},
-                "controls": {"help": True, "theme": True, "settings": True},
+                # Resolved by the real code, like the preview above — a stub
+                # whose card disagrees with the card is not a stub of it.
+                **__import__("api.live", fromlist=["live"]).look_payload(
+                    settings_store.load(), "Francesca"),
                 "limits": {"maxCallSeconds": 480, "idlePromptSecs": 20},
                 "stream": {"url": "", "alternates": [], "tuneIn": False, "volume": 10},
             })
@@ -216,8 +234,9 @@ class Handler(BaseHTTPRequestHandler):
                 LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
             return self._send(200, html, "text/html")
         ctype = {"html": "text/html", "js": "text/javascript",
-                 "css": "text/css"}.get(f.suffix.lstrip("."),
-                                        "application/octet-stream")
+                 "css": "text/css", "png": "image/png", "json": "application/json",
+                 "webmanifest": "application/manifest+json",
+                 }.get(f.suffix.lstrip("."), "application/octet-stream")
         return self._send(200, f.read_bytes(), ctype)
 
     def log_message(self, fmt, *args):
