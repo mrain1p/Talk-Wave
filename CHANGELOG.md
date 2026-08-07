@@ -3,6 +3,42 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.139
+
+### Finding your way
+
+- **"Take live calls" moved in with Voicemail**, where its other half lives —
+  the two switches together are the line's mode (phone / phone with a
+  machine / voicemail-only / closed), and the one operator running
+  voicemail-only could not find the way back from under Who answers.
+- Super-group headers drop their subtext; the sections under them explain
+  themselves.
+
+### Diagnostics
+
+- Recent calls can filter on the **caller's own verdict** — thumbs down or
+  thumbs up — beside the problems filter, and each rated call shows its
+  verdict in the list.
+- The server-log level filter is a **dropdown — "All levels" by default**,
+  then a floor per severity ("Warnings and up"), replacing the multi-select
+  that opened on an ambiguous nothing.
+
+### Access, tightened
+
+- Each credential is one row with a **set / not-set** chip in its heading,
+  and the new-password box only appears once **Change password** is pressed.
+- Guest-code expiry is now in **hours, default 24**. A stored minutes value
+  keeps its real duration, rounded up — nobody's code expires earlier.
+
+### Sounds
+
+- **mp3 / m4a beeps convert in the browser** on upload — the panel decodes
+  and re-wraps as WAV before anything travels, so the server-played beep
+  works with what you have. A plain WAV is still preferred: it skips the
+  conversion untouched. (m4p stays impossible — Apple DRM.)
+- The dimmed voicemail-only rows lose their strikethrough — striking out a
+  dropdown read as a fault, not a state.
+
 ## 0.9.138
 
 ### The panel reads at a glance

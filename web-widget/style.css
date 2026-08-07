@@ -948,11 +948,12 @@
      would change the value without posting it. */
   /* Moot rows: readable, visibly out of play, and not editable — a
      voicemail-only line has no live Call button for these to configure.
-     Dashed, per the operator's ask, not hidden: hiding them would read as
-     the feature being gone rather than waiting. */
+     Dimmed, not hidden: hiding them would read as the feature being gone
+     rather than waiting. No line-through — striking out a dropdown's text
+     read as a rendering fault, not a state. Operator-reported. */
   .row.moot, .check.moot { opacity: .4; }
   .row.moot select, .row.moot input, .check.moot input {
-    pointer-events: none; text-decoration: line-through;
+    pointer-events: none;
   }
 
   /* Matrix help, inside the label cell: same muted voice as every hint,
@@ -960,6 +961,19 @@
   .plabel .hint.inlabel {
     display: inline; margin: 0 0 0 8px; font-weight: 400;
   }
+  /* Rating filters on the call list: one at a time, stacking with the
+     problems checkbox. */
+  .calllist.onlydown .callrow:not([data-rating="down"]),
+  .calllist.onlyup .callrow:not([data-rating="up"]) { display: none; }
+  .runbtn.on { border-color: var(--accent); color: var(--accent); }
+  /* set / not set beside a credential heading */
+  .setchip {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700; margin-left: 8px;
+  }
+  .setchip[data-state="on"] { color: var(--sage); }
+  .setchip[data-state="off"] { color: var(--coral); }
+
   /* The section tag carries its state in colour — see setTag(). */
   .tag[data-state="on"] { color: var(--sage); }
   .tag[data-state="off"] { color: var(--sage-dim); opacity: .65; }

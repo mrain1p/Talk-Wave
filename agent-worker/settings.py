@@ -256,7 +256,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # A guest code typed on a shared machine outlives the person who typed
     # it. 0 keeps it until Sign out; anything else forgets it after that
     # many minutes, and the card offers a lock button to forget it now.
-    "guest_session_minutes": (None, 0),
+    # Hours, not minutes: "how long should a handed-out code last" is a
+    # question with day-shaped answers. 0 = until Sign out.
+    "guest_session_hours": (None, 24),
     "front_access":     (None, "auto"),
 
     # --- the widget itself, as a caller sees it --------------------------
@@ -699,12 +701,12 @@ SCHEMA: dict[str, dict] = {
     "max_call_seconds": dict(group="limits", kind="number", label="Hang up after (s)",
         help="Hard ceiling. The DJ signs off in character first rather than the "
              "audio just stopping. 600 = ten minutes."),
-    "guest_session_minutes": dict(group="security", kind="number",
-        label="Guest code expires (min)",
+    "guest_session_hours": dict(group="security", kind="number",
+        label="Guest code expires (hours)",
         help="On a shared or public machine, a typed code should not outlive "
-             "its typist. 0 remembers it until Sign out; otherwise the card "
-             "forgets it after this long, and shows a lock button to forget "
-             "it immediately."),
+             "its typist. The card forgets it after this long and shows a "
+             "lock button to forget it immediately. 0 remembers it until "
+             "Sign out."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access",
         help="This is the PHONE. The panel always needs the admin password, "
@@ -908,11 +910,15 @@ SCHEMA: dict[str, dict] = {
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
              "decides WHEN it answers; this decides WHO it answers for."),
-    "live_calls_enabled": dict(group="call", kind="check", label="Take live calls",
-        help="The line's mode, together with Voicemail below: both on is a "
-             "phone with an answering machine, live off with voicemail on is "
-             "a voicemail-only line, both off closes the line. The Player "
-             "preview shows what callers get."),
+    "live_calls_enabled": dict(group="voicemail", kind="check",
+        label="Take live calls",
+        help="The line's mode, together with the switch below: live on + "
+             "voicemail 'when a live call is impossible' is a phone with an "
+             "answering machine; live off (or voicemail 'always') is a "
+             "voicemail-only line; live on + voicemail 'never' is a plain "
+             "phone. It lives here, beside its other half — it used to sit "
+             "under Who answers, where the operator running a voicemail-only "
+             "line could not find the way back."),
     "voicemail_greeting_mode": dict(group="voicemail", kind="select",
         label="Greeting comes from",
         help="Staged clips answer instantly. 'Fresh each call' writes a new "
@@ -1046,13 +1052,12 @@ SCHEMA: dict[str, dict] = {
              "couldn't connect."),
     "sound_vm_beep": dict(group="sounds", kind="text", label="Voicemail beep",
         placeholder="default: the classic tone",
-        help="The answering machine's beep. Unlike the sounds above it is "
-             "played by the server, so only an uploaded WAV applies — the "
-             "dropdown lists nothing else. m4a/mp3 work for the browser "
-             "sounds above but not here, and m4p is Apple-DRM'd audio "
-             "nothing outside iTunes can play. Anything the server cannot "
-             "convert falls back to the tone, never to silence — the "
-             "Voicemail section reports the verdict."),
+        help="The answering machine's beep, played by the server. An mp3 or "
+             "m4a chosen through this row's Upload button is converted to WAV "
+             "in the browser first — a plain WAV upload is preferred, since "
+             "it skips the conversion untouched. m4p is Apple-DRM'd audio "
+             "nothing can convert. Anything unplayable falls back to the "
+             "tone, never to silence; the verdict shows below."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
 }
@@ -1466,6 +1471,12 @@ def _migrate(stored: dict) -> dict:
     for field in TIERED_PERMISSIONS:
         if field in stored and isinstance(stored[field], bool):
             stored[field] = "open" if stored[field] else TIER_OFF
+    # 0.9.139: the guest-code expiry moved from minutes to hours — day-shaped
+    # answers. A stored minutes value keeps its real duration, rounded up so
+    # nobody's code expires EARLIER after an upgrade.
+    if "guest_session_hours" not in stored and "guest_session_minutes" in stored:
+        minutes = _coerce(stored.get("guest_session_minutes"), 0)
+        stored["guest_session_hours"] = -(-int(minutes) // 60) if minutes else 0
     return stored
 
 

@@ -29,6 +29,7 @@ from tests.test_settings import (  # noqa: F401
     TestTurnTakingDelaysAreOptOut,
     TestTurnTakingSettingsReachTheCall,
     TestUploadedSoundsCannotFillTheVolume,
+    TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,

@@ -289,7 +289,7 @@ class TestTheMachineHasATierDoor(unittest.TestCase):
         import settings as settings_store
 
         self.assertEqual("open", settings_store.FIELDS["allow_voicemail"][1])
-        self.assertEqual(0, settings_store.FIELDS["guest_session_minutes"][1])
+        self.assertEqual(24, settings_store.FIELDS["guest_session_hours"][1])
         self.assertFalse(settings_store.FIELDS["show_voicemail_button"][1])
         self.assertFalse(settings_store.FIELDS["embed_voicemail_button"][1])
 

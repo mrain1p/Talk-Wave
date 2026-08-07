@@ -94,7 +94,9 @@
       hdr.id = 'sup-' + sup.id;
       hdr.innerHTML = '<span></span><em></em>';
       hdr.querySelector('span').textContent = sup.title;
-      hdr.querySelector('em').textContent = sup.blurb || '';
+      // No subtext on the super-group band — the operator called it noise,
+      // and the sections right under it each explain themselves.
+      hdr.querySelector('em').textContent = '';
       anchor.parentNode.insertBefore(hdr, anchor);
       members.forEach((g) => anchor.parentNode.insertBefore(byId[g.id], anchor));
     });
@@ -835,7 +837,17 @@
       || resolved.front_access;
     setTag('tagSecurity', (MODE[access] || access || '')
       + ' · ' + (authConfigured ? 'admin set' : 'ADMIN OPEN'));
-    $('curPwRow').style.display = authConfigured ? '' : 'none';
+    $('sec_current_pw').style.display = authConfigured ? '' : 'none';
+    // Set / not set, said in the heading — the operator could not tell
+    // which credentials existed without trying them.
+    const chip = (id, isSet) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = isSet ? 'set' : 'not set';
+      el.dataset.state = isSet ? 'on' : 'off';
+    };
+    chip('adminSetChip', authConfigured);
+    chip('guestSetChip', !!guestConfigured);
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
     $('logoutBtn').hidden = !authConfigured;
     $('setGuestBtn').textContent = guestConfigured ? 'Change guest code' : 'Set guest code';
@@ -925,6 +937,16 @@
 
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');
+    // Two steps, one button: the new-password box only exists once asked
+    // for — the operator called the always-there box wasted space, rightly.
+    // The first-run banner fills the box BEFORE clicking, so its value being
+    // set is what lets that path sail through in one step.
+    if ($('sec_new_pw').hidden && !$('sec_new_pw').value) {
+      $('sec_new_pw').hidden = false;
+      $('sec_new_pw').focus();
+      $('setPwBtn').textContent = 'Save password';
+      return;
+    }
     const newPw = $('sec_new_pw').value;
     if (newPw.length < 8) {
       showResult(out, false, 'Use at least 8 characters.');
@@ -949,6 +971,8 @@
       localStorage.setItem('callinAdminKey', newPw);
       authConfigured = true;
       $('sec_current_pw').value = ''; $('sec_new_pw').value = '';
+      $('sec_new_pw').hidden = true;
+      $('setPwBtn').textContent = 'Change password…';
       paintSecurity();
       showResult(out, true, 'Password saved. This browser stays signed in '
         + 'until you sign out; other browsers and devices will be asked.');
@@ -2135,19 +2159,31 @@
       pendingAssignSlot = null;
       if (!file) return;
       const out = $('soundResult');
-      // The beep is server-played and the server reads WAV only. Refusing
-      // here, before the upload, beats accepting an m4a that can only ever
-      // become the fallback tone — which is exactly what happened.
+      // The beep is server-played and the server reads WAV only — but the
+      // BROWSER ships mp3/m4a decoders, so instead of refusing (0.9.138 did,
+      // and the operator reasonably asked for a converter) the panel decodes
+      // and re-wraps as WAV before anything travels. Zero server footprint.
+      // A real WAV still skips all of this: nothing decoded, nothing lost.
+      let toSend = file;
       if (slot === 'vm_beep' && !/\.wav$/i.test(file.name)) {
-        showResult(out, false, file.name + ' is not a WAV. The beep is '
-          + 'played by the server, which reads WAV only — m4a and mp3 work '
-          + 'for the browser sounds above, but not here. Re-export as WAV.');
-        $('soundFile').value = '';
-        return;
+        out.className = 'result on';
+        out.textContent = 'Converting ' + file.name + ' to WAV\u2026';
+        try {
+          toSend = await convertToWav(file);
+        } catch (e) {
+          showResult(out, false, file.name + ' could not be decoded ('
+            + e.message + '). Re-export it as a plain WAV — m4p in '
+            + 'particular is DRM\u2019d and nothing can convert it.');
+          $('soundFile').value = '';
+          return;
+        }
       }
-      out.className = 'result on'; out.textContent = 'Uploading ' + file.name + '…';
+      out.className = 'result on';
+      out.textContent = 'Uploading ' + toSend.name
+        + (toSend === file ? '' : ' (converted from ' + file.name
+           + ' — a WAV upload skips this)') + '…';
       const form = new FormData();
-      form.append('file', file, file.name);
+      form.append('file', toSend, toSend.name);
       try {
         const r = await afetch('/settings/sounds', { method: 'POST', body: form });
         const d = await r.json().catch(() => ({}));
@@ -2812,6 +2848,36 @@
   // The beep is not in the browser sound engine — it is the server's own
   // sound — so its preview mirrors what the server will do: the uploaded
   // WAV when one is set and playable in a browser, else the shaped tone.
+  // Decode whatever the browser can play and wrap it as 16-bit PCM WAV.
+  // Mono at the source's own rate: the worker downmixes and resamples for
+  // itself, so this stays a container change, not a quality decision.
+  async function convertToWav(file) {
+    const buf = await file.arrayBuffer();
+    const audio = await ctx().decodeAudioData(buf);
+    const ch = audio.numberOfChannels > 1
+      ? (() => {
+          const a = audio.getChannelData(0), b = audio.getChannelData(1);
+          const mix = new Float32Array(a.length);
+          for (let i = 0; i < a.length; i++) mix[i] = (a[i] + b[i]) / 2;
+          return mix;
+        })()
+      : audio.getChannelData(0);
+    const out = new DataView(new ArrayBuffer(44 + ch.length * 2));
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) out.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, 'RIFF'); out.setUint32(4, 36 + ch.length * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true);
+    out.setUint16(22, 1, true); out.setUint32(24, audio.sampleRate, true);
+    out.setUint32(28, audio.sampleRate * 2, true); out.setUint16(32, 2, true);
+    out.setUint16(34, 16, true);
+    str(36, 'data'); out.setUint32(40, ch.length * 2, true);
+    for (let i = 0; i < ch.length; i++) {
+      const v = Math.max(-1, Math.min(1, ch[i]));
+      out.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    const name = file.name.replace(/\.[a-z0-9]+$/i, '') + '.wav';
+    return new File([out.buffer], name, { type: 'audio/wav' });
+  }
+
   function previewBeep() {
     const out = $('soundResult');
     out.className = 'result on';
