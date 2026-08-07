@@ -1249,8 +1249,24 @@
     walkie:    { hp: 500, lp: 2800, grit: 55 },
   };
 
-  function wireEffect(track) {
+  // The operator's intensity dial, 0-100: 100 is the effect as designed,
+  // lower interpolates the filters back toward the clean voice, and 0 is no
+  // effect at all — same maths the panel's Test with effect uses.
+  function fxSpec() {
     const spec = FX[voiceEffect()];
+    if (!spec) return null;
+    const lvl = (shown || live || {}).voiceEffectLevel;
+    const t = Math.max(0, Math.min(100, lvl == null ? 100 : lvl)) / 100;
+    if (t <= 0) return null;
+    return {
+      hp: spec.hp * t,
+      lp: spec.lp + (16000 - spec.lp) * (1 - t),
+      grit: Math.round(spec.grit * t),
+    };
+  }
+
+  function wireEffect(track) {
+    const spec = fxSpec();
     if (!spec) return false;
     try {
       const c = ctx();

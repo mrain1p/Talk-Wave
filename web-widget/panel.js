@@ -1764,7 +1764,21 @@
   }
 
   function playPcmWithEffect(b64, sampleRate, kind) {
-    const spec = FX_PREVIEW[kind];
+    // Same interpolation the caller's browser applies — see fxSpec() in
+    // call.js. A preview at a different intensity than the call is a lie.
+    let spec = FX_PREVIEW[kind];
+    if (spec) {
+      const el = $('voice_effect_level');
+      const lvl = el && el.value !== '' ? +el.value
+        : (resolved.voice_effect_level == null ? 100
+           : +resolved.voice_effect_level);
+      const t = Math.max(0, Math.min(100, lvl)) / 100;
+      spec = t <= 0 ? null : {
+        hp: spec.hp * t,
+        lp: spec.lp + (16000 - spec.lp) * (1 - t),
+        grit: Math.round(spec.grit * t),
+      };
+    }
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
