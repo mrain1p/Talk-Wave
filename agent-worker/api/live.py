@@ -319,22 +319,20 @@ async def handle_live(request: web.Request) -> web.Response:
 
         cfg = settings_store.load()
         sound_pack = cfg.get("sound_pack") or "classic"
-        # Only asked for when the operator has chosen it. This is one more
-        # station read on a payload that already makes four, and a palette
-        # nobody is going to paint with is not worth the round trip.
-        palette = None
         # Resolved whenever the station will say, not only when the operator
         # chose station colours: the card's theme cycle offers the palette as
         # a VIEWER choice now, and a cycle entry that only exists on some
-        # deployments has to know which ones.
-        if True:
-            try:
-                palette = station_palette(await station.themes())
-            except Exception as e:
-                # The card still has to paint. Falling back to the neutral
-                # base is the honest answer for a station that will not say
-                # what colour it is.
-                log.info("station palette unavailable (%s)", describe(e))
+        # deployments has to know which ones. (It used to be gated on the
+        # operator's colour setting to save a station read; the cycle is why
+        # it no longer can be.)
+        palette = None
+        try:
+            palette = station_palette(await station.themes())
+        except Exception as e:
+            # The card still has to paint. Falling back to the neutral
+            # base is the honest answer for a station that will not say
+            # what colour it is.
+            log.info("station palette unavailable (%s)", describe(e))
         # Cached inside tune_in, so a station that publishes a mount list is
         # only asked for it every few minutes rather than on every /live.
         stream_url, stream_alternates = await tune_in.resolve(
