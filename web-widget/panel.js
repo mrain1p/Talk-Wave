@@ -2159,6 +2159,26 @@
       if (!r.ok) return;
       const d = await r.json();
       paintVmStatus(d.personas);
+      // The custom beep's verdict, tried server-side — the worker plays it
+      // at pickup and fails to the tone SILENTLY, so without this line the
+      // setting just looks ignored when the file can't play.
+      const beep = d.beep || {};
+      const note = $('vmBeepNote');
+      if (note) {
+        note.hidden = !beep.set;
+        note.style.color = beep.set && !beep.ok ? 'var(--coral)' : '';
+        if (beep.set) {
+          note.textContent = beep.ok
+            ? 'Custom beep ' + beep.name + ' converts and will play at '
+              + 'pickup. If callers still hear the classic tone, the WORKER '
+              + 'container is running an older version — pull and restart '
+              + 'both.'
+            : 'Custom beep ' + beep.name + ' cannot play (' 
+              + (beep.error || 'unreadable')
+              + ') — callers get the classic tone. Re-export it as a plain '
+              + 'PCM WAV and upload again.';
+        }
+      }
       const staged = (d.personas || []).filter((p) => p.current).length;
       setTag('tagVoicemail',
         (resolved.voicemail_when === 'never' ? 'off' : resolved.voicemail_when)

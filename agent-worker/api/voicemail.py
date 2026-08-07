@@ -96,9 +96,29 @@ async def handle_voicemail_status(request: web.Request) -> web.Response:
         "renderedAt": entry.get("renderedAt") or "",
     })
     await sc.aclose()
+    # The custom beep, tried for real. It is played by the WORKER at pickup,
+    # so a file this container can't convert fails there silently — the tone
+    # plays, a warning lands in the worker's log, and from the panel the
+    # setting just looks ignored. That happened; answer the question here.
+    beep = {"set": False}
+    beep_name = str(cfg.get("sound_vm_beep") or "")
+    if beep_name.startswith("upload:"):
+        from api.sounds import SOUNDS_DIR
+        from voicemail.capture import _wav_as_mono16
+
+        beep = {"set": True, "name": beep_name[len("upload:"):]}
+        try:
+            beep["ok"] = bool(_wav_as_mono16(
+                SOUNDS_DIR / beep["name"], 24000))
+            if not beep["ok"]:
+                beep["error"] = "the file contains no audio"
+        except Exception as e:                                # noqa: BLE001
+            beep["ok"] = False
+            beep["error"] = str(e)[:160]
     return _cors(request, web.json_response({
         "personas": out,
         "messages": len(vm_deliver.held_messages()),
+        "beep": beep,
     }))
 
 

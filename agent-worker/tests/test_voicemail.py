@@ -504,3 +504,41 @@ class TestTheBeepCanBeTheOperators(unittest.TestCase):
         js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
         self.assertIn("Classic tone — synthesized (default)", js)
         self.assertIn("'vm_beep'", js.split("SOUND_SLOTS = ")[1][:120])
+
+
+class TestTheBeepVerdictIsVisible(unittest.TestCase):
+    """The worker fails an unplayable beep to the tone SILENTLY — correct on
+    a live pickup, maddening from the panel, where the setting just looks
+    ignored. The status endpoint tries the real conversion and says so."""
+
+    def test_the_status_payload_carries_the_verdict(self):
+        import inspect
+
+        from api import voicemail as api_vm
+
+        source = inspect.getsource(api_vm.handle_voicemail_status)
+        self.assertIn("_wav_as_mono16", source)
+        self.assertIn('"beep"', source)
+
+    def test_the_panel_paints_it(self):
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("vmBeepNote", js)
+        self.assertIn("cannot play", js)
+
+
+class TestTheDjOnlySpeaksOnce(unittest.TestCase):
+    """A mid-call reconnect re-fires TrackSubscribed; attaching again
+    without tearing down the first element left two playbacks of the same
+    voice a few ms apart — 'the DJ speaking twice, slightly off sync',
+    reported from a live call."""
+
+    def test_the_pickup_handler_is_reentrant(self):
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        handler = js.split("RoomEvent.TrackSubscribed")[1]
+        before_attach = handler[:handler.index("track.attach()")]
+        self.assertIn("djEl.srcObject = null", before_attach)
+        self.assertIn("dropEffect()", before_attach)

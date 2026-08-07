@@ -81,6 +81,10 @@
     iframe.setAttribute("allow", "microphone");
     iframe.setAttribute("title", "Call the SUB/WAVE DJ");
     iframe.style.border = "none";
+    // Belt and braces against the opaque-backdrop rule: the widget also
+    // paints edge to edge, so a backdrop that does go opaque is invisible.
+    iframe.setAttribute("allowtransparency", "true");
+    iframe.style.background = "transparent";
     iframe.style.width = "100%";
     // An iframe is inline by default, which leaves a few px of baseline gap
     // under it — so the container measures taller than the frame it holds.
