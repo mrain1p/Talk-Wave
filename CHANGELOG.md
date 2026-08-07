@@ -3,6 +3,17 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.141
+
+- Usage-control labels grow their noun — **Calls at once / per hour / per
+  day**, **Redial wait time** — and **Call length** (now just the hard
+  per-call ceiling) joins them under Permissions & safety, one more spend
+  limit beside the others. **Speech hygiene** moves there too.
+- **Who answers is now Greeting**, and a new **Closing the call** section is
+  its mirror: the sign-off steer, the idle check-ins and the earliest
+  hang-up, which were scattered across House style and Call length —
+  "where are the closing settings" was a fair question.
+
 ## 0.9.140
 
 - The Access credential boxes wear the panel's own field styling again —

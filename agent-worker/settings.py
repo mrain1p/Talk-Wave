@@ -551,14 +551,25 @@ GROUPS = [
     ("security", "safety", "Access",        "Who opens this panel, and who can call."),
     ("perms",    "safety", "Caller permissions", "The station actions a caller can trigger."),
     ("usage",    "safety", "Usage controls",     "Generous limits that stop runaway use."),
+    # Beside the usage caps rather than under Running the line — the hard
+    # per-call ceiling is one more spend limit, and the operator went looking
+    # for it here. The rest of what "Call length" used to hold (sign-off,
+    # check-ins, the earliest hang-up) is conversation behaviour and lives in
+    # Closing the call below.
+    ("limits",   "safety", "Call length",  "The ceiling on one call."),
+    ("speech",   "safety", "Speech hygiene", "What never reaches the speaker."),
 
-    ("call",     "talk",   "Who answers",        "Which DJ picks up, and how."),
+    ("call",     "talk",   "Greeting",           "Which DJ picks up, and how the call opens."),
+    # Greeting's mirror: how a call ends, in character — the sign-off steer,
+    # the idle check-ins, and how early the DJ may hang up were scattered
+    # across House style and Call length, and the operator asked where the
+    # closing settings were. A fair question deserves a section.
+    ("closing",  "talk",   "Closing the call",   "How a call ends, in character."),
     ("turns",    "talk",   "Turn-taking",        "When the DJ decides you've finished."),
     ("style",    "talk",   "House style",        "Light steers on top of the persona."),
     ("context",  "talk",   "Station awareness",  "What the DJ knows before picking up."),
-    ("speech",   "talk",   "Speech hygiene",     "What never reaches the speaker."),
 
-    ("limits",   "line",   "Call length",        "How long a call runs, and who ends it."),
+
     # Was inside Caller permissions, where it read as a fourth station-wide
     # permission. It is not a permission at all: it decides what happens when
     # the call DJ and the on-air DJ are the same voice.
@@ -814,16 +825,16 @@ SCHEMA: dict[str, dict] = {
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
              "in; on this page it behaves as auto."),
-    "min_call_seconds": dict(group="limits", kind="number",
+    "min_call_seconds": dict(group="closing", kind="number",
         label="Earliest hang-up (s)",
         help="The floor under the DJ ending a call itself. 60 by default: a model "
              "deciding a call is over after two words is worse than one that "
              "lingers, and the caller cannot tell it from the line dropping. "
              "0 removes the guard."),
-    "idle_prompt_secs": dict(group="limits", kind="number", label="Check in after (s)",
+    "idle_prompt_secs": dict(group="closing", kind="number", label="Check in after (s)",
         help="Seconds without SPOKEN WORDS before the DJ asks if they're still "
              "there. Background noise doesn't count. 0 never checks in."),
-    "idle_max_nudges": dict(group="limits", kind="number", label="Check-ins before hanging up",
+    "idle_max_nudges": dict(group="closing", kind="number", label="Check-ins before hanging up",
         needs=("idle_prompt_secs", True),
         help="After this many unanswered check-ins the DJ signs off and gets back "
              "to the broadcast."),
@@ -957,11 +968,11 @@ SCHEMA: dict[str, dict] = {
              "caller's words stay on your disk, not about space."),
 
     # --- usage ---
-    "max_concurrent_calls": dict(group="usage", kind="number", label="At once",
+    "max_concurrent_calls": dict(group="usage", kind="number", label="Calls at once",
         help="Callers on the line at the same time. Each is a separate model session."),
-    "calls_per_hour": dict(group="usage", kind="number", label="Per hour",
+    "calls_per_hour": dict(group="usage", kind="number", label="Calls per hour",
         help="Across everybody — the main guard against a runaway loop."),
-    "calls_per_day": dict(group="usage", kind="number", label="Per day",
+    "calls_per_day": dict(group="usage", kind="number", label="Calls per day",
         help="The hard ceiling on what a day can cost. The hourly limit alone "
              "still allows 24× that."),
     "calls_paused": dict(group="usage", kind="check", label="Pause all calls",
@@ -970,7 +981,7 @@ SCHEMA: dict[str, dict] = {
     "max_actions_per_call": dict(group="usage", kind="number", label="Actions per call",
         help="Requests, on-air messages and segments together. At the limit the "
              "DJ says so warmly and keeps talking — never an error."),
-    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait (s)",
+    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait time (s)",
         help="How long one caller waits before calling back. 0 while testing."),
 
     # --- speech hygiene ---
@@ -992,7 +1003,7 @@ SCHEMA: dict[str, dict] = {
     "style_answering": dict(group="style", kind="text", label="Answering",
         placeholder="default: as the persona would, at its own length",
         help="e.g. 'keep answers to two sentences'."),
-    "style_signoff": dict(group="style", kind="text", label="Signing off",
+    "style_signoff": dict(group="closing", kind="text", label="Signing off",
         placeholder="default: in character, no fixed formula",
         help="e.g. 'mention what's coming up next before you hang up'."),
 
