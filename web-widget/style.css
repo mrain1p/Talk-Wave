@@ -844,6 +844,12 @@
     display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px;
   }
   .panelbar .gear { text-decoration: none; }
+  /* Sign out is a word, not a glyph — same quiet chrome, its own width. */
+  .panelbar .signout {
+    width: auto; padding: 0 9px;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase;
+  }
 
   /* Wider than the call card on purpose, and the one place the two surfaces
      are allowed to disagree about width. The card is a phone and wants to be

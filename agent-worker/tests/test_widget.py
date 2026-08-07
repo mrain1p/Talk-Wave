@@ -1115,11 +1115,24 @@ class TestPushToTalkIsPerSurfaceAndOffByDefault(unittest.TestCase):
         # Enabled first (that is the permission prompt and the track), then
         # closed straight away — a caller on a push-to-talk line whose mic
         # opens hot has been betrayed by the one promise the bar makes.
+        # UNLESS they already pressed the bar during the ring: a latch made
+        # early is a decision, and the post-connect close stomping it is how
+        # a lit bar ended up muted on a real call.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        start = call_js.split("await room.connect(url, token);")[1][:600]
+        start = call_js.split("await room.connect(url, token);")[1][:700]
         self.assertIn("setMicrophoneEnabled(true)", start)
-        self.assertIn("setMicrophoneEnabled(false)", start)
-        self.assertIn("pttOn()", start)
+        self.assertIn("setMicOpen(false)", start)
+        self.assertIn("!pttOpen", start)
+
+    def test_mic_switches_are_serialized_and_verified(self):
+        # Concurrent setMicrophoneEnabled calls resolve in whatever order the
+        # SDK pleases; the reported failure was a lit bar over a muted mic.
+        # One queue driving toward the LATEST intent, and a reconcile that
+        # tells the CALLER when the hardware still disagrees.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("micOp = micOp.then", call_js)
+        self.assertIn("pub.isMuted", call_js)
+        self.assertIn("tap the bar again", call_js)
 
     def test_the_quiet_caller_nudge_knows_about_the_bar(self):
         # "Check your microphone" to somebody deliberately holding it closed

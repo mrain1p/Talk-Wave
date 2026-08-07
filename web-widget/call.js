@@ -1354,9 +1354,11 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
-      if (pttOn() && !vmCall) {
-        pttOpen = false;
-        await room.localParticipant.setMicrophoneEnabled(false);
+      if (pttOn() && !vmCall && !pttOpen) {
+        // Closed only if the caller has not already pressed the bar during
+        // the ring — a latch made early is a decision, not a race to lose.
+        await setMicOpen(false);
+      } else if (pttOn() && !vmCall) {
         paintPtt();
       }
 
@@ -1633,13 +1635,45 @@
   let pttOpen = false;
   const HOLD_MS = 300;
 
-  async function setMicOpen(open) {
+  // Every mic switch goes through ONE queue, always driving toward the
+  // LATEST intent. Firing setMicrophoneEnabled calls concurrently — a tap
+  // during the post-connect close, a fast tap-tap — let them resolve out of
+  // order, and the reported bug was exactly that: the bar lit, the mic
+  // muted, and the DJ telling a caller mid-press to check their microphone.
+  let micOp = Promise.resolve();
+
+  function setMicOpen(open) {
     pttOpen = !!open;
     paintPtt();
-    if (room) {
-      try { await room.localParticipant.setMicrophoneEnabled(pttOpen); }
-      catch (e) { console.warn('Wave Talk: could not switch the mic —', e); }
-    }
+    micOp = micOp.then(async () => {
+      if (!room) return;
+      try {
+        // The state may have changed while queued; apply the current one.
+        await room.localParticipant.setMicrophoneEnabled(pttOpen);
+        // Re-enabling can mint a fresh capture track (the SDK may stop the
+        // old one on mute), so the meter re-reads it or it flatlines and
+        // reads as muted while the DJ hears fine.
+        if (pttOpen) {
+          const pub = room.localParticipant.getTrackPublication(
+            LivekitClient.Track.Source.Microphone);
+          if (pub && pub.track) anYou = analyserFor(pub.track.mediaStreamTrack);
+        }
+        // Trust, then verify: if the publication disagrees with the bar,
+        // one retry, and if it still disagrees the caller is TOLD instead
+        // of finding out from the DJ.
+        const pub = room.localParticipant.getTrackPublication(
+          LivekitClient.Track.Source.Microphone);
+        if (pub && pttOpen && pub.isMuted) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+          if (pub.isMuted) {
+            setStatus('The mic didn't open — tap the bar again', 'error');
+          }
+        }
+      } catch (e) {
+        console.warn('Wave Talk: could not switch the mic —', e);
+      }
+    });
+    return micOp;
   }
 
   function paintPtt() {
@@ -1663,7 +1697,7 @@
     let downAt = 0, openBeforePress = false, pressed = false;
 
     bar.addEventListener('pointerdown', (e) => {
-      if (!room || vmCall) return;
+      if (!room || vmCall) return;   // the queue makes a ring-time press safe
       e.preventDefault();
       bar.setPointerCapture?.(e.pointerId);
       pressed = true;
