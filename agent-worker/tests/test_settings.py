@@ -575,3 +575,25 @@ class TestEverySecretRendersSomewhere(unittest.TestCase):
                 self.assertTrue(secrets_store.SECRET_HELP.get(field),
                                 "a key with no help line is a vendor name in "
                                 "a list, asking the operator to already know")
+
+
+class TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry(_TempStores):
+    """0.9.139 renamed guest_session_minutes to hours — day-shaped answers.
+    A stored minutes value keeps its real duration, rounded UP, so nobody's
+    handed-out code expires earlier after an upgrade; 0 stays 0."""
+
+    def test_minutes_migrate_up_and_zero_stays_zero(self):
+        import json
+
+        import settings as settings_store
+
+        settings_store.SETTINGS_PATH.write_text(
+            json.dumps({"guest_session_minutes": 90}), encoding="utf-8")
+        self.assertEqual(2, settings_store.load()["guest_session_hours"])
+        settings_store.SETTINGS_PATH.write_text(
+            json.dumps({"guest_session_minutes": 0}), encoding="utf-8")
+        self.assertEqual(0, settings_store.load()["guest_session_hours"],
+                         "stored 0 minutes was the operator explicitly "
+                         "choosing 'until Sign out' — the migration must "
+                         "carry that choice, not replace it with the new "
+                         "24-hour default")

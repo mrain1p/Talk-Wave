@@ -162,41 +162,40 @@
           <select id="front_access"></select>
         </div>
         <div class="row narrow">
-          <label for="guest_session_minutes">Guest code expires (min)</label>
-          <input type="number" id="guest_session_minutes" min="0" max="1440" step="15" />
+          <label for="guest_session_hours">Guest code expires (hours)</label>
+          <input type="number" id="guest_session_hours" min="0" max="720" step="1" />
         </div>
 
-        <h4 class="subhead">Admin — this panel</h4>
-        <p class="hint wide" style="margin-top:0">Opens the settings, the keys
-          and the test buttons. Whoever has it can spend your API budget.</p>
-        <div class="row" id="curPwRow">
-          <label for="sec_current_pw">Current password</label>
-          <input type="password" id="sec_current_pw" autocomplete="off" />
-        </div>
-        <div class="row">
-          <label for="sec_new_pw">New password</label>
-          <input type="password" id="sec_new_pw" autocomplete="off" placeholder="at least 8 characters" />
-        </div>
-        <div class="testrow">
-          <button id="setPwBtn">Set password</button>
+        <!-- Compact on the operator's ask: each credential is ONE row of
+             field-plus-buttons with a set/not-set chip in its heading, and
+             the new-password box only exists once Change password is
+             pressed — a box that is usually irrelevant was a line of noise. -->
+        <h4 class="subhead">Admin — this panel
+          <span class="setchip" id="adminSetChip"></span></h4>
+        <div class="testrow" id="adminPwRow">
+          <input type="password" id="sec_current_pw" autocomplete="off"
+                 placeholder="current password" aria-label="Current password" />
+          <input type="password" id="sec_new_pw" autocomplete="off" hidden
+                 placeholder="new — at least 8 characters" aria-label="New password" />
+          <button id="setPwBtn">Change password…</button>
           <button id="logoutBtn" class="btnquiet" hidden>Sign out</button>
         </div>
-        <p class="hint wide">Locked out? Set <code>CALLIN_ADMIN_KEY</code> in the
-          environment as a recovery override; restarting clears IP bans.</p>
+        <p class="hint wide">Opens the settings, the keys and the test
+          buttons — whoever has it can spend your API budget. Locked out? Set
+          <code>CALLIN_ADMIN_KEY</code> in the environment as a recovery
+          override; restarting clears IP bans.</p>
         <div class="result" id="pwResult"></div>
 
-        <h4 class="subhead">Guest — the phone</h4>
-        <p class="hint wide" style="margin-top:0">A code you hand out. No
-          username. It must differ from the admin password — a code that also
-          opens this panel defeats the point of having two.</p>
-        <div class="row">
-          <label for="sec_guest_pw">Guest code</label>
-          <input type="password" id="sec_guest_pw" autocomplete="off" placeholder="at least 6 characters" />
-        </div>
+        <h4 class="subhead">Guest — the phone
+          <span class="setchip" id="guestSetChip"></span></h4>
         <div class="testrow">
+          <input type="password" id="sec_guest_pw" autocomplete="off"
+                 placeholder="at least 6 characters" aria-label="Guest code" />
           <button id="setGuestBtn">Set guest code</button>
           <button id="clearGuestBtn" class="btnquiet">Remove</button>
         </div>
+        <p class="hint wide">A code you hand out — no username. It must differ
+          from the admin password, or one code opens both doors.</p>
         <div class="result" id="guestResult"></div>
       </div>
     </details>
@@ -446,7 +445,6 @@
     <details data-group="call" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Who answers</span><em class="secblurb"></em><span class="tag" id="tagCall"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
         <div class="row">
           <label for="persona_override">Who answers</label>
           <select id="persona_override"></select>
@@ -707,6 +705,7 @@
           <label for="voicemail_when">Answer with voicemail</label>
           <select id="voicemail_when"></select>
         </div>
+        <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
         <div class="row">
           <label for="voicemail_greeting_mode">Greeting comes from</label>
           <select id="voicemail_greeting_mode"></select>
@@ -926,8 +925,9 @@
     <!-- Diagnostics. Four collapsed rows, each with its own run button in the
          header — they were four buttons and four result panes stacked open,
          which made the bottom of the panel longer than everything above it. -->
+    <!-- No subtext, matching the built super-group bands — see layoutPanel. -->
     <div class="supergroup" data-static="1" id="supDiag">
-      <span>Diagnostics</span><em>Check it works, and read what happened.</em>
+      <span>Diagnostics</span><em></em>
     </div>
 
     <details class="sec diag" data-diag="pipeline">
@@ -965,6 +965,10 @@
         <div class="diagbar" id="callBar" hidden>
           <label class="pick"><input type="checkbox" id="callsOnlyBad" />
             <span id="callsOnlyBadLabel">Only calls with problems</span></label>
+          <button type="button" class="runbtn" id="callsOnlyDown"
+                  title="Only calls the caller rated thumbs down">&#128078; <span></span></button>
+          <button type="button" class="runbtn" id="callsOnlyUp"
+                  title="Only calls the caller rated thumbs up">&#128077; <span></span></button>
           <span class="grow"></span>
           <span class="tag" id="callCount"></span>
           <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>
@@ -983,7 +987,7 @@
           <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
         <div class="diagbar" id="logFilters" hidden>
           <label for="logLevels">Levels</label>
-          <select id="logLevels" multiple size="3"></select>
+          <select id="logLevels"></select>
           <input type="search" id="logSearch" placeholder="filter text…" />
           <button type="button" class="runbtn" id="logClearFilters">Reset</button>
           <span class="grow"></span>

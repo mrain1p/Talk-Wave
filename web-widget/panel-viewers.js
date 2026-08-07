@@ -172,6 +172,9 @@
     const el = document.createElement('details');
     el.className = 'callrow ' + v.cls;
     el.dataset.verdict = v.cls;
+    if (c.rating === 'up' || c.rating === 'down') {
+      el.dataset.rating = c.rating;
+    }
     const sum = document.createElement('summary');
     sum.innerHTML = '<span class="icon"></span><span class="when"></span>'
       + '<span class="dj"></span><span class="len"></span>'
@@ -188,7 +191,9 @@
     sum.querySelector('.did').textContent =
       `${turns} turn${turns === 1 ? '' : 's'}`
       + (tools ? ` · ${tools} tool${tools === 1 ? '' : 's'}` : '');
-    sum.querySelector('.dt').textContent = v.note;
+    sum.querySelector('.dt').textContent =
+      (c.rating === 'down' ? '\ud83d\udc4e ' : c.rating === 'up' ? '\ud83d\udc4d ' : '')
+      + v.note;
     el.appendChild(sum);
     el.appendChild(callBody(c));
     return el;
@@ -227,6 +232,25 @@
       box.disabled = !rough;
       box.checked = false;
       box.onchange = () => list.classList.toggle('onlybad', box.checked);
+      // The caller's own verdicts, as filters. One at a time — a call can't
+      // be rated both ways — and they stack with the problems checkbox.
+      const down = calls.filter((c) => c.rating === 'down').length;
+      const up = calls.filter((c) => c.rating === 'up').length;
+      [['callsOnlyDown', 'onlydown', down], ['callsOnlyUp', 'onlyup', up]]
+        .forEach(([id, cls, n]) => {
+          const btn = $(id);
+          if (!btn) return;
+          btn.querySelector('span').textContent = n || '';
+          btn.disabled = !n;
+          btn.classList.remove('on');
+          btn.onclick = () => {
+            const now = !list.classList.contains(cls);
+            list.classList.remove('onlydown', 'onlyup');
+            $('callsOnlyDown').classList.remove('on');
+            $('callsOnlyUp').classList.remove('on');
+            if (now) { list.classList.add(cls); btn.classList.add('on'); }
+          };
+        });
       $('callCount').textContent = `${calls.length} call${calls.length === 1 ? '' : 's'}`;
       $('callBar').hidden = false;
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
@@ -262,10 +286,15 @@
 
   function paintLogs() {
     const out = $('logsResult');
-    const chosen = [...$('logLevels').selectedOptions].map((o) => o.value);
+    // One choice, read as a floor: "Warnings and up" keeps errors visible,
+    // which is what anyone picking a level actually wants. '' is All — the
+    // default, because the old multi-select opened on an ambiguous
+    // nothing-selected state the operator rightly called ugly.
+    const floor = $('logLevels').value;
+    const floorIdx = LEVEL_ORDER.indexOf(floor);
     const needle = ($('logSearch').value || '').toLowerCase();
     const rows = logRecords.filter((r) =>
-      (!chosen.length || chosen.indexOf(r.level) !== -1)
+      (floorIdx < 0 || LEVEL_ORDER.indexOf(r.level) >= floorIdx)
       && (!needle || (r.msg + ' ' + r.logger).toLowerCase().indexOf(needle) !== -1));
 
     out.innerHTML = '';
@@ -313,14 +342,20 @@
         t: '', level: 'INFO', logger: '', msg: l,
       }));
       const present = d.levels || [];
-      const keep = [...$('logLevels').selectedOptions].map((o) => o.value);
+      const keep = $('logLevels').value;
       $('logLevels').innerHTML = '';
+      const all = document.createElement('option');
+      all.value = ''; all.textContent = 'All levels';
+      $('logLevels').appendChild(all);
       LEVEL_ORDER.filter((l) => present.indexOf(l) !== -1).forEach((l) => {
         const o = document.createElement('option');
-        o.value = l; o.textContent = l[0] + l.slice(1).toLowerCase();
-        o.selected = keep.indexOf(l) !== -1;
+        o.value = l;
+        o.textContent = l === 'ERROR' ? 'Errors only'
+          : l[0] + l.slice(1).toLowerCase() + ' and up';
         $('logLevels').appendChild(o);
       });
+      $('logLevels').value =
+        [...$('logLevels').options].some((o) => o.value === keep) ? keep : '';
       $('logFilters').hidden = false;
       out.className = 'result on logs';
       paintLogs();
@@ -331,7 +366,7 @@
   $('logLevels').onchange = paintLogs;
   $('logSearch').oninput = paintLogs;
   $('logClearFilters').onclick = () => {
-    [...$('logLevels').options].forEach((o) => { o.selected = false; });
+    $('logLevels').value = '';
     $('logSearch').value = '';
     paintLogs();
   };

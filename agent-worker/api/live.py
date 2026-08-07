@@ -360,7 +360,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # The answering-machine policy, so the card can offer
                     # "Leave a message" exactly where it paints a refusal.
                     "voicemailWhen": str(cfg.get("voicemail_when") or "never"),
-                    "guestSessionMinutes": int(cfg.get("guest_session_minutes") or 0),
+                    # The widget's expiry maths stayed in minutes; only the SETTING
+                    # moved to hours, so the wire stays compatible both ways.
+                    "guestSessionMinutes":
+                        int(cfg.get("guest_session_hours") or 0) * 60,
                     # True when several station reads in a row have failed —
                     # the card can say "station struggling" instead of the
                     # prompt just silently thinning.
