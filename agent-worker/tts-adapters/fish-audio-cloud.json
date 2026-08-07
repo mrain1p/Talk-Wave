@@ -1,0 +1,25 @@
+{
+  "_comment": "Fish Audio (api.fish.audio) — the third cloud voice SUB/WAVE itself offers, so a station already paying for it can point the call line at the same account. Set Endpoint to https://api.fish.audio and put the key in the Fish Audio box under Voice. The voice is a Fish reference id, and the right default is no choice at all: 'Station's voice for this DJ' passes the persona's own configured voice string through untouched, which for a persona the station already speaks through Fish IS its reference id. Fish publishes no OpenAI-style voice list, so ignore what Reload voice list shows. Asks for raw PCM at 24k so the pace meter and the sample-rate probe both work; press Test voice after wiring it, and read what it says.",
+  "endpoint_path": "/v1/tts",
+  "method": "POST",
+  "default_model": "",
+  "request_field_map": {
+    "text": "text",
+    "voice": "reference_id",
+    "model": null
+  },
+  "static_fields": {
+    "format": "pcm",
+    "sample_rate": 24000,
+    "latency": "balanced"
+  },
+  "auth": { "type": "bearer", "key_env": "FISH_API_KEY" },
+  "response": { "type": "raw_audio" },
+  "base_url": "https://api.fish.audio",
+  "audio": {
+    "encoding": "pcm",
+    "mime_type": "audio/pcm",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
+}

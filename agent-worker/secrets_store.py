@@ -38,24 +38,78 @@ SECRETS_PATH = Path(
 SECRET_FIELDS: dict[str, str] = {
     "openai_api_key": "OPENAI_API_KEY",
     "openrouter_api_key": "OPENROUTER_API_KEY",
-    "deepgram_api_key": "DEEPGRAM_API_KEY",
-    "google_api_key": "GOOGLE_API_KEY",
     "anthropic_api_key": "ANTHROPIC_API_KEY",
+    "google_api_key": "GOOGLE_API_KEY",
+    "deepseek_api_key": "DEEPSEEK_API_KEY",
+    "requesty_api_key": "REQUESTY_API_KEY",
+    "gateway_api_key": "AI_GATEWAY_API_KEY",
+    "deepgram_api_key": "DEEPGRAM_API_KEY",
     "tts_api_key": "TTS_API_KEY",
+    "elevenlabs_api_key": "ELEVENLABS_API_KEY",
+    "fish_api_key": "FISH_API_KEY",
     "subwave_admin_user": "SUBWAVE_ADMIN_USER",
     "subwave_admin_pass": "SUBWAVE_ADMIN_PASS",
 }
 
 # Shown in the UI so it's obvious what each key unlocks.
 SECRET_LABELS: dict[str, str] = {
-    "openai_api_key": "OpenAI (LLM + cloud TTS)",
-    "openrouter_api_key": "OpenRouter (many models, one key)",
-    "deepgram_api_key": "Deepgram (speech-to-text)",
-    "google_api_key": "Google / Gemini",
+    "openai_api_key": "OpenAI",
+    "openrouter_api_key": "OpenRouter",
     "anthropic_api_key": "Anthropic",
-    "tts_api_key": "TTS server (if separate from OpenAI)",
+    "google_api_key": "Google / Gemini",
+    "deepseek_api_key": "DeepSeek",
+    "requesty_api_key": "Requesty",
+    "gateway_api_key": "Vercel AI Gateway",
+    "deepgram_api_key": "Deepgram",
+    "tts_api_key": "TTS server",
+    "elevenlabs_api_key": "ElevenLabs",
+    "fish_api_key": "Fish Audio",
     "subwave_admin_user": "Station admin user",
     "subwave_admin_pass": "Station admin password",
+}
+
+# Which settings section each key is entered in. There is no "Connections"
+# section any more: a key was being asked for on one screen and used on
+# another, so choosing a provider meant scrolling away from the choice, adding
+# a key to a list of eight, and scrolling back to find out whether the provider
+# had appeared. Each key now sits under the thing it unlocks.
+#
+# One home each, even where a key does two jobs — OpenAI is LLM, cloud TTS and
+# cloud STT off the same string, and three input boxes writing one value is
+# worse than one box and a sentence saying where it also lands.
+SECRET_GROUPS: dict[str, str] = {
+    "openai_api_key": "brains",
+    "openrouter_api_key": "brains",
+    "anthropic_api_key": "brains",
+    "google_api_key": "brains",
+    "deepseek_api_key": "brains",
+    "requesty_api_key": "brains",
+    "gateway_api_key": "brains",
+    "deepgram_api_key": "ears",
+    "tts_api_key": "voice",
+    "elevenlabs_api_key": "voice",
+    "fish_api_key": "voice",
+    "subwave_admin_user": "station",
+    "subwave_admin_pass": "station",
+}
+
+# One line under each key saying what it buys, on the same row as the box. A
+# key list with nothing but vendor names asks the operator to already know
+# which of eight vendors this deployment is using.
+SECRET_HELP: dict[str, str] = {
+    "openai_api_key": "Also powers cloud TTS and OpenAI speech-to-text — one key, three legs of the call.",
+    "openrouter_api_key": "One key, ~340 models including free tiers. Its catalogue is public, so the list fills before the key does.",
+    "anthropic_api_key": "Claude models.",
+    "google_api_key": "Gemini models, and Google speech-to-text.",
+    "deepseek_api_key": "DeepSeek chat and reasoner.",
+    "requesty_api_key": "Aggregator — many vendors behind one key. Models are read live from your account.",
+    "gateway_api_key": "Vercel's aggregator. Models are read live from your account.",
+    "deepgram_api_key": "The fastest speech-to-text on a call, and the only one that gives word-by-word captions.",
+    "tts_api_key": "Only if your speech endpoint wants a bearer token of its own. Blank falls back to the OpenAI key on an OpenAI host.",
+    "elevenlabs_api_key": "Sent as xi-api-key by the ElevenLabs adapter. Pick that adapter under Backend below.",
+    "fish_api_key": "Used by the Fish Audio adapter — the station's third cloud voice, shared here.",
+    "subwave_admin_user": "The station's own login — see what it unlocks above.",
+    "subwave_admin_pass": "The station's own login — see what it unlocks above.",
 }
 
 # Nothing round-trips in the clear — not even the admin username, and not the
@@ -118,6 +172,11 @@ def status() -> dict:
         value = str(stored.get(field) or os.environ.get(env_var, ""))
         out[field] = {
             "label": SECRET_LABELS.get(field, field),
+            # Which settings section renders the box. The panel groups on this
+            # rather than on a list of its own, so a key added here appears
+            # under the right heading without a second edit in the browser.
+            "group": SECRET_GROUPS.get(field, "brains"),
+            "help": SECRET_HELP.get(field, ""),
             "set": bool(value),
             "source": "settings" if from_store else ("env" if value else "unset"),
             "hint": _mask(value),

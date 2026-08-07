@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wave Talk settings</title>
+<!--
+  The operator's surface, served at /panel.
+
+  It lived inside index.html until 0.9.105, which meant every caller who
+  loaded the phone also downloaded this entire interface. Nothing leaked —
+  the data behind it has always needed the admin password — but the markup
+  and the javascript shipped to anyone who asked for the page, and the two
+  audiences could never be told apart by anything in front of the server.
+
+  On its own URL they can be. If this box is reachable from outside your
+  network, putting a rule in front of /panel in Caddy — an IP allowlist, or
+  basic auth — is worth doing, and is the reason this page exists separately
+  rather than as a section of the other one.
+
+  LiveKit's client is loaded here because the full-pipeline check really does
+  place a call: it mints a token, connects, reads the ICE candidates and hangs
+  up. That is the only way to tell "signalling works" from "media works".
+
+  WHERE THE ORDER LIVES: not here. Sections carry a data-group and the schema
+  in settings.py decides which super-group each one sits under and in what
+  order — layoutPanel() moves them on load. So the order of the sections in
+  this file is only the order they happen to have been written in, and editing
+  it changes nothing.
+
+  WHAT THE PROSE IS FOR: nothing that describes a single FIELD belongs here.
+  Field help comes from the schema and is injected under its row, so a
+  paragraph in this file is only ever for something that describes a whole
+  section — a prerequisite, a warning, or what a run of buttons does.
+-->
+<!-- Pinned exactly: a floating @2 tag means a breaking client release lands
+     silently on every visitor. Bump deliberately, test a call, then ship. -->
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.min.js"></script>
+<!-- No webfonts. 0.9.92 pulled Archivo and IBM Plex Mono from Google so the
+     widget's labels would match one particular station page — which is a
+     request to a third party from every embed, on somebody else's site, for
+     the sake of matching a page most of those embeds are not on. The design
+     is the mono uppercase micro-label against a sans body, and the system
+     stacks in style.css carry that anywhere. If the exact faces are ever
+     wanted back, self-host them here rather than reintroducing the CDN. -->
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="panelpage">
+  <section class="panel open" id="panel">
+    <!-- The way back, and the theme toggle. Both were on the call page's
+         header when the panel was a section of it; on its own page it needs
+         its own, or the operator is stranded here in whichever theme the
+         phone was last left in. -->
+    <div class="panelbar">
+      <a class="gear" href="/" title="Back to the call page"
+         aria-label="Back to the call page">&#8592;</a>
+      <button class="gear" id="themeBtn" title="Light / dark"
+              aria-label="Toggle light or dark">&#9681;</button>
+    </div>
+    <h2>Call-in settings</h2>
+    <p class="sub">Applies to the next caller — no restart. Clearing a field
+      falls back to the environment config.</p>
+
+    <!-- First run. Shown until an admin password exists, and it ASKS rather
+         than pointing: this used to be one sentence saying to go and set a
+         password in a section further down, which is a thing to do later and
+         reads like one — while everything on this page, including the keys,
+         is open to whoever can reach it. The box is here, and it is the first
+         thing on the page. Setting it runs the same handler the Access
+         section does, so there is one implementation. -->
+    <div class="banner setup" id="pwNudge" hidden>
+      <strong>Set an admin password to finish setting up.</strong>
+      <p>This page has no password yet, so anyone who can reach it can change
+        every setting and spend your API keys. It is also the password that
+        opens the phone for you.</p>
+      <span class="loginrow">
+        <input type="password" id="firstPw" autocomplete="new-password"
+               placeholder="at least 8 characters" />
+        <button id="firstPwBtn">Set password</button>
+      </span>
+      <span id="firstPwMsg"></span>
+    </div>
+
+    <div class="banner" id="loginGate" hidden>
+      <strong>Panel locked.</strong>
+      <span class="loginrow">
+        <input type="password" id="loginPw" placeholder="panel password" autocomplete="off" />
+        <button id="loginBtn">Unlock</button>
+      </span>
+      <span id="loginMsg"></span>
+    </div>
+
+    <!-- Jump links, one per super-group, built from the schema. The panel is
+         six screens long and every way of reaching the bottom of it was
+         scrolling past everything in between. -->
+    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
+
+    <!-- The dashboard. The kill switch lives here — out of Usage controls and
+         into the one place it can be reached without opening anything, because
+         three sections and one disclosure down is the wrong depth for the
+         control you want when something is going wrong right now.
+
+         It was a checkbox in a bordered strip until 0.9.122, and a checkbox is
+         the wrong shape for it twice over: it read as one more setting in a
+         panel of forty, and like every other setting it did nothing until Save
+         was pressed at the bottom of the page. Closing the line is not a
+         setting you are drafting, it is a thing you are doing. The button
+         posts immediately (see savePaused in panel.js) and says which way
+         round it is.
+
+         Still `calls_paused`, still in the usage group as far as the schema is
+         concerned — the checkbox is still the field Save diffs and the server
+         stores, it is just driven by the button rather than clicked. Removing
+         it would take the setting out of every list built from the schema.
+
+         The tiles are the four things an operator opens this page to check
+         before they change anything: who is on air, whether the station is
+         answering, who is allowed to call, and whether the three legs of a
+         call are configured. Each one jumps to the section that owns it. -->
+    <div class="dash">
+      <div class="dashmain">
+        <button type="button" id="pauseBtn" class="killbtn">Pause all calls</button>
+        <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
+               aria-hidden="true" />
+        <span class="dashsay">
+          <strong id="pausedNote"></strong>
+          <span id="pausedSub"></span>
+        </span>
+        <button type="button" id="dashCheckBtn" class="btnquiet">Run the full check</button>
+      </div>
+      <div class="dashtiles">
+        <button type="button" class="tile" id="tileOnAir" data-jump="call">
+          <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileStation" data-jump="station">
+          <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileAccess" data-jump="security">
+          <span class="tk">Who can call</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileChain" data-jump="brains">
+          <span class="tk">Brains · Voice · Ears</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Every section's name and one-line subtitle are written here AND set
+         from the schema by layoutPanel(), which is not belt-and-braces for its
+         own sake: settings.py already decides the order and the grouping, so a
+         rename that only happened in one of the two files produced a panel
+         whose heading and whose schema disagreed about what the section was.
+         The markup carries the current text so the page reads correctly before
+         any javascript runs, or if it never does. -->
+    <details data-group="security" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
+      <div class="body">
+        <h4 class="subhead">Who can call</h4>
+        <div class="row">
+          <label for="front_access">Call-in access</label>
+          <select id="front_access"></select>
+        </div>
+
+        <h4 class="subhead">Admin — this panel</h4>
+        <p class="hint wide" style="margin-top:0">Opens the settings, the keys
+          and the test buttons. Whoever has it can spend your API budget.</p>
+        <div class="row" id="curPwRow">
+          <label for="sec_current_pw">Current password</label>
+          <input type="password" id="sec_current_pw" autocomplete="off" />
+        </div>
+        <div class="row">
+          <label for="sec_new_pw">New password</label>
+          <input type="password" id="sec_new_pw" autocomplete="off" placeholder="at least 8 characters" />
+        </div>
+        <div class="testrow">
+          <button id="setPwBtn">Set password</button>
+          <button id="logoutBtn" class="btnquiet" hidden>Sign out</button>
+        </div>
+        <p class="hint wide">Locked out? Set <code>CALLIN_ADMIN_KEY</code> in the
+          environment as a recovery override; restarting clears IP bans.</p>
+        <div class="result" id="pwResult"></div>
+
+        <h4 class="subhead">Guest — the phone</h4>
+        <p class="hint wide" style="margin-top:0">A code you hand out. No
+          username. It must differ from the admin password — a code that also
+          opens this panel defeats the point of having two.</p>
+        <div class="row">
+          <label for="sec_guest_pw">Guest code</label>
+          <input type="password" id="sec_guest_pw" autocomplete="off" placeholder="at least 6 characters" />
+        </div>
+        <div class="testrow">
+          <button id="setGuestBtn">Set guest code</button>
+          <button id="clearGuestBtn" class="btnquiet">Remove</button>
+        </div>
+        <div class="result" id="guestResult"></div>
+      </div>
+    </details>
+
+    <details data-group="station" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Station</span><em class="secblurb"></em><span class="tag" id="tagStation"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="station_base_url">Station API</label>
+          <input type="text" id="station_base_url" placeholder="http://your-station:7700/api" />
+        </div>
+        <!-- Derived from the address above unless somebody says otherwise, so
+             it is behind a disclosure rather than sitting in the form looking
+             like a thing to fill in. It is still a real field: a station that
+             publishes MCP elsewhere needs it, and a browser autofilling this
+             one with a person's name cost a deployment days of tool-less
+             calls, which is why it is reachable at all. -->
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="row">
+            <label for="station_mcp_url">MCP endpoint</label>
+            <input type="text" id="station_mcp_url" placeholder="derived: {Station API}/mcp" />
+          </div>
+        </details>
+
+        <h4 class="subhead">Station admin credentials</h4>
+        <p class="hint wide" style="margin-top:0">The station's own login.
+          Unlocks putting messages on air, running segments, firing a programme
+          beat, skipping a track, <strong>putting a different show on air</strong>,
+          the back-to-air mention, exact-track queueing, and mirroring each
+          persona's voice from the station. Stored server-side, never shown back.</p>
+        <!-- Filled by paintSecrets() from secrets_store.SECRET_GROUPS. Every
+             key block on this page is one of these divs and nothing else, so
+             adding a key is an entry in that table rather than an edit here. -->
+        <div class="keyblock" id="keys_station"></div>
+        <div class="testrow">
+          <button id="testAdminBtn">Test admin access</button>
+          <button id="testStationBtn">Test station + tools</button>
+          <button id="reloadStationBtn">Reload from station</button>
+        </div>
+        <div class="result" id="stationResult"></div>
+      </div>
+    </details>
+
+    <!-- There was a "Connections" section here holding all eight API keys on
+         one screen. It is gone, and the keys now sit in the section that
+         spends them.
+         The section it replaced asked the operator to make a decision in one
+         place using information kept in another: the Provider dropdown lists
+         only providers a key exists for, so a fresh install's list was short
+         for a reason nothing on that screen explained, and finding out meant
+         leaving, adding a key to a list of eight vendor names, and coming back
+         to see whether the list had grown. Same rule as the schema's field
+         help — the explanation belongs beside the thing it explains. -->
+    <details data-group="brains" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Brains</span><em class="secblurb"></em><span class="tag" id="tagBrains"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="llm_provider">Provider</label>
+          <select id="llm_provider"></select>
+        </div>
+        <div class="row">
+          <label for="llm_model">Model</label>
+          <select id="llm_model"></select>
+        </div>
+        <div class="row">
+          <label for="llm_base_url">Endpoint</label>
+          <input type="text" id="llm_base_url" />
+        </div>
+        <div class="row">
+          <label for="llm_temperature">Temperature</label>
+          <input type="number" id="llm_temperature" min="0" max="2" step="0.1" />
+        </div>
+        <p class="hint wide" id="modelSourceNote"></p>
+        <div class="testrow">
+          <button id="testLlmBtn">Test model + tool calling</button>
+          <button id="refreshModelsBtn" class="btnquiet">Reload model lists</button>
+          <span class="hint" style="margin:0">One real completion on your key —
+            a fraction of a cent, free on Ollama.</span>
+        </div>
+        <div class="result" id="llmResult"></div>
+
+        <h4 class="subhead">Model provider keys</h4>
+        <p class="hint wide" style="margin-top:0">A provider appears in the list
+          above as soon as its key is here. Keys are stored in
+          <code>data/secrets.json</code> and never sent back to this page — only
+          whether each is set. A blank box keeps the current value.</p>
+        <div class="keyblock" id="keys_brains"></div>
+      </div>
+    </details>
+
+    <details data-group="voice" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Voice</span><em class="secblurb"></em><span class="tag" id="tagVoice"></span></summary>
+      <div class="body">
+        <div class="banner" id="mirrorBanner" style="display:none"></div>
+        <div class="row">
+          <label for="tts_mode">Backend</label>
+          <select id="tts_mode"></select>
+        </div>
+        <div class="row">
+          <label for="tts_adapter">Adapter</label>
+          <select id="tts_adapter"></select>
+        </div>
+        <div class="row">
+          <label for="tts_base_url">Endpoint</label>
+          <input type="text" id="tts_base_url" />
+        </div>
+        <div class="row">
+          <label for="tts_voice">Voice</label>
+          <select id="tts_voice"></select>
+        </div>
+        <div class="row">
+          <label for="tts_model">Model</label>
+          <input type="text" id="tts_model" placeholder="adapter default" />
+        </div>
+        <div class="testrow">
+          <button id="testTtsBtn">Test voice</button>
+          <button id="refreshVoicesBtn" class="btnquiet">Reload voice list</button>
+          <span class="hint" style="margin:0">Synthesizes one real line.</span>
+        </div>
+        <div class="result" id="ttsResult"></div>
+
+        <h4 class="subhead">Speech keys</h4>
+        <p class="hint wide" style="margin-top:0">OpenAI's own key is under
+          <strong>Brains</strong> and already covers OpenAI cloud speech — these
+          are the backends that want a key of their own.</p>
+        <div class="keyblock" id="keys_voice"></div>
+      </div>
+    </details>
+
+    <details data-group="ears" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Ears</span><em class="secblurb"></em><span class="tag" id="tagEars"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="stt_provider">Provider</label>
+          <select id="stt_provider"></select>
+        </div>
+        <div class="row">
+          <label for="stt_model">Model</label>
+          <select id="stt_model"></select>
+        </div>
+        <p class="hint wide" id="sttSourceNote"></p>
+
+        <h4 class="subhead">Transcription keys</h4>
+        <p class="hint wide" style="margin-top:0">The local engine is in this
+          container and needs none. OpenAI and Google speech reuse the keys
+          under <strong>Brains</strong>.</p>
+        <div class="keyblock" id="keys_ears"></div>
+      </div>
+    </details>
+
+    <!-- Permissions are a tier per row, not a yes/no: "off", or the least
+         trusted caller who gets it. The three columns are those tiers, and
+         they cascade — granting to Anyone necessarily grants to the two above.
+
+         Only the SELECT is in this markup. The label, the three cells and the
+         cascade are built by decoratePermissions() in panel.js from the
+         schema, so a new permission is one entry in settings.py plus one row
+         here rather than five elements to keep in step. The select is the
+         real field, and is the thing Save diffs — the checkboxes are a way of
+         setting it.
+
+         The rows between the grids are modifiers, not capabilities:
+         "confirm before sending" shapes how a request works, it is not
+         something anyone is being granted, so asking which callers get it
+         would be asking a question with no answer. -->
+    <details data-group="perms" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Caller permissions</span><em class="secblurb"></em><span class="tag" id="tagPerms"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Each row is the least trusted
+          caller who gets it, and the columns cascade — granting to
+          <strong>Anyone</strong> grants it to everyone. A column you have no
+          password for cannot be ticked.</p>
+
+        <div class="permgrid" id="permGridCall">
+          <div class="phead"><span>On this call</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
+          <div class="row permrow" data-perm="allow_requests"><select id="allow_requests"></select></div>
+          <label class="check"><input type="checkbox" id="confirm_requests" /> Confirm before sending</label>
+          <label class="check"><input type="checkbox" id="shape_vague_requests" /> Offer options for a mood request</label>
+          <div class="row permrow" data-perm="allow_library_search"><select id="allow_library_search"></select></div>
+          <div class="row permrow" data-perm="allow_exact_queue"><select id="allow_exact_queue"></select></div>
+          <div class="row permrow" data-perm="allow_announcements"><select id="allow_announcements"></select></div>
+          <div class="row permrow" data-perm="allow_skills"><select id="allow_skills"></select></div>
+          <label class="check"><input type="checkbox" id="offer_skills" /> …and let the DJ offer one</label>
+        </div>
+
+        <h4 class="subhead">Station-wide</h4>
+        <p class="alert wide"><strong>These change the station, not the call.</strong>
+          Everything above happens to the caller who asked; these land on
+          <em>everyone listening</em>. All three need the station admin
+          credentials, all three are off by default, and Actions per call is the
+          only thing pacing them.</p>
+        <div class="permgrid" id="permGridStation">
+          <div class="phead"><span>On the whole station</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
+          <div class="row permrow" data-perm="allow_skip_track"><select id="allow_skip_track"></select></div>
+          <div class="row permrow" data-perm="allow_dj_segment"><select id="allow_dj_segment"></select></div>
+          <div class="row permrow" data-perm="allow_takeover"><select id="allow_takeover"></select></div>
+        </div>
+        <p class="hint wide">Sound effects and playlist rebuilds stay unavailable
+          to callers whatever you set here — “Test station + tools” prints the
+          exact list.</p>
+      </div>
+    </details>
+
+    <details data-group="usage" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Usage controls</span><em class="secblurb"></em><span class="tag" id="tagUsage"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Every call costs model time and
+          airtime, and one open tab could dial in a loop. Set any to
+          <strong>0</strong> to turn it off. Callers see a friendly “lines are
+          busy”, never an error code.</p>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="max_concurrent_calls">At once</label>
+            <input type="number" id="max_concurrent_calls" min="0" max="20" step="1" />
+          </div>
+          <div class="row narrow">
+            <label for="calls_per_hour">Per hour</label>
+            <input type="number" id="calls_per_hour" min="0" max="500" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="calls_per_day">Per day</label>
+            <input type="number" id="calls_per_day" min="0" max="5000" step="10" />
+          </div>
+          <div class="row narrow">
+            <label for="caller_cooldown_secs">Redial wait (s)</label>
+            <input type="number" id="caller_cooldown_secs" min="0" max="600" step="15" />
+          </div>
+          <div class="row narrow">
+            <label for="max_actions_per_call">Actions per call</label>
+            <input type="number" id="max_actions_per_call" min="0" max="50" step="1" />
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details data-group="call" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Who answers</span><em class="secblurb"></em><span class="tag" id="tagCall"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="persona_override">Who answers</label>
+          <select id="persona_override"></select>
+        </div>
+        <div class="row">
+          <label for="greeting_style">Greeting style</label>
+          <select id="greeting_style"></select>
+        </div>
+        <div class="row">
+          <label for="greeting">Opening line</label>
+          <input type="text" id="greeting" />
+        </div>
+        <label class="check"><input type="checkbox" id="ask_caller_name" /> Ask the caller’s name</label>
+      </div>
+    </details>
+
+    <details data-group="turns" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Turn-taking</span><em class="secblurb"></em><span class="tag" id="tagTurns"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The single biggest lever on
+          whether a call feels like a phone call or a kiosk — and the one most
+          worth leaving alone until a real call says otherwise.
+          <strong>0 on either delay keeps the SDK's own tuned default</strong>;
+          it does not mean “no wait”.</p>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="min_endpointing_delay">Wait before replying (s)</label>
+            <input type="number" id="min_endpointing_delay" min="0" max="5" step="0.1" />
+          </div>
+          <div class="row narrow">
+            <label for="max_endpointing_delay">Longest wait (s)</label>
+            <input type="number" id="max_endpointing_delay" min="0" max="10" step="0.1" />
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="allow_interruptions" /> Let the caller talk over the DJ</label>
+        <div class="row narrow">
+          <label for="min_interruption_secs">Sound needed to interrupt (s)</label>
+          <input type="number" id="min_interruption_secs" min="0" max="5" step="0.1" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="style" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">House style</span><em class="secblurb"></em><span class="tag" id="tagStyle"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Light steers layered on the
+          persona, not a replacement for it. Leave blank and the persona alone
+          decides.</p>
+        <div class="row">
+          <label for="style_conversation">Conversation</label>
+          <input type="text" id="style_conversation" />
+        </div>
+        <div class="row">
+          <label for="style_answering">Answering</label>
+          <input type="text" id="style_answering" />
+        </div>
+        <div class="row">
+          <label for="style_signoff">Signing off</label>
+          <input type="text" id="style_signoff" />
+        </div>
+        <div class="testrow" style="margin-top:12px">
+          <button id="viewPromptBtn">View the assembled prompt</button>
+        </div>
+        <div class="result scrolly" id="promptResult"></div>
+      </div>
+    </details>
+
+    <details data-group="context" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Station awareness</span><em class="secblurb"></em><span class="tag" id="tagContext"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">What the DJ is told before the
+          call. Each item costs time-to-first-token on <em>every</em> turn, not
+          just the first.</p>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="context_recent_tracks">Recently played</label>
+            <input type="number" id="context_recent_tracks" min="0" max="10" step="1" />
+          </div>
+          <div class="row narrow">
+            <label for="context_upcoming">Coming up</label>
+            <input type="number" id="context_upcoming" min="0" max="10" step="1" />
+          </div>
+          <div class="row narrow">
+            <label for="context_booth_lines">On-air chatter</label>
+            <input type="number" id="context_booth_lines" min="0" max="10" step="1" />
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="context_schedule" /> Know the rest of the line-up</label>
+        <p class="hint wide">The music library is <em>not</em> preloaded — the DJ
+          searches it on demand, so it always reflects what you actually have.</p>
+      </div>
+    </details>
+
+    <details data-group="speech" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Speech hygiene</span><em class="secblurb"></em><span class="tag" id="tagHygiene"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Applied to every spoken line on
+          its way to the voice — so it holds whichever model is in use, and
+          whether or not the prompt was obeyed.</p>
+        <label class="check"><input type="checkbox" id="strip_stage_directions" /> Strip stage directions (<em>*shuffles records*</em>, <em>(laughs)</em>)</label>
+        <div class="row">
+          <label for="profanity_mode">Expletives</label>
+          <select id="profanity_mode"></select>
+        </div>
+        <div class="row">
+          <label for="profanity_words">Word list</label>
+          <input type="text" id="profanity_words" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="limits" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Call length</span><em class="secblurb"></em><span class="tag" id="tagLimits"></span></summary>
+      <div class="body">
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="min_call_seconds">Earliest hang-up (s)</label>
+            <input type="number" id="min_call_seconds" min="0" step="15" />
+          </div>
+          <div class="row narrow">
+            <label for="max_call_seconds">Hang up after (s)</label>
+            <input type="number" id="max_call_seconds" min="30" step="30" />
+          </div>
+          <div class="row narrow">
+            <label for="idle_prompt_secs">Check in after (s)</label>
+            <input type="number" id="idle_prompt_secs" min="0" max="180" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="idle_max_nudges">Check-ins before hanging up</label>
+            <input type="number" id="idle_max_nudges" min="0" max="5" step="1" />
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details data-group="onair" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Sharing the microphone</span><em class="secblurb"></em><span class="tag" id="tagOnair"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ
+          on the broadcast are the same person. Without this they talk over each
+          other — the caller hears two of them, and so does everyone listening.</p>
+        <label class="check"><input type="checkbox" id="avoid_on_air_overlap" /> Pause the call while the station is talking</label>
+        <div class="row narrow">
+          <label for="on_air_quiet_secs">Air is busy for (s)</label>
+          <input type="number" id="on_air_quiet_secs" min="0" max="180" step="5" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="tunein" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Tune the caller in</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="tune_in_on_call" /> Tune the caller in during the call</label>
+        <div class="row">
+          <label for="tune_in_url">Stream URL</label>
+          <input type="text" id="tune_in_url" placeholder="https://live.example.com/stream.mp3" />
+        </div>
+        <div class="row narrow">
+          <label for="tune_in_volume">Volume (%)</label>
+          <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="callback" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Back to air</span><em class="secblurb"></em><span class="tag" id="tagCallback"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="callback_enabled" /> Mention the call on air afterwards</label>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="callback_max_words">Length (words)</label>
+            <input type="number" id="callback_max_words" min="10" max="80" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="callback_min_turns">Min caller turns</label>
+            <input type="number" id="callback_min_turns" min="1" max="10" step="1" />
+          </div>
+        </div>
+        <div class="row">
+          <label for="callback_instructions">Extra steer</label>
+          <input type="text" id="callback_instructions" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="sounds" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Call sounds</span><em class="secblurb"></em><span class="tag" id="tagSounds"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="call_sounds" /> Play call sounds</label>
+        <div class="row">
+          <label for="sound_pack">Sound set</label>
+          <select id="sound_pack"></select>
+        </div>
+        <div class="row narrow">
+          <label for="call_volume">Default volume</label>
+          <input type="number" id="call_volume" min="0" max="100" step="5" />
+        </div>
+        <div class="testrow">
+          <button id="testRingBtn" class="btnquiet">Ring</button>
+          <button id="testPickupBtn" class="btnquiet">Pick up</button>
+          <button id="testHoldBtn" class="btnquiet">Hold</button>
+          <button id="testHangupBtn" class="btnquiet">Hang up</button>
+          <button id="testFailedBtn" class="btnquiet">Can't connect</button>
+        </div>
+
+        <details class="advanced">
+          <summary>Use your own</summary>
+          <p class="hint wide" style="margin-top:0">Each sound can be a built-in,
+            a file you upload here, or a URL you host. Uploads stay on this
+            machine — mp3, wav, ogg, m4a, aac or webm, up to 2 MB each.</p>
+          <div class="row">
+            <label for="sound_ring">Ring</label>
+            <input type="text" id="sound_ring" />
+          </div>
+          <div class="row">
+            <label for="sound_pickup">Pick up</label>
+            <input type="text" id="sound_pickup" />
+          </div>
+          <div class="row">
+            <label for="sound_hold">On hold</label>
+            <input type="text" id="sound_hold" />
+          </div>
+          <div class="row">
+            <label for="sound_hangup">Hang up</label>
+            <input type="text" id="sound_hangup" />
+          </div>
+          <div class="row">
+            <label for="sound_failed">Can't connect</label>
+            <input type="text" id="sound_failed" />
+          </div>
+          <div class="testrow">
+            <input type="file" id="soundFile" accept="audio/*" hidden />
+            <button id="uploadSoundBtn">Upload a sound…</button>
+            <span class="hint" id="uploadHint" style="margin:0"></span>
+          </div>
+          <ul class="soundlist" id="soundList"></ul>
+        </details>
+        <div class="result" id="soundResult"></div>
+      </div>
+    </details>
+
+    <details data-group="record" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Call transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="record_calls" /> Keep call transcripts</label>
+        <div class="row narrow">
+          <label for="record_keep">How many to keep</label>
+          <input type="number" id="record_keep" min="1" max="500" step="1" />
+        </div>
+      </div>
+    </details>
+
+    <!-- Player settings. Was "Embed on another page" and held nothing but the
+         snippet; everything deciding what the card LOOKS like was scattered
+         through Call behaviour between settings about how the DJ talks.
+
+         The matrix is two answers per row because the two surfaces are two
+         audiences: this page is the operator's own front door, an embed sits
+         in a column next to the host's own show heading and now-playing
+         ticker, where a second copy of both is noise. The gear's embed cell
+         is a dash rather than a checkbox — an embed never loads this panel's
+         code, so the switch would do nothing whichever way it was set. -->
+    <details data-group="player" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">What the call card shows. The
+          two columns are the two places it appears: <strong>this page</strong>
+          (the phone at <code>/</code>) and an <strong>embed</strong> in a frame
+          on somebody else’s site.</p>
+
+        <!-- The real call card, in a frame, driven by the form above it
+             before anything is saved. It is the actual widget rather than a
+             drawing of one, and what it shows is resolved by /live/preview —
+             the same code that answers a real caller — so it cannot drift
+             from the thing it is previewing. Call and the gear are inert
+             inside it; see previewMode in call.js. -->
+        <div class="preview" id="previewWrap">
+          <div class="previewbar">
+            <span class="plabel">Preview</span>
+            <span class="segs" role="group" aria-label="Which surface to preview">
+              <button type="button" id="previewPage" class="seg on">Page</button>
+              <button type="button" id="previewEmbed" class="seg">Embed</button>
+            </span>
+            <span class="pnote" id="previewNote">unsaved changes shown live</span>
+          </div>
+          <iframe id="previewFrame" title="Live preview of the call card"
+                  src="/?preview=1" loading="lazy"></iframe>
+        </div>
+
+        <div class="pmatrix">
+          <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
+
+          <div class="prow" data-help="show_caller_help">
+            <span class="plabel">“What can I ask?” button</span>
+            <input type="checkbox" id="show_caller_help" aria-label="Ask button on the page" />
+            <input type="checkbox" id="embed_caller_help" aria-label="Ask button in an embed" />
+          </div>
+          <div class="prow" data-help="show_theme_toggle">
+            <span class="plabel">Light / dark toggle</span>
+            <input type="checkbox" id="show_theme_toggle" aria-label="Theme toggle on the page" />
+            <input type="checkbox" id="embed_theme_toggle" aria-label="Theme toggle in an embed" />
+          </div>
+          <div class="prow" data-help="show_settings_gear">
+            <span class="plabel">Settings gear</span>
+            <input type="checkbox" id="show_settings_gear" aria-label="Settings gear on the page" />
+            <span class="pnone" title="An embed never loads this panel's code, so a gear there would open nothing.">—</span>
+          </div>
+
+          <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
+
+          <div class="prow" data-help="show_dj_avatar">
+            <span class="plabel">DJ photo</span>
+            <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />
+            <input type="checkbox" id="embed_dj_avatar" aria-label="DJ photo in an embed" />
+          </div>
+          <div class="prow" data-help="show_dj_show">
+            <span class="plabel">Show name</span>
+            <input type="checkbox" id="show_dj_show" aria-label="Show name on the page" />
+            <input type="checkbox" id="embed_dj_show" aria-label="Show name in an embed" />
+          </div>
+          <div class="prow" data-help="show_dj_tagline">
+            <span class="plabel">DJ tagline</span>
+            <input type="checkbox" id="show_dj_tagline" aria-label="Tagline on the page" />
+            <input type="checkbox" id="embed_dj_tagline" aria-label="Tagline in an embed" />
+          </div>
+          <div class="prow" data-help="show_now_playing">
+            <span class="plabel">Now playing</span>
+            <input type="checkbox" id="show_now_playing" aria-label="Now playing on the page" />
+            <input type="checkbox" id="embed_now_playing" aria-label="Now playing in an embed" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label for="avatar_style">DJ photo shape</label>
+          <select id="avatar_style"></select>
+        </div>
+
+        <h4 class="subhead">The Call button</h4>
+        <div class="row">
+          <label for="call_button_mode">Call button</label>
+          <select id="call_button_mode"></select>
+        </div>
+        <div class="row">
+          <label for="call_button_label">Button text</label>
+          <input type="text" id="call_button_label" />
+        </div>
+
+        <h4 class="subhead">Colours</h4>
+        <div class="row">
+          <label for="widget_theme">Colours</label>
+          <select id="widget_theme"></select>
+        </div>
+
+        <h4 class="subhead">On the caller's phone</h4>
+        <label class="check"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
+
+        <h4 class="subhead">After the call</h4>
+        <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
+      </div>
+    </details>
+
+    <details data-group="embed" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Embed on another page</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Drops an iframe into the target
+          div. <code>allow="microphone"</code> is set for you — without it the mic
+          silently fails inside a frame.</p>
+        <textarea class="snippet" id="embedSnippet" readonly rows="3"></textarea>
+        <div class="testrow" style="margin-top:9px">
+          <button id="copyEmbedBtn">Copy snippet</button>
+          <button id="previewEmbedBtn" class="btnquiet">Preview compact widget</button>
+        </div>
+      </div>
+    </details>
+
+    <details data-group="ask" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">What callers can ask</span><em class="secblurb"></em><span class="tag" id="tagAsk"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Live reference — it follows the
+          permissions above as you tick them, before you save. Greyed is off.</p>
+        <ul class="asklist" id="askList"></ul>
+      </div>
+    </details>
+
+    <details data-group="tools" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Station tools</span><em class="secblurb"></em><span class="tag" id="tagTools"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Every tool the station publishes
+          over MCP, and whether a caller can reach it. The blocked ones are listed
+          too. Reference only — change what's reachable under Caller permissions.</p>
+        <ul class="toollist" id="toolList"></ul>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button id="saveBtn" class="clean">Save</button>
+      <button id="resetBtn">Reset to defaults</button>
+      <span id="saveMsg"></span>
+    </div>
+
+    <!-- Diagnostics. Four collapsed rows, each with its own run button in the
+         header — they were four buttons and four result panes stacked open,
+         which made the bottom of the panel longer than everything above it. -->
+    <div class="supergroup" data-static="1" id="supDiag">
+      <span>Diagnostics</span><em>Check it works, and read what happened.</em>
+    </div>
+
+    <details class="sec diag" data-diag="pipeline">
+      <summary><span class="chev">▶</span><span class="secname">Full pipeline check</span><em class="secblurb"></em><span class="tag">every leg of a call</span>
+        <button class="runbtn" id="runAllBtn">Run</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Walks every leg a real call
+          depends on, in call order, and reports the first thing that would
+          break. The model and voice stages each make one real (sub-cent) API
+          call.</p>
+        <ol class="stages" id="stages"></ol>
+        <div class="result" id="allResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="speed">
+      <summary><span class="chev">▶</span><span class="secname">Speed test</span><em class="secblurb"></em><span class="tag">time to first word</span>
+        <button class="runbtn" id="speedBtn">Run</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">How long each leg takes to
+          produce its first audio. Anything over about 1.5s to first token
+          sounds laggy on a call.</p>
+        <div class="result" id="speedResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="calls">
+      <summary><span class="chev">▶</span><span class="secname">Recent calls</span><em class="secblurb"></em><span class="tag">what was actually said</span>
+        <button class="runbtn" id="viewCallsBtn">Load</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Both sides of the last few
+          conversations, with the tools the DJ used and anything that went
+          wrong. This is the thing to read when a call didn't go the way you
+          expected.</p>
+        <div class="diagbar" id="callBar" hidden>
+          <label class="pick"><input type="checkbox" id="callsOnlyBad" />
+            <span id="callsOnlyBadLabel">Only calls with problems</span></label>
+          <span class="grow"></span>
+          <span class="tag" id="callCount"></span>
+          <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>
+        </div>
+        <div class="result scrolly" id="callsResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="logs">
+      <summary><span class="chev">▶</span><span class="secname">Server logs</span><em class="secblurb"></em><span class="tag">this service</span>
+        <button class="runbtn" id="viewLogsBtn">Load</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Recent activity of the web
+          service — settings changes, call tokens, station reads, webhooks. The
+          call agent's own logs live in its container:
+          <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
+        <div class="diagbar" id="logFilters" hidden>
+          <label for="logLevels">Levels</label>
+          <select id="logLevels" multiple size="3"></select>
+          <input type="search" id="logSearch" placeholder="filter text…" />
+          <button type="button" class="runbtn" id="logClearFilters">Reset</button>
+          <span class="grow"></span>
+          <span class="tag" id="logCount"></span>
+          <button type="button" class="runbtn danger" id="logsClearBtn">Clear</button>
+        </div>
+        <div class="result scrolly logs" id="logsResult"></div>
+      </div>
+    </details>
+
+    <p class="versionline" id="versionLine"></p>
+  </section>
+
+<script src="/shared.js"></script>
+<script src="/panel.js"></script>
+<script src="/panel-viewers.js"></script>
+</body>
+</html>

@@ -20,11 +20,23 @@ from brain.briefing import (
 
 
 async def build_system_prompt(
-    station: StationClient, persona: dict, snapshot: dict | None = None
+    station: StationClient, persona: dict, snapshot: dict | None = None,
+    cfg: dict | None = None,
 ) -> str:
+    """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
+
+    Loading them here is the fallback for the operator-facing previews, and it
+    resolves at the admin tier — the fullest set the settings allow. A live
+    call must pass its own: the permissions are tier strings now, `"off"` is
+    truthy, and a prompt built from the raw values would promise the DJ every
+    capability the operator had switched off. The call passes them; this
+    signature exists so that forgetting is a change to this line rather than
+    something nobody notices until a caller is told the DJ can run segments.
+    """
     import settings as settings_store
 
-    cfg = settings_store.load()
+    if cfg is None:
+        cfg = settings_store.permissions_for(settings_store.load(), "admin")
 
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.
@@ -48,6 +60,14 @@ async def build_system_prompt(
     show_block = ""
     if show_name or show_card:
         show_block = f"\n# The show you're hosting: {show_name}\n{show_card}\n"
+
+    # The Show Card is the standing format; this is what tonight's episode is
+    # actually about. It only exists on programme shows, and it was being
+    # thrown away by the schedule lookup in `active_show` — so the DJ knew the
+    # show it hosts every week and nothing about the one it was hosting.
+    episode = clip(show.get("episodeAngle", ""), 600)
+    if episode:
+        show_block += f"\nTonight's episode in particular:\n  {episode}\n"
 
     # The programme intro is pinned independently of the Show Card. It used to
     # hang off the show block, so a station that couldn't resolve the active

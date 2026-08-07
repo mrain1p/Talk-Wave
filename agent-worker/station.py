@@ -19,6 +19,7 @@ import time
 import httpx
 
 import settings as settings_store
+from log_setup import describe
 
 log = logging.getLogger("callin.station")
 
@@ -94,10 +95,11 @@ class StationClient:
                 return r.json()
             except Exception as e:
                 if attempt < retries:
-                    log.info("station read %s failed (%s) — retrying", path, e)
+                    log.info("station read %s failed (%s) — retrying",
+                             path, describe(e))
                     continue
                 _read_stats["consecutive_failures"] += 1
-                log.warning("station read %s failed: %s", path, e)
+                log.warning("station read %s failed: %s", path, describe(e))
                 return {}
         return {}
 
@@ -123,6 +125,16 @@ class StationClient:
 
     async def state(self) -> dict:
         return await self._get("/state")
+
+    async def themes(self) -> dict:
+        """The station's theme registry and which one is on air.
+
+        `effective` is what a listener's player is actually painted in: an
+        on-air show's own themeId outranks the station-wide default, so this
+        follows the programme rather than the settings page. Every entry
+        carries a `tokens` map and a light/dark `mode`.
+        """
+        return await self._get("/themes")
 
     async def session(self) -> dict:
         return await self._get("/session")
@@ -250,7 +262,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("on-air line slow to confirm (%s) — treating as sent", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("on-air handoff failed: %s", e)
+            log.warning("on-air handoff failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
     async def search_library(self, q: str) -> list[dict]:
@@ -269,7 +281,7 @@ class StationClient:
             items = d if isinstance(d, list) else (d.get("results") or d.get("tracks") or [])
             return items if isinstance(items, list) else []
         except Exception as e:
-            log.warning("library search failed: %s", e)
+            log.warning("library search failed: %s", describe(e))
             return []
 
     async def queue_track(self, track: dict) -> dict:
@@ -303,7 +315,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("queue-track slow to confirm (%s) — treating as queued", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("queue-track failed: %s", e)
+            log.warning("queue-track failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
     async def submit_request(self, text: str, name: str = "") -> dict:
@@ -383,7 +395,7 @@ class StationClient:
             items = d.get("skills") or d.get("result") or []
             return items if isinstance(items, list) else []
         except Exception as e:
-            log.info("skill catalogue unavailable: %s", e)
+            log.info("skill catalogue unavailable: %s", describe(e))
             return []
 
     async def run_skill(self, name: str) -> dict:
@@ -407,7 +419,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("skill %s slow to confirm (%s) — treating as running", name, e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("skill %s failed: %s", name, e)
+            log.warning("skill %s failed: %s", name, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def skip_track(self) -> dict:
@@ -435,7 +447,7 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("skip slow to confirm (%s) — treating as done", e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("skip failed: %s", e)
+            log.warning("skip failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def dj_segment(self, kind: str) -> dict:
@@ -465,7 +477,74 @@ class StationClient:
             if _sent_but_unconfirmed(e):
                 log.warning("segment %s slow to confirm (%s) — treating as running", kind, e)
                 return {"ok": True, "unconfirmed": True}
-            log.warning("segment %s failed: %s", kind, e)
+            log.warning("segment %s failed: %s", kind, describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    # The station's own bounds on a takeover window (OVERRIDE_MIN/MAX_MINUTES
+    # in its settings). Mirrored rather than discovered because the endpoint
+    # rejects an out-of-range window with a 400 — which reaches the caller as
+    # "that didn't work" for a number we could have corrected ourselves.
+    TAKEOVER_MIN_MINUTES = 15
+    TAKEOVER_MAX_MINUTES = 720
+
+    async def pin_show(self, show_id: str, minutes: int) -> dict:
+        """Pin a show over the weekly grid for a bounded window. Admin-only.
+
+        The station calls this a takeover: it outranks the schedule until it
+        lapses, then normal programming picks up where it would have been.
+        Posting again while one is live REPLACES it, which is how "give it
+        another hour" works — there is no separate extend endpoint.
+
+        The switch is not instant. The station returns as soon as the pin is
+        stored and airs the handover in the background, landing at the next
+        track boundary like any show change. Anything that tells a caller
+        otherwise is promising something they will not hear.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        try:
+            r = await self._client.post(
+                "/schedule/override",
+                json={"showId": show_id, "minutes": int(minutes)},
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("takeover %s slow to confirm (%s) — treating as set", show_id, e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("takeover %s failed: %s", show_id, describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    async def clear_pinned_show(self) -> dict:
+        """Cancel a takeover and resume the weekly schedule. Admin-only.
+
+        Idempotent at the station: clearing an already-clear override succeeds
+        and airs nothing.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        try:
+            r = await self._client.delete(
+                "/schedule/override",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("takeover cancel slow to confirm (%s) — treating as done", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("takeover cancel failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def active_show(self, now_playing: dict | None = None) -> dict:
@@ -473,6 +552,15 @@ class StationClient:
 
         Accepts an already-fetched /now-playing payload so prompt assembly
         doesn't request it twice per call.
+
+        The two records are merged rather than one replacing the other, and
+        that is the whole point. /now-playing carries the show as it is
+        actually RUNNING — resolved guest personas, this episode's angle, the
+        genre/mood/energy filters picks are judged against. /schedule carries
+        it as CONFIGURED — personaId, guestPersonaIds, mood. A measured swap
+        against a live station traded fifteen fields for three, and it did the
+        most damage on programme shows, which are the ones with an episode
+        angle and guests to lose.
         """
         np = now_playing if now_playing is not None else await self.now_playing()
         active = (np.get("context") or {}).get("activeShow") or {}
@@ -482,5 +570,9 @@ class StationClient:
 
         for show in (await self.schedule()).get("shows", []):
             if show.get("id") == show_id:
-                return show
+                # The schedule still wins wherever it has something to say, so
+                # nothing already reaching the prompt changes shape; it just
+                # stops taking the live record's fields down with it.
+                stated = {k: v for k, v in show.items() if v not in (None, "", [], {})}
+                return {**active, **stated}
         return active

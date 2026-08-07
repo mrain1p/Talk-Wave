@@ -129,6 +129,25 @@ TOOLS: tuple[Tool, ...] = (
          "gates — so Actions per call is the only thing pacing it.",
          needs_station_admin=True),
 
+    # Not an MCP tool at all: the station exposes takeover over admin REST
+    # only, so these two are ours end to end. They sit here because this table
+    # is what the panel prints, and a capability a caller has which the
+    # operator's tool list does not mention is exactly the drift this file
+    # exists to prevent.
+    Tool("subwave_takeover_show", "allow_takeover", LOCAL,
+         "Pins a show over the schedule for a while — a different DJ, on air, "
+         "for everyone.",
+         "Station admin credentials required. OFF by default, and the furthest-"
+         "reaching thing on a call line: an hour by default, and unlike every "
+         "other action here its effect outlives the call. Takes over at the "
+         "next track boundary, not instantly.",
+         needs_station_admin=True),
+    Tool("subwave_cancel_takeover", "allow_takeover", LOCAL,
+         "Cancels a takeover and hands the schedule back.",
+         "Same switch as the pin, deliberately: a caller who can undo the "
+         "operator's own takeover is making a station-wide change too.",
+         needs_station_admin=True),
+
     # --- never on a call line ---------------------------------------------
     Tool("subwave_refresh_playlist", NEVER, NONE,
          "Rebuilds the fallback auto-playlist for the current mood.",

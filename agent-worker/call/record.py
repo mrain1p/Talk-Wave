@@ -40,9 +40,15 @@ MAX_TEXT = 2000       # one turn, clipped
 class CallRecord:
     """Builds the record as the call runs, writes it once at the end."""
 
-    def __init__(self, room: str, persona: dict, cfg: dict) -> None:
+    def __init__(self, room: str, persona: dict, cfg: dict, tier: str = "",
+                 started: float = 0.0) -> None:
         self.room = room
-        self.started = time.time()
+        # The CALL's clock, not this object's. The record is built once the
+        # persona has been resolved, several seconds of ringing after the caller
+        # arrived — so a record that timed itself wrote `durationSecs: 27.1`
+        # next to its own problem line saying "44s on the line", from the same
+        # call. Two clocks, one of which the caller never experienced.
+        self.started = started or time.time()
         self.data: dict = {
             "room": room,
             "startedAt": _iso(self.started),
@@ -51,6 +57,14 @@ class CallRecord:
                 "llm": f"{cfg.get('llm_provider')}/{cfg.get('llm_model')}",
                 "stt": f"{cfg.get('stt_provider')}/{cfg.get('stt_model')}",
                 "tts": cfg.get("tts_mode"),
+                # How much the caller typed to get in. Worth writing down
+                # separately from the list below: the permissions are what
+                # THIS caller had, and without the tier there is nothing in
+                # the transcript to explain why they differ from the panel.
+                "callerTier": tier or "open",
+                # Resolved for this caller, not the stored settings — the
+                # session collapses the tiers before anything reads them, so
+                # this is the honest list of what the DJ could actually do.
                 "permissions": sorted(
                     k for k in cfg
                     if k.startswith(("allow_", "offer_", "shape_")) and cfg[k]
@@ -108,6 +122,23 @@ class CallRecord:
         premise here, that events fire mid-sentence — so a prefix match pairs
         them without assuming anything about order or count. Anything that
         does not match keeps its live wording, which is the honest fallback.
+
+        The one thing a prefix match cannot handle alone is the SDK merging two
+        live events into one committed turn. A caller saying "yeah… maybe a
+        mood" produces two transcripts and one history entry: the first live
+        event matches "Yeah Maybe a mood" and claims it, and the second, being
+        the tail rather than the head, matches nothing and survives with its own
+        wording. The record then shows
+
+            caller: Yeah Maybe a mood
+            caller: Maybe a mood
+
+        for something said once, and counts it twice — which is how the same
+        call logged `caller_turns=5` and `only 4 caller turn(s)` one line apart.
+        So an unmatched live turn that is contained in the committed text the
+        PREVIOUS live turn was folded into is a fragment of that merge, and goes.
+        A caller who genuinely repeats themselves is unaffected: two committed
+        entries means the second live turn finds one of its own to match.
         """
         if not final_turns:
             return
@@ -116,7 +147,11 @@ class CallRecord:
             by_who.setdefault(who, []).append(str(text))
 
         used: dict = {}
-        for turn in self.data["turns"]:
+        # What the last matched turn of each speaker was folded into, so the
+        # fragment check below has something to test against.
+        folded_into: dict = {}
+        fragments: list[int] = []
+        for pos, turn in enumerate(self.data["turns"]):
             who = turn["who"]
             texts = by_who.get(who, [])
             taken = used.setdefault(who, set())
@@ -127,7 +162,15 @@ class CallRecord:
                 if candidate.strip().startswith(live):
                     turn["text"] = candidate[:MAX_TEXT]
                     taken.add(i)
+                    folded_into[who] = candidate.strip()
                     break
+            else:
+                previous = folded_into.get(who, "")
+                if live and previous and live in previous:
+                    fragments.append(pos)
+
+        for pos in reversed(fragments):
+            del self.data["turns"][pos]
 
         # Anything the session knows about that we never saw an event for —
         # a closing line the events missed, typically. Appended in order, and
@@ -201,6 +244,76 @@ def _prune(keep: int = KEEP) -> None:
     files = sorted(CALLS_DIR.glob("*.json"))
     for old in files[:-keep]:
         old.unlink(missing_ok=True)
+
+
+def clear() -> int:
+    """Delete every stored call record; returns how many went.
+
+    Unlike `_prune`, which trims to `record_keep` as each call ends, this is
+    the operator saying "these are stale, get rid of them" — the transcripts
+    are a caller's words, so being able to remove them on demand rather than
+    waiting for enough new calls to age them out is the point.
+    """
+    gone = 0
+    try:
+        for path in CALLS_DIR.glob("*.json"):
+            try:
+                path.unlink()
+                gone += 1
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return gone
+
+
+def rate(room: str, rating: str) -> bool:
+    """Attach the caller's own verdict to that call's record.
+
+    Written by the TOKEN SERVER, not the worker — the two are separate
+    containers sharing this directory, and the caller's thumbs arrive over
+    HTTP after the worker has already finished and gone. So this merges into
+    a file somebody else wrote, and must not assume it is there yet: the
+    caller can click before the worker's shutdown callback has run. The
+    caller retries; this just reports whether it found anything.
+
+    Only the rating is stored. Not who, not when they clicked, not a comment
+    box — the record is already a transcript of a stranger's conversation,
+    and one character is all that is needed to find the bad ones.
+    """
+    rating = str(rating or "").strip().lower()
+    if rating not in ("up", "down"):
+        return False
+    # The room is `callin-<12 hex>` and the filename ends in those 12
+    # characters — matching on the suffix rather than reconstructing the
+    # timestamp, which this side does not know.
+    tail = str(room or "")[-12:]
+    if len(tail) < 6:
+        return False
+    try:
+        matches = sorted(CALLS_DIR.glob(f"*-{tail}.json"), reverse=True)
+    except OSError:
+        return False
+    if not matches:
+        return False
+    path = matches[0]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["rating"] = rating
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1, ensure_ascii=False)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(path)
+        log.info("call %s rated %s by the caller", path.stem, rating)
+        return True
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("could not store the caller's rating: %s", e)
+        return False
 
 
 def recent(limit: int = 20) -> list[dict]:

@@ -15,7 +15,28 @@
    The token names stay the host's (--pine, --coral…) because that is the map
    a station sends. The older names (--bg, --panel, --line…) are kept as
    ALIASES: the settings panel is ~450 lines written against them and is
-   full-page only, so it is not worth the churn of a rename. */
+   full-page only, so it is not worth the churn of a rename.
+
+   WHAT IS WHERE. Both pages load this file: only 193 of its lines are
+   panel-only, and 308 are used by both, so splitting it would leave two files
+   that still need each other. The sections below are the map instead.
+
+     tokens and theme          the colour contract above, as custom properties
+     base and typography       body, .micro
+     the call card             identity, on-air state, the track
+     buttons                   including every #callBtn state
+     on-call chrome            the rig, pills, timer, agent-state chip
+     level meters              the two bar meters
+     the call row              volume, mute, hang up, status
+     mic help and guest door   the two things that block a call before it starts
+     the connection dot
+     the ended bar             the collapsed transcript
+     captions                  what was said, and what the DJ did
+     corner controls           the three gear buttons and the ask popup
+     settings                  the panel page (panel.html) only
+*/
+  /* --- tokens and theme -------------------------------------------------- */
+  /* Named once. Nothing below may hardcode a colour — derive with color-mix(). */
   :root {
     color-scheme: light dark;
     /* Dark is the default look — it's a late-night radio booth. Light mode
@@ -35,6 +56,17 @@
     --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
                  sans-serif;
     --control-h: 31px; --band-gap: 12px;
+    /* The action row — Call, the state chip, the timer — is a status ribbon
+       you read, not a row of things you press three of. At full control
+       height it was the tallest band on a card whose actual subject is the
+       conversation below it. */
+    --action-h: 26px;
+    /* THREE lines of 12.5px/1.45 speech (18.125px each), plus the box's own
+       9px padding top and bottom and its 1px border. Reserved from first
+       paint and never changed — see .linebox. Three rather than two because
+       the box carries more than speech now: the door code fits inside it,
+       and the post-call strip overlays its bottom edge. */
+    --lines-h: 75px;
 
     /* Legacy aliases — settings panel only. */
     --bg: var(--pine); --panel: var(--granite);
@@ -76,8 +108,9 @@
 
   /* Micro-type: every label, button, chip and timer in the card. One spec,
      used by name, so they cannot drift apart again. */
+  /* --- base and typography ----------------------------------------------- */
   .micro {
-    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
     letter-spacing: .16em; text-transform: uppercase;
   }
   * { box-sizing: border-box; }
@@ -98,6 +131,7 @@
      The bottom inset is on the card: the bands inside it are separated by
      rules, and a rule sitting one pixel above a rounded corner reads as a
      rendering fault. */
+  /* --- the call card: identity, and what is on air ----------------------- */
   .card {
     width: min(620px, 100%); padding: 0 16px 16px; position: relative;
     border: 1px solid var(--edge); border-radius: 16px;
@@ -107,7 +141,7 @@
      wasted vertical space and pushed the captions off screen. */
   .who-row {
     display: flex; align-items: center; gap: var(--band-gap); text-align: left;
-    padding: 14px 0; border-bottom: 1px solid var(--hairline);
+    padding: 11px 0; border-bottom: 1px solid var(--hairline);
   }
   .who-row .meta { min-width: 0; flex: 1; }
 
@@ -116,14 +150,17 @@
      that sit in it. No rule under it — the who-row below already draws one,
      and two rules 38px apart made the name look like a table row. */
   .eyebrow {
-    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--coral);
     height: 38px; margin: 0;
     display: flex; align-items: center; gap: 8px;
   }
-  /* The connection state rides the right end of the header band, and the
-     corner controls follow it. */
-  .eyebrow #status { margin-left: auto; }
+  /* The corner controls are pinned right by a spacer that eats the free
+     space, NOT by a margin on whatever happens to precede them. It was
+     `margin-left:auto` on #status — which is hidden during a call — so the
+     moment a call connected the three icons slid left and sat against
+     ON AIR NOW. A spacer is in the row whatever else is. */
+  .eyebrow .spacer { flex: 1 1 auto; }
   .corner { display: flex; align-items: center; margin-left: 10px; }
   .eyebrow .pip {
     width: 7px; height: 7px; border-radius: 0; background: var(--coral);
@@ -137,12 +174,20 @@
   .eyebrow.off { color: var(--sage-dim); }
   .eyebrow.off .pip { background: var(--sage-dim); animation: none; }
 
-  /* Square, hairline-framed, 44px (§4.3). */
+  /* 60px, and round unless the operator asked for square (`avatar_style`).
+     §4.3 said square at 44px, on the reasoning that every other corner in
+     the card is square. It was the wrong call for this one element: 44px is
+     a favicon of a face, and the shape rule is about controls and chips —
+     the one photograph on the card is a person, not a control. Shape is the
+     operator's answer now because a host page whose own artwork has corners
+     has a real case for square; the size is not, because too small was
+     nobody's intention. */
   .avatar {
-    width: 44px; height: 44px; border-radius: 0; object-fit: cover; flex: 0 0 auto;
+    width: 60px; height: 60px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
     border: 1px solid var(--hairline); background: var(--granite-hi); display: block;
     transition: border-color .25s ease, box-shadow .25s ease;
   }
+  .card[data-avatar="square"] .avatar { border-radius: 0; }
   .avatar.hidden { display: none; }
   /* The one permitted glow: the DJ is speaking. Derived, not literal — the
      hardcoded rgba() here stayed the old coral through two palette changes. */
@@ -151,8 +196,8 @@
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--coral) 16%, transparent);
   }
   .dj {
-    font-family: var(--font-body); font-size: 17px; font-weight: 600;
-    color: var(--alpenglow); margin: 0 0 3px; letter-spacing: 0;
+    font-family: var(--font-body); font-size: 15px; font-weight: 600;
+    color: var(--alpenglow); margin: 0 0 2px; letter-spacing: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .show {
@@ -161,7 +206,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tagline {
-    font-size: 13.5px; line-height: 1.5; color: var(--sage); margin: 3px 0 0;
+    font-size: 12.5px; line-height: 1.45; color: var(--sage); margin: 2px 0 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   /* Now-playing sits in the spare space to the right of the DJ block. */
@@ -176,6 +221,7 @@
   /* The settings panel keeps the old button shape — it is full-page only and
      ~450 lines are written against it. Inside the card there are exactly TWO
      treatments (§4.7), and they differ only in fill. */
+  /* --- buttons, and what the Call button looks like in each state -------- */
   button {
     font: inherit; font-weight: 600; font-size: 11.5px;
     padding: 6px 13px; border-radius: 9px; border: none; cursor: pointer;
@@ -231,7 +277,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     height: var(--control-h); min-width: 0; padding: 0 13px;
     border-radius: 0; background: transparent; opacity: 1; cursor: default;
-    font: 700 10.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: uppercase;
   }
   #callBtn.ringing, #callBtn:disabled.ringing {
@@ -243,16 +289,43 @@
   }
 
   /* --- in-call rig --- */
-  .rig { display: none; }
-  .rig.on { display: block; }
+  /* --- on-call chrome: the rig, pills, the timer, the agent state chip --- */
+  /* Reserved from first paint, not grown into. The card is ONE height, and
+     pressing Call must not change it: this widget's main home is an embed in
+     a station page's player column, and a card that grows there pushes the
+     host's own layout around at the exact moment somebody is trying to
+     listen. `visibility` keeps the box and takes it out of the accessibility
+     tree.
+
+     0.9.117 briefly traded this away — small idle, one growth at pickup —
+     and it moved a real station page. The problem it was trying to solve was
+     never the reservation, it was the SIZE of what was being reserved: the
+     bands below have been cut to what they actually need instead. */
+  .rig { visibility: hidden; }
+  .rig.on { visibility: visible; }
+  /* The rows that hold their place AND stay visible between calls: the line
+     area (it carries the card's own messages), the meters (idle they show
+     the trough, which reads as a booth rather than as reserved emptiness),
+     and the action row (the Call button is the card's last row on every
+     surface). Only the call row — volume, mute, hang up — is
+     reserved-but-hidden, because those controls are meaningless off a call.
+     Visibility is inherited but a child may declare its own. */
+  .rig > .linebox, .rig > .meters, .rig > .actionrow { visibility: visible; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
      absent or a bordered block of its own, and a rule that sometimes ends the
      card and sometimes doesn't is worse than no rule. */
   .actionrow {
-    display: flex; align-items: center; gap: var(--band-gap); flex-wrap: wrap;
-    padding: var(--band-gap) 0 0;
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    padding: 9px 0 0;
+  }
+  /* Slimmer than every other control, on purpose — see --action-h. The id
+     selectors are here to out-specify #callBtn's own state rules, which pin
+     the control height while a call is being placed; a bare .actionrow
+     button would lose to them and the row would change height at pickup. */
+  .actionrow #callBtn, .actionrow #callBtn:disabled, .actionrow .pill {
+    height: var(--action-h);
   }
   /* Square, transparent, hairline-bordered, control height. Colour carries
      state; fill never does (§4.4) — the only filled thing in any state is the
@@ -261,10 +334,13 @@
     display: inline-flex; align-items: center; gap: 7px; height: var(--control-h);
     padding: 0 12px; border-radius: 0;
     background: transparent; border: 1px solid var(--hairline); color: var(--sage-dim);
-    font: 700 10.5px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
     transition: color .2s, border-color .2s;
   }
-  .pill[hidden] { display: none; }
+  /* Same reservation as the rig, for the same reason: these wrap onto a
+     second row in a narrow embed, so appearing at pickup would move
+     everything below them by a whole control height. */
+  .pill[hidden] { visibility: hidden; }
   /* The elapsed timer is data, not a warning — it only takes a colour once
      the call is genuinely near its limit. Amber from 0:00 taught you to
      ignore amber by the time it meant something. */
@@ -299,66 +375,114 @@
   .card.onair .avatar { border-color: var(--amber); }
   @keyframes blink { 50% { opacity: .25; } }
 
-  /* While a call is live the pills are the status — the bottom line would
-     just say the same thing twice. */
-  .card.oncall #status { display: none; }
 
-  /* §4.6: a 3px trough and a fill in the speaker's identity colour. The old
-     ten-bar spectrum was ten style writes per animation frame per meter and
-     read as a dashed placeholder when idle, which is what it looked like in
-     the screenshots. */
-  .meters { display: flex; gap: var(--band-gap); padding: var(--band-gap) 0 0; }
+  /* A spectrum, not a progress bar. §4.6 collapsed this to a 3px trough and
+     one fill — cheaper to paint and honest about level, but a horizontal bar
+     that grows is the shape of a download, and what it has to say is "there
+     is a voice here". The segmented meter says that at a glance and reads as
+     a booth. The cost is real (SEGMENTS style writes per meter per frame,
+     against one) so paintMeter writes a segment only when its height
+     actually changed.
+     Idle is a row of floor-height segments rather than an empty box: the
+     meter's own shape has to be visible before anyone speaks, or the row
+     looks broken until it isn't. */
+  /* --- level meters ------------------------------------------------------ */
+  .meters { display: flex; gap: var(--band-gap); padding: 9px 0 0; }
   .meter { flex: 1; text-align: left; min-width: 0; }
   .meter .mlabel {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
   .bars {
-    display: block; height: 3px; background: var(--hairline);
-    border-radius: 0; overflow: hidden;
+    display: flex; align-items: flex-end; gap: 2px;
+    height: 16px; border-radius: 0;
   }
   .bars i {
-    display: block; height: 100%; width: 0;
+    flex: 1 1 0; min-width: 0; height: 12%;
     background: currentColor; border-radius: 0;
-    transition: width .07s linear;
+    transition: height .08s linear;
   }
   /* You and the DJ never share a colour — the two meters sit side by side and
      the whole point is telling at a glance which one is moving. */
   .meter.you { color: var(--cool); }
   .meter.dj { color: var(--coral); }
+  /* Off the call the segments are the trough colour, not a dimmed voice: a
+     dead meter must not look like a quiet one. Keyed on the rig rather than
+     a class of their own, so there is nothing for JS to forget to clear. */
+  .meter .bars i { background: var(--hairline); }
+  .rig.on .meter .bars i { background: currentColor; }
   .meter.muted .mlabel { color: var(--coral); }
-  .meter.muted .bars i { background: var(--hairline); }
+  .rig.on .meter.muted .bars i { background: var(--hairline); }
 
   /* Volume and the call buttons share a row — at full card width they fit
      side by side, which keeps the captions higher up the page. */
+  /* --- the call row: volume, mute and hang up, connection status --------- */
   .callrow {
-    display: flex; align-items: center; gap: var(--band-gap);
-    padding: var(--band-gap) 0; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 0; flex-wrap: wrap;
   }
   .vol { display: flex; align-items: center; gap: 10px; flex: 1 1 190px; min-width: 0; }
   .vol label {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; color: var(--sage-dim); font-weight: 700;
   }
-  .vol input[type=range] { flex: 1; accent-color: var(--coral); min-width: 0; height: var(--control-h); }
+  /* A 3px trough with a fill in the accent — the same shape as every other
+     level in this card, and the same shape §4.6 specifies. It was the
+     browser's own slider tinted coral with `accent-color`, which on every
+     platform is a fat rounded bar with a big round knob: at full volume that
+     is a bright solid stripe across the widest row of the card, and it
+     out-shouted the Call button. It is a setting nobody changes, sitting
+     next to the two controls that matter.
+     The element keeps a taller box than the trough so there is still
+     something a finger can hit. */
+  .vol input[type=range] {
+    flex: 1; min-width: 0; height: 18px;
+    -webkit-appearance: none; appearance: none;
+    background: transparent; cursor: pointer;
+  }
+  /* --vol is written by applyVolume(); webkit has no ::-moz-range-progress
+     equivalent, so the fill is a hard-stop gradient on the track itself. */
+  .vol input[type=range]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 0;
+    background: linear-gradient(to right,
+      var(--coral) var(--vol, 100%), var(--hairline) var(--vol, 100%));
+  }
+  .vol input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 9px; height: 9px; border-radius: 0; border: 0;
+    background: var(--coral); margin-top: -3px;
+  }
+  .vol input[type=range]::-moz-range-track { height: 3px; background: var(--hairline); }
+  .vol input[type=range]::-moz-range-progress { height: 3px; background: var(--coral); }
+  .vol input[type=range]::-moz-range-thumb {
+    width: 9px; height: 9px; border-radius: 0; border: 0; background: var(--coral);
+  }
+  .vol input[type=range]:focus { outline: none; }
+  .vol input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--amber); }
   .vol .pct {
-    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
-    color: var(--sage-dim); width: 38px; text-align: right;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-weight: 700; color: var(--sage-dim); width: 38px; text-align: right;
     font-variant-numeric: tabular-nums;
   }
 
-  .controls { display: flex; gap: var(--band-gap); flex: 0 0 auto; }
+  .controls { display: flex; gap: 9px; flex: 0 0 auto; flex-wrap: wrap; }
+  /* Same reasoning as the volume slider above: this row's height is paid for
+     on every idle embed, whether or not anybody is on a call. */
+  .card .controls button { height: var(--action-h); }
+  /* Which way out the DJ's voice goes. Hidden outright on a browser with no
+     routing API at all — see canRouteAudio(). */
+  #spkBtn[hidden] { display: none; }
   /* Muted is a state, so it colours the label — it does not fill the button,
      which would put two filled controls in the row. */
   .controls button.on { color: var(--amber); border-color: var(--amber); }
 
-  /* §4.5: this is a sentence, not a label. */
-  #status {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-family: var(--font-body); font-size: 12.5px; color: var(--sage);
-  }
-  #logsResult { max-height: 320px; overflow-y: auto; }
+  /* #status is styled with the line area it now lives in, further down —
+     it stopped being a fragment of the header band in 0.9.117. */
+  /* No #logsResult height here. It used to be pinned to 320px from this
+     block — in the middle of the call card's rules, three hundred lines from
+     the log viewer it governs — and being an id it silently outranked every
+     later attempt to change it. The height lives with the viewer now. */
 
   /* Version footer in the settings panel — which build am I looking at,
      for tracking changes and troubleshooting over time. */
@@ -368,36 +492,42 @@
   /* In-place guidance when the page can't capture the mic (plain http on a
      LAN address). The whole point is a clickable way out, so it is a bordered
      block rather than a band — it has to read as an interruption. */
-  .michelp { margin: var(--band-gap) 0 0; font-size: 13.5px; line-height: 1.5;
+  /* --- microphone help, and the guest code door -------------------------- */
+  .michelp { margin: var(--band-gap) 0 0; font-size: 12.5px; line-height: 1.45;
              color: var(--amber); border: 1px solid var(--amber);
              border-radius: 0; padding: 10px 12px; }
   .michelp a { color: inherit; font-weight: 600; }
-  .michelp .alt { display: block; margin-top: 4px; font-size: 12.5px;
+  .michelp .alt { display: block; margin-top: 4px; font-size: 11px;
                   color: var(--sage-dim); }
 
-  /* The caller's door code, when the operator has set one. Sits above the
-     Call button, in the card, because it's a condition of calling — not a
-     settings concern. */
+  /* The caller's door code, when the operator has set one. It lives INSIDE
+     the line area — the card's one message surface — because "this line is
+     private" is the thing the card has to say right now, and a band of its
+     own was one more thing that changed the card's height between
+     deployments. Absolute over the box, like #status: either the door is
+     being asked about or the call is being spoken, never both. */
   .guestgate {
-    margin: var(--band-gap) 0 0; padding: 11px 12px; text-align: left;
-    border: 1px solid var(--edge); border-radius: 0; background: var(--pine);
-    font-size: 13.5px; line-height: 1.5;
+    position: absolute; inset: 9px 12px; text-align: left;
+    font-size: 12.5px; line-height: 1.45;
+    display: flex; flex-direction: column; justify-content: center; gap: 7px;
   }
-  .guestgate .glabel { display: block; color: var(--sage); margin-bottom: 9px; }
-  .guestgate .grow { display: flex; gap: var(--band-gap); flex-wrap: wrap; }
+  .guestgate[hidden] { display: none; }
+  .guestgate .glabel { display: block; color: var(--sage); font-size: 11.5px; }
+  .guestgate .grow { display: flex; gap: 9px; }
+  .linebox:has(.guestgate:not([hidden])) #status { display: none; }
   /* §4.8. The placeholder is deliberately smaller than the typed text so a
      long prompt fits without shrinking what the caller actually types. */
   .guestgate input {
     flex: 1 1 140px; min-width: 0;
     height: var(--control-h); padding: 0 10px; border-radius: 0;
-    font: 13.5px var(--font-body);
+    font: 12.5px var(--font-body);
     border: 1px solid var(--hairline); background: var(--granite-hi);
     color: var(--alpenglow);
   }
-  .guestgate input::placeholder { color: var(--sage-dim); font-size: 11.5px; }
+  .guestgate input::placeholder { color: var(--sage-dim); font-size: 11px; }
   .guestgate input:focus { outline: none; border-color: var(--amber); }
   .guestgate button { flex: 0 0 auto; }
-  #guestMsg { display: block; margin-top: 7px; color: var(--amber); font-size: 12.5px; }
+  #guestMsg { display: block; margin-top: 7px; color: var(--amber); font-size: 11px; }
   #guestMsg:empty { display: none; }
 
   /* Locked panel: the login banner is the only thing shown. */
@@ -408,27 +538,66 @@
   #loginGate input { width: 180px; }
   #loginMsg { font-size: 11.5px; color: var(--accent); }
 
+  /* --- the connection dot ------------------------------------------------ */
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 0; background: var(--sage-dim); vertical-align: middle; }
   .dot.connecting { background: var(--amber); animation: pulse 1s infinite; }
   .dot.connected { background: var(--ok); }
   .dot.error { background: var(--coral); }
   @keyframes pulse { 50% { opacity: .3; } }
 
-  /* Once a call ends the transcript collapses to a single row — still there
-     if you want it, not taking up the card if you don't. */
-  .callended {
-    width: 100%; margin: var(--band-gap) 0 0; padding: 0 12px;
-    background: var(--pine); border: 1px solid var(--hairline);
-    border-radius: 0; color: var(--sage); text-align: left;
-    display: flex; align-items: center; gap: 9px; cursor: pointer;
+  /* --- the post-call strip ----------------------------------------------
+     One row overlaid on the line area's bottom edge: the transcript drawer
+     toggle, and (if the operator asked) the two how-was-it buttons. These
+     used to be two BANDS below the box, which meant every call's end grew
+     the card and moved the host page — the exact thing the reserved line
+     area exists to prevent. Inside the box, appearing costs nothing.
+     display:flex on the container only when something in it is visible;
+     otherwise it must not eat pointer events over the box. */
+  .after { position: absolute; left: 9px; right: 9px; bottom: 7px;
+           display: flex; align-items: center; gap: 8px; pointer-events: none; }
+  .after > * { pointer-events: auto; }
+  /* The drawer toggle is a label on a closed drawer, not an action — it takes
+     the 9.5px micro-label the transcript's own speaker labels use. `.card
+     button` (0,1,1) outranks a bare class, hence the .card prefix. */
+  .card .callended {
+    height: 24px; padding: 0 9px; text-align: left;
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    background: var(--granite); border: 1px solid var(--hairline);
+    color: var(--sage); font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .14em; text-transform: uppercase;
   }
-  .callended[hidden] { display: none; }
-  .card .callended { height: 38px; color: var(--sage); }
-  .card .callended:hover { background: var(--pine); color: var(--alpenglow);
+  .card .callended:hover { background: var(--granite); color: var(--alpenglow);
                            border-color: var(--edge); }
+  .callended[hidden] { display: none; }
   .callended .chev { font-size: 9px; transition: transform .18s ease; }
   .callended.open .chev { transform: rotate(90deg); }
-  .callended .when { margin-left: auto; color: var(--sage-dim); }
+  .callended .when { display: none; }
+
+  /* Was that any good? Two small buttons on the strip's right, findable but
+     ignorable — a caller who has just been hung up on by a robot should not
+     also be blocked by a modal about it. */
+  .rate { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+  .rate[hidden] { display: none; }
+  .rate .rlabel {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--sage-dim);
+  }
+  .rate .rbtns { display: inline-flex; gap: 6px; }
+  .rate .rbtns[hidden] { display: none; }
+  .card .rate button {
+    height: 24px; width: auto; padding: 0 8px; line-height: 1; font-size: 12px;
+    border: 1px solid var(--edge); background: var(--granite); color: var(--sage);
+  }
+  .card .rate button:hover:not(:disabled) {
+    border-color: var(--coral); color: var(--coral);
+    background: var(--granite); filter: none;
+  }
+  /* While the strip is up, the last transcript line and the box's own message
+     must not run underneath it. */
+  .linebox:has(.callended:not([hidden])) .captions,
+  .linebox:has(.rate:not([hidden])) .captions { padding-bottom: 30px; }
+  .linebox:has(.callended:not([hidden])) #status,
+  .linebox:has(.rate:not([hidden])) #status { bottom: 39px; }
 
   /* --- captions --- */
   /* Captions: speaker in a narrow left column so the transcript reads as a
@@ -440,23 +609,78 @@
      made embed.js resize the frame — so the host page moved while somebody
      was reading it. A fixed height means the reported height stops changing
      during a call. States that genuinely need more room (the door code, a mic
-     warning) still grow the frame; speech no longer does. */
-  .captions {
-    display: none; margin: var(--band-gap) 0 0; padding: 11px 13px;
-    text-align: left;
+     warning) still grow the frame; speech no longer does.
+
+     Three lines, not fourteen. It was 210px — a transcript window on a card
+     whose only job during a call is the last thing that was said, and the
+     rest of it scrolled past unread anyway. The whole back-and-forth is
+     still there and still scrolls; the drawer below opens it to full height
+     when someone actually wants to read back. */
+  /* --- the line area: what the card has to say right now -----------------
+     TWO LINES, reserved from first paint and never changing. That is the
+     whole specification. Speech goes here while a call runs; between calls
+     the card's own messages do — "Not connected", "No answer", "Call ended"
+     — so there is one place to look rather than two.
+
+     Two, not three, and certainly not the fourteen it was: this sits inside
+     a station page's player column, and every line reserved here is a line
+     of somebody else's layout spent on a widget that is usually idle. Two is
+     what a spoken turn actually needs to be readable while it is being said;
+     the rest of the conversation is a click away on the drawer. */
+  .linebox {
+    position: relative; margin: 10px 0 0; padding: 9px 12px; text-align: left;
     background: var(--pine); border: 1px solid var(--hairline); border-radius: 0;
-    height: 210px; overflow-y: auto; overflow-x: hidden;
-    font-family: var(--font-body); font-size: 13.5px; line-height: 1.5;
+    height: var(--lines-h);
+  }
+  /* Reading back a finished call is a deliberate click by somebody who wants
+     the room, and by then there is no call for the resize to interrupt. This
+     is the ONLY thing allowed to change this height. */
+  .linebox.open { height: 200px; }
+  .captions {
+    display: none; height: 100%; overflow-y: auto; overflow-x: hidden;
+    font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   }
   .captions.on { display: block; }
+  /* The one message surface. "Not connected", "No answer — the booth didn't
+     pick up", "Call ended" all land here, where the caller is already
+     looking, instead of in the header band next to ON AIR NOW where a
+     sentence sat inside a row of labels and read as one.
+     Absolutely placed so it shares the box with the transcript rather than
+     stacking above it — either the card is saying something or the DJ is,
+     never both. */
+  /* Absolutely placed so it SHARES the box with the transcript rather than
+     stacking above it — either the card is saying something or the DJ is,
+     never both, and stacking would have cost the box a third line it does
+     not have. */
+  #status {
+    position: absolute; inset: 9px 12px;
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-body); font-size: 12.5px; font-weight: 400;
+    text-transform: none; letter-spacing: 0; color: var(--sage);
+    margin: 0;
+  }
+  /* Nothing to say means nothing shown. "Not connected" used to sit here on
+     every idle card — a permanent grey sentence restating what the eyebrow
+     and the Call button already say between them, and on a host page it read
+     as something being wrong. The element stays (transient messages need it);
+     the idle filler is gone, so an empty box is simply quiet. */
+  #status:has(#statusText:empty) { display: none; }
+  /* Speech wins the box the moment there is any. `.on` is in the test on
+     purpose: after a call the lines are still in the DOM, just collapsed
+     behind the drawer, and that is exactly when "Call ended" has to show. */
+  .linebox:has(.captions.on .cap) #status,
+  .linebox:has(.ticker.show) #status { display: none; }
   .captions::-webkit-scrollbar { width: 8px; }
   .captions::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 0; }
-  /* An 86px gutter, matching the host, so both speakers' text starts on the
-     same edge and the transcript reads as a script rather than two columns. */
+  /* A gutter wide enough for the longest label and no wider. It has been
+     86px and then 62 — twice and then one-and-a-half times what "You" needs —
+     and in a 430px embed the transcript's own text paid for the spare width
+     in wrapped lines. 44px still lets both speakers' text start on the same
+     edge, which is what makes this read as a script rather than columns. */
   .cap {
-    display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--band-gap);
-    margin: 0 0 7px; align-items: baseline;
+    display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 9px;
+    margin: 0 0 6px; align-items: baseline;
     /* minmax(0,1fr) plus the min-width/white-space below is what actually
        stops a long turn from pushing the grid wider than its container. */
     max-width: 100%;
@@ -474,12 +698,11 @@
   .cap .said {
     color: var(--alpenglow); min-width: 0; max-width: 100%;
     white-space: normal; overflow-wrap: break-word; word-break: break-word;
-    font-size: 13.5px; font-weight: 400; line-height: 1.5;
+    font-size: 12.5px; font-weight: 400; line-height: 1.45;
   }
   .cap.dj .said { color: var(--alpenglow); }
   .cap.you .said { color: var(--sage); }
   .cap.interim .said { color: var(--sage-dim); font-style: italic; }
-  .capempty { color: var(--sage-dim); font-size: 13.5px; font-style: italic; }
 
   /* A change should register as movement, not as text that was simply
      different when you looked back. Same rise-and-fade the host uses for
@@ -501,7 +724,7 @@
     grid-template-columns: 20px minmax(0, 1fr); gap: 9px;
     align-items: start;
   }
-  .cap.sys .ico { font-size: 13px; line-height: 1.2; text-align: center; }
+  .cap.sys .ico { font-size: 12.5px; line-height: 1.2; text-align: center; }
   .cap.sys .what {
     display: block; color: var(--coral); font-weight: 700;
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
@@ -519,12 +742,19 @@
   /* Chrome, not actions — no border, no fill, never competing with the
      primary button. Which of these exist at all is the backend's call; see
      applyControls() in app.js. */
+  /* --- the corner controls and the ask popup ----------------------------- */
+  /* Big enough to see and to hit. These were 26px of --sage-dim at 14px
+     type — chrome so quiet that the theme toggle was reported missing while
+     it was on screen. Still chrome (no fill, no border at rest), but sized
+     like a control and a step brighter. */
   .card .gear {
-    width: 26px; height: 38px; padding: 0; border-radius: 0; border: 0;
-    background: transparent; color: var(--sage-dim);
-    font-family: var(--font-mono); font-size: 14px; line-height: 1;
+    width: 34px; height: 38px; padding: 0; border-radius: 0;
+    border: 1px solid transparent;
+    background: transparent; color: var(--sage);
+    font-family: var(--font-mono); font-size: 16px; line-height: 1;
     letter-spacing: 0;
   }
+  .card .gear:hover:not(:disabled) { border-color: var(--hairline); }
   /* :not(:disabled) only to out-specify `.card button:hover:not(:disabled)`,
      which would otherwise wash these in the primary button's coral tint. */
   .card .gear:hover:not(:disabled) { background: transparent; color: var(--alpenglow); }
@@ -548,7 +778,7 @@
   }
   .askpop-head {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 6px; font-size: 13px; color: var(--text);
+    margin-bottom: 6px; font-size: 12.5px; color: var(--text);
   }
   .askpop-close {
     background: transparent; border: 0; color: var(--dimmer);
@@ -562,7 +792,7 @@
   .askpop-list li:last-child { border-bottom: none; }
   .askpop-list .say { display: block; color: var(--text); line-height: 1.4; }
   .askpop-list .why {
-    display: block; color: var(--dimmer); font-size: 11.5px; margin-top: 2px;
+    display: block; color: var(--dimmer); font-size: 11px; margin-top: 2px;
     line-height: 1.45;
   }
   /* The settings gear on the full page only — the panel is never embedded. */
@@ -571,14 +801,131 @@
      a theme via data-theme); positioning lives with the other card chrome. */
 
   /* --- settings --- */
+  /* The panel's own header row. It has one since 0.9.105, when the panel
+     stopped being a section of the call page and lost access to that page's
+     corner controls — without this there is no way back to the phone and no
+     theme toggle, on the surface an operator sits in front of longest. */
+  .panelbar {
+    display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px;
+  }
+  .panelbar .gear { text-decoration: none; }
+
+  /* Wider than the call card on purpose, and the one place the two surfaces
+     are allowed to disagree about width. The card is a phone and wants to be
+     phone-shaped; the panel is a form full of sentences, and at 620px almost
+     every hint wrapped to three lines — which is what made a page of ordinary
+     help text read as a wall.
+     1120 rather than 860 because each row now carries its own help in a third
+     column (see .row). At 860 that column got about half the width the help
+     used to have on its own line, so it wrapped to twice as many lines and
+     the page came out TALLER — measured, not guessed. The width is what makes
+     three columns pay. Still collapses to 100% under 1200px. */
   .panel {
-    width: min(620px, 100%); margin-top: 14px; display: none;
+    width: min(1120px, 100%); margin-top: 14px; display: none;
     border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
-    padding: 20px; text-align: left;
+    padding: 20px 22px; text-align: left;
   }
   .panel.open { display: block; }
   .panel h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; }
   .panel .sub { margin: 0 0 16px; font-size: 12px; color: var(--dimmer); line-height: 1.5; }
+
+  /* --- getting around: the jump bar and the line's own state ------------- */
+  /* Six super-groups and roughly forty disclosures below them. Without this
+     the only way to the bottom is scrolling past every section in between,
+     which is also how a switch gets flipped on the way past. */
+  .panelnav {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 0 0 14px; padding-bottom: 13px; border-bottom: 1px solid var(--line);
+  }
+  .panelnav a {
+    text-decoration: none; color: var(--dim);
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700;
+    padding: 5px 9px; border-radius: 999px;
+    border: 1px solid var(--line2); background: transparent;
+  }
+  .panelnav a:hover { color: var(--text); background: var(--line2); }
+  .panelnav:empty { display: none; }
+
+  /* The dashboard: the kill switch, and the four answers worth having before
+     you change anything below. Bordered and above the fold because none of it
+     is one of the settings — the button acts immediately, and the tiles are
+     read-back rather than input. */
+  .dash {
+    margin: 0 0 16px; padding: 12px 13px;
+    border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
+  }
+  .dashmain { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
+  /* The real field behind the button. Not `hidden` and not display:none —
+     both remove it from the form in ways that have surprised people before —
+     but it must not be clickable, focusable or visible, because clicking it
+     would change the value without posting it. */
+  .fieldonly {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  /* Sized and coloured like the thing it is. Every other button on this page
+     is a test or a save; this one closes the line for everybody. */
+  .killbtn {
+    flex: 0 0 auto; padding: 10px 18px; font-size: 13px; font-weight: 700;
+    background: var(--accent); color: #fff;
+  }
+  .killbtn.resume { background: var(--ok); color: #fff; }
+  .killbtn:hover:not(:disabled) { filter: brightness(1.08); }
+  .dashsay { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .dashsay strong { font-size: 13px; color: var(--ok); }
+  .dashsay strong.paused { color: var(--warn); }
+  .dashsay span { font-size: 11.5px; color: var(--dimmer); }
+  #dashCheckBtn { margin-left: auto; }
+
+  /* Four read-backs, not four settings. Buttons because each one jumps to the
+     section that owns its answer — the whole reason to look at a dashboard is
+     to find out where to go next. */
+  .dashtiles {
+    display: grid; gap: 8px; margin-top: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .tile {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 9px 11px; text-align: left; min-width: 0;
+    background: var(--panel); color: var(--text);
+    border-radius: 9px; box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .tile:hover { box-shadow: inset 0 0 0 1px var(--line2); }
+  .tile .tk {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .13em;
+    text-transform: uppercase; font-weight: 700; color: var(--dimmer);
+  }
+  .tile .tv {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tile .tn {
+    font-size: 11px; color: var(--dimmer); line-height: 1.35;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tile .tn:empty { display: none; }
+  .tile.ok .tv { color: var(--text); }
+  .tile.warn .tv { color: var(--warn); }
+  .tile.bad .tv { color: var(--accent); }
+  .tile.bad { box-shadow: inset 0 0 0 1px
+              color-mix(in srgb, var(--accent) 45%, transparent); }
+
+  /* An "Advanced" fold inside a section, for a field that is derived, or one
+     that only a non-standard setup needs. It is a real setting either way —
+     hiding it outright is how a station that publishes MCP somewhere unusual
+     ends up with no way to say so. */
+  details.advanced { margin: 4px 0 10px; }
+  details.advanced > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--dimmer);
+    padding: 4px 0;
+  }
+  details.advanced > summary::-webkit-details-marker { display: none; }
+  details.advanced > summary::before { content: "▸ "; }
+  details.advanced[open] > summary::before { content: "▾ "; }
+  details.advanced > summary:hover { color: var(--text); }
 
   .supergroup {
     display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
@@ -607,6 +954,18 @@
     color: var(--dimmer); font-weight: 500; opacity: .85;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
   }
+  /* The section's one-line subtitle, set from the schema by layoutPanel().
+     Undoes the summary's uppercase mono treatment — it is a sentence, not a
+     label — and gives way first when the row runs out of room. */
+  details.sec > summary .secblurb {
+    font-style: normal; text-transform: none; letter-spacing: 0;
+    font-weight: 400; font-size: 11px; color: var(--dimmer);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 0 1 auto; min-width: 0;
+  }
+  .secname { flex: 0 0 auto; }
+  details.sec > summary .secblurb:empty { display: none; }
+  @media (max-width: 620px) { details.sec > summary .secblurb { display: none; } }
   /* The body of a section is recessed against its header, so it is obvious
      where one section ends and the next begins when several are open. */
   details.sec > .body {
@@ -636,22 +995,178 @@
                                  box-shadow: none; }
   .runbtn.running { opacity: .55; }
   /* Results in a diagnostics row scroll rather than growing the page. */
-  .result.scrolly { max-height: 300px; overflow: auto; }
+  .result.scrolly { max-height: 460px; overflow: auto; }
   details.diag .result { font-size: 11px; line-height: 1.5; }
   details.diag .stages { font-size: 11.5px; }
 
-  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-  .row label { flex: 0 0 128px; font-size: 12.5px; color: var(--dim); }
+  /* Label, field, and what the field is for — one line, left to right.
+     The help used to sit on a line of its own under each row, which cost a
+     line per setting down a panel with ~50 of them, while the right two
+     thirds of the row it described sat empty. Wraps at narrow widths, where
+     three columns genuinely do not fit. */
+  .row {
+    display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .row label { flex: 0 0 168px; font-size: 12.5px; color: var(--dim); }
+  /* Bounded rather than greedy. `flex: 1` let a text field take the whole
+     row, which is what left the help nowhere to go but underneath — and the
+     help is the thing that needs the width, because it is a sentence. A
+     dropdown is as wide as its longest option and a URL box does not become
+     more readable at 600px than at 260. */
   .row select, .row input[type=text], .row input[type=number], .row input[type=password] {
-    flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+    flex: 0 1 260px; max-width: 260px;
+    min-width: 0; font: inherit; font-size: 12.5px;
     padding: 6px 9px; border-radius: 7px;
     border: 1px solid var(--line2); background: var(--bg); color: var(--text);
   }
+  /* The only greedy thing in the row. It gets whatever the label and the
+     field did not take, which at the panel's width is more than the help had
+     when it sat on a line of its own. */
+  .row > .hint.inrow {
+    flex: 1 1 300px; min-width: 0; margin: 0; text-align: left;
+  }
   .row select:focus, .row input:focus { outline: none; border-color: var(--accent); }
+  /* A field that holds "2" does not need 600px to hold it. Every number in
+     the panel was stretched the full width of the row, which read as five
+     enormous empty boxes and made the numbers themselves hard to compare —
+     the thing you are actually doing in Usage controls. */
+  .row.narrow input[type=number] { flex: 0 0 96px; }
+  /* One column, and the ROW is what has columns now.
+     This was two columns of short number rows — but the schema help was
+     injected as each row's next sibling and had to span both cells to stay
+     under the field it described, which pushed the following row back to
+     column one. So every row landed in column one, every hint took a full
+     line, and column two was empty down the whole section. The three-column
+     row above spends that same width on something readable instead. */
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .grid2 > .row { margin-bottom: 8px; }
+  /* Non-schema hints written into the markup still sit under their row. */
+  .grid2 > .hint { margin: -2px 0 8px; }
+
   .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12.5px; color: var(--text); }
   .check input { width: 15px; height: 15px; accent-color: var(--accent); }
-  .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 138px; line-height: 1.4; }
+  .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 178px; line-height: 1.4; }
   .hint.wide { margin-left: 0; }
+
+  /* "Needs the station's own admin credentials." Coral while they are
+     missing, grey once they are stored — a switch that quietly never happens
+     is the failure this exists to name, and the colour is the difference
+     between the two states. Deliberately a small outlined tag rather than a
+     red banner: it is a prerequisite, not a warning. */
+  .needsadmin {
+    margin-left: auto; flex: 0 0 auto; cursor: help;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700;
+    padding: 2px 6px; border-radius: 999px;
+    color: var(--dimmer); border: 1px solid var(--line);
+  }
+  .needsadmin.missing {
+    color: color-mix(in srgb, var(--accent) 78%, var(--dim));
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+
+  /* --- the permission matrix: one row, three tiers ----------------------
+     ONE grid for the whole block, with each row set to display:contents, so
+     every row shares the same columns. Per-row grids are what made the four
+     other lists in this panel unreadable — see the log viewer — and a matrix
+     whose columns do not line up is not a matrix. It also lets a modifier
+     (the plain checkboxes between the tiered rows) span the full width
+     without leaving a hole where its cells would have been. */
+  .permgrid {
+    display: grid; grid-template-columns: minmax(0, 1fr) 66px 66px 66px;
+    align-items: center; margin: 0 0 6px;
+  }
+  .permrow { display: contents; }
+  /* The select IS the field — it is what Save diffs and what the server
+     stores — but nobody looks at it. Hidden rather than removed so the whole
+     of the rest of panel.js keeps working on it unchanged. */
+  .permrow > select { display: none; }
+  .permgrid > .phead {
+    display: contents;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .permgrid > .phead > span {
+    padding: 9px 0 6px; border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .permgrid > .phead > span:not(:first-child) { text-align: center; }
+  .permrow > .plabel {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px 8px 0; font-size: 12.5px; color: var(--text);
+  }
+  .permrow.off > .plabel { color: var(--dim); }
+  .permrow > .tcell { display: flex; justify-content: center; padding: 8px 0; }
+  .permrow > .tcell input { width: 15px; height: 15px; accent-color: var(--accent); }
+  /* A tier nobody can be. Disabled rather than hidden: the level exists, and
+     an operator needs to see that it is shut and why (the title says which
+     password is missing) rather than wondering where the column went. */
+  .permrow > .tcell.unreachable { opacity: .3; cursor: help; }
+  /* Modifiers and injected help span the whole width — they are not answers
+     to the column headings. */
+  .permgrid > .check, .permgrid > .hint {
+    grid-column: 1 / -1; margin: 0 0 0 0; padding: 4px 0;
+  }
+  .permgrid > .hint { padding: 0 0 8px; margin: -2px 0 0; }
+  .permgrid > .check { padding: 6px 0 6px 18px; }
+
+  /* Which callers reach an entry in the ask list. */
+  .whotier {
+    display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 999px;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700;
+    border: 1px solid var(--line2); color: var(--dimmer);
+  }
+  .whotier.t-open {
+    color: color-mix(in srgb, var(--warn) 80%, var(--text));
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  }
+
+  @media (max-width: 620px) {
+    .permgrid { grid-template-columns: minmax(0, 1fr) 46px 46px 46px; }
+    .permrow > .plabel { font-size: 12px; }
+  }
+
+  /* --- the Player settings matrix: one row, two surfaces ---------------- */
+  /* A grid rather than two stacked columns of checkboxes, because the whole
+     point of the section is comparing the two answers for one control. The
+     column headings carry the surface, so the labels don't have to repeat it
+     eight times. */
+  .pmatrix { margin: 0 0 4px; }
+  .phead, .prow {
+    display: grid; grid-template-columns: minmax(0, 1fr) 54px 54px;
+    align-items: center; gap: 8px;
+  }
+  .phead {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+    padding: 10px 0 5px; border-bottom: 1px solid var(--line);
+  }
+  .phead span:not(:first-child), .prow input, .prow .pnone { justify-self: center; }
+  .phead:first-child { padding-top: 0; }
+  .prow { padding: 7px 0; font-size: 12.5px; color: var(--text); }
+  .prow input { width: 15px; height: 15px; accent-color: var(--accent); }
+  /* Not a disabled checkbox: a disabled box still reads as a setting that
+     could be enabled, and this one can't be. The dash says "no such thing
+     here", and the title says why. */
+  .pnone { color: var(--dimmer); cursor: help; }
+  /* The schema's help sits under its row, indented to the label column so a
+     wall of eight rows still scans as rows. */
+  .prow + .hint { margin: -2px 0 4px; }
+  /* Louder than .hint, quieter than .banner. For the switches that change the
+     station rather than the call: in grey body text they read as three more
+     checkboxes, which is how one gets ticked on the way past. */
+  .alert {
+    font-size: 11.5px; line-height: 1.5; color: var(--dim);
+    margin: 0 0 10px; padding: 8px 11px; border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+    background: color-mix(in srgb, var(--warn) 8%, transparent);
+  }
+  .alert strong { color: var(--warn); font-weight: 700; }
+  .alert em { color: var(--text); font-style: normal; font-weight: 600; }
   /* Banners share the michelp look: theme-var colors so light mode holds. */
   .banner {
     font-size: 12px; padding: 10px 12px; border-radius: 9px; line-height: 1.5;
@@ -659,6 +1174,16 @@
     margin-bottom: 14px;
   }
   .banner.ok { border-color: var(--ok); color: var(--ok); }
+  /* First run: the one banner that is a form rather than a sentence. It is
+     asking for something, so it gets room to ask. */
+  .banner.setup { color: var(--text); border-color: var(--accent); }
+  .banner.setup strong { color: var(--accent); display: block; margin-bottom: 5px; }
+  .banner.setup p { margin: 0 0 10px; color: var(--dim); font-size: 11.5px; }
+  .banner.setup .loginrow { display: inline-flex; gap: 8px; margin: 0; }
+  .banner.setup input { width: 220px; }
+  .banner.setup #firstPwMsg { display: block; margin-top: 7px; font-size: 11.5px;
+                              color: var(--accent); }
+  .banner.setup #firstPwMsg:empty { display: none; }
   /* Buttons created from JS use these instead of inline colors. */
   .btnaccent { background: var(--accent); color: #fff; }
   .btnquiet { flex: 0 0 auto; background: transparent; color: var(--dim);
@@ -687,8 +1212,8 @@
      reachable / off / never split can be read down the page at a glance. */
   .toollist { list-style: none; margin: 4px 0 0; padding: 0; }
   .toollist li {
-    display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px;
-    padding: 8px 0; border-top: 1px solid var(--line); align-items: baseline;
+    display: grid; grid-template-columns: 44px 152px minmax(0, 1fr); gap: 12px;
+    padding: 7px 0; border-top: 1px solid var(--line); align-items: baseline;
   }
   .toollist li:first-child { border-top: none; }
   .toollist .tstate {
@@ -698,16 +1223,23 @@
   .toollist li.off .tstate { color: var(--dimmer); }
   .toollist li.blocked .tstate { color: var(--warn); }
   .toollist .tbody { min-width: 0; }
+  /* The subwave_ prefix is on nineteen of nineteen names and earns none of
+     the 70px it was taking out of the description column. Full name in the
+     title, where anyone who needs to type it can still get at it. */
   .toollist code {
     display: block; font-size: 11.5px; color: var(--text);
-    font-family: ui-monospace, SFMono-Regular, monospace;
-    overflow-wrap: break-word;
+    font-family: var(--font-mono); overflow-wrap: break-word;
   }
   .toollist li.off code, .toollist li.blocked code { color: var(--dim); }
   .toollist .twhat { display: block; font-size: 11.5px; color: var(--dim);
-                     margin-top: 2px; line-height: 1.45; }
+                     line-height: 1.45; }
   .toollist .tnote { display: block; font-size: 11px; color: var(--dimmer);
                      margin-top: 3px; line-height: 1.45; }
+  @media (max-width: 700px) {
+    .toollist li { grid-template-columns: 44px minmax(0, 1fr); }
+    .toollist code { grid-column: 2; margin-bottom: 2px; }
+    .toollist .tbody { grid-column: 2; }
+  }
 
   .soundlist { list-style: none; margin: 4px 0 10px; padding: 0; }
   .soundlist li {
@@ -730,44 +1262,93 @@
     white-space: pre-wrap; display: none; font-family: ui-monospace, SFMono-Regular, monospace;
   }
   .result.on { display: block; }
-  .result.good { border-color: #1e3a28; color: #7fc79b; }
-  .result.bad { border-color: #4a2620; color: #e08b7d; }
+  /* Derived from --ok / --accent rather than pinned to two dark-mode hexes.
+     The literals held their dark-mode value through two palette changes and
+     read as mud on the light theme, which is the failure this file's header
+     warns about. */
+  .result.good {
+    border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+    color: color-mix(in srgb, var(--ok) 88%, var(--text));
+  }
+  .result.bad {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  }
 
   /* The log viewer. Rows rather than one pre-wrapped block, so a level can be
      coloured and a line can be hidden — neither of which a single string
      allows. Colours come from the existing theme tokens rather than new ones,
      so this reads correctly in light mode without a second set of values. */
-  .logfilters {
+  /* The toolbar above a diagnostic's results. ONE class for both Recent calls
+     and Server logs — they used to be `.logfilters` and `.callfilter`, two
+     unrelated bars that disagreed about gap, margin and type size, and the
+     calls one was built in JavaScript after the fetch while the logs one sat
+     in the markup. Reading the two sections back to back was the tell: the
+     pipeline and speed sections above them share a shape, and these did not. */
+  .diagbar {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    margin: 0 0 8px;
+    margin: 0 0 8px; font-size: 11.5px; color: var(--dimmer);
   }
-  .logfilters label { font-size: 11.5px; color: var(--dimmer); }
-  .logfilters select[multiple] {
+  .diagbar label { font-size: 11.5px; color: var(--dimmer); }
+  .diagbar .grow { flex: 1 1 auto; }
+  .diagbar select[multiple] {
     font-size: 11.5px; padding: 3px 6px; border-radius: 7px;
     background: var(--bg); color: var(--text); border: 1px solid var(--line2);
     min-width: 104px;
   }
-  .logfilters input[type="search"] {
+  .diagbar input[type="search"] {
     flex: 1 1 140px; min-width: 120px; font-size: 12px; padding: 5px 8px;
     border-radius: 7px; background: var(--bg); color: var(--text);
     border: 1px solid var(--line2);
   }
-  .result.logs { white-space: normal; padding: 6px 8px; }
-  .logline {
-    display: grid; grid-template-columns: auto auto auto 1fr; gap: 8px;
-    align-items: baseline; padding: 2px 4px; border-radius: 5px;
-    font-size: 11.5px; line-height: 1.5;
+  /* The checkbox filter reads as one control, so the whole thing is the label. */
+  .diagbar .pick {
+    display: flex; align-items: center; gap: 7px; cursor: pointer;
   }
+  .diagbar .pick input { margin: 0; }
+  .diagbar .pick input:disabled + span { opacity: .5; cursor: default; }
+  /* Destructive, so it is stated rather than styled loud: the same button as
+     every other one until you are on it. */
+  .runbtn.danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 22%, var(--bg));
+    border-color: var(--accent);
+    color: color-mix(in srgb, var(--accent) 60%, var(--text));
+  }
+  .result.logs { white-space: normal; padding: 5px 4px; max-height: 430px; }
+  /* FIXED columns, not `auto`. Every row is its own grid, so `auto` sized each
+     one to its own content and nothing lined up with the row above it — the
+     timestamp, the level letter and the logger all stepped in and out down the
+     page, and the message, which is the part you are reading for, started at a
+     different x on every line. It read as noise because it was. Fixed widths
+     are what make forty rows a column of four columns. */
+  .logline {
+    display: grid; grid-template-columns: 62px 14px 104px minmax(0, 1fr);
+    gap: 10px; align-items: baseline; padding: 3px 7px; border-radius: 5px;
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.55;
+  }
+  /* Banding rather than a rule per row: at eleven pixels a hairline between
+     every line is heavier than the text it separates. */
+  .logline:nth-child(even) { background: color-mix(in srgb, var(--text) 3%, transparent); }
   .logline:hover { background: var(--line); }
   .logline .lt { color: var(--dimmer); font-variant-numeric: tabular-nums; }
   /* One letter, not the whole word: the level is a glance, and eight columns
      of "WARNING" pushes the message — the part you are reading for — off the
      right of a narrow panel. The full word is the title attribute. */
-  .logline .ll {
-    width: 1.1em; text-align: center; font-weight: 700; color: var(--dimmer);
+  .logline .ll { text-align: center; font-weight: 700; color: var(--dimmer); }
+  /* Truncated rather than wrapped. A logger name is how you tell a station
+     read from a token mint at a glance; it is never the thing you read, so it
+     may not be allowed to set the message column's left edge. */
+  .logline .lg {
+    color: var(--cool); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .logline .lg { color: var(--cool); }
   .logline .lm { color: var(--dim); overflow-wrap: anywhere; }
+  @media (max-width: 620px) {
+    /* Three fixed columns plus a message do not fit; the logger is the one
+       that can go, and it stays in the row's title. */
+    .logline { grid-template-columns: 62px 14px minmax(0, 1fr); }
+    .logline .lg { display: none; }
+  }
   .logline.lvl-warning .ll, .logline.lvl-warning .lm { color: var(--warn); }
   .logline.lvl-error .ll, .logline.lvl-error .lm,
   .logline.lvl-critical .ll, .logline.lvl-critical .lm { color: var(--accent); }
@@ -787,40 +1368,58 @@
               box-shadow: inset 0 0 0 1px var(--line2); }
   #resetBtn:hover:not(:disabled) { color: var(--text); background: var(--line2); }
   #saveMsg { font-size: 12px; color: var(--dimmer); }
-  /* "What callers can ask" reference */
+  /* "What callers can ask" reference. Two readable columns — what a caller
+     says, and what it actually does — because those are two different
+     questions and stacking them made nineteen rows into thirty-eight lines. */
   .asklist { list-style: none; margin: 0; padding: 0; }
+  /* fit-content, not 1fr: with two fr tracks the boundary sat at mid-page
+     regardless of the text, so a short quote left a gulf before its
+     explanation. Sized to content the quote column is exactly as wide as the
+     longest quote (up to 46%), and the explanations start together just after
+     it. */
   .asklist li {
-    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
-    display: grid; grid-template-columns: 16px 1fr; gap: 9px; align-items: baseline;
+    padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+    display: grid; grid-template-columns: 16px fit-content(46%) minmax(0, 1fr);
+    gap: 10px; align-items: baseline;
   }
   .asklist li:last-child { border-bottom: none; }
   .asklist .mark { color: var(--ok); font-size: 11px; }
-  .asklist li.off { opacity: .4; }
+  .asklist li.off { opacity: .45; }
   .asklist li.off .mark { color: var(--dimmer); }
-  .asklist .say { color: var(--text); font-style: italic; }
-  .asklist .why { color: var(--dimmer); display: block; font-style: normal; font-size: 11.5px; margin-top: 2px; }
+  .asklist .say { color: var(--text); font-style: italic; line-height: 1.45; }
+  .asklist .why { color: var(--dimmer); font-size: 11.5px; line-height: 1.45; }
+  @media (max-width: 700px) {
+    .asklist li { grid-template-columns: 16px minmax(0, 1fr); }
+    .asklist .why { grid-column: 2; margin-top: 2px; }
+  }
 
   /* Run-all pipeline check */
-  #speedBtn { margin-left: 8px; }
   #runAllBtn.running { opacity: .6; }
   .stages { list-style: none; margin: 13px 0 0; padding: 0; display: none; }
   .stages.on { display: block; }
   .stages li {
-    display: grid; grid-template-columns: 18px 132px 1fr; gap: 10px;
+    display: grid; grid-template-columns: 18px 148px minmax(0, 1fr); gap: 12px;
     align-items: baseline; padding: 6px 0; font-size: 12px;
     border-bottom: 1px solid var(--line);
   }
   .stages li:last-child { border-bottom: none; }
   .stages .icon { text-align: center; font-size: 12px; }
   .stages .nm { color: var(--dim); font-weight: 600; }
-  .stages .dt { color: var(--dimmer); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+  /* Not monospace. These cells are sentences — "the station only offered
+     private addresses", a voice-coverage warning three lines long — and a
+     proportional face fits noticeably more of one on a line. The numbers that
+     DO want a column of their own get it in .timings below. */
+  .stages .dt {
+    color: var(--dimmer); overflow-wrap: anywhere;
+    font-family: var(--font-body); font-size: 11.5px; line-height: 1.5;
+  }
   .stages li.pending .icon { color: var(--dimmer); }
   .stages li.running .icon { color: var(--warn); }
   .stages li.pass .icon { color: var(--ok); }
   .stages li.warn .icon { color: var(--warn); }
   .stages li.fail .icon { color: var(--accent); }
-  .stages li.fail .dt { color: #e08b7d; }
-  .stages li.warn .dt { color: #d0a882; }
+  .stages li.fail .dt { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
+  .stages li.warn .dt { color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
   .stages li.skip { opacity: .45; }
 
   /* Timings reuse the stage rows, with the elapsed time where the status
@@ -839,7 +1438,7 @@
   .stages.timings .dt { display: flex; gap: 10px; align-items: baseline; }
   .stages.timings .ms {
     flex: 0 0 58px; text-align: right; font-variant-numeric: tabular-nums;
-    color: var(--dim);
+    font-family: var(--font-mono); color: var(--dim);
   }
   .stages.timings .note { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .stages.timings li .icon { color: var(--ok); }
@@ -872,30 +1471,61 @@
   .result .calllist { white-space: normal; }
   .callrow { border-bottom: 1px solid var(--line); }
   .callrow:last-child { border-bottom: none; }
+  /* Six columns: verdict, when, who, how long, what happened, what went wrong.
+     They were one 132px date and one catch-all cell holding a joined sentence,
+     so nothing below the date lined up and the only way to find the calls that
+     went badly was to read every row. */
+  /* width:100% is load-bearing, not tidiness. A grid <summary> is
+     shrink-to-fit, so each row sized its flexible tracks to ITS OWN content —
+     the DJ column came out 39px on one row and 124px on the next, and the
+     columns this list exists to provide did not line up at all. Rows 1 and 2
+     differed by three pixels, which reads as a rendering fault rather than as
+     a layout to fix. */
   .callrow > summary {
-    display: grid; grid-template-columns: 18px 132px 1fr; gap: 10px;
-    align-items: baseline; padding: 6px 0; font-size: 12px;
+    display: grid; width: 100%;
+    grid-template-columns: 16px 144px minmax(0, 1fr) 46px 116px minmax(0, 1.3fr);
+    gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
   }
   .callrow > summary::-webkit-details-marker { display: none; }
-  .callrow > summary:hover .nm { color: var(--text); }
+  .callrow > summary:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .callrow > summary:hover .when { color: var(--text); }
   .callrow > summary .icon { text-align: center; }
-  .callrow > summary .nm {
+  .callrow > summary .when, .callrow > summary .dj {
     color: var(--dim); font-weight: 600;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .callrow > summary .dt { color: var(--dimmer); overflow-wrap: anywhere; }
+  .callrow > summary .len {
+    color: var(--dimmer); text-align: right;
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  }
+  .callrow > summary .did, .callrow > summary .dt {
+    color: var(--dimmer); font-family: var(--font-mono); font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .callrow.pass > summary .icon { color: var(--ok); }
   .callrow.warn > summary .icon { color: var(--warn); }
-  .callrow.warn > summary .dt { color: #d0a882; }
+  .callrow.warn > summary .dt { color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
   /* A call nobody could be heard on is not a warning, it is a failed call. */
   .callrow.fail > summary .icon { color: var(--accent); }
-  .callrow.fail > summary .dt { color: #e08b7d; }
+  .callrow.fail > summary .dt { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
+  @media (max-width: 720px) {
+    /* Drop to the three that answer "which call was that, and did it work". */
+    .callrow > summary {
+      grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .callrow > summary .dj, .callrow > summary .len,
+    .callrow > summary .did { display: none; }
+  }
   /* An opened call, read top to bottom: what it was, what it ran on, who
      called, what went wrong, then the conversation. */
+  /* Derived, not literal. This was rgba(255,255,255,.03) — white on white in
+     light mode, so an opened call had no surface under it at all and the
+     transcript sat loose on the page. */
   .callbody {
     margin: 2px 0 12px; padding: 10px 12px; border-radius: 8px;
-    background: rgba(255,255,255,.03); font-size: 11.5px;
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+    border: 1px solid var(--line); font-size: 11.5px;
     max-height: 420px; overflow: auto;
   }
   .cbhead {
@@ -911,7 +1541,7 @@
     margin: 0; color: var(--dim); overflow-wrap: anywhere;
     font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px;
   }
-  .cbproblems { margin: 0; padding-left: 16px; color: #e08b7d; }
+  .cbproblems { margin: 0; padding-left: 16px; color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
   .cbproblems li { margin: 3px 0; overflow-wrap: anywhere; }
   .cbempty { margin: 0; color: var(--dimmer); font-style: italic; }
 
@@ -930,14 +1560,8 @@
   .cbline.caller .x { color: var(--text); }
   .cbline.tool .w, .cbline.tool .x { color: var(--dimmer); }
   /* A tool that came back with a refusal is the line you are looking for. */
-  .cbline.tool.bad .w, .cbline.tool.bad .x { color: #e08b7d; }
+  .cbline.tool.bad .w, .cbline.tool.bad .x { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
 
-  .callfilter {
-    display: flex; align-items: center; gap: 7px; margin: 0 0 4px;
-    font-size: 11px; color: var(--dimmer); cursor: pointer;
-  }
-  .callfilter input { margin: 0; }
-  .callfilter input:disabled + span { opacity: .5; cursor: default; }
   .calllist.onlybad .callrow.pass { display: none; }
 
   .snippet {
@@ -954,31 +1578,60 @@
      host column has the same problem a phone does. */
   @media (max-width: 900px) {
     body { justify-content: flex-start; padding: 14px 12px 24px; }
-    .card, .panel { width: 100%; }
+    .card { width: 100%; }
   }
+  /* The panel gives up its fixed width earlier than the card does — it is
+     1120 now, and a 1000px window would otherwise leave it hanging off the
+     side rather than simply being narrower. */
+  @media (max-width: 1200px) { .panel { width: 100%; } }
   @media (max-width: 600px) {
-    .avatar { width: 56px; height: 56px; }
-    .dj { font-size: 19px; }
+    .avatar { width: 52px; height: 52px; }
+    /* Was 19px, which is two steps off the scale and the largest thing in the
+       widget by a distance. The scale is 9.5 / 11 / 12.5 / 15 and the name is
+       already the top of it — a narrow screen is a reason to spend the width
+       differently, not to introduce a fifth size. */
+    .dj { font-size: 15px; }
     /* Idle, the call button IS the page's action — give it the full row.
        Height stays --control-h: the spec has no exceptions to that, and a
        taller-on-mobile button was one of the four treatments this replaced.
        The in-call chip states keep their own width. */
     #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
-    /* Spend the freed space where a call actually needs it. Fixed, not
-       capped — see §5. */
-    .captions { height: 44vh; }
-    .cap, .ticker { grid-template-columns: 60px minmax(0, 1fr); }
+    /* Three lines on a phone, and only on a phone. `:not(.compact)` is
+       load-bearing: this query fires on the FRAME's width, so a 360px embed
+       column on a desktop matches it too — and there the box is borrowing
+       room from a station page's own layout, where two lines is right. On
+       the standalone page the card is the only thing on screen, and the
+       reading surface is what the extra 18px is worth spending on. */
+    .linebox.open { height: 44vh; }
+    .cap, .ticker { grid-template-columns: 44px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
        wraps onto new lines, and the now-playing track takes a full row of
-       its own instead of a squeezed corner. */
+       its own instead of a squeezed corner.
+
+       But wrapping freely is the OTHER thing that resizes an embed, and this
+       one fires on its own: the track changes every three or four minutes,
+       and "Sweetest Pie (David Guetta Dance Remix Extended) — Megan Thee
+       Stallion" is three lines where the track before it was one. The host
+       page moved with it, with nobody touching anything. So each line still
+       wraps, and each has a fixed number of lines to wrap into. */
     .who-row { flex-wrap: wrap; }
     .dj, .show, .tagline {
-      white-space: normal; overflow: visible; text-overflow: clip;
+      white-space: normal; overflow: hidden; text-overflow: clip;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
     }
     .track {
       flex: 1 0 100%; max-width: 100%; text-align: left; padding-left: 0;
-      margin: 10px 0 0; white-space: normal; overflow: visible;
+      margin: 7px 0 0; white-space: normal; overflow: hidden;
       text-overflow: clip; font-size: 12px;
+      /* ONE line, always. It was two, on the reasoning that a remix credit
+         needs the room — but two lines is 18px of empty row under every
+         ordinary track title, on the surface with the least room to spare,
+         and the truncated half of "Sweetest Pie (David Guetta Dance Remix
+         Extended)" is not what anyone is reading the card for. Still fixed
+         rather than free, which is the part that matters: a track change
+         must not resize the host page. */
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
+      min-height: 1.45em; line-height: 1.45;
     }
   }
 
@@ -1011,14 +1664,23 @@
      ringing and .oncall only once it connects, so keyed on the latter every
      call spent its ringing seconds with the button pinned to the bottom and
      the meters rendering underneath it. */
-  body.compact .card:not(:has(.rig.on)) .actionrow { margin-top: auto; }
+  /* The whole working half of the card sinks to the bottom of whatever
+     room the host gave the frame — the words, the meters and the buttons
+     line up with the host page's own bottom rows, and the spare room sits
+     between identity and rig where empty space reads as intentional.
+     Unconditional now: every band that used to render outside the rig lives
+     inside it, so there is nothing to jump when a call starts. */
+  body.compact .card .rig { margin-top: auto; }
+  /* Idle in an embed the Call button is the frame's one action, sized like
+     the host page's own bottom-row buttons rather than a chip beside them. */
+  body.compact #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
      notifyHeight() flips this on for a single synchronous read. */
   body.measuring { min-height: 0; }
   body.measuring .card { flex: 0 0 auto; }
-  body.measuring .card:not(:has(.rig.on)) .actionrow { margin-top: 0; }
+  body.measuring .card .rig { margin-top: 0; }
 
   /* Overlay mode: the ask list is taller than the frame, so embed.js has made
      the frame an overlay that extends UPWARD past the host's slot. The frame
@@ -1034,12 +1696,22 @@
      station page mid-call. The row is always two lines tall whether it holds
      nothing, one line or a paragraph, so the frame stops moving. */
   .ticker {
-    display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: var(--band-gap);
-    align-items: baseline; padding: var(--band-gap) 0;
-    font-family: var(--font-body); font-size: 13.5px; line-height: 1.5;
+    display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 9px;
+    align-items: baseline; padding: 0;
+    font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
   }
-  .ticker[hidden] { display: none; }
+  /* Reserved, not removed. This is the caption surface an EMBED uses, so it
+     is the one that was making the host page jump: the row appeared on the
+     first spoken word and the frame grew under whoever was reading it. It now
+     holds its two lines from the moment the page loads, empty or not.
+     `visibility` rather than `display` so it is still skipped by a screen
+     reader while it has nothing in it. */
+  /* Reserved, not removed — it holds its two lines from the moment the page
+     loads, empty or not, because this is the caption surface an EMBED uses
+     and it is the one that was making the host page jump. `visibility`
+     rather than `display` so a screen reader still skips it while empty. */
+  .ticker[hidden] { display: grid; visibility: hidden; }
   .ticker.show { opacity: 1; }
   .ticker .who {
     font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
@@ -1049,8 +1721,8 @@
   /* Reserved on the element that HOLDS the text, not an ancestor — reserving
      on the row lets a clamped one-line message collapse the block anyway. */
   .ticker .line {
-    min-height: calc(1.5em * 2);
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    min-height: calc(1.45em * 2);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
     white-space: normal; overflow: hidden;
   }
 
@@ -1074,6 +1746,56 @@
     /* Status chips likewise: they share one row edge to edge instead of
        breaking into a ragged second line. */
     .actionrow .pill { flex: 1 1 auto; justify-content: center; }
+  }
+
+  /* --- the panel's live preview ------------------------------------------
+     Panel-only. The frame holds the real call page, so everything inside it
+     is styled by the rules above rather than by anything here — which is the
+     point: there is no second set of preview styles to drift. */
+  .preview {
+    margin: 12px 0 4px; border: 1px solid var(--line2); border-radius: 9px;
+    background: var(--bg); overflow: hidden;
+  }
+  .previewbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 7px 10px; border-bottom: 1px solid var(--line);
+  }
+  .previewbar .plabel {
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .previewbar .pnote { font-size: 11px; color: var(--dimmer); margin-left: auto; }
+  .preview .segs { display: inline-flex; }
+  .preview .seg {
+    font-size: 11px; padding: 3px 10px; border-radius: 0;
+    border: 1px solid var(--line2); background: transparent; color: var(--dim);
+  }
+  .preview .seg:first-child { border-radius: 7px 0 0 7px; }
+  .preview .seg:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+  .preview .seg.on { color: var(--accent); border-color: var(--accent); }
+  .preview .seg.on + .seg { border-left-color: var(--accent); }
+  /* Sized for the card at rest plus the two things that legitimately grow it
+     — the door code and the mic warning — so switching a toggle never
+     scrolls the frame. It was 470px, from before the idle card stopped
+     reserving room for a call it is not on; that left a third of the preview
+     as empty frame under the widget, which is the exact complaint the idle
+     card itself was fixed for. */
+  #previewFrame { display: block; width: 100%; height: 390px; border: 0; }
+
+  /* --- installed as an app -----------------------------------------------
+     No browser chrome, so the widget is the whole window and owns the edges
+     the browser used to keep clear. The viewport is `viewport-fit=cover` so
+     the background reaches under a notch; without these insets the Hang up
+     row sits under an iPhone's home indicator and the header under the
+     status bar. Vertically centred is also wrong here — a full-screen app
+     that floats its one card in the middle of a phone reads as a web page
+     that failed to load. */
+  @media (display-mode: standalone), (display-mode: minimal-ui) {
+    body {
+      justify-content: flex-start;
+      padding: calc(14px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+               calc(24px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    }
   }
 
   /* §3 — nothing moves for anyone who asked for that. */

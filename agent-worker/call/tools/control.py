@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Callable
@@ -15,6 +14,7 @@ from ..background import spawn
 # TypeError inside a background task and the line never actually closed. The
 # call then ran on until the idle watcher gave up, which looks like the DJ
 # saying goodbye and then refusing to hang up.
+from ..hangup import await_sign_off
 from ..hangup import end_call as hang_up
 
 log = logging.getLogger("callin.agent")
@@ -87,17 +87,12 @@ def build_call_control_tools(
         ending["done"] = True
 
         async def _close() -> None:
-            session = get_session()
-            # Let the sign-off play out. Poll rather than guess a duration: a
-            # fixed sleep either clips a warm goodbye or leaves dead air after
-            # a curt one.
-            deadline = _t.time() + 20.0
-            await asyncio.sleep(1.0)
-            while _t.time() < deadline:
-                if getattr(session, "agent_state", None) != "speaking":
-                    break
-                await asyncio.sleep(0.5)
-            await asyncio.sleep(0.8)      # a beat after the last word
+            # Let the sign-off play out. Polling rather than a fixed sleep is
+            # still right — a guessed duration either clips a warm goodbye or
+            # leaves dead air after a curt one — but the poll used to break
+            # the moment the agent was not speaking, one second in, when the
+            # agent has not STARTED speaking yet. See await_sign_off.
+            await await_sign_off(get_session(), "the DJ's sign-off")
             await hang_up(ctx, f"the DJ wrapped up the call ({reason or 'done'})")
 
         spawn(_close())

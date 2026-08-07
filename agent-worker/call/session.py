@@ -31,10 +31,11 @@ from livekit.agents.voice.room_io import RoomOptions
 import brain
 import settings as settings_store
 import speech_filter
+from log_setup import describe
 import station_config as station_config_mod
 from station import StationClient
 from station_config import StationConfig
-from tts_adapter import available_voices, pick_speakable_voice
+from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
 from . import lifecycle
 from .actions import CallActions
@@ -51,22 +52,70 @@ from .tools import (
 log = logging.getLogger("callin.agent")
 
 
-def _endpointing(cfg: dict) -> dict:
-    """The endpointing delays, only when the operator actually set them.
+def _number(cfg: dict, key: str) -> float:
+    """A configured number, or 0 when it is unset or unreadable.
 
     0 means "leave the SDK's own default alone", not "no delay". Passing a
     literal zero would make the DJ answer the instant the caller stops making
     sound, which is not patience, it is interrupting — so an unset value has
     to pass nothing at all rather than pass zero.
     """
-    out: dict = {}
-    for key in ("min_endpointing_delay", "max_endpointing_delay"):
-        try:
-            value = float(cfg.get(key) or 0)
-        except (TypeError, ValueError):
-            continue
+    try:
+        return float(cfg.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def turn_handling(cfg: dict) -> dict:
+    """Everything about who is talking, in ONE dict.
+
+    It has to be one dict. `AgentSession` accepts `allow_interruptions`,
+    `min_endpointing_delay` and `max_endpointing_delay` as separate arguments,
+    but it only reads them on the branch where `turn_handling` was NOT passed:
+
+        turn_handling = (
+            _migrate_turn_handling(..., allow_interruptions=..., ...)
+            if not is_given(turn_handling) else turn_handling
+        )
+
+    We passed both — `turn_handling` for preemptive generation, the three
+    kwargs for turn-taking — so the SDK took the dict and dropped the rest on
+    the floor. Every one of those three settings was in the panel, documented,
+    saved, and doing nothing: `allow_interruptions=False` still resolved to
+    `enabled: True`, and endpointing stayed at the stock 0.3/2.5.
+
+    That is the whole explanation for the DJ being chopped mid-sentence on real
+    calls. `min_duration` defaults to 0.5s of SOUND — not words — and with the
+    station stream playing into the caller's room, half a second of the record
+    they are listening to reads as an interruption. The operator's own remedy,
+    the one `allow_interruptions`' help text names, could not be applied.
+    """
+    interruption: dict = {"enabled": bool(cfg.get("allow_interruptions", True))}
+    hold = _number(cfg, "min_interruption_secs")
+    if hold > 0:
+        interruption["min_duration"] = hold
+
+    endpointing: dict = {}
+    for key, target in (("min_endpointing_delay", "min_delay"),
+                        ("max_endpointing_delay", "max_delay")):
+        value = _number(cfg, key)
         if value > 0:
-            out[key] = value
+            endpointing[target] = value
+
+    out = {
+        # Preemptive generation stays OFF. It starts a reply from a PARTIAL
+        # transcript, and when that speculative turn contains a tool call the
+        # final user turn lands after it — leaving a function call followed by
+        # a user turn, which Gemini rejects outright:
+        #   "Please ensure that function call turn comes immediately after a
+        #    user turn or after a function response turn." (400)
+        # The call then dies mid-conversation. It only surfaced once the
+        # station tools were reachable and the DJ started calling them.
+        "preemptive_generation": {"enabled": False},
+        "interruption": interruption,
+    }
+    if endpointing:
+        out["endpointing"] = endpointing
     return out
 
 
@@ -75,7 +124,15 @@ class CallSession:
         self.ctx = ctx
         # Re-read per call, so a settings change applies to the next caller
         # without restarting the worker.
-        self.cfg = settings_store.load()
+        #
+        # Resolved against THIS caller's tier before anything else touches it.
+        # Every consumer below reads cfg.get("allow_x") as a truthy value and
+        # always has; the raw stored value is now a tier string, and "off" is
+        # truthy — so a cfg that reached a tool builder unresolved would switch
+        # on every permission the operator had turned off. It is resolved once,
+        # here, and there is no path to the tool builders that skips it.
+        self.tier = settings_store.tier_from_room(ctx.room.name)
+        self.cfg = settings_store.permissions_for(settings_store.load(), self.tier)
         self.station = StationClient()
         self.station_cfg = StationConfig()
 
@@ -124,9 +181,10 @@ class CallSession:
             or await self.station_cfg.voice_for(self.persona["id"])
         )
         self.instructions = await brain.build_system_prompt(
-            self.station, self.persona, snapshot=snap
+            self.station, self.persona, snapshot=snap, cfg=self.cfg
         )
-        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg)
+        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg,
+                                 self.tier, started=self.started_at)
 
         # Checked against the backend BEFORE the first line, not discovered by
         # the caller. See tts_adapter.pick_speakable_voice — a voice the
@@ -136,7 +194,9 @@ class CallSession:
         self.voice, why = pick_speakable_voice(
             self.voice,
             await available_voices(
-                str(self.cfg.get("tts_base_url") or "").strip()
+                str(self.cfg.get("tts_base_url") or "").strip(),
+                adapter_path=resolve_adapter(self.cfg.get("tts_adapter")),
+                mode=str(self.cfg.get("tts_mode", "")),
             ),
         )
         if why:
@@ -178,8 +238,8 @@ class CallSession:
         allowed_tools, local_tools = self._build_tools()
 
         log.info(
-            "call starting room=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
-            self.ctx.room.name, self.persona["name"], self.persona["id"],
+            "call starting room=%s tier=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
+            self.ctx.room.name, self.tier, self.persona["name"], self.persona["id"],
             self.cfg["llm_provider"], self.cfg["llm_model"],
             self.cfg["tts_mode"], self.voice,
             len(allowed_tools) + len(local_tools),
@@ -214,24 +274,9 @@ class CallSession:
             tts=build_tts(self.cfg, self.voice),
             vad=self.ctx.proc.userdata["vad"],
             tools=[*local_tools, toolset],
-            # Preemptive generation stays OFF. It starts a reply from a PARTIAL
-            # transcript, and when that speculative turn contains a tool call
-            # the final user turn lands after it — leaving a function call
-            # followed by a user turn, which Gemini rejects outright:
-            #   "Please ensure that function call turn comes immediately after
-            #    a user turn or after a function response turn." (400)
-            # The call then dies mid-conversation. It only surfaced once the
-            # station tools were reachable and the DJ started calling them.
-            #
-            # Expressed through turn_handling rather than the deprecated
-            # preemptive_generation argument, which warns on every call even
-            # when you pass it False.
-            turn_handling={"preemptive_generation": {"enabled": False}},
-            # Turn-taking. 0 on either delay means "leave the SDK's tuned
-            # default alone" rather than "no delay" — a zero here would be a
-            # worse answer than not answering, so an unset value passes nothing.
-            **_endpointing(self.cfg),
-            allow_interruptions=bool(self.cfg.get("allow_interruptions", True)),
+            # One dict, and it must stay one dict — see turn_handling() for
+            # what passing these alongside it silently did.
+            turn_handling=turn_handling(self.cfg),
         )
 
         await self.session.start(
@@ -259,7 +304,8 @@ class CallSession:
         lifecycle.attach_close_reason(session, self.ended)
         lifecycle.attach_error_recovery(session, self.record)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
-        lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air)
+        lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
+                                    heard=self.heard)
         lifecycle.attach_time_limit(ctx, session, cfg)
         ctx.add_shutdown_callback(self._on_shutdown)
 
@@ -299,6 +345,30 @@ class CallSession:
             "— see off-LAN calling in the README."
         )
 
+    def _note_if_the_voice_fell_behind(self) -> None:
+        """Say so, in the record, when the TTS could not keep up with playback.
+
+        This is the failure that has no symptom from in here. Time to first
+        audio was measured at a healthy 1.5s while the same backend ran at
+        1.6-2.3x realtime, so the DJ started speaking on cue and then fell
+        further behind with every sentence — audible to the caller as gaps and
+        drag, invisible in the transcript, and nothing anywhere errored. The
+        operator could only report that calls "felt laggy", which is not
+        something anyone can act on.
+        """
+        tts = getattr(self.session, "tts", None)
+        report = getattr(tts, "pace_report", None)
+        if not self.record or not callable(report):
+            return
+        try:
+            said = report()
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not read the TTS pace (harmless): %s", describe(e))
+            return
+        if said:
+            log.warning("%s", said)
+            self.record.problem(said)
+
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
@@ -333,6 +403,7 @@ class CallSession:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []
             self._note_if_nothing_was_heard(duration, final)
+            self._note_if_the_voice_fell_behind()
             if self.cfg.get("record_calls", True):
                 self.record.write(reason=reason,
                                   keep=int(self.cfg.get("record_keep") or 0))

@@ -5,8 +5,19 @@ description: Run the Wave Talk test suite, or write new tests in this repo's hou
 
 # Test Wave Talk
 
-`agent-worker/test_sidecar.py` is the entire suite. It gates CI: no image reaches `:latest`
-without it green.
+`agent-worker/tests/` is the suite — one module per subject. `agent-worker/test_sidecar.py` is
+the aggregator that imports every class from it, so the command below is unchanged and so is
+every reference to a class by name. It gates CI: no image reaches `:latest` without it green.
+
+**A new test goes in the module whose subject it defends** — `tests/test_settings.py`,
+`tests/test_call_flow.py`, `tests/test_house_rules.py` and so on; the directory listing is the
+map. Two things to remember when adding one:
+
+- If the class is new, add it to the matching `from tests.… import (…)` block in
+  `test_sidecar.py`, or it will never run. `TestTheSuiteIsNotQuietlyNotRunning` reads the
+  aggregator, so a class nobody imported is invisible to it too.
+- Paths are `REPO` and `AGENT_WORKER` from `tests/support.py`, never `Path(__file__).parent` —
+  from inside `tests/` that is one directory short of what it used to mean.
 
 ## Running it
 
@@ -69,8 +80,19 @@ This suite is biased toward regressions that would be **audible on air**, **misr
 
 ## The widget
 
-There is no JS toolchain in this repo and none should be added. `web-widget/app.js` is guarded
-from the Python side by `TestWidgetServerContract`: every path `app.js` fetches must be a route
-`token_server.py` serves, and every DOM id it reaches for must exist in `index.html` or be
-assigned by `app.js` itself. **Rename a DOM id or add a `fetch()` and you must run the Python
-suite.**
+There is no JS toolchain in this repo and none should be added. The widget is guarded from the
+Python side by `TestWidgetServerContract`, which reads **every** `.js` in `web-widget/` — so a
+new file is covered the moment it lands — and checks DOM ids **per page**:
+
+| Page | Loads | Ids checked against |
+|---|---|---|
+| `index.html` at `/` | `shared.js`, `call.js` | `index.html` |
+| `panel.html` at `/panel` | `shared.js`, `panel.js`, `panel-viewers.js` | `panel.html` |
+
+Every path the widget fetches must be a route `token_server.py` serves, and every id it reaches
+for must exist in *its own* page or be assigned in JS. The test also pins which scripts each
+page loads and in what order, because `panel-viewers.js` reads a `window.Panel` that `panel.js`
+publishes.
+
+**Rename a DOM id, add a `fetch()`, or move code between the two surfaces, and you must run the
+Python suite.**

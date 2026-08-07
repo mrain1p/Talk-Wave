@@ -1,0 +1,22 @@
+{
+  "_comment": "ElevenLabs. Set Endpoint to https://api.elevenlabs.io and put the key in the ElevenLabs box under Voice — it is sent as xi-api-key, not as a bearer token, and it is a separate field from the TTS server key so a station can run both. The voice goes in the URL rather than the body, which is what {voice} is for; use an ElevenLabs voice id (the Voice dropdown reads your own library from /v1/voices once the key is stored). pcm_24000 keeps time-to-first-audio low and is what makes the pace meter meaningful, but ElevenLabs gates PCM output above its free tier — on a free key the request comes back 401 with that reason, which the Test voice button prints verbatim.",
+  "endpoint_path": "/v1/text-to-speech/{voice}/stream?output_format=pcm_24000",
+  "method": "POST",
+  "default_model": "eleven_flash_v2_5",
+  "request_field_map": {
+    "text": "text",
+    "model": "model_id"
+  },
+  "static_fields": {},
+  "auth": { "type": "header", "header_name": "xi-api-key", "key_env": "ELEVENLABS_API_KEY" },
+  "response": { "type": "raw_audio" },
+  "voices_path": "/v1/voices",
+  "voices_id_field": "voice_id",
+  "base_url": "https://api.elevenlabs.io",
+  "audio": {
+    "encoding": "pcm",
+    "mime_type": "audio/pcm",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
+}

@@ -19,10 +19,11 @@ import time
 
 from livekit.agents import AgentSession, JobContext
 
+import speech_filter
 from station import StationClient
 
 from .background import spawn
-from .hangup import end_call
+from .hangup import await_sign_off, end_call
 
 log = logging.getLogger("callin.agent")
 
@@ -108,6 +109,16 @@ def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> N
             log.info("said: %s", text[:160])
             if record:
                 record.turn("dj", text)
+                # Kept off the air by the speech filter, but silently — and to
+                # the caller a typed tool call looks exactly like the DJ
+                # agreeing and then doing nothing. See strip_tool_code.
+                if speech_filter.looks_like_tool_code(text):
+                    record.problem(
+                        "The model typed a tool call instead of making one, so "
+                        "nothing ran and the caller's request was dropped (it "
+                        "was not spoken). A model-side failure — check the LLM "
+                        "setting against one with proven tool routing."
+                    )
 
     session.on("conversation_item_added", _log_said)
 
@@ -164,8 +175,36 @@ def attach_close_reason(session: AgentSession, ended: dict) -> None:
         log.debug("could not watch for the close reason: %s", e)
 
 
+async def _say_something(
+    session: AgentSession, instructions: str, fallback: str, what: str = "line"
+) -> None:
+    """Generate a line in character, and if that fails, say the plain one.
+
+    The in-character line is worth generating: a canned string in the middle
+    of a persona call is jarring, and the model is the only thing that knows
+    what was being talked about. But the whole failure this exists for is the
+    DJ saying NOTHING — an idle goodbye that dies in the provider left a
+    caller listening to a line that then just closed. Something plain and
+    audible beats something perfect that never arrived.
+    """
+    try:
+        await session.generate_reply(instructions=instructions)
+        return
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log.warning("%s failed (%s) — falling back to a canned line", what, e)
+    try:
+        await session.say(fallback)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log.warning("canned %s failed too — the caller heard nothing: %s",
+                    what, e)
+
+
 def attach_idle_watch(
-    ctx: JobContext, session: AgentSession, cfg: dict, air=None
+    ctx: JobContext, session: AgentSession, cfg: dict, air=None, heard=None
 ) -> None:
     """A caller who goes quiet gets checked on in character, then let go.
 
@@ -178,12 +217,26 @@ def attach_idle_watch(
     any real room. Only a transcript with actual words counts as the caller
     being present; the clock starts each time the DJ finishes talking (a
     caller quietly listening isn't idle).
+
+    `heard` is the call's own "has anything ever arrived from this caller"
+    counter, and it separates two situations this used to treat as one. A
+    caller who has been talking and then stops is thinking, or distracted, and
+    deserves the patient ladder. A caller who has NEVER been heard is a broken
+    media path, a blocked microphone, or a wrong device — the commonest
+    outcome on this deployment by some distance — and the patient ladder is
+    exactly wrong for them: on 2026-08-06 that call ran 133 seconds, produced
+    one "Still with me?", and the caller hung up before the goodbye ever came.
+    Nothing the DJ said named the problem, and nothing arrived in time to be
+    heard.
     """
     idle_secs = int(cfg.get("idle_prompt_secs") or 0)
     if idle_secs <= 0:
         return
     max_nudges = int(cfg.get("idle_max_nudges") or 0)
     state = {"last_words": time.time(), "nudges": 0, "asked": False}
+
+    def never_heard() -> bool:
+        return heard is not None and not heard.get("n")
 
     def _on_transcript(ev) -> None:
         text = str(getattr(ev, "transcript", "") or "")
@@ -233,7 +286,17 @@ def attach_idle_watch(
                 continue
             # Thinking time, not dead air: give a caller who was just asked
             # something three times as long before checking on them.
-            wait_for = idle_secs * 3 if state["asked"] else idle_secs
+            #
+            # Except when nothing has ever arrived from them. The greeting
+            # ends in a question on every call, so `asked` is true from the
+            # first second, and tripling the window is what made the first
+            # check-in land 63 seconds into a call whose caller was never
+            # audible. There is no answer coming to a question they cannot
+            # hear being asked.
+            dead_line = never_heard()
+            wait_for = (
+                idle_secs if dead_line or not state["asked"] else idle_secs * 3
+            )
             if time.time() - state["last_words"] < wait_for:
                 continue
             if state["nudges"] >= max_nudges:
@@ -241,41 +304,61 @@ def attach_idle_watch(
             state["nudges"] += 1
             state["last_words"] = time.time()
             first = state["nudges"] == 1
-            log.info("no words from the caller for %ss — check-in %d/%d",
-                     idle_secs, state["nudges"], max_nudges)
+            log.info("no words from the caller for %ss — check-in %d/%d%s",
+                     wait_for, state["nudges"], max_nudges,
+                     " (nothing ever heard)" if dead_line else "")
             if first and max_nudges > 1:
-                try:
-                    await session.generate_reply(instructions=(
-                        "The caller has gone quiet. Check they're still there — "
-                        "one short line in your own voice, warm, no more than a "
-                        "few words. Don't repeat yourself or start a new topic."
-                    ))
-                except asyncio.CancelledError:
-                    return
-                except Exception as e:
-                    log.warning("idle check-in failed: %s", e)
+                # Two different situations, and the caller can only act on one
+                # of them. "Still there?" to somebody whose microphone is off
+                # is a question they can watch arrive and cannot answer.
+                instructions = (
+                    "Nothing at all has come through from the caller since "
+                    "they connected — most likely their microphone is blocked "
+                    "or picking up nothing. Say so plainly, in your own voice, "
+                    "in one short line, and tell them to check it. Don't ask a "
+                    "question they'd have to speak to answer."
+                ) if dead_line else (
+                    "The caller has gone quiet. Check they're still there — "
+                    "one short line in your own voice, warm, no more than a "
+                    "few words. Don't repeat yourself or start a new topic."
+                )
+                await _say_something(
+                    session, instructions,
+                    "I'm not hearing anything your end — worth checking your "
+                    "microphone." if dead_line else "Still with me?",
+                    what="idle check-in",
+                )
             else:
-                # Final strike: whatever happens, the line closes. A goodbye
-                # that fails to generate must not leave the caller holding a
-                # dead line forever.
-                try:
-                    await session.generate_reply(instructions=(
+                # Final strike: whatever happens, the line closes, and the
+                # caller hears WHY. A goodbye that fails to generate must not
+                # leave them holding a dead line, and one that never mentions
+                # the silence reads as being hung up on for no reason.
+                await _say_something(
+                    session,
+                    (
+                        "You never heard anything from this caller at all. "
+                        "Sign off warmly in one line — say you can't hear them, "
+                        "that it's probably their microphone, and to try again. "
+                        "Then stop."
+                    ) if dead_line else (
                         "Still nothing from the caller. Say a brief goodbye in "
                         "character — you're letting them go and getting back to "
                         "the broadcast. One line, then stop."
-                    ))
-                except asyncio.CancelledError:
-                    return
-                except Exception as e:
-                    log.warning("idle goodbye failed: %s", e)
-                    try:
-                        await session.say(
-                            "I'll let you get back to it — call in any time."
-                        )
-                    except Exception:
-                        pass
-                await asyncio.sleep(6)  # let the goodbye actually play
-                await end_call(ctx, "caller went quiet")
+                    ),
+                    (
+                        "I still can't hear you, so I'll let you go — check "
+                        "your microphone and call back any time."
+                    ) if dead_line else (
+                        "I'll let you get back to it — call in any time."
+                    ),
+                    what="idle goodbye",
+                )
+                # Was a flat six seconds, which is a guess that clips a long
+                # goodbye and leaves dead air after a short one. Same wait the
+                # DJ's own hang-up uses now.
+                await await_sign_off(session, "the idle goodbye")
+                await end_call(ctx, "caller could not be heard" if dead_line
+                               else "caller went quiet")
                 return
 
     task = asyncio.create_task(_idle_watch())
@@ -300,13 +383,14 @@ def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict) -> None
 
         log.info("call hit the %ss limit — signing off", max_seconds)
         try:
-            await session.generate_reply(
-                instructions=(
-                    "You're out of time. Thank the caller warmly, in one short "
-                    "line, and say goodbye. Do not ask a question."
-                )
+            await _say_something(
+                session,
+                "You're out of time. Thank the caller warmly, in one short "
+                "line, and say goodbye. Do not ask a question.",
+                "That's my time — thanks for calling in.",
+                what="time-limit sign-off",
             )
-            await asyncio.sleep(6)  # let the sign-off actually play
+            await await_sign_off(session, "the time-limit sign-off")
         except asyncio.CancelledError:
             return
         except Exception as e:
@@ -514,5 +598,3 @@ async def send_on_air_callback(
         await fresh.dj_say(line, mode="styled", kind="callin")
     finally:
         await fresh.aclose()
-
-

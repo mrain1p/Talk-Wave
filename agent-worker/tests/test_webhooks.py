@@ -1,0 +1,373 @@
+"""Registering for the station's pushes, and proving one arrived rather than assuming it.
+
+Split out of test_sidecar.py; see tests/__init__.py.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+from tests.support import _TempStores
+
+
+class _FakeResponse:
+    def __init__(self, status, body=None, text=""):
+        self.status_code = status
+        self._body = body
+        self.text = text or (json.dumps(body) if body is not None else "")
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("not JSON")
+        return self._body
+
+
+class _FakeStation:
+    """The station's admin API, as much of it as registration touches.
+
+    Not a network fake for its own sake: the write is a whole-list replace, so
+    a test that only checked the response would miss the thing that matters,
+    which is what ended up in the list.
+    """
+
+    EVENTS = ["track.play", "dj.say", "dj.link", "request.received"]
+
+    def __init__(self, rows=None, events=None, refuse=None, on_test=None):
+        self.rows = [dict(r) for r in (rows or [])]
+        self.events = self.EVENTS if events is None else list(events)
+        self.refuse = refuse            # a _FakeResponse to answer writes with
+        self.on_test = on_test          # called when a test fire is requested
+        self.writes = []
+        self.tests = []
+
+    def __call__(self, user, password):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get(self, path):
+        return _FakeResponse(200, {"events": self.events, "webhooks": self.rows})
+
+    async def post(self, path, json=None):
+        if path.endswith("/test"):
+            self.tests.append(path)
+            if self.on_test is None:
+                return _FakeResponse(200, {"ok": True})
+            # A test fire may want to push at the receiver first, the way the
+            # real station does before it answers.
+            answer = self.on_test()
+            return await answer if hasattr(answer, "__await__") else answer
+        self.writes.append(json)
+        if self.refuse is not None:
+            return self.refuse
+        self.rows = [dict(r) for r in (json or {}).get("webhooks") or []]
+        return _FakeResponse(200, {"webhooks": self.rows})
+
+
+class _FakeHookRequest:
+    """Enough of an aiohttp request for the receiver, which only reads a body."""
+
+    def __init__(self, body):
+        self._body = body
+
+    async def json(self):
+        return self._body
+
+
+class _StationWebhooks(_TempStores):
+    """Registration against a fake station, with the module state restored."""
+
+    def setUp(self):
+        super().setUp()
+        from api import hooks as api_hooks
+        import station_config
+
+        self.hooks = api_hooks
+        self.station_config = station_config
+        self._old_state = dict(api_hooks._hook_state)
+        self._old_client = api_hooks._admin_client
+        self._old_creds = station_config.admin_credentials
+        api_hooks._hook_state.clear()
+        api_hooks._hook_state.update(
+            registered=False, url="", id=api_hooks.HOOK_ID, station="",
+            events=[], received=0, detail="not attempted")
+        station_config.admin_credentials = lambda: ("op", "pw")
+        os.environ["CALLIN_HOOK_URL"] = "http://192.0.2.7:8100/hooks/station"
+
+    def tearDown(self):
+        self.hooks._admin_client = self._old_client
+        self.hooks._hook_state.clear()
+        self.hooks._hook_state.update(self._old_state)
+        self.station_config.admin_credentials = self._old_creds
+        os.environ.pop("CALLIN_HOOK_URL", None)
+        super().tearDown()
+
+    def register(self, station):
+        self.hooks._admin_client = station
+        asyncio.run(self.hooks.register_station_webhook())
+        return station
+
+
+class TestOurWebhookRowKeepsItsIdentity(_StationWebhooks):
+    """Registering sends a stable id, and that is the whole point of it.
+
+    Without one the station mints a fresh id per registration, so this box
+    moving to a new LAN address left its old row behind and added a second.
+    The station caps the list at 16, after which registration fails for good —
+    and the operator's only clue is a flat refusal.
+    """
+
+    def test_the_row_carries_our_id(self):
+        station = self.register(_FakeStation())
+        self.assertEqual([r["id"] for r in station.rows], [self.hooks.HOOK_ID])
+        self.assertTrue(self.hooks._hook_state["registered"])
+
+    def test_registering_again_does_not_add_a_second_row(self):
+        station = self.register(_FakeStation())
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        self.assertEqual(len(station.rows), 1, station.rows)
+
+    def test_an_unchanged_row_is_not_rewritten(self):
+        station = self.register(_FakeStation())
+        writes = len(station.writes)
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        self.assertEqual(len(station.writes), writes,
+                         "a boot that changes nothing still wrote to the station")
+
+    def test_a_new_address_moves_the_row_instead_of_adding_one(self):
+        station = self.register(_FakeStation())
+        os.environ["CALLIN_HOOK_URL"] = "http://192.0.2.9:8100/hooks/station"
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        self.assertEqual(len(station.rows), 1, station.rows)
+        self.assertEqual(station.rows[0]["url"], "http://192.0.2.9:8100/hooks/station")
+
+    def test_a_row_registered_before_we_sent_an_id_is_adopted(self):
+        # What every existing deployment looks like on upgrade: our address,
+        # an id the station chose. Matching on id alone would leave it there
+        # and register a duplicate alongside it.
+        station = _FakeStation(rows=[{
+            "id": "wh_8f21", "url": "http://192.0.2.7:8100/hooks/station",
+            "events": ["track.play"], "enabled": True,
+        }])
+        self.register(station)
+        self.assertEqual(len(station.rows), 1, station.rows)
+        self.assertEqual(station.rows[0]["id"], self.hooks.HOOK_ID)
+
+
+class TestOtherWebhookRowsSurviveOurRegistration(_StationWebhooks):
+    """The write replaces the whole array, so anything the operator wired up
+    themselves is ours to carry through untouched.
+
+    Including the sentinel the station substitutes for a stored auth header on
+    read: it resolves that back by row id, so a row that round-trips unchanged
+    keeps its credential — and one that loses its id does not.
+    """
+
+    def test_a_foreign_row_round_trips_byte_for_byte(self):
+        other = {"id": "n8n_relay", "url": "https://example.invalid/hook",
+                 "events": ["dj.say"], "enabled": True, "authHeader": "set"}
+        station = self.register(_FakeStation(rows=[other]))
+        kept = [r for r in station.rows if r["id"] == "n8n_relay"]
+        self.assertEqual(kept, [other])
+
+    def test_a_row_disabled_by_the_operator_is_not_switched_back_on(self):
+        station = _FakeStation(rows=[{
+            "id": self.hooks.HOOK_ID, "url": "http://192.0.2.7:8100/hooks/station",
+            "events": list(self.hooks.WANTED_EVENTS), "enabled": False,
+        }])
+        self.register(station)
+        self.assertFalse(station.rows[0]["enabled"], "we re-enabled our own row")
+        # And the panel must not then claim push events are working.
+        self.assertIn("disabled", self.hooks._hook_state["detail"])
+
+    def test_adopting_a_row_never_costs_it_a_stored_credential(self):
+        # The station resolves the redaction sentinel by row id, so renaming a
+        # row to our preferred id would trade the operator's auth header for a
+        # tidier name. The URL match finds it again either way.
+        station = _FakeStation(rows=[{
+            "id": "wh_8f21", "url": "http://192.0.2.7:8100/hooks/station",
+            "events": ["track.play"], "enabled": True, "authHeader": "set",
+        }])
+        self.register(station)
+        self.assertEqual(len(station.rows), 1, station.rows)
+        self.assertEqual(station.rows[0]["id"], "wh_8f21")
+        self.assertEqual(station.rows[0]["authHeader"], "set")
+
+    def test_an_extra_subscription_on_our_row_is_kept(self):
+        station = _FakeStation(rows=[{
+            "id": self.hooks.HOOK_ID, "url": "http://192.0.2.7:8100/hooks/station",
+            "events": ["request.received"], "enabled": True,
+        }], events=_FakeStation.EVENTS + ["show.start"])
+        station.rows[0]["events"].append("show.start")
+        self.register(station)
+        self.assertIn("show.start", station.rows[0]["events"])
+
+
+class TestTheRegistrationShapeIsTheOneTheStationReads(_StationWebhooks):
+    """`{"webhooks": [...]}` is the only shape there has ever been.
+
+    This used to try a flat `{"url", "events"}` first. The handler reads
+    `req.body.webhooks` and nothing else, and since SUB/WAVE 1.6.0 zod strips
+    the unknown keys before it even gets there — so that attempt was answered
+    200 and changed nothing, in both directions at once.
+    """
+
+    def test_every_write_is_the_whole_list(self):
+        station = self.register(_FakeStation())
+        self.assertTrue(station.writes)
+        for body in station.writes:
+            self.assertIn("webhooks", body, body)
+            self.assertIsInstance(body["webhooks"], list)
+
+    def test_the_gate_setting_is_never_touched(self):
+        # trackPlayListenerGated saves independently, and sending it would
+        # overwrite an operator's choice as a side effect of registering.
+        station = self.register(_FakeStation())
+        for body in station.writes:
+            self.assertNotIn("trackPlayListenerGated", body)
+
+
+class TestARefusedRegistrationSaysWhichFieldWasWrong(_StationWebhooks):
+    """A refusal used to read "station did not accept either registration
+    shape" whatever the cause — which is exactly the flat, unactionable error
+    SUB/WAVE 1.6.0's field-level payload exists to replace."""
+
+    def test_the_stations_own_sentence_reaches_the_panel(self):
+        self.register(_FakeStation(refuse=_FakeResponse(
+            400, {"error": "URL must start with http:// or https://",
+                  "fieldErrors": {"webhooks.0.url": ["URL must start with http://"]}})))
+        self.assertIn("URL must start with", self.hooks._hook_state["detail"])
+
+    def test_a_field_error_alone_still_names_the_field(self):
+        self.register(_FakeStation(refuse=_FakeResponse(
+            400, {"fieldErrors": {"webhooks.0.id": ["id must be 3-32 characters"]}})))
+        detail = self.hooks._hook_state["detail"]
+        self.assertIn("webhooks.0.id", detail)
+        self.assertIn("3-32", detail)
+
+    def test_a_body_that_is_not_json_does_not_lose_the_status(self):
+        self.register(_FakeStation(refuse=_FakeResponse(502, text="")))
+        self.assertIn("502", self.hooks._hook_state["detail"])
+
+    def test_a_refusal_stops_retrying_but_bad_credentials_do_not(self):
+        self.register(_FakeStation(refuse=_FakeResponse(400, {"error": "no"})))
+        self.assertTrue(self.hooks._hook_state.get("gave_up"))
+
+        self.hooks._hook_state.pop("gave_up")
+        self.register(_FakeStation(refuse=_FakeResponse(401, {"error": "nope"})))
+        self.assertFalse(self.hooks._hook_state.get("gave_up"),
+                         "a password the operator can fix is not a permanent no")
+
+
+class TestWeOnlyAskForEventsTheStationKnows(_StationWebhooks):
+    """The station validates the event list against an enum and refuses the
+    WHOLE registration over one name it doesn't recognise. It advertises its
+    own vocabulary on the same read we already make, so there is no reason to
+    assert ours against it."""
+
+    def test_an_event_the_station_dropped_is_not_sent(self):
+        station = self.register(_FakeStation(events=["track.play", "dj.say"]))
+        self.assertEqual(station.rows[0]["events"], ["dj.say", "track.play"])
+
+    def test_a_station_that_advertises_nothing_still_gets_a_registration(self):
+        station = self.register(_FakeStation(events=[]))
+        self.assertEqual(sorted(station.rows[0]["events"]),
+                         sorted(self.hooks.WANTED_EVENTS))
+
+    def test_the_card_busts_for_exactly_what_we_subscribed_to(self):
+        self.assertEqual(
+            self.hooks._BUSTING_PREFIXES,
+            frozenset(e.split(".")[0] for e in self.hooks.WANTED_EVENTS),
+            "the events we ask for and the events that refresh the card drifted")
+
+
+class TestPointingAtANewStationRegistersAgain(_StationWebhooks):
+    """`registered` used to be true forever once one station had said yes, so
+    changing the station address in the panel left the new one with no
+    receiver and the card polling for good."""
+
+    def test_a_changed_station_address_re_arms_registration(self):
+        self.register(_FakeStation())
+        self.assertFalse(self.hooks._registration_due())
+
+        self.hooks._hook_state["station"] = "http://somewhere-else.invalid"
+        self.assertTrue(self.hooks._registration_due())
+        self.assertFalse(self.hooks._hook_state["registered"])
+
+    def test_a_previous_refusal_does_not_follow_us_to_a_new_station(self):
+        self.hooks._hook_state.update(station="http://old.invalid", gave_up=True)
+        self.assertTrue(self.hooks._registration_due())
+        self.assertNotIn("gave_up", self.hooks._hook_state)
+
+
+class TestADeliveredPushIsProvedRatherThanAssumed(_StationWebhooks):
+    """"Registered" only ever meant the station accepted a row.
+
+    The receiver is a LAN address behind a NAS, so "the station cannot reach
+    it" is the failure that actually happens — and it looks identical to
+    working from the panel. The station's own test endpoint fires at one hook
+    by id, which makes the whole path testable in both directions.
+    """
+
+    def _delivering(self):
+        """A station that pushes at us before answering, as the real one does."""
+        async def fire():
+            await self.hooks.handle_station_hook(
+                _FakeHookRequest({"event": "test", "t": "now"}))
+            return _FakeResponse(200, {"ok": True})
+
+        return _FakeStation(on_test=fire)
+
+    def test_a_push_that_lands_is_reported_as_delivered(self):
+        station = self.register(self._delivering())
+        self.hooks._admin_client = station
+        result = asyncio.run(self.hooks.fire_test_hook())
+        self.assertTrue(result["ok"], result)
+        self.assertIn("192.0.2.7", result["detail"])
+
+    def test_a_station_that_cannot_reach_us_is_not_reported_as_working(self):
+        station = self.register(_FakeStation())     # accepts, never pushes
+        self.hooks._admin_client = station
+        self.hooks._DELIVERY_WAIT = 0.05
+        try:
+            result = asyncio.run(self.hooks.fire_test_hook())
+        finally:
+            self.hooks._DELIVERY_WAIT = 3.0
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(result["fired"])
+        self.assertIn("192.0.2.7", result["detail"])
+
+    def test_a_row_deleted_at_the_station_re_arms_registration(self):
+        station = self.register(_FakeStation(
+            on_test=lambda: _FakeResponse(404, {"error": "webhook not found"})))
+        self.hooks._admin_client = station
+        result = asyncio.run(self.hooks.fire_test_hook())
+        self.assertFalse(result["ok"])
+        self.assertFalse(self.hooks._hook_state["registered"])
+        self.assertTrue(self.hooks._registration_due())
+
+    def test_a_station_without_the_endpoint_says_so(self):
+        station = self.register(_FakeStation(
+            on_test=lambda: _FakeResponse(404, text="Cannot POST /webhooks/x/test")))
+        self.hooks._admin_client = station
+        result = asyncio.run(self.hooks.fire_test_hook())
+        self.assertIn("no webhook test endpoint", result["detail"])
+        self.assertTrue(self.hooks._hook_state["registered"],
+                        "an old station is not a reason to forget our row")
+
+    def test_pushes_are_counted_rather_than_read_off_the_capped_list(self):
+        # The event list is a deque with a maxlen, so its length saturates —
+        # counting from it would silently stop noticing arrivals.
+        before = self.hooks._hook_state["received"]
+        for _ in range(3):
+            asyncio.run(self.hooks.handle_station_hook(
+                _FakeHookRequest({"event": "track.play"})))
+        self.assertEqual(self.hooks._hook_state["received"], before + 3)

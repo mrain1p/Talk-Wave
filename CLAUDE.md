@@ -15,7 +15,7 @@ containers**, plus LiveKit and Caddy:
 | Process | Entry | Job |
 |---|---|---|
 | agent worker | `agent-worker/main.py` | Registers with LiveKit, answers dispatched calls, runs the STT→LLM→TTS session |
-| token server | `agent-worker/token_server.py` | aiohttp app on :8100. Serves the widget, mints join tokens, hosts the whole settings/admin API |
+| token server | `agent-worker/token_server.py` + `api/` | aiohttp app on :8100. Serves the widget, mints join tokens, hosts the whole settings/admin API |
 | livekit-server | `livekit/livekit-server` image | WebRTC media |
 | caddy | `caddy:2` | TLS in front of :8100 |
 
@@ -28,6 +28,10 @@ other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactl
   registration must happen on the main thread).
 - `call/` — one call, decomposed. `session.py` is the call object (`prepare` → `start` →
   `greet`); `lifecycle.py` is what happens while it runs; `tools/` is what the DJ may do.
+- `api/` — the HTTP surface, decomposed the same way: one module per job (`auth.py`,
+  `tokens.py`, `live.py`, `sounds.py`, `settings.py`, `diagnostics.py`, `hooks.py`, …).
+  `token_server.py` is now only the routing table, and it is the *only* one — a handler
+  registered anywhere else is invisible to the widget's contract test.
 - `brain/` — assembles the system prompt (`assemble.py`, `briefing.py`, `conduct.py`).
 - `station.py` — **read-only** REST client for the SUB/WAVE controller. Reads only.
 - `station_config.py` — mirrors the station's own DJ/TTS config so the call-in DJ doesn't drift
@@ -37,10 +41,40 @@ other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactl
 
 ### web-widget/ — the phone
 
-Plain browser JS, no build step, no toolchain. `token_server` serves `index.html` at `/` and
-`app.js` at `/app.js`. `embed.js` is the drop-in `<script>` for third-party pages; it resolves
+Plain browser JS, no build step, no toolchain. Two pages that never load each other's script:
+`token_server` serves `index.html` at `/` (the phone: `shared.js` + `call.js`) and
+`panel.html` at `/panel` (the operator: `shared.js` + `panel.js`). `shared.js` publishes one
+global, `Callin`. Script tags, not modules — the split kept the no-bundler promise rather than
+trading it away. The panel has its own URL so a reverse proxy can put a rule in front of the
+admin surface that it could never put in front of the phone.
+`embed.js` is the drop-in `<script>` for third-party pages; it resolves
 `?theme=inherit` against the host page before the iframe loads, because a cross-origin frame
 can't read the page it sits in.
+
+## A companion app, on purpose
+
+Wave Talk is a companion to [SUB/WAVE](https://github.com/perminder-klair/subwave), and that
+is a design constraint, not just a description. When there is a choice about how to build
+something the station also has an answer for, **read the station's answer first**
+(`gh` against its repo — see the memory notes; `web/components/admin/*/…Meta.ts` and
+`controller/src/` are where its provider lists and contracts live) and prefer:
+
+- **Same integrations.** If the station can point at a provider (LLM, TTS, STT, search),
+  an operator will hold that key already — offer the same one rather than making them open
+  a second account to run one radio station. The LLM list here mirrors the station's
+  (OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway, Ollama);
+  keep it mirrored when the station gains one.
+- **Same vocabulary.** Where the station names a concept (personas, skills, segments,
+  programme beats, engines), use its name — an operator reads both panels in one sitting.
+- **Mirror, don't re-ask.** Anything the station already knows — persona voices, DJ/TTS
+  config, themes, cards — is read from it (`station_config.py`, `station.py`) rather than
+  configured twice. A setting that exists in both places will drift; a mirrored one can't.
+- **Same operational shape.** Compose-first deployment, settings live in a UI backed by a
+  JSON file with env as the 12-factor override, keys entered in a form and stored
+  server-side — the station's conventions, kept here so one operator runs one mental model.
+
+The boundary still holds: mirroring is **read-only** (invariant 1 below), and this sidecar
+never writes station state except through the allowlisted MCP tools.
 
 ## Invariants — break these and something real breaks
 
@@ -115,6 +149,29 @@ Two rules for committing here, both learned the hard way:
   then parses the fragments as pathspecs — which has twice put a tag on the wrong commit.
 
 Work happens on the `dev` branch, not `main`. `main` is what `:latest` ships from.
+
+### How long a file may be
+
+**600 lines**, for anything under `agent-worker/` or `web-widget/`. Not because short files
+are virtuous — because nothing here ever objected to a file getting longer, and the widget's
+old single app file reached 3,354 lines and `test_sidecar.py` 5,791 one entirely reasonable
+commit at a time.
+
+Above the ceiling is allowed, but it has to be a decision somebody wrote down, in one of two
+lists in `TestNoFileGrowsWithoutSomebodyDeciding`:
+
+- **`EXEMPT`** — this file is *meant* to be long, and that is the right answer. Declaration
+  tables are the clear case: `settings.py` gains a few lines every time the station gains a
+  setting, and that ordinary act should not have to come and edit a test. Exempt files are not
+  measured, only justified.
+- **`SPLITTING`** — debt: too long, known, being dealt with. These are ratcheted. The recorded
+  number is the size when the entry was written; shrink freely, but growing past it fails until
+  you either split the file or raise the number and say why in the commit.
+
+Either way, an entry whose file drops back under the ceiling must be deleted — the lists are not
+allowed to describe a repo that no longer exists. And being long has to stay a legitimate
+permanent answer, or the ceiling starts pushing toward a file per function, which is worse than
+the problem it solves.
 
 ## How this is enforced
 

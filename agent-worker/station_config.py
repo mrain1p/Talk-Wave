@@ -10,7 +10,8 @@ What we can already read without auth:
   - the live persona and its DJ Card        GET /dj
   - the persona roster and ids              GET /personas
   - the active show and its Show Card       GET /schedule
-  - the TTS engine + registered voice ids   GET {TTS}/v1/audio/voices
+  - the TTS engine + registered voice ids   via tts_adapter.available_voices,
+                                            whose path the adapter names
 
 What needs admin basic auth (SUBWAVE_ADMIN_USER / SUBWAVE_ADMIN_PASS):
   - GET /api/settings   station config: expected to carry the persona->voice
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+
+from log_setup import describe
 
 log = logging.getLogger("callin.station_config")
 
@@ -215,7 +218,7 @@ class StationConfig:
             r.raise_for_status()
             data = r.json()
         except Exception as e:
-            log.warning("station config read %s failed: %s", path, e)
+            log.warning("station config read %s failed: %s", path, describe(e))
             return {}
         self._cache[path] = data
         return data
@@ -305,25 +308,27 @@ class StationConfig:
             cfg = settings_store.load()
             base = str(cfg.get("tts_base_url") or "").rstrip("/")
             if base:
-                try:
-                    # Fresh client: self._client carries the station's Basic
-                    # auth, which must not be sent to the TTS host.
-                    async with httpx.AsyncClient(timeout=6.0) as c:
-                        r = await c.get(f"{base}/v1/audio/voices")
-                    r.raise_for_status()
-                    ids = sorted(
-                        v.get("id") for v in r.json().get("data", []) if v.get("id")
+                # tts_adapter owns the lookup — this was a second copy of it,
+                # hardcoded to /v1/audio/voices and OpenAI's response shape,
+                # so a backend that lists its voices anywhere else answered
+                # "no voices" here while the panel next door listed them fine.
+                # It also uses its own client, which is what keeps the
+                # station's Basic auth away from the TTS host.
+                from tts_adapter import available_voices, resolve_adapter
+
+                ids = await available_voices(
+                    base,
+                    adapter_path=resolve_adapter(cfg.get("tts_adapter")),
+                    mode=mode,
+                )
+                if ids:
+                    log.warning(
+                        "no persona voice configured — falling back to the "
+                        "TTS server's first voice '%s'; set one in the panel "
+                        "or add station admin credentials to mirror voices",
+                        ids[0],
                     )
-                    if ids:
-                        log.warning(
-                            "no persona voice configured — falling back to the "
-                            "TTS server's first voice '%s'; set one in the panel "
-                            "or add station admin credentials to mirror voices",
-                            ids[0],
-                        )
-                        return ids[0]
-                except Exception as e:
-                    log.warning("voice-list fallback failed: %s", e)
+                    return ids[0]
             return ""
 
         return "alloy"

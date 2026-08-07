@@ -18,6 +18,32 @@ from ..air import OnAirGuard
 log = logging.getLogger("callin.agent")
 
 
+def _match_show(shows: list[dict], wanted: str) -> dict | None:
+    """Find the show a caller named, without making the model look it up first.
+
+    The station's takeover endpoint wants a showId. A caller says "put the
+    late show on". Making the model fetch the schedule, hold the ids and pass
+    the right one back is a turn of latency and a chance to hallucinate an id
+    that 404s — so resolve it here, the same way the library wrapper resolves
+    awkward phrasing rather than reporting a miss.
+
+    Exact id, then exact name, then a unique substring. Ambiguity is NOT
+    resolved by picking the first: two shows containing "night" and a caller
+    who gets the other one is a station-wide change nobody asked for.
+    """
+    want = str(wanted or "").strip().lower()
+    if not want:
+        return None
+    for show in shows:
+        if str(show.get("id") or "").lower() == want:
+            return show
+    named = [s for s in shows if str(s.get("name") or "").strip().lower() == want]
+    if len(named) == 1:
+        return named[0]
+    partial = [s for s in shows if want in str(s.get("name") or "").lower()]
+    return partial[0] if len(partial) == 1 else None
+
+
 def build_on_air_tools(
     cfg: dict,
     station: StationClient,
@@ -195,6 +221,94 @@ def build_on_air_tools(
             )
 
         tools.append(skip_track)
+
+    if cfg.get("allow_takeover"):
+        # The furthest-reaching thing on this line. Not because it is loud —
+        # it makes no sound of its own — but because it is the only one whose
+        # effect outlives the call: everything else here is over in a minute,
+        # and this changes what the station IS for the next hour.
+        @lk_llm.function_tool(name="subwave_takeover_show")
+        async def takeover_show(show: str, minutes: int = 60) -> str:
+            """Put a different show on air, ahead of the schedule, for a while.
+            `show` is the show's name as the caller said it. `minutes` defaults
+            to an hour — pass more ONLY if they asked for longer. This changes
+            what EVERYONE hears, not just this caller, and it outlasts the
+            call, so use it when they have actually asked for it."""
+            if actions.at_limit():
+                return actions.refusal()
+
+            shows = (await station.schedule()).get("shows") or []
+            if not shows:
+                return (
+                    "I can't read the station's show list, so there's nothing to "
+                    "put on. Tell the caller plainly — do not guess at a name."
+                )
+            picked = _match_show(shows, show)
+            if not picked:
+                names = ", ".join(
+                    str(s.get("name") or "").strip() for s in shows
+                    if str(s.get("name") or "").strip())
+                return (
+                    f"No show matches \"{show}\" — or more than one does. The "
+                    f"station's shows are: {names}. Ask the caller which one they "
+                    "mean and try again with that name. Do not invent one."
+                )
+
+            asked = int(minutes or 0) or 60
+            window = max(StationClient.TAKEOVER_MIN_MINUTES,
+                         min(StationClient.TAKEOVER_MAX_MINUTES, asked))
+            result = await station.pin_show(picked.get("id"), window)
+            if not result.get("ok"):
+                return (
+                    f"That takeover didn't go through: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            name = str(picked.get("name") or "that show").strip()
+            actions.note("takeover", f"{name} for {window} min")
+            # Said out loud because the caller will otherwise be told the show
+            # has "just started" while the current record is still playing —
+            # the station airs the handover at the next track boundary.
+            corrected = ""
+            if window != asked:
+                corrected = (
+                    f" They asked for {asked}; the desk only allows "
+                    f"{StationClient.TAKEOVER_MIN_MINUTES}–"
+                    f"{StationClient.TAKEOVER_MAX_MINUTES} minutes, so it's "
+                    f"{window}. Say the real number."
+                )
+            return (
+                f"Done — {name} is pinned for the next {window} minutes, and the "
+                f"schedule picks up again after that.{corrected} It takes over at "
+                "the end of the record that's playing now, not this second, so "
+                "don't say it has already started. Everyone listening is about to "
+                "get a different show, so say so in your own words."
+            )
+
+        tools.append(takeover_show)
+
+        @lk_llm.function_tool(name="subwave_cancel_takeover")
+        async def cancel_takeover() -> str:
+            """Cancel a show takeover early and hand the schedule back. Use
+            when the caller asks to undo one, or asks for normal programming
+            back. Harmless if nothing is pinned."""
+            if actions.at_limit():
+                return actions.refusal()
+            result = await station.clear_pinned_show()
+            if not result.get("ok"):
+                return (
+                    f"That didn't cancel: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("takeover", "cancelled — back to the schedule")
+            return (
+                "Done — the takeover is off and the weekly schedule is back. Like "
+                "the pin itself, it lands at the end of the current record rather "
+                "than this second. Say so in your own words."
+            )
+
+        tools.append(cancel_takeover)
 
     return tools
 

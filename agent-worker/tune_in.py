@@ -31,6 +31,8 @@ import time
 
 import httpx
 
+from log_setup import describe
+
 log = logging.getLogger("callin.tunein")
 
 # Long enough that a call doesn't pay for discovery, short enough that turning
@@ -129,7 +131,7 @@ async def discover(origin: str, *, timeout: float = 4.0) -> list[str]:
                     if paths:
                         break
     except Exception as e:                                    # noqa: BLE001
-        log.info("stream mount discovery failed for %s: %s", origin, e)
+        log.info("stream mount discovery failed for %s: %s", origin, describe(e))
 
     mounts = [origin + p for p in paths] or [f"{origin}/stream.mp3"]
     _cache[origin] = (time.time(), list(mounts))

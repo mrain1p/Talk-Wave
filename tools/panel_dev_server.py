@@ -59,6 +59,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))
 import settings as settings_store  # noqa: E402
+import secrets_store  # noqa: E402
 
 PORT = int(os.environ.get("PORT", "8123"))
 
@@ -66,13 +67,16 @@ PORT = int(os.environ.get("PORT", "8123"))
 # handle_settings_options really returns; the values are fixtures.
 OPTIONS = {
     "llmProviders": ["openai", "google", "anthropic", "openrouter", "ollama"],
+    "llmProviderLabels": settings_store.LLM_PROVIDER_LABELS,
     "llmModels": {"google": ["gemini-3.1-flash-lite", "gemini-3.6-flash"],
                   "openai": ["gpt-4.1-mini"]},
     "modelsDiscovered": {"google": True},
     "sttProviders": ["local", "deepgram", "openai", "google"],
     "sttModels": {"local": ["base.en", "tiny.en"], "deepgram": ["nova-3"]},
     "ttsModes": ["cloud", "local"],
-    "ttsAdapters": ["local-vibevoice.json", "openai-cloud.json"],
+    "ttsAdapters": ["local-vibevoice.json", "openai-cloud.json",
+                    "elevenlabs-cloud.json"],
+    "ttsAdapterBaseUrls": {"elevenlabs-cloud.json": "https://api.elevenlabs.io"},
     # Deliberately does NOT include the station's voice for p_default1 below:
     # that mismatch is the 0.9.81 bug, and it should be reproducible here.
     "voices": ["-Cliff1", "-Delia1", "Lily"],
@@ -80,8 +84,34 @@ OPTIONS = {
                  {"id": "p_e28f6a", "name": "Dawn"}],
     "voiceSource": {"adminConfigured": True, "mirroringStation": True, "count": 18},
     "stationLlm": {"model": "gemini-3.1-flash-lite"},
-    "providerBaseUrls": settings_store.PROVIDER_BASE_URLS,
-    "ttsBaseUrls": settings_store.TTS_BASE_URLS,
+    "providerBaseUrls": settings_store.provider_base_urls(),
+    "ttsBaseUrls": settings_store.tts_base_urls(),
+}
+
+# Fixtures for the pipeline check. Everything passes except the legs that
+# genuinely cannot exist here, so a red line is the panel's own doing.
+PIPELINE_ENV = {
+    "ok": True,
+    "livekit": {"ok": True, "url": "ws://stub"},
+    "livekitAuth": {"ok": True},
+    "admin": {"ok": True, "detail": "station admin credentials accepted"},
+    "webhook": {"registered": True, "id": "wave_talk", "received": 4,
+                "url": "http://192.168.1.40:8100/hooks/station",
+                "detail": "registered"},
+    "listeners": {"requestsOpen": True, "detail": "2 listening"},
+    "keys": {"ok": True, "missing": []},
+    "stt": {"ok": True, "detail": "local · base.en"},
+    "llm": {"ok": True, "detail": "google · gemini-3.1-flash-lite"},
+    "tts": {"ok": True, "detail": "local · -Cliff1"},
+}
+
+# Flip `ok` to see the other branch: a station that took the registration but
+# cannot route back to the receiver, which from the panel looks identical to
+# working until something asks.
+HOOK_TEST = {
+    "ok": True, "fired": True,
+    "url": "http://192.168.1.40:8100/hooks/station",
+    "detail": "the station's push reached http://192.168.1.40:8100/hooks/station",
 }
 
 LOG_RECORDS = [
@@ -125,13 +155,38 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
 
+        # The panel's live preview. Answered through the REAL look_payload so
+        # the stub cannot drift from the thing it is standing in for — which
+        # is the same reason /settings below is built from the real schema.
+        if path == "/live/preview":
+            from api.live import look_payload
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                patch = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                patch = {}
+            cfg = dict(settings_store.load())
+            cfg.update({k: v for k, v in patch.items()
+                        if k in settings_store.FIELDS})
+            return self._json(look_payload(cfg, "Francesca"))
+
         if path == "/settings":
             return self._json({
                 "schema": settings_store.schema_payload(),
                 "resolved": settings_store.load(),
                 "overrides": settings_store.stored_only(),
-                "secrets": {"google_api_key":
-                            {"label": "Google", "set": True, "tail": "1234"}},
+                # Through the real status() shape, group and help included,
+                # so the per-section key blocks render the way they deploy.
+                "secrets": {
+                    f: {"label": secrets_store.SECRET_LABELS.get(f, f),
+                        "group": secrets_store.SECRET_GROUPS.get(f, "brains"),
+                        "help": secrets_store.SECRET_HELP.get(f, ""),
+                        "set": f == "google_api_key",
+                        "source": "settings" if f == "google_api_key" else "unset",
+                        "hint": "•" * 12 if f == "google_api_key" else "",
+                        "visible": False}
+                    for f in secrets_store.SECRET_FIELDS
+                },
                 "authConfigured": True,
                 "guestConfigured": True,
             })
@@ -147,6 +202,17 @@ class Handler(BaseHTTPRequestHandler):
                 "levels": sorted({r["level"] for r in LOG_RECORDS}),
                 "sources": sorted({r["logger"] for r in LOG_RECORDS}),
             })
+        # The pipeline check. Answered from fixtures because it is the panel's
+        # slowest surface by far — a real run is a station read, a LiveKit
+        # round trip, an LLM call and a TTS call, none of which exist here.
+        if path == "/test/env":
+            return self._json(dict(PIPELINE_ENV))
+        if path == "/test/station":
+            return self._json({"ok": True, "liveDj": "Francesca", "toolCount": 9})
+        # Registration only ever proved the station accepted a row; this is the
+        # station pushing back at us, which is the half that fails in the wild.
+        if path == "/hooks/test":
+            return self._json(dict(HOOK_TEST))
         if path == "/health":
             return self._json({"ok": True, "version": "dev", "livekit": "ws://stub"})
         if path == "/live":
@@ -162,22 +228,29 @@ class Handler(BaseHTTPRequestHandler):
                 "canAsk": {"allow_requests": True, "allow_library_search": True,
                            "allow_exact_queue": True, "allow_announcements": True,
                            "allow_skills": True},
-                "controls": {"help": True, "theme": True, "settings": True},
+                # Resolved by the real code, like the preview above — a stub
+                # whose card disagrees with the card is not a stub of it.
+                **__import__("api.live", fromlist=["live"]).look_payload(
+                    settings_store.load(), "Francesca"),
                 "limits": {"maxCallSeconds": 480, "idlePromptSecs": 20},
                 "stream": {"url": "", "alternates": [], "tuneIn": False, "volume": 10},
             })
 
-        name = "index.html" if path == "/" else path.lstrip("/")
+        # Same two extensionless routes token_server serves. /panel is the
+        # operator's page since 0.9.105; without it here, driving the panel in
+        # a browser silently tests a 404.
+        name = {"/": "index.html", "/panel": "panel.html"}.get(path, path.lstrip("/"))
         f = WIDGET / name
         if not f.is_file():
             return self._send(404, "not found", "text/plain")
-        if name == "index.html":
+        if f.suffix == ".html":
             html = f.read_text(encoding="utf-8").replace(
                 LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
             return self._send(200, html, "text/html")
         ctype = {"html": "text/html", "js": "text/javascript",
-                 "css": "text/css"}.get(f.suffix.lstrip("."),
-                                        "application/octet-stream")
+                 "css": "text/css", "png": "image/png", "json": "application/json",
+                 "webmanifest": "application/manifest+json",
+                 }.get(f.suffix.lstrip("."), "application/octet-stream")
         return self._send(200, f.read_bytes(), ctype)
 
     def log_message(self, fmt, *args):

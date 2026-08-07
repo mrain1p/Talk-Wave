@@ -23,7 +23,7 @@ field with no matching DOM id — no error, no warning, the row just is not ther
    `needs` and `placeholder`. The `help` is the whole documentation of the setting; write why it
    exists and what to pick, not what it is called.
 
-3. **`web-widget/index.html`** — a control whose `id` is exactly the field name, inside the
+3. **`web-widget/panel.html`** — a control whose `id` is exactly the field name, inside the
    `<details data-group="...">` for its group. `kind` decides the markup: `check` is a
    `div.check` with a checkbox, everything else is a `div.row` with a label and an input/select.
    **Miss this and the setting exists, saves, and is invisible.**
@@ -31,7 +31,8 @@ field with no matching DOM id — no error, no warning, the row just is not ther
 4. **Whatever reads it** — `call/`, `brain/`, `token_server.py`. If nothing reads it, you have
    added a control that does nothing, which is worse than no control.
 
-5. **`test_sidecar.py`** — see below.
+5. **`tests/test_settings.py`** — see below. (`test_sidecar.py` is only the aggregator now;
+   the tests live in `agent-worker/tests/`, one module per subject.)
 
 ## Rules that have been learned the hard way
 
@@ -62,6 +63,15 @@ field with no matching DOM id — no error, no warning, the row just is not ther
 
 Run the suite (see the `wavetalk-test` skill). `TestPanelMarkup` will fail if you missed
 step 3; nothing will fail if you missed step 4, so check it yourself.
+
+## API keys are not settings
+
+A key is three entries in `agent-worker/secrets_store.py` — `SECRET_FIELDS` (name → env var),
+`SECRET_GROUPS` (which section renders its box: `brains`, `voice`, `ears`, `station`), and
+`SECRET_HELP` (the one line beside the box). There is no markup edit: the panel builds every
+key row from the payload into the matching `keyblock` div. A group with no matching div is a
+key nobody can enter — `TestEverySecretRendersSomewhere` guards that. Never add a key to
+`FIELDS`/`SCHEMA`; secrets must not round-trip, which is the whole reason the store is separate.
 
 ## Removing one
 

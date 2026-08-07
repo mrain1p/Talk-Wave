@@ -24,6 +24,14 @@ on:
   # It builds nothing: PRs publish no image.
   pull_request:
     branches: [main]
+  # Run it by hand against any branch. Added after a GitHub Actions outage
+  # ("Failed to resolve action download info: Service Unavailable") failed the
+  # run for 0.9.98 before the suite executed, and the eleven commits pushed
+  # after it produced no runs at all — so the image on ghcr silently stayed
+  # eleven versions behind the branch with nothing red to explain why. Without
+  # this the only ways back were an empty commit or re-running an old one at
+  # the wrong tree.
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -44,18 +44,46 @@ voice the backend does not have. That was a whole silent call in 0.9.81.
 
 ## What a swap silently changes, and what to check after
 
+- **The declared sample rate is the quietest failure in the stack.** It lives
+  in the adapter's `audio.sample_rate`, and it is a label attached to the
+  samples rather than anything carried in them — declare half the real rate and
+  every line plays at half speed an octave down, with no error logged anywhere.
+  Some engines report one rate on a GPU and half of it on a CPU, so an adapter
+  that is correct on one host is wrong on the next. **Test voice measures it**
+  (it asks the backend for wav and reads the RIFF header) and fails the test on
+  a mismatch whatever the realtime factor says. Do not try to infer the rate
+  from how fast the speech sounds: a persona written to speak in fast clipped
+  fragments produces a fraction of the audio a normal voice does for the same
+  text, and that reasoning lands octaves out. Measure, or use an ordinary voice
+  at several text lengths.
 - **Voice ids do not transfer.** Cloud names (`alloy`, `nova`) and local ids
   (`-Cliff1`, `Lily`) are different namespaces. Since 0.9.81 a voice the
   backend lacks falls back audibly and writes the reason into the call record
   rather than producing silence — but the DJ is then not the voice the station
   broadcasts. **Reload the voice list after switching**, then check the
   station's on-air persona actually resolves.
+- **Check every persona, not just the one on air.** `/test/speed` now reports
+  how many of the station's personas use a voice this backend does not have.
+  Without that, a persona whose voice is missing stays invisible until someone
+  rings in while that DJ is live.
+- **A backend that lists its voices somewhere other than `/v1/audio/voices`
+  needs `voices_path` in its adapter.** An unreadable list means "could not
+  find out", not "has none", so the symptom is not an error — it is the panel
+  quietly showing stock OpenAI names and the voice-availability check never
+  running at all.
 - **`tts_model` is hidden unless the mode is cloud.** Switching to local does
   not clear it; switching back brings it and its old value into effect.
 - **The adapter follows the mode, not the URL.** `tts_mode` chooses
   `local-vibevoice.json` or `openai-cloud.json` unless `tts_adapter` names one.
   Pointing a cloud URL at the local adapter fails in a way that reads as the
   server being wrong.
+- **Vendor adapters ship for ElevenLabs, Fish Audio and SUB/WAVE's Remote
+  `/speak` contract.** ElevenLabs takes the voice in the URL (`{voice}` in
+  `endpoint_path`) and its key from `ELEVENLABS_API_KEY` via `auth.key_env`;
+  Fish reads `FISH_API_KEY` and its voice is a reference id, so leaving Voice
+  on "Station's voice" passes the persona's own id through. Both are written
+  from the vendors' contracts, not yet proven against the live services —
+  which is exactly what this bench is for. Run it before a caller does.
 - **Cloud STT changes the caption path**, not just accuracy — local Whisper is
   batch, cloud is word-by-word, so captions and the idle clock behave
   differently. The idle clock counts *words heard*, so a backend that emits

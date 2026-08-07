@@ -20,6 +20,7 @@ from pathlib import Path
 from livekit.agents.types import NOT_GIVEN
 from livekit.plugins import anthropic, deepgram, google, openai
 
+import secrets_store
 import settings as settings_store
 from tts_adapter import AdapterTTS, resolve_adapter
 
@@ -146,6 +147,50 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
             model=model or "auto",
             api_key=key("OPENROUTER_API_KEY"),
             temperature=temperature,
+        )
+
+    # DeepSeek and the two aggregators are OpenAI's wire protocol at a
+    # different address, so the openai plugin drives all three — the same way
+    # it already drives Ollama. No plugin, no SDK, no extra dependency: what
+    # differs is a URL and which key. See settings.OPENAI_PROTOCOL_HOSTS.
+    if provider in settings_store.OPENAI_PROTOCOL_HOSTS:
+        host, fallback_model = settings_store.OPENAI_PROTOCOL_HOSTS[provider]
+        chosen = model or fallback_model
+        if not chosen:
+            raise ValueError(
+                f"{provider} has no default model — pick one under Brains. "
+                "Its catalogue is namespaced and changes, so guessing an id "
+                "here would fail on every reply instead of once, here."
+            )
+        env_var = secrets_store.SECRET_FIELDS[
+            settings_store.LLM_PROVIDER_KEY[provider]]
+        return openai.LLM(
+            model=chosen,
+            temperature=temperature,
+            api_key=key(env_var),
+            base_url=base_url or host,
+        )
+
+    if provider == "openai-compatible":
+        # The operator's own server — llama.cpp, vLLM, LM Studio — matching
+        # the station's provider of the same name. The endpoint IS the
+        # configuration: there is no default address to fall back to, and
+        # failing here with a sentence beats dialling nothing.
+        if not base_url:
+            raise ValueError(
+                "openai-compatible needs an Endpoint under Brains — it is "
+                "the address of your own server, and there is no default."
+            )
+        return openai.LLM(
+            model=model or NOT_GIVEN,
+            temperature=temperature,
+            # Most such servers take no key, but the SDK insists on one; the
+            # placeholder is what with_ollama does internally too. A server
+            # that does check keys reads OPENAI_COMPAT_API_KEY.
+            api_key=(key("OPENAI_COMPAT_API_KEY")
+                     if os.environ.get("OPENAI_COMPAT_API_KEY")
+                     else "not-needed"),
+            base_url=base_url,
         )
 
     if provider == "openai":

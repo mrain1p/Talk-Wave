@@ -29,12 +29,17 @@ import base64
 import json
 import logging
 import os
+import time
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from livekit.agents import APIConnectionError, APIConnectOptions, tts
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, NotGivenOr
 from livekit.agents.utils import shortuuid
+
+from log_setup import describe
+from tts_pace import PaceMeter, seconds_of_pcm
 
 log = logging.getLogger("callin.agent")
 
@@ -70,7 +75,96 @@ def _is_openai_host(base_url: str) -> bool:
     return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
-async def available_voices(base_url: str, timeout: float = 6.0) -> list[str]:
+def adapter_api_key(adapter: dict, base_url: str = "", allow_stored: bool = True) -> str:
+    """The key this backend wants, from the environment.
+
+    Most adapters describe an OpenAI-shaped endpoint and take TTS_API_KEY (or
+    the OpenAI key, on an OpenAI host — the README promises one key covers
+    cloud TTS). A vendor with a key of its own says so with `auth.key_env`,
+    which is what lets ElevenLabs sit beside the generic adapters instead of
+    needing the operator to paste the same key into TTS_API_KEY and lose the
+    ability to use both.
+    """
+    if not allow_stored:
+        return ""
+    auth = adapter.get("auth") or {}
+    named = str(auth.get("key_env") or "").strip()
+    if named:
+        return os.environ.get(named, "")
+    key = os.environ.get("TTS_API_KEY", "")
+    if not key and _is_openai_host(base_url):
+        key = os.environ.get("OPENAI_API_KEY", "")
+    return key
+
+
+def adapter_headers(adapter: dict, api_key: str) -> dict:
+    auth = adapter.get("auth", {"type": "none"})
+    kind = auth.get("type", "none")
+    if not api_key:
+        return {}
+    if kind == "bearer":
+        return {"Authorization": f"Bearer {api_key}"}
+    if kind == "header":
+        return {auth.get("header_name", "X-API-Key"): api_key}
+    return {}
+
+
+def parse_voice_list(data: object, prefer: str = "") -> list[str]:
+    """Voice ids out of whatever shape the backend answered with.
+
+    `prefer` names the field that IS the id when a backend's catalogue carries
+    both an id and a display name. ElevenLabs is the case: its entries are
+    `{voice_id, name, ...}`, only voice_id is addressable, and the default
+    order below would pick `name` and hand the caller a list of labels that
+    every synthesis request then 404s on.
+
+    There is no standard here, and at least four shapes are in the wild:
+    OpenAI's {"data": [{"id": ...}]}, a bare ["name", ...], {"voices": [...]}
+    with either dicts or strings inside, and a mapping of id -> details.
+
+    Reading only the first is worse than it sounds. An empty list means "could
+    not find out" everywhere in this file, so a backend that answers its voice
+    list perfectly well in the wrong shape does not read as "unknown voices" —
+    it silently disables pick_speakable_voice, the panel's dropdown falls back
+    to stock OpenAI names, and the station's voice goes to a backend that
+    never had it. Tolerating the shapes costs nothing and means most new
+    backends need no adapter entry at all.
+    """
+    if isinstance(data, dict):
+        for key in ("data", "voices", "results", "items"):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+        else:
+            # A mapping of id -> details. Every value being a dict is what
+            # distinguishes it from an error envelope like {"detail": "..."},
+            # which would otherwise offer "detail" as a voice.
+            if data and all(isinstance(v, dict) for v in data.values()):
+                data = list(data.keys())
+
+    if not isinstance(data, list):
+        return []
+
+    found: set[str] = set()
+    for item in data:
+        if isinstance(item, str):
+            if item.strip():
+                found.add(item.strip())
+        elif isinstance(item, dict):
+            for key in ([prefer] if prefer else []) + ["id", "name", "voice", "voice_id"]:
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    found.add(value.strip())
+                    break
+    return sorted(found)
+
+
+async def available_voices(
+    base_url: str,
+    timeout: float = 6.0,
+    adapter_path: str | Path | None = None,
+    mode: str = "",
+) -> list[str]:
     """What the TTS backend at `base_url` says it can actually speak in.
 
     An empty list means "could not find out" and never "has none" — the caller
@@ -80,17 +174,43 @@ async def available_voices(base_url: str, timeout: float = 6.0) -> list[str]:
     Lives here rather than in token_server because the WORKER needs it too:
     the panel showing a voice list the worker never consults is how a call
     ends up trying a voice the backend does not have.
+
+    The path comes from the adapter, because discovery is as backend-specific
+    as synthesis and this file only ever described the second half. A backend
+    that serves its list at /voices rather than /v1/audio/voices looked
+    identical to one that was down.
     """
     if not base_url:
         return []
+    # A trailing slash here produced `http://host:8001//v1/audio/voices`, which
+    # some servers route and some 404 — so whether the panel could list voices
+    # at all depended on a character nobody could see. AdapterTTS already
+    # strips it; this was the one path that didn't.
+    base_url = base_url.rstrip("/")
+    path = "/v1/audio/voices"
+    headers: dict = {}
+    prefer = ""
+    try:
+        adapter = load_adapter(adapter_path, mode=mode)
+        path = str(adapter.get("voices_path") or path)
+        prefer = str(adapter.get("voices_id_field") or "")
+        # Authenticated, because some catalogues are. ElevenLabs answers
+        # /v1/voices with a 401 and no body without xi-api-key, and an empty
+        # list here means "could not find out" — so the panel would have shown
+        # eleven stock OpenAI voice names for a backend that has none of them,
+        # and the first call would have failed on a voice that never existed.
+        headers = adapter_headers(adapter, adapter_api_key(adapter, base_url))
+    except Exception as e:                                    # noqa: BLE001
+        # An unreadable adapter is the caller's problem to report, not a
+        # reason to skip the lookup with the default path.
+        log.info("adapter unreadable for voice discovery (%s)", describe(e))
     try:
         async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as c:
-            r = await c.get("/v1/audio/voices")
+            r = await c.get(path, headers=headers)
             r.raise_for_status()
-            data = r.json()
-            return sorted(v.get("id") for v in data.get("data", []) if v.get("id"))
+            return parse_voice_list(r.json(), prefer=prefer)
     except Exception as e:                                    # noqa: BLE001
-        log.info("voice list unavailable from %s (%s)", base_url, e)
+        log.info("voice list unavailable from %s%s (%s)", base_url, path, e)
         return []
 
 
@@ -178,7 +298,76 @@ def load_adapter(path: str | Path | None = None, mode: str = "") -> dict:
     cfg.setdefault("auth", {"type": "none"})
     cfg.setdefault("response", {"type": "raw_audio"})
     cfg.setdefault("audio", {"encoding": "pcm", "sample_rate": 24000, "num_channels": 1})
+    cfg.setdefault("voices_path", "/v1/audio/voices")
     return cfg
+
+
+_ERROR_BODY_CHARS = 400
+
+
+async def _backend_said(r: httpx.Response) -> str:
+    """The backend's own words for refusing, trimmed to fit an error line.
+
+    httpx renders HTTPStatusError as "Client error '400 Bad Request' for url
+    ..." and stops there; the body never appears. That body is routinely the
+    only actionable thing in the failure — a reference clip over Whisper's
+    30-second ceiling, a voice the server does not have, a model name it does
+    not know — and discarding it is why /test/tts grew hand-written guesses at
+    what a 400 probably meant.
+
+    On the streaming path the body has not been read when the status arrives,
+    so it has to be pulled explicitly: reading .text first raises
+    ResponseNotRead and loses the real error behind a second one.
+    """
+    if str(r.headers.get("content-type", "")).startswith("audio/"):
+        return ""
+    try:
+        await r.aread()
+        text = r.text.strip()
+    except Exception:                                         # noqa: BLE001
+        return ""
+    if not text:
+        return ""
+
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        for key in ("detail", "message", "error"):
+            value = data.get(key)
+            if isinstance(value, dict):
+                value = value.get("message") or value.get("detail")
+            if isinstance(value, str) and value.strip():
+                text = value.strip()
+                break
+
+    return " ".join(text.split())[:_ERROR_BODY_CHARS]
+
+
+async def _raise_for_status(r: httpx.Response) -> None:
+    """raise_for_status, except the operator gets told what was actually said."""
+    if r.status_code < 400:
+        return
+    said = await _backend_said(r)
+    raise APIConnectionError(
+        f"TTS backend returned HTTP {r.status_code} for {r.request.url}"
+        + (f" — {said}" if said else "")
+    )
+
+
+def riff_sample_rate(data: bytes) -> int | None:
+    """The rate a WAV declares in its fmt chunk, or None if it isn't a WAV."""
+    if len(data) < 16 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return None
+    i = 12
+    while i + 8 <= len(data):
+        chunk_id = data[i:i + 4]
+        size = int.from_bytes(data[i + 4:i + 8], "little")
+        if chunk_id == b"fmt " and i + 16 <= len(data):
+            return int.from_bytes(data[i + 12:i + 16], "little")
+        i += 8 + size + (size % 2)
+    return None
 
 
 class AdapterTTS(tts.TTS):
@@ -212,27 +401,24 @@ class AdapterTTS(tts.TTS):
 
         self._voice = voice
         self._model = model or self._adapter.get("default_model", "")
+        # How this backend has kept up, over the whole call. One AdapterTTS is
+        # built per call, so this needs no key and cannot mix two callers.
+        self._pace = PaceMeter()
         self._base_url = (
             base_url if base_url is not NOT_GIVEN else os.environ.get("TTS_BASE_URL", "")
         ).rstrip("/")
-        self._api_key = (
-            api_key if api_key is not NOT_GIVEN
-            else (os.environ.get("TTS_API_KEY", "") if allow_stored_key else "")
-        )
-
         if not self._base_url:
             raise ValueError("TTS_BASE_URL is not set and no base_url was passed")
 
-        # The README and the settings page both promise that a single OpenAI
-        # key covers cloud TTS, and /test/env accepts it as satisfying the
-        # requirement — so honour that here rather than 401ing on the
-        # documented happy path. TTS_API_KEY still wins when set.
-        #
-        # Matched on the HOST, not as a substring: `in self._base_url` also
-        # matched https://api.openai.com.example.net, which would have handed
-        # the OpenAI key to whoever owns example.net.
-        if not self._api_key and allow_stored_key and _is_openai_host(self._base_url):
-            self._api_key = os.environ.get("OPENAI_API_KEY", "")
+        # adapter_api_key carries the whole rule, including the one the README
+        # and the settings page both promise — a single OpenAI key covers cloud
+        # TTS, matched on the HOST rather than as a substring, because
+        # `in self._base_url` also matched https://api.openai.com.example.net
+        # and would have handed the OpenAI key to whoever owns example.net.
+        self._api_key = (
+            api_key if api_key is not NOT_GIVEN
+            else adapter_api_key(self._adapter, self._base_url, allow_stored_key)
+        )
 
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
@@ -258,13 +444,73 @@ class AdapterTTS(tts.TTS):
         return body
 
     def _headers(self) -> dict:
-        auth = self._adapter.get("auth", {"type": "none"})
-        kind = auth.get("type", "none")
-        if kind == "bearer" and self._api_key:
-            return {"Authorization": f"Bearer {self._api_key}"}
-        if kind == "header" and self._api_key:
-            return {auth.get("header_name", "X-API-Key"): self._api_key}
-        return {}
+        return adapter_headers(self._adapter, self._api_key)
+
+    def _endpoint(self) -> str:
+        """The path to POST to, with `{voice}` filled in if the adapter uses it.
+
+        Most speech APIs take the voice in the body. ElevenLabs takes it in the
+        URL — `/v1/text-to-speech/{voice_id}` — and there is no body field that
+        will do instead, so an adapter that can only describe a fixed path
+        cannot describe that vendor at all. One substitution covers it, and
+        covers every other server built the same way.
+        """
+        path = str(self._adapter["endpoint_path"])
+        if "{voice}" not in path:
+            return path
+        return path.replace("{voice}", quote(self._voice or "", safe=""))
+
+    async def probe_sample_rate(
+        self, text: str = "Testing, one two three."
+    ) -> tuple[int | None, str]:
+        """What the backend ACTUALLY sampled at, versus what the adapter claims.
+
+        The rate is a label attached to the samples, not something carried in
+        them: declare 24000 for a backend producing 48000 and every line plays
+        at half speed an octave down, with nothing anywhere raising an error.
+        It is the one adapter mistake that is completely silent, and it is easy
+        to make — the same build of a local engine commonly reports 48000 on a
+        GPU and 24000 on a CPU, so the adapter that is right on one host is
+        wrong on the next.
+
+        Asking for wav instead of pcm settles it: the RIFF header states the
+        rate, so this is a measurement rather than an inference from how fast
+        the speech sounds. That inference is the obvious check and it is a trap
+        — a persona written to speak in fast clipped fragments produces a
+        fraction of the audio a normal voice does for the same text, and
+        reasoning from it lands several octaves wrong with total confidence.
+
+        Returns (rate, note). A None rate means the probe could not be done,
+        never that the declared rate is wrong; `note` says which.
+        """
+        # Only backends whose adapter names the format field can be asked for
+        # a different format, and the value tells us the field is understood.
+        static = self._adapter.get("static_fields", {})
+        field = next(
+            (k for k, v in static.items()
+             if isinstance(v, str) and v.lower() in ("pcm", "wav", "mp3", "opus", "flac")),
+            "",
+        )
+        if not field:
+            return None, "the adapter does not declare an audio format field to vary"
+
+        body = self._build_body(text)
+        body[field] = "wav"
+        body.pop("stream", None)      # a streamed wav has no header to read yet
+
+        try:
+            r = await self._client.request(
+                self._adapter["method"], self._endpoint(),
+                json=body, headers=self._headers(),
+            )
+            await _raise_for_status(r)
+        except Exception as e:                                # noqa: BLE001
+            return None, f"the backend would not produce wav to measure ({e})"
+
+        rate = riff_sample_rate(r.content)
+        if rate is None:
+            return None, f"asked for wav and got {len(r.content)} bytes that are not a wav"
+        return rate, ""
 
     def synthesize(
         self, text: str, *, conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS
@@ -301,6 +547,10 @@ class AdapterTTS(tts.TTS):
                 tts=self, input_text="", conn_options=conn_options, silent=True)
         return AdapterChunkedStream(tts=self, input_text=spoken, conn_options=conn_options)
 
+    def pace_report(self) -> str:
+        """What the call record should say about how this backend kept up."""
+        return self._pace.report()
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
@@ -311,6 +561,15 @@ class AdapterChunkedStream(tts.ChunkedStream):
         super().__init__(tts=tts, input_text=input_text, conn_options=conn_options)
         self._tts_impl = tts
         self._silent = silent
+
+    def _note_pace(self, bytes_out: int, wall: float) -> None:
+        """Feed one synthesised line to the pace meter. See tts_pace."""
+        impl = self._tts_impl
+        # Only raw samples convert to seconds; see seconds_of_pcm.
+        if str(impl._adapter["audio"].get("encoding", "")).lower() != "pcm":
+            return
+        impl._pace.note(
+            wall, seconds_of_pcm(bytes_out, impl.sample_rate, impl.num_channels))
 
     async def _run(self, output_emitter: tts.AudioEmitter) -> None:
         impl = self._tts_impl
@@ -342,6 +601,7 @@ class AdapterChunkedStream(tts.ChunkedStream):
             stream=streaming,
         )
 
+        started, produced = time.monotonic(), 0
         try:
             if streaming:
                 # In stream mode the emitter requires an explicit segment
@@ -349,38 +609,45 @@ class AdapterChunkedStream(tts.ChunkedStream):
                 output_emitter.start_segment(segment_id=request_id)
                 async with impl._client.stream(
                     adapter["method"],
-                    adapter["endpoint_path"],
+                    impl._endpoint(),
                     json=body,
                     headers=impl._headers(),
                 ) as r:
-                    r.raise_for_status()
+                    await _raise_for_status(r)
                     async for chunk in r.aiter_bytes():
                         if chunk:
+                            produced += len(chunk)
                             output_emitter.push(chunk)
                 output_emitter.end_segment()
+                self._note_pace(produced, time.monotonic() - started)
                 return
 
             r = await impl._client.request(
                 adapter["method"],
-                adapter["endpoint_path"],
+                impl._endpoint(),
                 json=body,
                 headers=impl._headers(),
             )
-            r.raise_for_status()
+            await _raise_for_status(r)
 
             kind = resp_cfg["type"]
             if kind == "raw_audio":
+                produced = len(r.content)
                 output_emitter.push(r.content)
             elif kind == "json_field":
-                output_emitter.push(base64.b64decode(r.json()[resp_cfg["field"]]))
+                audio_bytes = base64.b64decode(r.json()[resp_cfg["field"]])
+                produced = len(audio_bytes)
+                output_emitter.push(audio_bytes)
             elif kind == "json_url":
                 audio = await impl._client.get(r.json()[resp_cfg["field"]])
-                audio.raise_for_status()
+                await _raise_for_status(audio)
+                produced = len(audio.content)
                 output_emitter.push(audio.content)
             else:
                 raise ValueError(f"unknown adapter response type: {kind}")
 
             output_emitter.flush()
+            self._note_pace(produced, time.monotonic() - started)
 
         except httpx.HTTPError as e:
-            raise APIConnectionError(f"TTS backend request failed: {e}") from e
+            raise APIConnectionError(f"TTS backend request failed: {describe(e)}") from e

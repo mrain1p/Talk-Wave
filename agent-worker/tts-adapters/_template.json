@@ -1,13 +1,29 @@
 {
-  "_comment": "Template for wiring up a new TTS backend without touching tts_client.py. Copy this file, fill in the real values, point TTS_ADAPTER_CONFIG at it.",
+  "_comment": "Template for wiring up a new TTS backend without touching tts_adapter.py. Copy this file, fill in the real values, and pick it under Models & voice > Adapter (or point TTS_ADAPTER_CONFIG at it).",
+
   "endpoint_path": "/replace-with-real-path",
   "method": "POST",
+
+  "_comment_voices": "Where this backend LISTS its voices. Optional; defaults to OpenAI's /v1/audio/voices. The reply may be [\"name\", ...], {\"data\":[{\"id\":...}]}, {\"voices\":[...]} or a map of id -> details — all four are read. Getting this wrong is quiet rather than loud: an unreadable list means 'could not find out', so the panel falls back to stock OpenAI names and the check that stops a call asking for a voice this backend does not have simply never runs.",
+  "voices_path": "/v1/audio/voices",
+
   "request_field_map": {
     "text": "replace-with-backend-field-name-for-text",
     "voice": "replace-with-backend-field-name-for-voice",
     "model": null
   },
+
+  "_comment_static": "Sent on every request as-is. Put the audio format field here (response_format, format, output_format — whatever this backend calls it): the Test voice button varies it to ask for wav, which is how it measures the real sample rate.",
   "static_fields": {},
+
   "auth": { "type": "none" },
-  "response": { "type": "raw_audio" }
+  "response": { "type": "raw_audio" },
+
+  "_comment_audio": "sample_rate MUST match what the backend actually produces. It is a label attached to the samples, not something carried in them, so a wrong value plays at the wrong speed and pitch and NOTHING reports an error — declare half the real rate and the DJ drags an octave low. It is also host-dependent on some engines (a GPU box and a CPU box can differ by 2x), so check it on the machine you deploy to. Press Test voice: it reads the rate out of the backend's own wav header and tells you if this number disagrees.",
+  "audio": {
+    "encoding": "pcm",
+    "mime_type": "audio/pcm",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
 }
