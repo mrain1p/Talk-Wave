@@ -34,6 +34,18 @@ until a change is ready to publish.
 4. **Push to `dev`.** CI builds `:dev`. The operator points compose at `:dev` on the NAS to test.
 5. **When it is good, PR `dev` → `main`.** The suite also runs on those PRs; PRs build no image.
    Merge, and `:latest` moves.
+6. **Tag and publish the GitHub Release** — merging alone leaves the Releases page stale,
+   which sat on v0.9.45 for 85 versions before anyone noticed. The notes are the version's
+   CHANGELOG.md entry (write that entry BEFORE the merge — high level, grouped, no laundry
+   list, no AI commentary), extracted verbatim:
+
+   ```bash
+   git tag vX.Y.Z <main merge commit> && git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z" --latest --notes-file <changelog entry>
+   ```
+
+   The tag push also builds the pinned `:X.Y.Z` image — wait for that run too before
+   telling the operator the version exists to pin against.
 
 ## Before telling the operator to pull
 
