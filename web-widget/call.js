@@ -643,6 +643,10 @@
       // shows up on the card within the poll instead of on reload.
       document.querySelector('.card').dataset.avatar =
         d.avatarStyle === 'square' ? 'square' : 'round';
+      // Whether this surface runs push to talk. Re-read each poll like the
+      // avatar shape — but never mid-call, where flipping the bar out from
+      // under a caller would reopen a mic they believe is shut.
+      if (!room) document.querySelector('.card').classList.toggle('ptt', pttOn());
 
       // Which way out the next call starts. Never mid-call: the caller may
       // have pressed the button themselves, and a poll landing 20 seconds
@@ -1220,7 +1224,16 @@
       watchActions(room);
 
       await room.connect(url, token);
+      // Enabled first even under push to talk: this is the moment the
+      // browser asks the mic permission and the track is created. PTT then
+      // closes the line straight away — the first press reopens it without
+      // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
+      if (pttOn()) {
+        pttOpen = false;
+        await room.localParticipant.setMicrophoneEnabled(false);
+        paintPtt();
+      }
 
       const mic = room.localParticipant.getTrackPublication(
         LivekitClient.Track.Source.Microphone);
@@ -1383,6 +1396,9 @@
     document.querySelector('.card').classList.remove('oncall');
     muteBtn.textContent = 'Mute';
     muteBtn.classList.remove('on');
+    pttOpen = false;
+    const pttBar = $('pttBtn');
+    if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
     $('meterYou').classList.remove('muted');
     setStatus('Call ended');
     notifyHeight();
@@ -1457,6 +1473,95 @@
   callBtn.onclick = () => { if (!room && !previewMode) startCall(); };
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };
+
+  // ------------------------------------------------------- push to talk
+  // The bar is the caller's microphone: lit means the DJ can hear them.
+  // Whether this surface uses it is the operator's per-surface answer,
+  // carried on /live like the corner controls — the server cannot know which
+  // surface is asking, so both travel and `framed` picks.
+  //
+  // Three ways in, one state out: TAP latches the mic open until tapped
+  // again, HOLDING the bar is momentary (open on press, shut on release),
+  // and space mirrors the hold for a keyboard. The pointer handlers tell tap
+  // from hold by how long the press lasted — a latch that only released on a
+  // second tap made every hold leave the mic open, which is the one thing a
+  // push-to-talk caller trusts it not to do.
+  function pttOn() {
+    const d = shown || live || {};
+    return !!(framed ? d.embedPtt : d.ptt);
+  }
+
+  let pttOpen = false;
+  const HOLD_MS = 300;
+
+  async function setMicOpen(open) {
+    pttOpen = !!open;
+    paintPtt();
+    if (room) {
+      try { await room.localParticipant.setMicrophoneEnabled(pttOpen); }
+      catch (e) { console.warn('Wave Talk: could not switch the mic —', e); }
+    }
+  }
+
+  function paintPtt() {
+    const bar = $('pttBtn');
+    if (!bar) return;
+    bar.classList.toggle('on', pttOpen);
+    bar.setAttribute('aria-pressed', pttOpen ? 'true' : 'false');
+    $('pttMain').textContent = pttOpen ? "You're live — tap to go quiet"
+                                       : 'Tap to talk';
+    // The meter tells the same story as the bar, in the vocabulary the mute
+    // button already taught it.
+    if (room && pttOn()) {
+      $('meterYou').classList.toggle('muted', !pttOpen);
+      $('youLabel').textContent = pttOpen ? 'You' : 'You — mic off';
+    }
+  }
+
+  (function bindPtt() {
+    const bar = $('pttBtn');
+    if (!bar) return;
+    let downAt = 0, openBeforePress = false, pressed = false;
+
+    bar.addEventListener('pointerdown', (e) => {
+      if (!room) return;
+      e.preventDefault();
+      bar.setPointerCapture?.(e.pointerId);
+      pressed = true;
+      downAt = Date.now();
+      openBeforePress = pttOpen;
+      if (!pttOpen) setMicOpen(true);      // press always opens the line
+    });
+    const release = () => {
+      if (!pressed) return;
+      pressed = false;
+      const held = Date.now() - downAt >= HOLD_MS;
+      // A hold ends when the finger lifts; a tap toggles — which after the
+      // press-opens rule above means: leave it open if it was shut, shut it
+      // if it was open.
+      if (held || openBeforePress) setMicOpen(false);
+    };
+    bar.addEventListener('pointerup', release);
+    bar.addEventListener('pointercancel', release);
+
+    // Space is the hold, not the latch: down opens, up closes. Ignored while
+    // typing (the guest-code box is on this page) and without a call to talk
+    // on. keydown repeats while held, hence the `repeat` guard.
+    addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || e.repeat || !room || !pttOn()) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      if (!pttOpen) setMicOpen(true);
+    });
+    addEventListener('keyup', (e) => {
+      if (e.code !== 'Space' || !room || !pttOn()) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      setMicOpen(false);
+    });
+  })();
 
   muteBtn.onclick = async () => {
     if (!room) return;

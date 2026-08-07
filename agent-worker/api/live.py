@@ -221,6 +221,11 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
             "square" if str(cfg.get("avatar_style")) == "square" else "round"
         ),
         "speakerDefault": bool(cfg.get("default_to_speaker")),
+        # Like controls/card: /live is cached across every caller and cannot
+        # know which surface is asking, so both answers travel and the widget
+        # picks on `framed`.
+        "ptt": bool(cfg.get("show_push_to_talk")),
+        "embedPtt": bool(cfg.get("embed_push_to_talk")),
         "callLabel": call_button_label(cfg, persona_name),
         "askFeedback": bool(cfg.get("ask_call_feedback")),
     }

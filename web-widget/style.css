@@ -466,6 +466,45 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* --- push to talk ------------------------------------------------------
+     The bar IS the microphone: lit means the DJ can hear you. It only exists
+     on a card whose config asked for it, decided at first paint — so it never
+     changes an already-settled height, and everyone else pays nothing. */
+  .pttrow { display: none; }
+  .card.ptt .pttrow { display: block; padding: 9px 0 0; }
+  /* Open mic is a state like muted, not a second primary — so the fill only
+     arrives while the bar is genuinely live, in the amber the on-air chrome
+     already uses for "audio is happening". */
+  .card .pttbar {
+    width: 100%; height: 52px; padding: 0;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px;
+    border: 1px solid var(--amber); background: transparent; color: var(--amber);
+    touch-action: manipulation; -webkit-user-select: none; user-select: none;
+  }
+  .card .pttbar:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--amber) 10%, transparent); filter: none;
+  }
+  .card .pttbar.on {
+    background: var(--amber); color: var(--pine);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 35%, transparent);
+  }
+  .pttbar .pttmain {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  .pttbar .pttsub {
+    font: 700 8.5px/1 var(--font-mono); letter-spacing: .13em;
+    text-transform: uppercase; opacity: .75;
+  }
+  .ptthint {
+    margin: 0 0 7px; font-size: 12px; line-height: 1.4;
+    color: var(--sage); text-align: center;
+  }
+  /* The Mute button is the open-mic world's control; with the bar owning the
+     microphone it is a second switch wired to the same wire. */
+  .card.ptt #muteBtn { display: none; }
+
   .controls { display: flex; gap: 9px; flex: 0 0 auto; flex-wrap: wrap; }
   /* Same reasoning as the volume slider above: this row's height is paid for
      on every idle embed, whether or not anybody is on a call. */

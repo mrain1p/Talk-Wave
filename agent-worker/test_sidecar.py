@@ -52,6 +52,7 @@ from tests.test_widget import (  # noqa: F401
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
+    TestPushToTalkIsPerSurfaceAndOffByDefault,
     TestSoundPacks,
     TestTheCallButtonSaysWhatTheOperatorChose,
     TestTheCallButtonSurvivesTheUpgrade,

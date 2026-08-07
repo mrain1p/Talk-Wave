@@ -312,6 +312,22 @@ def attach_idle_watch(
                 # of them. "Still there?" to somebody whose microphone is off
                 # is a question they can watch arrive and cannot answer.
                 instructions = (
+                    # On a push-to-talk line, silence usually means the caller
+                    # has not pressed the bar — telling them to "check the
+                    # microphone" they deliberately have closed reads as the
+                    # DJ not knowing how its own phone works. The worker can't
+                    # know which surface the caller is on, so the bar is
+                    # mentioned when EITHER surface has it switched on.
+                    (
+                        "Nothing at all has come through from the caller since "
+                        "they connected. This line uses push to talk: remind "
+                        "them, in one short line in your own voice, to press "
+                        "the talk bar while they speak. Don't ask a question "
+                        "they'd have to speak to answer."
+                    )
+                    if (cfg.get("show_push_to_talk")
+                        or cfg.get("embed_push_to_talk"))
+                    else
                     "Nothing at all has come through from the caller since "
                     "they connected — most likely their microphone is blocked "
                     "or picking up nothing. Say so plainly, in your own voice, "

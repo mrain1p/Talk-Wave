@@ -55,6 +55,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
 (_TMP / "settings.json").write_text(json.dumps({
     "llm_provider": "google", "llm_model": "gemini-3.1-flash-lite",
     "tts_mode": "local", "front_access": "guest",
+    "show_push_to_talk": True,
 }), encoding="utf-8")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))

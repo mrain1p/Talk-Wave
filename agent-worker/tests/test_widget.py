@@ -1081,3 +1081,49 @@ class TestSoundPacks(unittest.TestCase):
         self._pack("vintage", ["ring.mp3"])
         choices = settings_store.schema_payload()["fields"]["sound_pack"]["choices"]
         self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
+
+
+class TestPushToTalkIsPerSurfaceAndOffByDefault(unittest.TestCase):
+    """The bar is the caller's microphone, and whether it exists is the
+    operator's per-surface answer, carried on /live like the corner controls.
+    Off by default: open-mic is what every existing deployment does, and a
+    caller suddenly needing to press a button to be heard is a behaviour
+    change, not a repaint."""
+
+    def test_defaults_off_on_both_surfaces(self):
+        from api import live as api_live
+
+        payload = api_live.look_payload({})
+        self.assertFalse(payload["ptt"])
+        self.assertFalse(payload["embedPtt"])
+
+    def test_each_surface_is_answered_separately(self):
+        from api import live as api_live
+
+        payload = api_live.look_payload(
+            {"show_push_to_talk": True, "embed_push_to_talk": False})
+        self.assertTrue(payload["ptt"])
+        self.assertFalse(payload["embedPtt"])
+
+    def test_the_widget_reads_both_keys(self):
+        # The same drift trap as the corner controls: a key renamed on one
+        # side silently loses the feature rather than raising anything.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("d.embedPtt : d.ptt", call_js)
+
+    def test_the_mic_starts_closed_on_a_ptt_call(self):
+        # Enabled first (that is the permission prompt and the track), then
+        # closed straight away — a caller on a push-to-talk line whose mic
+        # opens hot has been betrayed by the one promise the bar makes.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        start = call_js.split("await room.connect(url, token);")[1][:600]
+        self.assertIn("setMicrophoneEnabled(true)", start)
+        self.assertIn("setMicrophoneEnabled(false)", start)
+        self.assertIn("pttOn()", start)
+
+    def test_the_quiet_caller_nudge_knows_about_the_bar(self):
+        # "Check your microphone" to somebody deliberately holding it closed
+        # reads as the DJ not knowing its own phone.
+        source = (AGENT_WORKER / "call" / "lifecycle.py").read_text(encoding="utf-8")
+        self.assertIn("push to talk", source)
+        self.assertIn("show_push_to_talk", source)

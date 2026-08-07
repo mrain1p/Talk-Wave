@@ -267,6 +267,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "show_settings_gear": (None, True),
     "show_dj_avatar":     (None, True),
     "embed_dj_avatar":    (None, True),
+    # Push to talk: the caller's microphone is closed except while they hold
+    # (or latch) the talk bar. Off by default — open-mic is what every
+    # existing deployment does, and a caller suddenly needing to press a
+    # button to be heard is a behaviour change, not a repaint.
+    "show_push_to_talk":  (None, False),
+    "embed_push_to_talk": (None, False),
     # Shape, not visibility — so it is one answer for both surfaces rather
     # than a third column in a matrix of on/off switches. Round is the
     # default because a portrait in a circle reads as a person and a portrait
@@ -679,6 +685,15 @@ SCHEMA: dict[str, dict] = {
         help="The way into this panel from the card. Off secures nothing — "
              "/panel still answers by URL and still asks for the password — it "
              "just stops advertising it."),
+    "show_push_to_talk": dict(group="player", kind="check",
+        label="Push to talk",
+        help="The caller's mic stays closed except while they hold (or tap to "
+             "latch) a talk bar — space works on a keyboard. Better control in "
+             "a noisy room, and the DJ never hears a TV in the background. The "
+             "mic permission is still asked once, at pickup."),
+    "embed_push_to_talk": dict(group="player", kind="check",
+        label="Push to talk (embed)",
+        help="The same bar, on the embedded card."),
     "show_dj_avatar": dict(group="player", kind="check", label="DJ photo",
         help="Served through this origin, so it still loads from an https page "
              "off your network."),
