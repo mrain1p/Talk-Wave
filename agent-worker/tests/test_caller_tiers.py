@@ -1,0 +1,207 @@
+"""Which caller gets which permission.
+
+A permission used to be one answer for everybody who got through the door, so
+an operator who wanted a public line AND wanted to put something on air from
+their own phone had to leave that switch on for strangers too. It is a tier
+now: off, or the least-trusted caller who gets it.
+
+The whole design turns on one hazard, and most of what is here defends it:
+**the stored value is a string and "off" is truthy.** Every consumer in the
+worker asks `cfg.get("allow_x")` and always has. Settings that reach a tool
+builder unresolved would switch on every permission the operator had turned
+off — including the three that change what the whole audience hears.
+"""
+
+from __future__ import annotations
+
+import unittest
+
+import settings as settings_store
+
+from tests.support import _TempStores
+
+
+class TestATierIncludesTheOnesBelowIt(unittest.TestCase):
+    def test_the_cascade(self):
+        cases = {
+            "off": {"open": False, "guest": False, "admin": False},
+            "open": {"open": True, "guest": True, "admin": True},
+            "guest": {"open": False, "guest": True, "admin": True},
+            "admin": {"open": False, "guest": False, "admin": True},
+        }
+        for setting, expected in cases.items():
+            for tier, allowed in expected.items():
+                with self.subTest(setting=setting, tier=tier):
+                    self.assertEqual(
+                        settings_store.permission_reaches(setting, tier), allowed)
+
+    def test_permissions_for_collapses_every_tiered_field_to_a_bool(self):
+        cfg = settings_store.permissions_for(
+            {f: "guest" for f in settings_store.TIERED_PERMISSIONS}, "open")
+        for field in settings_store.TIERED_PERMISSIONS:
+            with self.subTest(field=field):
+                self.assertIs(cfg[field], False)
+
+    def test_it_leaves_everything_else_alone(self):
+        # It is a copy with eight fields rewritten, not a filter. Dropping the
+        # rest would take the model, the voice and every limit with it.
+        cfg = settings_store.permissions_for(
+            {"llm_model": "gpt-4.1-mini", "confirm_requests": True,
+             "allow_requests": "admin"}, "open")
+        self.assertEqual(cfg["llm_model"], "gpt-4.1-mini")
+        self.assertIs(cfg["confirm_requests"], True)
+        self.assertIs(cfg["allow_requests"], False)
+
+    def test_the_original_is_not_mutated(self):
+        # The worker resolves once per call from a dict it loaded fresh, but
+        # the panel and the diagnostics resolve from settings they go on to
+        # read. Rewriting in place would leave a caller's answer standing in
+        # for the operator's setting.
+        raw = {"allow_takeover": "admin"}
+        settings_store.permissions_for(raw, "open")
+        self.assertEqual(raw["allow_takeover"], "admin")
+
+
+class TestAnUnknownTierFailsClosed(unittest.TestCase):
+    """Every unreadable answer has to mean "no".
+
+    The other direction cannot be walked back: by the time anyone notices, the
+    caller has already been on air.
+    """
+
+    def test_junk_in_the_settings_file_grants_nothing(self):
+        for value in ("", "  ", "everybody", "yes please", None, 3, [], {}):
+            with self.subTest(value=value):
+                self.assertEqual(settings_store.normalise_tier(value), "off")
+
+    def test_a_caller_at_an_unknown_tier_gets_nothing(self):
+        for tier in ("", "root", "operator", "OPEN"):
+            with self.subTest(tier=tier):
+                self.assertFalse(settings_store.permission_reaches("open", tier))
+
+    def test_a_room_name_it_does_not_recognise_is_the_lowest_tier(self):
+        for room in ("", "probe-abc123456789", "callin-abc123456789",
+                     "callin-x-abc123456789", "something-else", None):
+            with self.subTest(room=room):
+                self.assertEqual(settings_store.tier_from_room(room), "open")
+
+    def test_the_room_name_is_where_the_tier_travels(self):
+        self.assertEqual(settings_store.tier_from_room("callin-o-0123456789ab"), "open")
+        self.assertEqual(settings_store.tier_from_room("callin-g-0123456789ab"), "guest")
+        self.assertEqual(settings_store.tier_from_room("callin-a-0123456789ab"), "admin")
+
+    def test_the_room_name_still_ends_in_the_twelve_characters_a_rating_needs(self):
+        # call/record.rate() finds a transcript by matching the last twelve
+        # characters of the room, and the widget posts a thumbs-up against it.
+        # Putting the tier in the middle rather than at the end is what keeps
+        # that working.
+        room = "callin-g-0123456789ab"
+        self.assertEqual(room[-12:], "0123456789ab")
+
+
+class TestUpgradingKeepsTheStationExactlyAsItWas(_TempStores):
+    """`true` meant "anyone who got through the door", which is `open`.
+
+    An operator who never opens the panel again has to keep precisely the
+    permissions they had — an upgrade that quietly widens OR narrows what a
+    caller can do is found out from a caller.
+    """
+
+    def test_a_true_becomes_open(self):
+        self.assertEqual(
+            settings_store._migrate({"allow_announcements": True})["allow_announcements"],
+            "open")
+
+    def test_a_false_becomes_off(self):
+        self.assertEqual(
+            settings_store._migrate({"allow_takeover": False})["allow_takeover"],
+            "off")
+
+    def test_an_already_migrated_file_is_left_alone(self):
+        self.assertEqual(
+            settings_store._migrate({"allow_skills": "admin"})["allow_skills"],
+            "admin")
+
+    def test_an_old_file_reads_back_the_same_through_load(self):
+        # The end-to-end version: write the file a previous version would have
+        # written, and check the resolved permissions for a caller who typed
+        # nothing are what that version gave them.
+        import json
+
+        with open(settings_store.SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump({"allow_requests": True, "allow_announcements": True,
+                       "allow_takeover": False}, f)
+        cfg = settings_store.permissions_for(settings_store.load(), "open")
+        self.assertIs(cfg["allow_requests"], True)
+        self.assertIs(cfg["allow_announcements"], True)
+        self.assertIs(cfg["allow_takeover"], False)
+
+    def test_the_defaults_are_what_the_booleans_resolved_to(self):
+        cfg = settings_store.permissions_for(settings_store.load(), "open")
+        self.assertIs(cfg["allow_requests"], True)
+        self.assertIs(cfg["allow_library_search"], True)
+        for field in ("allow_exact_queue", "allow_announcements", "allow_skills",
+                      "allow_skip_track", "allow_dj_segment", "allow_takeover"):
+            with self.subTest(field=field):
+                self.assertIs(cfg[field], False)
+
+
+class _Req:
+    """Just enough of a request for caller_tier: the headers it reads."""
+
+    def __init__(self, **headers):
+        self.headers = headers
+        self.remote = "10.0.0.9"
+
+
+class TestTheDoorDecidesTheTier(_TempStores):
+    """The tier is worked out where the password was seen, and nowhere else."""
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        from pathlib import Path
+
+        import admin_auth
+
+        from api import auth as api_auth
+
+        self.api_auth = api_auth
+        self.admin_auth = admin_auth
+        self._authtmp = tempfile.TemporaryDirectory()
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._authtmp.name) / "admin-auth.json"
+        admin_auth.set_password("hunter2hunter2")
+        admin_auth.set_guest_password("letmein")
+
+    def tearDown(self):
+        self.admin_auth.AUTH_PATH = self._old_auth
+        self._authtmp.cleanup()
+        super().tearDown()
+
+    def _tier(self, **headers) -> str:
+        return self.api_auth.caller_tier(_Req(**headers))
+
+    def test_nothing_typed_is_an_open_caller(self):
+        self.assertEqual(self._tier(), "open")
+
+    def test_the_guest_code_is_a_guest_caller(self):
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "guest")
+
+    def test_the_admin_password_is_an_admin_caller(self):
+        # It opens the phone as well as the panel, so an operator carries one
+        # password — and ringing their own booth must not come through as a
+        # stranger.
+        self.assertEqual(self._tier(**{"X-Call-Key": "hunter2hunter2"}), "admin")
+
+    def test_the_panels_own_header_counts_too(self):
+        # The pipeline check and the embed preview send the admin key under
+        # the name the panel stores it as.
+        self.assertEqual(self._tier(**{"X-Admin-Key": "hunter2hunter2"}), "admin")
+
+    def test_a_wrong_password_is_not_a_higher_tier(self):
+        self.assertEqual(self._tier(**{"X-Call-Key": "not-the-password"}), "open")
+
+
+if __name__ == "__main__":
+    unittest.main()

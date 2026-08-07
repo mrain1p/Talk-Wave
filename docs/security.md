@@ -42,13 +42,30 @@ Work down it. Each line says what goes wrong if you skip it.
 - [ ] **`caller_cooldown_secs` non-zero.** 0 lets one person redial in a loop.
 - [ ] **`max_actions_per_call`** set. Caps requests, segments and on-air
       messages from a single call.
-- [ ] **`allow_announcements`** — understand it before turning it on. It lets a
-      caller hand the on-air DJ a line to read *to everyone listening*. Off by
-      default since 0.9.89. The tool allowlist and the conduct prompt push
-      back, but that is a model declining, not a gate refusing.
+**Who gets what — permissions are a tier, not a switch**
+
+Since 0.9.116 each caller permission is set to the *least trusted caller who
+gets it*: **off**, **anyone**, **guest code**, or **admin**. The tier is
+decided from what the caller typed at the door, travels to the worker inside
+the signed room name, and is resolved before the DJ's tool list is built — a
+caller cannot raise their own.
+
+The practical consequence, and the reason it exists: you no longer have to
+choose between a public line and being able to do anything useful from your
+own phone. Put the far-reaching ones on **admin** and they are yours alone
+while the line stays open to everybody else.
+
+Upgrading changes nothing — the old `true` meant "anyone who got through the
+door", which is exactly **anyone**, and that is what it migrates to.
+
+- [ ] **`allow_announcements`** — understand it before granting it to
+      **anyone**. It lets a caller hand the on-air DJ a line to read *to
+      everyone listening*. Off by default since 0.9.89. The tool allowlist and
+      the conduct prompt push back, but that is a model declining, not a gate
+      refusing.
 - [ ] **`allow_skip_track` / `allow_dj_segment`** — both reach every listener
-      rather than the caller. Off by default, and worth leaving off on a
-      station with an audience.
+      rather than the caller. Off by default; **admin** is the tier to use if
+      you want them at all on a station with an audience.
 - [ ] **`allow_takeover`** — the furthest-reaching switch here, and the only
       one whose effect outlives the call: it pins a show ahead of the weekly
       schedule, so a different DJ is on air for an hour (longer if the caller
@@ -56,6 +73,10 @@ Work down it. Each line says what goes wrong if you skip it.
       takeover *you* set from the station's own admin page. Off by default.
       Needs station admin credentials, and Actions per call is the only thing
       pacing it.
+- [ ] **Check the columns you cannot fill.** Granting something to **guest**
+      with no guest code set would grant it to a tier nobody can be. The panel
+      greys those cells out and says why rather than letting you save a
+      setting that never applies.
 
 **Privacy — what you keep about people who call**
 

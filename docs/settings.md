@@ -26,7 +26,7 @@ links, one per group below.
 | Configuration | **AI brains** | The LLM that thinks: provider, model, endpoint, temperature. Only providers you hold a key for are listed — Ollama always, since it needs none |
 | Configuration | **Voice** | TTS backend, endpoint, voice (default: mirrored per-persona from the station), adapter |
 | Configuration | **Ears** | Speech-to-text provider and model, listed on the same key rule. A local Whisper is baked in and used by default |
-| Permissions & safety | **Caller permissions** | What a stranger may trigger, and the three station-wide switches (skip the current track, fire a programme beat, put a different show on air) that reach every listener — all off by default |
+| Permissions & safety | **Caller permissions** | What a caller may trigger, and **which caller** — each row is set to the least trusted tier that gets it (off / anyone / guest code / admin), including the three station-wide switches (skip the current track, fire a programme beat, put a different show on air) that reach every listener. See [security](security.md) |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call — the guard on API spend |
 | The conversation | **Who answers** | Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name |
 | The conversation | **Turn-taking** | When the DJ decides you've finished speaking, and whether a caller may talk over it. The biggest lever on whether a call *feels* like a phone call |

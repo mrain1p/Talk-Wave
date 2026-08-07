@@ -146,7 +146,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     saved_tts = cfg.get("tts_base_url") or ""
     cfg.update({k: v for k, v in body.items() if v not in (None, "")})
 
@@ -266,7 +266,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     saved_llm = cfg.get("llm_base_url") or ""
     cfg.update({k: v for k, v in body.items() if v not in (None, "")})
 
@@ -354,7 +354,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
     import brain
     from call.tools import effective_tools
 
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     station = StationClient()
     try:
         snap = await station.snapshot()
@@ -401,7 +401,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
     secrets_store.apply_to_env()
     body = await request.json() if request.can_read_body else {}
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     saved_llm = cfg.get("llm_base_url") or ""
     saved_tts = cfg.get("tts_base_url") or ""
     cfg.update({k: v for k, v in (body or {}).items() if v not in (None, "")})
@@ -642,7 +642,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
 
     secrets_store.apply_to_env()
     body = await request.json() if request.can_read_body else {}
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     cfg.update({k: v for k, v in (body or {}).items() if v not in (None, "")})
 
     result: dict = {"ok": True}
@@ -827,7 +827,7 @@ async def handle_test_station(request: web.Request) -> web.Response:
     from call.tools import effective_tools
     secrets_store.apply_to_env()
 
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     base = request.query.get("station_base_url") or cfg["station_base_url"]
     mcp_url = request.query.get("station_mcp_url") or (
         cfg.get("station_mcp_url") or f"{str(base).rstrip('/')}/mcp"

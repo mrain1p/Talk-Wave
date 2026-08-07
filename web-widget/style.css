@@ -853,6 +853,69 @@
     background: color-mix(in srgb, var(--accent) 7%, transparent);
   }
 
+  /* --- the permission matrix: one row, three tiers ----------------------
+     ONE grid for the whole block, with each row set to display:contents, so
+     every row shares the same columns. Per-row grids are what made the four
+     other lists in this panel unreadable — see the log viewer — and a matrix
+     whose columns do not line up is not a matrix. It also lets a modifier
+     (the plain checkboxes between the tiered rows) span the full width
+     without leaving a hole where its cells would have been. */
+  .permgrid {
+    display: grid; grid-template-columns: minmax(0, 1fr) 66px 66px 66px;
+    align-items: center; margin: 0 0 6px;
+  }
+  .permrow { display: contents; }
+  /* The select IS the field — it is what Save diffs and what the server
+     stores — but nobody looks at it. Hidden rather than removed so the whole
+     of the rest of panel.js keeps working on it unchanged. */
+  .permrow > select { display: none; }
+  .permgrid > .phead {
+    display: contents;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .permgrid > .phead > span {
+    padding: 9px 0 6px; border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .permgrid > .phead > span:not(:first-child) { text-align: center; }
+  .permrow > .plabel {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px 8px 0; font-size: 12.5px; color: var(--text);
+  }
+  .permrow.off > .plabel { color: var(--dim); }
+  .permrow > .tcell { display: flex; justify-content: center; padding: 8px 0; }
+  .permrow > .tcell input { width: 15px; height: 15px; accent-color: var(--accent); }
+  /* A tier nobody can be. Disabled rather than hidden: the level exists, and
+     an operator needs to see that it is shut and why (the title says which
+     password is missing) rather than wondering where the column went. */
+  .permrow > .tcell.unreachable { opacity: .3; cursor: help; }
+  /* Modifiers and injected help span the whole width — they are not answers
+     to the column headings. */
+  .permgrid > .check, .permgrid > .hint {
+    grid-column: 1 / -1; margin: 0 0 0 0; padding: 4px 0;
+  }
+  .permgrid > .hint { padding: 0 0 8px; margin: -2px 0 0; }
+  .permgrid > .check { padding: 6px 0 6px 18px; }
+
+  /* Which callers reach an entry in the ask list. */
+  .whotier {
+    display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 999px;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700;
+    border: 1px solid var(--line2); color: var(--dimmer);
+  }
+  .whotier.t-open {
+    color: color-mix(in srgb, var(--warn) 80%, var(--text));
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  }
+
+  @media (max-width: 620px) {
+    .permgrid { grid-template-columns: minmax(0, 1fr) 46px 46px 46px; }
+    .permrow > .plabel { font-size: 12px; }
+  }
+
   /* --- the Player settings matrix: one row, two surfaces ---------------- */
   /* A grid rather than two stacked columns of checkboxes, because the whole
      point of the section is comparing the two answers for one control. The
@@ -897,6 +960,16 @@
     margin-bottom: 14px;
   }
   .banner.ok { border-color: var(--ok); color: var(--ok); }
+  /* First run: the one banner that is a form rather than a sentence. It is
+     asking for something, so it gets room to ask. */
+  .banner.setup { color: var(--text); border-color: var(--accent); }
+  .banner.setup strong { color: var(--accent); display: block; margin-bottom: 5px; }
+  .banner.setup p { margin: 0 0 10px; color: var(--dim); font-size: 11.5px; }
+  .banner.setup .loginrow { display: inline-flex; gap: 8px; margin: 0; }
+  .banner.setup input { width: 220px; }
+  .banner.setup #firstPwMsg { display: block; margin-top: 7px; font-size: 11.5px;
+                              color: var(--accent); }
+  .banner.setup #firstPwMsg:empty { display: none; }
   /* Buttons created from JS use these instead of inline colors. */
   .btnaccent { background: var(--accent); color: #fff; }
   .btnquiet { flex: 0 0 auto; background: transparent; color: var(--dim);

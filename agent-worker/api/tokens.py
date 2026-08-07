@@ -16,7 +16,7 @@ from aiohttp import web
 from livekit import api
 
 import settings as settings_store
-from api.auth import _guest_ok, _write_allowed
+from api.auth import _guest_ok, _write_allowed, caller_tier
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_PUBLIC_URL
 from api.wire import _caller_key, _cors
 
@@ -227,7 +227,20 @@ async def handle_token(request: web.Request) -> web.Response:
             return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
 
     # One room per call keeps callers from ever landing in each other's audio.
-    room = f"{'probe' if probe else 'callin'}-{uuid.uuid4().hex[:12]}"
+    #
+    # The caller's tier rides in the NAME rather than in participant metadata,
+    # for two reasons. The name is inside the signed grant, so a caller cannot
+    # raise their own tier without a token nobody minted them — metadata a
+    # participant sets is theirs to choose. And the worker has the room name
+    # the instant the job starts, where a participant's metadata is only there
+    # once they have joined, which is after CallSession has already built its
+    # tool list.
+    #
+    # The last 12 characters stay hex: call/record.py finds a transcript by
+    # matching on that suffix, and the widget posts a rating against it.
+    tier = "admin" if probe else caller_tier(request)
+    room = (f"probe-{uuid.uuid4().hex[:12]}" if probe
+            else f"callin-{tier[0]}-{uuid.uuid4().hex[:12]}")
     identity = f"caller-{uuid.uuid4().hex[:8]}"
 
     token = (
@@ -264,6 +277,11 @@ async def handle_token(request: web.Request) -> web.Response:
             "client": _describe_client(request.headers.get("User-Agent", "")),
             "network": _network_of(ip),
             "ip": ip,
+            # Which permissions this caller was actually given. Without it,
+            # "why did the DJ refuse that?" has no answer in the transcript —
+            # the settings say the permission is on, and the tier that decided
+            # otherwise is not written down anywhere else.
+            "tier": tier,
         }
         for stale in list(_mint_info)[:-_MINT_INFO_KEEP]:
             _mint_info.pop(stale, None)

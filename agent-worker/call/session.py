@@ -123,7 +123,15 @@ class CallSession:
         self.ctx = ctx
         # Re-read per call, so a settings change applies to the next caller
         # without restarting the worker.
-        self.cfg = settings_store.load()
+        #
+        # Resolved against THIS caller's tier before anything else touches it.
+        # Every consumer below reads cfg.get("allow_x") as a truthy value and
+        # always has; the raw stored value is now a tier string, and "off" is
+        # truthy — so a cfg that reached a tool builder unresolved would switch
+        # on every permission the operator had turned off. It is resolved once,
+        # here, and there is no path to the tool builders that skips it.
+        self.tier = settings_store.tier_from_room(ctx.room.name)
+        self.cfg = settings_store.permissions_for(settings_store.load(), self.tier)
         self.station = StationClient()
         self.station_cfg = StationConfig()
 
@@ -172,9 +180,9 @@ class CallSession:
             or await self.station_cfg.voice_for(self.persona["id"])
         )
         self.instructions = await brain.build_system_prompt(
-            self.station, self.persona, snapshot=snap
+            self.station, self.persona, snapshot=snap, cfg=self.cfg
         )
-        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg)
+        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg, self.tier)
 
         # Checked against the backend BEFORE the first line, not discovered by
         # the caller. See tts_adapter.pick_speakable_voice — a voice the
@@ -228,8 +236,8 @@ class CallSession:
         allowed_tools, local_tools = self._build_tools()
 
         log.info(
-            "call starting room=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
-            self.ctx.room.name, self.persona["name"], self.persona["id"],
+            "call starting room=%s tier=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
+            self.ctx.room.name, self.tier, self.persona["name"], self.persona["id"],
             self.cfg["llm_provider"], self.cfg["llm_model"],
             self.cfg["tts_mode"], self.voice,
             len(allowed_tools) + len(local_tools),

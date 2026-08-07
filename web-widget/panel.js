@@ -133,6 +133,7 @@
     SELECT_FIELDS = byKind('select');
     ALL_FIELDS = SELECT_FIELDS.concat(TEXT_FIELDS, NUM_FIELDS, CHECK_FIELDS);
     layoutPanel();
+    decoratePermissions();
     bindFieldEvents();
     decorateFields();
   }
@@ -192,6 +193,13 @@
       el.appendChild(o);
     });
     el.value = resolved[f] != null ? String(resolved[f]) : '';
+    // `auto` is the stored default and is deliberately not one of the three
+    // choices — it is a rule for picking between two of them, not a third
+    // kind of access. Show whichever it currently resolves to, which is what
+    // it is actually doing.
+    if (f === 'front_access' && resolved[f] === 'auto') {
+      el.value = guestConfigured ? 'guest' : 'open';
+    }
   }
 
   function syncModels() {
@@ -280,11 +288,20 @@
     setTag('tagBrains', (resolved.llm_provider || '') + ' · ' + (resolved.llm_model || ''));
     setTag('tagEars', (resolved.stt_provider || '') + ' · ' + (resolved.stt_model || ''));
     // Permission count comes from the schema group, so it can't go stale when
-    // a new permission is added.
+    // a new permission is added. Tiered ones are counted through permOn:
+    // reading `resolved[f]` directly would count "off" as enabled, since it is
+    // a non-empty string.
     const permFields = Object.keys(SCHEMA.fields)
       .filter((f) => SCHEMA.fields[f].group === 'perms');
-    const perms = permFields.filter((f) => resolved[f]).length;
-    setTag('tagPerms', perms + ' of ' + permFields.length + ' enabled');
+    const perms = permFields.filter(permOn).length;
+    // The lowest tier anything is granted at is the interesting half: "6 of 11"
+    // says nothing about whether strangers can reach any of it.
+    const tiers = permFields.filter(isTiered).map(permTier)
+      .filter((t) => t !== 'off');
+    const lowest = TIER_IDS.find((t) => tiers.indexOf(t) !== -1);
+    setTag('tagPerms', perms + ' of ' + permFields.length + ' on'
+      + (lowest ? ' · from ' + { open: 'anyone', guest: 'guest code',
+                                 admin: 'admin' }[lowest] : ''));
     setTag('tagSounds', resolved.call_sounds
       ? (resolved.sound_pack === 'phone' ? 'handset' : 'exchange') : 'off');
     setTag('tagStyle', [resolved.style_conversation, resolved.style_answering,
@@ -335,8 +352,22 @@
   // the change you were trying to understand.
   function permOn(field) {
     const el = $(field);
+    // A tiered permission is a <select> holding off/open/guest/admin, and
+    // "off" is a truthy string — so the old `!!resolved[field]` would have
+    // read every switched-off permission as on, in the two lists whose entire
+    // job is saying what is switched on.
+    if (isTiered(field)) {
+      return permTier(field) !== 'off';
+    }
     if (el && el.type === 'checkbox') return el.checked;
     return !!resolved[field];
+  }
+
+  // The tier a permission is set to RIGHT NOW, unsaved edits included.
+  function permTier(field) {
+    const el = $(field);
+    const value = (el && el.value) || resolved[field] || 'off';
+    return TIER_IDS.indexOf(value) === -1 ? 'off' : value;
   }
 
   function paintAsks() {
@@ -359,6 +390,15 @@
       li.querySelector('.say').textContent = a.say;
       li.querySelector('.why').textContent =
         enabled ? a.why : a.why + ' — switch it on above';
+      // Which callers get it. "Available" and "available to strangers" are
+      // different answers and the list used to give only the first.
+      if (enabled && a.need && isTiered(a.need)) {
+        const chip = document.createElement('span');
+        chip.className = 'whotier t-' + permTier(a.need);
+        chip.textContent = { open: 'anyone', guest: 'guest code',
+                             admin: 'admin' }[permTier(a.need)];
+        li.querySelector('.why').appendChild(chip);
+      }
       host.appendChild(li);
     });
 
@@ -392,10 +432,16 @@
       const li = document.createElement('li');
       li.className = t.gate === 'never' ? 'blocked' : (on ? '' : 'off');
 
+      // The state column says WHO reaches it, not just whether anyone does —
+      // which is the question this section is now able to answer.
       const state = document.createElement('span');
       state.className = 'tstate';
       state.textContent = t.gate === 'never' ? 'never'
-        : (t.gate === 'read' ? 'always' : (on ? 'on' : 'off'));
+        : t.gate === 'read' ? 'always'
+        : !on ? 'off'
+        : isTiered(t.gate)
+          ? { open: 'anyone', guest: 'guest', admin: 'admin' }[permTier(t.gate)]
+          : 'on';
 
       // Three columns rather than a status beside a stack of three lines. The
       // name is what you scan for and it was the first line of a paragraph, so
@@ -549,6 +595,7 @@
     CHECK_FIELDS.forEach((f) => { $(f).checked = !!resolved[f]; });
 
     syncModels();
+    paintPermissions();
     applyVisibility();
     setEmbedSnippet();
     paintAdminNeeded();
@@ -590,28 +637,28 @@
   // none exists — an open panel is fine on a trusted LAN but should be a
   // choice, not an accident.
   function paintSecurity() {
-    const MODE = { auto: 'automatic', open: 'open to anyone',
-                   guest: 'guest code', admin: 'admin only' };
-    setTag('tagSecurity', (MODE[resolved.front_access] || resolved.front_access || '')
+    const MODE = { open: 'open to anyone', guest: 'guest code',
+                   admin: 'admin only' };
+    // From the picker, not from `resolved`: the stored value may still be
+    // `auto`, which is not one of the three and would have read as
+    // "automatic · " — a summary naming a mode the section below does not
+    // offer.
+    const access = ($('front_access') && $('front_access').value)
+      || resolved.front_access;
+    setTag('tagSecurity', (MODE[access] || access || '')
       + ' · ' + (authConfigured ? 'admin set' : 'ADMIN OPEN'));
     $('curPwRow').style.display = authConfigured ? '' : 'none';
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
     $('logoutBtn').hidden = !authConfigured;
     $('setGuestBtn').textContent = guestConfigured ? 'Change guest code' : 'Set guest code';
     $('clearGuestBtn').hidden = !guestConfigured;
+    // Setting or clearing the guest code changes which permission columns can
+    // be ticked at all — that has to follow immediately, not on a reload.
+    paintPermissions();
 
-    let nudge = $('pwNudge');
-    if (authConfigured) { if (nudge) nudge.remove(); return; }
-    if (!nudge) {
-      nudge = document.createElement('div');
-      nudge.id = 'pwNudge';
-      nudge.className = 'banner';
-      const sub = document.querySelector('#panel .sub');
-      (sub || $('panel').firstElementChild).insertAdjacentElement('afterend', nudge);
-    }
-    nudge.textContent = 'No panel password set — anyone who can reach this page can '
-      + 'change settings and spend your API keys. Set one under Access before '
-      + 'exposing this beyond your own machine.';
+    // First run: the setup card in the markup, shown until a password exists.
+    $('pwNudge').hidden = authConfigured;
+    if (!authConfigured) $('firstPw').focus();
   }
 
   // Signing out only forgets the password on THIS browser — the panel
@@ -639,6 +686,15 @@
       if (!r.ok) { showResult(out, false, d.error || 'failed'); return; }
       guestConfigured = !!d.guestConfigured;
       $('sec_guest_pw').value = '';
+      // Setting a code and not being asked for it is the trap `auto` used to
+      // paper over. With the three explicit levels, an open line stays open
+      // until somebody says otherwise — so say it here, as a pending change
+      // the operator can see and undo, rather than silently either way.
+      const access = $('front_access');
+      if (code && access && access.value === 'open') {
+        access.value = 'guest';
+        access.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       paintSecurity();
       // The operator's own browser shouldn't now be locked out of the phone
       // it just locked — the admin password opens the guest door anyway, but
@@ -664,11 +720,27 @@
   };
   $('clearGuestBtn').onclick = () => setGuest('');
 
+  // The first-run card and the Access section set the same password, so they
+  // run the same handler — the card fills the section's fields and presses its
+  // button rather than posting for itself. Two implementations of "set the
+  // admin password" is two places for the rules to drift.
+  function setFirstPassword() {
+    $('sec_new_pw').value = $('firstPw').value;
+    $('sec_current_pw').value = '';
+    $('firstPwMsg').textContent = 'Saving…';
+    $('setPwBtn').click();
+  }
+  $('firstPwBtn').onclick = setFirstPassword;
+  $('firstPw').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') setFirstPassword();
+  });
+
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');
     const newPw = $('sec_new_pw').value;
     if (newPw.length < 8) {
       showResult(out, false, 'Use at least 8 characters.');
+      if ($('firstPwMsg')) $('firstPwMsg').textContent = 'Use at least 8 characters.';
       return;
     }
     const btn = $('setPwBtn'); btn.disabled = true;
@@ -678,7 +750,14 @@
         body: JSON.stringify({ current: $('sec_current_pw').value, new: newPw }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { showResult(out, false, d.error || 'failed'); return; }
+      if (!r.ok) {
+        showResult(out, false, d.error || 'failed');
+        // The first-run card is a second way into this handler, and it is at
+        // the top of the page where `out` is not. Without this, a refused
+        // password there just sat there doing nothing visible.
+        if ($('firstPwMsg')) $('firstPwMsg').textContent = d.error || 'failed';
+        return;
+      }
       localStorage.setItem('callinAdminKey', newPw);
       authConfigured = true;
       $('sec_current_pw').value = ''; $('sec_new_pw').value = '';
@@ -872,10 +951,15 @@
         markClean();
         applyVisibility();
         if (f === 'calls_paused') paintLineState();
+        // Which tiers exist at all depends on the door. Closing the line to
+        // callers without a code means there are no `open` callers, and a
+        // column that can no longer be reached has to grey out as you pick it
+        // — not on the next reload.
+        if (f === 'front_access') { paintPermissions(); paintTags(); }
         // The two reference lists describe the permissions, so they follow
         // the switches rather than waiting for a save.
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'perms') {
-          paintAsks(); paintTools();
+          paintAsks(); paintTools(); paintTags();
         }
       };
       el.addEventListener('input', onChange);
@@ -901,18 +985,116 @@
       if (!el || !SCHEMA.fields[f].admin) return;
       const anchor = el.closest('.row') || el.closest('.check');
       if (!anchor) return;
-      let tag = anchor.querySelector('.needsadmin');
+      // A .permrow is display:contents so its cells share the grid's columns,
+      // which means anything appended to it lands in the next free CELL — the
+      // tag would sit where a checkbox goes. It belongs beside the name.
+      const host = anchor.querySelector('.plabel') || anchor;
+      let tag = host.querySelector('.needsadmin');
       if (!tag) {
         tag = document.createElement('span');
         tag.className = 'needsadmin';
         tag.textContent = 'Station admin';
-        anchor.appendChild(tag);
+        host.appendChild(tag);
       }
       tag.classList.toggle('missing', !have);
       tag.title = have
         ? 'Uses the station admin credentials stored under Station.'
         : 'Needs the station admin username and password under Station. '
           + 'Without them this stays switched on and quietly never happens.';
+    });
+  }
+
+  // ------------------------------------------------- the permission matrix
+  // A tiered permission is ONE field holding one of off / open / guest /
+  // admin. The three columns are a way of setting it, not three settings: the
+  // <select> in the markup is what Save diffs and what the server stores, so
+  // everything else in this file — pendingPatch, paint, applyVisibility — goes
+  // on working without knowing the matrix exists.
+  const TIER_IDS = ['open', 'guest', 'admin'];
+  const isTiered = (f) => !!(SCHEMA.fields[f] && SCHEMA.fields[f].tiered);
+
+  // Which columns can be ticked at all, given the doors that exist. Ticking
+  // "Guest" with no guest code set would grant a permission to a tier nobody
+  // can ever be — the setting would save, look right, and never once apply.
+  function tierReachable(tier) {
+    const access = ($('front_access') && $('front_access').value)
+      || resolved.front_access || 'auto';
+    if (tier === 'admin') return true;      // always a door
+    if (tier === 'guest') return guestConfigured;
+    // `open` callers only exist while the line lets somebody in without a
+    // code. On auto that is "until a guest code is set".
+    if (access === 'open') return true;
+    if (access === 'auto') return !guestConfigured;
+    return false;
+  }
+
+  function tierWhyNot(tier) {
+    if (tier === 'guest') return 'No guest code set — nobody can be this caller yet.';
+    return 'The line is closed to callers without a code, so there are no '
+      + 'callers at this level. Change Call-in access under Access.';
+  }
+
+  // Build the label and the three cells once, then keep them in step with the
+  // select. Called from adoptSchema, so it runs before the first paint.
+  function decoratePermissions() {
+    document.querySelectorAll('.permrow').forEach((row) => {
+      const field = row.dataset.perm;
+      const meta = SCHEMA.fields[field];
+      if (!meta || row.dataset.built) return;
+      row.dataset.built = '1';
+
+      const label = document.createElement('span');
+      label.className = 'plabel';
+      label.textContent = meta.label || field;
+      row.insertBefore(label, row.firstChild);
+
+      TIER_IDS.forEach((tier) => {
+        const cell = document.createElement('span');
+        cell.className = 'tcell';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.dataset.tier = tier;
+        box.setAttribute('aria-label', (meta.label || field) + ' — ' + tier);
+        box.onchange = () => {
+          const sel = $(field);
+          // Ticking a column means "this tier, and everyone above it".
+          // Unticking means "take it away from this level" — so the floor
+          // rises to the next tier up, and unticking the top one is the only
+          // thing that reaches off. One rule for all three columns: the first
+          // version turned the permission off outright when you unticked the
+          // column that happened to BE the setting, which made unticking
+          // Anyone and unticking Guest do completely different things.
+          if (box.checked) sel.value = tier;
+          else sel.value = TIER_IDS[TIER_IDS.indexOf(tier) + 1] || 'off';
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          paintPermissions();
+        };
+        cell.appendChild(box);
+        row.appendChild(cell);
+      });
+    });
+  }
+
+  // Reflect each select into its row of checkboxes, and grey the columns that
+  // no caller could ever be.
+  function paintPermissions() {
+    document.querySelectorAll('.permrow').forEach((row) => {
+      const field = row.dataset.perm;
+      const sel = $(field);
+      if (!sel) return;
+      const at = TIER_IDS.indexOf(sel.value);
+      row.querySelectorAll('input[type=checkbox]').forEach((box) => {
+        const idx = TIER_IDS.indexOf(box.dataset.tier);
+        // Cascade: granted to a lower tier means granted here too.
+        box.checked = at !== -1 && idx >= at;
+        const reachable = tierReachable(box.dataset.tier);
+        // A column with no door behind it is disabled, not hidden — the
+        // operator needs to see that the level exists and why it is shut.
+        box.disabled = !reachable && !box.checked;
+        box.title = reachable ? '' : tierWhyNot(box.dataset.tier);
+        box.closest('.tcell').classList.toggle('unreachable', !reachable);
+      });
+      row.classList.toggle('off', at === -1);
     });
   }
 

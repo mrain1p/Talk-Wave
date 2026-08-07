@@ -40,7 +40,7 @@ MAX_TEXT = 2000       # one turn, clipped
 class CallRecord:
     """Builds the record as the call runs, writes it once at the end."""
 
-    def __init__(self, room: str, persona: dict, cfg: dict) -> None:
+    def __init__(self, room: str, persona: dict, cfg: dict, tier: str = "") -> None:
         self.room = room
         self.started = time.time()
         self.data: dict = {
@@ -51,6 +51,14 @@ class CallRecord:
                 "llm": f"{cfg.get('llm_provider')}/{cfg.get('llm_model')}",
                 "stt": f"{cfg.get('stt_provider')}/{cfg.get('stt_model')}",
                 "tts": cfg.get("tts_mode"),
+                # How much the caller typed to get in. Worth writing down
+                # separately from the list below: the permissions are what
+                # THIS caller had, and without the tier there is nothing in
+                # the transcript to explain why they differ from the panel.
+                "callerTier": tier or "open",
+                # Resolved for this caller, not the stored settings — the
+                # session collapses the tiers before anything reads them, so
+                # this is the honest list of what the DJ could actually do.
                 "permissions": sorted(
                     k for k in cfg
                     if k.startswith(("allow_", "offer_", "shape_")) and cfg[k]

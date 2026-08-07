@@ -42,10 +42,20 @@ class TestSettings(_TempStores):
     def test_reset_semantics_for_booleans(self):
         # The panel's Reset sends '' for checkboxes too — that must CLEAR the
         # override so the default reasserts, never store a truthy override.
-        settings_store.save({"allow_skills": True})
-        self.assertTrue(settings_store.load()["allow_skills"])
+        settings_store.save({"strip_stage_directions": False})
+        self.assertFalse(settings_store.load()["strip_stage_directions"])
+        settings_store.save({"strip_stage_directions": ""})
+        self.assertTrue(settings_store.load()["strip_stage_directions"])
+
+    def test_reset_semantics_for_permissions(self):
+        # Same rule, and it matters more here: the stored value is a TIER, and
+        # every tier name including "off" is a non-empty string. A Reset that
+        # stored "" rather than clearing would leave a permission whose value
+        # is neither a tier nor absent.
+        settings_store.save({"allow_skills": "open"})
+        self.assertEqual(settings_store.load()["allow_skills"], "open")
         settings_store.save({"allow_skills": ""})
-        self.assertFalse(settings_store.load()["allow_skills"])  # default off
+        self.assertEqual(settings_store.load()["allow_skills"], "off")
 
     def test_coercion_of_string_bools_and_numbers(self):
         settings_store.save({"call_volume": "80", "call_sounds": "false"})

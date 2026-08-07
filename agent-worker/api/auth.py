@@ -181,6 +181,30 @@ def _guest_ok(request: web.Request) -> bool:
     return reason is None
 
 
+def caller_tier(request: web.Request) -> str:
+    """How much this caller typed to get in: open, guest or admin.
+
+    Decided here and nowhere else, because here is the only place that has
+    seen the password. Call it only after _guest_ok has said yes — this
+    answers "which caller is this", not "may they call at all", and on its own
+    it would happily report `open` for someone who was refused at the door.
+
+    Deliberately generous about which header carries it: the phone sends
+    X-Call-Key, but the operator's own browser holds the admin password under
+    a different name, and an operator ringing their own booth from the panel's
+    preview should not come through as a stranger.
+    """
+    for header in ("X-Call-Key", "X-Admin-Key"):
+        key = request.headers.get(header, "")
+        if not key:
+            continue
+        if _key_valid(key):
+            return "admin"
+        if admin_auth.verify_guest(key):
+            return "guest"
+    return "open"
+
+
 def _is_literal_address(host: str | None) -> bool:
     """True for an IP address, false for a DNS name.
 

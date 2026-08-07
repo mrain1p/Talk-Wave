@@ -64,8 +64,21 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # call to that DJ; RANDOM_PERSONA rolls one per call.
     "persona_override": (None, ""),
 
-    # Tool permissions for the caller-facing agent. Reads are always on.
-    "allow_requests":     (None, True),
+    # --- what a caller may do, and which caller ---------------------------
+    # These eight are TIERS, not booleans: "off", or the least-trusted caller
+    # who gets it. A caller who typed nothing is `open`, one who typed the
+    # guest code is `guest`, one who typed the admin password is `admin`, and
+    # each tier includes the ones below it.
+    #
+    # They were booleans, which meant one answer for every caller who got
+    # through the door: an operator who wanted a public line AND wanted to put
+    # something on air from their own phone had to leave that switch on for
+    # strangers too, or keep flipping it. The defaults below are exactly what
+    # the booleans resolved to, so nothing changes for an existing station —
+    # see _migrate.
+    #
+    # Reads are always on and are not listed here at all.
+    "allow_requests":     (None, "open"),
     # Requests are irreversible — the station has no cancel endpoint — so the
     # cheap protection is confirming the track before it's submitted.
     "confirm_requests":   (None, True),
@@ -82,19 +95,19 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # prompt pushes back — but that is a model declining, not a gate refusing,
     # and a patient caller gets words onto the air. Defaulting it on meant
     # every deployment shipped that way without choosing it.
-    "allow_announcements": (None, False),
-    "allow_library_search": (None, True),
+    "allow_announcements": (None, "off"),
+    "allow_library_search": (None, "open"),
     # Let a caller who has picked a track out of the search results have THAT
     # recording queued, rather than the words being resolved a second time.
     # Off by default: it bypasses the station's own request rate limit, so it
     # leans entirely on `max_actions_per_call` to keep one caller in check.
-    "allow_exact_queue":  (None, False),
+    "allow_exact_queue":  (None, "off"),
     # Off by default: this puts audio on air on the caller's say-so. Skills
     # are the station's own segments (weather, news, dedications, story
     # time…). Safe-ish, but a stranger triggers them. (Sound effects were
     # considered and deliberately not offered — stingers on a caller's
     # say-so add nothing to a call.)
-    "allow_skills":       (None, False),
+    "allow_skills":       (None, "off"),
     # With skills on, the DJ may also OFFER one when the moment fits ("want
     # me to spin you a story?") instead of waiting to be asked.
     "offer_skills":       (None, False),
@@ -103,12 +116,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # everyone listening rather than on the caller who asked. Both are served
     # by local wrappers so "Actions per call" caps them — over MCP they would
     # have no ceiling at all.
-    "allow_skip_track":   (None, False),
-    "allow_dj_segment":   (None, False),
+    "allow_skip_track":   (None, "off"),
+    "allow_dj_segment":   (None, "off"),
     # Further-reaching than either, and the only caller action whose effect
     # outlives the call: it puts a different show — a different DJ — on air for
     # an hour by default. Off by default for the obvious reason.
-    "allow_takeover":     (None, False),
+    "allow_takeover":     (None, "off"),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -307,6 +320,112 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 }
 
 # ---------------------------------------------------------------------------
+# Caller tiers.
+#
+# Least trusted first, and each one includes everything below it. The tier is
+# decided when the token is minted (api/auth.caller_tier) from what the caller
+# actually typed, and travels to the worker inside the signed room name — so a
+# caller cannot raise their own tier without a token they were not given.
+#
+#   open   got in without typing anything: the line has no code, or is on auto
+#          with none set
+#   guest  typed the guest code
+#   admin  typed the admin password (which opens the phone as well as the panel)
+# ---------------------------------------------------------------------------
+TIERS = ("open", "guest", "admin")
+TIER_OFF = "off"
+
+# The permissions that carry a tier rather than a yes/no. Everything else in
+# the perms group is a modifier — "confirm requests before sending" shapes how
+# requests work, it is not a capability anyone is being granted — and asking
+# who those apply to would be asking a question with no answer.
+TIERED_PERMISSIONS = (
+    "allow_requests",
+    "allow_library_search",
+    "allow_exact_queue",
+    "allow_announcements",
+    "allow_skills",
+    "allow_skip_track",
+    "allow_dj_segment",
+    "allow_takeover",
+)
+
+# Offered to the panel so the three columns are named in one place.
+TIER_CHOICES = [
+    (TIER_OFF, "Off"),
+    ("open", "Anyone who can call"),
+    ("guest", "Callers with the guest code"),
+    ("admin", "Admin only"),
+]
+
+
+def normalise_tier(value: Any) -> str:
+    """Whatever is stored, as one of off/open/guest/admin.
+
+    Tolerant on purpose: this reads a file an operator can edit by hand, and a
+    value it cannot make sense of has to fail CLOSED. A permission that grants
+    itself to strangers because the JSON said `"yes"` is the one mistake here
+    that cannot be walked back — the caller has already been on air.
+    """
+    if isinstance(value, bool):
+        return "open" if value else TIER_OFF
+    text = str(value or "").strip().lower()
+    if text in TIERS:
+        return text
+    if text in ("true", "1", "yes", "on", "all", "everyone"):
+        return "open"
+    return TIER_OFF
+
+
+def permission_reaches(setting: Any, tier: str) -> bool:
+    """Does a caller at `tier` get this permission?"""
+    need = normalise_tier(setting)
+    if need == TIER_OFF or tier not in TIERS:
+        return False
+    return TIERS.index(tier) >= TIERS.index(need)
+
+
+def tier_from_room(room_name: str) -> str:
+    """The caller's tier, read back out of the room the token was signed for.
+
+    `callin-<o|g|a>-<12 hex>`. Anything else — a probe room, a room minted by
+    a version of the token server that predates this, a name from somewhere
+    else entirely — comes back as the LEAST trusted tier. Failing closed is
+    the only safe direction: the alternative is an unrecognised name handing a
+    stranger the operator's own permissions.
+    """
+    parts = str(room_name or "").split("-")
+    if len(parts) >= 3 and parts[0] == "callin":
+        for tier in TIERS:
+            if parts[1] == tier[0]:
+                return tier
+    return "open"
+
+
+def permissions_for(cfg: dict, tier: str) -> dict:
+    """A copy of the settings with every tiered permission collapsed to a
+    plain bool for one caller.
+
+    Everything downstream — the tool registry, the prompt, the local wrappers —
+    reads `cfg.get("allow_x")` as a truthy value and always has. Resolving here
+    means none of it has to learn about tiers, and, more importantly, none of
+    it can accidentally read the raw string: `"off"` is truthy, so a consumer
+    that missed the change would have switched every permission ON.
+    """
+    out = dict(cfg)
+    for field in TIERED_PERMISSIONS:
+        out[field] = permission_reaches(cfg.get(field), tier)
+    return out
+
+# The panel's Station tools reference comes from the tool registry — the same
+# table the worker derives its allowlists from, so the two cannot disagree
+# about what a caller can reach.
+def mcp_tools_payload() -> list[dict]:
+    from call.tools.registry import catalogue
+
+    return catalogue()
+
+# ---------------------------------------------------------------------------
 # Field metadata — the single source of truth for how a setting is presented.
 #
 # Before this existed, every setting had to be declared in five places: here,
@@ -443,18 +562,18 @@ SCHEMA: dict[str, dict] = {
              "the endpoint above."),
 
     # --- permissions ---
-    "allow_requests": dict(group="perms", kind="check", label="Take song requests",
+    "allow_requests": dict(group="perms", kind="select", tiered=True, label="Take song requests",
         help="A title, an artist, a mood, an era or 'more like this'. The station "
              "resolves it and writes the intro. Its own limits still apply: 1 per "
              "20s, 8 an hour, and none while nobody is listening."),
     "confirm_requests": dict(group="perms", kind="check", label="Confirm before sending",
-        needs=("allow_requests", True),
+        needs=("allow_requests", TIERS),
         help="The DJ says the track back and waits for a yes. The station cannot "
              "cancel a request once it is in; a changed mind before the confirm "
              "costs nothing."),
     "shape_vague_requests": dict(group="perms", kind="check",
         label="Offer options for a mood request",
-        needs=("allow_requests", True),
+        needs=("allow_requests", TIERS),
         help="For \"something fun\", the DJ comes back with two or three real "
              "tracks it found rather than playing the first match. Costs one turn, "
              "and it only ever asks once."),
@@ -462,44 +581,44 @@ SCHEMA: dict[str, dict] = {
     # "Station admin" with a tooltip saying it would quietly never happen
     # without credentials, which is false — the MCP tool needs no auth at all
     # (registry.mcp_fallback). Only the local wrapper's extra retry does.
-    "allow_library_search": dict(group="perms", kind="check", label="Search the music library",
+    "allow_library_search": dict(group="perms", kind="select", tiered=True, label="Search the music library",
         help="Lets the DJ check a track exists before promising it. Works without "
              "station credentials; with them it also retries phrasing like "
              "'X by Y' before reporting a miss."),
-    "allow_exact_queue": dict(group="perms", kind="check", label="Queue the exact track picked",
+    "allow_exact_queue": dict(group="perms", kind="select", tiered=True, label="Queue the exact track picked",
         admin=True,
-        needs=("allow_library_search", True),
+        needs=("allow_library_search", TIERS),
         help="Queues the recording the caller chose out of the search results, "
              "rather than re-matching the words. Skips the station's request rate "
              "limit, so Actions per call is the only thing pacing it."),
-    "allow_announcements": dict(group="perms", kind="check", label="Put messages on air",
+    "allow_announcements": dict(group="perms", kind="select", tiered=True, label="Put messages on air",
         admin=True,
         help="Hands a line to the on-air DJ to read in persona."),
     # These two read as the same switch until you see them side by side. They
     # are not: one is about what a caller may ASK FOR, the other about whether
     # the DJ may BRING IT UP first.
-    "allow_skills": dict(group="perms", kind="check", label="Run segments when asked",
+    "allow_skills": dict(group="perms", kind="select", tiered=True, label="Run segments when asked",
         admin=True,
         help="Weather, news, dedications, story time — the caller asks and the DJ "
              "runs the station's real segment on air. The station rate-limits each "
              "one (25–60 min), so callers cannot spam them."),
     "offer_skills": dict(group="perms", kind="check", label="…and let the DJ offer one",
         admin=True,
-        needs=("allow_skills", True),
+        needs=("allow_skills", TIERS),
         help="Whether the DJ may raise a segment itself — \"want me to spin you a "
              "story?\" — instead of only answering a request. Never a menu."),
-    "allow_skip_track": dict(group="perms", kind="check", admin=True,
+    "allow_skip_track": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Skip the current track",
         help="Ends what is playing for EVERYONE listening, not just the caller who "
              "asked. The station treats skip as an operator override and offers no "
              "listener-facing equivalent. Counts against Actions per call."),
-    "allow_dj_segment": dict(group="perms", kind="check", admin=True,
+    "allow_dj_segment": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Fire a programme beat",
         help="Station ID, the hour, a link, guest banter, an intro or outro — the "
              "programme's own furniture rather than something asked for. The station "
              "documents that firing one bypasses its own frequency and budget gates, "
              "so Actions per call is the only ceiling."),
-    "allow_takeover": dict(group="perms", kind="check", admin=True,
+    "allow_takeover": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Put a different show on air",
         help="Pins a show over the weekly schedule — a different DJ, for everyone — "
              "for an hour by default. The only caller action that outlives the call: "
@@ -513,7 +632,8 @@ SCHEMA: dict[str, dict] = {
              "audio just stopping. 600 = ten minutes."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access",
-        help="This is the PHONE. The panel is admin-only whatever you pick."),
+        help="This is the PHONE. The panel always needs the admin password, "
+             "whichever of these you pick."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels
@@ -772,23 +892,23 @@ SCHEMA: dict[str, dict] = {
 # agree on the spelling.
 RANDOM_PERSONA = "__random__"
 
-# The panel's Station tools reference comes from the tool registry — the same
-# table the worker derives its allowlists from, so the two cannot disagree
-# about what a caller can reach.
-def mcp_tools_payload() -> list[dict]:
-    from call.tools.registry import catalogue
-
-    return catalogue()
 
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
+    # Three levels, and `auto` is not one of them.
+    #
+    # It is still a valid stored value and still behaves exactly as it always
+    # did — it is the default, and changing that would stop every existing
+    # line from taking calls. But it is not a fourth kind of access, it is a
+    # rule for picking between two of these, and offering it as a peer meant
+    # the list read as four policies when there are three. The panel shows
+    # whichever of the three `auto` currently resolves to.
     "front_access": [
-        ("auto", "Automatic — open until you set a guest code"),
         ("open", "Open — anyone who loads the page can call"),
-        ("guest", "Guest code — callers need the code you share"),
+        ("guest", "Guest code — callers type the code you share"),
         ("admin", "Admin only — the phone is closed to callers"),
     ],
     "call_button_mode": [
@@ -813,6 +933,11 @@ def _choices_for(name: str):
         import sounds
 
         return sounds.packs()
+    # Every tiered permission offers the same four, named once. The panel
+    # renders them as three columns and an unticked row rather than as a
+    # dropdown, but it is one field with one value underneath.
+    if SCHEMA.get(name, {}).get("tiered"):
+        return list(TIER_CHOICES)
     return STATIC_CHOICES.get(name)
 
 
@@ -841,10 +966,17 @@ def schema_payload() -> dict:
                 # failure, so from the panel a switched-on feature that never
                 # happens is indistinguishable from one that is working.
                 "admin": bool(meta.get("admin")),
+                # Rendered as three columns of checkboxes rather than a
+                # dropdown: what an operator wants to see is which callers get
+                # this, all three answers at once, down a page of permissions.
+                "tiered": bool(meta.get("tiered")),
                 "choices": _choices_for(name),
             }
             for name, meta in SCHEMA.items()
         },
+        # The column headings, and the order they cascade in.
+        "tiers": [{"id": t, "title": title} for t, title in
+                  (("open", "Anyone"), ("guest", "Guest code"), ("admin", "Admin"))],
     }
 
 
@@ -1042,6 +1174,13 @@ def _migrate(stored: dict) -> dict:
             stored["call_button_mode"] = "name"
         elif str(stored.get("call_button_label") or "").strip():
             stored["call_button_mode"] = "custom"
+    # 0.9.116: the caller permissions became tiers. `true` meant "anyone who
+    # got through the door", which is exactly `open`, so an existing station
+    # behaves identically — and an operator who never opens the panel again
+    # keeps precisely the permissions they had.
+    for field in TIERED_PERMISSIONS:
+        if field in stored and isinstance(stored[field], bool):
+            stored[field] = "open" if stored[field] else TIER_OFF
     return stored
 
 

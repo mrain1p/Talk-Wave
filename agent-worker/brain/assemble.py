@@ -20,11 +20,23 @@ from brain.briefing import (
 
 
 async def build_system_prompt(
-    station: StationClient, persona: dict, snapshot: dict | None = None
+    station: StationClient, persona: dict, snapshot: dict | None = None,
+    cfg: dict | None = None,
 ) -> str:
+    """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
+
+    Loading them here is the fallback for the operator-facing previews, and it
+    resolves at the admin tier — the fullest set the settings allow. A live
+    call must pass its own: the permissions are tier strings now, `"off"` is
+    truthy, and a prompt built from the raw values would promise the DJ every
+    capability the operator had switched off. The call passes them; this
+    signature exists so that forgetting is a change to this line rather than
+    something nobody notices until a caller is told the DJ can run segments.
+    """
     import settings as settings_store
 
-    cfg = settings_store.load()
+    if cfg is None:
+        cfg = settings_store.permissions_for(settings_store.load(), "admin")
 
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.

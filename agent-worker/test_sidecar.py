@@ -55,6 +55,12 @@ from tests.test_widget import (  # noqa: F401
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
 )
+from tests.test_caller_tiers import (  # noqa: F401
+    TestATierIncludesTheOnesBelowIt,
+    TestAnUnknownTierFailsClosed,
+    TestTheDoorDecidesTheTier,
+    TestUpgradingKeepsTheStationExactlyAsItWas,
+)
 from tests.test_call_record import (  # noqa: F401
     TestCallPrivacy,
     TestCallRecord,

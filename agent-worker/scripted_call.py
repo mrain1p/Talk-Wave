@@ -315,7 +315,7 @@ async def main() -> None:
         print("[using injected conduct.py, not the image's]")
 
     secrets_store.apply_to_env()
-    cfg = settings_store.load()
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
     muzzle_the_station()
 
     station = StationClient()

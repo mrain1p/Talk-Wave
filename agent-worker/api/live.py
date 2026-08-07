@@ -16,6 +16,7 @@ import admin_auth
 import settings as settings_store
 import station as station_mod
 import tune_in
+from api.auth import caller_tier
 from api.env import LIVEKIT_PUBLIC_URL
 from api.live_cache import _LIVE_TTL, _live_cache
 from api.sounds import _resolved_sound
@@ -192,13 +193,39 @@ def call_button_label(cfg: dict, persona_name: str = "") -> str:
     return "Call the DJ"
 
 
+def _for_this_caller(request: web.Request, payload: dict) -> dict:
+    """The one part of /live that cannot be shared between callers.
+
+    Everything else here is the same for everybody and is cached for thirty
+    seconds across the lot — but what a caller may ASK for now depends on what
+    they typed to get in, and the "What can I ask?" list is the widget's
+    promise about what will actually work. A cached list would promise an
+    open caller the permissions an operator gave themselves, and the DJ would
+    then refuse — which is the failure this list exists to prevent.
+
+    Cheap: no station reads, just the door check again against the settings
+    already in hand.
+    """
+    if payload.get("canAsk") is None:
+        return payload                      # the help button is switched off
+    tier = caller_tier(request)
+    out = dict(payload)
+    out["canAsk"] = {
+        k: settings_store.permission_reaches(v, tier)
+        for k, v in (payload.get("askTiers") or {}).items()
+    }
+    out["callerTier"] = tier
+    return out
+
+
 async def handle_live(request: web.Request) -> web.Response:
     """Who's on air, proxied so the widget doesn't depend on the station
     sending CORS headers to whatever origin the widget is embedded on."""
     import time as _time
 
     if _live_cache["data"] is not None and _time.time() - _live_cache["at"] < _LIVE_TTL:
-        return _cors(request, web.json_response(_live_cache["data"]))
+        return _cors(request, web.json_response(
+            _for_this_caller(request, _live_cache["data"])))
 
     station = StationClient()
     try:
@@ -305,14 +332,17 @@ async def handle_live(request: web.Request) -> web.Response:
                     # about something the operator switched on. That is how
                     # skip and the programme beat stayed invisible on the card
                     # after they shipped as permissions.
-                    "canAsk": (
-                        {k: bool(cfg.get(k)) for k in (
-                            "allow_requests", "allow_library_search",
-                            "allow_exact_queue", "allow_announcements",
-                            "allow_skills", "allow_skip_track",
-                            "allow_dj_segment", "allow_takeover",
-                        )}
+                    # Two shapes on purpose. `askTiers` is the raw setting per
+                    # permission and is what gets cached; `canAsk` is that
+                    # collapsed for the caller actually asking, and is
+                    # rewritten on every request by _for_this_caller. The
+                    # widget only ever reads canAsk.
+                    "askTiers": (
+                        {k: cfg.get(k) for k in settings_store.TIERED_PERMISSIONS}
                         if cfg.get("show_caller_help") else None
+                    ),
+                    "canAsk": (
+                        {} if cfg.get("show_caller_help") else None
                     ),
                     # So the card can show elapsed/remaining and warn before
                     # the graceful cutoff rather than surprising the caller.
@@ -351,7 +381,7 @@ async def handle_live(request: web.Request) -> web.Response:
         if reachable:
             _live_cache["data"] = payload
             _live_cache["at"] = _time.time()
-        return _cors(request, web.json_response(payload))
+        return _cors(request, web.json_response(_for_this_caller(request, payload)))
     finally:
         await station.aclose()
 
