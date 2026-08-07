@@ -400,7 +400,10 @@
     font-family: var(--font-body); font-size: 11px; font-weight: 400;
     text-transform: none; letter-spacing: 0; color: var(--sage-dim);
   }
-  #logsResult { max-height: 320px; overflow-y: auto; }
+  /* No #logsResult height here. It used to be pinned to 320px from this
+     block — in the middle of the call card's rules, three hundred lines from
+     the log viewer it governs — and being an id it silently outranked every
+     later attempt to change it. The height lives with the viewer now. */
 
   /* Version footer in the settings panel — which build am I looking at,
      for tracking changes and troubleshooting over time. */
@@ -785,7 +788,7 @@
                                  box-shadow: none; }
   .runbtn.running { opacity: .55; }
   /* Results in a diagnostics row scroll rather than growing the page. */
-  .result.scrolly { max-height: 300px; overflow: auto; }
+  .result.scrolly { max-height: 460px; overflow: auto; }
   details.diag .result { font-size: 11px; line-height: 1.5; }
   details.diag .stages { font-size: 11.5px; }
 
@@ -912,8 +915,8 @@
      reachable / off / never split can be read down the page at a glance. */
   .toollist { list-style: none; margin: 4px 0 0; padding: 0; }
   .toollist li {
-    display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px;
-    padding: 8px 0; border-top: 1px solid var(--line); align-items: baseline;
+    display: grid; grid-template-columns: 44px 152px minmax(0, 1fr); gap: 12px;
+    padding: 7px 0; border-top: 1px solid var(--line); align-items: baseline;
   }
   .toollist li:first-child { border-top: none; }
   .toollist .tstate {
@@ -923,16 +926,23 @@
   .toollist li.off .tstate { color: var(--dimmer); }
   .toollist li.blocked .tstate { color: var(--warn); }
   .toollist .tbody { min-width: 0; }
+  /* The subwave_ prefix is on nineteen of nineteen names and earns none of
+     the 70px it was taking out of the description column. Full name in the
+     title, where anyone who needs to type it can still get at it. */
   .toollist code {
     display: block; font-size: 11.5px; color: var(--text);
-    font-family: ui-monospace, SFMono-Regular, monospace;
-    overflow-wrap: break-word;
+    font-family: var(--font-mono); overflow-wrap: break-word;
   }
   .toollist li.off code, .toollist li.blocked code { color: var(--dim); }
   .toollist .twhat { display: block; font-size: 11.5px; color: var(--dim);
-                     margin-top: 2px; line-height: 1.45; }
+                     line-height: 1.45; }
   .toollist .tnote { display: block; font-size: 11px; color: var(--dimmer);
                      margin-top: 3px; line-height: 1.45; }
+  @media (max-width: 700px) {
+    .toollist li { grid-template-columns: 44px minmax(0, 1fr); }
+    .toollist code { grid-column: 2; margin-bottom: 2px; }
+    .toollist .tbody { grid-column: 2; }
+  }
 
   .soundlist { list-style: none; margin: 4px 0 10px; padding: 0; }
   .soundlist li {
@@ -955,8 +965,18 @@
     white-space: pre-wrap; display: none; font-family: ui-monospace, SFMono-Regular, monospace;
   }
   .result.on { display: block; }
-  .result.good { border-color: #1e3a28; color: #7fc79b; }
-  .result.bad { border-color: #4a2620; color: #e08b7d; }
+  /* Derived from --ok / --accent rather than pinned to two dark-mode hexes.
+     The literals held their dark-mode value through two palette changes and
+     read as mud on the light theme, which is the failure this file's header
+     warns about. */
+  .result.good {
+    border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+    color: color-mix(in srgb, var(--ok) 88%, var(--text));
+  }
+  .result.bad {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  }
 
   /* The log viewer. Rows rather than one pre-wrapped block, so a level can be
      coloured and a line can be hidden — neither of which a single string
@@ -993,24 +1013,45 @@
   /* Destructive, so it is stated rather than styled loud: the same button as
      every other one until you are on it. */
   .runbtn.danger:hover:not(:disabled) {
-    background: #4a2620; border-color: #4a2620; color: #f0c3ba;
+    background: color-mix(in srgb, var(--accent) 22%, var(--bg));
+    border-color: var(--accent);
+    color: color-mix(in srgb, var(--accent) 60%, var(--text));
   }
-  .result.logs { white-space: normal; padding: 6px 8px; }
+  .result.logs { white-space: normal; padding: 5px 4px; max-height: 430px; }
+  /* FIXED columns, not `auto`. Every row is its own grid, so `auto` sized each
+     one to its own content and nothing lined up with the row above it — the
+     timestamp, the level letter and the logger all stepped in and out down the
+     page, and the message, which is the part you are reading for, started at a
+     different x on every line. It read as noise because it was. Fixed widths
+     are what make forty rows a column of four columns. */
   .logline {
-    display: grid; grid-template-columns: auto auto auto 1fr; gap: 8px;
-    align-items: baseline; padding: 2px 4px; border-radius: 5px;
-    font-size: 11.5px; line-height: 1.5;
+    display: grid; grid-template-columns: 62px 14px 104px minmax(0, 1fr);
+    gap: 10px; align-items: baseline; padding: 3px 7px; border-radius: 5px;
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.55;
   }
+  /* Banding rather than a rule per row: at eleven pixels a hairline between
+     every line is heavier than the text it separates. */
+  .logline:nth-child(even) { background: color-mix(in srgb, var(--text) 3%, transparent); }
   .logline:hover { background: var(--line); }
   .logline .lt { color: var(--dimmer); font-variant-numeric: tabular-nums; }
   /* One letter, not the whole word: the level is a glance, and eight columns
      of "WARNING" pushes the message — the part you are reading for — off the
      right of a narrow panel. The full word is the title attribute. */
-  .logline .ll {
-    width: 1.1em; text-align: center; font-weight: 700; color: var(--dimmer);
+  .logline .ll { text-align: center; font-weight: 700; color: var(--dimmer); }
+  /* Truncated rather than wrapped. A logger name is how you tell a station
+     read from a token mint at a glance; it is never the thing you read, so it
+     may not be allowed to set the message column's left edge. */
+  .logline .lg {
+    color: var(--cool); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .logline .lg { color: var(--cool); }
   .logline .lm { color: var(--dim); overflow-wrap: anywhere; }
+  @media (max-width: 620px) {
+    /* Three fixed columns plus a message do not fit; the logger is the one
+       that can go, and it stays in the row's title. */
+    .logline { grid-template-columns: 62px 14px minmax(0, 1fr); }
+    .logline .lg { display: none; }
+  }
   .logline.lvl-warning .ll, .logline.lvl-warning .lm { color: var(--warn); }
   .logline.lvl-error .ll, .logline.lvl-error .lm,
   .logline.lvl-critical .ll, .logline.lvl-critical .lm { color: var(--accent); }
@@ -1030,40 +1071,53 @@
               box-shadow: inset 0 0 0 1px var(--line2); }
   #resetBtn:hover:not(:disabled) { color: var(--text); background: var(--line2); }
   #saveMsg { font-size: 12px; color: var(--dimmer); }
-  /* "What callers can ask" reference */
+  /* "What callers can ask" reference. Two readable columns — what a caller
+     says, and what it actually does — because those are two different
+     questions and stacking them made nineteen rows into thirty-eight lines. */
   .asklist { list-style: none; margin: 0; padding: 0; }
   .asklist li {
-    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
-    display: grid; grid-template-columns: 16px 1fr; gap: 9px; align-items: baseline;
+    padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+    display: grid; grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 12px; align-items: baseline;
   }
   .asklist li:last-child { border-bottom: none; }
   .asklist .mark { color: var(--ok); font-size: 11px; }
-  .asklist li.off { opacity: .4; }
+  .asklist li.off { opacity: .45; }
   .asklist li.off .mark { color: var(--dimmer); }
-  .asklist .say { color: var(--text); font-style: italic; }
-  .asklist .why { color: var(--dimmer); display: block; font-style: normal; font-size: 11.5px; margin-top: 2px; }
+  .asklist .say { color: var(--text); font-style: italic; line-height: 1.45; }
+  .asklist .why { color: var(--dimmer); font-size: 11.5px; line-height: 1.45; }
+  @media (max-width: 700px) {
+    .asklist li { grid-template-columns: 16px minmax(0, 1fr); }
+    .asklist .why { grid-column: 2; margin-top: 2px; }
+  }
 
   /* Run-all pipeline check */
-  #speedBtn { margin-left: 8px; }
   #runAllBtn.running { opacity: .6; }
   .stages { list-style: none; margin: 13px 0 0; padding: 0; display: none; }
   .stages.on { display: block; }
   .stages li {
-    display: grid; grid-template-columns: 18px 132px 1fr; gap: 10px;
+    display: grid; grid-template-columns: 18px 148px minmax(0, 1fr); gap: 12px;
     align-items: baseline; padding: 6px 0; font-size: 12px;
     border-bottom: 1px solid var(--line);
   }
   .stages li:last-child { border-bottom: none; }
   .stages .icon { text-align: center; font-size: 12px; }
   .stages .nm { color: var(--dim); font-weight: 600; }
-  .stages .dt { color: var(--dimmer); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+  /* Not monospace. These cells are sentences — "the station only offered
+     private addresses", a voice-coverage warning three lines long — and a
+     proportional face fits noticeably more of one on a line. The numbers that
+     DO want a column of their own get it in .timings below. */
+  .stages .dt {
+    color: var(--dimmer); overflow-wrap: anywhere;
+    font-family: var(--font-body); font-size: 11.5px; line-height: 1.5;
+  }
   .stages li.pending .icon { color: var(--dimmer); }
   .stages li.running .icon { color: var(--warn); }
   .stages li.pass .icon { color: var(--ok); }
   .stages li.warn .icon { color: var(--warn); }
   .stages li.fail .icon { color: var(--accent); }
-  .stages li.fail .dt { color: #e08b7d; }
-  .stages li.warn .dt { color: #d0a882; }
+  .stages li.fail .dt { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
+  .stages li.warn .dt { color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
   .stages li.skip { opacity: .45; }
 
   /* Timings reuse the stage rows, with the elapsed time where the status
@@ -1082,7 +1136,7 @@
   .stages.timings .dt { display: flex; gap: 10px; align-items: baseline; }
   .stages.timings .ms {
     flex: 0 0 58px; text-align: right; font-variant-numeric: tabular-nums;
-    color: var(--dim);
+    font-family: var(--font-mono); color: var(--dim);
   }
   .stages.timings .note { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .stages.timings li .icon { color: var(--ok); }
@@ -1115,30 +1169,61 @@
   .result .calllist { white-space: normal; }
   .callrow { border-bottom: 1px solid var(--line); }
   .callrow:last-child { border-bottom: none; }
+  /* Six columns: verdict, when, who, how long, what happened, what went wrong.
+     They were one 132px date and one catch-all cell holding a joined sentence,
+     so nothing below the date lined up and the only way to find the calls that
+     went badly was to read every row. */
+  /* width:100% is load-bearing, not tidiness. A grid <summary> is
+     shrink-to-fit, so each row sized its flexible tracks to ITS OWN content —
+     the DJ column came out 39px on one row and 124px on the next, and the
+     columns this list exists to provide did not line up at all. Rows 1 and 2
+     differed by three pixels, which reads as a rendering fault rather than as
+     a layout to fix. */
   .callrow > summary {
-    display: grid; grid-template-columns: 18px 132px 1fr; gap: 10px;
-    align-items: baseline; padding: 6px 0; font-size: 12px;
+    display: grid; width: 100%;
+    grid-template-columns: 16px 144px minmax(0, 1fr) 46px 116px minmax(0, 1.3fr);
+    gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
   }
   .callrow > summary::-webkit-details-marker { display: none; }
-  .callrow > summary:hover .nm { color: var(--text); }
+  .callrow > summary:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .callrow > summary:hover .when { color: var(--text); }
   .callrow > summary .icon { text-align: center; }
-  .callrow > summary .nm {
+  .callrow > summary .when, .callrow > summary .dj {
     color: var(--dim); font-weight: 600;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .callrow > summary .dt { color: var(--dimmer); overflow-wrap: anywhere; }
+  .callrow > summary .len {
+    color: var(--dimmer); text-align: right;
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  }
+  .callrow > summary .did, .callrow > summary .dt {
+    color: var(--dimmer); font-family: var(--font-mono); font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .callrow.pass > summary .icon { color: var(--ok); }
   .callrow.warn > summary .icon { color: var(--warn); }
-  .callrow.warn > summary .dt { color: #d0a882; }
+  .callrow.warn > summary .dt { color: color-mix(in srgb, var(--warn) 78%, var(--text)); }
   /* A call nobody could be heard on is not a warning, it is a failed call. */
   .callrow.fail > summary .icon { color: var(--accent); }
-  .callrow.fail > summary .dt { color: #e08b7d; }
+  .callrow.fail > summary .dt { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
+  @media (max-width: 720px) {
+    /* Drop to the three that answer "which call was that, and did it work". */
+    .callrow > summary {
+      grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .callrow > summary .dj, .callrow > summary .len,
+    .callrow > summary .did { display: none; }
+  }
   /* An opened call, read top to bottom: what it was, what it ran on, who
      called, what went wrong, then the conversation. */
+  /* Derived, not literal. This was rgba(255,255,255,.03) — white on white in
+     light mode, so an opened call had no surface under it at all and the
+     transcript sat loose on the page. */
   .callbody {
     margin: 2px 0 12px; padding: 10px 12px; border-radius: 8px;
-    background: rgba(255,255,255,.03); font-size: 11.5px;
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+    border: 1px solid var(--line); font-size: 11.5px;
     max-height: 420px; overflow: auto;
   }
   .cbhead {
@@ -1154,7 +1239,7 @@
     margin: 0; color: var(--dim); overflow-wrap: anywhere;
     font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px;
   }
-  .cbproblems { margin: 0; padding-left: 16px; color: #e08b7d; }
+  .cbproblems { margin: 0; padding-left: 16px; color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
   .cbproblems li { margin: 3px 0; overflow-wrap: anywhere; }
   .cbempty { margin: 0; color: var(--dimmer); font-style: italic; }
 
@@ -1173,7 +1258,7 @@
   .cbline.caller .x { color: var(--text); }
   .cbline.tool .w, .cbline.tool .x { color: var(--dimmer); }
   /* A tool that came back with a refusal is the line you are looking for. */
-  .cbline.tool.bad .w, .cbline.tool.bad .x { color: #e08b7d; }
+  .cbline.tool.bad .w, .cbline.tool.bad .x { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
 
   .calllist.onlybad .callrow.pass { display: none; }
 

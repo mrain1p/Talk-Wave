@@ -333,16 +333,18 @@
     ASKS.forEach((a) => {
       const enabled = !a.need || permOn(a.need);
       if (enabled) on++;
+      // Three cells, not a paragraph. The "why" used to be nested inside the
+      // example, so nineteen rows were nineteen two-line blocks and there was
+      // no way to read down either column. Side by side, the panel is wide
+      // enough for both and the list is half as tall.
       const li = document.createElement('li');
       li.className = enabled ? '' : 'off';
-      li.innerHTML = '<span class="mark"></span><span class="say"></span>';
+      li.innerHTML = '<span class="mark"></span><span class="say"></span>'
+        + '<span class="why"></span>';
       li.querySelector('.mark').textContent = enabled ? '✓' : '–';
-      const say = li.querySelector('.say');
-      say.textContent = a.say;
-      const why = document.createElement('span');
-      why.className = 'why';
-      why.textContent = enabled ? a.why : a.why + ' (turn on above to enable)';
-      say.appendChild(why);
+      li.querySelector('.say').textContent = a.say;
+      li.querySelector('.why').textContent =
+        enabled ? a.why : a.why + ' — switch it on above';
       host.appendChild(li);
     });
 
@@ -350,9 +352,10 @@
     // rather than something you discover by toggling everything on.
     const never = document.createElement('li');
     never.className = 'nevergroup';
-    never.innerHTML = '<span class="mark">×</span><span class="say">'
-      + 'Never available to callers, whatever the settings say'
-      + '<span class="why"></span></span>';
+    never.innerHTML = '<span class="mark">×</span><span class="say"></span>'
+      + '<span class="why"></span>';
+    never.querySelector('.say').textContent =
+      'Never available to a caller, whatever you set';
     never.querySelector('.why').textContent =
       NEVER.map(([what, why]) => what + ' — ' + why).join(' · ');
     host.appendChild(never);
@@ -380,21 +383,27 @@
       state.textContent = t.gate === 'never' ? 'never'
         : (t.gate === 'read' ? 'always' : (on ? 'on' : 'off'));
 
+      // Three columns rather than a status beside a stack of three lines. The
+      // name is what you scan for and it was the first line of a paragraph, so
+      // nineteen tools came to nineteen ragged blocks. Now the names are a
+      // column and the prose is a column.
+      const name = document.createElement('code');
+      name.textContent = t.name.replace(/^subwave_/, '');
+      name.title = t.name;
+
       const body = document.createElement('span');
       body.className = 'tbody';
-      const name = document.createElement('code');
-      name.textContent = t.name;
       const what = document.createElement('span');
       what.className = 'twhat';
       what.textContent = t.what;
-      body.append(name, what);
+      body.append(what);
       if (t.note) {
         const note = document.createElement('span');
         note.className = 'tnote';
         note.textContent = t.note;
         body.appendChild(note);
       }
-      li.append(state, body);
+      li.append(state, name, body);
       host.appendChild(li);
     });
     const tag = $('tagTools');

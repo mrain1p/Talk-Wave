@@ -159,29 +159,34 @@
   // One <details> per call, closed. Forty records as forty scrolling walls of
   // transcript was unreadable; the header answers "which call was that, and
   // did it go wrong" without opening anything.
+  // One column per fact rather than one joined sentence. Every row used to be
+  // "Wade · 30s · 0 turns · no caller audio" in a single cell, which meant the
+  // turn count sat at a different x on every line and the only way to find the
+  // short calls was to read all forty. Separate cells put each fact in a
+  // column you can run your eye down — which is the entire job of this list.
   function renderCallRow(c) {
     const v = callVerdict(c);
     const turns = c.callerTurns || 0;
     const tools = (c.tools || []).length;
-    const bits = [
-      c.persona?.name || 'DJ',
-      `${Math.round(c.durationSecs || 0)}s`,
-      `${turns} turn${turns === 1 ? '' : 's'}`,
-    ];
-    if (tools) bits.push(`${tools} tool${tools === 1 ? '' : 's'}`);
-    if (v.note) bits.push(v.note);
 
     const el = document.createElement('details');
     el.className = 'callrow ' + v.cls;
     el.dataset.verdict = v.cls;
     const sum = document.createElement('summary');
-    sum.innerHTML = '<span class="icon"></span><span class="nm"></span><span class="dt"></span>';
+    sum.innerHTML = '<span class="icon"></span><span class="when"></span>'
+      + '<span class="dj"></span><span class="len"></span>'
+      + '<span class="did"></span><span class="dt"></span>';
     sum.querySelector('.icon').textContent = v.icon;
     // No year: "Aug 5, 2026, 2:29:24 AM" wrapped onto a second line and broke
     // the row. The year is never the thing you are looking for in a list that
     // holds the last forty calls.
-    sum.querySelector('.nm').textContent = callTime(c.startedAt, 'short');
-    sum.querySelector('.dt').textContent = bits.join(' · ');
+    sum.querySelector('.when').textContent = callTime(c.startedAt, 'short');
+    sum.querySelector('.dj').textContent = c.persona?.name || 'DJ';
+    sum.querySelector('.len').textContent = `${Math.round(c.durationSecs || 0)}s`;
+    sum.querySelector('.did').textContent =
+      `${turns} turn${turns === 1 ? '' : 's'}`
+      + (tools ? ` · ${tools} tool${tools === 1 ? '' : 's'}` : '');
+    sum.querySelector('.dt').textContent = v.note;
     el.appendChild(sum);
     el.appendChild(callBody(c));
     return el;
@@ -278,8 +283,11 @@
         line.querySelector('.ll').textContent = (r.level || '')[0] || '·';
         line.querySelector('.ll').title = r.level || '';
         // The callin. prefix is on every line of ours and earns no width.
-        line.querySelector('.lg').textContent =
-          String(r.logger || '').replace(/^callin\./, '');
+        const logger = String(r.logger || '').replace(/^callin\./, '');
+        line.querySelector('.lg').textContent = logger;
+        // The logger column is truncated, and hidden outright on a narrow
+        // panel, so the full name has to survive somewhere readable.
+        line.title = [r.level, logger].filter(Boolean).join(' · ');
         line.querySelector('.lm').textContent = r.msg || '';
         out.appendChild(line);
       });
