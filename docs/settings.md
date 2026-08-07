@@ -23,9 +23,9 @@ links, one per group below.
 | Configuration | **Access** | Call-in access (automatic, open, guest code, admin only), the admin password for this panel, and the optional guest code for the phone. `CALLIN_ADMIN_KEY` is the recovery override |
 | Configuration | **Station** | Which SUB/WAVE this answers for, the derived MCP endpoint, and the station admin credentials that unlock on-air messages, segments, programme beats, skips, show takeover, the back-to-air mention and voice mirroring |
 | Configuration | **Connections** | Provider API keys, stored server-side, never shown back |
-| Configuration | **AI brains** | The LLM that thinks: provider, model, endpoint, temperature |
+| Configuration | **AI brains** | The LLM that thinks: provider, model, endpoint, temperature. Only providers you hold a key for are listed — Ollama always, since it needs none |
 | Configuration | **Voice** | TTS backend, endpoint, voice (default: mirrored per-persona from the station), adapter |
-| Configuration | **Ears** | Speech-to-text provider and model. A local Whisper is baked in and used by default |
+| Configuration | **Ears** | Speech-to-text provider and model, listed on the same key rule. A local Whisper is baked in and used by default |
 | Permissions & safety | **Caller permissions** | What a stranger may trigger, and the three station-wide switches (skip the current track, fire a programme beat, put a different show on air) that reach every listener — all off by default |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call — the guard on API spend |
 | The conversation | **Who answers** | Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name |
@@ -39,7 +39,7 @@ links, one per group below.
 | Running the line | **Back to air** | The one-line on-air mention after a call |
 | Running the line | **Call sounds** | Sound set, uploads or URLs, previews, volume |
 | Running the line | **Call transcripts** | Whether both sides of a call are written to disk at all, and how many are kept |
-| The call card | **Player settings** | What the card shows, answered separately for this page and for an embed; the Call button's label; colours; the post-call thumbs up/down |
+| The call card | **Player settings** | What the card shows, answered separately for this page and for an embed; what the Call button says (“Call the DJ”, the live DJ's name, or your own words); colours — including **the station's own**, read from its `/themes` and following the on-air show; the post-call thumbs up/down |
 | The call card | **Embed on another page** | The copyable iframe snippet, and a compact preview |
 | Reference | **What callers can ask** | Derived from the permissions above, including what is never available |
 | Reference | **Station tools** | The station's whole tool surface — the 17 MCP tools plus the two takeover actions we serve ourselves — and whether a caller can reach each |

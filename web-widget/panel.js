@@ -216,10 +216,24 @@
         + (station.model && list.includes(station.model)
             ? ' The station runs ' + station.model + '.' : '');
     } else { note.textContent = ''; }
+    missingProviderNote(note, 'llm');
 
     const stt = $('stt_provider').value || resolved.stt_provider;
     fill('stt_model', (options.sttModels || {})[stt] || []);
     $('stt_model').value = overrides.stt_model || '';
+    const sttNote = $('sttSourceNote');
+    if (sttNote) { sttNote.textContent = ''; missingProviderNote(sttNote, 'stt'); }
+  }
+
+  // The dropdowns above list only what a key exists for, so the ones that are
+  // absent have to be accounted for — otherwise a list that is shorter than
+  // the docs describe reads as a bug rather than as a missing key.
+  function missingProviderNote(note, which) {
+    const missing = ((options.providersNeedingKeys || {})[which]) || [];
+    if (!missing.length) return;
+    const line = 'Not listed, no key yet: ' + missing.join(', ')
+      + '. Add one under Connections and they appear here.';
+    note.textContent = note.textContent ? note.textContent + ' ' + line : line;
   }
 
   function keyJump(container, field) {

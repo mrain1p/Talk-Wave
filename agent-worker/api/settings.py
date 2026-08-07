@@ -345,13 +345,35 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         "ollama": bool(ollama),
     }
 
+    # Only what the operator could actually pick. A provider with no key is not
+    # a choice, it is a call that fails at the first turn — and it used to be
+    # offered exactly as prominently as the one that works. Whatever is
+    # currently configured stays listed even without its key, or the dropdown
+    # would show something other than what the next call will use.
+    llm_providers = settings_store.providers_with_keys(
+        settings_store.LLM_PROVIDER_KEY, cfg.get("llm_provider", ""))
+    stt_providers = settings_store.providers_with_keys(
+        settings_store.STT_PROVIDER_KEY, cfg.get("stt_provider", ""))
+
     payload = {
-        "llmProviders": list(models),
-        "llmModels": models,
+        "llmProviders": llm_providers,
+        # Trimmed to the providers above: the page fills the model list from
+        # this, and a model list for a provider that cannot be selected is
+        # weight on the wire for a dropdown nobody can reach.
+        "llmModels": {p: models.get(p, []) for p in llm_providers},
         "providerBaseUrls": settings_store.PROVIDER_BASE_URLS,
         "ttsBaseUrls": settings_store.TTS_BASE_URLS,
-        "sttProviders": list(settings_store.STT_MODEL_CHOICES),
-        "sttModels": settings_store.STT_MODEL_CHOICES,
+        "sttProviders": stt_providers,
+        "sttModels": {p: settings_store.STT_MODEL_CHOICES.get(p, [])
+                      for p in stt_providers},
+        # Which of the five are missing a key, so the panel can say what to add
+        # rather than just being shorter than the operator expected.
+        "providersNeedingKeys": {
+            "llm": [p for p in settings_store.LLM_PROVIDER_KEY
+                    if p not in llm_providers],
+            "stt": [p for p in settings_store.STT_PROVIDER_KEY
+                    if p not in stt_providers],
+        },
         "ttsModes": ["cloud", "local"],
         "ttsAdapters": adapters,
         "voices": voices,

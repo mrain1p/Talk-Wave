@@ -7,6 +7,7 @@ that stales it reaches. This one builds it.
 from __future__ import annotations
 
 import logging
+import re
 
 import httpx
 from aiohttp import web
@@ -69,14 +70,91 @@ def corner_controls(cfg: dict, embed: bool = False) -> dict:
         # off outright; pinning light or dark also removes it, because there is
         # then nothing to toggle between. "inherit" is not pinned — on the
         # standalone page it behaves as auto.
+        #
+        # "station" is pinned for a different reason: its tokens are written
+        # as inline custom properties on :root, which outrank every
+        # data-theme rule in the stylesheet. The toggle would still be there,
+        # would still flip the attribute, and nothing on screen would change —
+        # a control that visibly does nothing is worse than no control.
         "theme": (
             bool(cfg.get("embed_theme_toggle" if embed else "show_theme_toggle"))
-            and str(cfg.get("widget_theme") or "auto") not in ("light", "dark")
+            and str(cfg.get("widget_theme") or "auto")
+            not in ("light", "dark", "station")
         ),
         # Never in an embed, and not a setting there: an embed does not load
         # the panel's code, so the gear would open nothing whichever way an
         # operator set it.
         "settings": False if embed else bool(cfg.get("show_settings_gear")),
+    }
+
+
+# The station names its palette one way and this widget names it another, and
+# neither is going to change: the station's names are what its own player and
+# admin UI are written against, and the widget's are the ones HOST-STYLE-GUIDE
+# publishes for host pages to post over `swtv:theme`. So the translation lives
+# here, in one direction, once.
+#
+# Deliberately partial. --ok, --cool and --shadow have no counterpart in the
+# station's set, so they keep the widget's own light/dark value and are picked
+# up from `mode` below — a green that means "the line is open" is the widget's
+# own vocabulary, not the station's, and inventing one from --accent-2 would
+# make the state chip stop reporting the transition a caller waits on.
+_STATION_TOKENS = {
+    "--bg": "--pine",
+    "--surface": "--granite",
+    "--field": "--granite-hi",
+    "--ink": "--alpenglow",
+    "--muted": "--sage",
+    "--ink-faint": "--sage-dim",
+    "--accent": "--coral",
+    "--accent-2": "--amber",
+    "--soft-border": "--hairline",
+    "--line": "--edge",
+}
+
+# A colour, and nothing that could be anything else. These values reach a
+# browser and are written into inline style, so the widget refuses anything
+# suspicious on arrival too — but a station is a trusted source that can still
+# be misconfigured, and a token that silently poisons every embed's stylesheet
+# is not a failure anyone would trace back to a theme file.
+_SAFE_TOKEN = re.compile(r"^[#a-zA-Z0-9(),.%/ _-]{1,120}$")
+
+
+def station_palette(payload: dict) -> dict | None:
+    """The on-air show's palette, in this widget's token names.
+
+    `effective` is the station's own answer to "what should a client paint
+    right now" — a show's themeId outranks the station default while it is on
+    air — so this follows the programme rather than the settings page, which
+    is what "the station's own colours" has to mean for a card sitting next to
+    a player that already moved.
+    """
+    themes = payload.get("themes") or []
+    wanted = payload.get("effective") or payload.get("active")
+    theme = None
+    for t in themes:
+        if isinstance(t, dict) and t.get("id") == wanted:
+            theme = t
+            break
+    if theme is None and isinstance(wanted, dict):
+        theme = wanted              # some builds send the theme, not its id
+    if not isinstance(theme, dict):
+        return None
+
+    tokens = {}
+    for their, ours in _STATION_TOKENS.items():
+        value = str((theme.get("tokens") or {}).get(their) or "").strip()
+        if value and _SAFE_TOKEN.match(value):
+            tokens[ours] = value
+    if not tokens:
+        return None
+    return {
+        "id": theme.get("id") or "",
+        "name": theme.get("name") or "",
+        # light or dark decides the tokens we did NOT get from the station,
+        # and the browser's own form controls and scrollbars.
+        "mode": "light" if str(theme.get("mode")).lower() == "light" else "dark",
+        "tokens": tokens,
     }
 
 
@@ -106,9 +184,12 @@ def call_button_label(cfg: dict, persona_name: str = "") -> str:
     having to know the rule. Falls back the moment the name is missing —
     "Call " with nothing after it is worse than the generic label.
     """
-    if cfg.get("call_button_uses_name") and str(persona_name or "").strip():
+    mode = str(cfg.get("call_button_mode") or "default").lower()
+    if mode == "name" and str(persona_name or "").strip():
         return f"Call {str(persona_name).strip()}"
-    return str(cfg.get("call_button_label") or "").strip() or "Call the DJ"
+    if mode == "custom":
+        return str(cfg.get("call_button_label") or "").strip() or "Call the DJ"
+    return "Call the DJ"
 
 
 async def handle_live(request: web.Request) -> web.Response:
@@ -135,6 +216,18 @@ async def handle_live(request: web.Request) -> web.Response:
 
         cfg = settings_store.load()
         sound_pack = cfg.get("sound_pack") or "classic"
+        # Only asked for when the operator has chosen it. This is one more
+        # station read on a payload that already makes four, and a palette
+        # nobody is going to paint with is not worth the round trip.
+        palette = None
+        if str(cfg.get("widget_theme") or "") == "station":
+            try:
+                palette = station_palette(await station.themes())
+            except Exception as e:
+                # The card still has to paint. Falling back to the neutral
+                # base is the honest answer for a station that will not say
+                # what colour it is.
+                log.info("station palette unavailable (%s)", e)
         # Cached inside tune_in, so a station that publishes a mount list is
         # only asked for it every few minutes rather than on every /live.
         stream_url, stream_alternates = await tune_in.resolve(
@@ -184,6 +277,11 @@ async def handle_live(request: web.Request) -> web.Response:
                     # attribute still wins — the host page knows more about
                     # itself than this setting does.
                     "theme": str(cfg.get("widget_theme") or "auto"),
+                    # The on-air show's own palette, already translated into
+                    # this widget's token names, when "the station's own
+                    # colours" is the choice. Null every other time, including
+                    # when the station could not be asked.
+                    "stationTheme": palette,
                     # Which controls the card puts in its top-right corner,
                     # and which lines of the who's-on-air block it paints.
                     # Both surfaces are sent because /live is cached across
@@ -201,11 +299,18 @@ async def handle_live(request: web.Request) -> web.Response:
                     # operator has switched the help button on, and only as
                     # the permissions themselves — the wording lives in the
                     # widget, so the panel and the card cannot drift.
+                    # Every permission the shared ASKS list gates on. A gate
+                    # missing from here reads as `undefined` in the widget and
+                    # the example is filtered out — so a caller is never told
+                    # about something the operator switched on. That is how
+                    # skip and the programme beat stayed invisible on the card
+                    # after they shipped as permissions.
                     "canAsk": (
                         {k: bool(cfg.get(k)) for k in (
                             "allow_requests", "allow_library_search",
                             "allow_exact_queue", "allow_announcements",
-                            "allow_skills", "allow_takeover",
+                            "allow_skills", "allow_skip_track",
+                            "allow_dj_segment", "allow_takeover",
                         )}
                         if cfg.get("show_caller_help") else None
                     ),

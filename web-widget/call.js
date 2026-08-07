@@ -63,14 +63,41 @@
   // host page's background and passes ?theme=. A cross-origin frame cannot
   // see the page it sits in, so if inherit reaches us unresolved there is no
   // page to inherit from and auto is the honest answer.
-  function applyConfiguredTheme(choice) {
+  function applyConfiguredTheme(choice, palette) {
     if (themeForcedByHost) return;              // the host page has decided
     const root = document.documentElement;
     if (choice === 'light' || choice === 'dark') {
       root.setAttribute('data-theme', choice);  // forced: applyControls drops
       return;                                   // the toggle to match
     }
+    // The station's own colours, resolved server-side into this widget's
+    // token names (api/live.station_palette). Same mechanism a host page uses
+    // over swtv:theme — the difference is only who did the asking, which
+    // matters because the standalone page has no host to ask.
+    //
+    // `mode` first, then the tokens on top: it decides the handful the
+    // station has no counterpart for (the green that means the line is open,
+    // the shadow) and what the browser paints its own controls in.
+    if (choice === 'station' && palette && palette.tokens) {
+      root.setAttribute('data-theme', palette.mode === 'light' ? 'light' : 'dark');
+      applyTokens(palette.tokens);
+      return;
+    }
     if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
+  }
+
+  // Write a token map onto :root. Shared by the station palette above and the
+  // host page's swtv:theme message, which are the same operation arriving by
+  // two routes. Only custom-property names, and only values that cannot carry
+  // anything but a colour — one of these routes is a message from another
+  // origin, and neither should be able to set arbitrary style.
+  function applyTokens(tokens) {
+    const root = document.documentElement;
+    Object.keys(tokens).forEach((k) => {
+      if (!/^--[a-z0-9-]+$/i.test(k)) return;
+      const v = String(tokens[k]);
+      if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
+    });
   }
 
   // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
@@ -103,12 +130,7 @@
     }
 
     if (msg.type !== 'swtv:theme' || !msg.tokens) return;
-    const root = document.documentElement;
-    Object.keys(msg.tokens).forEach((k) => {
-      if (!/^--[a-z0-9-]+$/i.test(k)) return;
-      const v = String(msg.tokens[k]);
-      if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
-    });
+    applyTokens(msg.tokens);
   });
 
   // "What can I ask?" — most people meeting a phone-in assume it only takes
@@ -426,7 +448,7 @@
       // polled, and re-running these every few seconds would fight the
       // viewer's own theme toggle and rebuild the popup under their finger.
       if (first) {
-        applyConfiguredTheme(d.theme);
+        applyConfiguredTheme(d.theme, d.stationTheme);
         setupAskPopup(d.canAsk);
         applyControls(d);
       }
@@ -1019,6 +1041,15 @@
           : noMediaPath ? 'Reached the studio, but no audio path — try mobile data'
             : 'Could not connect',
         'error');
+      // The token was already minted by the time we got here, so a room
+      // exists on the server side and this browser holds one of the
+      // concurrency slots. Resetting the UI without releasing it left that
+      // slot held until it aged out THIRTY MINUTES later — on a two-at-once
+      // deployment, two failed connections closed the line to everyone. It
+      // also left currentRoom pointing at the dead room, so the NEXT call to
+      // end posted /call-ended for the wrong one and offered the caller a
+      // thumbs-up against a call that never happened.
+      releaseRoom();
       $('rig').classList.remove('on');
       $('stateChip').hidden = true;
       stopTimer();
@@ -1028,6 +1059,21 @@
       callBtn.disabled = false;
       room = null;
     }
+  }
+
+  // Tell the server this room is finished with, and forget it. Split out of
+  // endCall() because the failed-connect path above needs exactly this and
+  // nothing else that endCall does — it has no call to tear down.
+  function releaseRoom() {
+    if (!currentRoom) return null;
+    const ended = currentRoom;
+    currentRoom = null;
+    // Release the concurrency slot now instead of waiting for it to age out.
+    fetch('/call-ended', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: ended }), keepalive: true,
+    }).catch(() => {});
+    return ended;
   }
 
   let currentRoom = null;
@@ -1092,15 +1138,7 @@
     // call's room, and by the time anyone clicks them currentRoom is long
     // cleared. A room id is minted per call and deleted at the end of one, so
     // holding it here outlives nothing.
-    const endedRoom = currentRoom;
-    if (currentRoom) {
-      // Release the concurrency slot now instead of waiting for it to age out.
-      fetch('/call-ended', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: currentRoom }), keepalive: true,
-      }).catch(() => {});
-      currentRoom = null;
-    }
+    const endedRoom = releaseRoom();
     if (room) { if (!remote) room.disconnect(); playSound('hangup'); }
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }

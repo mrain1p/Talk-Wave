@@ -518,19 +518,22 @@ class TestTheCallButtonSaysWhatTheOperatorChose(unittest.TestCase):
         from api import live as api_live
 
         self.assertEqual(
-            api_live.call_button_label({"call_button_label": "Ring the booth"},
+            api_live.call_button_label({"call_button_mode": "custom",
+                                        "call_button_label": "Ring the booth"},
                                        "Francesca"),
             "Ring the booth")
 
     def test_the_name_replaces_the_typed_label(self):
-        # They are alternatives, not layers — the panel hides the text box
-        # while this is on, and nothing may quietly combine them.
+        # They are alternatives, not layers. They used to be a checkbox beside
+        # a text box, where ticking the box left whatever you had typed sitting
+        # in an enabled field that no longer did anything. One picker now, so
+        # there is nothing left to quietly combine.
         from api import live as api_live
 
         self.assertEqual(
             api_live.call_button_label(
-                {"call_button_label": "Ring the booth",
-                 "call_button_uses_name": True},
+                {"call_button_mode": "name",
+                 "call_button_label": "Ring the booth"},
                 "Francesca"),
             "Call Francesca")
 
@@ -540,8 +543,167 @@ class TestTheCallButtonSaysWhatTheOperatorChose(unittest.TestCase):
         from api import live as api_live
 
         self.assertEqual(
-            api_live.call_button_label({"call_button_uses_name": True}, ""),
+            api_live.call_button_label({"call_button_mode": "name"}, ""),
             "Call the DJ")
+
+    def test_a_typed_label_does_nothing_unless_it_was_chosen(self):
+        # The text survives switching the picker back to the default, so it is
+        # still there if you switch back. It must not paint the button while
+        # something else is selected.
+        from api import live as api_live
+
+        self.assertEqual(
+            api_live.call_button_label({"call_button_mode": "default",
+                                        "call_button_label": "Ring the booth"},
+                                       "Francesca"),
+            "Call the DJ")
+
+
+class TestTheCallButtonSurvivesTheUpgrade(unittest.TestCase):
+    """An upgrade may never change what a caller sees.
+
+    `call_button_uses_name` became one option of `call_button_mode` in
+    0.9.115. Without a migration every operator who had set either half of the
+    old pair would have silently reverted to "Call the DJ" — and would have
+    found out from somebody looking at the card, which is the same class of
+    failure as a setting that does nothing.
+    """
+
+    def test_the_old_checkbox_becomes_the_name_option(self):
+        import settings as settings_store
+
+        self.assertEqual(
+            settings_store._migrate({"call_button_uses_name": True})
+            .get("call_button_mode"), "name")
+
+    def test_an_old_typed_label_becomes_the_custom_option(self):
+        import settings as settings_store
+
+        self.assertEqual(
+            settings_store._migrate({"call_button_label": "Ring the booth"})
+            .get("call_button_mode"), "custom")
+
+    def test_an_old_file_with_neither_set_stays_on_the_default(self):
+        import settings as settings_store
+
+        self.assertNotIn(
+            "call_button_mode",
+            settings_store._migrate({"call_button_uses_name": False,
+                                     "call_button_label": ""}))
+
+    def test_a_new_file_is_left_alone(self):
+        # The legacy keys can survive in a file written before the upgrade.
+        # Once the operator has chosen explicitly, that choice wins.
+        import settings as settings_store
+
+        self.assertEqual(
+            settings_store._migrate({"call_button_mode": "default",
+                                     "call_button_uses_name": True})
+            .get("call_button_mode"), "default")
+
+
+class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
+    """"The station's own colours" is a translation, and it happens here.
+
+    The station names its palette --bg / --ink / --accent; the widget names it
+    --pine / --alpenglow / --coral, and neither is going to change — the
+    station's names are what its own player is written against, and the
+    widget's are what HOST-STYLE-GUIDE publishes for host pages. So there is
+    one map, in one direction, and this is what stops it going stale.
+    """
+
+    THEMES = {
+        "effective": "vinyl",
+        "active": "signal",
+        "themes": [
+            {"id": "signal", "name": "Signal", "mode": "dark",
+             "tokens": {"--bg": "#000000", "--accent": "#00ff00"}},
+            {"id": "vinyl", "name": "Vinyl", "mode": "light",
+             "tokens": {
+                 "--bg": "#efe4cf", "--surface": "#f7efdf", "--ink": "#2a1a10",
+                 "--muted": "#8a6f55", "--accent": "oklch(0.62 0.16 70)",
+                 "--display-font": "instrument-serif",
+             }},
+        ],
+    }
+
+    def test_the_on_air_show_beats_the_station_default(self):
+        # `effective` is the station's own answer to "what should a client
+        # paint right now", and a show's own themeId outranks the station
+        # picker while it is on air. Painting `active` would leave the call
+        # card in the station's colours next to a player that had moved.
+        from api import live as api_live
+
+        self.assertEqual(api_live.station_palette(self.THEMES)["id"], "vinyl")
+
+    def test_tokens_arrive_under_this_widgets_names(self):
+        from api import live as api_live
+
+        tokens = api_live.station_palette(self.THEMES)["tokens"]
+        self.assertEqual(tokens["--pine"], "#efe4cf")
+        self.assertEqual(tokens["--granite"], "#f7efdf")
+        self.assertEqual(tokens["--alpenglow"], "#2a1a10")
+        self.assertEqual(tokens["--sage"], "#8a6f55")
+        self.assertEqual(tokens["--coral"], "oklch(0.62 0.16 70)")
+
+    def test_nothing_the_widget_does_not_name_comes_through(self):
+        # The station's set includes fonts. This widget ships no font files
+        # and makes no third-party request for one, so a --display-font
+        # arriving from a theme must not become a font-family the browser
+        # then goes looking for.
+        from api import live as api_live
+
+        tokens = api_live.station_palette(self.THEMES)["tokens"]
+        self.assertNotIn("--display-font", tokens)
+        for name in tokens:
+            self.assertIn(name, set(api_live._STATION_TOKENS.values()))
+
+    def test_the_mode_comes_across(self):
+        # It decides the handful of tokens the station has no counterpart for
+        # — the green that means the line is open, the shadow — and what the
+        # browser paints its own scrollbars in.
+        from api import live as api_live
+
+        self.assertEqual(api_live.station_palette(self.THEMES)["mode"], "light")
+
+    def test_a_value_that_is_not_a_colour_is_dropped(self):
+        # These are written straight into inline style on :root. A station is
+        # trusted and can still be misconfigured, and a token that poisons
+        # every embed's stylesheet is not a failure anyone traces to a theme.
+        from api import live as api_live
+
+        out = api_live.station_palette({
+            "effective": "x",
+            "themes": [{"id": "x", "mode": "dark", "tokens": {
+                "--bg": "#101010",
+                "--ink": "red; } body { display: none } .x {",
+                "--accent": "<script>",
+            }}],
+        })
+        self.assertEqual(out["tokens"], {"--pine": "#101010"})
+
+    def test_a_station_that_says_nothing_useful_gets_no_palette(self):
+        # The card still has to paint. Falling back to the neutral base is the
+        # honest answer for a station that will not say what colour it is.
+        from api import live as api_live
+
+        self.assertIsNone(api_live.station_palette({}))
+        self.assertIsNone(api_live.station_palette({"effective": "gone", "themes": []}))
+        self.assertIsNone(api_live.station_palette(
+            {"effective": "x", "themes": [{"id": "x", "tokens": {}}]}))
+
+    def test_the_toggle_goes_away_while_the_station_is_painting(self):
+        # Its tokens are inline custom properties on :root, which outrank
+        # every data-theme rule in the stylesheet. The toggle would still flip
+        # the attribute and nothing on screen would change.
+        from api import live as api_live
+
+        cfg = {"show_theme_toggle": True, "embed_theme_toggle": True,
+               "widget_theme": "station"}
+        self.assertFalse(api_live.corner_controls(cfg)["theme"])
+        self.assertFalse(api_live.corner_controls(cfg, embed=True)["theme"])
+        cfg["widget_theme"] = "auto"
+        self.assertTrue(api_live.corner_controls(cfg)["theme"])
 
 
 class TestSoundPacks(unittest.TestCase):

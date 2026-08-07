@@ -492,26 +492,36 @@
   /* Sits under the ended bar, same band width, same quiet register — the
      point is that it is easy to ignore. A caller who has just been hung up on
      by a robot should not also be blocked by a modal about it. */
+  /* Findable, still ignorable. This was a 26px row of 9.5px grey mono with two
+     unlabelled emoji at the far right — so close to the card's own furniture
+     that an operator who had turned the setting ON reported never seeing it.
+     Being easy to dismiss is the design; being invisible is not the same
+     thing. It is a band now, like the guest door and the mic warning: its own
+     surface, a readable question, and buttons that say what they do. */
   .rate {
-    display: flex; align-items: center; gap: 10px;
-    margin: 8px 0 0; min-height: 26px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin: var(--band-gap) 0 0; padding: 9px 12px; min-height: var(--control-h);
+    border: 1px solid var(--hairline); border-radius: 0; background: var(--pine);
   }
   .rate[hidden] { display: none; }
   .rate .rlabel {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
-    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    font-family: var(--font-body); font-size: 12.5px; font-weight: 400;
+    letter-spacing: 0; text-transform: none; color: var(--sage);
   }
-  .rate .rbtns { display: inline-flex; gap: 6px; margin-left: auto; }
+  .rate .rbtns { display: inline-flex; gap: 8px; margin-left: auto; }
   .rate .rbtns[hidden] { display: none; }
   /* Out-specifies `.card button`, which would otherwise put a coral outline
-     and 18px of padding around an emoji. */
+     and 18px of padding around each one. These are not the primary action —
+     the fill in this state belongs to Call — so they stay outlined. */
   .card .rate button {
-    height: 26px; width: 30px; padding: 0; font-size: 13px; line-height: 1;
-    border: 1px solid var(--hairline); background: transparent;
-    color: var(--sage); letter-spacing: 0;
+    height: 26px; width: auto; padding: 0 11px; line-height: 1;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase;
+    border: 1px solid var(--edge); background: transparent; color: var(--sage);
   }
   .card .rate button:hover:not(:disabled) {
-    border-color: var(--edge); background: var(--pine); filter: none;
+    border-color: var(--coral); color: var(--coral);
+    background: transparent; filter: none;
   }
 
   /* --- captions --- */

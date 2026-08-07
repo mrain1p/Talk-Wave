@@ -50,6 +50,8 @@ from tests.test_widget import (  # noqa: F401
     TestPanelMarkup,
     TestSoundPacks,
     TestTheCallButtonSaysWhatTheOperatorChose,
+    TestTheCallButtonSurvivesTheUpgrade,
+    TestTheStationsOwnColoursReachTheCard,
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
 )

@@ -261,12 +261,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "show_now_playing":   (None, True),
     "embed_now_playing":  (None, True),
 
-    # What the Call button says. Blank keeps "Call the DJ" — the honest label
-    # when the card is showing whoever happens to be on air. `uses_name` swaps
-    # it for the live DJ's own name, which reads better on a station whose
-    # listeners know the roster, and re-resolves as the roster changes.
+    # What the Call button says. One picker rather than the checkbox-plus-box
+    # it replaced (see _migrate): those were two controls where only one could
+    # win, with nothing on screen saying which — ticking "use the DJ's name"
+    # left whatever you had typed sitting in an enabled text field that no
+    # longer did anything.
+    #
+    #   default  "Call the DJ" — honest when the card shows whoever is on air
+    #   name     "Call Francesca", re-resolved as the roster changes
+    #   custom   whatever is in call_button_label
+    "call_button_mode":      (None, "default"),
     "call_button_label":     (None, ""),
-    "call_button_uses_name": (None, False),
 
     # After the line drops, ask the caller whether that went well. Two
     # buttons, stored against the call's own record, so a bad call can be
@@ -552,14 +557,15 @@ SCHEMA: dict[str, dict] = {
              "disagree with a host page's faster ticker."),
     "embed_now_playing": dict(group="player", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
+    "call_button_mode": dict(group="player", kind="select", label="Call button",
+        help="“Call the DJ” is the honest label when the card shows whoever "
+             "happens to be on air. The DJ's name reads better on a station "
+             "whose listeners know the roster, and follows it as the show "
+             "changes."),
     "call_button_label": dict(group="player", kind="text", label="Button text",
-        needs=("call_button_uses_name", False),
+        needs=("call_button_mode", "custom"),
         placeholder="Call the DJ",
-        help="What the button says before a call starts."),
-    "call_button_uses_name": dict(group="player", kind="check",
-        label="…or use the live DJ's name",
-        help="Says “Call Francesca” instead, and follows the roster as the show "
-             "changes. Replaces the text above rather than combining with it."),
+        help="Shown only for the custom option above."),
     "ask_call_feedback": dict(group="player", kind="check",
         label="Ask how the call went",
         help="A thumbs up or down under the card once the line drops, stored "
@@ -785,10 +791,16 @@ STATIC_CHOICES = {
         ("guest", "Guest code — callers need the code you share"),
         ("admin", "Admin only — the phone is closed to callers"),
     ],
+    "call_button_mode": [
+        ("default", "“Call the DJ”"),
+        ("name", "The live DJ's name — “Call Francesca”"),
+        ("custom", "Something else…"),
+    ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),
         ("light", "Light"),
         ("dark", "Dark"),
+        ("station", "The station's own colours"),
         ("inherit", "Inherit from the page it's embedded in"),
     ],
 }
@@ -847,6 +859,50 @@ MODEL_CHOICES = {
     "anthropic": ["claude-sonnet-5", "claude-haiku-4-5-20251001"],
     "ollama": [],
 }
+
+# Which stored key each provider needs before it can answer a call at all.
+# None means "needs no key of ours": Ollama runs on the operator's own network,
+# and the local Whisper is compiled into this container.
+#
+# The panel offers only the providers whose key is present. Listing all five
+# regardless meant a fresh install's Provider dropdown was four ways to
+# configure a call that could not connect, and the failure arrived later, from
+# a test button, as a 401 — rather than at the moment of choosing.
+LLM_PROVIDER_KEY: dict[str, str | None] = {
+    "openai": "openai_api_key",
+    "openrouter": "openrouter_api_key",
+    "google": "google_api_key",
+    "anthropic": "anthropic_api_key",
+    "ollama": None,
+}
+
+STT_PROVIDER_KEY: dict[str, str | None] = {
+    "local": None,
+    "deepgram": "deepgram_api_key",
+    # Uses the same OpenAI key as the LLM and cloud TTS.
+    "openai": "openai_api_key",
+    "google": "google_api_key",
+}
+
+
+def providers_with_keys(mapping: dict[str, str | None], keep: str = "") -> list[str]:
+    """The providers an operator could actually select, in declaration order.
+
+    `keep` is always included even when its key is missing. Whatever is
+    CONFIGURED has to stay in the list: dropping it would silently show a
+    different provider as selected than the one the next call will use, which
+    is a worse failure than offering one that needs a key.
+    """
+    import secrets_store
+
+    out = [
+        name for name, field in mapping.items()
+        if field is None or secrets_store.get(field)
+    ]
+    if keep and keep not in out:
+        out.append(keep)
+    return out
+
 
 # Default endpoint per provider, offered by the settings UI as an autofill.
 PROVIDER_BASE_URLS = {
@@ -969,10 +1025,30 @@ def _check_data_dir() -> None:
         )
 
 
+# Settings that were replaced rather than removed, and how to read an old file
+# as though it had always been written the new way.
+#
+# The rule is that an upgrade may never change what a caller experiences. A
+# renamed field with no migration would silently revert whatever the operator
+# had chosen back to the built-in default, which is the same class of failure
+# as a setting that does nothing — you find out from a caller.
+def _migrate(stored: dict) -> dict:
+    """Translate retired fields in place. Pure: the file is left alone until
+    the next save, so a rollback still reads its own settings."""
+    # 0.9.115: "…or use the live DJ's name" (a checkbox beside a text box, where
+    # ticking it silently made the text box do nothing) became one picker.
+    if "call_button_mode" not in stored:
+        if _coerce(stored.get("call_button_uses_name"), False):
+            stored["call_button_mode"] = "name"
+        elif str(stored.get("call_button_label") or "").strip():
+            stored["call_button_mode"] = "custom"
+    return stored
+
+
 def _stored() -> dict:
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return _migrate(json.load(f))
     except FileNotFoundError:
         return {}
     except (json.JSONDecodeError, OSError) as e:

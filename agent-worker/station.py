@@ -124,6 +124,16 @@ class StationClient:
     async def state(self) -> dict:
         return await self._get("/state")
 
+    async def themes(self) -> dict:
+        """The station's theme registry and which one is on air.
+
+        `effective` is what a listener's player is actually painted in: an
+        on-air show's own themeId outranks the station-wide default, so this
+        follows the programme rather than the settings page. Every entry
+        carries a `tokens` map and a light/dark `mode`.
+        """
+        return await self._get("/themes")
+
     async def session(self) -> dict:
         return await self._get("/session")
 
