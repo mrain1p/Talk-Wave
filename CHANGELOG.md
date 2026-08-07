@@ -3,6 +3,21 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.143
+
+- **The conversation reads top-down**: Station awareness first (what the DJ
+  knows), then House style (how it speaks — Answering above Conversation),
+  then Greeting, Closing the call, Turn-taking.
+- Station awareness says what the numbers count — **Recently played songs,
+  Coming-up songs** — and now states what the DJ always knows without a
+  dial: its own DJ card, the show's write-up and episode angle, the current
+  track, the station's name. The library stays search-on-demand.
+- Checkbox help joins its **own line** ("Ask the caller's name", "Let the
+  caller talk over the DJ") instead of a band underneath.
+- The **duplicate Signing-off box is gone** — 0.9.141 moved it into Closing
+  the call but left the original in House style, and the visible one was
+  the copy with no placeholder.
+
 ## 0.9.142
 
 ### Voicemail behaves like an answering machine

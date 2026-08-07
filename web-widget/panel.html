@@ -502,17 +502,14 @@
           persona, not a replacement for it. Leave blank and the persona alone
           decides.</p>
         <div class="row">
-          <label for="style_conversation">Conversation</label>
-          <input type="text" id="style_conversation" />
-        </div>
-        <div class="row">
           <label for="style_answering">Answering</label>
           <input type="text" id="style_answering" />
         </div>
         <div class="row">
-          <label for="style_signoff">Signing off</label>
-          <input type="text" id="style_signoff" />
+          <label for="style_conversation">Conversation</label>
+          <input type="text" id="style_conversation" />
         </div>
+
         <div class="testrow" style="margin-top:12px">
           <button id="viewPromptBtn">View the assembled prompt</button>
         </div>
@@ -526,13 +523,19 @@
         <p class="hint wide" style="margin-top:0">What the DJ is told before the
           call. Each item costs time-to-first-token on <em>every</em> turn, not
           just the first.</p>
+        <p class="hint wide" style="margin-top:0">Always known without a dial
+          here: the persona's own DJ card, the current show's write-up and
+          episode angle (with guests and handoffs on programme shows), the
+          track playing right now, and the station's name. The music library
+          is <em>not</em> preloaded — the DJ searches it on demand, so it
+          always reflects what you actually have.</p>
         <div class="grid2">
           <div class="row narrow">
-            <label for="context_recent_tracks">Recently played</label>
+            <label for="context_recent_tracks">Recently played songs</label>
             <input type="number" id="context_recent_tracks" min="0" max="10" step="1" />
           </div>
           <div class="row narrow">
-            <label for="context_upcoming">Coming up</label>
+            <label for="context_upcoming">Coming-up songs</label>
             <input type="number" id="context_upcoming" min="0" max="10" step="1" />
           </div>
           <div class="row narrow">

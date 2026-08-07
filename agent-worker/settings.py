@@ -559,6 +559,10 @@ GROUPS = [
     ("limits",   "safety", "Call length",  "The ceiling on one call."),
     ("speech",   "safety", "Speech hygiene", "What never reaches the speaker."),
 
+    # Knowledge first, voice second, then the call's shape in the order a
+    # call has one: open, close, turn-take. The operator's ordering.
+    ("context",  "talk",   "Station awareness",  "What the DJ knows before picking up."),
+    ("style",    "talk",   "House style",        "Light steers on top of the persona."),
     ("call",     "talk",   "Greeting",           "Which DJ picks up, and how the call opens."),
     # Greeting's mirror: how a call ends, in character — the sign-off steer,
     # the idle check-ins, and how early the DJ may hang up were scattered
@@ -566,8 +570,6 @@ GROUPS = [
     # closing settings were. A fair question deserves a section.
     ("closing",  "talk",   "Closing the call",   "How a call ends, in character."),
     ("turns",    "talk",   "Turn-taking",        "When the DJ decides you've finished."),
-    ("style",    "talk",   "House style",        "Light steers on top of the persona."),
-    ("context",  "talk",   "Station awareness",  "What the DJ knows before picking up."),
 
 
     # Was inside Caller permissions, where it read as a fourth station-wide
@@ -1024,10 +1026,10 @@ SCHEMA: dict[str, dict] = {
         help="e.g. 'never name the caller' or 'tie it to the current track'."),
 
     # --- station awareness ---
-    "context_recent_tracks": dict(group="context", kind="number", label="Recently played",
+    "context_recent_tracks": dict(group="context", kind="number", label="Recently played songs",
         help="Each item costs time-to-first-token on EVERY turn, not just at "
              "the start. 0 leaves it out."),
-    "context_upcoming": dict(group="context", kind="number", label="Coming up",
+    "context_upcoming": dict(group="context", kind="number", label="Coming-up songs",
         help="Lets the DJ answer 'what's next' without guessing."),
     "context_booth_lines": dict(group="context", kind="number", label="On-air chatter",
         help="Recent lines from the on-air DJ, so the call doesn't repeat them."),
