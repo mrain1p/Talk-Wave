@@ -428,7 +428,13 @@ class TestTheBeepCanBeTheOperators(unittest.TestCase):
         self.assertIsNone(capture.custom_beep(
             {"sound_vm_beep": "upload:not-there.wav"}, 24000))
 
-    def test_a_matching_upload_plays_and_a_mismatched_one_does_not(self):
+    def test_an_ordinary_wav_is_converted_not_rejected(self):
+        # The first beep uploaded in the wild was 44.1kHz — and rejecting it
+        # for its rate produced the worst kind of failure: the tone played,
+        # nothing said why, and the setting looked ignored. Stereo, 8-bit
+        # and off-rate files all convert; only what wave can't read at all
+        # falls back to the tone.
+        import struct as _struct
         import tempfile
         import wave as _wave
 
@@ -440,13 +446,61 @@ class TestTheBeepCanBeTheOperators(unittest.TestCase):
         api_sounds.SOUNDS_DIR = tmp
         try:
             with _wave.open(str(tmp / "beep.wav"), "wb") as w:
+                w.setnchannels(2)
+                w.setsampwidth(2)
+                w.setframerate(44100)
+                w.writeframes(_struct.pack("<%dh" % (44100 * 2),
+                                           *([3000, -3000] * 44100)))
+            cfg = {"sound_vm_beep": "upload:beep.wav"}
+            out = capture.custom_beep(cfg, 24000)
+            self.assertTrue(out)
+            # One second of stereo 44.1k comes out as one second of mono
+            # 16-bit at the line's rate, within resampling slack.
+            self.assertAlmostEqual(len(out), 24000 * 2, delta=200)
+
+            (tmp / "fake.wav").write_bytes(b"ID3\x04not a wav at all")
+            self.assertIsNone(capture.custom_beep(
+                {"sound_vm_beep": "upload:fake.wav"}, 24000))
+        finally:
+            api_sounds.SOUNDS_DIR = old
+
+    def test_a_long_file_is_capped(self):
+        # A beep that runs for minutes is a jingle holding the line hostage.
+        import tempfile
+        import wave as _wave
+
+        from api import sounds as api_sounds
+        from voicemail import capture
+
+        tmp = Path(tempfile.mkdtemp())
+        old = api_sounds.SOUNDS_DIR
+        api_sounds.SOUNDS_DIR = tmp
+        try:
+            with _wave.open(str(tmp / "long.wav"), "wb") as w:
                 w.setnchannels(1)
                 w.setsampwidth(2)
                 w.setframerate(24000)
-                w.writeframes(b"\x00\x01" * 480)
-            cfg = {"sound_vm_beep": "upload:beep.wav"}
-            self.assertTrue(capture.custom_beep(cfg, 24000))
-            self.assertIsNone(capture.custom_beep(cfg, 48000),
-                              "a wrong-rate clip must fall back to the tone")
+                w.writeframes(b"\x00\x01" * (24000 * 20))
+            out = capture.custom_beep(
+                {"sound_vm_beep": "upload:long.wav"}, 24000)
+            self.assertLessEqual(len(out), 24000 * 2 * 8 + 200)
         finally:
             api_sounds.SOUNDS_DIR = old
+
+    def test_no_verdict_buttons_after_a_voicemail(self):
+        # "How was it?" over "Message left" read as the machine fishing for
+        # a compliment — there was no conversation to rate.
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("if (!wasVm) offerFeedback", js)
+
+    def test_the_beep_dropdown_says_what_the_default_is(self):
+        # "Sound set default" answered the wrong question: the operator
+        # asked WHICH sound that is. The beep's default is no set's — it is
+        # synthesized by the server — and the label has to say so.
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("Classic tone — synthesized (default)", js)
+        self.assertIn("'vm_beep'", js.split("SOUND_SLOTS = ")[1][:120])

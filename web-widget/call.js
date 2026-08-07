@@ -1623,7 +1623,10 @@
     const ticker = $('ticker');
     if (ticker) { ticker.classList.remove('show'); ticker.hidden = true; }
     collapseTranscript();
-    offerFeedback(endedRoom);
+    // No verdict buttons after a voicemail — there was no conversation to
+    // rate, and "How was it?" over "Message left" read as the machine
+    // fishing for a compliment. Operator-reported.
+    if (!wasVm) offerFeedback(endedRoom);
     callBtn.textContent = callLabel();
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;

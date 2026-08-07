@@ -3,6 +3,19 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.135
+
+- **The custom voicemail beep actually plays.** The worker now converts any
+  ordinary WAV — stereo, 8/16/32-bit, any sample rate — to what the line
+  plays, instead of silently rejecting a 44.1kHz file and falling back to
+  the tone with nothing saying why. Files are capped at 8 seconds; only
+  what isn't really a WAV falls back.
+- Every sound dropdown now **names its default** — "Default — the Exchange
+  set's ring", updating live when the set changes — and the beep's says
+  "Classic tone — synthesized", because no set carries it.
+- **No thumbs up/down after a voicemail** — there was no conversation to
+  rate.
+
 ## 0.9.134
 
 - **The embed fits the page it sits on.** The compact card now runs a hard
