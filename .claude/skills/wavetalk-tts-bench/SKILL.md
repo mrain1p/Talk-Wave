@@ -77,6 +77,13 @@ voice the backend does not have. That was a whole silent call in 0.9.81.
   `local-vibevoice.json` or `openai-cloud.json` unless `tts_adapter` names one.
   Pointing a cloud URL at the local adapter fails in a way that reads as the
   server being wrong.
+- **Vendor adapters ship for ElevenLabs, Fish Audio and SUB/WAVE's Remote
+  `/speak` contract.** ElevenLabs takes the voice in the URL (`{voice}` in
+  `endpoint_path`) and its key from `ELEVENLABS_API_KEY` via `auth.key_env`;
+  Fish reads `FISH_API_KEY` and its voice is a reference id, so leaving Voice
+  on "Station's voice" passes the persona's own id through. Both are written
+  from the vendors' contracts, not yet proven against the live services —
+  which is exactly what this bench is for. Run it before a caller does.
 - **Cloud STT changes the caption path**, not just accuracy — local Whisper is
   batch, cloud is word-by-word, so captions and the idle clock behave
   differently. The idle clock counts *words heard*, so a backend that emits

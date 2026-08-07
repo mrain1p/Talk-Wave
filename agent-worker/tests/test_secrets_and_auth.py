@@ -74,13 +74,23 @@ class TestStoredKeysStayHome(_TempStores):
         self.assertTrue(may)
 
     # Where each SDK ends up keeping the key, so the assertion is about what
-    # will actually go out on the wire rather than what we passed in.
+    # will actually go out on the wire rather than what we passed in. Every
+    # provider with a stored key is here — 0.9.122 added four and this list
+    # not growing with them would have left their withhold-path unchecked.
     KEY_ENV = {
         "openai": "OPENAI_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
         "google": "GOOGLE_API_KEY",
         "anthropic": "ANTHROPIC_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "requesty": "REQUESTY_API_KEY",
+        "gateway": "AI_GATEWAY_API_KEY",
     }
+
+    # The two aggregators refuse to build without a model on purpose (their
+    # catalogues are namespaced and move, so there is no honest default) —
+    # the key tests need one that looks like theirs.
+    MODEL_FOR = {"requesty": "openai/gpt-4.1-mini", "gateway": "openai/gpt-4.1-mini"}
 
     def _key_on(self, model):
         client = model._client
@@ -105,7 +115,8 @@ class TestStoredKeysStayHome(_TempStores):
             with self.subTest(provider=provider):
                 os.environ[env_var] = f"{provider}-must-not-travel"
                 model = build_llm(
-                    {"llm_provider": provider, "llm_model": "",
+                    {"llm_provider": provider,
+                     "llm_model": self.MODEL_FOR.get(provider, ""),
                      "llm_base_url": "http://attacker.example/v1"},
                     use_stored_key=False,
                 )
@@ -117,7 +128,8 @@ class TestStoredKeysStayHome(_TempStores):
         for provider, env_var in self.KEY_ENV.items():
             with self.subTest(provider=provider):
                 os.environ[env_var] = f"{provider}-the-real-one"
-                model = build_llm({"llm_provider": provider, "llm_model": ""})
+                model = build_llm({"llm_provider": provider,
+                                   "llm_model": self.MODEL_FOR.get(provider, "")})
                 self.assertEqual(self._key_on(model), f"{provider}-the-real-one")
 
     def test_a_lookalike_openai_hostname_gets_no_key(self):

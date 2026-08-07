@@ -64,6 +64,15 @@ field with no matching DOM id — no error, no warning, the row just is not ther
 Run the suite (see the `wavetalk-test` skill). `TestPanelMarkup` will fail if you missed
 step 3; nothing will fail if you missed step 4, so check it yourself.
 
+## API keys are not settings
+
+A key is three entries in `agent-worker/secrets_store.py` — `SECRET_FIELDS` (name → env var),
+`SECRET_GROUPS` (which section renders its box: `brains`, `voice`, `ears`, `station`), and
+`SECRET_HELP` (the one line beside the box). There is no markup edit: the panel builds every
+key row from the payload into the matching `keyblock` div. A group with no matching div is a
+key nobody can enter — `TestEverySecretRendersSomewhere` guards that. Never add a key to
+`FIELDS`/`SCHEMA`; secrets must not round-trip, which is the whole reason the store is separate.
+
 ## Removing one
 
 Delete from `FIELDS`, `SCHEMA` and the markup together, and grep for the name across

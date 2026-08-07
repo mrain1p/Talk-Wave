@@ -479,3 +479,99 @@ class TestTheModelWarmedIsTheModelUsed(_TempStores):
         prewarm = source.split("def prewarm(")[1].split("\nasync def ")[0]
         self.assertIn("effective_stt(cfg)", prewarm)
         self.assertNotIn('cfg.get("stt_model")', prewarm)
+
+
+class TestTheProviderTablesAgreeWithEachOther(unittest.TestCase):
+    """Four tables describe the LLM providers — the key each needs, the model
+    fallbacks, the dropdown labels, the OpenAI-protocol hosts — and they live
+    in settings.py precisely so they cannot drift from the UI. This holds them
+    to each other, so adding a provider to one table and not the rest fails
+    here instead of as a dropdown entry that silently cannot work."""
+
+    def test_every_provider_has_a_label_and_model_entry(self):
+        import settings as settings_store
+
+        for provider in settings_store.LLM_PROVIDER_KEY:
+            with self.subTest(provider=provider):
+                self.assertIn(provider, settings_store.LLM_PROVIDER_LABELS)
+                self.assertIn(provider, settings_store.MODEL_CHOICES)
+
+    def test_every_named_key_is_a_field_the_panel_can_store(self):
+        # A provider keyed on a field the secrets store never writes would
+        # list itself only after a key that cannot be entered.
+        import secrets_store
+        import settings as settings_store
+
+        for provider, field in settings_store.LLM_PROVIDER_KEY.items():
+            if field is None:
+                continue
+            with self.subTest(provider=provider):
+                self.assertIn(field, secrets_store.SECRET_FIELDS)
+
+    def test_every_protocol_host_is_a_full_provider(self):
+        import settings as settings_store
+
+        for provider, (host, _default) in settings_store.OPENAI_PROTOCOL_HOSTS.items():
+            with self.subTest(provider=provider):
+                self.assertIn(provider, settings_store.LLM_PROVIDER_KEY)
+                self.assertTrue(host.startswith("https://"))
+                self.assertIn(provider, settings_store.provider_base_urls())
+
+    def test_an_aggregator_without_a_model_refuses_with_a_sentence(self):
+        # Their catalogues are namespaced and move; a guessed default id would
+        # 404 on every utterance while looking configured. The refusal has to
+        # say where to fix it.
+        from call.providers import build_llm
+
+        for provider in ("requesty", "gateway"):
+            with self.subTest(provider=provider):
+                with self.assertRaises(ValueError) as caught:
+                    build_llm({"llm_provider": provider, "llm_model": ""})
+                self.assertIn("Brains", str(caught.exception))
+
+    def test_openai_compatible_without_an_endpoint_refuses_with_a_sentence(self):
+        from call.providers import build_llm
+
+        with self.assertRaises(ValueError) as caught:
+            build_llm({"llm_provider": "openai-compatible", "llm_model": "x",
+                       "llm_base_url": ""})
+        self.assertIn("Endpoint", str(caught.exception))
+
+    def test_a_protocol_provider_dials_its_own_host(self):
+        # The whole branch is one base_url away from posting a DeepSeek key
+        # to api.openai.com.
+        from call.providers import build_llm
+
+        model = build_llm({"llm_provider": "deepseek", "llm_model": ""})
+        self.assertIn("api.deepseek.com", str(model._client.base_url))
+
+
+class TestEverySecretRendersSomewhere(unittest.TestCase):
+    """Keys render per-section now (secrets_store.SECRET_GROUPS), into the
+    panel's .keyblock divs. A group name with no matching div is a key the
+    operator can never enter — the exact unreachable-setting failure
+    TestPanelMarkup guards, one payload over."""
+
+    def test_every_group_has_a_key_block_in_the_markup(self):
+        import re
+
+        import secrets_store
+        from tests.support import REPO
+
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        blocks = set(re.findall(r'class="keyblock" id="keys_([a-z]+)"', html))
+        for field, group in secrets_store.SECRET_GROUPS.items():
+            with self.subTest(key=field):
+                self.assertIn(group, blocks,
+                              f"{field} is grouped under {group!r}, and no "
+                              f"keys_{group} block exists to render it")
+
+    def test_every_secret_is_grouped_and_explained(self):
+        import secrets_store
+
+        for field in secrets_store.SECRET_FIELDS:
+            with self.subTest(key=field):
+                self.assertIn(field, secrets_store.SECRET_GROUPS)
+                self.assertTrue(secrets_store.SECRET_HELP.get(field),
+                                "a key with no help line is a vendor name in "
+                                "a list, asking the operator to already know")

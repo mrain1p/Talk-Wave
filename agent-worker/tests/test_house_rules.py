@@ -418,6 +418,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "one subject: the browser half, guarded from here. It is the "
             "substitute for the JS unit tests this repo has no toolchain to "
             "run, so it carries text checks the widget cannot make itself.",
+        "agent-worker/tests/test_voice.py":
+            "one subject: whether a speech backend can say the thing — "
+            "discovery, sample rates, pace, and now the shipped adapter "
+            "contracts. Crossed the ceiling when 0.9.122 added vendor "
+            "adapters and their guards; same subject-placement rule as the "
+            "three above.",
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).

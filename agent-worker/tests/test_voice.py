@@ -574,3 +574,117 @@ class TestABackendTooSlowToBeOnAPhoneCallSaysSo(unittest.TestCase):
         from tts_adapter import AdapterTTS
 
         self.assertTrue(callable(getattr(AdapterTTS, "pace_report", None)))
+
+
+class TestShippedAdaptersAreWellFormed(unittest.TestCase):
+    """Every adapter in tts-adapters/ is a promise that a backend can be
+    described without code. A malformed one fails at the first call, from
+    inside the TTS stream, as a KeyError nobody traces back to a JSON file —
+    so the contract is checked here, for every shipped file at once, and a
+    new adapter is covered the moment it lands."""
+
+    def setUp(self):
+        import tts_adapter
+
+        self.tts_adapter = tts_adapter
+        self.paths = sorted(
+            p for p in (AGENT_WORKER / "tts-adapters").glob("*.json")
+            if not p.name.startswith("_"))
+
+    def test_the_scan_found_the_adapters(self):
+        self.assertGreaterEqual(len(self.paths), 4,
+                                "the adapter directory has gone missing")
+
+    def test_every_adapter_loads_and_carries_the_contract(self):
+        for path in self.paths:
+            with self.subTest(adapter=path.name):
+                cfg = self.tts_adapter.load_adapter(path)
+                self.assertTrue(cfg.get("endpoint_path"),
+                                "an adapter without endpoint_path cannot speak")
+                self.assertIn(cfg["response"]["type"],
+                              ("raw_audio", "json_field", "json_url"))
+                self.assertIn(str(cfg["audio"].get("encoding", "")).lower(),
+                              ("pcm", "wav", "mp3"))
+                self.assertGreater(int(cfg["audio"].get("sample_rate", 0)), 7999)
+                self.assertIn(cfg.get("auth", {}).get("type", "none"),
+                              ("none", "bearer", "header"))
+
+    def test_a_named_key_env_is_a_variable_secrets_can_fill(self):
+        # `auth.key_env` is how a vendor adapter names its own key. Naming one
+        # the secrets store never writes means the operator saves the key in
+        # the panel and the adapter reads an env var that stays empty.
+        import secrets_store
+
+        writable = set(secrets_store.SECRET_FIELDS.values())
+        for path in self.paths:
+            cfg = self.tts_adapter.load_adapter(path)
+            named = str((cfg.get("auth") or {}).get("key_env") or "")
+            if named:
+                with self.subTest(adapter=path.name, env=named):
+                    self.assertIn(named, writable,
+                                  f"{named} is not a key the panel can store")
+
+
+class TestTheVoiceCanLiveInTheUrl(unittest.TestCase):
+    """ElevenLabs takes the voice in the URL — /v1/text-to-speech/{voice} —
+    and there is no body field that will do instead. The {voice} substitution
+    is what lets an adapter describe that; getting the escaping wrong would
+    let a voice string rewrite the path."""
+
+    def _tts(self, adapter_name, voice):
+        from tts_adapter import AdapterTTS
+
+        return AdapterTTS(
+            voice=voice,
+            base_url="http://tts.test",
+            adapter_path=str(AGENT_WORKER / "tts-adapters" / adapter_name),
+            allow_stored_key=False,
+        )
+
+    def test_the_voice_is_substituted_into_the_path(self):
+        tts = self._tts("elevenlabs-cloud.json", "abc123XYZ")
+        try:
+            self.assertIn("/v1/text-to-speech/abc123XYZ/", tts._endpoint())
+            self.assertNotIn("{voice}", tts._endpoint())
+        finally:
+            asyncio.run(tts.aclose())
+
+    def test_a_hostile_voice_string_cannot_rewrite_the_path(self):
+        tts = self._tts("elevenlabs-cloud.json", "../admin?x=1&y=2")
+        try:
+            path = tts._endpoint()
+            self.assertNotIn("../", path)
+            self.assertNotIn("&y=", path.split("?", 1)[0])
+            self.assertIn("..%2Fadmin", path)
+        finally:
+            asyncio.run(tts.aclose())
+
+    def test_an_adapter_without_the_placeholder_is_untouched(self):
+        tts = self._tts("openai-cloud.json", "alloy")
+        try:
+            self.assertEqual("/v1/audio/speech", tts._endpoint())
+        finally:
+            asyncio.run(tts.aclose())
+
+    def test_the_named_key_env_reaches_the_header(self):
+        # The whole point of key_env: the ElevenLabs key goes out as
+        # xi-api-key while TTS_API_KEY stays free for a second backend.
+        import os
+
+        from tts_adapter import AdapterTTS
+
+        os.environ["ELEVENLABS_API_KEY"] = "el-test-key"
+        os.environ["TTS_API_KEY"] = "generic-key-must-not-win"
+        try:
+            tts = AdapterTTS(
+                voice="v",
+                base_url="https://api.elevenlabs.io",
+                adapter_path=str(AGENT_WORKER / "tts-adapters" / "elevenlabs-cloud.json"),
+            )
+            try:
+                self.assertEqual({"xi-api-key": "el-test-key"}, tts._headers())
+            finally:
+                asyncio.run(tts.aclose())
+        finally:
+            del os.environ["ELEVENLABS_API_KEY"]
+            del os.environ["TTS_API_KEY"]
