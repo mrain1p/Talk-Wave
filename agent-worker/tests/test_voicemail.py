@@ -542,3 +542,43 @@ class TestTheDjOnlySpeaksOnce(unittest.TestCase):
         before_attach = handler[:handler.index("track.attach()")]
         self.assertIn("djEl.srcObject = null", before_attach)
         self.assertIn("dropEffect()", before_attach)
+
+
+class TestTheMachineOnlyListensAfterTheBeep(unittest.TestCase):
+    """Two operator reports from one attempt: the mic was open before the
+    machine said it was listening, and the machine hung up almost the moment
+    it beeped — the quiet clock had been running since before the greeting,
+    so the nobody-spoke window was spent before the caller could start."""
+
+    def test_the_quiet_clock_restarts_at_the_beep(self):
+        import inspect
+
+        from voicemail import capture
+
+        source = inspect.getsource(capture.answer)
+        beep_call = source.index("custom_beep(cfg, rate) or beep_pcm(rate)")
+        reset = source.index("last_event.update(at=time.monotonic()", beep_call)
+        loop = source.index("while True:", beep_call)
+        self.assertLess(reset, loop,
+                        "the quiet clock must restart after the beep and "
+                        "before the bounded loop")
+
+    def test_the_worker_announces_the_beep(self):
+        import inspect
+
+        from voicemail import capture
+
+        self.assertIn('topic="vm-beep"', inspect.getsource(capture.answer))
+
+    def test_the_widget_holds_the_mic_until_it_hears_it(self):
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("'vm-beep'", js)
+        # A voicemail closes the mic at connect whatever the PTT setting…
+        connect = js.split("setMicrophoneEnabled(true);", 1)[1][:600]
+        self.assertIn("if (vmCall) {", connect)
+        # …the bar refuses to open before the beep…
+        self.assertIn("vmCall && !vmBeepHeard", js)
+        # …and a worker too old to send the topic gets the fallback timer.
+        self.assertIn("15000", js)

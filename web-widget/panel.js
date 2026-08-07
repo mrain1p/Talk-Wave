@@ -396,6 +396,13 @@
     }
 
     const l = live || {};
+    const face = $('tileOnAirImg');
+    if (face) {
+      face.hidden = !l.avatar;
+      if (l.avatar && face.getAttribute('src') !== l.avatar) {
+        face.src = l.avatar;
+      }
+    }
     tile('tileOnAir', l.name || '—',
       l.onAir === false
         ? 'the station says nothing is on air'
@@ -427,6 +434,38 @@
     tile('tileChain', chain,
       needKey ? 'no key for ' + llm : (resolved.llm_model || ''),
       needKey ? 'bad' : 'ok');
+  }
+
+  async function paintNightTile() {
+    const el = $('tileNight');
+    if (!el) return;
+    try {
+      const d = await afetch('/calls').then((r) => r.json());
+      const calls = d.calls || [];
+      if (!calls.length) {
+        tile('tileNight', 'none yet', 'call records appear here');
+        return;
+      }
+      const vm = calls.filter((c) => c.kind === 'voicemail').length;
+      const rough = calls.filter((c) =>
+        (c.problems || []).length || !(c.callerTurns || 0)).length;
+      const up = calls.filter((c) => c.rating === 'up').length;
+      const down = calls.filter((c) => c.rating === 'down').length;
+      tile('tileNight', calls.length + ' call' + (calls.length === 1 ? '' : 's'),
+        [vm && vm + ' voicemail' + (vm === 1 ? '' : 's'),
+         rough && rough + ' with problems',
+         up && '\ud83d\udc4d' + up, down && '\ud83d\udc4e' + down]
+          .filter(Boolean).join(' \u00b7 ') || 'all clean',
+        rough ? 'warn' : 'ok');
+      el.onclick = () => {
+        const sec = document.querySelector('details.diag[data-diag="calls"]');
+        if (sec) {
+          sec.open = true;
+          sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          $('viewCallsBtn').click();
+        }
+      };
+    } catch (e) { tile('tileNight', '\u2014', 'sign in to read the records'); }
   }
 
   function tile(id, value, note, tone) {
@@ -493,6 +532,13 @@
   // The dashboard's sign-out is the Access section's, surfaced — one
   // implementation, one meaning (this browser forgets both credentials).
   $('dashLogoutBtn').onclick = () => $('logoutBtn').click();
+
+  paintNightTileOnce();
+  function paintNightTileOnce() {
+    // Deferred: afetch needs the stored key, and the tile is furniture, not
+    // a gate — a failed read paints "sign in" and the dash carries on.
+    setTimeout(paintNightTile, 800);
+  }
 
   $('dashCheckBtn').onclick = () => {
     const sec = document.querySelector('details.sec[data-diag="pipeline"]');
@@ -1394,6 +1440,43 @@
       panelPaintGlyph();
     }).catch(() => panelPaintGlyph());
     panelPaintGlyph();
+  })();
+
+  // ----------------------------------------------------- settings search
+  // Type, and only the rows whose label or help mention it remain; the
+  // sections holding them open, everything else steps aside. Empty restores
+  // the panel exactly as it stood, including which sections were open.
+  (function bindSettingsSearch() {
+    const box = $('settingsSearch');
+    if (!box) return;
+    let timer = null;
+    const apply = () => {
+      const needle = (box.value || '').trim().toLowerCase();
+      document.querySelectorAll('details.sec').forEach((sec) => {
+        const rows = sec.querySelectorAll('.row, label.check, .prow, .permrow');
+        if (!needle) {
+          rows.forEach((r) => { r.style.removeProperty('display'); });
+          sec.style.removeProperty('display');
+          if (sec.dataset.searchOpened) {
+            sec.open = false;
+            delete sec.dataset.searchOpened;
+          }
+          return;
+        }
+        let any = false;
+        rows.forEach((r) => {
+          const hit = r.textContent.toLowerCase().includes(needle);
+          r.style.display = hit ? '' : 'none';
+          any = any || hit;
+        });
+        sec.style.display = any ? '' : 'none';
+        if (any && !sec.open) {
+          sec.open = true;
+          sec.dataset.searchOpened = '1';
+        }
+      });
+    };
+    box.oninput = () => { clearTimeout(timer); timer = setTimeout(apply, 120); };
   })();
 
   let eventsBound = false;

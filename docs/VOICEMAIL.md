@@ -163,6 +163,12 @@ Two later decisions, both from operating it:
   correctly, as the 30-second limit not being honored. The leg deletes the room the way a live
   call ends, and the card's timer counts against `voicemail_max_seconds` rather than the live
   call's limit.
+- **The mic only opens after the beep.** The worker announces the beep over the data channel
+  (`vm-beep` topic); the widget holds the caller's mic closed until it arrives, and push-to-talk
+  applies to voicemail like any call — the bar reads "Wait for the beep…" until then. The quiet
+  clock also restarts at the beep: it used to run from before the greeting, so the
+  nobody-spoke window was spent before the caller could start, and the machine hung up almost
+  the moment it beeped.
 - **`sound_vm_beep`** replaces the synthesized beep with an uploaded WAV (Call sounds section).
   Server-played, so uploads only; wrong rate or shape falls back to the tone, never silence.
 
