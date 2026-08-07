@@ -293,7 +293,15 @@
   // looking like a failed load. That has happened, from one renamed id.
   function setTag(id, text) {
     const el = $(id);
-    if (el) el.textContent = text == null ? '' : String(text);
+    if (!el) return;
+    el.textContent = text == null ? '' : String(text);
+    // The first word is the state, and colour carries it: green for a thing
+    // that is ON, dimmed for one that is off — "on · 10%" in the same grey
+    // as "off" made the header row a list of words instead of a glance.
+    const head = String(text || '').split(/[ ·]/)[0].toLowerCase();
+    el.dataset.state = ['on', 'open', 'always', 'live', 'ok'].includes(head)
+      ? 'on'
+      : ['off', 'never', 'closed', 'none'].includes(head) ? 'off' : '';
   }
 
   // How many keys a section holds, and how many of them are set. Each section
@@ -1292,6 +1300,78 @@
     });
   }
 
+  // ------------------------------------------------------- theme cycle
+  // The same four stops the call card offers — light, dark, the station's
+  // show colours, match the page — with the same glyphs and the same stored
+  // choice (localStorage.callinTheme is shared across this origin), because
+  // the operator met a two-state toggle here and a four-state one on the
+  // card and reasonably called it inconsistent. The station stop only
+  // exists when /live carries a palette.
+  let panelStationTheme = null;
+
+  function panelThemeOptions() {
+    const opts = ['light', 'dark'];
+    if (panelStationTheme && panelStationTheme.tokens) opts.push('station');
+    opts.push('');
+    return opts;
+  }
+
+  function panelApplyTheme(choice) {
+    const root = document.documentElement;
+    [...root.style].filter((prop) => prop.startsWith('--'))
+      .forEach((prop) => root.style.removeProperty(prop));
+    if (choice === 'station' && panelStationTheme) {
+      root.setAttribute('data-theme',
+        panelStationTheme.mode === 'light' ? 'light' : 'dark');
+      Object.entries(panelStationTheme.tokens || {}).forEach(([k, v]) => {
+        root.style.setProperty(k, v);
+      });
+    } else if (choice === 'light' || choice === 'dark') {
+      root.setAttribute('data-theme', choice);
+    } else {
+      root.removeAttribute('data-theme');
+    }
+    if (choice) localStorage.setItem('callinTheme', choice);
+    else localStorage.removeItem('callinTheme');
+    panelPaintGlyph();
+  }
+
+  function panelPaintGlyph() {
+    const btn = $('themeBtn');
+    if (!btn) return;
+    const opts = panelThemeOptions();
+    const stored = localStorage.getItem('callinTheme') || '';
+    const idx = opts.indexOf(opts.includes(stored) ? stored : '');
+    const next = opts[(idx + 1) % opts.length];
+    btn.textContent = { light: '\u2600', dark: '\u263e',
+                        station: '\u2733', '': '\u25a6' }[next];
+    btn.title = { light: 'Switch to light', dark: 'Switch to dark',
+                  station: "The station's show colours",
+                  '': 'Match the device' }[next];
+  }
+
+  (function bindPanelThemeCycle() {
+    const btn = $('themeBtn');
+    if (!btn) return;
+    btn.onclick = () => {
+      const opts = panelThemeOptions();
+      const stored = localStorage.getItem('callinTheme') || '';
+      const idx = opts.indexOf(opts.includes(stored) ? stored : '');
+      panelApplyTheme(opts[(idx + 1) % opts.length]);
+    };
+    // The palette arrives with /live — one public read, cached server-side.
+    fetch('/live').then((r) => r.json()).then((d) => {
+      panelStationTheme = (d && d.stationTheme) || null;
+      // A stored 'station' choice could not paint at boot (shared.js only
+      // knows light/dark); honour it now the palette exists.
+      if (localStorage.getItem('callinTheme') === 'station') {
+        panelApplyTheme('station');
+      }
+      panelPaintGlyph();
+    }).catch(() => panelPaintGlyph());
+    panelPaintGlyph();
+  })();
+
   let eventsBound = false;
   function bindFieldEvents() {
     if (eventsBound) return;
@@ -1492,13 +1572,21 @@
       // which the grid already knows to span full width.
       const inline = anchor.classList.contains('row')
         && !anchor.classList.contains('permrow');
-      let hint = inline ? anchor.querySelector(':scope > .hint')
-                        : anchor.nextElementSibling;
+      // A matrix row's help flows INSIDE the label cell rather than taking a
+      // band of its own underneath — the operator asked for one line across,
+      // wrapping when it runs long, and they were right: forty rows times an
+      // extra band was most of the page's height.
+      const plabel = prow && prow.querySelector('.plabel');
+      let hint = plabel ? plabel.querySelector(':scope > .hint')
+        : inline ? anchor.querySelector(':scope > .hint')
+        : anchor.nextElementSibling;
       if (!hint || !hint.classList.contains('hint') || !hint.dataset.fromSchema) {
-        hint = document.createElement('p');
-        hint.className = inline ? 'hint inrow' : 'hint wide';
+        hint = document.createElement(plabel ? 'span' : 'p');
+        hint.className = plabel ? 'hint inlabel'
+          : inline ? 'hint inrow' : 'hint wide';
         hint.dataset.fromSchema = '1';
-        if (inline) anchor.appendChild(hint);
+        if (plabel) plabel.appendChild(hint);
+        else if (inline) anchor.appendChild(hint);
         else anchor.insertAdjacentElement('afterend', hint);
       }
       hint.textContent = meta.help;
@@ -2002,7 +2090,12 @@
       add('', slot === 'vm_beep'
         ? 'Classic tone — synthesized (default)'
         : 'Default — the ' + packName + ' set’s ' + slot.replace('_', ' '));
-      uploaded.forEach((n) => add(UPLOAD_PREFIX + n, 'Uploaded — ' + n));
+      // The beep is server-played and the server reads WAV only — offering
+      // an m4a here is offering a file that will silently become the tone.
+      // (m4p is Apple-DRM'd audio: nothing outside iTunes can play it.)
+      const eligible = slot === 'vm_beep'
+        ? uploaded.filter((n) => /\.wav$/i.test(n)) : uploaded;
+      eligible.forEach((n) => add(UPLOAD_PREFIX + n, 'Uploaded — ' + n));
       // A slot pointing at a file that was deleted must say so, not silently
       // show the default while the caller hears the fallback.
       if (value.startsWith(UPLOAD_PREFIX)
@@ -2042,6 +2135,16 @@
       pendingAssignSlot = null;
       if (!file) return;
       const out = $('soundResult');
+      // The beep is server-played and the server reads WAV only. Refusing
+      // here, before the upload, beats accepting an m4a that can only ever
+      // become the fallback tone — which is exactly what happened.
+      if (slot === 'vm_beep' && !/\.wav$/i.test(file.name)) {
+        showResult(out, false, file.name + ' is not a WAV. The beep is '
+          + 'played by the server, which reads WAV only — m4a and mp3 work '
+          + 'for the browser sounds above, but not here. Re-export as WAV.');
+        $('soundFile').value = '';
+        return;
+      }
       out.className = 'result on'; out.textContent = 'Uploading ' + file.name + '…';
       const form = new FormData();
       form.append('file', file, file.name);
@@ -2205,6 +2308,14 @@
     const vmSec = document.querySelector('details.sec[data-group="voicemail"]');
     if (vmSec) vmSec.addEventListener('toggle', () => {
       if (vmSec.open) loadVmStatus();
+    });
+    // The beep verdict is painted by loadVmStatus but DISPLAYED in Call
+    // sounds (the operator found it baffling inside Voicemail, beside
+    // staging errors it had nothing to do with) — so opening the sounds
+    // section fetches it too.
+    const sndSec = document.querySelector('details.sec[data-group="sounds"]');
+    if (sndSec) sndSec.addEventListener('toggle', () => {
+      if (sndSec.open) loadVmStatus();
     });
 
     $('vmStageBtn').onclick = async () => {
@@ -2697,6 +2808,36 @@
 
     btn.disabled = false; btn.classList.remove('running');
   };
+
+  // The beep is not in the browser sound engine — it is the server's own
+  // sound — so its preview mirrors what the server will do: the uploaded
+  // WAV when one is set and playable in a browser, else the shaped tone.
+  function previewBeep() {
+    const out = $('soundResult');
+    out.className = 'result on';
+    const raw = ($('sound_vm_beep').value || '').trim();
+    if (raw.startsWith(UPLOAD_PREFIX)) {
+      const name = raw.slice(UPLOAD_PREFIX.length);
+      new Audio('/sounds/' + encodeURIComponent(name)).play().catch(() => {});
+      out.textContent = 'Playing your beep: ' + name + '. The worker plays '
+        + 'this at pickup — the Voicemail section reports whether it '
+        + 'converts.';
+      return;
+    }
+    const c = ctx();
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.frequency.value = 1000;
+    gain.gain.setValueAtTime(0.0001, c.currentTime);
+    gain.gain.linearRampToValueAtTime(0.25, c.currentTime + 0.015);
+    gain.gain.setValueAtTime(0.25, c.currentTime + 0.38);
+    gain.gain.linearRampToValueAtTime(0.0001, c.currentTime + 0.4);
+    osc.connect(gain).connect(c.destination);
+    osc.start();
+    osc.stop(c.currentTime + 0.42);
+    out.textContent = 'Playing the classic tone — the synthesized default.';
+  }
+  $('testBeepBtn').onclick = previewBeep;
 
   $('testRingBtn').onclick = () => previewSound('ring');
   $('testPickupBtn').onclick = () => previewSound('pickup');

@@ -1327,3 +1327,49 @@ class TestTheEffectHasADial(unittest.TestCase):
         self.assertIn(shared_maths, call_js)
         self.assertIn(shared_maths, panel_js)
         self.assertIn("voiceEffectLevel", call_js)
+
+
+class TestThePanelReadsAtAGlance(unittest.TestCase):
+    """Three operator reports in one sitting: matrix help doubled the page's
+    height as a band per row; the section tags said "on" in the same grey as
+    "off"; and the panel's theme control was a two-state toggle beside a
+    card offering four stops."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_matrix_help_lives_in_the_label_cell(self):
+        self.assertIn("'hint inlabel'", self.js)
+        self.assertIn(".plabel .hint.inlabel", self.css)
+
+    def test_the_tags_carry_their_state(self):
+        self.assertIn("el.dataset.state", self.js)
+        self.assertIn('.tag[data-state="on"]', self.css)
+        self.assertIn('.tag[data-state="off"]', self.css)
+
+    def test_the_panel_cycle_matches_the_cards(self):
+        # Same four stops, same glyphs, same stored key — two surfaces, one
+        # mental model.
+        for glyph in ("\\u2600", "\\u263e", "\\u2733", "\\u25a6"):
+            self.assertIn(glyph, self.js)
+        self.assertIn("localStorage.getItem('callinTheme')", self.js)
+        self.assertIn("panelThemeOptions", self.js)
+
+
+class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
+    """The beep's dropdown offered every upload, including the m4a the
+    server can only ever turn into the tone — and there was no way to hear
+    the default without placing a call."""
+
+    def test_the_dropdown_filters_to_wav(self):
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        branch = js.split("slot === 'vm_beep'")[2][:300]
+        self.assertIn("\.wav$", branch)
+
+    def test_the_testrow_has_a_beep_button(self):
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        self.assertIn('id="testBeepBtn"', html)
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("function previewBeep", js)

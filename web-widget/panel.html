@@ -650,6 +650,7 @@
           <button id="testHoldBtn" class="btnquiet">Hold</button>
           <button id="testHangupBtn" class="btnquiet">Hang up</button>
           <button id="testFailedBtn" class="btnquiet">Can't connect</button>
+          <button id="testBeepBtn" class="btnquiet">Voicemail beep</button>
         </div>
 
         <details class="advanced">
@@ -683,6 +684,7 @@
             <label for="sound_vm_beep">Voicemail beep</label>
             <input type="text" id="sound_vm_beep" />
           </div>
+          <p class="hint wide" id="vmBeepNote" hidden></p>
           <div class="testrow">
             <input type="file" id="soundFile" accept="audio/*" hidden />
             <button id="uploadSoundBtn">Upload a sound…</button>
@@ -737,7 +739,6 @@
           <ul class="soundlist" id="vmStatusList"></ul>
         </details>
         <div class="result" id="vmStageResult"></div>
-        <p class="hint wide" id="vmBeepNote" hidden></p>
 
         <h4 class="subhead">Messages</h4>
         <p class="hint wide" style="margin-top:0">Every message lands here
