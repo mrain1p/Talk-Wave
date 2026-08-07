@@ -260,7 +260,7 @@ window.Callin = (function () {
   return {
     $, params, compact, captionsMode, framed, themeForcedByHost,
     ASKS, NEVER, CALL_KEY, callKey,
-    ctx, tone, noise, pack, playSound, startRinging, stopRinging,
+    ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   };
 })();

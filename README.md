@@ -165,11 +165,12 @@ actually said is what you read.
 ### Docker (recommended)
 
 Images publish to `ghcr.io/mrainone7p/wave-talk`; `:latest` tracks `main`. The
-image includes the widget. A deploy needs four files:
+image includes the widget. A deploy needs five files:
 
 ```
 wave-talk/
 ├── docker-compose.yaml    # from this repo
+├── Caddyfile              # from this repo — the TLS front door mounts it
 ├── .env                   # from .env.example — REQUIRED
 ├── livekit.yaml           # from livekit.example.yaml, with a fresh secret
 └── data/                  # panel settings and keys persist here

@@ -642,17 +642,11 @@
     scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   }
   .captions.on { display: block; }
-  /* The one message surface. "Not connected", "No answer — the booth didn't
-     pick up", "Call ended" all land here, where the caller is already
-     looking, instead of in the header band next to ON AIR NOW where a
-     sentence sat inside a row of labels and read as one.
-     Absolutely placed so it shares the box with the transcript rather than
-     stacking above it — either the card is saying something or the DJ is,
-     never both. */
-  /* Absolutely placed so it SHARES the box with the transcript rather than
-     stacking above it — either the card is saying something or the DJ is,
-     never both, and stacking would have cost the box a third line it does
-     not have. */
+  /* The one message surface. "No answer — the booth didn't pick up" and
+     "Call ended" land here, where the caller is already looking, instead of
+     in the header band next to ON AIR NOW. Absolutely placed so it SHARES
+     the box with the transcript rather than stacking above it — either the
+     card is saying something or the DJ is, never both. */
   #status {
     position: absolute; inset: 9px 12px;
     display: flex; align-items: center; gap: 8px;
@@ -737,11 +731,8 @@
   .ticker.sys .who { color: var(--amber); }
 
   /* The corner controls sit in the 38px header band, level with its text.
-     They are chrome, not actions — no border, no fill, they never compete
-     with the primary button. */
-  /* Chrome, not actions — no border, no fill, never competing with the
-     primary button. Which of these exist at all is the backend's call; see
-     applyControls() in app.js. */
+     Chrome, not actions — never competing with the primary button. Which of
+     them exist at all is the backend's call; see applyControls() in call.js. */
   /* --- the corner controls and the ask popup ----------------------------- */
   /* Big enough to see and to hit. These were 26px of --sage-dim at 14px
      type — chrome so quiet that the theme toggle was reported missing while
@@ -1701,13 +1692,7 @@
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
   }
-  /* Reserved, not removed. This is the caption surface an EMBED uses, so it
-     is the one that was making the host page jump: the row appeared on the
-     first spoken word and the frame grew under whoever was reading it. It now
-     holds its two lines from the moment the page loads, empty or not.
-     `visibility` rather than `display` so it is still skipped by a screen
-     reader while it has nothing in it. */
-  /* Reserved, not removed — it holds its two lines from the moment the page
+  /* Reserved, not removed — it holds its lines from the moment the page
      loads, empty or not, because this is the caption surface an EMBED uses
      and it is the one that was making the host page jump. `visibility`
      rather than `display` so a screen reader still skips it while empty. */
