@@ -86,6 +86,14 @@ _CALL_ASSUMED_MAX = 1800.0               # forget a room after 30 min
 TOKEN_TTL = datetime.timedelta(minutes=2)
 
 
+def _refusal_is_line_state(refusal: str) -> bool:
+    """Which refusals the answering machine answers THROUGH. Matched on the
+    caller-facing wording because that is the one string both sides share —
+    brittle-looking, but pinned by tests, and it keeps _check_usage returning
+    exactly what a caller is told."""
+    return ("line's closed" in refusal) or ("tied up" in refusal)
+
+
 def _check_usage(request: web.Request, cfg: dict) -> str | None:
     """Returns a caller-facing reason to refuse, or None to allow.
 
@@ -204,6 +212,7 @@ async def handle_token(request: web.Request) -> web.Response:
     except Exception:
         body = {}
     probe = bool(isinstance(body, dict) and body.get("probe"))
+    voicemail = bool(isinstance(body, dict) and body.get("voicemail")) and not probe
     if probe and not _write_allowed(request):
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "not allowed",
@@ -222,9 +231,30 @@ async def handle_token(request: web.Request) -> web.Response:
                 status=401,
             ))
         refusal = _check_usage(request, cfg)
-        if refusal:
+        if voicemail:
+            # The answering machine exists FOR the refusals: paused and
+            # lines-busy are exactly when it should pick up, so those two do
+            # not close it. The per-caller cooldown and the hour/day ceilings
+            # still hold — a message costs STT, and a robot redialling the
+            # machine is the same robot the ceilings exist for.
+            policy = str(cfg.get("voicemail_when") or "never")
+            if policy == "never":
+                return _cors(request, web.json_response(
+                    {"error": "The booth doesn't take messages."}, status=403))
+            if refusal and not _refusal_is_line_state(refusal):
+                log.info("voicemail refused by usage controls: %s", refusal)
+                return _cors(request, web.json_response(
+                    {"error": refusal, "busy": True}, status=429))
+        elif refusal:
             log.info("call refused by usage controls: %s", refusal)
             return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
+        if not voicemail and str(cfg.get("voicemail_when") or "") == "always":
+            # A voicemail-only line: the widget offers Leave a message and a
+            # hand-built client asking for a live call gets the same answer.
+            return _cors(request, web.json_response(
+                {"error": "The booth is taking messages tonight, not live "
+                          "calls — leave one and it gets passed on.",
+                 "busy": True}, status=429))
 
     # One room per call keeps callers from ever landing in each other's audio.
     #
@@ -240,6 +270,7 @@ async def handle_token(request: web.Request) -> web.Response:
     # matching on that suffix, and the widget posts a rating against it.
     tier = "admin" if probe else caller_tier(request)
     room = (f"probe-{uuid.uuid4().hex[:12]}" if probe
+            else f"vm-{tier[0]}-{uuid.uuid4().hex[:12]}" if voicemail
             else f"callin-{tier[0]}-{uuid.uuid4().hex[:12]}")
     identity = f"caller-{uuid.uuid4().hex[:8]}"
 
@@ -271,7 +302,8 @@ async def handle_token(request: web.Request) -> web.Response:
         now = _time.time()
         _recent_mints.append(now)
         _caller_last[_caller_key(request)] = now
-        _live_calls[room] = now
+        if not voicemail:
+            _live_calls[room] = now
         ip = _caller_key(request)
         _mint_info[room] = {
             "client": _describe_client(request.headers.get("User-Agent", "")),

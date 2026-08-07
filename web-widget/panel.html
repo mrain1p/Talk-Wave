@@ -127,6 +127,7 @@
           <span id="pausedSub"></span>
         </span>
         <button type="button" id="dashCheckBtn" class="btnquiet">Run the full check</button>
+        <button type="button" id="dashLogoutBtn" class="btnquiet" hidden>Sign out</button>
       </div>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
@@ -673,6 +674,55 @@
       </div>
     </details>
 
+    <!-- Voicemail. The greeting clips are STAGED, not generated per call —
+         the button below renders one per persona through the configured TTS
+         and reports each result, because a persona whose voice the backend
+         does not have fails and the operator has to know which one. -->
+    <details data-group="voicemail" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Voicemail</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="voicemail_when">Answer with voicemail</label>
+          <select id="voicemail_when"></select>
+        </div>
+        <div class="row">
+          <label for="voicemail_greeting">Greeting</label>
+          <input type="text" id="voicemail_greeting" />
+        </div>
+        <div class="row narrow">
+          <label for="voicemail_max_seconds">Message ceiling (s)</label>
+          <input type="number" id="voicemail_max_seconds" min="5" max="120" step="5" />
+        </div>
+        <div class="row">
+          <label for="voicemail_destination">Messages go</label>
+          <select id="voicemail_destination"></select>
+        </div>
+
+        <h4 class="subhead">Staged greetings</h4>
+        <p class="hint wide" style="margin-top:0">Rendered once per persona in
+          their own voice, so the machine answers instantly instead of making a
+          caller wait on TTS. Re-run after changing the greeting text, a
+          persona's voice, or the voice backend — unchanged clips are skipped.</p>
+        <div class="testrow">
+          <button id="vmStageBtn">Stage greetings</button>
+          <span class="hint" style="margin:0">One TTS render per persona that
+            changed — the same money a single spoken line costs.</span>
+        </div>
+        <ul class="soundlist" id="vmStatusList"></ul>
+        <div class="result" id="vmStageResult"></div>
+
+        <h4 class="subhead">Messages</h4>
+        <p class="hint wide" style="margin-top:0">Every message lands here
+          whatever the delivery mode, so the night can always be read back.
+          Nothing is recorded as audio — the transcript is the message.</p>
+        <div class="testrow">
+          <button id="vmRefreshBtn" class="btnquiet">Load messages</button>
+          <button id="vmClearBtn" class="btnquiet">Clear</button>
+        </div>
+        <div class="result scrolly" id="vmMessages"></div>
+      </div>
+    </details>
+
     <details data-group="record" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Call transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
       <div class="body">
@@ -773,6 +823,10 @@
         <div class="row">
           <label for="avatar_style">DJ photo shape</label>
           <select id="avatar_style"></select>
+        </div>
+        <div class="row">
+          <label for="voice_effect">Voice effect</label>
+          <select id="voice_effect"></select>
         </div>
 
         <h4 class="subhead">The Call button</h4>

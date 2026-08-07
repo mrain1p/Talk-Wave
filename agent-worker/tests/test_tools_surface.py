@@ -72,6 +72,12 @@ class TestExposedSurface(unittest.TestCase):
         "POST /settings/secrets": "admin",
         "GET /settings/sounds": "admin",
         "POST /settings/sounds": "admin",
+        # Staging spends the operator's TTS money; the messages are
+        # strangers' words meant for the operator's eyes. Admin, all four.
+        "GET /voicemail/status": "admin",
+        "POST /voicemail/stage": "admin",
+        "GET /voicemail/messages": "admin",
+        "DELETE /voicemail/messages": "admin",
         "DELETE /settings/sounds/{name}": "admin",
         "GET /prompt": "admin",
         "GET /calls": "admin",

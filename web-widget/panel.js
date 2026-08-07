@@ -400,6 +400,7 @@
 
     const ACCESS = { open: 'Anyone', guest: 'Guest code', admin: 'Admin only' };
     const access = ($('front_access') && $('front_access').value) || resolved.front_access;
+    $('dashLogoutBtn').hidden = !authConfigured;
     tile('tileAccess', ACCESS[access] || access || '—',
       authConfigured ? 'panel password set' : 'this panel has no password',
       authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
@@ -478,6 +479,10 @@
       sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
   });
+
+  // The dashboard's sign-out is the Access section's, surfaced — one
+  // implementation, one meaning (this browser forgets both credentials).
+  $('dashLogoutBtn').onclick = () => $('logoutBtn').click();
 
   $('dashCheckBtn').onclick = () => {
     const sec = document.querySelector('details.sec[data-diag="pipeline"]');
@@ -1908,6 +1913,88 @@
       finally { $('soundFile').value = ''; }
     };
   }
+  // ------------------------------------------------------------ voicemail
+  // Staging renders one greeting per persona through the real TTS and
+  // reports each result by name — a persona whose voice this backend does
+  // not have has to be pointed at, not averaged away.
+  function paintVmStatus(personas) {
+    const host = $('vmStatusList');
+    if (!host) return;
+    host.innerHTML = '';
+    (personas || []).forEach((p) => {
+      const li = document.createElement('li');
+      const who = document.createElement('span');
+      who.className = 'sname';
+      who.textContent = p.name + (p.current ? ' — staged'
+        : p.staged ? ' — STALE (re-stage)' : ' — not staged')
+        + (p.renderedAt ? ' · ' + p.renderedAt : '');
+      li.appendChild(who);
+      host.appendChild(li);
+    });
+  }
+
+  async function loadVmStatus() {
+    try {
+      const r = await afetch('/voicemail/status');
+      if (!r.ok) return;
+      const d = await r.json();
+      paintVmStatus(d.personas);
+      const staged = (d.personas || []).filter((p) => p.current).length;
+      setTag('tagVoicemail',
+        (resolved.voicemail_when === 'never' ? 'off' : resolved.voicemail_when)
+        + ' · ' + staged + '/' + (d.personas || []).length + ' staged'
+        + (d.messages ? ' · ' + d.messages + ' msg' : ''));
+    } catch (e) { /* the section still works without the station */ }
+  }
+
+  if ($('vmStageBtn')) {
+    const vmSec = document.querySelector('details.sec[data-group="voicemail"]');
+    if (vmSec) vmSec.addEventListener('toggle', () => {
+      if (vmSec.open) loadVmStatus();
+    });
+
+    $('vmStageBtn').onclick = async () => {
+      const btn = $('vmStageBtn'), out = $('vmStageResult');
+      btn.disabled = true;
+      out.className = 'result on';
+      out.textContent = 'Rendering greetings through the configured voice…';
+      try {
+        const r = await afetch('/voicemail/stage', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { showResult(out, false, d.error || 'Staging failed'); return; }
+        const lines = (d.results || []).map((x) =>
+          (x.ok ? '✓ ' : '✗ ') + x.name
+          + (x.skipped ? ' — unchanged, skipped' : x.ok ? ' — rendered'
+             : ' — ' + (x.error || 'failed')));
+        showResult(out, !!d.ok, lines.join('\n') || 'No personas found.');
+        loadVmStatus();
+      } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+      finally { btn.disabled = false; }
+    };
+
+    $('vmRefreshBtn').onclick = async () => {
+      const out = $('vmMessages');
+      out.className = 'result on'; out.textContent = 'Loading…';
+      try {
+        const r = await afetch('/voicemail/messages');
+        const d = await r.json().catch(() => ({}));
+        const msgs = d.messages || [];
+        out.textContent = msgs.length
+          ? msgs.slice().reverse().map((m) =>
+              m.at + '  [' + (m.delivered || 'hold') + ']  '
+              + (m.dj ? m.dj + ' · ' : '') + m.text
+              + (m.note ? '\n         ' + m.note : '')).join('\n')
+          : 'No messages.';
+      } catch (e) { out.textContent = 'Failed: ' + e.message; }
+    };
+
+    $('vmClearBtn').onclick = async () => {
+      await afetch('/voicemail/messages', { method: 'DELETE' });
+      $('vmMessages').textContent = 'Cleared.';
+      loadVmStatus();
+    };
+  }
+
   // ------------------------------------------------- full pipeline check
   // Runs every leg a real call depends on, in call order, so the first red
   // line is the thing that would actually break the call.

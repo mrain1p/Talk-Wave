@@ -56,6 +56,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     "llm_provider": "google", "llm_model": "gemini-3.1-flash-lite",
     "tts_mode": "local", "front_access": "guest",
     "show_push_to_talk": True,
+    "voicemail_when": "closed",
 }), encoding="utf-8")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))
@@ -198,6 +199,27 @@ class Handler(BaseHTTPRequestHandler):
             # Play/Download/Remove rows are exercisable without uploading.
             return self._json({"sounds": ["my-ring.mp3", "old-bell.wav"],
                                "prefix": "upload:"})
+        if path == "/voicemail/status":
+            return self._json({"personas": [
+                {"id": "p_default1", "name": "Rosie", "staged": True,
+                 "current": True, "renderedAt": "2026-08-07 11:00:00"},
+                {"id": "p_e28f6a", "name": "Dawn", "staged": True,
+                 "current": False, "renderedAt": "2026-08-01 09:00:00"},
+            ], "messages": 2})
+        if path == "/voicemail/stage":
+            return self._json({"ok": False, "results": [
+                {"id": "p_default1", "name": "Rosie", "ok": True},
+                {"id": "p_e28f6a", "name": "Dawn", "ok": False,
+                 "error": "voice 'zmcVlqmyk3' not on this backend"},
+            ]})
+        if path == "/voicemail/messages":
+            return self._json({"messages": [
+                {"at": "2026-08-07 02:14:11", "text": "Play some Bowie for "
+                 "the night shift", "dj": "Danny Boy", "delivered": "hold"},
+                {"at": "2026-08-07 02:31:47", "text": "Tell Murph the darts "
+                 "are on Saturday", "dj": "Danny Boy", "delivered": "request",
+                 "note": "queued third"},
+            ]})
         if path == "/sound-packs":
             return self._json({"packs": [
                 {"id": "classic", "label": "Exchange", "assets": {}},

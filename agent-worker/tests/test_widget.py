@@ -1127,3 +1127,37 @@ class TestPushToTalkIsPerSurfaceAndOffByDefault(unittest.TestCase):
         source = (AGENT_WORKER / "call" / "lifecycle.py").read_text(encoding="utf-8")
         self.assertIn("push to talk", source)
         self.assertIn("show_push_to_talk", source)
+
+
+class TestAHostThemeIsADefaultNotADecree(unittest.TestCase):
+    """The operator embedded the widget on their own station page with
+    data-theme="dark" and then reported the theme toggle missing: pinning the
+    starting look and confiscating the control were one lever. They are two
+    now — data-theme seeds the widget, data-lock-theme is the decree."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.embed = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        cls.shared = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+
+    def test_embed_sends_the_soft_param_by_default(self):
+        self.assertIn('"&themeDefault="', self.embed)
+        self.assertIn('data-lock-theme', self.embed)
+
+    def test_only_a_real_force_hides_the_toggle(self):
+        # themeForcedByHost keys on ?theme= alone; a default must leave the
+        # toggle wired up.
+        self.assertIn("themeForcedByHost = !!params.get('theme')", self.shared)
+        self.assertIn("|| themeDefault", self.shared)
+
+    def test_the_dj_show_line_cannot_dress_the_ticker(self):
+        # "show" is both the DJ-show line's class and the ticker's visibility
+        # class. The bare `.show` selector dressed every lit transcript line
+        # as a bold uppercase micro-label — seen on a real embed. Scoped now,
+        # and this pins it scoped.
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        import re
+
+        bare = [m for m in re.finditer(r"(?m)^\s*\.show\s*[,{]", css)]
+        self.assertEqual([], bare,
+                         "a bare .show selector will restyle the lit ticker")

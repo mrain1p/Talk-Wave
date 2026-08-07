@@ -48,6 +48,7 @@ from tests.test_http import (  # noqa: F401
     TestUsageControls,
 )
 from tests.test_widget import (  # noqa: F401
+    TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
@@ -159,6 +160,12 @@ from tests.test_voice import (  # noqa: F401
     TestTheVoiceCanLiveInTheUrl,
     TestVoiceDiscoveryIsNotHardcodedToOneShape,
     TestWhatTheBackendSaidReachesTheOperator,
+)
+from tests.test_voicemail import (  # noqa: F401
+    TestAMessageIsNeverLost,
+    TestGreetingClipsFollowWhatTheyWereRenderedFrom,
+    TestTheBeepIsRealAudio,
+    TestTheMachineAnswersThroughTheRightRefusals,
 )
 from tests.test_docs import (  # noqa: F401
     TestTheDocsKeepUpWithTheCode,

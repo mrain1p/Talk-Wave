@@ -2,8 +2,14 @@
 
 Part of the [Wave Talk](../README.md) documentation.
 
-**Status: designed, not built.** Nothing in this document exists in the code yet. It is here to
-be argued with before any of it is written.
+**Status: built as of 0.9.127**, to this design plus the operator's additions: its own
+settings section, greeting clips cached against exactly what they were rendered from
+(text + voice + backend), the offer appearing wherever a live call is refused, and an
+acknowledgement clip ("Got it — I'll pass that on.") staged alongside each greeting.
+Barge-in (open question 3) is answered YES — STT is wired before the greeting plays.
+Hold messages get their own list (question 2), capped at 200. The worker leg has unit
+coverage but has **not yet answered a live call on a deployed stack** — leave
+`voicemail_when` on never until one test message has gone through end to end.
 
 ## What it is
 

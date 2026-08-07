@@ -81,8 +81,9 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
 - **`?theme=inherit` is resolved by `embed.js` before the frame loads.** A cross-origin iframe
   cannot read its host page, so if `inherit` ever reaches `call.js` unresolved, there is nothing
   to inherit from and auto is the honest answer.
-- An explicit theme choice is stored in `localStorage.callinTheme` and beats the OS setting; a
-  host page that forces `?theme=` hides the toggle entirely.
+- An explicit theme choice is stored in `localStorage.callinTheme` and beats the OS setting.
+  A host's `data-theme` arrives as `?themeDefault=` — a starting point the toggle can override —
+  and only `data-lock-theme="true"` sends the old `?theme=`, which pins it and hides the toggle.
 - The operator's configured theme arrives with `/live`, long after first paint, so there are two
   code paths applying a theme and they must agree.
 - **Which corner controls exist is the server's answer, not a CSS rule.** `/live` carries

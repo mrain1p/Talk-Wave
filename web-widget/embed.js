@@ -61,6 +61,11 @@
     // what "matches the page" actually means to whoever dropped this in.
     var theme = el.getAttribute("data-theme") || "";
     if (theme === "inherit") theme = hostTheme(el);
+    // A host's theme is the widget's STARTING point, not a decree: the
+    // viewer's own toggle keeps working and their choice is remembered.
+    // data-lock-theme="true" restores the old behaviour — theme pinned,
+    // toggle gone — for hosts that genuinely need one look.
+    var lockTheme = el.getAttribute("data-lock-theme") === "true";
     // data-captions="ticker"|"full"|"off". Embeds default to the ticker —
     // only the latest spoken line, fading after a few seconds — so the
     // widget stays short wherever it's dropped.
@@ -70,7 +75,8 @@
 
     var iframe = document.createElement("iframe");
     iframe.src = origin + "/?compact=" + (compact ? "1" : "0")
-      + (theme ? "&theme=" + encodeURIComponent(theme) : "")
+      + (theme ? (lockTheme ? "&theme=" : "&themeDefault=")
+                 + encodeURIComponent(theme) : "")
       + (captions ? "&captions=" + encodeURIComponent(captions) : "");
     iframe.setAttribute("allow", "microphone");
     iframe.setAttribute("title", "Call the SUB/WAVE DJ");

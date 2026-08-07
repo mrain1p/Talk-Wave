@@ -7,7 +7,7 @@
    Shared foundation comes from shared.js via the Callin global. */
 (function () {
   const {
-    $, params, compact, captionsMode, framed, themeForcedByHost,
+    $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     ASKS, NEVER, CALL_KEY, callKey,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
@@ -88,7 +88,15 @@
       applyTokens(palette.tokens);
       return;
     }
-    if (!localStorage.getItem('callinTheme')) root.removeAttribute('data-theme');
+    if (!localStorage.getItem('callinTheme')) {
+      // The host's soft default fills the gap nothing stronger claimed —
+      // removing the attribute here used to wipe it on the first /live.
+      if (themeDefault === 'light' || themeDefault === 'dark') {
+        root.setAttribute('data-theme', themeDefault);
+      } else {
+        root.removeAttribute('data-theme');
+      }
+    }
   }
 
   // Write a token map onto :root. Shared by the station palette above and the
@@ -569,6 +577,15 @@
       ? 'Cannot reach the station.' : 'No DJ is live right now.';
     $('npTrack').textContent = '';
     $('djAvatar').classList.add('hidden');
+    // Off air is exactly what the answering machine is for — but not
+    // offline: an unreachable station cannot take delivery either.
+    callBtn.dataset.vm = '';
+    if (reason !== 'offline' && vmPolicy() !== 'never' && !room) {
+      callBtn.disabled = false;
+      callBtn.dataset.vm = '1';
+      callBtn.textContent = 'Leave a message';
+      return;
+    }
     callBtn.disabled = true;
     callBtn.textContent = reason === 'offline' ? 'Station offline' : 'Nobody to call';
   }
@@ -669,14 +686,24 @@
       // Split across two blocks, the later one silently undid the earlier.
       if (!room) {
         const needsCode = !!d.guestRequired && !callKey();
-        if (d.callsPaused) {
+        // The machine answers where a live call cannot: 'closed' turns each
+        // refusal below into "Leave a message", 'always' makes the line
+        // voicemail-only. The door code still applies either way.
+        const vmHere = vmPolicy() === 'always'
+          || (vmPolicy() === 'closed' && (d.callsPaused || !d.onAir));
+        callBtn.dataset.vm = '';
+        if (needsCode) {
+          callBtn.disabled = true;
+          callBtn.textContent = 'Enter the code';
+        } else if (vmHere) {
+          callBtn.disabled = false;
+          callBtn.dataset.vm = '1';
+          callBtn.textContent = 'Leave a message';
+        } else if (d.callsPaused) {
           // A paused line is a deliberate state, not a fault: say so plainly
           // rather than offering a button that can only fail.
           callBtn.disabled = true;
           callBtn.textContent = 'Line closed';
-        } else if (needsCode) {
-          callBtn.disabled = true;
-          callBtn.textContent = 'Enter the code';
         } else {
           callBtn.disabled = false;
           callBtn.textContent = callLabel();
@@ -1075,6 +1102,77 @@
   // leave the station playing underneath at its own fixed level — so at the
   // bottom of the range the music was all you could hear. The station keeps
   // its configured proportion of whatever the caller has chosen.
+  // ------------------------------------------------------- voice effects
+  // A radio colour on the DJ's voice, built from the raw WebRTC track in the
+  // caller's own browser — the broadcast never hears it. The element is
+  // muted and the processed graph is the only audible path, with its own
+  // gain so the volume slider keeps working.
+  //
+  // Honest caveat, stated in the setting's help too: audio through an
+  // AudioContext plays on the default output, so the phone's
+  // speaker/earpiece switch has nothing to route while an effect is on.
+  let fx = null;
+
+  function voiceEffect() {
+    return ((shown || live || {}).voiceEffect) || 'none';
+  }
+
+  function distCurve(amount) {
+    const n = 512, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2) / n - 1;
+      curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180))
+        / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
+  }
+
+  // freq window + grit per effect. Numbers chosen by ear against the three
+  // things people actually mean: a phone line, a CB rig, a handheld.
+  const FX = {
+    telephone: { hp: 300, lp: 3400, grit: 0 },
+    cb:        { hp: 400, lp: 2500, grit: 26 },
+    walkie:    { hp: 500, lp: 2800, grit: 55 },
+  };
+
+  function wireEffect(track) {
+    const spec = FX[voiceEffect()];
+    if (!spec) return false;
+    try {
+      const c = ctx();
+      const src = c.createMediaStreamSource(
+        new MediaStream([track.mediaStreamTrack]));
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = spec.hp;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = spec.lp;
+      const gain = c.createGain();
+      gain.gain.value = Math.min(1, getVolume() / 100);
+      let node = src;
+      const chain = [hp, lp];
+      if (spec.grit) {
+        const shaper = c.createWaveShaper();
+        shaper.curve = distCurve(spec.grit);
+        shaper.oversample = '2x';
+        chain.push(shaper);
+      }
+      chain.push(gain);
+      chain.forEach((n) => { node.connect(n); node = n; });
+      node.connect(c.destination);
+      fx = { src, gain };
+      return true;
+    } catch (e) {
+      console.warn('Wave Talk: voice effect unavailable —', e);
+      return false;
+    }
+  }
+
+  function dropEffect() {
+    if (!fx) return;
+    try { fx.src.disconnect(); } catch (e) {}
+    fx = null;
+  }
+
   function stationLevel() {
     const s = (live && live.stream) || {};
     return Math.min(1, ((s.volume || 0) / 100) * (getVolume() / 100));
@@ -1086,7 +1184,8 @@
     // webkit has no way to style the filled part of a range, so the fill is
     // a gradient stop and this is where the stop comes from.
     $('volSlider').style.setProperty('--vol', getVolume() + '%');
-    if (djEl) djEl.volume = Math.min(1, getVolume() / 100);
+    if (fx) fx.gain.gain.value = Math.min(1, getVolume() / 100);
+    else if (djEl) djEl.volume = Math.min(1, getVolume() / 100);
     if (streamEl) {
       const level = stationLevel();
       streamEl.volume = level;
@@ -1096,7 +1195,17 @@
   $('volSlider').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
   applyVolume();      // paint the fill at whatever volume we start on
 
-  async function startCall() {
+  async function startCall(asVoicemail) {
+    vmCall = !!asVoicemail;
+    // On a push-to-talk card the bar's promise does not hold for the
+    // machine — it hears everything, that is its job. Same row, same
+    // height, a true sentence.
+    const hint = document.querySelector('.ptthint');
+    if (hint) {
+      hint.textContent = vmCall
+        ? 'The machine is listening — just talk after the beep.'
+        : 'The DJ can only hear you while this bar is lit.';
+    }
     // Browsers only allow microphone capture on HTTPS or localhost. On a
     // plain http:// LAN address the call would connect and then immediately
     // hang up when mic capture fails — say why up front instead.
@@ -1147,7 +1256,10 @@
     try {
       const res = await fetch('/token', {
         method: 'POST',
-        headers: callKey() ? { 'X-Call-Key': callKey() } : {},
+        headers: Object.assign(
+          { 'Content-Type': 'application/json' },
+          callKey() ? { 'X-Call-Key': callKey() } : {}),
+        body: JSON.stringify(vmCall ? { voicemail: true } : {}),
       });
       // 429 = the line is busy or the operator has closed it; 401 = the door
       // code is missing or wrong. Both are answers, not faults — engaged
@@ -1188,16 +1300,29 @@
         clearNoAnswerTimer();
         stopRinging();
         playSound('pickup');
+        // The machine, not the DJ: no station stream underneath a recording,
+        // and the button says what is happening instead of who answered.
+        if (vmCall) {
+          callBtn.classList.remove('ringing');
+          callBtn.classList.add('live');
+          callBtn.textContent = 'Recording…';
+          setStatus('Speak after the beep — up to '
+            + (((live || {}).limits || {}).vmMaxSeconds || 30) + 's', 'connected');
+        } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
         tuneIn();
+        }
         // Line picked up; the DJ hasn't spoken yet. setAgentState flips this
         // to the green "On the line" at its first spoken word.
-        callBtn.classList.remove('ringing');
-        callBtn.classList.add('answering');
-        callBtn.textContent = 'Answering…';
+        if (!vmCall) {
+          callBtn.classList.remove('ringing');
+          callBtn.classList.add('answering');
+          callBtn.textContent = 'Answering…';
+        }
         djEl = track.attach();
         djEl.volume = Math.min(1, getVolume() / 100);
+        if (wireEffect(track)) djEl.muted = true;
         // Without playsinline, iOS takes an audio element it considers
         // "media" full-screen-ish and applies its own routing on top of
         // whatever we asked for.
@@ -1229,7 +1354,7 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
-      if (pttOn()) {
+      if (pttOn() && !vmCall) {
         pttOpen = false;
         await room.localParticipant.setMicrophoneEnabled(false);
         paintPtt();
@@ -1366,6 +1491,8 @@
   }
 
   function endCall(remote) {
+    const wasVm = vmCall;
+    vmCall = false;
     stopRinging();
     clearNoAnswerTimer();
     tuneOut();
@@ -1377,6 +1504,7 @@
     if (room) { if (!remote) room.disconnect(); playSound('hangup'); }
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    dropEffect();
     anYou = anDj = null; djEl = null;
     djOnAir = false; djHasSpoken = false;
     document.querySelector('.card').classList.remove('onair');
@@ -1400,7 +1528,7 @@
     const pttBar = $('pttBtn');
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
     $('meterYou').classList.remove('muted');
-    setStatus('Call ended');
+    setStatus(wasVm ? 'Message left — it gets passed on.' : 'Call ended');
     notifyHeight();
   }
 
@@ -1470,7 +1598,9 @@
     notifyHeight();
   };
 
-  callBtn.onclick = () => { if (!room && !previewMode) startCall(); };
+  callBtn.onclick = () => {
+    if (!room && !previewMode) startCall(callBtn.dataset.vm === '1');
+  };
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };
 
@@ -1489,6 +1619,15 @@
   function pttOn() {
     const d = shown || live || {};
     return !!(framed ? d.embedPtt : d.ptt);
+  }
+
+  // ------------------------------------------------------- the machine
+  // Whether the answering machine may pick up, and when. The policy rides
+  // /live so the card can offer "Leave a message" exactly where it paints a
+  // refusal — every closed line used to be a dead end.
+  let vmCall = false;
+  function vmPolicy() {
+    return ((shown || live || {}).voicemailWhen) || 'never';
   }
 
   let pttOpen = false;
@@ -1524,7 +1663,7 @@
     let downAt = 0, openBeforePress = false, pressed = false;
 
     bar.addEventListener('pointerdown', (e) => {
-      if (!room) return;
+      if (!room || vmCall) return;
       e.preventDefault();
       bar.setPointerCapture?.(e.pointerId);
       pressed = true;
