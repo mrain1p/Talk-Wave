@@ -675,6 +675,52 @@
     callBtn.textContent = reason === 'offline' ? 'Station offline' : 'Nobody to call';
   }
 
+  // The idle card's buttons, painted from one place — the 20s poll AND the
+  // refusal path both land here. The refusal path used to hand-restore the
+  // Call button and forget the message button: one failed call on a
+  // voicemail-only line left the card stuck on a door that can only fail
+  // until the page was reloaded. Operator-reported, from the live page.
+  function paintIdleButtons(d) {
+    if (room) return;
+    const needsCode = !!d.guestRequired && !callKey();
+    // The machine answers where a live call cannot: 'closed' turns each
+    // refusal below into "Leave a message"; 'always' (or live calls
+    // switched off) makes the line voicemail-only.
+    const vmOnly = vmPolicy() === 'always' || d.liveCalls === false;
+    const vmHere = vmOnly
+      || (vmPolicy() === 'closed' && (d.callsPaused || !d.onAir));
+    // The operator can put the machine on the card as its own button,
+    // per surface. With the button up, Call never morphs — two clear
+    // doors beat one door with a changing sign.
+    const vmButton = vmPolicy() !== 'never'
+      && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
+    $('vmBtn').hidden = !vmButton;
+    callBtn.hidden = false;
+    callBtn.dataset.vm = '';
+    if (needsCode) {
+      callBtn.disabled = true;
+      callBtn.textContent = 'Enter the code';
+    } else if (vmOnly && vmButton) {
+      // Voicemail-only with the machine's own button up: ONE door. A live
+      // Call button here can only ring out into a refusal — which is
+      // exactly what the operator watched happen.
+      callBtn.hidden = true;
+    } else if (vmHere && !vmButton) {
+      callBtn.disabled = false;
+      callBtn.dataset.vm = '1';
+      callBtn.textContent = 'Leave a message';
+    } else if (d.callsPaused || vmOnly) {
+      // A paused or voicemail-only line is a deliberate state, not a
+      // fault: say so plainly rather than offering a button that fails.
+      callBtn.disabled = true;
+      callBtn.textContent = vmOnly && vmPolicy() === 'never'
+        ? 'Line closed' : vmOnly ? 'Message only' : 'Line closed';
+    } else {
+      callBtn.disabled = false;
+      callBtn.textContent = callLabel();
+    }
+  }
+
   async function refreshLive() {
     try {
       const r = await fetch('/live');
@@ -773,39 +819,7 @@
 
       // One place decides what the Call button says and whether it works.
       // Split across two blocks, the later one silently undid the earlier.
-      if (!room) {
-        const needsCode = !!d.guestRequired && !callKey();
-        // The machine answers where a live call cannot: 'closed' turns each
-        // refusal below into "Leave a message", 'always' makes the line
-        // voicemail-only. The door code still applies either way.
-        const liveOff = d.liveCalls === false;
-        const vmHere = vmPolicy() === 'always' || liveOff
-          || (vmPolicy() === 'closed' && (d.callsPaused || !d.onAir));
-        // The operator can put the machine on the card as its own button,
-        // per surface. With the button up, Call never morphs — two clear
-        // doors beat one door with a changing sign.
-        const vmButton = vmPolicy() !== 'never'
-          && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
-        $('vmBtn').hidden = !vmButton;
-        callBtn.dataset.vm = '';
-        if (needsCode) {
-          callBtn.disabled = true;
-          callBtn.textContent = 'Enter the code';
-        } else if (vmHere && !vmButton) {
-          callBtn.disabled = false;
-          callBtn.dataset.vm = '1';
-          callBtn.textContent = 'Leave a message';
-        } else if (d.callsPaused || liveOff) {
-          // A paused or voicemail-only line is a deliberate state, not a
-          // fault: say so plainly rather than offering a button that fails.
-          callBtn.disabled = true;
-          callBtn.textContent = liveOff && vmPolicy() === 'never'
-            ? 'Line closed' : liveOff ? 'Message only' : 'Line closed';
-        } else {
-          callBtn.disabled = false;
-          callBtn.textContent = callLabel();
-        }
-      }
+      if (!room) paintIdleButtons(d);
       paintGuestGate();
       updateMicHelp();
 
@@ -1371,9 +1385,17 @@
         stopTimer();
         capBox.classList.remove('on');
         callBtn.classList.remove('ringing', 'answering');
-        callBtn.textContent = res.status === 401 ? 'Enter the code' : callLabel();
-        callBtn.disabled = res.status === 401;
         room = null;
+        vmCall = false;
+        // Repaint BOTH buttons from the live state — restoring Call by hand
+        // here forgot the message button, and one refused call left the
+        // card without its one working door until a reload.
+        paintIdleButtons(live || {});
+        if (res.status === 401) {
+          callBtn.hidden = false;
+          callBtn.disabled = true;
+          callBtn.textContent = 'Enter the code';
+        }
         return;
       }
       if (!res.ok) throw new Error('token mint failed');
@@ -1417,6 +1439,17 @@
         // Hang up, full width, exactly where a thumb expects it.
         callBtn.hidden = true;
         hangBtn.hidden = false;
+        // Re-entrant on purpose: a mid-call reconnect re-fires
+        // TrackSubscribed, and attaching again WITHOUT tearing down the
+        // first element left two playbacks of the same voice running a few
+        // ms apart — "the DJ speaking twice, slightly off sync", reported
+        // from a live call. Same for the effect graph: fx was overwritten
+        // while the old source stayed connected.
+        if (djEl) {
+          try { djEl.pause(); djEl.srcObject = null; djEl.remove(); }
+          catch (e) { /* an orphaned element beats a crashed pickup */ }
+        }
+        dropEffect();
         djEl = track.attach();
         djEl.volume = Math.min(1, getVolume() / 100);
         if (wireEffect(track)) djEl.muted = true;

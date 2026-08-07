@@ -66,6 +66,8 @@ from tests.test_widget import (  # noqa: F401
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
     TestThePaletteTravelsForTheCycle,
+    TestAVoicemailOnlyLineHasOneDoor,
+    TestTheEmbedIsJustTheCard,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestATierIncludesTheOnesBelowIt,
@@ -173,6 +175,8 @@ from tests.test_voicemail import (  # noqa: F401
     TestAFreshGreetingIsBudgeted,
     TestTheCeilingActuallyHangsUp,
     TestTheBeepCanBeTheOperators,
+    TestTheBeepVerdictIsVisible,
+    TestTheDjOnlySpeaksOnce,
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,

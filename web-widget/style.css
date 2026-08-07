@@ -1751,7 +1751,12 @@
      rounded corners, and the 10px inset is what keeps the card's own border
      off the edge of the frame. */
   body.compact {
-    padding: 10px; background: transparent;
+    /* Edge to edge. The 10px inset existed to keep the card's border off
+       the frame edge — but on any host whose color-scheme the browser
+       thinks disagrees with ours, the frame's backdrop paints opaque and
+       the inset shows as a white ring around the card. The operator's
+       page wore exactly that ring. The card IS the frame now. */
+    padding: 0; background: transparent;
     min-height: 100vh; display: flex; flex-direction: column;
     /* Two lines in an embed — the box borrows room from the host page. */
     --lines-h: 57px;
@@ -1761,7 +1766,12 @@
        honest trade, because data-height is the host saying it knows best. */
     overflow: hidden;
   }
-  body.compact .card { width: 100%; flex: 1 0 auto; display: flex; flex-direction: column; }
+  body.compact .card {
+    width: 100%; flex: 1 0 auto; display: flex; flex-direction: column;
+    /* Square in a frame: the rounded corners exposed the frame backdrop
+       at all four corners, and the host page's own controls are square. */
+    border-radius: 0;
+  }
   /* Idle, the Call button sinks to the BOTTOM of whatever room the host gave
      the frame, so it lines up with the host's own row of buttons instead of
      floating halfway up a tall column with dead space under it. Keyed on the
@@ -1849,7 +1859,7 @@
      grew at the top, so the card has to move down by the same amount or it
      would appear to jump. Opening downward needs nothing — the card is
      already at the frame's top. */
-  body.overlay-up { padding-top: calc(10px + var(--overlay-px, 0px)); }
+  body.overlay-up { padding-top: var(--overlay-px, 0px); }
 
   /* Ticker: the latest spoken line only, fading out after a few seconds —
      keeps embeds short wherever they're dropped. It is also the caption

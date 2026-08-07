@@ -3,6 +3,23 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.136
+
+- **A voicemail-only line has one door.** With the message button up, the
+  Call button hid the fact it could only fail — and a refused call's cleanup
+  then forgot the message button, leaving the card stuck without its one
+  working door until a reload. The idle buttons now paint from one place,
+  on every path.
+- **The DJ only speaks once.** A mid-call reconnect re-attached the DJ's
+  audio without tearing down the first copy — two playbacks a few
+  milliseconds apart, heard as an echo.
+- **The embed is just the card.** The 10px inset showed as a white ring on
+  hosts whose color-scheme the browser disputed; the card now fills the
+  frame edge to edge, square. 308px measured.
+- The Voicemail section now **says whether the custom beep can play**,
+  tried for real server-side — an unplayable file used to fall back to the
+  tone with nothing saying why.
+
 ## 0.9.135
 
 - **The custom voicemail beep actually plays.** The worker now converts any

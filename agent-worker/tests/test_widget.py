@@ -1252,3 +1252,51 @@ class TestThePaletteTravelsForTheCycle(unittest.TestCase):
         options = options[:options.index("\n  }")]
         self.assertIn("stationTheme", options)
         self.assertIn("tokens", options)
+
+
+class TestAVoicemailOnlyLineHasOneDoor(unittest.TestCase):
+    """The operator watched both failures on their live page: a voicemail-
+    only card still offering "Call Francesca" (which can only ring out into
+    a refusal), and that refusal's cleanup restoring the Call button by hand
+    while forgetting the message button — one failed call left the card
+    without its one working door until a reload."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+
+    def test_the_idle_buttons_paint_from_one_place(self):
+        self.assertIn("function paintIdleButtons", self.js)
+        # The poll and the refusal path both use it — the refusal path
+        # hand-restoring buttons is the exact bug.
+        self.assertIn("if (!room) paintIdleButtons(d);", self.js)
+        self.assertIn("paintIdleButtons(live || {})", self.js)
+
+    def test_voicemail_only_hides_the_call_button(self):
+        branch = self.js.split("vmOnly && vmButton")[1][:300]
+        self.assertIn("callBtn.hidden = true", branch)
+
+    def test_a_refused_call_resets_the_voicemail_flag(self):
+        refusal = self.js.split("res.status === 429 || res.status === 401")[1]
+        self.assertIn("vmCall = false", refusal[:1600])
+
+
+class TestTheEmbedIsJustTheCard(unittest.TestCase):
+    """The 10px inset showed as a white ring on any host whose color-scheme
+    the browser decided disagreed with ours — the frame's backdrop paints
+    opaque and the inset frames the card in it. Edge to edge, square, the
+    card IS the frame."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_no_inset_and_no_rounded_corners_in_a_frame(self):
+        block = self.css.split("body.compact {")[1][:600]
+        self.assertIn("padding: 0", block)
+        card = self.css.split("body.compact .card {")[1][:400]
+        self.assertIn("border-radius: 0", card)
+
+    def test_the_overlay_offset_carries_no_dead_inset(self):
+        self.assertIn("body.overlay-up { padding-top: var(--overlay-px, 0px); }",
+                      self.css)
