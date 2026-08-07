@@ -41,7 +41,7 @@ The README is the short version. The detail lives here:
 | **[Calling from outside your network](docs/networking.md)** | The three topologies, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
-| **[Voicemail](docs/VOICEMAIL.md)** | Designed, not built: what happens when the line can't be answered |
+| **[Voicemail](docs/VOICEMAIL.md)** | The answering machine: staged greetings, where messages go, and what is deliberately never recorded |
 
 
 ## Features
