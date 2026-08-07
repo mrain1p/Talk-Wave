@@ -3,7 +3,7 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.9.128
+## 0.9.129
 
 ### Voicemail
 
