@@ -7,7 +7,11 @@ settings section, greeting clips cached against exactly what they were rendered 
 (text + voice + backend), the offer appearing wherever a live call is refused, and an
 acknowledgement clip ("Got it — I'll pass that on.") staged alongside each greeting.
 Barge-in (open question 3) is answered YES — STT is wired before the greeting plays.
-Hold messages get their own list (question 2), capped at 200. The worker leg has unit
+Hold messages get their own list (question 2), capped at 200 — AND each message writes a
+call entry (`kind: voicemail`) so Recent calls shows the whole night in one place,
+labelled as the machine's. The guest door code applies to voicemail exactly as it does
+to live calls: the code buys the line, whichever way the line answers. The card tells
+the caller, at the beep, that only the transcript is kept. The worker leg has unit
 coverage but has **not yet answered a live call on a deployed stack** — leave
 `voicemail_when` on never until one test message has gone through end to end.
 

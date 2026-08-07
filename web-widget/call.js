@@ -1306,8 +1306,8 @@
           callBtn.classList.remove('ringing');
           callBtn.classList.add('live');
           callBtn.textContent = 'Recording…';
-          setStatus('Speak after the beep — up to '
-            + (((live || {}).limits || {}).vmMaxSeconds || 30) + 's', 'connected');
+          setStatus('Speak after the beep — transcript only, no audio is kept',
+                    'connected');
         } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
@@ -1666,7 +1666,7 @@
         if (pub && pttOpen && pub.isMuted) {
           await room.localParticipant.setMicrophoneEnabled(true);
           if (pub.isMuted) {
-            setStatus('The mic didn't open — tap the bar again', 'error');
+            setStatus('The mic did not open — tap the bar again', 'error');
           }
         }
       } catch (e) {

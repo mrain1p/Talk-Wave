@@ -80,6 +80,16 @@ are often already taken by another session.
 - **`/live` is cached 30s server-side and the widget polls every 20s.** Stubbing `window.fetch`
   needs a ~21s wait per state you want to observe. There is no hook to force a repaint.
 
+## After ANY edit to a web-widget .js file
+
+Load **both pages** in the stub browser and read both consoles before
+committing — the LAST edit of a session is the one that ships broken. 0.9.128
+went out with an unescaped apostrophe in call.js: 582 tests green, every embed
+frozen at "Checking…". `TestTheWidgetActuallyParses` now runs `node --check`
+in CI, but locally node may be absent and the browser is the only parser in
+the room. A page that loads clean and paints its data is the bar; "the suite
+passed" is not.
+
 ## What counts as done
 
 Report the observed result, not the intent. Name the thing you saw: the text that rendered, the

@@ -22,7 +22,8 @@ switch it on in the panel's new **Voicemail** section.
   not lost.
 - Nothing is recorded as audio. The message is the transcript, captured
   through the speech-to-text already running, with a hard per-message
-  ceiling.
+  ceiling — and the card says so at the beep. Each message also appears in
+  Recent calls, labelled as voicemail.
 - Leave `Answer with voicemail` off until you have left one test message on
   your own deployment — the worker leg is new in this release.
 
@@ -61,6 +62,12 @@ switch it on in the panel's new **Voicemail** section.
   contract, so a TTS server built for the station can carry the call line.
 
 ### Fixes
+
+- 0.9.128's widget shipped with a syntax error that froze the call card at
+  "Checking…" on every surface. Fixed, and the build now refuses to ship a
+  widget that does not parse.
+- Embedded cards never show an internal scrollbar, and the embed's Call
+  button matches the height of a host page's own action buttons.
 
 - The theme toggle appears when station colours are active — toggling now
   overrides the palette instead of being hidden by it.

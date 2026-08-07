@@ -1174,3 +1174,34 @@ class TestAHostThemeIsADefaultNotADecree(unittest.TestCase):
         bare = [m for m in re.finditer(r"(?m)^\s*\.show\s*[,{]", css)]
         self.assertEqual([], bare,
                          "a bare .show selector will restyle the lit ticker")
+
+
+class TestTheWidgetActuallyParses(unittest.TestCase):
+    """Every .js in web-widget/, syntax-checked for real.
+
+    0.9.128 shipped an unescaped apostrophe in one string literal in call.js.
+    The whole IIFE died, every embed froze at "Checking…" with no height
+    reporting, and 582 tests stayed green while it happened — the contract
+    test READS these files but nothing ever PARSED one. `node --check` is
+    that parse. CI's runner has node, so no broken widget reaches an image;
+    locally the test skips if node is missing, and the wavetalk-verify skill
+    is the local backstop: load both pages, read the console.
+    """
+
+    def test_every_widget_script_parses(self):
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed here — CI enforces this check")
+        for path in sorted((REPO / "web-widget").glob("*.js")):
+            with self.subTest(script=path.name):
+                proc = subprocess.run(
+                    [node, "--check", str(path)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(
+                    0, proc.returncode,
+                    f"{path.name} does not parse:\n{proc.stderr.strip()}",
+                )

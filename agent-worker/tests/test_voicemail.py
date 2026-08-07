@@ -198,3 +198,56 @@ class TestTheBeepIsRealAudio(unittest.TestCase):
         pcm = beep_pcm(24000)
         self.assertEqual(int(24000 * 0.4) * 2, len(pcm))
         self.assertTrue(any(b for b in pcm), "a beep of zeros is silence")
+
+
+class TestAVoicemailIsACallEntryToo(_VmDirs):
+    """The operator's shape: messages appear in Recent calls alongside live
+    calls, labelled as the machine's, transcript only — while the Voicemail
+    section's list stays the working queue."""
+
+    def test_the_entry_is_written_and_labelled(self):
+        import json
+        import os
+
+        from call import record as call_record
+        from voicemail.capture import write_call_entry
+
+        import time
+
+        # A live clock, not a fixed one: write() prunes to the newest N, and
+        # a record stamped in the past is the first thing pruned when the
+        # shared CALLS_PATH already holds a suite's worth of newer ones.
+        write_call_entry("vm-g-abc123def456", {"id": "p1", "name": "Danny"},
+                         {"record_calls": True, "record_keep": 0},
+                         "play some Bowie", "held for the operator",
+                         time.time())
+        # Matched by the room's hex suffix, the same way /call-feedback finds
+        # a record — CALLS_PATH is shared across the whole suite run, and
+        # "the newest file" is whichever unrelated test wrote last.
+        files = [f for f in call_record.CALLS_DIR.glob("*.json")
+                 if "abc123def456" in f.name]
+        self.assertTrue(files, "no call entry written")
+        data = json.loads(files[-1].read_text(encoding="utf-8"))
+        self.assertEqual("voicemail", data.get("kind"))
+        self.assertEqual("guest", data["config"]["callerTier"])
+        self.assertEqual("caller", data["turns"][-1]["who"])
+        self.assertIn("Bowie", data["turns"][-1]["text"])
+        self.assertEqual("voicemail_delivery", data["tools"][0]["name"])
+        for f in files:
+            os.unlink(f)
+
+    def test_recording_off_means_no_entry(self):
+        from call import record as call_record
+        from voicemail.capture import write_call_entry
+
+        before = len(list(call_record.CALLS_DIR.glob("*.json")))
+        write_call_entry("vm-o-abc123def456", {}, {"record_calls": False},
+                         "hello", "held", 1754500000.0)
+        self.assertEqual(before,
+                         len(list(call_record.CALLS_DIR.glob("*.json"))))
+
+    def test_the_viewer_labels_it(self):
+        from tests.support import REPO
+
+        viewers = (REPO / "web-widget" / "panel-viewers.js").read_text(encoding="utf-8")
+        self.assertIn("voicemail", viewers)

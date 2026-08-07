@@ -29,6 +29,34 @@ from station import StationClient
 from voicemail import deliver as vm_deliver
 from voicemail import greetings
 
+
+def write_call_entry(room: str, persona: dict, cfg: dict, message: str,
+                     receipt: str, started: float) -> None:
+    """One voicemail, in the same archive the live calls use.
+
+    The operator asked for this shape: messages appear alongside calls in
+    Recent calls, labelled as the machine's — `kind: voicemail` is what the
+    viewer renders as the label — while the messages list under Voicemail
+    stays the working queue. Transcript only, like every record here: there
+    is no audio to keep and never was.
+    """
+    if not cfg.get("record_calls") or not str(message or "").strip():
+        return
+    try:
+        from call.record import CallRecord
+
+        tier = {"o": "open", "g": "guest", "a": "admin"}.get(
+            (room.split("-") + [""])[1][:1], "open")
+        rec = CallRecord(room, persona, cfg, tier=tier, started=started)
+        rec.data["kind"] = "voicemail"
+        rec.turn("dj", "[answering machine] "
+                 + greetings.greeting_text(cfg, "", persona.get("name") or "the DJ"))
+        rec.turn("caller", message)
+        rec.tool("voicemail_delivery", receipt)
+        rec.write(reason="voicemail", keep=int(cfg.get("record_keep") or 0))
+    except Exception as e:                                    # noqa: BLE001
+        log.warning("could not write the voicemail's call entry: %s", e)
+
 log = logging.getLogger("callin.voicemail")
 
 # 20ms of mono 16-bit at whatever rate the clip declares.
@@ -77,6 +105,7 @@ async def _play(source: rtc.AudioSource, pcm: bytes, sample_rate: int) -> None:
 
 async def answer(ctx: JobContext) -> None:
     """One vm- room, start to finish."""
+    answered_at = time.time()
     cfg = settings_store.load()
     ceiling = max(5, int(cfg.get("voicemail_max_seconds") or 30))
 
@@ -201,6 +230,8 @@ async def answer(ctx: JobContext) -> None:
         except Exception:                                     # noqa: BLE001
             pass
 
+    write_call_entry(ctx.room.name, persona, cfg, message, receipt,
+                     answered_at)
     log.info("voicemail %s: %d words, %s", ctx.room.name,
              len(message.split()), receipt)
     try:

@@ -62,6 +62,7 @@ from tests.test_widget import (  # noqa: F401
     TestThePreviewCannotDisagreeWithTheCard,
     TestTheServiceWorkerStaysOutOfTheWay,
     TestTheStationsOwnColoursReachTheCard,
+    TestTheWidgetActuallyParses,
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
 )
@@ -163,6 +164,7 @@ from tests.test_voice import (  # noqa: F401
 )
 from tests.test_voicemail import (  # noqa: F401
     TestAMessageIsNeverLost,
+    TestAVoicemailIsACallEntryToo,
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,
