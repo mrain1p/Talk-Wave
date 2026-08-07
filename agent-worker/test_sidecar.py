@@ -46,7 +46,6 @@ from tests.test_http import (  # noqa: F401
     TestUsageControls,
 )
 from tests.test_widget import (  # noqa: F401
-    TestAnIdleCardIsNotMostlyEmptyBoxes,
     TestAssetVersioning,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
