@@ -500,8 +500,12 @@
       }
 
       anchor.style.display = visible ? '' : 'none';
+      // Only a hint that is a SIBLING needs hiding alongside its field — a
+      // .row carries its help inside itself now, and hiding the row takes it
+      // with it. Without the class check this would reach past the row and
+      // hide whatever happened to follow it.
       const hint = anchor.nextElementSibling;
-      if (hint && hint.classList.contains('hint')) {
+      if (hint && hint.classList.contains('hint') && hint.dataset.fromSchema) {
         hint.style.display = visible ? '' : 'none';
       }
     });
@@ -1203,12 +1207,22 @@
       // section, and a paragraph of schema help dropped into that bar would
       // push every section below it down the page. It has its own line there.
       if (anchor.closest('.linestate')) return;
-      let hint = anchor.nextElementSibling;
+      // A .row is label + field, and the field is a dropdown or a box holding
+      // a number — so the right two thirds of every one of those rows was
+      // empty, with the explanation on a line of its own underneath. Put the
+      // help IN the row and it reads across in one line, using the width that
+      // was already being paid for. .check and .prow anchors keep the help
+      // below them: .check is a <label>, and a paragraph inside one is both
+      // invalid and clickable-to-toggle.
+      const inline = anchor.classList.contains('row');
+      let hint = inline ? anchor.querySelector(':scope > .hint')
+                        : anchor.nextElementSibling;
       if (!hint || !hint.classList.contains('hint') || !hint.dataset.fromSchema) {
         hint = document.createElement('p');
-        hint.className = 'hint wide';
+        hint.className = inline ? 'hint inrow' : 'hint wide';
         hint.dataset.fromSchema = '1';
-        anchor.insertAdjacentElement('afterend', hint);
+        if (inline) anchor.appendChild(hint);
+        else anchor.insertAdjacentElement('afterend', hint);
       }
       hint.textContent = meta.help;
     });

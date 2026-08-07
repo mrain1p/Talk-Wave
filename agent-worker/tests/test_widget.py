@@ -467,6 +467,58 @@ class TestEachSurfaceIsAnsweredDeliberately(unittest.TestCase):
                               f"call.js never reads card.{key}")
 
 
+class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
+    """The card does not change size. Not at pickup, not per line of speech.
+
+    This widget's main home is an embed in a station page's player column,
+    and a card that grows there shoves the host's own layout around. 0.9.117
+    briefly traded the reservation away — small idle, one growth at pickup —
+    on the reading that §5 only forbids resizing per LINE. It moved a real
+    station page, which settles the question: the rule here is one height,
+    full stop.
+
+    The thing that was actually wrong was the SIZE of what got reserved, not
+    the reserving. So what is pinned here is both halves: everything holds
+    its space, and the caption box holds TWO lines rather than the fourteen
+    it once did.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_in_call_chrome_holds_its_space(self):
+        # `visibility`, never `display` — the second one collapses the box and
+        # the card changes height the moment a call starts.
+        for rule in (".rig { visibility: hidden; }",
+                     ".pill[hidden] { visibility: hidden; }",
+                     ".ticker[hidden] { display: grid; visibility: hidden; }"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, self.css)
+
+    def test_the_line_area_is_always_the_same_two_lines(self):
+        # Reserved from first paint at a fixed height. Two lines of
+        # 12.5px/1.45 plus 9px padding each side plus the border.
+        block = self.css.split(".linebox {")[1].split("}")[0]
+        self.assertIn("height: var(--lines-h)", block)
+        self.assertNotIn("height: auto", block)
+        self.assertIn("--lines-h: 57px", self.css)
+
+    def test_only_reading_back_a_finished_call_may_change_it(self):
+        # A deliberate click, by somebody who wants the room, when there is no
+        # call left for the resize to interrupt.
+        self.assertIn(".linebox.open { height: 200px; }", self.css)
+
+    def test_no_rule_grows_the_card_when_a_call_starts(self):
+        # The 0.9.117 shape, named so it cannot come back by accident: bands
+        # that appear on `.rig.on` are bands that were not there before it.
+        for gone in (".card:has(.rig.on) .linebox",
+                     ".card:has(.rig.on) .ticker[hidden]",
+                     ".rig { display: none; }"):
+            with self.subTest(rule=gone):
+                self.assertNotIn(gone, self.css)
+
+
 class TestTheServiceWorkerStaysOutOfTheWay(unittest.TestCase):
     """A phone-in answered from a cache is not a phone-in.
 
@@ -609,12 +661,27 @@ class TestTheCallerCanChooseWhichWayOut(unittest.TestCase):
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         self.assertIn("d.speakerDefault !== false", call_js)
 
-    def test_the_button_is_hidden_where_nothing_can_move_the_audio(self):
-        # A control that provably cannot do anything is worse than no control:
-        # the caller presses it, nothing happens, and they conclude the call
-        # is broken rather than that their browser is old.
+    def test_the_button_is_offered_on_a_phone_and_nowhere_else(self):
+        # A laptop has no earpiece for the audio to be moved to, and in an
+        # embed a row of call-handling buttons is furniture the host page did
+        # not ask for. A control that provably cannot do anything is also
+        # worse than no control: the caller presses it, nothing happens, and
+        # they conclude the call is broken rather than that their browser is
+        # old.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        self.assertIn("b.hidden = !canRouteAudio()", call_js)
+        self.assertIn("b.hidden = !offerSpeakerButton()", call_js)
+        block = call_js.split("function offerSpeakerButton()")[1][:220]
+        self.assertIn("!framed", block)
+        self.assertIn("pointer: coarse", block)
+
+    def test_an_embed_on_a_phone_still_gets_the_loudspeaker(self):
+        # Whether the platform can be ASKED and whether this surface shows a
+        # BUTTON are two questions. An embed on a phone has exactly the same
+        # earpiece problem — it just does not get a control for it.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        route = call_js.split("async function routeAudio(")[1][:700]
+        self.assertNotIn("offerSpeakerButton", route)
+        self.assertNotIn("framed", route)
 
     def test_wanting_the_loudspeaker_does_not_ask_for_play_and_record(self):
         # The Audio Session spec says play-and-record is the type that may be

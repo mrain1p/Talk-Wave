@@ -401,20 +401,41 @@
     return moved;
   }
 
-  // Offered only where there is a lever to pull. A button that provably
-  // cannot move the audio anywhere is worse than no button: the caller
-  // presses it, nothing happens, and they conclude the call is broken rather
-  // than that their browser is old.
-  function canRouteAudio() {
+  // Offered on a PHONE, and nowhere else.
+  //
+  // The problem it solves only exists on a handset: a device with an earpiece
+  // held to your head, and a platform that decides a live microphone means
+  // you want that earpiece. A laptop has no earpiece to be moved to, so the
+  // button there is a control for a thing that cannot happen. In an embed it
+  // is worse than useless — the widget is a card in somebody else's column,
+  // and a row of call-handling buttons in it is furniture the host page did
+  // not ask for.
+  //
+  // Then, and only then, the platform has to give us something to pull with.
+  // A button that provably cannot move the audio anywhere is worse than no
+  // button: the caller presses it, nothing happens, and they conclude the
+  // call is broken rather than that their browser is old.
+  //
+  // Note the split. Whether the platform can be ASKED is one question and
+  // whether this surface should show a BUTTON is another — an embed on a
+  // phone has exactly the same earpiece problem, so it still gets the
+  // loudspeaker by default. It just doesn't get a control for it.
+  function platformCanRoute() {
     return audioSessionSupported()
       || (window.HTMLMediaElement
           && typeof HTMLMediaElement.prototype.setSinkId === 'function');
   }
 
+  function offerSpeakerButton() {
+    return !framed
+      && matchMedia('(pointer: coarse)').matches
+      && platformCanRoute();
+  }
+
   function paintSpeakerBtn() {
     const b = $('spkBtn');
     if (!b) return;
-    b.hidden = !canRouteAudio();
+    b.hidden = !offerSpeakerButton();
     b.textContent = onSpeaker ? 'Speaker' : 'Phone';
     b.setAttribute('aria-pressed', onSpeaker ? 'true' : 'false');
     // Coloured for the EARPIECE, not the speaker. Loudspeaker is the normal

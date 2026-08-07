@@ -54,6 +54,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheCallButtonSaysWhatTheOperatorChose,
     TestTheCallButtonSurvivesTheUpgrade,
     TestTheCallerCanChooseWhichWayOut,
+    TestTheCardIsOneHeightAndStaysThere,
     TestThePreviewCannotDisagreeWithTheCard,
     TestTheServiceWorkerStaysOutOfTheWay,
     TestTheStationsOwnColoursReachTheCard,
