@@ -76,7 +76,7 @@
 
          The connection state is NOT in this row any more; it lives in the
          line area at the bottom of the card. See there. -->
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9681;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9788;</button><button class="gear" id="lockBtn" title="Forget the door code on this device" aria-label="Forget the door code on this device" hidden>&#128274;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -201,6 +201,7 @@
       <!-- The last row of the card, on every surface. -->
       <div class="actionrow">
         <button id="callBtn" disabled>Call the DJ</button>
+        <button id="vmBtn" hidden>Leave a message</button>
         <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
         <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
       </div>

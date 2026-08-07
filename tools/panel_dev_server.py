@@ -56,6 +56,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     "llm_provider": "google", "llm_model": "gemini-3.1-flash-lite",
     "tts_mode": "local", "front_access": "guest",
     "show_push_to_talk": True,
+    "show_voicemail_button": True,
     "voicemail_when": "closed",
 }), encoding="utf-8")
 
@@ -202,10 +203,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/voicemail/status":
             return self._json({"personas": [
                 {"id": "p_default1", "name": "Rosie", "staged": True,
-                 "current": True, "renderedAt": "2026-08-07 11:00:00"},
+                 "current": True, "renderedAt": "2026-08-07 11:00:00",
+                 "voice": "-Cliff1", "overridden": False,
+                 "text": "You've reached Yosemite FM. Rosie is on the air "
+                         "right now — leave a request after the beep."},
                 {"id": "p_e28f6a", "name": "Dawn", "staged": True,
-                 "current": False, "renderedAt": "2026-08-01 09:00:00"},
+                 "current": False, "renderedAt": "2026-08-01 09:00:00",
+                 "voice": "Lily", "overridden": True,
+                 "text": "Dawn here — say your piece after the tone."},
             ], "messages": 2})
+        if path.startswith("/voicemail/greeting/"):
+            return self._json({"ok": True})
         if path == "/voicemail/stage":
             return self._json({"ok": False, "results": [
                 {"id": "p_default1", "name": "Rosie", "ok": True},

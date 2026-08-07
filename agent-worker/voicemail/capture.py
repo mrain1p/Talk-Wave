@@ -50,7 +50,8 @@ def write_call_entry(room: str, persona: dict, cfg: dict, message: str,
         rec = CallRecord(room, persona, cfg, tier=tier, started=started)
         rec.data["kind"] = "voicemail"
         rec.turn("dj", "[answering machine] "
-                 + greetings.greeting_text(cfg, "", persona.get("name") or "the DJ"))
+                 + greetings.greeting_text_for(persona.get("id") or "", cfg, "",
+                                               persona.get("name") or "the DJ"))
         rec.turn("caller", message)
         rec.tool("voicemail_delivery", receipt)
         rec.write(reason="voicemail", keep=int(cfg.get("record_keep") or 0))

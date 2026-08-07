@@ -224,6 +224,8 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # Like controls/card: /live is cached across every caller and cannot
         # know which surface is asking, so both answers travel and the widget
         # picks on `framed`.
+        "vmBtn": bool(cfg.get("show_voicemail_button")),
+        "embedVmBtn": bool(cfg.get("embed_voicemail_button")),
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
         "voiceEffect": str(cfg.get("voice_effect") or "none"),
@@ -353,6 +355,7 @@ async def handle_live(request: web.Request) -> web.Response:
                     # The answering-machine policy, so the card can offer
                     # "Leave a message" exactly where it paints a refusal.
                     "voicemailWhen": str(cfg.get("voicemail_when") or "never"),
+                    "guestSessionMinutes": int(cfg.get("guest_session_minutes") or 0),
                     # True when several station reads in a row have failed —
                     # the card can say "station struggling" instead of the
                     # prompt just silently thinning.

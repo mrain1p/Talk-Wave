@@ -161,6 +161,10 @@
           <label for="front_access">Call-in access</label>
           <select id="front_access"></select>
         </div>
+        <div class="row narrow">
+          <label for="guest_session_minutes">Guest code expires (min)</label>
+          <input type="number" id="guest_session_minutes" min="0" max="1440" step="15" />
+        </div>
 
         <h4 class="subhead">Admin — this panel</h4>
         <p class="hint wide" style="margin-top:0">Opens the settings, the keys
@@ -375,6 +379,7 @@
           <div class="row permrow" data-perm="allow_library_search"><select id="allow_library_search"></select></div>
           <div class="row permrow" data-perm="allow_exact_queue"><select id="allow_exact_queue"></select></div>
           <div class="row permrow" data-perm="allow_announcements"><select id="allow_announcements"></select></div>
+          <div class="row permrow" data-perm="allow_voicemail"><select id="allow_voicemail"></select></div>
           <div class="row permrow" data-perm="allow_skills"><select id="allow_skills"></select></div>
           <label class="check"><input type="checkbox" id="offer_skills" /> …and let the DJ offer one</label>
         </div>
@@ -793,6 +798,12 @@
 
           <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
 
+          <div class="prow" data-help="show_voicemail_button">
+            <span class="plabel">“Leave a message” button</span>
+            <input type="checkbox" id="show_voicemail_button" aria-label="Voicemail button on the page" />
+            <input type="checkbox" id="embed_voicemail_button" aria-label="Voicemail button in an embed" />
+          </div>
+
           <div class="prow" data-help="show_push_to_talk">
             <span class="plabel">Push to talk</span>
             <input type="checkbox" id="show_push_to_talk" aria-label="Push to talk on the page" />
@@ -965,6 +976,16 @@
     </details>
 
     <p class="versionline" id="versionLine"></p>
+
+    <!-- The floating verdict on unsaved work. Appears the moment anything
+         differs from what is stored and stays until Saved or Discarded — the
+         operator asked for exactly this after one too many edits scrolled
+         out of sight above the bottom Save button. -->
+    <div class="saveoverlay" id="saveOverlay" hidden>
+      <span id="saveOverlayMsg">Unsaved changes</span>
+      <button type="button" id="saveOverlaySave" class="clean">Save</button>
+      <button type="button" id="saveOverlayDiscard" class="btnquiet">Discard</button>
+    </div>
   </section>
 
 <script src="/shared.js"></script>

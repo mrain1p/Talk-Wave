@@ -135,7 +135,8 @@ docker compose up -d
 
 Comments in this codebase explain **why**, and frequently cite the incident that motivated the
 code ("this has happened, and it was invisible"). Match that. Don't add comments that restate
-the line beneath them.
+the line beneath them. Wrap comment prose at ~100 columns, not 72 — the operator reads these
+files, and narrow wrapping doubled their length for nothing.
 
 Commit subjects are lowercase prose describing the effect, prefixed with the version:
 `0.9.69 - the call transcript stops disagreeing with the call`.

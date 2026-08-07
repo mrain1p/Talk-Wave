@@ -60,12 +60,18 @@ async def handle_voicemail_status(request: web.Request) -> web.Response:
             continue
         name = str(p.get("name") or pid)
         voice = await sc.voice_for(pid)
-        text = greetings.greeting_text(cfg, station_name, name)
+        text = greetings.greeting_text_for(pid, cfg, station_name, name)
         key = greetings.render_key(text, voice, str(cfg.get("tts_mode", "")),
                                   str(cfg.get("tts_adapter") or ""))
         entry = index.get(pid) or {}
         out.append({
             "id": pid, "name": name,
+            # Everything the panel's per-persona row shows: the words the
+            # clip speaks (editable), the voice it speaks them in, and
+            # whether the words came from a per-persona override.
+            "text": text,
+            "voice": voice,
+            "overridden": pid in greetings.read_overrides(),
             "staged": greetings.clip_path(pid).is_file(),
             "current": entry.get("key") == key and greetings.clip_path(pid).is_file(),
             "renderedAt": entry.get("renderedAt") or "",
@@ -126,15 +132,21 @@ async def handle_voicemail_stage(request: web.Request) -> web.Response:
             await tts.aclose()
         return bytes(pcm), tts.sample_rate
 
+    # One persona when asked, the roster when not — the panel stages one at
+    # a time now, so the operator watches progress instead of wondering
+    # whether the button took.
+    only = str(request.query.get("persona") or "")
     results, ids = [], []
     for p in personas:
         pid = str(p.get("id") or "")
         if not pid:
             continue
         ids.append(pid)
+        if only and pid != only:
+            continue
         name = str(p.get("name") or pid)
         voice = await sc.voice_for(pid)
-        text = greetings.greeting_text(cfg, station_name, name)
+        text = greetings.greeting_text_for(pid, cfg, station_name, name)
         key = greetings.render_key(text, voice, str(cfg.get("tts_mode", "")),
                                   str(cfg.get("tts_adapter") or ""))
         if not greetings.needs_render(pid, key):
@@ -161,13 +173,53 @@ async def handle_voicemail_stage(request: web.Request) -> web.Response:
         except Exception as e:                                # noqa: BLE001
             results.append({"id": pid, "name": name, "ok": False,
                             "error": str(e)[:200]})
-    greetings.drop_stale(ids)
+    if not only:
+        greetings.drop_stale(ids)
     await sc.aclose()
 
     ok = sum(1 for r in results if r.get("ok"))
     log.info("voicemail staging: %d/%d personas ok", ok, len(results))
     return _cors(request, web.json_response({"ok": ok == len(results),
                                              "results": results}))
+
+
+async def handle_voicemail_clip(request: web.Request) -> web.StreamResponse:
+    """One staged greeting, as audio, for the panel's Play button. Admin —
+    the clips are the operator's own renders, but the list of what exists is
+    nobody else's business."""
+    if not _write_allowed(request):
+        raise web.HTTPUnauthorized()
+    path = greetings.clip_path(request.match_info.get("persona_id", ""))
+    if not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={
+        "Cache-Control": "no-store", "Content-Type": "audio/wav"})
+
+
+async def handle_voicemail_clip_delete(request: web.Request) -> web.Response:
+    if not _write_allowed(request):
+        return _refuse(request)
+    pid = request.match_info.get("persona_id", "")
+    greetings.clip_path(pid).unlink(missing_ok=True)
+    greetings.ack_path(pid).unlink(missing_ok=True)
+    index = greetings.read_index()
+    if index.pop(str(pid), None) is not None:
+        greetings._write_index(index)
+    log.info("voicemail greeting deleted: %s", pid)
+    return _cors(request, web.json_response({"ok": True}))
+
+
+async def handle_voicemail_override(request: web.Request) -> web.Response:
+    """Set (or clear, with empty text) one persona's own greeting line."""
+    if not _write_allowed(request):
+        return _refuse(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    pid = request.match_info.get("persona_id", "")
+    greetings.set_override(pid, str((body or {}).get("text") or ""))
+    return _cors(request, web.json_response({"ok": True}))
 
 
 async def handle_voicemail_messages(request: web.Request) -> web.Response:

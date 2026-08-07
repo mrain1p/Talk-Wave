@@ -35,6 +35,51 @@ DERIVED_GREETING = (
 )
 
 
+def _overrides_path() -> Path:
+    return VOICEMAIL_DIR / "overrides.json"
+
+
+def read_overrides() -> dict:
+    try:
+        with open(_overrides_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def set_override(persona_id: str, text: str) -> None:
+    """One persona's own greeting line, written from the panel. Empty clears
+    it back to the shared setting. The cache key includes the text, so an
+    edit invalidates exactly that persona's clip and nothing else."""
+    overrides = read_overrides()
+    pid = str(persona_id)
+    if str(text or "").strip():
+        overrides[pid] = str(text).strip()[:400]
+    else:
+        overrides.pop(pid, None)
+    VOICEMAIL_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _overrides_path().with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(overrides, f, indent=1, sort_keys=True)
+    for path, mode in ((VOICEMAIL_DIR, 0o755), (tmp, 0o644)):
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            pass
+    tmp.replace(_overrides_path())
+
+
+def greeting_text_for(persona_id: str, cfg: dict, station_name: str,
+                      dj_name: str) -> str:
+    """This persona's line: their own override, else the shared setting,
+    else the derived sentence."""
+    own = read_overrides().get(str(persona_id))
+    if own:
+        return own
+    return greeting_text(cfg, station_name, dj_name)
+
+
 def greeting_text(cfg: dict, station_name: str, dj_name: str) -> str:
     """The words a persona's clip speaks. Blank means derived, per the
     settings invariant — an empty box is the sentence above, not silence."""

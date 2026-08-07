@@ -41,7 +41,7 @@ The README is the short version. The detail lives here:
 | **[Calling from outside your network](docs/networking.md)** | The three topologies, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
-| **[Voicemail](docs/VOICEMAIL.md)** | Designed, not built: what happens when the line can't be answered |
+| **[Voicemail](docs/VOICEMAIL.md)** | The answering machine: staged greetings, where messages go, and what is deliberately never recorded |
 
 
 ## Features
@@ -237,6 +237,14 @@ it would open nothing.
 |---|---|
 | `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. Omit for OS preference |
 | `data-lock-theme="true"` | Pin `data-theme` outright and remove the toggle, for a page that needs one look |
+
+**The station's own colours** are not an embed attribute — set **Player
+settings → Colours → "The station's own colours"** in the panel and every
+surface, embeds included, wears the on-air show's palette live from the
+station's `/themes` (a host's `data-theme` is only the starting point, so it
+does not block this). A host page can also push its own palette *and fonts*
+into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` —
+which repaints in place without dropping a call.
 | `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |

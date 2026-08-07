@@ -49,7 +49,10 @@ from api.live import (
 )
 from api.voicemail import (
     handle_voicemail_clear,
+    handle_voicemail_clip,
+    handle_voicemail_clip_delete,
     handle_voicemail_messages,
+    handle_voicemail_override,
     handle_voicemail_stage,
     handle_voicemail_status,
 )
@@ -119,6 +122,10 @@ def build_app() -> web.Application:
     app.router.add_post("/voicemail/stage", handle_voicemail_stage)
     app.router.add_get("/voicemail/messages", handle_voicemail_messages)
     app.router.add_delete("/voicemail/messages", handle_voicemail_clear)
+    app.router.add_get("/voicemail/greeting/{persona_id}", handle_voicemail_clip)
+    app.router.add_delete("/voicemail/greeting/{persona_id}", handle_voicemail_clip_delete)
+    app.router.add_post("/voicemail/greeting/{persona_id}", handle_voicemail_override)
+    app.router.add_options("/voicemail/greeting/{persona_id}", handle_options)
     app.router.add_options("/voicemail/stage", handle_options)
     app.router.add_options("/voicemail/messages", handle_options)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)

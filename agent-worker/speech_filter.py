@@ -219,6 +219,20 @@ def filter_profanity(text: str, words: list[str], mode: str = "mask") -> str:
     return _WHITESPACE.sub(" ", cleaned).strip()
 
 
+# Characters TTS backends read out strangely, replaced with what a person
+# would actually say. "&" arrives as "ampersand" on some voices, an em dash
+# read literally becomes a hard stop mid-thought — a comma's pause is what
+# the writer meant. Operator-reported, both.
+_AMP = re.compile(r"\s*&\s*")
+_DASH = re.compile(r"\s*[—–]\s*")
+
+
+def normalize_for_tts(text: str) -> str:
+    out = _AMP.sub(" and ", text or "")
+    out = _DASH.sub(", ", out)
+    return out
+
+
 def clean_for_speech(
     text: str,
     *,
@@ -239,6 +253,9 @@ def clean_for_speech(
         out = strip_stage_directions(out)
         if out != before:
             log.info("stripped stage directions before speaking")
+    # BEFORE the profanity mask, which spells its bleep with an em dash
+    # ("s—") — normalising after would turn the mask into "s, ".
+    out = normalize_for_tts(out)
     out = filter_profanity(
         out,
         profanity_words if profanity_words is not None else DEFAULT_PROFANITY,

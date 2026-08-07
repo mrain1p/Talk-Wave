@@ -8,7 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    ASKS, NEVER, CALL_KEY, callKey,
+    ASKS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   } = window.Callin;
@@ -43,7 +43,18 @@
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
     set('gearBtn', c.settings !== false && !compact);
+    // Not the operator's switch: the lock exists exactly when this DEVICE
+    // holds a door code a passer-by could use. Kiosks are why.
+    set('lockBtn', !!(d && d.guestRequired) && !!callKey());
   }
+
+  $('lockBtn').onclick = () => {
+    rememberCallKey('');
+    setStatus('Door code forgotten on this device');
+    applyControls(shown || live);
+    paintGuestGate();
+    if (!room) refreshLive();
+  };
 
   // Which lines of the who's-on-air block this surface paints. Same shape and
   // the same reason as the corner controls: an embed sits beside the host
@@ -161,6 +172,12 @@
     }
 
     if (msg.type !== 'swtv:theme' || !msg.tokens) return;
+    // An optional mode rides with the tokens, at themeDefault strength: it
+    // fills the light/dark answer only while the viewer has not chosen.
+    if ((msg.mode === 'light' || msg.mode === 'dark')
+        && !localStorage.getItem('callinTheme')) {
+      document.documentElement.setAttribute('data-theme', msg.mode);
+    }
     applyTokens(msg.tokens);
   });
 
@@ -579,8 +596,12 @@
     $('djAvatar').classList.add('hidden');
     // Off air is exactly what the answering machine is for — but not
     // offline: an unreachable station cannot take delivery either.
+    const flags = shown || live || {};
+    const vmButton = vmPolicy() !== 'never' && reason !== 'offline'
+      && !!(framed ? flags.embedVmBtn : flags.vmBtn);
+    $('vmBtn').hidden = !vmButton || !!room;
     callBtn.dataset.vm = '';
-    if (reason !== 'offline' && vmPolicy() !== 'never' && !room) {
+    if (reason !== 'offline' && vmPolicy() !== 'never' && !room && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
       callBtn.textContent = 'Leave a message';
@@ -597,6 +618,9 @@
       const d = await r.json();
       const first = !live;
       live = d;
+      // The kiosk clock: a stored code past the operator's ceiling is
+      // forgotten before anything else reads it, and the door re-locks.
+      if (callKeyExpired(d.guestSessionMinutes)) rememberCallKey('');
       paintLive(preview ? Object.assign({}, d, preview) : d, first);
     } catch (e) {
       live = live || {};
@@ -691,11 +715,17 @@
         // voicemail-only. The door code still applies either way.
         const vmHere = vmPolicy() === 'always'
           || (vmPolicy() === 'closed' && (d.callsPaused || !d.onAir));
+        // The operator can put the machine on the card as its own button,
+        // per surface. With the button up, Call never morphs — two clear
+        // doors beat one door with a changing sign.
+        const vmButton = vmPolicy() !== 'never'
+          && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
+        $('vmBtn').hidden = !vmButton;
         callBtn.dataset.vm = '';
         if (needsCode) {
           callBtn.disabled = true;
           callBtn.textContent = 'Enter the code';
-        } else if (vmHere) {
+        } else if (vmHere && !vmButton) {
           callBtn.disabled = false;
           callBtn.dataset.vm = '1';
           callBtn.textContent = 'Leave a message';
@@ -760,7 +790,7 @@
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { msg.textContent = d.error || 'That code is not right.'; return; }
-      localStorage.setItem(CALL_KEY, pw);
+      rememberCallKey(pw);
       input.value = ''; msg.textContent = '';
       $('guestGate').hidden = true;
       await refreshLive();
@@ -1216,6 +1246,7 @@
       return;
     }
     callBtn.disabled = true;
+    $('vmBtn').hidden = true;
     callBtn.textContent = 'Ringing…';
     callBtn.classList.add('ringing');
     $('rig').classList.add('on');
@@ -1531,6 +1562,9 @@
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
     $('meterYou').classList.remove('muted');
     setStatus(wasVm ? 'Message left — it gets passed on.' : 'Call ended');
+    // The card's idle truth — including the second button — comes back from
+    // the next /live read rather than being reconstructed by hand here.
+    refreshLive();
     notifyHeight();
   }
 
@@ -1603,6 +1637,7 @@
   callBtn.onclick = () => {
     if (!room && !previewMode) startCall(callBtn.dataset.vm === '1');
   };
+  $('vmBtn').onclick = () => { if (!room && !previewMode) startCall(true); };
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };
 

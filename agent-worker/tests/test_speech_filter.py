@@ -204,3 +204,23 @@ class TestATypedToolCallNeverReachesTheSpeaker(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual(speech_filter.clean_for_speech(line), line)
                 self.assertFalse(speech_filter.looks_like_tool_code(line))
+
+
+class TestPunctuationIsSpokenNotSpelled(unittest.TestCase):
+    """Operator-reported: some voices read "&" as the word ampersand, and an
+    em dash read literally lands as a hard stop where the writer meant a
+    breath. Both become what a person would say."""
+
+    def test_ampersand_becomes_and(self):
+        from speech_filter import clean_for_speech
+
+        self.assertEqual("Fish and Chips tonight",
+                         clean_for_speech("Fish & Chips tonight"))
+
+    def test_dashes_become_a_breath(self):
+        from speech_filter import clean_for_speech
+
+        self.assertEqual("one thing, and another",
+                         clean_for_speech("one thing — and another"))
+        self.assertEqual("three to four, ish",
+                         clean_for_speech("three to four–ish"))
