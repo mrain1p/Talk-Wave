@@ -487,14 +487,18 @@ GROUPS = [
     # is worth setting, and burying it under Connect meant a fresh install's
     # first screen was a station URL rather than a lock.
     ("security", "config", "Access",        "Who opens this panel, and who can call."),
-    ("station",  "config", "Station",       "Which SUB/WAVE this answers for."),
-    ("keys",     "config", "Connections",   "API keys, stored server-side."),
-    ("brains",   "config", "AI brains",     "The model that thinks."),
-    ("voice",    "config", "Voice",         "How the DJ sounds."),
+    ("station",  "config", "SUB/WAVE Station", "Which station this answers for."),
+    # There is no "Connections" section any more. It held every API key on one
+    # screen, away from the provider dropdowns those keys decide the contents
+    # of — so picking a model meant leaving the section, adding a key to a list
+    # of eight, and coming back to see whether the provider had appeared. Each
+    # key now lives in the section that spends it; see secrets_store.SECRET_GROUPS.
+    ("brains",   "config", "Brains",        "AI — the model that thinks."),
+    ("voice",    "config", "Voice",         "TTS — how the DJ sounds."),
     # Split out of Brains. Listening and thinking are configured at different
     # times, from different accounts, and one section holding both meant six
     # rows where four of them were about something else.
-    ("ears",     "config", "Ears",          "How the DJ hears."),
+    ("ears",     "config", "Ears",          "STT — how the DJ hears."),
 
     ("perms",    "safety", "Caller permissions", "The station actions a caller can trigger."),
     ("usage",    "safety", "Usage controls",     "Generous limits that stop runaway use."),
@@ -534,15 +538,18 @@ SCHEMA: dict[str, dict] = {
 
     # --- brains ---
     "llm_provider": dict(group="brains", kind="select", label="Provider",
-        help="Only providers you have a key for are listed. Ollama is always "
-             "listed — it runs on your own network and needs no key."),
+        help="Only providers you have a key for are listed — add one below and "
+             "it appears here. Ollama runs on your own network and needs none."),
     "llm_model": dict(group="brains", kind="select", label="Model",
         help="Read live from the provider. Over ~1.5s to first token sounds "
              "laggy on a call."),
     "llm_base_url": dict(group="brains", kind="text", label="Endpoint",
-        needs=("llm_provider", ("ollama", "openai", "openrouter")),
+        needs=("llm_provider", ("ollama", "openai", "openrouter",
+                                "deepseek", "requesty", "gateway",
+                                "openai-compatible")),
         placeholder="default: the provider's own address",
-        help="Only for a self-hosted or gateway endpoint."),
+        help="Only for a self-hosted or gateway endpoint. Required for "
+             "'OpenAI-compatible' — it is the address of your own server."),
     "llm_temperature": dict(group="brains", kind="number", label="Temperature",
         help="0.8 suits a DJ. Below 0.5 sounds clipped."),
 
@@ -1019,6 +1026,19 @@ MODEL_CHOICES = {
     "openrouter": [],   # discovered live; the listing endpoint needs no key
     "google": ["gemini-2.5-flash", "gemini-2.5-pro"],
     "anthropic": ["claude-sonnet-5", "claude-haiku-4-5-20251001"],
+    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+    # The two aggregators are deliberately EMPTY rather than seeded with
+    # plausible ids. Their catalogues are namespaced (`openai/gpt-4.1-mini`)
+    # and move, and a guessed id here is not a shorter list — it is a 404 on
+    # every single utterance, which sounds exactly like the DJ never speaking.
+    # Both only appear at all once their key is stored, so /v1/models can
+    # always be asked, and what it says is the only list worth showing.
+    "requesty": [],
+    "gateway": [],
+    # The operator's own OpenAI-compatible server (llama.cpp, vLLM, LM
+    # Studio). Discovered live from its /v1/models; there is nothing sensible
+    # to curate for a server we have never seen.
+    "openai-compatible": [],
     "ollama": [],
 }
 
@@ -1035,7 +1055,31 @@ LLM_PROVIDER_KEY: dict[str, str | None] = {
     "openrouter": "openrouter_api_key",
     "google": "google_api_key",
     "anthropic": "anthropic_api_key",
+    # The three SUB/WAVE offers that this did not. A companion app that cannot
+    # point at the same provider the station is already paying for makes the
+    # operator keep two accounts to run one radio station.
+    "deepseek": "deepseek_api_key",
+    "requesty": "requesty_api_key",
+    "gateway": "gateway_api_key",
+    # Your own OpenAI-protocol server, like the station's own
+    # openai-compatible provider: no managed key. If the server wants one
+    # anyway, set OPENAI_COMPAT_API_KEY in the environment.
+    "openai-compatible": None,
     "ollama": None,
+}
+
+# Longer names for the dropdown. The bare id says what to type, not what it is
+# — "gateway" in a list next to "google" is a coin toss.
+LLM_PROVIDER_LABELS: dict[str, str] = {
+    "openai": "OpenAI (GPT)",
+    "openrouter": "OpenRouter (aggregator, ~340 models)",
+    "google": "Google (Gemini)",
+    "anthropic": "Anthropic (Claude)",
+    "deepseek": "DeepSeek",
+    "requesty": "Requesty (aggregator)",
+    "gateway": "Vercel AI Gateway (aggregator)",
+    "openai-compatible": "OpenAI-compatible (llama.cpp · vLLM · LM Studio)",
+    "ollama": "Ollama (your own box, no key)",
 }
 
 STT_PROVIDER_KEY: dict[str, str | None] = {
@@ -1105,7 +1149,26 @@ def provider_base_urls() -> dict:
         "openai": "",
         "google": "",
         "anthropic": "",
+        **{p: h for p, (h, _d) in OPENAI_PROTOCOL_HOSTS.items()},
     }
+
+
+# Providers that are OpenAI's wire protocol at a different address, as
+# (base URL, default model). One branch in call/providers.build_llm covers all
+# of them and one /v1/models call populates their dropdowns; the only thing
+# that differs is where, and which key. Kept here rather than in providers.py
+# because the settings API needs the same addresses to discover the models.
+#
+# The two aggregators have NO default model on purpose. Their catalogues are
+# namespaced (`openai/gpt-4.1-mini`) and move, so a stand-in id here would 404
+# on every utterance while looking like a working configuration — the exact
+# failure model_for() exists to prevent. No model means the call refuses with a
+# sentence saying to pick one.
+OPENAI_PROTOCOL_HOSTS: dict[str, tuple[str, str]] = {
+    "deepseek": ("https://api.deepseek.com/v1", "deepseek-chat"),
+    "requesty": ("https://router.requesty.ai/v1", ""),
+    "gateway": ("https://ai-gateway.vercel.sh/v1", ""),
+}
 
 
 def tts_base_urls() -> dict:

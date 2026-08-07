@@ -95,22 +95,64 @@
          scrolling past everything in between. -->
     <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
 
-    <!-- The kill switch, out of Usage controls and into the one place it can
-         be reached without opening anything. It was three sections and one
-         disclosure down, which is the wrong depth for the control you want
-         when something is going wrong right now. Still `calls_paused`, still
-         in the usage group as far as the schema is concerned — only the
-         markup moved. -->
-    <div class="linestate">
-      <label class="check" for="calls_paused">
-        <input type="checkbox" id="calls_paused" />
-        <span>Pause all calls</span>
-      </label>
-      <span class="linestate-note" id="pausedNote"></span>
+    <!-- The dashboard. The kill switch lives here — out of Usage controls and
+         into the one place it can be reached without opening anything, because
+         three sections and one disclosure down is the wrong depth for the
+         control you want when something is going wrong right now.
+
+         It was a checkbox in a bordered strip until 0.9.122, and a checkbox is
+         the wrong shape for it twice over: it read as one more setting in a
+         panel of forty, and like every other setting it did nothing until Save
+         was pressed at the bottom of the page. Closing the line is not a
+         setting you are drafting, it is a thing you are doing. The button
+         posts immediately (see savePaused in panel.js) and says which way
+         round it is.
+
+         Still `calls_paused`, still in the usage group as far as the schema is
+         concerned — the checkbox is still the field Save diffs and the server
+         stores, it is just driven by the button rather than clicked. Removing
+         it would take the setting out of every list built from the schema.
+
+         The tiles are the four things an operator opens this page to check
+         before they change anything: who is on air, whether the station is
+         answering, who is allowed to call, and whether the three legs of a
+         call are configured. Each one jumps to the section that owns it. -->
+    <div class="dash">
+      <div class="dashmain">
+        <button type="button" id="pauseBtn" class="killbtn">Pause all calls</button>
+        <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
+               aria-hidden="true" />
+        <span class="dashsay">
+          <strong id="pausedNote"></strong>
+          <span id="pausedSub"></span>
+        </span>
+        <button type="button" id="dashCheckBtn" class="btnquiet">Run the full check</button>
+      </div>
+      <div class="dashtiles">
+        <button type="button" class="tile" id="tileOnAir" data-jump="call">
+          <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileStation" data-jump="station">
+          <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileAccess" data-jump="security">
+          <span class="tk">Who can call</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileChain" data-jump="brains">
+          <span class="tk">Brains · Voice · Ears</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+      </div>
     </div>
 
+    <!-- Every section's name and one-line subtitle are written here AND set
+         from the schema by layoutPanel(), which is not belt-and-braces for its
+         own sake: settings.py already decides the order and the grouping, so a
+         rename that only happened in one of the two files produced a panel
+         whose heading and whose schema disagreed about what the section was.
+         The markup carries the current text so the page reads correctly before
+         any javascript runs, or if it never does. -->
     <details data-group="security" class="sec">
-      <summary><span class="chev">▶</span>Access<span class="tag" id="tagSecurity"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
         <h4 class="subhead">Who can call</h4>
         <div class="row">
@@ -154,7 +196,7 @@
     </details>
 
     <details data-group="station" class="sec">
-      <summary><span class="chev">▶</span>Station<span class="tag" id="tagStation"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Station</span><em class="secblurb"></em><span class="tag" id="tagStation"></span></summary>
       <div class="body">
         <div class="row">
           <label for="station_base_url">Station API</label>
@@ -180,9 +222,11 @@
           beat, skipping a track, <strong>putting a different show on air</strong>,
           the back-to-air mention, exact-track queueing, and mirroring each
           persona's voice from the station. Stored server-side, never shown back.</p>
-        <div id="stationSecretRows"></div>
+        <!-- Filled by paintSecrets() from secrets_store.SECRET_GROUPS. Every
+             key block on this page is one of these divs and nothing else, so
+             adding a key is an entry in that table rather than an edit here. -->
+        <div class="keyblock" id="keys_station"></div>
         <div class="testrow">
-          <button id="saveAdminBtn">Save credentials</button>
           <button id="testAdminBtn">Test admin access</button>
           <button id="testStationBtn">Test station + tools</button>
           <button id="reloadStationBtn">Reload from station</button>
@@ -191,24 +235,18 @@
       </div>
     </details>
 
-    <details data-group="keys" class="sec">
-      <summary><span class="chev">▶</span>Connections<span class="tag" id="tagKeys"></span></summary>
-      <div class="body">
-        <p class="hint wide" style="margin-top:0">Stored in
-          <code>data/secrets.json</code> and never sent back to this page — only
-          whether each is set, and its last four characters. A blank field keeps
-          the current value.</p>
-        <div id="secretRows"></div>
-        <div class="testrow">
-          <button id="saveKeysBtn">Save keys</button>
-          <button id="refreshModelsBtn">Reload model lists</button>
-        </div>
-        <div class="result" id="keysResult"></div>
-      </div>
-    </details>
-
+    <!-- There was a "Connections" section here holding all eight API keys on
+         one screen. It is gone, and the keys now sit in the section that
+         spends them.
+         The section it replaced asked the operator to make a decision in one
+         place using information kept in another: the Provider dropdown lists
+         only providers a key exists for, so a fresh install's list was short
+         for a reason nothing on that screen explained, and finding out meant
+         leaving, adding a key to a list of eight vendor names, and coming back
+         to see whether the list had grown. Same rule as the schema's field
+         help — the explanation belongs beside the thing it explains. -->
     <details data-group="brains" class="sec">
-      <summary><span class="chev">▶</span>AI brains<span class="tag" id="tagBrains"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Brains</span><em class="secblurb"></em><span class="tag" id="tagBrains"></span></summary>
       <div class="body">
         <div class="row">
           <label for="llm_provider">Provider</label>
@@ -229,20 +267,32 @@
         <p class="hint wide" id="modelSourceNote"></p>
         <div class="testrow">
           <button id="testLlmBtn">Test model + tool calling</button>
+          <button id="refreshModelsBtn" class="btnquiet">Reload model lists</button>
           <span class="hint" style="margin:0">One real completion on your key —
             a fraction of a cent, free on Ollama.</span>
         </div>
         <div class="result" id="llmResult"></div>
+
+        <h4 class="subhead">Model provider keys</h4>
+        <p class="hint wide" style="margin-top:0">A provider appears in the list
+          above as soon as its key is here. Keys are stored in
+          <code>data/secrets.json</code> and never sent back to this page — only
+          whether each is set. A blank box keeps the current value.</p>
+        <div class="keyblock" id="keys_brains"></div>
       </div>
     </details>
 
     <details data-group="voice" class="sec">
-      <summary><span class="chev">▶</span>Voice<span class="tag" id="tagVoice"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Voice</span><em class="secblurb"></em><span class="tag" id="tagVoice"></span></summary>
       <div class="body">
         <div class="banner" id="mirrorBanner" style="display:none"></div>
         <div class="row">
           <label for="tts_mode">Backend</label>
           <select id="tts_mode"></select>
+        </div>
+        <div class="row">
+          <label for="tts_adapter">Adapter</label>
+          <select id="tts_adapter"></select>
         </div>
         <div class="row">
           <label for="tts_base_url">Endpoint</label>
@@ -256,21 +306,23 @@
           <label for="tts_model">Model</label>
           <input type="text" id="tts_model" placeholder="adapter default" />
         </div>
-        <div class="row">
-          <label for="tts_adapter">Adapter</label>
-          <select id="tts_adapter"></select>
-        </div>
         <div class="testrow">
           <button id="testTtsBtn">Test voice</button>
           <button id="refreshVoicesBtn" class="btnquiet">Reload voice list</button>
           <span class="hint" style="margin:0">Synthesizes one real line.</span>
         </div>
         <div class="result" id="ttsResult"></div>
+
+        <h4 class="subhead">Speech keys</h4>
+        <p class="hint wide" style="margin-top:0">OpenAI's own key is under
+          <strong>Brains</strong> and already covers OpenAI cloud speech — these
+          are the backends that want a key of their own.</p>
+        <div class="keyblock" id="keys_voice"></div>
       </div>
     </details>
 
     <details data-group="ears" class="sec">
-      <summary><span class="chev">▶</span>Ears<span class="tag" id="tagEars"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Ears</span><em class="secblurb"></em><span class="tag" id="tagEars"></span></summary>
       <div class="body">
         <div class="row">
           <label for="stt_provider">Provider</label>
@@ -281,6 +333,12 @@
           <select id="stt_model"></select>
         </div>
         <p class="hint wide" id="sttSourceNote"></p>
+
+        <h4 class="subhead">Transcription keys</h4>
+        <p class="hint wide" style="margin-top:0">The local engine is in this
+          container and needs none. OpenAI and Google speech reuse the keys
+          under <strong>Brains</strong>.</p>
+        <div class="keyblock" id="keys_ears"></div>
       </div>
     </details>
 
@@ -300,7 +358,7 @@
          something anyone is being granted, so asking which callers get it
          would be asking a question with no answer. -->
     <details data-group="perms" class="sec">
-      <summary><span class="chev">▶</span>Caller permissions<span class="tag" id="tagPerms"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Caller permissions</span><em class="secblurb"></em><span class="tag" id="tagPerms"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Each row is the least trusted
           caller who gets it, and the columns cascade — granting to
@@ -338,7 +396,7 @@
     </details>
 
     <details data-group="usage" class="sec">
-      <summary><span class="chev">▶</span>Usage controls<span class="tag" id="tagUsage"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Usage controls</span><em class="secblurb"></em><span class="tag" id="tagUsage"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Every call costs model time and
           airtime, and one open tab could dial in a loop. Set any to
@@ -370,7 +428,7 @@
     </details>
 
     <details data-group="call" class="sec">
-      <summary><span class="chev">▶</span>Who answers<span class="tag" id="tagCall"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Who answers</span><em class="secblurb"></em><span class="tag" id="tagCall"></span></summary>
       <div class="body">
         <div class="row">
           <label for="persona_override">Who answers</label>
@@ -389,7 +447,7 @@
     </details>
 
     <details data-group="turns" class="sec">
-      <summary><span class="chev">▶</span>Turn-taking<span class="tag" id="tagTurns"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Turn-taking</span><em class="secblurb"></em><span class="tag" id="tagTurns"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">The single biggest lever on
           whether a call feels like a phone call or a kiosk — and the one most
@@ -415,7 +473,7 @@
     </details>
 
     <details data-group="style" class="sec">
-      <summary><span class="chev">▶</span>House style<span class="tag" id="tagStyle"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">House style</span><em class="secblurb"></em><span class="tag" id="tagStyle"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Light steers layered on the
           persona, not a replacement for it. Leave blank and the persona alone
@@ -440,7 +498,7 @@
     </details>
 
     <details data-group="context" class="sec">
-      <summary><span class="chev">▶</span>Station awareness<span class="tag" id="tagContext"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Station awareness</span><em class="secblurb"></em><span class="tag" id="tagContext"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">What the DJ is told before the
           call. Each item costs time-to-first-token on <em>every</em> turn, not
@@ -466,7 +524,7 @@
     </details>
 
     <details data-group="speech" class="sec">
-      <summary><span class="chev">▶</span>Speech hygiene<span class="tag" id="tagHygiene"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Speech hygiene</span><em class="secblurb"></em><span class="tag" id="tagHygiene"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Applied to every spoken line on
           its way to the voice — so it holds whichever model is in use, and
@@ -484,7 +542,7 @@
     </details>
 
     <details data-group="limits" class="sec">
-      <summary><span class="chev">▶</span>Call length<span class="tag" id="tagLimits"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Call length</span><em class="secblurb"></em><span class="tag" id="tagLimits"></span></summary>
       <div class="body">
         <div class="grid2">
           <div class="row narrow">
@@ -508,7 +566,7 @@
     </details>
 
     <details data-group="onair" class="sec">
-      <summary><span class="chev">▶</span>Sharing the microphone<span class="tag" id="tagOnair"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Sharing the microphone</span><em class="secblurb"></em><span class="tag" id="tagOnair"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ
           on the broadcast are the same person. Without this they talk over each
@@ -522,7 +580,7 @@
     </details>
 
     <details data-group="tunein" class="sec">
-      <summary><span class="chev">▶</span>Tune the caller in<span class="tag" id="tagTunein"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Tune the caller in</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="tune_in_on_call" /> Tune the caller in during the call</label>
         <div class="row">
@@ -537,7 +595,7 @@
     </details>
 
     <details data-group="callback" class="sec">
-      <summary><span class="chev">▶</span>Back to air<span class="tag" id="tagCallback"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Back to air</span><em class="secblurb"></em><span class="tag" id="tagCallback"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="callback_enabled" /> Mention the call on air afterwards</label>
         <div class="grid2">
@@ -558,7 +616,7 @@
     </details>
 
     <details data-group="sounds" class="sec">
-      <summary><span class="chev">▶</span>Call sounds<span class="tag" id="tagSounds"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Call sounds</span><em class="secblurb"></em><span class="tag" id="tagSounds"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="call_sounds" /> Play call sounds</label>
         <div class="row">
@@ -614,7 +672,7 @@
     </details>
 
     <details data-group="record" class="sec">
-      <summary><span class="chev">▶</span>Call transcripts<span class="tag" id="tagRecord"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Call transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="record_calls" /> Keep call transcripts</label>
         <div class="row narrow">
@@ -635,7 +693,7 @@
          is a dash rather than a checkbox — an embed never loads this panel's
          code, so the switch would do nothing whichever way it was set. -->
     <details data-group="player" class="sec">
-      <summary><span class="chev">▶</span>Player settings<span class="tag" id="tagPlayer"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">What the call card shows. The
           two columns are the two places it appears: <strong>this page</strong>
@@ -734,7 +792,7 @@
     </details>
 
     <details data-group="embed" class="sec">
-      <summary><span class="chev">▶</span>Embed on another page<span class="tag">iframe snippet</span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Embed on another page</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Drops an iframe into the target
           div. <code>allow="microphone"</code> is set for you — without it the mic
@@ -748,7 +806,7 @@
     </details>
 
     <details data-group="ask" class="sec">
-      <summary><span class="chev">▶</span>What callers can ask<span class="tag" id="tagAsk"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">What callers can ask</span><em class="secblurb"></em><span class="tag" id="tagAsk"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Live reference — it follows the
           permissions above as you tick them, before you save. Greyed is off.</p>
@@ -757,7 +815,7 @@
     </details>
 
     <details data-group="tools" class="sec">
-      <summary><span class="chev">▶</span>Station tools<span class="tag" id="tagTools"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Station tools</span><em class="secblurb"></em><span class="tag" id="tagTools"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Every tool the station publishes
           over MCP, and whether a caller can reach it. The blocked ones are listed
@@ -780,7 +838,7 @@
     </div>
 
     <details class="sec diag" data-diag="pipeline">
-      <summary><span class="chev">▶</span>Full pipeline check<span class="tag">every leg of a call</span>
+      <summary><span class="chev">▶</span><span class="secname">Full pipeline check</span><em class="secblurb"></em><span class="tag">every leg of a call</span>
         <button class="runbtn" id="runAllBtn">Run</button></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Walks every leg a real call
@@ -793,7 +851,7 @@
     </details>
 
     <details class="sec diag" data-diag="speed">
-      <summary><span class="chev">▶</span>Speed test<span class="tag">time to first word</span>
+      <summary><span class="chev">▶</span><span class="secname">Speed test</span><em class="secblurb"></em><span class="tag">time to first word</span>
         <button class="runbtn" id="speedBtn">Run</button></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">How long each leg takes to
@@ -804,7 +862,7 @@
     </details>
 
     <details class="sec diag" data-diag="calls">
-      <summary><span class="chev">▶</span>Recent calls<span class="tag">what was actually said</span>
+      <summary><span class="chev">▶</span><span class="secname">Recent calls</span><em class="secblurb"></em><span class="tag">what was actually said</span>
         <button class="runbtn" id="viewCallsBtn">Load</button></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Both sides of the last few
@@ -823,7 +881,7 @@
     </details>
 
     <details class="sec diag" data-diag="logs">
-      <summary><span class="chev">▶</span>Server logs<span class="tag">this service</span>
+      <summary><span class="chev">▶</span><span class="secname">Server logs</span><em class="secblurb"></em><span class="tag">this service</span>
         <button class="runbtn" id="viewLogsBtn">Load</button></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Recent activity of the web

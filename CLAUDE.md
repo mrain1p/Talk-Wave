@@ -51,6 +51,31 @@ admin surface that it could never put in front of the phone.
 `?theme=inherit` against the host page before the iframe loads, because a cross-origin frame
 can't read the page it sits in.
 
+## A companion app, on purpose
+
+Wave Talk is a companion to [SUB/WAVE](https://github.com/perminder-klair/subwave), and that
+is a design constraint, not just a description. When there is a choice about how to build
+something the station also has an answer for, **read the station's answer first**
+(`gh` against its repo — see the memory notes; `web/components/admin/*/…Meta.ts` and
+`controller/src/` are where its provider lists and contracts live) and prefer:
+
+- **Same integrations.** If the station can point at a provider (LLM, TTS, STT, search),
+  an operator will hold that key already — offer the same one rather than making them open
+  a second account to run one radio station. The LLM list here mirrors the station's
+  (OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway, Ollama);
+  keep it mirrored when the station gains one.
+- **Same vocabulary.** Where the station names a concept (personas, skills, segments,
+  programme beats, engines), use its name — an operator reads both panels in one sitting.
+- **Mirror, don't re-ask.** Anything the station already knows — persona voices, DJ/TTS
+  config, themes, cards — is read from it (`station_config.py`, `station.py`) rather than
+  configured twice. A setting that exists in both places will drift; a mirrored one can't.
+- **Same operational shape.** Compose-first deployment, settings live in a UI backed by a
+  JSON file with env as the 12-factor override, keys entered in a form and stored
+  server-side — the station's conventions, kept here so one operator runs one mental model.
+
+The boundary still holds: mirroring is **read-only** (invariant 1 below), and this sidecar
+never writes station state except through the allowlisted MCP tools.
+
 ## Invariants — break these and something real breaks
 
 1. **Call actions go through the station's MCP server, not `station.py`.** MCP already exposes

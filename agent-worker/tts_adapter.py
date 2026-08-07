@@ -31,6 +31,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from livekit.agents import APIConnectionError, APIConnectOptions, tts
@@ -74,8 +75,48 @@ def _is_openai_host(base_url: str) -> bool:
     return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
-def parse_voice_list(data: object) -> list[str]:
+def adapter_api_key(adapter: dict, base_url: str = "", allow_stored: bool = True) -> str:
+    """The key this backend wants, from the environment.
+
+    Most adapters describe an OpenAI-shaped endpoint and take TTS_API_KEY (or
+    the OpenAI key, on an OpenAI host — the README promises one key covers
+    cloud TTS). A vendor with a key of its own says so with `auth.key_env`,
+    which is what lets ElevenLabs sit beside the generic adapters instead of
+    needing the operator to paste the same key into TTS_API_KEY and lose the
+    ability to use both.
+    """
+    if not allow_stored:
+        return ""
+    auth = adapter.get("auth") or {}
+    named = str(auth.get("key_env") or "").strip()
+    if named:
+        return os.environ.get(named, "")
+    key = os.environ.get("TTS_API_KEY", "")
+    if not key and _is_openai_host(base_url):
+        key = os.environ.get("OPENAI_API_KEY", "")
+    return key
+
+
+def adapter_headers(adapter: dict, api_key: str) -> dict:
+    auth = adapter.get("auth", {"type": "none"})
+    kind = auth.get("type", "none")
+    if not api_key:
+        return {}
+    if kind == "bearer":
+        return {"Authorization": f"Bearer {api_key}"}
+    if kind == "header":
+        return {auth.get("header_name", "X-API-Key"): api_key}
+    return {}
+
+
+def parse_voice_list(data: object, prefer: str = "") -> list[str]:
     """Voice ids out of whatever shape the backend answered with.
+
+    `prefer` names the field that IS the id when a backend's catalogue carries
+    both an id and a display name. ElevenLabs is the case: its entries are
+    `{voice_id, name, ...}`, only voice_id is addressable, and the default
+    order below would pick `name` and hand the caller a list of labels that
+    every synthesis request then 404s on.
 
     There is no standard here, and at least four shapes are in the wild:
     OpenAI's {"data": [{"id": ...}]}, a bare ["name", ...], {"voices": [...]}
@@ -110,7 +151,7 @@ def parse_voice_list(data: object) -> list[str]:
             if item.strip():
                 found.add(item.strip())
         elif isinstance(item, dict):
-            for key in ("id", "name", "voice", "voice_id"):
+            for key in ([prefer] if prefer else []) + ["id", "name", "voice", "voice_id"]:
                 value = item.get(key)
                 if isinstance(value, str) and value.strip():
                     found.add(value.strip())
@@ -147,17 +188,27 @@ async def available_voices(
     # strips it; this was the one path that didn't.
     base_url = base_url.rstrip("/")
     path = "/v1/audio/voices"
+    headers: dict = {}
+    prefer = ""
     try:
-        path = str(load_adapter(adapter_path, mode=mode).get("voices_path") or path)
+        adapter = load_adapter(adapter_path, mode=mode)
+        path = str(adapter.get("voices_path") or path)
+        prefer = str(adapter.get("voices_id_field") or "")
+        # Authenticated, because some catalogues are. ElevenLabs answers
+        # /v1/voices with a 401 and no body without xi-api-key, and an empty
+        # list here means "could not find out" — so the panel would have shown
+        # eleven stock OpenAI voice names for a backend that has none of them,
+        # and the first call would have failed on a voice that never existed.
+        headers = adapter_headers(adapter, adapter_api_key(adapter, base_url))
     except Exception as e:                                    # noqa: BLE001
         # An unreadable adapter is the caller's problem to report, not a
         # reason to skip the lookup with the default path.
         log.info("adapter unreadable for voice discovery (%s)", describe(e))
     try:
         async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as c:
-            r = await c.get(path)
+            r = await c.get(path, headers=headers)
             r.raise_for_status()
-            return parse_voice_list(r.json())
+            return parse_voice_list(r.json(), prefer=prefer)
     except Exception as e:                                    # noqa: BLE001
         log.info("voice list unavailable from %s%s (%s)", base_url, path, e)
         return []
@@ -356,24 +407,18 @@ class AdapterTTS(tts.TTS):
         self._base_url = (
             base_url if base_url is not NOT_GIVEN else os.environ.get("TTS_BASE_URL", "")
         ).rstrip("/")
-        self._api_key = (
-            api_key if api_key is not NOT_GIVEN
-            else (os.environ.get("TTS_API_KEY", "") if allow_stored_key else "")
-        )
-
         if not self._base_url:
             raise ValueError("TTS_BASE_URL is not set and no base_url was passed")
 
-        # The README and the settings page both promise that a single OpenAI
-        # key covers cloud TTS, and /test/env accepts it as satisfying the
-        # requirement — so honour that here rather than 401ing on the
-        # documented happy path. TTS_API_KEY still wins when set.
-        #
-        # Matched on the HOST, not as a substring: `in self._base_url` also
-        # matched https://api.openai.com.example.net, which would have handed
-        # the OpenAI key to whoever owns example.net.
-        if not self._api_key and allow_stored_key and _is_openai_host(self._base_url):
-            self._api_key = os.environ.get("OPENAI_API_KEY", "")
+        # adapter_api_key carries the whole rule, including the one the README
+        # and the settings page both promise — a single OpenAI key covers cloud
+        # TTS, matched on the HOST rather than as a substring, because
+        # `in self._base_url` also matched https://api.openai.com.example.net
+        # and would have handed the OpenAI key to whoever owns example.net.
+        self._api_key = (
+            api_key if api_key is not NOT_GIVEN
+            else adapter_api_key(self._adapter, self._base_url, allow_stored_key)
+        )
 
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
@@ -399,13 +444,21 @@ class AdapterTTS(tts.TTS):
         return body
 
     def _headers(self) -> dict:
-        auth = self._adapter.get("auth", {"type": "none"})
-        kind = auth.get("type", "none")
-        if kind == "bearer" and self._api_key:
-            return {"Authorization": f"Bearer {self._api_key}"}
-        if kind == "header" and self._api_key:
-            return {auth.get("header_name", "X-API-Key"): self._api_key}
-        return {}
+        return adapter_headers(self._adapter, self._api_key)
+
+    def _endpoint(self) -> str:
+        """The path to POST to, with `{voice}` filled in if the adapter uses it.
+
+        Most speech APIs take the voice in the body. ElevenLabs takes it in the
+        URL — `/v1/text-to-speech/{voice_id}` — and there is no body field that
+        will do instead, so an adapter that can only describe a fixed path
+        cannot describe that vendor at all. One substitution covers it, and
+        covers every other server built the same way.
+        """
+        path = str(self._adapter["endpoint_path"])
+        if "{voice}" not in path:
+            return path
+        return path.replace("{voice}", quote(self._voice or "", safe=""))
 
     async def probe_sample_rate(
         self, text: str = "Testing, one two three."
@@ -447,7 +500,7 @@ class AdapterTTS(tts.TTS):
 
         try:
             r = await self._client.request(
-                self._adapter["method"], self._adapter["endpoint_path"],
+                self._adapter["method"], self._endpoint(),
                 json=body, headers=self._headers(),
             )
             await _raise_for_status(r)
@@ -556,7 +609,7 @@ class AdapterChunkedStream(tts.ChunkedStream):
                 output_emitter.start_segment(segment_id=request_id)
                 async with impl._client.stream(
                     adapter["method"],
-                    adapter["endpoint_path"],
+                    impl._endpoint(),
                     json=body,
                     headers=impl._headers(),
                 ) as r:
@@ -571,7 +624,7 @@ class AdapterChunkedStream(tts.ChunkedStream):
 
             r = await impl._client.request(
                 adapter["method"],
-                adapter["endpoint_path"],
+                impl._endpoint(),
                 json=body,
                 headers=impl._headers(),
             )

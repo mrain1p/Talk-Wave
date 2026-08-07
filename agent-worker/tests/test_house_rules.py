@@ -424,12 +424,19 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Shrinking is always fine and the number should be lowered when it happens.
     # Growing past the recorded size means: split it, or raise the number in the
     # same commit and say in the message what made that the right call.
-    # Empty, and that is a real state rather than a missing feature: every file
-    # over the ceiling has been measured and each one is over it for a reason
-    # that is not going to change. Add an entry here when something is too long
-    # AND has a seam worth cutting — the two splits that came out of 0.9.102
-    # and 0.9.106 both started as one.
-    SPLITTING = {}
+    # Add an entry here when something is too long AND has a seam worth
+    # cutting — the two splits that came out of 0.9.102 and 0.9.106 both
+    # started as one.
+    SPLITTING = {
+        # 0.9.122 pushed it over adding per-adapter auth and the {voice}
+        # endpoint templating for ElevenLabs. The seam is real and one-way:
+        # discovery (parse_voice_list, available_voices, pick_speakable_voice,
+        # adapter_api_key/adapter_headers) against synthesis (AdapterTTS and
+        # its stream). Discovery never reads the class; the class needs two
+        # helper names back.
+        "agent-worker/tts_adapter.py": (653, "a voice-discovery module split "
+                                             "out from the AdapterTTS class"),
+    }
 
     # Where shipped code lives. tools/ is developer scaffolding and docs are
     # prose, so neither is held to a source-file ceiling.

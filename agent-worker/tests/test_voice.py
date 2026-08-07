@@ -283,8 +283,9 @@ class TestVoiceDiscoveryIsNotHardcodedToOneShape(unittest.TestCase):
                 async def __aexit__(self, *a):
                     return False
 
-                async def get(self, url):
+                async def get(self, url, headers=None):
                     asked["url"] = url
+                    asked["headers"] = headers
                     return FakeResponse()
 
             real = tts_adapter.httpx.AsyncClient

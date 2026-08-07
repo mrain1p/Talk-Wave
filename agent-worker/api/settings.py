@@ -9,6 +9,7 @@ that module's business rather than this one's.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 import httpx
@@ -240,6 +241,62 @@ async def _openrouter_models(api_key: str = "") -> list[str]:
         return []
 
 
+async def _protocol_models(provider: str) -> list[str]:
+    """The catalogue of an OpenAI-protocol provider — DeepSeek, Requesty, the
+    Vercel gateway. One function for all three: they answer the same
+    `GET /v1/models` with the same `{data: [{id}]}`, so what differs is the
+    address and the key.
+
+    Nothing is filtered out here. On the two aggregators the ids are namespaced
+    per vendor and there is no reliable prefix to trim on — a filter written
+    against today's naming quietly hides tomorrow's models, and this list is
+    the only one the operator gets, because MODEL_CHOICES for these is empty on
+    purpose.
+    """
+    host, _default = settings_store.OPENAI_PROTOCOL_HOSTS[provider]
+    api_key = secrets_store.get(settings_store.LLM_PROVIDER_KEY[provider])
+    if not api_key:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(f"{host.rstrip('/')}/models",
+                            headers={"Authorization": f"Bearer {api_key}"})
+            r.raise_for_status()
+            return sorted(m["id"] for m in r.json().get("data", []) if m.get("id"))
+    except Exception as e:
+        log.info("%s model list unavailable (%s)", provider, describe(e))
+        return []
+
+
+async def _compat_models(cfg: dict) -> list[str]:
+    """Whatever the operator's own OpenAI-compatible server says it serves.
+
+    Only asked when that provider is actually selected: the base URL field is
+    shared across providers, so an Ollama address left in it would otherwise
+    be probed as if it were vLLM on every panel load. No name filtering — the
+    ids are whatever the operator loaded into their own server.
+    """
+    import os
+
+    if str(cfg.get("llm_provider", "")).lower() != "openai-compatible":
+        return []
+    base = str(cfg.get("llm_base_url") or "").strip().rstrip("/")
+    if not base:
+        return []
+    headers = {}
+    if os.environ.get("OPENAI_COMPAT_API_KEY"):
+        headers["Authorization"] = f"Bearer {os.environ['OPENAI_COMPAT_API_KEY']}"
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as c:
+            r = await c.get(f"{base}/models", headers=headers)
+            r.raise_for_status()
+            return sorted(m["id"] for m in r.json().get("data", []) if m.get("id"))
+    except Exception as e:
+        log.info("openai-compatible model list unavailable at %s (%s)",
+                 base, describe(e))
+        return []
+
+
 async def _ollama_models(base_url: str) -> list[str]:
     """Whatever is actually pulled on that Ollama box. Far more useful than a
     hardcoded list — it's where the station's own DJ model shows up."""
@@ -307,6 +364,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         (
             personas_raw, voice_source, voices,
             ollama, openai_m, openrouter_m, google_m, anthropic_m, station_llm,
+            *protocol_m,
         ) = await asyncio.gather(
             station.personas(),
             station_cfg.voice_source(),
@@ -317,6 +375,8 @@ async def handle_settings_options(request: web.Request) -> web.Response:
             _google_models(secrets_store.get("google_api_key")),
             _anthropic_models(secrets_store.get("anthropic_api_key")),
             station_cfg.llm_config(),
+            *(_protocol_models(p) for p in settings_store.OPENAI_PROTOCOL_HOSTS),
+            _compat_models(cfg),
         )
     finally:
         await station.aclose()
@@ -328,6 +388,19 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         p.name for p in ADAPTER_DIR.glob("*.json")
         if not p.name.startswith("_")
     )
+    # An adapter and an endpoint have to match or the audio comes back at the
+    # wrong sample rate and sounds broken while logging nothing — the exact
+    # hazard tts_base_url's help warns about. An adapter that knows its own
+    # vendor's address says so here, and the panel fills the box in.
+    adapter_urls = {}
+    for name in adapters:
+        try:
+            with open(ADAPTER_DIR / name, "r", encoding="utf-8") as f:
+                hint = json.load(f).get("base_url")
+            if hint:
+                adapter_urls[name] = str(hint)
+        except Exception as e:                                # noqa: BLE001
+            log.info("adapter %s unreadable (%s)", name, describe(e))
 
     # Discovered lists win; the curated ones are only a fallback for when a key
     # isn't set yet (or the provider's listing endpoint is unreachable).
@@ -345,6 +418,14 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         "anthropic": bool(anthropic_m),
         "ollama": bool(ollama),
     }
+    # protocol_m is the tail of the gather above: one list per entry in
+    # OPENAI_PROTOCOL_HOSTS, then the operator's own openai-compatible server.
+    compat_m = protocol_m[len(settings_store.OPENAI_PROTOCOL_HOSTS)]
+    for provider, found in zip(settings_store.OPENAI_PROTOCOL_HOSTS, protocol_m):
+        models[provider] = found or models.get(provider, [])
+        discovered[provider] = bool(found)
+    models["openai-compatible"] = compat_m
+    discovered["openai-compatible"] = bool(compat_m)
 
     # Only what the operator could actually pick. A provider with no key is not
     # a choice, it is a call that fails at the first turn — and it used to be
@@ -358,6 +439,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
 
     payload = {
         "llmProviders": llm_providers,
+        "llmProviderLabels": settings_store.LLM_PROVIDER_LABELS,
         # Trimmed to the providers above: the page fills the model list from
         # this, and a model list for a provider that cannot be selected is
         # weight on the wire for a dropdown nobody can reach.
@@ -377,6 +459,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         },
         "ttsModes": ["cloud", "local"],
         "ttsAdapters": adapters,
+        "ttsAdapterBaseUrls": adapter_urls,
         "voices": voices,
         "personas": personas,
         "voiceSource": voice_source,

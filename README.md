@@ -1,6 +1,6 @@
 # Wave Talk
 
-**Live voice call-ins for a [SUB/WAVE] AI radio station.** A listener presses
+**Live voice call-ins for a [SUB/WAVE](https://github.com/perminder-klair/subwave) AI radio station.** A listener presses
 one button in the browser, talks with whoever is live on air, and the DJ can
 act on the station mid-call — search the library, queue a request, put a
 shoutout on the broadcast.
@@ -54,7 +54,7 @@ The README is the short version. The detail lives here:
 - Caller actions get their own transcript line. The DJ *saying* it did
   something is a claim; that line is the receipt.
 - Synthesized ring, pickup, hold, hang-up and engaged tones, each replaceable
-  — see [Call sounds](#call-sounds).
+  — see [Call sounds](docs/settings.md#call-sounds).
 - In-character timeouts for silence and over-long calls; a caller who was just
   asked a question gets three times the usual wait — unless nothing has ever
   been heard from them, in which case the DJ says so, names the microphone as
@@ -67,7 +67,8 @@ The README is the short version. The detail lives here:
 - Optionally, a thumbs up or down when the line drops. The answer is stored
   against that call's own transcript, so "find me the bad ones" is a question
   the panel can answer.
-- Every call is written down — see [Diagnosing a call](#diagnosing-a-call).
+- Every call is written down — see
+  [Diagnosing a call](docs/troubleshooting.md#diagnosing-a-call).
 
 **Station integration**
 - Tools come from the station's MCP server through an allowlist: requests
@@ -93,10 +94,15 @@ The README is the short version. The detail lives here:
 - The caller's browser is optionally tuned into the stream at pickup, so
   stations that refuse requests at zero listeners accept them.
 
-**Operator panel**
-- Every runtime choice lives behind the gear: station, providers, permissions,
-  limits, call behaviour, house style. Changes apply to the next caller.
-- API keys are stored server-side and never travel back to the browser.
+**Operator panel** (its own page at `/panel`)
+- A dashboard up top: who is on air, whether the station is answering, who may
+  call, and the configured call chain — plus a **Pause all calls** button that
+  takes effect the moment it is pressed, no save, no restart.
+- Every runtime choice below it: station, providers, permissions, limits, call
+  behaviour, house style. Changes apply to the next caller.
+- API keys are entered in the section that uses them — model keys under
+  Brains, speech keys under Voice and Ears, the station login under SUB/WAVE
+  Station — stored server-side and never sent back to the browser.
 - Test buttons exercise the real code paths — green means the call will work,
   not "the URL responded".
 
@@ -105,7 +111,7 @@ rate-limited), usage caps on concurrency, hour, day, redial and actions, plus a
 pause switch. Speech hygiene runs on every line before it reaches the voice.
 Refusals are phrased in-world, never as codes. The caller is treated as an
 untrusted stranger: stated in the prompt, enforced by the allowlist,
-cross-origin writes refused. See [Security](#security).
+cross-origin writes refused. See [Security](docs/security.md).
 
 ## Architecture
 
@@ -130,10 +136,14 @@ safety), `assemble.py` joins both onto the persona and show cards. They change
 for unrelated reasons — a new station field edits briefing, a bad call edits
 conduct — so neither imports the other, and a test enforces it.
 
-**Providers** are pluggable per leg: LLM (OpenAI, Google, Anthropic,
-OpenRouter, Ollama), STT (Deepgram, OpenAI, Google, or in-process
-faster-whisper on CPU — no key, no network), TTS (any OpenAI-compatible
-endpoint, described by a JSON adapter, so a new backend is a config file).
+**Providers** are pluggable per leg, matching what a SUB/WAVE station itself
+can point at: LLM (OpenAI, Google, Anthropic, DeepSeek, the OpenRouter /
+Requesty / Vercel AI Gateway aggregators, Ollama), STT (Deepgram, OpenAI,
+Google, or in-process faster-whisper on CPU — no key, no network), TTS (any
+OpenAI-compatible endpoint, described by a JSON adapter, so a new backend is a
+config file — ElevenLabs and Fish Audio adapters ship in the box, plus one
+matching SUB/WAVE's own Remote `/speak` contract so a TTS server built for the
+station carries the call line too).
 
 **Performance**: the station's slow endpoint is kept warm by a background ping,
 per-call reads are one concurrent snapshot, and the prompt is budgeted because
@@ -173,9 +183,9 @@ docker compose up -d
 ```
 
 Both processes run as **uid 1000**, so `data/` has to belong to it — that is
-what the third line does. Upgrading an existing deployment needs the same two
-commands run against the data you already have; see
-[Upgrading to 0.9.65](#upgrading-to-0965-or-later-the-container-is-no-longer-root).
+what the third line does. On filesystems that create files with no permission
+bits (Synology shares among them) the `chmod` is what lets the app read its
+own settings, so run both.
 
 **`HOST_IP`** is the one deployment variable — the docker host's LAN address,
 driving LiveKit's advertised media address, the browser URL and the webhook
@@ -232,21 +242,3 @@ it would open nothing.
 
 Any page you embed on can mint call tokens, so treat an embed as publishing the
 phone. Set a guest code if that isn't what you want.
-
-## Working on this repo
-
-Instructions for coding agents live in the repo, so a fresh checkout does not
-have to rediscover the architecture:
-
-- `CLAUDE.md` at the root — the architecture, the invariants that must not be
-  broken, and the gotchas that have cost real time. Also one in `agent-worker/`
-  (test conventions) and `web-widget/` (why there is no JS toolchain).
-- `.claude/skills/` — task playbooks: `wavetalk-verify`, `-deploy`, `-release`,
-  `-test`, `-diagnose`, `-llm-bench` and `-standards-review`.
-- `.claude/settings.json` — a hook that runs the suite before a commit and
-  blocks it if the suite is red. It fails open, and only covers commits made
-  through the agent; CI is the real backstop.
-
-Operator-specific details (hosts, addresses, keys) belong in
-`.claude/OPERATOR.local.md`, which is gitignored. **This repository is public —
-never put a real host or credential in a committed file.**

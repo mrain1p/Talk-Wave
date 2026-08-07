@@ -71,6 +71,20 @@
       console.warn('settings layout mismatch', { missing, unknown });
     }
 
+    // The name and the one-line subtitle come from the schema, not from the
+    // markup that also carries them. settings.py already owns the order and
+    // the grouping; letting it own the wording too means a section cannot be
+    // renamed in one file and not the other, which is how "AI brains" outlived
+    // being called that in the group table.
+    SCHEMA.groups.forEach((g) => {
+      const sec = byId[g.id];
+      if (!sec) return;
+      const name = sec.querySelector(':scope > summary > .secname');
+      const blurb = sec.querySelector(':scope > summary > .secblurb');
+      if (name && g.title) name.textContent = g.title;
+      if (blurb) blurb.textContent = g.blurb || '';
+    });
+
     supers.forEach((sup) => {
       const members = SCHEMA.groups.filter((g) => g.super === sup.id && byId[g.id]);
       if (!members.length) return;
@@ -173,6 +187,8 @@
   const PROVIDER_KEY = {
     openai: 'openai_api_key', google: 'google_api_key',
     anthropic: 'anthropic_api_key', openrouter: 'openrouter_api_key',
+    deepseek: 'deepseek_api_key', requesty: 'requesty_api_key',
+    gateway: 'gateway_api_key',
     ollama: null,
   };
 
@@ -240,7 +256,7 @@
     const missing = ((options.providersNeedingKeys || {})[which]) || [];
     if (!missing.length) return;
     const line = 'Not listed, no key yet: ' + missing.join(', ')
-      + '. Add one under Connections and they appear here.';
+      + '. Add its key below and it appears here.';
     note.textContent = note.textContent ? note.textContent + ' ' + line : line;
   }
 
@@ -279,13 +295,24 @@
     if (el) el.textContent = text == null ? '' : String(text);
   }
 
+  // How many keys a section holds, and how many of them are set. Each section
+  // summarises its own keys now that Connections is gone; one page-wide "3 of
+  // 8 set" said nothing about whether the section you were looking at could
+  // work.
+  function keysTag(group) {
+    const fields = Object.keys(secrets).filter((f) => (secrets[f].group || '') === group);
+    if (!fields.length) return '';
+    const set = fields.filter((f) => secrets[f].set).length;
+    return set ? set + ' of ' + fields.length + ' keys' : 'no key yet';
+  }
+
   function paintTags() {
-    setTag('tagStation', (options.personas || []).length + ' personas');
-    const setKeys = Object.values(secrets).filter((s) => s.set).length;
-    setTag('tagKeys', setKeys ? setKeys + ' set' : 'none set');
+    setTag('tagStation', (options.personas || []).length + ' personas'
+      + (keysTag('station') ? ' · ' + keysTag('station') : ''));
     setTag('tagVoice', (resolved.tts_mode || '') +
       (resolved.tts_voice ? ' · ' + resolved.tts_voice : ' · station voice'));
-    setTag('tagBrains', (resolved.llm_provider || '') + ' · ' + (resolved.llm_model || ''));
+    setTag('tagBrains', (resolved.llm_provider || '') + ' · ' + (resolved.llm_model || '')
+      + ' · ' + keysTag('brains'));
     setTag('tagEars', (resolved.stt_provider || '') + ' · ' + (resolved.stt_model || ''));
     // Permission count comes from the schema group, so it can't go stale when
     // a new permission is added. Tiered ones are counted through permOn:
@@ -328,21 +355,137 @@
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
     setTag('tagPlayer', (resolved.call_button_uses_name ? "DJ's name" : 'generic label')
       + ' · ' + (resolved.widget_theme || 'auto'));
-    paintLineState();
+    paintDash();
   }
 
+  // ------------------------------------------------------------- dashboard
   // The kill switch lives above every section, so its own state has to read
   // from up there too — a paused line with the word "paused" three sections
   // down is how an operator spends ten minutes wondering why nobody can call.
-  function paintLineState() {
-    const note = $('pausedNote');
-    if (!note) return;
+  //
+  // The tiles beside it answer the four questions that decide whether any of
+  // the settings below are worth changing yet, and each is a real answer read
+  // back from something: /live for the station and who is on air, the auth
+  // state for who can call, the resolved config for the three legs of a call.
+  function paintDash() {
     const paused = $('calls_paused') ? $('calls_paused').checked : !!resolved.calls_paused;
-    note.textContent = paused
-      ? 'The line is closed — the card still shows who is on air.'
-      : 'The line is open.';
-    note.classList.toggle('paused', paused);
+    const btn = $('pauseBtn'), note = $('pausedNote'), sub = $('pausedSub');
+    if (btn) {
+      btn.textContent = paused ? 'Take calls again' : 'Pause all calls';
+      btn.classList.toggle('resume', paused);
+    }
+    if (note) {
+      note.textContent = paused ? 'The line is closed' : 'The line is open';
+      note.classList.toggle('paused', paused);
+    }
+    if (sub) {
+      sub.textContent = paused
+        ? 'Callers are turned away; the card still shows who is on air.'
+        : 'Takes effect the moment you press it — no Save, no restart.';
+    }
+
+    const l = live || {};
+    tile('tileOnAir', l.name || '—',
+      l.onAir === false
+        ? 'the station says nothing is on air'
+        : [l.show, l.track && l.track.title].filter(Boolean).join(' · '));
+    tile('tileStation',
+      l.reachable === false ? 'not answering' : (l.degraded ? 'degraded' : 'connected'),
+      l.reachable === false
+        ? 'check the Station API address below'
+        : (l.degraded ? 'answering slowly or partially'
+                      : (options.personas || []).length + ' personas'),
+      l.reachable === false ? 'bad' : (l.degraded ? 'warn' : 'ok'));
+
+    const ACCESS = { open: 'Anyone', guest: 'Guest code', admin: 'Admin only' };
+    const access = ($('front_access') && $('front_access').value) || resolved.front_access;
+    tile('tileAccess', ACCESS[access] || access || '—',
+      authConfigured ? 'panel password set' : 'this panel has no password',
+      authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
+
+    // Named rather than counted: "3 of 3 configured" is true of a call that
+    // cannot happen, because a provider with no key is still a provider.
+    // Unsaved picks included, like every other live read on this page.
+    const pick = (id, fallback) => ($(id) && $(id).value) || fallback || '?';
+    const llm = pick('llm_provider', resolved.llm_provider);
+    const chain = [llm, pick('tts_mode', resolved.tts_mode),
+                   pick('stt_provider', resolved.stt_provider)].join(' · ');
+    const keyField = PROVIDER_KEY[llm];
+    const needKey = !!(keyField && secrets[keyField] && !secrets[keyField].set);
+    tile('tileChain', chain,
+      needKey ? 'no key for ' + llm : (resolved.llm_model || ''),
+      needKey ? 'bad' : 'ok');
   }
+
+  function tile(id, value, note, tone) {
+    const el = $(id);
+    if (!el) return;
+    el.querySelector('.tv').textContent = value;
+    el.querySelector('.tn').textContent = note || '';
+    el.classList.remove('ok', 'warn', 'bad');
+    if (tone) el.classList.add(tone);
+  }
+
+  // The one control on this page that does not wait for Save. Everything else
+  // here is a draft of how the next call should go; closing the line is a
+  // thing being done to the calls happening now, and a kill switch that needs
+  // a second press somewhere else on the page is not one.
+  //
+  // Only calls_paused is posted, and nothing else is repainted from the
+  // response — the ordinary save path calls paint(), which refills every field
+  // from the server and would silently throw away whatever edits were in
+  // progress further down the page.
+  async function savePaused(next) {
+    const box = $('calls_paused'), btn = $('pauseBtn');
+    if (!box) return;
+    const before = box.checked;
+    box.checked = next;
+    btn.disabled = true;
+    paintDash();
+    try {
+      const r = await afetch('/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calls_paused: next }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'refused');
+      resolved.calls_paused = next;
+      overrides.calls_paused = next;
+      $('saveMsg').textContent = next ? 'Line closed.' : 'Line open.';
+      setTimeout(() => { $('saveMsg').textContent = ''; }, 3000);
+      await refreshLiveData();
+    } catch (e) {
+      box.checked = before;
+      $('saveMsg').textContent = 'Could not change the line — ' + e.message;
+    } finally {
+      btn.disabled = false;
+      paintDash();
+    }
+  }
+
+  $('pauseBtn').onclick = () => savePaused(!$('calls_paused').checked);
+
+  // A tile is a jump link with an answer written on it. data-jump names a
+  // section's group id, and it OPENS the section as well as scrolling to it:
+  // everything here is folded by default, so a scroll alone lands on a
+  // one-line heading with the answer still hidden behind it.
+  document.querySelectorAll('.dashtiles .tile').forEach((el) => {
+    el.onclick = () => {
+      const sec = document.querySelector(
+        'details.sec[data-group="' + el.dataset.jump + '"]');
+      if (!sec) return;
+      sec.open = true;
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  });
+
+  $('dashCheckBtn').onclick = () => {
+    const sec = document.querySelector('details.sec[data-diag="pipeline"]');
+    if (sec) {
+      sec.open = true;
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    $('runAllBtn').click();
+  };
 
   // Worked examples of what a caller can actually say, tied to the permission
   // that enables each one — so the list can't drift from the real tool surface.
@@ -554,11 +697,11 @@
     banner.innerHTML = '';
     banner.append('Start here: 1) add your ' + provider + ' API key under ');
     const jump = document.createElement('a');
-    jump.textContent = 'Connections';
+    jump.textContent = 'Brains';
     jump.href = '#';
     jump.onclick = (e) => {
       e.preventDefault();
-      const sec = document.querySelector('details.sec[data-group="keys"]');
+      const sec = document.querySelector('details.sec[data-group="brains"]');
       if (sec) { sec.open = true; sec.scrollIntoView({ behavior: 'smooth' }); }
     };
     banner.append(jump,
@@ -570,7 +713,11 @@
     SELECT_FIELDS.filter(hasChoices).forEach(fillStatic);
     fill('tts_adapter', options.ttsAdapters);
     fill('tts_voice', options.voices, { blankLabel: "Station's voice for this DJ" });
-    fill('llm_provider', options.llmProviders);
+    // Labelled, because the ids alone do not say what they are — "gateway" in
+    // a list next to "google" is a coin toss, and two of these are
+    // aggregators rather than vendors.
+    fill('llm_provider', options.llmProviders,
+      { labels: options.llmProviderLabels || null });
     fill('stt_provider', options.sttProviders);
 
     // "Random each call" sits alongside the roster because it's the same
@@ -633,8 +780,10 @@
     }
   }
 
-  // Station admin credentials belong with the station they unlock, not in
-  // the generic key list.
+  // Station admin credentials belong with the station they unlock. They are
+  // still named here — not to place them, which the server's own grouping now
+  // does, but because the station's test buttons submit and clear this
+  // specific pair.
   const STATION_SECRETS = ['subwave_admin_user', 'subwave_admin_pass'];
 
   // Security section: set/change the panel password, and nudge loudly while
@@ -772,69 +921,141 @@
     finally { btn.disabled = false; }
   };
 
+  // Where each block's result pane currently is. paintSecrets rebuilds the
+  // blocks, so a pane captured before a save is a detached node by the time
+  // the answer arrives — every write goes through a fresh lookup here.
+  const keyResults = {};
+
+  // Every key block on the page is built from the group each secret declares
+  // (secrets_store.SECRET_GROUPS), into whichever `.keyblock` div carries that
+  // group's id. There is no list of fields in this file and no per-section
+  // Save handler, which is the point: the old single Connections section had
+  // one hand-written host div, one hand-written Save button and one hardcoded
+  // exception for the station pair, and splitting the keys across four
+  // sections that way would have been four of each.
   function paintSecrets() {
-    const host = $('secretRows');
-    const stationHost = $('stationSecretRows');
-    host.innerHTML = '';
-    if (stationHost) stationHost.innerHTML = '';
-    Object.keys(secrets).forEach((field) => {
-      if (STATION_SECRETS.includes(field) && stationHost) {
-        paintSecretRow(stationHost, field);
-        return;
-      }
-      paintSecretRow(host, field);
+    const byGroup = {};
+    Object.keys(secrets).forEach((f) => {
+      const g = secrets[f].group || 'brains';
+      (byGroup[g] = byGroup[g] || []).push(f);
+    });
+
+    document.querySelectorAll('.keyblock').forEach((host) => {
+      const group = host.id.replace(/^keys_/, '');
+      const fields = byGroup[group] || [];
+      host.innerHTML = '';
+      // A block with nothing in it is a heading and a paragraph describing an
+      // empty space. Hide the whole thing rather than leave the promise.
+      host.hidden = !fields.length;
+      if (!fields.length) return;
+
+      fields.forEach((f) => paintSecretRow(host, f, group));
+
+      const bar = document.createElement('div');
+      bar.className = 'testrow';
+      const save = document.createElement('button');
+      save.textContent = 'Save keys';
+      bar.appendChild(save);
+
+      const out = document.createElement('div');
+      out.className = 'result';
+      host.append(bar, out);
+      keyResults[group] = out;
+
+      save.onclick = async () => {
+        const set = {};
+        fields.forEach((f) => {
+          const el = $('sec_' + f);
+          const v = el ? el.value.trim() : '';
+          if (!v) return;
+          // An untouched masked box arrives empty and must not wipe a working
+          // key — see secrets_store's module docstring.
+          if (secrets[f].visible && v === secrets[f].hint) return;
+          set[f] = v;
+        });
+        if (!Object.keys(set).length) {
+          showResult(out, true,
+            'Nothing to save — a blank box keeps the current value.');
+          return;
+        }
+        save.disabled = true;
+        try { await postSecrets(set, [], group); }
+        finally { save.disabled = false; }
+      };
     });
   }
 
-  function paintSecretRow(host, field) {
-    {
-      const s = secrets[field];
-      const row = document.createElement('div');
-      row.className = 'row';
+  function paintSecretRow(host, field, group) {
+    const s = secrets[field];
+    const row = document.createElement('div');
+    row.className = 'row';
 
-      const label = document.createElement('label');
-      label.setAttribute('for', 'sec_' + field);
-      label.textContent = s.label;
+    const label = document.createElement('label');
+    label.setAttribute('for', 'sec_' + field);
+    label.textContent = s.label;
 
-      const input = document.createElement('input');
-      input.type = s.visible ? 'text' : 'password';
-      input.id = 'sec_' + field;
-      input.autocomplete = 'off';
-      input.value = s.visible && s.set ? s.hint : '';
-      input.placeholder = s.set
-        ? (s.visible ? '' : s.hint + '  (from ' + s.source + ')')
-        : 'not set';
+    const input = document.createElement('input');
+    input.type = s.visible ? 'text' : 'password';
+    input.id = 'sec_' + field;
+    input.autocomplete = 'off';
+    input.value = s.visible && s.set ? s.hint : '';
+    input.placeholder = s.set
+      ? (s.visible ? '' : s.hint + '  (from ' + s.source + ')')
+      : 'not set';
 
-      const clear = document.createElement('button');
-      clear.textContent = 'Clear';
-      clear.className = 'btnquiet';
-      clear.disabled = s.source !== 'settings';
-      clear.title = s.source === 'settings'
-        ? 'Remove the stored key (falls back to .env)' : 'Nothing stored for this key';
-      clear.onclick = async () => { clear.disabled = true; await postSecrets({}, [field]); };
+    const clear = document.createElement('button');
+    clear.textContent = 'Clear';
+    clear.className = 'btnquiet';
+    clear.disabled = s.source !== 'settings';
+    clear.title = s.source === 'settings'
+      ? 'Remove the stored key (falls back to .env)' : 'Nothing stored for this key';
+    clear.onclick = async () => {
+      clear.disabled = true;
+      await postSecrets({}, [field], group);
+    };
 
-      row.append(label, input, clear);
-      host.appendChild(row);
+    row.append(label, input, clear);
+    // What the key buys, in the row's third column — the same shape every
+    // other setting on this page uses. A column of vendor names asks the
+    // operator to already know which of eight this deployment needs.
+    if (s.help) {
+      const hint = document.createElement('p');
+      hint.className = 'hint inrow';
+      hint.textContent = s.help;
+      row.appendChild(hint);
     }
+    host.appendChild(row);
   }
 
-  async function postSecrets(set, clear) {
-    const out = $('keysResult');
-    out.className = 'result on'; out.textContent = 'Saving…';
+  async function postSecrets(set, clear, group) {
+    const say = (ok, text) => {
+      // After the repaint, not before: paintSecrets replaces the pane.
+      const el = keyResults[group] || keyResults.brains;
+      if (el) showResult(el, ok, text);
+    };
+    const pending = keyResults[group];
+    if (pending) { pending.className = 'result on'; pending.textContent = 'Saving…'; }
     try {
       const r = await afetch('/settings/secrets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ set, clear }),
       });
       const d = await r.json();
-      if (!r.ok) { showResult(out, false, d.error || 'Save failed'); return; }
+      if (!r.ok) {
+        paintSecrets();
+        say(false, d.error || 'Save failed');
+        return;
+      }
       secrets = d.secrets;
       paintSecrets(); paintTags(); paintFirstRun();
       const n = Object.keys(set).length, c = (clear || []).length;
-      showResult(out, true,
+      say(true,
         (n ? n + ' key' + (n > 1 ? 's' : '') + ' saved. ' : '') +
         (c ? c + ' cleared. ' : '') + 'Applies to the next caller and to the tests.');
-    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    } catch (e) {
+      paintSecrets();
+      say(false, 'Failed: ' + e.message);
+    }
   }
 
   let authConfigured = false, guestConfigured = false;
@@ -1036,7 +1257,11 @@
       const onChange = () => {
         markClean();
         applyVisibility();
-        if (f === 'calls_paused') paintLineState();
+        if (f === 'calls_paused') paintDash();
+        // The dashboard reads the call chain and the access mode live, so the
+        // tiles follow the pickers the same way the reference lists do.
+        if (f === 'front_access' || f === 'llm_provider'
+            || f === 'tts_mode' || f === 'stt_provider') paintDash();
         // Which tiers exist at all depends on the door. Closing the line to
         // callers without a code means there are no `open` callers, and a
         // column that can no longer be reached has to grey out as you pick it
@@ -1206,7 +1431,7 @@
       // The kill switch is rendered in the header bar rather than in its
       // section, and a paragraph of schema help dropped into that bar would
       // push every section below it down the page. It has its own line there.
-      if (anchor.closest('.linestate')) return;
+      if (anchor.closest('.dash')) return;
       // A .row is label + field, and the field is a dropdown or a box holding
       // a number — so the right two thirds of every one of those rows was
       // empty, with the explanation on a line of its own underneath. Put the
@@ -1214,7 +1439,14 @@
       // was already being paid for. .check and .prow anchors keep the help
       // below them: .check is a <label>, and a paragraph inside one is both
       // invalid and clickable-to-toggle.
-      const inline = anchor.classList.contains('row');
+      // NOT inline for a permission row, even though it carries .row too. A
+      // .permrow is display:contents inside the four-column matrix, so a hint
+      // appended inside it becomes a fifth grid item that wraps into the
+      // label column of the next line — which is what shredded the whole
+      // Caller permissions section. As a sibling it is a .permgrid > .hint,
+      // which the grid already knows to span full width.
+      const inline = anchor.classList.contains('row')
+        && !anchor.classList.contains('permrow');
       let hint = inline ? anchor.querySelector(':scope > .hint')
                         : anchor.nextElementSibling;
       if (!hint || !hint.classList.contains('hint') || !hint.dataset.fromSchema) {
@@ -1277,6 +1509,16 @@
   $('tts_mode').onchange = async () => {
     const mode = $('tts_mode').value;
     if (mode && options.ttsBaseUrls[mode]) $('tts_base_url').value = options.ttsBaseUrls[mode];
+    await reloadVoices();
+    markClean();
+  };
+  // An adapter and an endpoint have to match or the audio arrives at the wrong
+  // sample rate, which sounds broken and logs nothing — see tts_base_url's
+  // help. An adapter that knows its own vendor's address fills the box in
+  // rather than leaving the operator to find it in a doc.
+  $('tts_adapter').onchange = async () => {
+    const hint = (options.ttsAdapterBaseUrls || {})[$('tts_adapter').value];
+    if (hint) $('tts_base_url').value = hint;
     await reloadVoices();
     markClean();
   };
@@ -1383,26 +1625,6 @@
     return q.toString() ? '?' + q.toString() : '';
   }
 
-  $('saveAdminBtn').onclick = async () => {
-    const out = $('stationResult');
-    const set = {};
-    STATION_SECRETS.forEach((f) => {
-      const el = $('sec_' + f);
-      if (el && el.value.trim()) set[f] = el.value.trim();
-    });
-    if (!Object.keys(set).length) {
-      out.className = 'result on';
-      out.textContent = 'Nothing to save — blank fields keep their current value.';
-      return;
-    }
-    const btn = $('saveAdminBtn'); btn.disabled = true;
-    try {
-      await postSecrets(set, []);
-      STATION_SECRETS.forEach((f) => { const el = $('sec_' + f); if (el) el.value = ''; });
-      showResult(out, true, 'Credentials saved — applies to the next caller and the tests.');
-    } finally { btn.disabled = false; }
-  };
-
   // Tests the DRAFT values if the fields hold anything, otherwise whatever
   // is stored — so a credential can be checked before committing to it.
   $('testAdminBtn').onclick = async () => {
@@ -1463,7 +1685,7 @@
   };
 
   $('refreshModelsBtn').onclick = async () => {
-    const btn = $('refreshModelsBtn'), out = $('keysResult');
+    const btn = $('refreshModelsBtn'), out = $('llmResult');
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Reading model lists…';
     try {
@@ -2077,31 +2299,6 @@
   $('testHoldBtn').onclick = () => previewSound('hold');
   $('testHangupBtn').onclick = () => previewSound('hangup');
   $('testFailedBtn').onclick = () => previewSound('failed');
-
-  $('saveKeysBtn').onclick = async () => {
-    const set = {};
-    Object.keys(secrets).forEach((field) => {
-      const el = $('sec_' + field);
-      const v = el ? el.value.trim() : '';
-      if (!v) return;
-      if (secrets[field].visible && v === secrets[field].hint) return;
-      set[field] = v;
-    });
-    if (!Object.keys(set).length) {
-      const out = $('keysResult');
-      out.className = 'result on';
-      out.textContent = 'Nothing to save — blank fields keep their current value.';
-      return;
-    }
-    $('saveKeysBtn').disabled = true;
-    try {
-      await postSecrets(set, []);
-      Object.keys(secrets).forEach((field) => {
-        const el = $('sec_' + field);
-        if (el && !secrets[field].visible) el.value = '';
-      });
-    } finally { $('saveKeysBtn').disabled = false; }
-  };
 
   $('viewPromptBtn').onclick = async () => {
     const btn = $('viewPromptBtn'), out = $('promptResult');

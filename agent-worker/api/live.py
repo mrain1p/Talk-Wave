@@ -73,15 +73,19 @@ def corner_controls(cfg: dict, embed: bool = False) -> dict:
         # then nothing to toggle between. "inherit" is not pinned — on the
         # standalone page it behaves as auto.
         #
-        # "station" is pinned for a different reason: its tokens are written
-        # as inline custom properties on :root, which outrank every
-        # data-theme rule in the stylesheet. The toggle would still be there,
-        # would still flip the attribute, and nothing on screen would change —
-        # a control that visibly does nothing is worse than no control.
+        # "station" KEEPS the toggle. It used to be pinned too, because the
+        # palette's tokens are inline custom properties on :root that outrank
+        # every data-theme rule — the toggle flipped the attribute and nothing
+        # on screen changed. The operator who chose station colours then
+        # reported the toggle "not surfacing" as a bug, which it reads as: the
+        # setting that shows the toggle was on, and a different setting was
+        # silently vetoing it. The widget now clears the inline tokens when
+        # the viewer toggles (shared.js), so the control works instead of
+        # being hidden: station colours are the default look, and an explicit
+        # viewer choice overrides them.
         "theme": (
             bool(cfg.get("embed_theme_toggle" if embed else "show_theme_toggle"))
-            and str(cfg.get("widget_theme") or "auto")
-            not in ("light", "dark", "station")
+            and str(cfg.get("widget_theme") or "auto") not in ("light", "dark")
         ),
         # Never in an embed, and not a setting there: an embed does not load
         # the panel's code, so the gear would open nothing whichever way an

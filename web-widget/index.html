@@ -88,23 +88,6 @@
       <p class="track" id="npTrack"></p>
     </div>
 
-    <!-- Only shown when a guest password is set. Asks up front rather than
-         letting someone press Call and be turned away. -->
-    <div class="guestgate" id="guestGate" hidden>
-      <span class="glabel">The booth line is private.</span>
-      <span class="grow">
-        <input type="password" id="guestPw" placeholder="access code" autocomplete="off" />
-        <button id="guestBtn">Unlock the line</button>
-      </span>
-      <span id="guestMsg"></span>
-    </div>
-
-    <div class="actionrow">
-      <button id="callBtn" disabled>Call the DJ</button>
-      <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
-      <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
-    </div>
-
     <!-- Opened by the ? button. Built from the same list the panel shows the
          operator, filtered to what is switched on, so it can never suggest
          something the DJ would refuse. -->
@@ -122,14 +105,60 @@
          whole lot has to hold its space whether or not anybody is on the
          line — see .rig in style.css.
 
-         The always-visible things live IN here rather than after it, purely
-         so the ORDER comes out right: the volume and the call buttons are
-         the last row of the card on every surface, under the transcript,
-         where a phone's controls belong and where the eye is not asked to
-         step over them to read what was said. `visibility` is inherited but
-         a child may declare its own, so each of them says `visible` and the
+         THE ORDER IS THE DESIGN, bottom-up: the action row is the card's
+         last row on every surface — so an embed's Call button lines up with
+         the host page's own bottom row of buttons — with the meters above it
+         and the words above those. `visibility` is inherited but a child may
+         declare its own, so the always-visible rows say `visible` and the
          reservation still applies to the rest. -->
     <div class="rig" id="rig">
+    <!-- The line area. One box, one job: whatever this card has to say to
+         the caller right now. Speech while a call runs; between calls its
+         own messages — "No answer", "Call ended" — and nothing at all when
+         there is nothing to say. The door code lives here too, and so does
+         everything post-call: the transcript drawer and the how-was-it
+         buttons are an overlay strip INSIDE this box, not bands of their
+         own, because every band that appears after a call used to grow the
+         card and move the host page under whoever was reading it.
+
+         Its height is RESERVED, not grown into — three lines of speech,
+         fixed from first paint. Opening the transcript drawer is the one
+         deliberate exception. -->
+    <div class="linebox" id="lineBox">
+      <div class="captions" id="captions"></div>
+      <!-- The embed's caption surface: the latest line only. It lives in the
+           same box as the full transcript because it is the same thing said
+           more briefly, and an embed that reserved room for BOTH — a ticker
+           up by the meters and a message box down here — spent two bands
+           saying nothing. -->
+      <div class="ticker" id="ticker" hidden><span class="who"></span><span class="line"></span></div>
+      <p id="status"><span class="dot" id="dot"></span><span id="statusText"></span></p>
+
+      <!-- Only shown when a guest password is set. Asks up front rather than
+           letting someone press Call and be turned away. -->
+      <div class="guestgate" id="guestGate" hidden>
+        <span class="glabel">The booth line is private.</span>
+        <span class="grow">
+          <input type="password" id="guestPw" placeholder="access code" autocomplete="off" />
+          <button id="guestBtn">Unlock</button>
+        </span>
+        <span id="guestMsg"></span>
+      </div>
+
+      <!-- The post-call strip: read it back, and (if the operator asked)
+           say how it went. One row, overlaid on the box's bottom edge. -->
+      <div class="after" id="afterRow">
+        <button class="callended" id="endedBar" hidden></button>
+        <span class="rate" id="rateBar" hidden>
+          <span class="rlabel" id="rateLabel">How was it?</span>
+          <span class="rbtns" id="rateBtns">
+            <button id="rateUp" title="That went well" aria-label="That went well">&#128077;</button>
+            <button id="rateDown" title="That went badly" aria-label="That went badly">&#128078;</button>
+          </span>
+        </span>
+      </div>
+    </div>
+
       <div class="meters">
         <div class="meter you" id="meterYou">
           <div class="mlabel" id="youLabel">You</div>
@@ -141,42 +170,6 @@
         </div>
       </div>
 
-      <button class="callended" id="endedBar" hidden></button>
-
-      <!-- Shown after a call, and only if the operator asked for it. Two
-           buttons and nothing else: the answer is stored against that call's
-           own transcript so a bad one can be found and read back, which needs
-           one character, not a comment box. -->
-      <div class="rate" id="rateBar" hidden>
-        <span class="rlabel" id="rateLabel">How was that call?</span>
-        <span class="rbtns" id="rateBtns">
-          <button id="rateUp" title="That went well" aria-label="That went well">&#128077; Good</button>
-          <button id="rateDown" title="That went badly" aria-label="That went badly">&#128078; Bad</button>
-        </span>
-      </div>
-
-    <!-- The line area. One box, one job: whatever this card has to say to the
-         caller right now. Two lines of speech while a call is running, and
-         between calls the connection state — "Not connected", "No answer",
-         "Call ended" — in the same place, because a message that appears in
-         the header while the words appear at the bottom is two places to
-         watch and the caller is already listening to a third.
-
-         Its height is RESERVED, not grown into: speech used to lengthen the
-         card, which made the widget report a taller frame, which moved the
-         host page under whoever was reading it. -->
-    <div class="linebox" id="lineBox">
-      <div class="captions" id="captions"></div>
-      <!-- The embed's caption surface: the latest line only. It lives in the
-           same box as the full transcript because it is the same thing said
-           more briefly, and an embed that reserved room for BOTH — a ticker
-           up by the meters and a message box down here — spent two bands
-           saying nothing. -->
-      <div class="ticker" id="ticker" hidden><span class="who"></span><span class="line"></span></div>
-      <p id="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></p>
-    </div>
-
-      <!-- The last row of the card, on every surface. -->
       <div class="callrow">
         <div class="vol">
           <label for="volSlider">Vol</label>
@@ -188,6 +181,13 @@
           <button id="muteBtn">Mute</button>
           <button id="hangBtn">Hang up</button>
         </div>
+      </div>
+
+      <!-- The last row of the card, on every surface. -->
+      <div class="actionrow">
+        <button id="callBtn" disabled>Call the DJ</button>
+        <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+        <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
       </div>
     </div>
   </div>

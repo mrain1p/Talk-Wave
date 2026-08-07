@@ -21,11 +21,10 @@ links, one per group below.
 | Group | Section | What it controls |
 |---|---|---|
 | Configuration | **Access** | Call-in access (automatic, open, guest code, admin only), the admin password for this panel, and the optional guest code for the phone. `CALLIN_ADMIN_KEY` is the recovery override |
-| Configuration | **Station** | Which SUB/WAVE this answers for, the derived MCP endpoint, and the station admin credentials that unlock on-air messages, segments, programme beats, skips, show takeover, the back-to-air mention and voice mirroring |
-| Configuration | **Connections** | Provider API keys, stored server-side, never shown back |
-| Configuration | **AI brains** | The LLM that thinks: provider, model, endpoint, temperature. Only providers you hold a key for are listed — Ollama always, since it needs none |
-| Configuration | **Voice** | TTS backend, endpoint, voice (default: mirrored per-persona from the station), adapter |
-| Configuration | **Ears** | Speech-to-text provider and model, listed on the same key rule. A local Whisper is baked in and used by default |
+| Configuration | **SUB/WAVE Station** | Which station this answers for, the derived MCP endpoint, and the station admin credentials that unlock on-air messages, segments, programme beats, skips, show takeover, the back-to-air mention and voice mirroring |
+| Configuration | **Brains** | AI — the LLM that thinks: provider, model, endpoint, temperature, and the provider API keys themselves (OpenAI, OpenRouter, Anthropic, Google, DeepSeek, Requesty, Vercel AI Gateway). Only providers you hold a key for are listed — Ollama always, since it needs none. Keys are stored server-side and never shown back; there is no separate Connections section |
+| Configuration | **Voice** | TTS — backend, adapter, endpoint, voice (default: mirrored per-persona from the station), and the speech keys (a dedicated TTS server key, ElevenLabs, Fish Audio). Adapters ship for OpenAI-compatible servers, ElevenLabs, Fish Audio and SUB/WAVE's own Remote `/speak` contract |
+| Configuration | **Ears** | STT — speech-to-text provider and model, listed on the same key rule, plus the Deepgram key. A local Whisper is baked in and used by default |
 | Permissions & safety | **Caller permissions** | What a caller may trigger, and **which caller** — each row is set to the least trusted tier that gets it (off / anyone / guest code / admin), including the three station-wide switches (skip the current track, fire a programme beat, put a different show on air) that reach every listener. See [security](security.md) |
 | Permissions & safety | **Usage controls** | Concurrency, hourly/daily caps, redial wait, actions per call — the guard on API spend |
 | The conversation | **Who answers** | Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name |

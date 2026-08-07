@@ -1,0 +1,20 @@
+{
+  "_comment": "SUB/WAVE's own 'Remote' TTS contract (docs/custom-tts.md in the station repo): POST /speak with {text, voice}, the rendered audio comes back as WAV bytes in the response body. If you already built a TTS server for the station — Qwen3-TTS, F5-TTS, CosyVoice, XTTS, Piper behind HTTP — this points the call line at the exact same server with no second bridge. Set Endpoint to that server's URL; `voice` is whatever your server means by a voice, passed through untouched, exactly as the station does. The declared sample rate is a guess your server may not share — run Test voice once, and if it warns about the rate, edit sample_rate here to what the probe measured. No voices_path: the contract has no voice list, so the Voice box is free text.",
+  "endpoint_path": "/speak",
+  "method": "POST",
+  "default_model": "",
+  "request_field_map": {
+    "text": "text",
+    "voice": "voice",
+    "model": null
+  },
+  "static_fields": {},
+  "auth": { "type": "none" },
+  "response": { "type": "raw_audio" },
+  "audio": {
+    "encoding": "wav",
+    "mime_type": "audio/wav",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
+}

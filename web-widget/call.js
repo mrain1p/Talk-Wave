@@ -79,6 +79,11 @@
     // station has no counterpart for (the green that means the line is open,
     // the shadow) and what the browser paints its own controls in.
     if (choice === 'station' && palette && palette.tokens) {
+      // Not over a viewer who already toggled. The station palette is the
+      // operator's default look; the toggle is the viewer's explicit choice,
+      // and it clears these tokens to make itself visible (shared.js) — so a
+      // poll re-applying them would undo the click within twenty seconds.
+      if (localStorage.getItem('callinTheme')) return;
       root.setAttribute('data-theme', palette.mode === 'light' ? 'light' : 'dark');
       applyTokens(palette.tokens);
       return;
@@ -683,7 +688,10 @@
         if (d.degraded) {
           setStatus('Station responding slowly — some info may be stale', 'connecting');
         } else if (statusText.textContent.startsWith('Station responding slowly')) {
-          setStatus('Not connected');
+          // Back to quiet, not back to "Not connected": an idle card with
+          // nothing wrong has nothing to say, and the permanent grey sentence
+          // read as a fault on every host page it was embedded in.
+          setStatus('');
         }
       }
     } catch (e) {
@@ -1411,7 +1419,7 @@
     const bar = $('rateBar');
     if (!bar) return;
     if (!endedRoom || !(live && live.askFeedback)) { bar.hidden = true; return; }
-    $('rateLabel').textContent = 'How was that call?';
+    $('rateLabel').textContent = 'How was it?';
     $('rateBtns').hidden = false;
     bar.hidden = false;
 
@@ -1421,7 +1429,7 @@
       // and the worker may still be writing it, which is why the server side
       // retries rather than answering straight away.
       $('rateBtns').hidden = true;
-      $('rateLabel').textContent = 'Thanks — noted.';
+      $('rateLabel').textContent = 'Thanks.';
       notifyHeight();
       fetch('/call-feedback', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

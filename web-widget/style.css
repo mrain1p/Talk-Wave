@@ -61,10 +61,12 @@
        height it was the tallest band on a card whose actual subject is the
        conversation below it. */
     --action-h: 26px;
-    /* TWO lines of 12.5px/1.45 speech (18.125px each), plus the box's own
+    /* THREE lines of 12.5px/1.45 speech (18.125px each), plus the box's own
        9px padding top and bottom and its 1px border. Reserved from first
-       paint and never changed — see .linebox. */
-    --lines-h: 57px;
+       paint and never changed — see .linebox. Three rather than two because
+       the box carries more than speech now: the door code fits inside it,
+       and the post-call strip overlays its bottom edge. */
+    --lines-h: 75px;
 
     /* Legacy aliases — settings panel only. */
     --bg: var(--pine); --panel: var(--granite);
@@ -301,11 +303,14 @@
      bands below have been cut to what they actually need instead. */
   .rig { visibility: hidden; }
   .rig.on { visibility: visible; }
-  /* These live inside the rig only so the call row comes out UNDER them —
-     the volume and the call buttons are the last row of the card on every
-     surface. Visibility is inherited but a child may declare its own, so
-     they stay visible while everything around them is reserved-but-hidden. */
-  .rig > .linebox, .rig > .callended, .rig > .rate { visibility: visible; }
+  /* The rows that hold their place AND stay visible between calls: the line
+     area (it carries the card's own messages), the meters (idle they show
+     the trough, which reads as a booth rather than as reserved emptiness),
+     and the action row (the Call button is the card's last row on every
+     surface). Only the call row — volume, mute, hang up — is
+     reserved-but-hidden, because those controls are meaningless off a call.
+     Visibility is inherited but a child may declare its own. */
+  .rig > .linebox, .rig > .meters, .rig > .actionrow { visibility: visible; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -495,16 +500,21 @@
   .michelp .alt { display: block; margin-top: 4px; font-size: 11px;
                   color: var(--sage-dim); }
 
-  /* The caller's door code, when the operator has set one. Sits above the
-     Call button, in the card, because it's a condition of calling — not a
-     settings concern. */
+  /* The caller's door code, when the operator has set one. It lives INSIDE
+     the line area — the card's one message surface — because "this line is
+     private" is the thing the card has to say right now, and a band of its
+     own was one more thing that changed the card's height between
+     deployments. Absolute over the box, like #status: either the door is
+     being asked about or the call is being spoken, never both. */
   .guestgate {
-    margin: var(--band-gap) 0 0; padding: 11px 12px; text-align: left;
-    border: 1px solid var(--edge); border-radius: 0; background: var(--pine);
+    position: absolute; inset: 9px 12px; text-align: left;
     font-size: 12.5px; line-height: 1.45;
+    display: flex; flex-direction: column; justify-content: center; gap: 7px;
   }
-  .guestgate .glabel { display: block; color: var(--sage); margin-bottom: 9px; }
-  .guestgate .grow { display: flex; gap: var(--band-gap); flex-wrap: wrap; }
+  .guestgate[hidden] { display: none; }
+  .guestgate .glabel { display: block; color: var(--sage); font-size: 11.5px; }
+  .guestgate .grow { display: flex; gap: 9px; }
+  .linebox:has(.guestgate:not([hidden])) #status { display: none; }
   /* §4.8. The placeholder is deliberately smaller than the typed text so a
      long prompt fits without shrinking what the caller actually types. */
   .guestgate input {
@@ -535,68 +545,59 @@
   .dot.error { background: var(--coral); }
   @keyframes pulse { 50% { opacity: .3; } }
 
-  /* Once a call ends the transcript collapses to a single row — still there
-     if you want it, not taking up the card if you don't. */
-  /* --- the collapsed transcript bar, after a call ends ------------------- */
-  .callended {
-    width: 100%; margin: var(--band-gap) 0 0; padding: 0 11px;
-    background: var(--pine); border: 1px solid var(--hairline);
-    border-radius: 0; color: var(--sage); text-align: left;
-    display: flex; align-items: center; gap: 9px; cursor: pointer;
-  }
-  .callended[hidden] { display: none; }
-  /* Specificity, not preference: this is a <button> inside .card, so `.card
-     button` (0,1,1) beats a bare `.callended` (0,1,0) whatever the order —
-     which is why the ended bar was wearing the primary button's 11px type and
-     control height. It is a label on a closed drawer, not an action, so it
-     takes the 9.5px micro-label the transcript's own speaker labels use and
-     comes down from 38px to 30. */
+  /* --- the post-call strip ----------------------------------------------
+     One row overlaid on the line area's bottom edge: the transcript drawer
+     toggle, and (if the operator asked) the two how-was-it buttons. These
+     used to be two BANDS below the box, which meant every call's end grew
+     the card and moved the host page — the exact thing the reserved line
+     area exists to prevent. Inside the box, appearing costs nothing.
+     display:flex on the container only when something in it is visible;
+     otherwise it must not eat pointer events over the box. */
+  .after { position: absolute; left: 9px; right: 9px; bottom: 7px;
+           display: flex; align-items: center; gap: 8px; pointer-events: none; }
+  .after > * { pointer-events: auto; }
+  /* The drawer toggle is a label on a closed drawer, not an action — it takes
+     the 9.5px micro-label the transcript's own speaker labels use. `.card
+     button` (0,1,1) outranks a bare class, hence the .card prefix. */
   .card .callended {
-    height: 30px; color: var(--sage);
-    font: 700 9.5px/1 var(--font-mono);
-    letter-spacing: .16em; text-transform: uppercase;
+    height: 24px; padding: 0 9px; text-align: left;
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    background: var(--granite); border: 1px solid var(--hairline);
+    color: var(--sage); font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .14em; text-transform: uppercase;
   }
-  .card .callended:hover { background: var(--pine); color: var(--alpenglow);
+  .card .callended:hover { background: var(--granite); color: var(--alpenglow);
                            border-color: var(--edge); }
+  .callended[hidden] { display: none; }
   .callended .chev { font-size: 9px; transition: transform .18s ease; }
   .callended.open .chev { transform: rotate(90deg); }
-  .callended .when { margin-left: auto; color: var(--sage-dim); }
+  .callended .when { display: none; }
 
-  /* --- was that any good? ------------------------------------------------ */
-  /* Sits under the ended bar, same band width, same quiet register — the
-     point is that it is easy to ignore. A caller who has just been hung up on
-     by a robot should not also be blocked by a modal about it. */
-  /* Findable, still ignorable. This was a 26px row of 9.5px grey mono with two
-     unlabelled emoji at the far right — so close to the card's own furniture
-     that an operator who had turned the setting ON reported never seeing it.
-     Being easy to dismiss is the design; being invisible is not the same
-     thing. It is a band now, like the guest door and the mic warning: its own
-     surface, a readable question, and buttons that say what they do. */
-  .rate {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    margin: var(--band-gap) 0 0; padding: 9px 12px; min-height: var(--control-h);
-    border: 1px solid var(--hairline); border-radius: 0; background: var(--pine);
-  }
+  /* Was that any good? Two small buttons on the strip's right, findable but
+     ignorable — a caller who has just been hung up on by a robot should not
+     also be blocked by a modal about it. */
+  .rate { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
   .rate[hidden] { display: none; }
   .rate .rlabel {
-    font-family: var(--font-body); font-size: 12.5px; font-weight: 400;
-    letter-spacing: 0; text-transform: none; color: var(--sage);
-  }
-  .rate .rbtns { display: inline-flex; gap: 8px; margin-left: auto; }
-  .rate .rbtns[hidden] { display: none; }
-  /* Out-specifies `.card button`, which would otherwise put a coral outline
-     and 18px of padding around each one. These are not the primary action —
-     the fill in this state belongs to Call — so they stay outlined. */
-  .card .rate button {
-    height: 26px; width: auto; padding: 0 11px; line-height: 1;
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
-    text-transform: uppercase;
-    border: 1px solid var(--edge); background: transparent; color: var(--sage);
+    text-transform: uppercase; color: var(--sage-dim);
+  }
+  .rate .rbtns { display: inline-flex; gap: 6px; }
+  .rate .rbtns[hidden] { display: none; }
+  .card .rate button {
+    height: 24px; width: auto; padding: 0 8px; line-height: 1; font-size: 12px;
+    border: 1px solid var(--edge); background: var(--granite); color: var(--sage);
   }
   .card .rate button:hover:not(:disabled) {
     border-color: var(--coral); color: var(--coral);
-    background: transparent; filter: none;
+    background: var(--granite); filter: none;
   }
+  /* While the strip is up, the last transcript line and the box's own message
+     must not run underneath it. */
+  .linebox:has(.callended:not([hidden])) .captions,
+  .linebox:has(.rate:not([hidden])) .captions { padding-bottom: 30px; }
+  .linebox:has(.callended:not([hidden])) #status,
+  .linebox:has(.rate:not([hidden])) #status { bottom: 39px; }
 
   /* --- captions --- */
   /* Captions: speaker in a narrow left column so the transcript reads as a
@@ -659,6 +660,12 @@
     text-transform: none; letter-spacing: 0; color: var(--sage);
     margin: 0;
   }
+  /* Nothing to say means nothing shown. "Not connected" used to sit here on
+     every idle card — a permanent grey sentence restating what the eyebrow
+     and the Call button already say between them, and on a host page it read
+     as something being wrong. The element stays (transient messages need it);
+     the idle filler is gone, so an empty box is simply quiet. */
+  #status:has(#statusText:empty) { display: none; }
   /* Speech wins the box the moment there is any. `.on` is in the test on
      purpose: after a call the lines are still in the DOM, just collapsed
      behind the drawer, and that is exactly when "Call ended" has to show. */
@@ -666,14 +673,13 @@
   .linebox:has(.ticker.show) #status { display: none; }
   .captions::-webkit-scrollbar { width: 8px; }
   .captions::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 0; }
-  /* A gutter wide enough for the longest label and no wider. It was 86px,
-     which is roughly twice what "CALLER" needs — in a 430px card that is a
-     fifth of the width spent on whitespace, and it is the transcript's own
-     text that pays for it in wrapped lines. 62px still lets both speakers'
-     text start on the same edge, which is what makes this read as a script
-     rather than as two columns. */
+  /* A gutter wide enough for the longest label and no wider. It has been
+     86px and then 62 — twice and then one-and-a-half times what "You" needs —
+     and in a 430px embed the transcript's own text paid for the spare width
+     in wrapped lines. 44px still lets both speakers' text start on the same
+     edge, which is what makes this read as a script rather than columns. */
   .cap {
-    display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px;
+    display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 9px;
     margin: 0 0 6px; align-items: baseline;
     /* minmax(0,1fr) plus the min-width/white-space below is what actually
        stops a long turn from pushing the grid wider than its container. */
@@ -737,12 +743,18 @@
      primary button. Which of these exist at all is the backend's call; see
      applyControls() in app.js. */
   /* --- the corner controls and the ask popup ----------------------------- */
+  /* Big enough to see and to hit. These were 26px of --sage-dim at 14px
+     type — chrome so quiet that the theme toggle was reported missing while
+     it was on screen. Still chrome (no fill, no border at rest), but sized
+     like a control and a step brighter. */
   .card .gear {
-    width: 26px; height: 38px; padding: 0; border-radius: 0; border: 0;
-    background: transparent; color: var(--sage-dim);
-    font-family: var(--font-mono); font-size: 14px; line-height: 1;
+    width: 34px; height: 38px; padding: 0; border-radius: 0;
+    border: 1px solid transparent;
+    background: transparent; color: var(--sage);
+    font-family: var(--font-mono); font-size: 16px; line-height: 1;
     letter-spacing: 0;
   }
+  .card .gear:hover:not(:disabled) { border-color: var(--hairline); }
   /* :not(:disabled) only to out-specify `.card button:hover:not(:disabled)`,
      which would otherwise wash these in the primary button's coral tint. */
   .card .gear:hover:not(:disabled) { background: transparent; color: var(--alpenglow); }
@@ -835,18 +847,69 @@
   .panelnav a:hover { color: var(--text); background: var(--line2); }
   .panelnav:empty { display: none; }
 
-  /* The kill switch, at the top where it can be reached without opening
-     anything. Bordered rather than dropped into the form, because it is not
-     one of the settings below — it takes effect the moment it is saved and
-     it is the control you want when something is going wrong right now. */
-  .linestate {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    margin: 0 0 16px; padding: 10px 13px;
-    border: 1px solid var(--line2); border-radius: 10px; background: var(--bg);
+  /* The dashboard: the kill switch, and the four answers worth having before
+     you change anything below. Bordered and above the fold because none of it
+     is one of the settings — the button acts immediately, and the tiles are
+     read-back rather than input. */
+  .dash {
+    margin: 0 0 16px; padding: 12px 13px;
+    border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
   }
-  .linestate .check { margin: 0; font-weight: 600; }
-  .linestate-note { font-size: 11.5px; color: var(--dimmer); margin-left: auto; }
-  .linestate-note.paused { color: var(--warn); font-weight: 600; }
+  .dashmain { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
+  /* The real field behind the button. Not `hidden` and not display:none —
+     both remove it from the form in ways that have surprised people before —
+     but it must not be clickable, focusable or visible, because clicking it
+     would change the value without posting it. */
+  .fieldonly {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  /* Sized and coloured like the thing it is. Every other button on this page
+     is a test or a save; this one closes the line for everybody. */
+  .killbtn {
+    flex: 0 0 auto; padding: 10px 18px; font-size: 13px; font-weight: 700;
+    background: var(--accent); color: #fff;
+  }
+  .killbtn.resume { background: var(--ok); color: #fff; }
+  .killbtn:hover:not(:disabled) { filter: brightness(1.08); }
+  .dashsay { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .dashsay strong { font-size: 13px; color: var(--ok); }
+  .dashsay strong.paused { color: var(--warn); }
+  .dashsay span { font-size: 11.5px; color: var(--dimmer); }
+  #dashCheckBtn { margin-left: auto; }
+
+  /* Four read-backs, not four settings. Buttons because each one jumps to the
+     section that owns its answer — the whole reason to look at a dashboard is
+     to find out where to go next. */
+  .dashtiles {
+    display: grid; gap: 8px; margin-top: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .tile {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 9px 11px; text-align: left; min-width: 0;
+    background: var(--panel); color: var(--text);
+    border-radius: 9px; box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .tile:hover { box-shadow: inset 0 0 0 1px var(--line2); }
+  .tile .tk {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .13em;
+    text-transform: uppercase; font-weight: 700; color: var(--dimmer);
+  }
+  .tile .tv {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tile .tn {
+    font-size: 11px; color: var(--dimmer); line-height: 1.35;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tile .tn:empty { display: none; }
+  .tile.ok .tv { color: var(--text); }
+  .tile.warn .tv { color: var(--warn); }
+  .tile.bad .tv { color: var(--accent); }
+  .tile.bad { box-shadow: inset 0 0 0 1px
+              color-mix(in srgb, var(--accent) 45%, transparent); }
 
   /* An "Advanced" fold inside a section, for a field that is derived, or one
      that only a non-standard setup needs. It is a real setting either way —
@@ -891,6 +954,18 @@
     color: var(--dimmer); font-weight: 500; opacity: .85;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
   }
+  /* The section's one-line subtitle, set from the schema by layoutPanel().
+     Undoes the summary's uppercase mono treatment — it is a sentence, not a
+     label — and gives way first when the row runs out of room. */
+  details.sec > summary .secblurb {
+    font-style: normal; text-transform: none; letter-spacing: 0;
+    font-weight: 400; font-size: 11px; color: var(--dimmer);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 0 1 auto; min-width: 0;
+  }
+  .secname { flex: 0 0 auto; }
+  details.sec > summary .secblurb:empty { display: none; }
+  @media (max-width: 620px) { details.sec > summary .secblurb { display: none; } }
   /* The body of a section is recessed against its header, so it is obvious
      where one section ends and the next begins when several are open. */
   details.sec > .body {
@@ -1297,10 +1372,15 @@
      says, and what it actually does — because those are two different
      questions and stacking them made nineteen rows into thirty-eight lines. */
   .asklist { list-style: none; margin: 0; padding: 0; }
+  /* fit-content, not 1fr: with two fr tracks the boundary sat at mid-page
+     regardless of the text, so a short quote left a gulf before its
+     explanation. Sized to content the quote column is exactly as wide as the
+     longest quote (up to 46%), and the explanations start together just after
+     it. */
   .asklist li {
     padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
-    display: grid; grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1.15fr);
-    gap: 12px; align-items: baseline;
+    display: grid; grid-template-columns: 16px fit-content(46%) minmax(0, 1fr);
+    gap: 10px; align-items: baseline;
   }
   .asklist li:last-child { border-bottom: none; }
   .asklist .mark { color: var(--ok); font-size: 11px; }
@@ -1522,9 +1602,8 @@
        room from a station page's own layout, where two lines is right. On
        the standalone page the card is the only thing on screen, and the
        reading surface is what the extra 18px is worth spending on. */
-    body:not(.compact) { --lines-h: 75px; }
     .linebox.open { height: 44vh; }
-    .cap, .ticker { grid-template-columns: 60px minmax(0, 1fr); }
+    .cap, .ticker { grid-template-columns: 44px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
        wraps onto new lines, and the now-playing track takes a full row of
        its own instead of a squeezed corner.
@@ -1585,14 +1664,23 @@
      ringing and .oncall only once it connects, so keyed on the latter every
      call spent its ringing seconds with the button pinned to the bottom and
      the meters rendering underneath it. */
-  body.compact .card:not(:has(.rig.on)) .actionrow { margin-top: auto; }
+  /* The whole working half of the card sinks to the bottom of whatever
+     room the host gave the frame — the words, the meters and the buttons
+     line up with the host page's own bottom rows, and the spare room sits
+     between identity and rig where empty space reads as intentional.
+     Unconditional now: every band that used to render outside the rig lives
+     inside it, so there is nothing to jump when a call starts. */
+  body.compact .card .rig { margin-top: auto; }
+  /* Idle in an embed the Call button is the frame's one action, sized like
+     the host page's own bottom-row buttons rather than a chip beside them. */
+  body.compact #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
      notifyHeight() flips this on for a single synchronous read. */
   body.measuring { min-height: 0; }
   body.measuring .card { flex: 0 0 auto; }
-  body.measuring .card:not(:has(.rig.on)) .actionrow { margin-top: 0; }
+  body.measuring .card .rig { margin-top: 0; }
 
   /* Overlay mode: the ask list is taller than the frame, so embed.js has made
      the frame an overlay that extends UPWARD past the host's slot. The frame
@@ -1608,7 +1696,7 @@
      station page mid-call. The row is always two lines tall whether it holds
      nothing, one line or a paragraph, so the frame stops moving. */
   .ticker {
-    display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px;
+    display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 9px;
     align-items: baseline; padding: 0;
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
@@ -1634,7 +1722,7 @@
      on the row lets a clamped one-line message collapse the block anyway. */
   .ticker .line {
     min-height: calc(1.45em * 2);
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
     white-space: normal; overflow: hidden;
   }
 

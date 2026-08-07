@@ -496,38 +496,58 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.assertIn(rule, self.css)
 
-    def test_the_line_area_is_always_the_same_two_lines(self):
-        # Reserved from first paint at a fixed height. Two lines of
-        # 12.5px/1.45 plus 9px padding each side plus the border.
+    def test_the_line_area_is_always_the_same_three_lines(self):
+        # Reserved from first paint at a fixed height, the same on every
+        # surface. Three lines of 12.5px/1.45 plus 9px padding each side plus
+        # the border — three rather than two because the box carries more
+        # than speech now: the door code and the post-call strip live inside
+        # it instead of being bands that grew the card.
         block = self.css.split(".linebox {")[1].split("}")[0]
         self.assertIn("height: var(--lines-h)", block)
         self.assertNotIn("height: auto", block)
-        self.assertIn("--lines-h: 57px", self.css)
+        self.assertIn("--lines-h: 75px", self.css)
+        # No per-surface override left: one height, chosen once.
+        self.assertNotIn("body:not(.compact) { --lines-h", self.css)
 
     def test_only_reading_back_a_finished_call_may_change_it(self):
         # A deliberate click, by somebody who wants the room, when there is no
         # call left for the resize to interrupt.
         self.assertIn(".linebox.open { height: 200px; }", self.css)
 
-    def test_the_call_row_is_the_last_row_of_the_card(self):
-        # Volume, Mute and Hang up sit under the transcript on every surface —
-        # where a phone's controls belong, and where the eye is not asked to
-        # step over them to read what was said. They are inside .rig only so
-        # they inherit its reservation; the always-visible things in there
-        # declare their own visibility to opt back out.
+    def test_the_action_row_is_the_last_row_of_the_card(self):
+        # Bottom-up: the Call button (and in-call, the state it becomes) is
+        # the card's last row on every surface — so an embed's button lines
+        # up with the host page's own bottom row — with volume and the call
+        # buttons above it, the meters above those, and the words on top.
         html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
-        order = [html.index(m) for m in ('class="meters"', 'id="lineBox"',
-                                         'class="callrow"')]
+        order = [html.index(m) for m in ('id="lineBox"', 'class="meters"',
+                                         'class="callrow"', 'class="actionrow"')]
         self.assertEqual(order, sorted(order),
-                         "the call row must come after the line area")
-        self.assertIn(".rig > .linebox, .rig > .callended, .rig > .rate "
+                         "card order must be words, meters, call row, action row")
+        self.assertIn(".rig > .linebox, .rig > .meters, .rig > .actionrow "
                       "{ visibility: visible; }", self.css)
 
-    def test_a_phone_gets_a_third_line_and_an_embed_does_not(self):
-        # `:not(.compact)` is load-bearing: the query fires on the FRAME's
-        # width, so a narrow embed column on a desktop matches it too — and
-        # there the box is borrowing room from a station page's own layout.
-        self.assertIn("body:not(.compact) { --lines-h: 75px; }", self.css)
+    def test_the_post_call_chrome_lives_inside_the_line_area(self):
+        # The transcript drawer and the how-was-it buttons used to be bands
+        # below the box: every call's end grew the card and moved the host
+        # page — the exact thing the reserved line area exists to prevent.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        box = html.split('id="lineBox"')[1].split('class="meters"')[0]
+        for inside in ('id="endedBar"', 'id="rateBar"', 'id="guestGate"'):
+            with self.subTest(element=inside):
+                self.assertIn(inside, box,
+                              f"{inside} must sit inside the line area, not "
+                              "grow the card as a band of its own")
+
+    def test_an_idle_card_says_nothing(self):
+        # "Not connected" sat on every idle card — a permanent grey sentence
+        # restating what the eyebrow and the Call button already say, and on
+        # a host page it read as something being wrong. The element stays for
+        # transient messages; the idle filler is gone.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("Not connected", html)
+        self.assertIn("#status:has(#statusText:empty) { display: none; }",
+                      self.css)
 
     def test_the_volume_slider_is_not_the_browsers_own(self):
         # `accent-color` on a native range is a fat rounded bar with a big
@@ -953,18 +973,26 @@ class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
         self.assertIsNone(api_live.station_palette(
             {"effective": "x", "themes": [{"id": "x", "tokens": {}}]}))
 
-    def test_the_toggle_goes_away_while_the_station_is_painting(self):
-        # Its tokens are inline custom properties on :root, which outrank
-        # every data-theme rule in the stylesheet. The toggle would still flip
-        # the attribute and nothing on screen would change.
+    def test_the_toggle_stays_while_the_station_is_painting(self):
+        # It used to be dropped, because the palette's inline tokens outrank
+        # every data-theme rule and the toggle would visibly do nothing. The
+        # operator who chose station colours reported the toggle "not
+        # surfacing" as a bug — so the widget now clears the inline tokens on
+        # toggle (shared.js) and the control works instead of being hidden.
         from api import live as api_live
 
         cfg = {"show_theme_toggle": True, "embed_theme_toggle": True,
                "widget_theme": "station"}
-        self.assertFalse(api_live.corner_controls(cfg)["theme"])
-        self.assertFalse(api_live.corner_controls(cfg, embed=True)["theme"])
-        cfg["widget_theme"] = "auto"
         self.assertTrue(api_live.corner_controls(cfg)["theme"])
+        self.assertTrue(api_live.corner_controls(cfg, embed=True)["theme"])
+        # The widget's half of the bargain: the toggle must clear the inline
+        # tokens, or it is back to flipping an attribute nothing responds to.
+        shared = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+        self.assertIn("removeProperty", shared)
+        # And the poll must not re-apply the palette over an explicit choice.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        station_branch = call_js.split("choice === 'station'")[1][:400]
+        self.assertIn("callinTheme", station_branch)
 
 
 class TestSoundPacks(unittest.TestCase):

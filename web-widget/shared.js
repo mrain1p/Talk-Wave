@@ -38,10 +38,19 @@ window.Callin = (function () {
     const btn = document.getElementById('themeBtn');
     if (!btn || forced) return;
     btn.onclick = () => {
-      const now = document.documentElement.getAttribute('data-theme')
+      const root = document.documentElement;
+      const now = root.getAttribute('data-theme')
         || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
       const next = now === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
+      // The station palette (and a host page's swtv:theme) arrives as inline
+      // custom properties on :root, which outrank every data-theme rule in
+      // the stylesheet. Without clearing them the toggle flips the attribute
+      // and nothing on screen changes — which is why it used to be hidden
+      // whenever station colours were on. Clearing makes the choice real:
+      // the palette is the default look, the viewer's explicit pick wins.
+      [...root.style].filter((p) => p.startsWith('--'))
+        .forEach((p) => root.style.removeProperty(p));
+      root.setAttribute('data-theme', next);
       localStorage.setItem('callinTheme', next);
     };
   })();

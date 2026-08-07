@@ -59,6 +59,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))
 import settings as settings_store  # noqa: E402
+import secrets_store  # noqa: E402
 
 PORT = int(os.environ.get("PORT", "8123"))
 
@@ -66,13 +67,16 @@ PORT = int(os.environ.get("PORT", "8123"))
 # handle_settings_options really returns; the values are fixtures.
 OPTIONS = {
     "llmProviders": ["openai", "google", "anthropic", "openrouter", "ollama"],
+    "llmProviderLabels": settings_store.LLM_PROVIDER_LABELS,
     "llmModels": {"google": ["gemini-3.1-flash-lite", "gemini-3.6-flash"],
                   "openai": ["gpt-4.1-mini"]},
     "modelsDiscovered": {"google": True},
     "sttProviders": ["local", "deepgram", "openai", "google"],
     "sttModels": {"local": ["base.en", "tiny.en"], "deepgram": ["nova-3"]},
     "ttsModes": ["cloud", "local"],
-    "ttsAdapters": ["local-vibevoice.json", "openai-cloud.json"],
+    "ttsAdapters": ["local-vibevoice.json", "openai-cloud.json",
+                    "elevenlabs-cloud.json"],
+    "ttsAdapterBaseUrls": {"elevenlabs-cloud.json": "https://api.elevenlabs.io"},
     # Deliberately does NOT include the station's voice for p_default1 below:
     # that mismatch is the 0.9.81 bug, and it should be reproducible here.
     "voices": ["-Cliff1", "-Delia1", "Lily"],
@@ -171,8 +175,18 @@ class Handler(BaseHTTPRequestHandler):
                 "schema": settings_store.schema_payload(),
                 "resolved": settings_store.load(),
                 "overrides": settings_store.stored_only(),
-                "secrets": {"google_api_key":
-                            {"label": "Google", "set": True, "tail": "1234"}},
+                # Through the real status() shape, group and help included,
+                # so the per-section key blocks render the way they deploy.
+                "secrets": {
+                    f: {"label": secrets_store.SECRET_LABELS.get(f, f),
+                        "group": secrets_store.SECRET_GROUPS.get(f, "brains"),
+                        "help": secrets_store.SECRET_HELP.get(f, ""),
+                        "set": f == "google_api_key",
+                        "source": "settings" if f == "google_api_key" else "unset",
+                        "hint": "•" * 12 if f == "google_api_key" else "",
+                        "visible": False}
+                    for f in secrets_store.SECRET_FIELDS
+                },
                 "authConfigured": True,
                 "guestConfigured": True,
             })
