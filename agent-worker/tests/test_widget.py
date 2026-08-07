@@ -1373,3 +1373,20 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
         self.assertIn('id="testBeepBtn"', html)
         js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
         self.assertIn("function previewBeep", js)
+
+
+class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
+    """A single unclosed brace mid-file silently kills every rule after it —
+    a duplicated selector line once dropped the whole compact block and the
+    measuring rules, and the embed re-inflated to 896px with zero errors
+    anywhere. Brace balance is a crude parser, but it catches exactly the
+    editing accident that happened."""
+
+    def test_braces_balance(self):
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertEqual(css.count("{"), css.count("}"),
+                         "style.css has unbalanced braces — every rule after "
+                         "the break is silently dead in the browser")
+        # The canary: the LAST load-bearing rule must still be reachable,
+        # so a balanced-but-broken file still has to keep it intact.
+        self.assertIn("body.measuring", css)

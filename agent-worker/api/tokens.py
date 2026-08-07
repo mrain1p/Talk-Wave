@@ -237,7 +237,7 @@ async def handle_token(request: web.Request) -> web.Response:
             # not close it. The per-caller cooldown and the hour/day ceilings
             # still hold — a message costs STT, and a robot redialling the
             # machine is the same robot the ceilings exist for.
-            policy = str(cfg.get("voicemail_when") or "never")
+            policy = settings_store.voicemail_policy(cfg)
             if policy == "never":
                 return _cors(request, web.json_response(
                     {"error": "The booth doesn't take messages."}, status=403))
@@ -257,7 +257,7 @@ async def handle_token(request: web.Request) -> web.Response:
         elif refusal:
             log.info("call refused by usage controls: %s", refusal)
             return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
-        if not voicemail and (str(cfg.get("voicemail_when") or "") == "always"
+        if not voicemail and (settings_store.voicemail_policy(cfg) == "always"
                               or not cfg.get("live_calls_enabled", True)):
             # A voicemail-only line: the widget offers Leave a message and a
             # hand-built client asking for a live call gets the same answer.

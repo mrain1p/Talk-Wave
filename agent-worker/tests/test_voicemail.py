@@ -336,9 +336,10 @@ class TestTheLineHasModes(unittest.TestCase):
 
         source = inspect.getsource(tokens.handle_token)
         gate = source[source.index("live_calls_enabled") - 400:]
-        self.assertIn('voicemail_when', gate.split("live_calls_enabled")[0],
-                      "the two switches must be one gate — either alone "
-                      "refusing would strand the other's mode")
+        self.assertIn('voicemail_policy', gate.split("live_calls_enabled")[0],
+                      "the gate must read the RESOLVED policy — the master "
+                      "switch and the when-select through one resolver, or "
+                      "the two call sites drift")
         self.assertIn("taking messages tonight", gate)
 
     def test_the_defaults_leave_upgrades_unchanged(self):

@@ -3,6 +3,43 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.144
+
+### The line, said plainly
+
+- **Voicemail gets a master switch** — Enable voicemail, then when it
+  answers; the 'never' option had been carrying the on/off job invisibly. A
+  stored policy migrates to the right switch position.
+- **Live calls is its own section**, not a row inside Voicemail — the two
+  switches together are the line's mode, and neither depends on the other.
+- **Tune-in splits in two**: counting the caller as a listener (what makes
+  requests work) and piping the broadcast audibly into the call are now
+  separate switches — volume 0 had been carrying the second job as a trick.
+- Renames: **On-air ducking** (was Sharing the microphone), **Tune the
+  caller into the station**, **Back-to-air commentary** — whose help now
+  says plainly it is NOT the mid-call announcements, which run under their
+  own permissions.
+
+### The card, held to its shape
+
+- **Hang up is structurally alone** while a call is up — a CSS rule owned
+  by the connect/end pair, so no repaint can put "On the line" beside it
+  again. The meters band gets width floors: no more MIC OFF folded into a
+  tower with the DJ meter squeezed out.
+
+### Recent calls
+
+- Rows wear the diagnostics' own type, each carries the **caller's tier**
+  and chips naming the **tools used**, and the problems filter is the same
+  toggle style as the thumbs.
+
+### Sounds & sundries
+
+- One blurb carries the formats, limits and WAV-preferred rules; every
+  sound row has its own one-line note; "How many transcripts to keep" says
+  so; a greeting with no staged clip falls back to the station clip, then a
+  random one — not alphabetically to whoever sorts first.
+
 ## 0.9.143
 
 - **The conversation reads top-down**: Station awareness first (what the DJ

@@ -322,6 +322,13 @@
      visibility, because Call takes its place rather than leaving a gap. */
   .actionrow > [hidden] { display: none; }
   .actionrow #hangBtn { flex: 1 1 auto; }
+  /* Structural, not scripted: while a call is up, Hang up is the row's ONLY
+     button. The operator's live page caught the Call button ("On the line")
+     sharing the row with Hang up mid-call — some path had raced the hidden
+     attribute — and a class the connect/end pair owns cannot be raced by a
+     poll repaint. */
+  .card.oncall .actionrow #callBtn,
+  .card.oncall .actionrow #vmBtn { display: none; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -398,8 +405,12 @@
      meter's own shape has to be visible before anyone speaks, or the row
      looks broken until it isn't. */
   /* --- level meters ------------------------------------------------------ */
-  .meters { display: flex; gap: var(--band-gap); padding: 9px 0 0; }
-  .meter { flex: 1; text-align: left; min-width: 0; }
+  .meters { display: flex; gap: var(--band-gap); padding: 9px 0 0; flex-wrap: nowrap; }
+  /* Floors, not just flex: squeezed by the volume rail, the You meter once
+     shrank until "MIC OFF" wrapped into a two-line tower and the DJ meter
+     left the row entirely. From the operator's live call. */
+  .meter { flex: 1 1 90px; text-align: left; min-width: 72px; }
+  .meter .mlabel { white-space: nowrap; }
   .meter .mlabel {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
@@ -435,7 +446,8 @@
      was part of what stretched a real station page's player column. Bottom-
      aligned so the rail sits level with the meter bars beside it. */
   .meters .vol { align-self: flex-end; padding-bottom: 3px; }
-  .vol { display: flex; align-items: center; gap: 10px; flex: 1.3 1 130px; min-width: 0; }
+  .vol { display: flex; align-items: center; gap: 10px; flex: 1 1 130px;
+         min-width: 110px; max-width: 260px; }
   .vol label {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; color: var(--sage-dim); font-weight: 700;
@@ -1638,6 +1650,23 @@
   .callrow > summary:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
   .callrow > summary:hover .when { color: var(--text); }
   .callrow > summary .icon { text-align: center; }
+  /* The list reads in the diagnostics' own voice — the row type ran two
+     sizes and the DJ name a weight louder than the pipeline check beside
+     it, and the seam showed. Operator-reported. */
+  .callrow > summary { font-size: 11.5px; }
+  .callrow > summary .dj { font-size: 12px; font-weight: 600; }
+  .ctier {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    border: 1px solid var(--line2); border-radius: 4px; padding: 1px 5px;
+    margin-left: 7px;
+  }
+  .ctools { margin-left: 7px; }
+  .ctools .ctool {
+    font-family: var(--font-mono); font-size: 8.5px; color: var(--dim);
+    border: 1px solid var(--line2); border-radius: 4px; padding: 1px 5px;
+    margin-right: 3px;
+  }
   .callrow > summary .when, .callrow > summary .dj {
     color: var(--dim); font-weight: 600;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

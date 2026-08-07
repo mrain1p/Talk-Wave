@@ -188,10 +188,14 @@ def staged_clip(persona_id: str) -> Path | None:
     for candidate in (clip_path(persona_id), clip_path(STATION_ID)):
         if candidate.is_file():
             return candidate
-    for entry in sorted(VOICEMAIL_DIR.glob("*.wav")):
-        if not entry.name.endswith("-ack.wav"):
-            return entry
-    return None
+    # Random rather than alphabetical: with no station clip staged, "always
+    # the DJ whose name sorts first" made one voice the accidental station
+    # default. Operator's call.
+    import random
+
+    others = [entry for entry in VOICEMAIL_DIR.glob("*.wav")
+              if not entry.name.endswith("-ack.wav")]
+    return random.choice(others) if others else None
 
 
 def needs_render(persona_id: str, key: str) -> bool:
