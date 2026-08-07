@@ -958,7 +958,8 @@
 
   /* Matrix help, inside the label cell: same muted voice as every hint,
      flowing after the label on its own line's terms. */
-  .plabel .hint.inlabel {
+  .plabel .hint.inlabel,
+  label.check .hint.inlabel {
     display: inline; margin: 0 0 0 8px; font-weight: 400;
   }
   /* Rating filters on the call list: one at a time, stacking with the

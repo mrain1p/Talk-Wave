@@ -1684,16 +1684,22 @@
       // wrapping when it runs long, and they were right: forty rows times an
       // extra band was most of the page's height.
       const plabel = prow && prow.querySelector('.plabel');
+      // A checkbox's help joins the label's own line too — a <span> inside
+      // a <label> is valid where the old <p> was not, and a band of help
+      // under every toggle was the same height tax the matrix paid. The
+      // help becomes clickable-to-toggle, which is how most settings UIs
+      // already behave. Operator-asked, twice.
+      const check = !plabel && anchor.classList.contains('check');
       let hint = plabel ? plabel.querySelector(':scope > .hint')
-        : inline ? anchor.querySelector(':scope > .hint')
+        : (inline || check) ? anchor.querySelector(':scope > .hint')
         : anchor.nextElementSibling;
       if (!hint || !hint.classList.contains('hint') || !hint.dataset.fromSchema) {
-        hint = document.createElement(plabel ? 'span' : 'p');
-        hint.className = plabel ? 'hint inlabel'
+        hint = document.createElement((plabel || check) ? 'span' : 'p');
+        hint.className = (plabel || check) ? 'hint inlabel'
           : inline ? 'hint inrow' : 'hint wide';
         hint.dataset.fromSchema = '1';
         if (plabel) plabel.appendChild(hint);
-        else if (inline) anchor.appendChild(hint);
+        else if (inline || check) anchor.appendChild(hint);
         else anchor.insertAdjacentElement('afterend', hint);
       }
       hint.textContent = meta.help;
