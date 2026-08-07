@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.140
+
+- The Access credential boxes wear the panel's own field styling again —
+  moving them onto one line with their buttons had dropped them back to the
+  browser's default chrome, which read as a different, broken control.
+
 ## 0.9.139
 
 ### Finding your way

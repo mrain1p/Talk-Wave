@@ -1132,7 +1132,12 @@
      help is the thing that needs the width, because it is a sentence. A
      dropdown is as wide as its longest option and a URL box does not become
      more readable at 600px than at 260. */
-  .row select, .row input[type=text], .row input[type=number], .row input[type=password] {
+  /* .testrow carries the same field skin: the Access credentials moved out
+     of .rows so each could share a line with its buttons, and the inputs
+     fell back to the browser's own chrome — which read as a different,
+     broken control two inches from a styled one. Operator-reported. */
+  .row select, .row input[type=text], .row input[type=number], .row input[type=password],
+  .testrow input[type=text], .testrow input[type=password] {
     flex: 0 1 260px; max-width: 260px;
     min-width: 0; font: inherit; font-size: 12.5px;
     padding: 6px 9px; border-radius: 7px;
@@ -1144,7 +1149,8 @@
   .row > .hint.inrow {
     flex: 1 1 300px; min-width: 0; margin: 0; text-align: left;
   }
-  .row select:focus, .row input:focus { outline: none; border-color: var(--accent); }
+  .row select:focus, .row input:focus,
+  .testrow input:focus { outline: none; border-color: var(--accent); }
   /* A field that holds "2" does not need 600px to hold it. Every number in
      the panel was stretched the full width of the row, which read as five
      enormous empty boxes and made the numbers themselves hard to compare —
