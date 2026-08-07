@@ -1,48 +1,41 @@
-# Self-hosted LiveKit config. Copy to livekit.yaml and generate your own
-# keypair — NEVER deploy with a published example key:
+# Self-hosted LiveKit config. Copy to livekit.yaml and generate your own keypair — NEVER deploy with
+# a published example key:
 #
 #   python -c "import secrets; print('devkey:', secrets.token_urlsafe(36))"
 #
-# The key name/secret here must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET
-# in .env.
+# The key name/secret here must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env.
 port: 7880
 
 rtc:
-  # ONE muxed UDP port for all call audio, rather than a range. LiveKit
-  # multiplexes every call over it, so "open a port for calls from outside"
-  # is one firewall rule instead of a hundred and one.
+  # ONE muxed UDP port for all call audio, rather than a range. LiveKit multiplexes every call over
+  # it, so "open a port for calls from outside" is one firewall rule instead of a hundred and one.
   udp_port: 7882
   # ICE/TCP fallback, for networks that block UDP outright.
   tcp_port: 7881
-  # false is for local dev (browser and server on the same host). Set true
-  # when callers connect from anywhere else: LiveKit then discovers its
-  # public address via STUN and offers it to callers.
+  # false is for local dev (browser and server on the same host). Set true when callers connect from
+  # anywhere else: LiveKit then discovers its public address via STUN and offers it to callers.
   #
-  # false does NOT mean unreachable. It only turns off STUN discovery; it does
-  # not touch HOST candidates, which come from enumerating your interfaces. If
-  # this machine has a global IPv6 address (anything starting 2 or 3 — many
-  # home ISPs hand one out), that address is offered as a host candidate and
-  # IPv6 callers reach it directly from anywhere, with no port forwarding.
-  # Verified on a real deployment: the IPv6 candidate is labelled `host`, not
-  # `srflx`, so turning STUN off never removed it.
+  # false does NOT mean unreachable. It only turns off STUN discovery; it does not touch HOST
+  # candidates, which come from enumerating your interfaces. If this machine has a global IPv6
+  # address (anything starting 2 or 3 — many home ISPs hand one out), that address is offered as a
+  # host candidate and IPv6 callers reach it directly from anywhere, with no port forwarding.
+  # Verified on a real deployment: the IPv6 candidate is labelled `host`, not `srflx`, so turning
+  # STUN off never removed it.
   #
-  # For genuinely no inbound reachability you need a host firewall rule on
-  # UDP 7882 for IPv6, or an interface with no global IPv6. See "Calling from
-  # outside your network" in the README.
+  # For genuinely no inbound reachability you need a host firewall rule on UDP 7882 for IPv6, or an
+  # interface with no global IPv6. See "Calling from outside your network" in the README.
   use_external_ip: false
 
-  # DO NOT set node_ip unless you know you need it. It pins the address
-  # LiveKit advertises and OVERRIDES the public one use_external_ip finds —
-  # so setting it to a LAN address silently breaks every caller who isn't on
-  # your LAN, while working perfectly for everyone who is. It exists for
-  # bridge networking, where LiveKit would otherwise advertise its container
-  # IP; with network_mode: host it is usually wrong.
+  # DO NOT set node_ip unless you know you need it. It pins the address LiveKit advertises and
+  # OVERRIDES the public one use_external_ip finds — so setting it to a LAN address silently breaks
+  # every caller who isn't on your LAN, while working perfectly for everyone who is. It exists for
+  # bridge networking, where LiveKit would otherwise advertise its container IP; with network_mode:
+  # host it is usually wrong.
   # node_ip: 192.168.1.10
 
-  # Only offer candidates from the real network interface. Without this, a
-  # host with docker bridges or VM networks advertises a dozen unreachable
-  # addresses, and every caller's browser connectivity-checks all of them
-  # before giving up. Set it to your actual interface (ip -o addr).
+  # Only offer candidates from the real network interface. Without this, a host with docker bridges
+  # or VM networks advertises a dozen unreachable addresses, and every caller's browser
+  # connectivity-checks all of them before giving up. Set it to your actual interface (ip -o addr).
   # interfaces:
   #   includes:
   #     - eth0

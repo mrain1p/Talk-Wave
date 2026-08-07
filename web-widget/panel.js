@@ -1171,6 +1171,13 @@
     const n = Object.keys(pendingPatch()).length;
     $('saveBtn').classList.toggle('clean', n === 0);
     $('saveBtn').textContent = n ? 'Save ' + n + ' change' + (n > 1 ? 's' : '') : 'Save';
+    // The floating verdict: visible exactly while anything is unsaved.
+    const bar = $('saveOverlay');
+    if (bar) {
+      bar.hidden = n === 0;
+      $('saveOverlayMsg').textContent =
+        n + ' unsaved change' + (n === 1 ? '' : 's');
+    }
   }
   // ------------------------------------------------------- the live preview
   // A real call card in a frame, repainted from the form as it is edited.
@@ -1835,7 +1842,10 @@
       up.className = 'btnquiet'; up.textContent = 'Upload…';
       up.title = 'Upload a file and use it for this sound';
       up.onclick = () => { pendingAssignSlot = slot; $('soundFile').click(); };
-      row.appendChild(up);
+      // Beside the dropdown it serves, BEFORE the row's help — appended at
+      // the end it landed after the injected hint and read as furniture for
+      // the wrong row. Operator-reported as "not intuitive", correctly.
+      row.insertBefore(up, field.nextSibling);
     });
     syncSoundPickers();
   }
@@ -1917,20 +1927,104 @@
   // Staging renders one greeting per persona through the real TTS and
   // reports each result by name — a persona whose voice this backend does
   // not have has to be pointed at, not averaged away.
+  let vmPersonas = [];
+
   function paintVmStatus(personas) {
+    vmPersonas = personas || [];
     const host = $('vmStatusList');
     if (!host) return;
     host.innerHTML = '';
-    (personas || []).forEach((p) => {
+    vmPersonas.forEach((p) => {
       const li = document.createElement('li');
+      li.className = 'vmrow';
+      li.dataset.pid = p.id;
+
       const who = document.createElement('span');
       who.className = 'sname';
-      who.textContent = p.name + (p.current ? ' — staged'
-        : p.staged ? ' — STALE (re-stage)' : ' — not staged')
-        + (p.renderedAt ? ' · ' + p.renderedAt : '');
-      li.appendChild(who);
+      who.textContent = p.name + ' — ' + (p.voice || 'station voice');
+      who.title = 'Rendered with this voice';
+
+      const state = document.createElement('span');
+      state.className = 'vmstate' + (p.current ? ' ok' : '');
+      state.textContent = p.current ? 'staged'
+        : p.staged ? 'stale' : 'not staged';
+      state.title = p.renderedAt ? 'Rendered ' + p.renderedAt : '';
+
+      // The exact words this persona's clip speaks, editable in place. An
+      // edit is saved per persona and invalidates only that clip.
+      const line = document.createElement('input');
+      line.type = 'text';
+      line.className = 'vmline';
+      line.value = p.text || '';
+      line.title = p.overridden ? 'This persona has its own line'
+                                : 'Shared greeting — edit to give ' + p.name
+                                  + ' their own';
+      line.onchange = async () => {
+        await afetch('/voicemail/greeting/' + encodeURIComponent(p.id), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: line.value }),
+        });
+        loadVmStatus();
+      };
+
+      const stage = document.createElement('button');
+      stage.className = 'btnquiet'; stage.textContent = 'Stage';
+      stage.onclick = () => stagePersonas([p.id], stage);
+
+      const play = document.createElement('button');
+      play.className = 'btnquiet'; play.textContent = 'Play';
+      play.disabled = !p.staged;
+      play.onclick = () => {
+        // Admin-gated audio, so it travels with the header via fetch.
+        afetch('/voicemail/greeting/' + encodeURIComponent(p.id))
+          .then((r) => r.blob())
+          .then((blob) => new Audio(URL.createObjectURL(blob)).play())
+          .catch(() => {});
+      };
+
+      const del = document.createElement('button');
+      del.className = 'btnquiet'; del.textContent = 'Delete';
+      del.disabled = !p.staged;
+      del.onclick = async () => {
+        del.disabled = true;
+        await afetch('/voicemail/greeting/' + encodeURIComponent(p.id),
+                     { method: 'DELETE' });
+        loadVmStatus();
+      };
+
+      li.append(who, state, line, stage, play, del);
       host.appendChild(li);
     });
+  }
+
+  // One persona at a time, so the operator watches it happen instead of
+  // wondering whether the button took — which is exactly what they reported.
+  async function stagePersonas(ids, btn) {
+    const out = $('vmStageResult');
+    const label = btn.textContent;
+    btn.disabled = true;
+    out.className = 'result on';
+    const lines = [];
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        btn.textContent = 'Rendering ' + (i + 1) + '/' + ids.length + '…';
+        out.textContent = lines.concat('… rendering '
+          + (vmPersonas.find((p) => p.id === ids[i]) || {}).name).join('\n');
+        const r = await afetch('/voicemail/stage?persona='
+          + encodeURIComponent(ids[i]), { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        const res = ((d.results || [])[0]) || { ok: false, error: 'no answer' };
+        lines.push((res.ok ? '✓ ' : '✗ ') + (res.name || ids[i])
+          + (res.skipped ? ' — unchanged, skipped'
+             : res.ok ? ' — rendered' : ' — ' + (res.error || 'failed')));
+        out.textContent = lines.join('\n');
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+      out.classList.add('on');
+      loadVmStatus();
+    }
   }
 
   async function loadVmStatus() {
@@ -1954,22 +2048,13 @@
     });
 
     $('vmStageBtn').onclick = async () => {
-      const btn = $('vmStageBtn'), out = $('vmStageResult');
-      btn.disabled = true;
-      out.className = 'result on';
-      out.textContent = 'Rendering greetings through the configured voice…';
-      try {
-        const r = await afetch('/voicemail/stage', { method: 'POST' });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) { showResult(out, false, d.error || 'Staging failed'); return; }
-        const lines = (d.results || []).map((x) =>
-          (x.ok ? '✓ ' : '✗ ') + x.name
-          + (x.skipped ? ' — unchanged, skipped' : x.ok ? ' — rendered'
-             : ' — ' + (x.error || 'failed')));
-        showResult(out, !!d.ok, lines.join('\n') || 'No personas found.');
-        loadVmStatus();
-      } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
-      finally { btn.disabled = false; }
+      if (!vmPersonas.length) await loadVmStatus();
+      if (!vmPersonas.length) {
+        showResult($('vmStageResult'), false,
+          'No personas found — is the station reachable?');
+        return;
+      }
+      stagePersonas(vmPersonas.map((p) => p.id), $('vmStageBtn'));
     };
 
     $('vmRefreshBtn').onclick = async () => {
@@ -2528,6 +2613,15 @@
       return;
     }
     saveSettings(patch);
+  };
+
+  $('saveOverlaySave').onclick = () => $('saveBtn').click();
+  $('saveOverlayDiscard').onclick = () => {
+    // Back to what is stored: paint() refills every control from
+    // overrides/resolved, which IS the discard.
+    paint();
+    $('saveMsg').textContent = 'Changes discarded';
+    setTimeout(() => { $('saveMsg').textContent = ''; }, 2500);
   };
 
   $('resetBtn').onclick = async () => {

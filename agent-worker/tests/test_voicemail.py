@@ -251,3 +251,44 @@ class TestAVoicemailIsACallEntryToo(_VmDirs):
 
         viewers = (REPO / "web-widget" / "panel-viewers.js").read_text(encoding="utf-8")
         self.assertIn("voicemail", viewers)
+
+
+class TestEachPersonaCanHaveItsOwnLine(_VmDirs):
+    """The operator edits one persona's greeting in place; the cache key
+    carries the text, so only that clip re-renders."""
+
+    def test_override_wins_and_clears(self):
+        g = self.greetings
+        base = g.greeting_text_for("p1", {}, "Yosemite FM", "Danny")
+        self.assertIn("Danny", base)
+        g.set_override("p1", "Danny here — say your piece.")
+        self.assertEqual("Danny here — say your piece.",
+                         g.greeting_text_for("p1", {}, "Yosemite FM", "Danny"))
+        # Another persona is untouched.
+        self.assertIn("Rosie", g.greeting_text_for("p2", {}, "x", "Rosie"))
+        g.set_override("p1", "")
+        self.assertEqual(base, g.greeting_text_for("p1", {}, "Yosemite FM", "Danny"))
+
+
+class TestTheMachineHasATierDoor(unittest.TestCase):
+    """allow_voicemail is a caller tier like every other permission: 'off'
+    admits nobody, and the ladder is the caller ladder."""
+
+    def test_the_gate_reads_the_setting_and_fails_closed(self):
+        import inspect
+
+        from api import tokens
+
+        source = inspect.getsource(tokens.handle_token)
+        self.assertIn("allow_voicemail", source)
+        self.assertIn('"open": 0', source)
+        # An unknown value must land on the refusing branch.
+        self.assertIn("need not in ladder", source)
+
+    def test_the_defaults_leave_upgrades_unchanged(self):
+        import settings as settings_store
+
+        self.assertEqual("open", settings_store.FIELDS["allow_voicemail"][1])
+        self.assertEqual(0, settings_store.FIELDS["guest_session_minutes"][1])
+        self.assertFalse(settings_store.FIELDS["show_voicemail_button"][1])
+        self.assertFalse(settings_store.FIELDS["embed_voicemail_button"][1])

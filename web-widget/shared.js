@@ -42,6 +42,15 @@ window.Callin = (function () {
       document.documentElement.setAttribute('data-theme', saved);
     }
     const btn = document.getElementById('themeBtn');
+    // The glyph is the DESTINATION, not the state: a sun on a dark card
+    // ("tap for light"), a moon on a light one. The operator found the old
+    // half-circle unreadable as a control, and they were right.
+    const glyph = () => {
+      const now = document.documentElement.getAttribute('data-theme')
+        || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      if (btn) btn.textContent = now === 'dark' ? '\u2600' : '\u263e';
+    };
+    glyph();
     if (!btn || forced) return;
     btn.onclick = () => {
       const root = document.documentElement;
@@ -58,6 +67,7 @@ window.Callin = (function () {
         .forEach((p) => root.style.removeProperty(p));
       root.setAttribute('data-theme', next);
       localStorage.setItem('callinTheme', next);
+      glyph();
     };
   })();
 
@@ -78,7 +88,29 @@ window.Callin = (function () {
   // operator sets a code, so the browser that just locked the phone is not the
   // one left outside it.
   const CALL_KEY = 'callinCallKey';
+  // When the code was stored, for the shared-machine expiry: a typed code
+  // should not outlive its typist on a kiosk. Written wherever the code is.
+  const CALL_KEY_AT = 'callinCallKeyAt';
   const callKey = () => localStorage.getItem(CALL_KEY) || '';
+  function rememberCallKey(code) {
+    if (code) {
+      localStorage.setItem(CALL_KEY, code);
+      localStorage.setItem(CALL_KEY_AT, String(Date.now()));
+    } else {
+      localStorage.removeItem(CALL_KEY);
+      localStorage.removeItem(CALL_KEY_AT);
+    }
+  }
+  function callKeyExpired(minutes) {
+    if (!minutes || !callKey()) return false;
+    const at = Number(localStorage.getItem(CALL_KEY_AT) || 0);
+    if (!at) {
+      // A code stored before the clock existed starts its clock now.
+      localStorage.setItem(CALL_KEY_AT, String(Date.now()));
+      return false;
+    }
+    return (Date.now() - at) > minutes * 60 * 1000;
+  }
 
   // ---------------------------------------------------------------- sounds
   // Defaults are synthesized so the widget ships with no audio assets; a
@@ -265,7 +297,7 @@ window.Callin = (function () {
 
   return {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    ASKS, NEVER, CALL_KEY, callKey,
+    ASKS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   };

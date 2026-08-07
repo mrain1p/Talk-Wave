@@ -574,6 +574,34 @@
   #guestMsg { display: block; margin-top: 7px; color: var(--amber); font-size: 11px; }
   #guestMsg:empty { display: none; }
 
+  /* The floating unsaved-changes verdict. Fixed so it is on screen from
+     any scroll depth, and it does not leave until answered. */
+  .saveoverlay {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    z-index: 2147483000;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--accent);
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  .saveoverlay[hidden] { display: none; }
+  .saveoverlay span { font-size: 12.5px; color: var(--text); font-weight: 600; }
+  .saveoverlay #saveOverlaySave { background: var(--accent); color: #fff; }
+
+  /* One staged greeting per row: who and which voice, the words the clip
+     speaks (editable), and the three things you can do about it. */
+  .soundlist li.vmrow { flex-wrap: wrap; }
+  .vmrow .vmstate {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700; color: var(--warn);
+  }
+  .vmrow .vmstate.ok { color: var(--ok); }
+  .vmrow .vmline {
+    flex: 1 1 100%; order: 5; min-width: 0;
+    font: 12px var(--font-body); padding: 5px 8px; border-radius: 6px;
+    border: 1px solid var(--line2); background: var(--card); color: var(--text);
+  }
+
   /* Locked panel: the login banner is the only thing shown. */
   #panel.locked details.sec, #panel.locked .supergroup,
   #panel.locked .actions, #panel.locked details.diag,
@@ -1728,10 +1756,16 @@
   /* Idle in an embed the Call button is the frame's one action, sized like
      the host page's own bottom-row buttons rather than a chip beside them —
      including in HEIGHT: the station page's Send and Listen Live are ~44px,
-     and a 31px chip beside them read as belonging to a different page. */
+     and a 31px chip beside them read as belonging to a different page. With
+     the machine's second door up, the two share the row instead. */
   body.compact #callBtn:not(.ringing):not(.answering):not(.live) {
     width: 100%; height: 44px; font-size: 12px;
   }
+  body.compact .actionrow:has(#vmBtn:not([hidden]))
+    #callBtn:not(.ringing):not(.answering):not(.live) {
+    width: auto; flex: 1 1 52%;
+  }
+  body.compact #vmBtn:not([hidden]) { height: 44px; font-size: 11px; flex: 1 1 40%; }
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
@@ -1832,7 +1866,9 @@
      reserving room for a call it is not on; that left a third of the preview
      as empty frame under the widget, which is the exact complaint the idle
      card itself was fixed for. */
-  #previewFrame { display: block; width: 100%; height: 390px; border: 0; }
+  /* Tall enough to read, short enough that the SECTION never grows a
+     scrollbar of its own — the operator reported exactly that. */
+  #previewFrame { display: block; width: 100%; height: 300px; border: 0; }
 
   /* --- installed as an app -----------------------------------------------
      No browser chrome, so the widget is the whole window and owns the edges

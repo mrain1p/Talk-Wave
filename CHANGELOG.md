@@ -3,6 +3,43 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.131
+
+### Voicemail
+
+- A **"Leave a message" button** can sit beside Call, per surface — either
+  door, or both. Without it, the Call button still becomes the machine's
+  wherever a live call is impossible.
+- Each persona's greeting line is editable in place, with Play, Stage and
+  Delete per persona. Staging runs one persona at a time with live progress.
+- New destination: **triage** — the model reads each message and picks a
+  song request, an on-air mention, or a station segment, bounded by the
+  caller permissions. A per-tier **"Leave a voicemail"** permission joins
+  the matrix.
+
+### The call card
+
+- The theme toggle is a **sun or moon** — the destination, not an abstract
+  glyph.
+- A **lock button** appears whenever this device holds a door code, and a
+  new **guest-code expiry** setting forgets a typed code after a chosen time
+  — both for shared and public machines.
+- Host pages can now push their **fonts** along with their colours, and a
+  page-theme change repaints the card in place instead of reloading it
+  mid-call.
+
+### The panel
+
+- A floating **Save / Discard bar** appears the moment anything is unsaved
+  and stays until answered.
+- The player preview no longer scrolls its own section; each sound's Upload
+  button sits beside its dropdown.
+
+### Speech
+
+- "&" is spoken as "and", and em dashes become a natural pause — some
+  voices read both literally.
+
 ## 0.9.130
 
 ### Voicemail

@@ -1,15 +1,14 @@
-# TLS front door for the whole stack, so browsers grant microphone access —
-# they only do that on HTTPS origins (localhost excepted), which is why a
-# plain http:// LAN deployment "connects then instantly hangs up".
+# TLS front door for the whole stack, so browsers grant microphone access — they only do that on
+# HTTPS origins (localhost excepted), which is why a plain http:// LAN deployment "connects then
+# instantly hangs up".
 #
-# Self-signed via Caddy's internal CA: the first visit shows the standard
-# "connection is not private -> Advanced -> Proceed" screen once per
-# browser, the same as any self-hosted admin UI. After that, the normal mic
-# permission popup appears.
+# Self-signed via Caddy's internal CA: the first visit shows the standard "connection is not private
+# -> Advanced -> Proceed" screen once per browser, the same as any self-hosted admin UI. After that,
+# the normal mic permission popup appears.
 #
-# LiveKit signalling (/rtc) shares this port on purpose: a WebSocket to a
-# self-signed cert on a DIFFERENT origin fails silently with no way to
-# accept it — same origin means the one acceptance covers both.
+# LiveKit signalling (/rtc) shares this port on purpose: a WebSocket to a self-signed cert on a
+# DIFFERENT origin fails silently with no way to accept it — same origin means the one acceptance
+# covers both.
 
 {
 	local_certs

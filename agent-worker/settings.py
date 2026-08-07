@@ -166,6 +166,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # utterance through STT, delivered. Nothing is recorded as audio — the
     # transcript is the message. docs/VOICEMAIL.md is the design.
     "voicemail_when":        (None, "never"),
+    # Who may use the machine, as a tier like every other caller permission.
+    # Defaults open: switching voicemail on is already a decision, and the
+    # door code still applies in front of this.
+    "allow_voicemail":       (None, "open"),
     "voicemail_greeting":    (None, ""),
     "voicemail_max_seconds": (None, 30),
     "voicemail_destination": (None, "hold"),
@@ -244,6 +248,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # a default that silently stopped every existing deployment from taking
     # calls. The explicit modes are the ones that refuse when their password
     # is missing; auto is the one that reads the password to decide.
+    # A guest code typed on a shared machine outlives the person who typed
+    # it. 0 keeps it until Sign out; anything else forgets it after that
+    # many minutes, and the card offers a lock button to forget it now.
+    "guest_session_minutes": (None, 0),
     "front_access":     (None, "auto"),
 
     # --- the widget itself, as a caller sees it --------------------------
@@ -282,6 +290,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # button to be heard is a behaviour change, not a repaint.
     "show_push_to_talk":  (None, False),
     "embed_push_to_talk": (None, False),
+    # A second button beside Call — the machine on offer even while a live
+    # call is possible. Off by default; the policy alone still turns the
+    # Call button INTO "Leave a message" where a live call is impossible.
+    "show_voicemail_button":  (None, False),
+    "embed_voicemail_button": (None, False),
     # A colour on the DJ's voice, applied in the caller's browser only — the
     # broadcast never hears it. One answer for both surfaces: the effect is
     # part of the DJ's character, and a DJ who is CB on the page and clean in
@@ -672,6 +685,12 @@ SCHEMA: dict[str, dict] = {
     "max_call_seconds": dict(group="limits", kind="number", label="Hang up after (s)",
         help="Hard ceiling. The DJ signs off in character first rather than the "
              "audio just stopping. 600 = ten minutes."),
+    "guest_session_minutes": dict(group="security", kind="number",
+        label="Guest code expires (min)",
+        help="On a shared or public machine, a typed code should not outlive "
+             "its typist. 0 remembers it until Sign out; otherwise the card "
+             "forgets it after this long, and shows a lock button to forget "
+             "it immediately."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access",
         help="This is the PHONE. The panel always needs the admin password, "
@@ -701,6 +720,14 @@ SCHEMA: dict[str, dict] = {
         help="The way into this panel from the card. Off secures nothing — "
              "/panel still answers by URL and still asks for the password — it "
              "just stops advertising it."),
+    "show_voicemail_button": dict(group="player", kind="check",
+        label="\u201cLeave a message\u201d button",
+        help="A second button beside Call, so the machine is on offer even "
+             "while the booth could pick up live. Voicemail itself has to be "
+             "switched on under Running the line."),
+    "embed_voicemail_button": dict(group="player", kind="check",
+        label="\u201cLeave a message\u201d button (embed)",
+        help="The same second button, on the embedded card."),
     "show_push_to_talk": dict(group="player", kind="check",
         label="Push to talk",
         help="The caller's mic stays closed except while they hold (or tap to "
@@ -856,22 +883,29 @@ SCHEMA: dict[str, dict] = {
              "air, line paused, over the caps, all lines busy — into a message "
              "instead of silence. 'Always' makes the line voicemail-only, the "
              "cheapest way to run it: no LLM turns at all."),
+    "allow_voicemail": dict(group="perms", kind="select", tiered=True,
+        label="Leave a voicemail",
+        help="Who may talk to the machine at all. The Voicemail section "
+             "decides WHEN it answers; this decides WHO it answers for."),
     "voicemail_greeting": dict(group="voicemail", kind="text", label="Greeting",
         placeholder="derived: “You've reached {station}. {DJ} is on the air — "
                     "leave a request after the beep.”",
         help="Spoken in the on-air DJ's own voice, so it is staged ahead of "
              "time below rather than generated while a caller waits. Changing "
-             "this re-renders every persona's clip on the next staging run."),
+             "this re-renders every persona's clip on the next staging run. "
+             "Blank reads: \u201cYou've reached {station}. {DJ} is on the air "
+             "right now \u2014 leave a request after the beep.\u201d"),
     "voicemail_max_seconds": dict(group="voicemail", kind="number",
         label="Message ceiling (s)",
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
     "voicemail_destination": dict(group="voicemail", kind="select", label="Messages go",
         help="'Held for you' is the safe default — messages land below, and "
-             "nothing reaches the air without you. The other two act on the "
-             "station and need its admin credentials: a request rides the same "
-             "path a live caller's does, and 'to the on-air DJ' hands the gist "
-             "to the broadcast as something to mention."),
+             "nothing reaches the air without you. The rest act on the station "
+             "and need its admin credentials. 'Triage' reads each message with "
+             "the configured model and picks for itself: a song request, a "
+             "line for the on-air DJ, or one of the station's segments — "
+             "bounded by the caller permissions above, one action per message."),
 
     "record_calls": dict(group="record", kind="check", label="Keep call transcripts",
         help="Both sides of each call, the tools it used and the settings it ran "
@@ -1027,6 +1061,7 @@ STATIC_CHOICES = {
         ("hold", "Held for you — read them in this panel"),
         ("request", "Sent to the station as a song request"),
         ("air", "Handed to the on-air DJ to mention"),
+        ("triage", "Triaged by the model — request, mention, or a segment"),
     ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),

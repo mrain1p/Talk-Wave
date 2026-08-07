@@ -71,6 +71,85 @@ def hold(text: str, persona_name: str, delivered: str = "hold",
     tmp.replace(MESSAGES_PATH)
 
 
+async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
+    """One bounded model read of the message, picking ONE action.
+
+    The operator's design: the machine should be able to tell a song request
+    from a shoutout from "do the weather", instead of pushing everything down
+    the request pipe. One completion, JSON out, one action in — and anything
+    the model gets wrong falls through to hold, which loses nothing.
+
+    Bounded by the caller permissions the way a live call is: an action the
+    tiers would not grant an open caller is not available to an anonymous
+    message either.
+    """
+    import json as _json
+
+    from call.providers import build_llm
+    from call.tools.registry import mcp_allowlist  # noqa: F401  (documented gate)
+
+    allowed = ["request"]
+    if str(cfg.get("allow_announcements") or "off") != "off":
+        allowed.append("air")
+    if str(cfg.get("allow_skills") or "off") != "off":
+        try:
+            skills = [str(s.get("kind") or s.get("name") or "")
+                      for s in await station.list_skills()]
+            skills = [s for s in skills if s]
+        except Exception:                                     # noqa: BLE001
+            skills = []
+        if skills:
+            allowed.append("skill")
+    else:
+        skills = []
+
+    llm = build_llm(cfg)
+    prompt = (
+        "A radio station's answering machine took this message:\n"
+        f"  {text[:800]}\n\n"
+        "Pick ONE action. Answer with bare JSON only:\n"
+        '  {"action": "request", "text": "<what to ask the station to play>"}\n'
+        + ('  {"action": "air", "text": "<one line for the DJ to read>"}\n'
+           if "air" in allowed else "")
+        + (('  {"action": "skill", "name": "<one of: '
+            + ", ".join(skills[:12]) + '>"}\n') if "skill" in allowed else "")
+        + '  {"action": "hold"}  when none of those fit.'
+    )
+    try:
+        chunks = []
+        from livekit.agents.llm import ChatContext
+
+        chat_ctx = ChatContext()
+        chat_ctx.add_message(role="user", content=prompt)
+        async with llm.chat(chat_ctx=chat_ctx) as st:
+            async for chunk in st:
+                delta = getattr(chunk, "delta", None)
+                if delta and getattr(delta, "content", None):
+                    chunks.append(delta.content)
+        raw = "".join(chunks).strip()
+        raw = raw[raw.index("{"):raw.rindex("}") + 1]
+        verdict = _json.loads(raw)
+    except Exception as e:                                    # noqa: BLE001
+        log.warning("voicemail triage failed (%s) — holding the message", e)
+        return "hold", ""
+    finally:
+        try:
+            await llm.aclose()
+        except Exception:                                     # noqa: BLE001
+            pass
+
+    action = str(verdict.get("action") or "hold").lower()
+    if action == "request" and "request" in allowed:
+        return "request", str(verdict.get("text") or text)
+    if action == "air" and "air" in allowed:
+        return "air", str(verdict.get("text") or text)
+    if action == "skill" and "skill" in allowed:
+        name = str(verdict.get("name") or "")
+        if name in skills:
+            return "skill", name
+    return "hold", ""
+
+
 async def deliver(station, cfg: dict, text: str, persona_name: str) -> str:
     """Send one message where the operator chose. Returns a one-line receipt
     for the log and the panel entry."""
@@ -78,6 +157,26 @@ async def deliver(station, cfg: dict, text: str, persona_name: str) -> str:
     text = str(text or "").strip()
     if not text:
         return "empty message — nothing delivered"
+
+    if mode == "triage":
+        action, payload = await _triage(station, cfg, text)
+        if action == "request":
+            mode = "request"
+            text = payload or text
+        elif action == "air":
+            mode = "air"
+        elif action == "skill":
+            try:
+                await station.run_skill(payload)
+                hold(text, persona_name, delivered="skill",
+                     note=f"ran the {payload} segment")
+                return f"triaged — ran the {payload} segment"
+            except Exception as e:                            # noqa: BLE001
+                hold(text, persona_name, note=f"skill {payload} failed: {e}")
+                return "triage picked a segment the station refused — held"
+        else:
+            hold(text, persona_name, note="triage: held")
+            return "triaged — held for the operator"
 
     if mode == "request":
         try:

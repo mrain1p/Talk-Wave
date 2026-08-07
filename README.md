@@ -237,6 +237,14 @@ it would open nothing.
 |---|---|
 | `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. Omit for OS preference |
 | `data-lock-theme="true"` | Pin `data-theme` outright and remove the toggle, for a page that needs one look |
+
+**The station's own colours** are not an embed attribute — set **Player
+settings → Colours → "The station's own colours"** in the panel and every
+surface, embeds included, wears the on-air show's palette live from the
+station's `/themes` (a host's `data-theme` is only the starting point, so it
+does not block this). A host page can also push its own palette *and fonts*
+into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` —
+which repaints in place without dropping a call.
 | `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |
