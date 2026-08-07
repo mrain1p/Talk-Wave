@@ -194,7 +194,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/settings/options":
             return self._json(OPTIONS)
         if path == "/settings/sounds":
-            return self._json({"sounds": [], "prefix": "upload:"})
+            # Two fixture names so the per-sound dropdowns and the shelf's
+            # Play/Download/Remove rows are exercisable without uploading.
+            return self._json({"sounds": ["my-ring.mp3", "old-bell.wav"],
+                               "prefix": "upload:"})
+        if path == "/sound-packs":
+            return self._json({"packs": [
+                {"id": "classic", "label": "Exchange", "assets": {}},
+                {"id": "phone", "label": "Handset", "assets": {}},
+            ]})
         if path == "/logs":
             return self._json({
                 "records": LOG_RECORDS,

@@ -150,6 +150,7 @@
     decoratePermissions();
     bindFieldEvents();
     decorateFields();
+    decorateSoundRows();
   }
 
   // Starts empty rather than null: the panel now paints as soon as the
@@ -747,6 +748,7 @@
 
     syncModels();
     paintPermissions();
+    syncSoundPickers();
     applyVisibility();
     setEmbedSnippet();
     paintAdminNeeded();
@@ -1746,18 +1748,17 @@
   const UPLOAD_PREFIX = 'upload:';
   let uploaded = [];
 
+  const SOUND_SLOTS = ['ring', 'pickup', 'hold', 'hangup', 'failed'];
+
   function paintSounds() {
     const host = $('soundList');
     if (!host) return;
     host.innerHTML = '';
     if (!uploaded.length) {
       $('uploadHint').textContent = 'Nothing uploaded yet — the built-in set is in use.';
-      return;
+    } else {
+      $('uploadHint').textContent = '';
     }
-    $('uploadHint').textContent = '';
-    const slots = ['ring', 'pickup', 'hold', 'hangup', 'failed'];
-    const labels = { ring: 'Ring', pickup: 'Pick up', hold: 'On hold',
-                     hangup: 'Hang up', failed: "Can't connect" };
     uploaded.forEach((name) => {
       const li = document.createElement('li');
       const who = document.createElement('span');
@@ -1768,24 +1769,16 @@
       play.className = 'btnquiet'; play.textContent = 'Play';
       play.onclick = () => { new Audio('/sounds/' + encodeURIComponent(name)).play(); };
 
-      // Assigning is the point of uploading — without this you'd have to know
-      // to type "upload:name.mp3" into the right box yourself.
-      const use = document.createElement('select');
-      use.innerHTML = '<option value="">Use for…</option>';
-      slots.forEach((s) => {
-        const o = document.createElement('option');
-        o.value = s; o.textContent = labels[s];
-        use.appendChild(o);
-      });
-      use.onchange = () => {
-        if (!use.value) return;
-        $('sound_' + use.value).value = UPLOAD_PREFIX + name;
-        use.value = '';
-        markClean();
-        showResult($('soundResult'), true,
-          'Assigned — press Save to apply it to the next caller.');
-      };
+      // The file back out again — an upload the operator can't retrieve is a
+      // file they have to keep somewhere else too, which defeats the shelf.
+      const get = document.createElement('a');
+      get.className = 'btnquiet sdl';
+      get.textContent = 'Download';
+      get.href = '/sounds/' + encodeURIComponent(name);
+      get.download = name;
 
+      // Only uploads are removable. The bundled pack sounds never appear in
+      // this list, so the defaults cannot be deleted from anywhere.
       const del = document.createElement('button');
       del.className = 'btnquiet'; del.textContent = 'Remove';
       del.onclick = async () => {
@@ -1797,8 +1790,74 @@
         else { showResult($('soundResult'), false, d.error || 'Could not remove it.'); }
       };
 
-      li.append(who, use, play, del);
+      li.append(who, play, get, del);
       host.appendChild(li);
+    });
+    // Which files exist just changed, and five dropdowns list them.
+    syncSoundPickers();
+  }
+
+  // ------------------------------------------- the per-sound dropdowns
+  // Each sound slot used to be a free-text box whose useful values ("",
+  // "upload:name.mp3", a URL) all had to be known in advance. The text field
+  // is still the real setting — Save diffs it and the server stores it — but
+  // it is driven by a dropdown now, the same trick the permission matrix
+  // uses: sound-set default, any uploaded file, or "a URL you host", which is
+  // the one case that reveals the box itself.
+  function decorateSoundRows() {
+    SOUND_SLOTS.forEach((slot) => {
+      const field = $('sound_' + slot);
+      const row = field && field.closest('.row');
+      if (!row || row.dataset.soundBuilt) return;
+      row.dataset.soundBuilt = '1';
+
+      const pick = document.createElement('select');
+      pick.id = 'soundpick_' + slot;
+      pick.onchange = () => {
+        if (pick.value === '__url__') {
+          if (field.value.startsWith(UPLOAD_PREFIX)) field.value = '';
+          field.hidden = false;
+          field.focus();
+        } else {
+          field.value = pick.value;
+          field.hidden = true;
+        }
+        markClean();
+      };
+      row.insertBefore(pick, field);
+
+      const up = document.createElement('button');
+      up.className = 'btnquiet'; up.textContent = 'Upload…';
+      up.title = 'Upload a file and use it for this sound';
+      up.onclick = () => { pendingAssignSlot = slot; $('soundFile').click(); };
+      row.appendChild(up);
+    });
+    syncSoundPickers();
+  }
+
+  function syncSoundPickers() {
+    SOUND_SLOTS.forEach((slot) => {
+      const field = $('sound_' + slot), pick = $('soundpick_' + slot);
+      if (!field || !pick) return;
+      const value = (field.value || '').trim();
+      pick.innerHTML = '';
+      const add = (v, label) => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = label;
+        pick.appendChild(o);
+      };
+      add('', 'Sound set default');
+      uploaded.forEach((n) => add(UPLOAD_PREFIX + n, 'Uploaded — ' + n));
+      // A slot pointing at a file that was deleted must say so, not silently
+      // show the default while the caller hears the fallback.
+      if (value.startsWith(UPLOAD_PREFIX)
+          && !uploaded.includes(value.slice(UPLOAD_PREFIX.length))) {
+        add(value, 'Missing upload — ' + value.slice(UPLOAD_PREFIX.length));
+      }
+      add('__url__', 'A URL you host…');
+      const isUrl = value && !value.startsWith(UPLOAD_PREFIX);
+      pick.value = isUrl ? '__url__' : value;
+      field.hidden = !isUrl;
     });
   }
 
@@ -1815,10 +1874,17 @@
     } catch (e) { /* the built-ins still work */ }
   }
 
+  // Set by a slot's own Upload… button, so the file lands assigned to the
+  // sound it was uploaded for instead of arriving on a shelf to be wired up
+  // by hand. The plain "Upload a sound…" button leaves it null.
+  let pendingAssignSlot = null;
+
   if ($('uploadSoundBtn')) {
-    $('uploadSoundBtn').onclick = () => $('soundFile').click();
+    $('uploadSoundBtn').onclick = () => { pendingAssignSlot = null; $('soundFile').click(); };
     $('soundFile').onchange = async () => {
       const file = $('soundFile').files[0];
+      const slot = pendingAssignSlot;
+      pendingAssignSlot = null;
       if (!file) return;
       const out = $('soundResult');
       out.className = 'result on'; out.textContent = 'Uploading ' + file.name + '…';
@@ -1829,9 +1895,15 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { showResult(out, false, d.error || 'Upload failed'); return; }
         uploaded = d.sounds || [];
+        if (slot) {
+          $('sound_' + slot).value = d.value || (UPLOAD_PREFIX + d.name);
+          markClean();
+        }
         paintSounds();
-        showResult(out, true, d.name + ' uploaded. Pick which sound it should be, '
-          + 'then Save.');
+        showResult(out, true, slot
+          ? d.name + ' uploaded and set as the ' + slot + ' sound — press Save '
+            + 'to apply it to the next caller.'
+          : d.name + " uploaded. Pick it from a sound's dropdown, then Save.");
       } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
       finally { $('soundFile').value = ''; }
     };

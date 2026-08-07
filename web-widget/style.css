@@ -1286,6 +1286,14 @@
     font: inherit; font-size: 11.5px; padding: 4px 6px; border-radius: 6px;
     border: 1px solid var(--line2); background: var(--card); color: var(--dim);
   }
+  /* The Download control is an <a> so the browser's own save-as behaviour
+     does the work, but it sits in a row of buttons and has to dress like
+     one — an anchor gets none of the button element's base styling. */
+  .soundlist a.sdl {
+    display: inline-flex; align-items: center; text-decoration: none;
+    font: 600 11.5px var(--font-body); padding: 4px 10px; border-radius: 9px;
+    cursor: pointer;
+  }
   .result {
     font-size: 12px; line-height: 1.55; padding: 10px 12px; border-radius: 9px;
     background: var(--bg); border: 1px solid var(--line); color: var(--dim);
