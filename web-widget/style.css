@@ -316,6 +316,10 @@
      reserved-but-hidden, because those controls are meaningless off a call.
      Visibility is inherited but a child may declare its own. */
   .rig > .linebox, .rig > .meters, .rig > .actionrow { visibility: visible; }
+  /* Hang up shares the action row but only exists mid-call; display, not
+     visibility, because Call takes its place rather than leaving a gap. */
+  .actionrow > [hidden] { display: none; }
+  .actionrow #hangBtn { flex: 1 1 auto; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -401,10 +405,13 @@
   }
   .bars {
     display: flex; align-items: flex-end; gap: 2px;
-    height: 16px; border-radius: 0;
+    height: 18px; border-radius: 0;
   }
+  /* A 22% floor, not 12: at 16px the idle segments were 1.9px of a
+     near-transparent hairline, and the operator reported the DJ meter as
+     MISSING. A meter's shape has to be visible before anyone speaks. */
   .bars i {
-    flex: 1 1 0; min-width: 0; height: 12%;
+    flex: 1 1 0; min-width: 0; height: 22%;
     background: currentColor; border-radius: 0;
     transition: height .08s linear;
   }
@@ -471,19 +478,25 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* --- push to talk ------------------------------------------------------
-     The bar IS the microphone: lit means the DJ can hear you. It only exists
-     on a card whose config asked for it, decided at first paint — so it never
-     changes an already-settled height, and everyone else pays nothing. */
-  .pttrow { display: none; }
-  .card.ptt .pttrow { display: block; padding: 9px 0 0; }
-  /* Open mic is a state like muted, not a second primary — so the fill only
-     arrives while the bar is genuinely live, in the amber the on-air chrome
-     already uses for "audio is happening". */
+  /* --- the talk row ------------------------------------------------------
+     The controls that shape being HEARD — the push-to-talk bar (only on
+     cards configured for it), Mute, and the speaker switch — one row above
+     the one that ends the call. The bar IS the microphone: lit means the DJ
+     can hear you; its title carries what the removed hint line used to say. */
+  .talkrow {
+    display: flex; align-items: center; gap: 9px; padding: 9px 0 0;
+  }
+  .talkrow .pttbar { display: none; }
+  .card.ptt .talkrow .pttbar { display: flex; }
+  /* Without the bar, the two buttons keep to the right, over the hang-up
+     row's own right edge. */
+  .card:not(.ptt) .talkrow #spkBtn { margin-left: auto; }
+  /* Open mic is a state like muted, not a second primary — the fill only
+     arrives while the bar is genuinely live. */
   .card .pttbar {
-    width: 100%; height: 42px; padding: 0;
+    flex: 1 1 auto; min-width: 0; height: 36px; padding: 0;
     display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 3px;
+    justify-content: center; gap: 2px;
     border: 1px solid var(--amber); background: transparent; color: var(--amber);
     touch-action: manipulation; -webkit-user-select: none; user-select: none;
   }
@@ -495,25 +508,23 @@
     box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 35%, transparent);
   }
   .pttbar .pttmain {
-    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: uppercase;
   }
   .pttbar .pttsub {
-    font: 700 8px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 7.5px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: uppercase; opacity: .7;
   }
-  .ptthint {
-    margin: 0 0 7px; font-size: 12px; line-height: 1.4;
-    color: var(--sage); text-align: center;
-  }
-  /* The Mute button is the open-mic world's control; with the bar owning the
-     microphone it is a second switch wired to the same wire. */
-  .card.ptt #muteBtn { display: none; }
+  /* The bar owns the wire while it is up; Mute would be a second switch on
+     the same circuit. */
+  .card.ptt .talkrow #muteBtn { display: none; }
 
-  .controls { display: flex; gap: 9px; flex: 0 0 auto; flex-wrap: wrap; }
-  /* Same reasoning as the volume slider above: this row's height is paid for
-     on every idle embed, whether or not anybody is on a call. */
-  .card .controls button { height: var(--action-h); }
+  /* The state row sits above the words it describes. */
+  .staterow { display: flex; align-items: center; gap: 9px; padding: 9px 0 0; }
+
+  /* Same reasoning as the volume slider above: these rows' heights are
+     paid for on every idle embed, whether or not anybody is on a call. */
+  .card .talkrow #spkBtn, .card .talkrow #muteBtn { height: var(--action-h); flex: 0 0 auto; }
   /* Which way out the DJ's voice goes. Hidden outright on a browser with no
      routing API at all — see canRouteAudio(). */
   #spkBtn[hidden] { display: none; }
@@ -1699,7 +1710,7 @@
     .track {
       flex: 1 0 100%; max-width: 100%; text-align: left; padding-left: 0;
       margin: 7px 0 0; white-space: normal; overflow: hidden;
-      text-overflow: clip; font-size: 12px;
+      text-overflow: clip; font-size: 10px; letter-spacing: .12em;
       /* ONE line, always. It was two, on the reasoning that a remix credit
          needs the room — but two lines is 18px of empty row under every
          ordinary track title, on the surface with the least room to spare,
@@ -1732,6 +1743,8 @@
   body.compact {
     padding: 10px; background: transparent;
     min-height: 100vh; display: flex; flex-direction: column;
+    /* Two lines in an embed — the box borrows room from the host page. */
+    --lines-h: 57px;
     /* Never a scrollbar inside the widget: the frame follows the reported
        height, and a widget that scrolls itself inside somebody's page reads
        as broken. If a host pins the frame too short, the bottom clips — the
@@ -1761,11 +1774,16 @@
   body.compact #callBtn:not(.ringing):not(.answering):not(.live) {
     width: 100%; height: 44px; font-size: 12px;
   }
+  body.compact .actionrow { flex-wrap: nowrap; }
   body.compact .actionrow:has(#vmBtn:not([hidden]))
     #callBtn:not(.ringing):not(.answering):not(.live) {
-    width: auto; flex: 1 1 52%;
+    width: auto; flex: 1 1 auto; min-width: 0; font-size: 10.5px; padding: 0 10px;
   }
-  body.compact #vmBtn:not([hidden]) { height: 44px; font-size: 11px; flex: 1 1 40%; }
+  body.compact #vmBtn:not([hidden]) {
+    height: 44px; font-size: 10.5px; flex: 1 1 auto; min-width: 0; padding: 0 10px;
+  }
+  body.compact #hangBtn { height: 44px; }
+  body.compact .ticker .line { -webkit-line-clamp: 2; }
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.

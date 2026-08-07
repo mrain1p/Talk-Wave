@@ -76,7 +76,7 @@
 
          The connection state is NOT in this row any more; it lives in the
          line area at the bottom of the card. See there. -->
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9788;</button><button class="gear" id="lockBtn" title="Forget the door code on this device" aria-label="Forget the door code on this device" hidden>&#128274;</button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9788;</button><button class="gear" id="lockBtn" title="Forget the door code on this device" aria-label="Forget the door code on this device" hidden><svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1" y="5.5" width="9" height="6.5" rx="1"/><path d="M3 5.5V3.8a2.5 2.5 0 0 1 5 0v1.7"/></svg></button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -112,6 +112,15 @@
          declare its own, so the always-visible rows say `visible` and the
          reservation still applies to the rest. -->
     <div class="rig" id="rig">
+      <!-- The call's state, above the words it describes — the operator
+           moved it here from the bottom row, and they were right: you read
+           "on the line · listening" and then the line below shows what was
+           heard. Reserved like every in-call band. -->
+      <div class="staterow" id="stateRow">
+        <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+        <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+      </div>
+
     <!-- The line area. One box, one job: whatever this card has to say to
          the caller right now. Speech while a call runs; between calls its
          own messages — "No answer", "Call ended" — and nothing at all when
@@ -119,23 +128,12 @@
          everything post-call: the transcript drawer and the how-was-it
          buttons are an overlay strip INSIDE this box, not bands of their
          own, because every band that appears after a call used to grow the
-         card and move the host page under whoever was reading it.
-
-         Its height is RESERVED, not grown into — three lines of speech,
-         fixed from first paint. Opening the transcript drawer is the one
-         deliberate exception. -->
+         card and move the host page under whoever was reading it. -->
     <div class="linebox" id="lineBox">
       <div class="captions" id="captions"></div>
-      <!-- The embed's caption surface: the latest line only. It lives in the
-           same box as the full transcript because it is the same thing said
-           more briefly, and an embed that reserved room for BOTH — a ticker
-           up by the meters and a message box down here — spent two bands
-           saying nothing. -->
       <div class="ticker" id="ticker" hidden><span class="who"></span><span class="line"></span></div>
       <p id="status"><span class="dot" id="dot"></span><span id="statusText"></span></p>
 
-      <!-- Only shown when a guest password is set. Asks up front rather than
-           letting someone press Call and be turned away. -->
       <div class="guestgate" id="guestGate" hidden>
         <span class="glabel">The booth line is private.</span>
         <span class="grow">
@@ -145,8 +143,6 @@
         <span id="guestMsg"></span>
       </div>
 
-      <!-- The post-call strip: read it back, and (if the operator asked)
-           say how it went. One row, overlaid on the box's bottom edge. -->
       <div class="after" id="afterRow">
         <button class="callended" id="endedBar" hidden></button>
         <span class="rate" id="rateBar" hidden>
@@ -176,34 +172,27 @@
           <input type="range" id="volSlider" min="0" max="100" value="100" />
           <span class="pct" id="volPct">100%</span>
         </div>
-        <div class="controls">
-          <button id="spkBtn" title="Loudspeaker or earpiece" aria-pressed="true">Speaker</button>
-          <button id="muteBtn">Mute</button>
-          <button id="hangBtn">Hang up</button>
-        </div>
       </div>
 
-      <!-- Push to talk, when the operator switched it on for this surface.
-           The bar is the caller's microphone: lit means the DJ can hear them.
-           Tap latches it open, holding it is momentary, and space mirrors the
-           hold on a keyboard. The whole block only exists on a card whose
-           config asked for it (.card.ptt), so it costs no height anywhere
-           else — and it is inside the rig, so it reserves its space from
-           first paint like every other in-call band. -->
-      <div class="pttrow" id="pttRow">
-        <p class="ptthint">The DJ can only hear you while this bar is lit.</p>
+      <!-- The talk row: the push-to-talk bar (only on cards configured for
+           it), with Mute and the speaker switch beside it — the controls
+           that shape being HEARD, one row above the one that ends the call. -->
+      <div class="talkrow">
         <button class="pttbar" id="pttBtn" type="button" aria-pressed="false">
           <span class="pttmain" id="pttMain">Tap to talk</span>
           <span class="pttsub">or hold it down · space works too</span>
         </button>
+        <button id="spkBtn" title="Loudspeaker or earpiece" aria-pressed="true">Speaker</button>
+        <button id="muteBtn">Mute</button>
       </div>
 
-      <!-- The last row of the card, on every surface. -->
+      <!-- The last row of the card, on every surface. Idle it is Call (and
+           the machine's door, if offered); on a call it is Hang up, full
+           width, exactly where a thumb expects it. -->
       <div class="actionrow">
         <button id="callBtn" disabled>Call the DJ</button>
         <button id="vmBtn" hidden>Leave a message</button>
-        <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
-        <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+        <button id="hangBtn" hidden>Hang up</button>
       </div>
     </div>
   </div>

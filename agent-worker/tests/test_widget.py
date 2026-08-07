@@ -520,10 +520,12 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # up with the host page's own bottom row — with volume and the call
         # buttons above it, the meters above those, and the words on top.
         html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
-        order = [html.index(m) for m in ('id="lineBox"', 'class="meters"',
-                                         'class="callrow"', 'class="actionrow"')]
+        order = [html.index(m) for m in ('id="stateRow"', 'id="lineBox"',
+                                         'class="meters"', 'class="callrow"',
+                                         'class="talkrow"', 'class="actionrow"')]
         self.assertEqual(order, sorted(order),
-                         "card order must be words, meters, call row, action row")
+                         "card order must be state, words, meters, volume, "
+                         "talk row, action row")
         self.assertIn(".rig > .linebox, .rig > .meters, .rig > .actionrow "
                       "{ visibility: visible; }", self.css)
 
@@ -989,10 +991,13 @@ class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
         # tokens, or it is back to flipping an attribute nothing responds to.
         shared = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
         self.assertIn("removeProperty", shared)
-        # And the poll must not re-apply the palette over an explicit choice.
+        # And the poll must not re-apply the palette over an explicit
+        # choice — the viewer's stored pick (including 'station' itself, a
+        # viewer option since the cycle) is applied first and returns.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        station_branch = call_js.split("choice === 'station'")[1][:400]
-        self.assertIn("callinTheme", station_branch)
+        fn = call_js.split("function applyConfiguredTheme")[1][:700]
+        self.assertIn("localStorage.getItem('callinTheme')", fn)
+        self.assertIn("applyThemeChoice(stored)", fn)
 
 
 class TestSoundPacks(unittest.TestCase):

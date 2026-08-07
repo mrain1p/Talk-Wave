@@ -104,6 +104,60 @@ async def _play(source: rtc.AudioSource, pcm: bytes, sample_rate: int) -> None:
         await source.capture_frame(frame)
 
 
+async def _fresh_greeting(cfg: dict, persona: dict) -> tuple[bytes, int] | None:
+    """One model line in persona, rendered through the configured voice.
+
+    The line is asked for, not templated — that is the point of fresh mode —
+    but the template is the fallback for a model that answers strangely, and
+    the caller of this owns the clock.
+    """
+    from call.providers import build_llm, build_tts
+    from station_config import StationConfig
+
+    text = greetings.greeting_text_for(
+        persona.get("id") or "", cfg, "", persona.get("name") or "the DJ")
+    soul = str(persona.get("soul") or "").strip()
+    if soul:
+        try:
+            from livekit.agents.llm import ChatContext
+
+            llm = build_llm(cfg)
+            chat_ctx = ChatContext()
+            chat_ctx.add_message(role="user", content=(
+                "You are this radio DJ:\n" + soul[:900] + "\n\n"
+                "Write your answering-machine greeting for a caller the "
+                "booth could not take live. One spoken line, under 25 words, "
+                "in your own voice, ending by telling them to leave a "
+                "message after the beep. The line only — no quotes."))
+            chunks = []
+            async with llm.chat(chat_ctx=chat_ctx) as st:
+                async for chunk in st:
+                    delta = getattr(chunk, "delta", None)
+                    if delta and getattr(delta, "content", None):
+                        chunks.append(delta.content)
+            await llm.aclose()
+            line = " ".join("".join(chunks).split())
+            if 8 <= len(line) <= 300:
+                text = line
+        except Exception as e:                                # noqa: BLE001
+            log.info("fresh greeting line fell back to the template: %s", e)
+
+    sc = StationConfig(base_url=cfg.get("station_base_url"))
+    try:
+        voice = await sc.voice_for(persona.get("id") or "")
+    finally:
+        await sc.aclose()
+    tts = build_tts(cfg, voice)
+    pcm = bytearray()
+    try:
+        stream = tts.synthesize(text)
+        async for ev in stream:
+            pcm.extend(ev.frame.data.tobytes())
+    finally:
+        await tts.aclose()
+    return (bytes(pcm), tts.sample_rate) if pcm else None
+
+
 async def answer(ctx: JobContext) -> None:
     """One vm- room, start to finish."""
     answered_at = time.time()
@@ -118,8 +172,22 @@ async def answer(ctx: JobContext) -> None:
         log.warning("voicemail could not resolve the live persona: %s", e)
 
     # --- the recording ----------------------------------------------------
-    clip = greetings.staged_clip(persona.get("id") or "")
+    # 'Fresh each call' writes a line in the persona's own voice at pickup —
+    # a model line plus a TTS render, budgeted hard, because the design
+    # reason staging exists is that fresh is slow. Anything short of success
+    # inside the budget falls back to the staged clip, then the beep.
     pcm, rate = b"", 24000
+    if str(cfg.get("voicemail_greeting_mode") or "staged") == "fresh":
+        try:
+            fresh = await asyncio.wait_for(
+                _fresh_greeting(cfg, persona), timeout=6.0)
+            if fresh:
+                pcm, rate = fresh
+        except Exception as e:                                # noqa: BLE001
+            log.info("fresh greeting missed its budget (%s) — using the "
+                     "staged clip", e)
+
+    clip = None if pcm else greetings.staged_clip(persona.get("id") or "")
     if clip:
         try:
             pcm, rate = read_wav(clip)

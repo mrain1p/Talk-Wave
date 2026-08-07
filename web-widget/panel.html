@@ -312,8 +312,13 @@
           <label for="tts_model">Model</label>
           <input type="text" id="tts_model" placeholder="adapter default" />
         </div>
+        <div class="row">
+          <label for="voice_effect">Voice effect</label>
+          <select id="voice_effect"></select>
+        </div>
         <div class="testrow">
           <button id="testTtsBtn">Test voice</button>
+          <button id="fxTestBtn" class="btnquiet">Test with effect</button>
           <button id="refreshVoicesBtn" class="btnquiet">Reload voice list</button>
           <span class="hint" style="margin:0">Synthesizes one real line.</span>
         </div>
@@ -437,6 +442,7 @@
     <details data-group="call" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Who answers</span><em class="secblurb"></em><span class="tag" id="tagCall"></span></summary>
       <div class="body">
+        <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
         <div class="row">
           <label for="persona_override">Who answers</label>
           <select id="persona_override"></select>
@@ -692,6 +698,10 @@
           <select id="voicemail_when"></select>
         </div>
         <div class="row">
+          <label for="voicemail_greeting_mode">Greeting comes from</label>
+          <select id="voicemail_greeting_mode"></select>
+        </div>
+        <div class="row">
           <label for="voicemail_greeting">Greeting</label>
           <input type="text" id="voicemail_greeting" />
         </div>
@@ -714,7 +724,10 @@
           <span class="hint" style="margin:0">One TTS render per persona that
             changed — the same money a single spoken line costs.</span>
         </div>
-        <ul class="soundlist" id="vmStatusList"></ul>
+        <details class="advanced">
+          <summary>Per-DJ greetings</summary>
+          <ul class="soundlist" id="vmStatusList"></ul>
+        </details>
         <div class="result" id="vmStageResult"></div>
 
         <h4 class="subhead">Messages</h4>
@@ -835,10 +848,6 @@
         <div class="row">
           <label for="avatar_style">DJ photo shape</label>
           <select id="avatar_style"></select>
-        </div>
-        <div class="row">
-          <label for="voice_effect">Voice effect</label>
-          <select id="voice_effect"></select>
         </div>
 
         <h4 class="subhead">The Call button</h4>

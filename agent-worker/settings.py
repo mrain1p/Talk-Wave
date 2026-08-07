@@ -165,12 +165,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # A second, much smaller kind of call: greeting, beep, one caller
     # utterance through STT, delivered. Nothing is recorded as audio — the
     # transcript is the message. docs/VOICEMAIL.md is the design.
+    # The line's mode, made explicit: live calls on or off. Off with
+    # voicemail on is a voicemail-only line; off with voicemail off is a
+    # closed line that says so.
+    "live_calls_enabled":    (None, True),
     "voicemail_when":        (None, "never"),
     # Who may use the machine, as a tier like every other caller permission.
     # Defaults open: switching voicemail on is already a decision, and the
     # door code still applies in front of this.
     "allow_voicemail":       (None, "open"),
     "voicemail_greeting":    (None, ""),
+    "voicemail_greeting_mode": (None, "staged"),
     "voicemail_max_seconds": (None, 30),
     "voicemail_destination": (None, "hold"),
     "max_call_seconds": (None, 600),
@@ -737,7 +742,7 @@ SCHEMA: dict[str, dict] = {
     "embed_push_to_talk": dict(group="player", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),
-    "voice_effect": dict(group="player", kind="select", label="Voice effect",
+    "voice_effect": dict(group="voice", kind="select", label="Voice effect",
         help="A radio colour on the DJ's voice, applied in the caller's "
              "browser — the broadcast never hears it. On phones it plays "
              "through the default output, so the Speaker/earpiece button has "
@@ -887,12 +892,25 @@ SCHEMA: dict[str, dict] = {
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
              "decides WHEN it answers; this decides WHO it answers for."),
+    "live_calls_enabled": dict(group="call", kind="check", label="Take live calls",
+        help="The line's mode, together with Voicemail below: both on is a "
+             "phone with an answering machine, live off with voicemail on is "
+             "a voicemail-only line, both off closes the line. The Player "
+             "preview shows what callers get."),
+    "voicemail_greeting_mode": dict(group="voicemail", kind="select",
+        label="Greeting comes from",
+        help="Staged clips answer instantly. 'Fresh each call' writes a new "
+             "line in the persona's own voice at pickup — a model line plus a "
+             "TTS render, a few seconds on slow backends — and falls back to "
+             "the staged clip, then the beep, if it cannot make it in time."),
     "voicemail_greeting": dict(group="voicemail", kind="text", label="Greeting",
         placeholder="derived: “You've reached {station}. {DJ} is on the air — "
                     "leave a request after the beep.”",
         help="Spoken in the on-air DJ's own voice, so it is staged ahead of "
-             "time below rather than generated while a caller waits. Changing "
-             "this re-renders every persona's clip on the next staging run. "
+             "time below rather than generated while a caller waits. {station}, "
+             "{dj} and {show} are filled in per persona; with nobody on air the "
+             "machine answers as the station itself, in your default voice. "
+             "Changing this re-renders every clip on the next staging run. "
              "Blank reads: \u201cYou've reached {station}. {DJ} is on the air "
              "right now \u2014 leave a request after the beep.\u201d"),
     "voicemail_max_seconds": dict(group="voicemail", kind="number",
@@ -1051,6 +1069,10 @@ STATIC_CHOICES = {
         ("telephone", "Telephone — narrow, like a real phone line"),
         ("cb", "CB radio — squeezed and a little dirty"),
         ("walkie", "Walkie-talkie — tight, crunchy, push-to-talk energy"),
+    ],
+    "voicemail_greeting_mode": [
+        ("staged", "Staged clips — instant, rendered ahead of time"),
+        ("fresh", "Fresh each call — in persona, staged clip as the backup"),
     ],
     "voicemail_when": [
         ("never", "Never — the line rings out as it does today"),

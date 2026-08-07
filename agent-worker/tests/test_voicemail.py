@@ -292,3 +292,32 @@ class TestTheMachineHasATierDoor(unittest.TestCase):
         self.assertEqual(0, settings_store.FIELDS["guest_session_minutes"][1])
         self.assertFalse(settings_store.FIELDS["show_voicemail_button"][1])
         self.assertFalse(settings_store.FIELDS["embed_voicemail_button"][1])
+
+
+class TestTheStationAnswersWhenNobodyIsOnAir(_VmDirs):
+    """A named DJ who is not actually there is a small lie the caller can
+    hear. With no persona, the machine speaks as the station itself, and the
+    greeting templates take {station}, {dj} and {show} without a typo ever
+    crashing a pickup into the beep."""
+
+    def test_no_dj_means_the_station_greeting(self):
+        text = self.greetings.greeting_text({}, "Yosemite FM", "")
+        self.assertIn("Yosemite FM", text)
+        self.assertNotIn("on the air", text)
+
+    def test_placeholders_fill_and_unknowns_vanish(self):
+        cfg = {"voicemail_greeting":
+               "You are through to {show} on {station}. {dj} cannot pick up. {typo}"}
+        text = self.greetings.greeting_text(cfg, "Yosemite FM", "Danny",
+                                            "The Night Shift")
+        self.assertIn("The Night Shift", text)
+        self.assertIn("Danny", text)
+        self.assertNotIn("{", text)
+        self.assertNotIn("  ", text)
+
+    def test_the_station_clip_beats_a_strangers_voice(self):
+        g = self.greetings
+        g.write_clip("other", "k", "hi", "v", b"\x00\x00" * 240, 24000)
+        g.write_clip(g.STATION_ID, "k", "hi", "v", b"\x00\x00" * 240, 24000)
+        self.assertEqual(g.clip_path(g.STATION_ID),
+                         g.staged_clip("nobody-home"))

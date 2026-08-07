@@ -3,6 +3,42 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.132
+
+### The line has modes
+
+- A **Take live calls** switch joins the voicemail one, so the line can be a
+  phone, a phone with an answering machine, voicemail-only, or closed — and
+  the Player preview shows callers what they'll get in each.
+
+### Voicemail
+
+- **Greeting mode**: staged clips (instant, the default) or **fresh each
+  call** — a new line written in the persona's own voice at pickup, with the
+  staged clip as the backup if it can't make it in time.
+- With **nobody on air, the station itself answers** in your default voice
+  rather than borrowing a DJ who isn't there. Greetings can use `{station}`,
+  `{dj}` and `{show}`, filled in per persona.
+- The per-DJ greeting list folds away under its own disclosure, each row
+  showing the voice it renders with and its editable line.
+
+### The call card
+
+- The theme control now **cycles four looks**: light, dark, the station's
+  show colours, and match-the-page — the icon always shows the next stop.
+- The card is rearranged for embeds: state line up top, talk bar and mute
+  directly above a bottom-row hang-up, the DJ meter always visible, smaller
+  now-playing type, and the mic-hint line is gone. The card reports its
+  true content height, so it stops stretching host pages.
+- The door-code **lock appears the moment the code is entered**, and it is a
+  flat outline rather than a colourful glyph.
+
+### The panel
+
+- The **voice effect moved in with the Voice settings**, where the voice
+  lives, and a **Test with effect** button plays the configured voice
+  through it.
+
 ## 0.9.131
 
 ### Voicemail

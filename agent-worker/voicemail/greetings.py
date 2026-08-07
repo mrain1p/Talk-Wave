@@ -33,6 +33,22 @@ DERIVED_GREETING = (
     "You've reached {station}. {dj} is on the air right now — "
     "leave a request after the beep."
 )
+# When nobody is on air the machine answers as the STATION, in the operator's
+# configured default voice — a named DJ who is not actually there is a small
+# lie the caller can hear.
+DERIVED_STATION_GREETING = (
+    "You've reached {station}. Leave a request after the beep."
+)
+# The station-default clip's slot in the cache, beside the persona ids.
+STATION_ID = "_station"
+
+
+class _Blank(dict):
+    """format_map that renders unknown or empty placeholders as nothing — a
+    template writer's typo must not crash a greeting into the beep."""
+
+    def __missing__(self, key):
+        return ""
 
 
 def _overrides_path() -> Path:
@@ -71,23 +87,37 @@ def set_override(persona_id: str, text: str) -> None:
 
 
 def greeting_text_for(persona_id: str, cfg: dict, station_name: str,
-                      dj_name: str) -> str:
+                      dj_name: str, show_name: str = "") -> str:
     """This persona's line: their own override, else the shared setting,
-    else the derived sentence."""
+    else the derived sentence. Overrides take the placeholders too."""
     own = read_overrides().get(str(persona_id))
     if own:
-        return own
-    return greeting_text(cfg, station_name, dj_name)
+        try:
+            return " ".join(own.format_map(_Blank(
+                station=station_name or "the station",
+                dj=dj_name, show=show_name)).split())
+        except (ValueError, IndexError):
+            return own
+    return greeting_text(cfg, station_name, dj_name, show_name)
 
 
-def greeting_text(cfg: dict, station_name: str, dj_name: str) -> str:
-    """The words a persona's clip speaks. Blank means derived, per the
-    settings invariant — an empty box is the sentence above, not silence."""
+def greeting_text(cfg: dict, station_name: str, dj_name: str,
+                  show_name: str = "") -> str:
+    """The words a clip speaks. Blank means derived, per the settings
+    invariant. A typed greeting may use {station}, {dj} and {show} — filled
+    per persona at staging time, and an empty or unknown placeholder simply
+    disappears. With no DJ to name, the derived line speaks as the station.
+    """
+    fields = _Blank(station=station_name or "the station",
+                    dj=dj_name, show=show_name)
     typed = str(cfg.get("voicemail_greeting") or "").strip()
-    if typed:
-        return typed
-    return DERIVED_GREETING.format(station=station_name or "the station",
-                                   dj=dj_name or "the DJ")
+    template = typed or (DERIVED_GREETING if dj_name
+                         else DERIVED_STATION_GREETING)
+    try:
+        out = template.format_map(fields)
+    except (ValueError, IndexError):
+        out = template
+    return " ".join(out.split())
 
 
 def render_key(text: str, voice: str, mode: str, adapter: str) -> str:
@@ -152,11 +182,12 @@ def ack_clip(persona_id: str) -> Path | None:
 
 
 def staged_clip(persona_id: str) -> Path | None:
-    """The clip to play for this persona, with the design's fallback order:
-    their own clip, else ANY staged clip — a wrong voice beats silence."""
-    own = clip_path(persona_id)
-    if own.is_file():
-        return own
+    """The clip to play, in fallback order: this persona's own, then the
+    STATION default (the honest voice when nobody is on air), then any staged
+    clip at all — a wrong voice beats silence."""
+    for candidate in (clip_path(persona_id), clip_path(STATION_ID)):
+        if candidate.is_file():
+            return candidate
     for entry in sorted(VOICEMAIL_DIR.glob("*.wav")):
         if not entry.name.endswith("-ack.wav"):
             return entry

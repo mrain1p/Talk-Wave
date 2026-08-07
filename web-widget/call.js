@@ -74,9 +74,73 @@
   // host page's background and passes ?theme=. A cross-origin frame cannot
   // see the page it sits in, so if inherit reaches us unresolved there is no
   // page to inherit from and auto is the honest answer.
+  // The viewer's cycle: light, dark, the station's colours (when the
+  // station publishes a palette), and match-the-page/device. Stored like the
+  // old toggle; 'station' is new as a VIEWER choice rather than only an
+  // operator default.
+  function themeOptions() {
+    const opts = ['light', 'dark'];
+    if (live && live.stationTheme && live.stationTheme.tokens) opts.push('station');
+    opts.push('');
+    return opts;
+  }
+
+  function applyThemeChoice(choice) {
+    const root = document.documentElement;
+    [...root.style].filter((k) => k.startsWith('--'))
+      .forEach((k) => root.style.removeProperty(k));
+    if (choice === 'light' || choice === 'dark') {
+      root.setAttribute('data-theme', choice);
+    } else if (choice === 'station' && live && live.stationTheme
+               && live.stationTheme.tokens) {
+      root.setAttribute('data-theme',
+        live.stationTheme.mode === 'light' ? 'light' : 'dark');
+      applyTokens(live.stationTheme.tokens);
+    } else if (themeDefault === 'light' || themeDefault === 'dark') {
+      root.setAttribute('data-theme', themeDefault);
+    } else {
+      root.removeAttribute('data-theme');
+    }
+    paintThemeGlyph();
+  }
+
+  function paintThemeGlyph() {
+    const btn = $('themeBtn');
+    if (!btn) return;
+    const opts = themeOptions();
+    const cur = localStorage.getItem('callinTheme') || '';
+    const at = opts.indexOf(opts.includes(cur) ? cur : '');
+    const next = opts[(at + 1) % opts.length];
+    const G = { light: '\u2600', dark: '\u263e', station: '\u2733', '': '\u25a6' };
+    const T = { light: 'light', dark: 'dark', station: "the station's colours",
+                '': framed ? 'match the page' : 'follow the device' };
+    btn.textContent = G[next];
+    btn.title = 'Theme — tap for ' + T[next];
+  }
+
+  (function bindThemeCycle() {
+    const btn = $('themeBtn');
+    if (!btn || themeForcedByHost) return;
+    btn.onclick = () => {
+      const opts = themeOptions();
+      const cur = localStorage.getItem('callinTheme') || '';
+      const next = opts[(opts.indexOf(opts.includes(cur) ? cur : '') + 1) % opts.length];
+      if (next) localStorage.setItem('callinTheme', next);
+      else localStorage.removeItem('callinTheme');
+      applyThemeChoice(next);
+    };
+  })();
+
   function applyConfiguredTheme(choice, palette) {
     if (themeForcedByHost) return;              // the host page has decided
     const root = document.documentElement;
+    // A viewer's stored choice — including 'station', which the old
+    // light/dark bootstrap cannot apply — beats the operator's default.
+    const stored = localStorage.getItem('callinTheme') || '';
+    if (stored) {
+      applyThemeChoice(stored);
+      return;
+    }
     if (choice === 'light' || choice === 'dark') {
       root.setAttribute('data-theme', choice);  // forced: applyControls drops
       return;                                   // the toggle to match
@@ -651,6 +715,7 @@
         applyConfiguredTheme(d.theme, d.stationTheme);
         setupAskPopup(d.canAsk);
         applyControls(d);
+        paintThemeGlyph();
       }
       // The sound engine lives in shared.js and is fed rather than read from,
       // so the panel can preview a sound without borrowing the call's state.
@@ -713,7 +778,8 @@
         // The machine answers where a live call cannot: 'closed' turns each
         // refusal below into "Leave a message", 'always' makes the line
         // voicemail-only. The door code still applies either way.
-        const vmHere = vmPolicy() === 'always'
+        const liveOff = d.liveCalls === false;
+        const vmHere = vmPolicy() === 'always' || liveOff
           || (vmPolicy() === 'closed' && (d.callsPaused || !d.onAir));
         // The operator can put the machine on the card as its own button,
         // per surface. With the button up, Call never morphs — two clear
@@ -729,11 +795,12 @@
           callBtn.disabled = false;
           callBtn.dataset.vm = '1';
           callBtn.textContent = 'Leave a message';
-        } else if (d.callsPaused) {
-          // A paused line is a deliberate state, not a fault: say so plainly
-          // rather than offering a button that can only fail.
+        } else if (d.callsPaused || liveOff) {
+          // A paused or voicemail-only line is a deliberate state, not a
+          // fault: say so plainly rather than offering a button that fails.
           callBtn.disabled = true;
-          callBtn.textContent = 'Line closed';
+          callBtn.textContent = liveOff && vmPolicy() === 'never'
+            ? 'Line closed' : liveOff ? 'Message only' : 'Line closed';
         } else {
           callBtn.disabled = false;
           callBtn.textContent = callLabel();
@@ -791,6 +858,9 @@
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { msg.textContent = d.error || 'That code is not right.'; return; }
       rememberCallKey(pw);
+      // The lock exists exactly when a code is stored — reported missing
+      // until reload because nothing re-ran the corner controls here.
+      applyControls(shown || live);
       input.value = ''; msg.textContent = '';
       $('guestGate').hidden = true;
       await refreshLive();
@@ -1227,15 +1297,7 @@
 
   async function startCall(asVoicemail) {
     vmCall = !!asVoicemail;
-    // On a push-to-talk card the bar's promise does not hold for the
-    // machine — it hears everything, that is its job. Same row, same
-    // height, a true sentence.
-    const hint = document.querySelector('.ptthint');
-    if (hint) {
-      hint.textContent = vmCall
-        ? 'The machine is listening — just talk after the beep.'
-        : 'The DJ can only hear you while this bar is lit.';
-    }
+
     // Browsers only allow microphone capture on HTTPS or localhost. On a
     // plain http:// LAN address the call would connect and then immediately
     // hang up when mic capture fails — say why up front instead.
@@ -1351,6 +1413,10 @@
           callBtn.classList.add('answering');
           callBtn.textContent = 'Answering…';
         }
+        // The bottom row flips: Call (or the machine's door) gives way to
+        // Hang up, full width, exactly where a thumb expects it.
+        callBtn.hidden = true;
+        hangBtn.hidden = false;
         djEl = track.attach();
         djEl.volume = Math.min(1, getVolume() / 100);
         if (wireEffect(track)) djEl.muted = true;
@@ -1450,6 +1516,8 @@
       callBtn.classList.remove('ringing', 'answering');
       callBtn.textContent = callLabel();
       callBtn.disabled = false;
+      callBtn.hidden = false;
+      hangBtn.hidden = true;
       room = null;
     }
   }
@@ -1554,6 +1622,8 @@
     callBtn.textContent = callLabel();
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
+    callBtn.hidden = false;
+    hangBtn.hidden = true;
     document.querySelector('.card').classList.remove('oncall');
     muteBtn.textContent = 'Mute';
     muteBtn.classList.remove('on');
