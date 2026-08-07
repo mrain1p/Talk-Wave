@@ -602,7 +602,7 @@
     </details>
 
     <details data-group="onair" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Sharing the microphone</span><em class="secblurb"></em><span class="tag" id="tagOnair"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">On-air ducking</span><em class="secblurb"></em><span class="tag" id="tagOnair"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ
           on the broadcast are the same person. Without this they talk over each
@@ -616,9 +616,10 @@
     </details>
 
     <details data-group="tunein" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Tune the caller in</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Tune the caller into the station</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="tune_in_on_call" /> Tune the caller in during the call</label>
+        <label class="check"><input type="checkbox" id="tune_in_audible" /> Pipe the broadcast into the call</label>
         <div class="row">
           <label for="tune_in_url">Stream URL</label>
           <input type="text" id="tune_in_url" placeholder="https://live.example.com/stream.mp3" />
@@ -631,7 +632,7 @@
     </details>
 
     <details data-group="callback" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Back to air</span><em class="secblurb"></em><span class="tag" id="tagCallback"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Back-to-air commentary</span><em class="secblurb"></em><span class="tag" id="tagCallback"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="callback_enabled" /> Mention the call on air afterwards</label>
         <div class="grid2">
@@ -677,8 +678,12 @@
           <p class="hint wide" style="margin-top:0">Pick each sound from the
             dropdown: the set's default, a file you upload, or a URL you host.
             Uploads stay on this machine — mp3, wav, ogg, m4a, aac or webm,
-            2&nbsp;MB each, 20 files / 20&nbsp;MB in total — and can be played,
-            downloaded or removed below. The built-in sets can't be deleted.</p>
+            2&nbsp;MB each, 20 files / 20&nbsp;MB in all — played, downloaded
+            or removed below; the built-in sets can't be deleted.
+            <strong>WAV is preferred</strong>: the voicemail beep is played by
+            the server and takes WAV only, so an mp3 or m4a picked for it is
+            converted to WAV in the browser first (m4p is Apple-DRM'd and
+            cannot be converted by anything).</p>
           <div class="row">
             <label for="sound_ring">Ring</label>
             <input type="text" id="sound_ring" />
@@ -719,14 +724,21 @@
          the button below renders one per persona through the configured TTS
          and reports each result, because a persona whose voice the backend
          does not have fails and the operator has to know which one. -->
+    <details data-group="livecalls" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Live calls</span><em class="secblurb"></em><span class="tag" id="tagLivecalls"></span></summary>
+      <div class="body">
+        <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
+      </div>
+    </details>
+
     <details data-group="voicemail" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Voicemail</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
       <div class="body">
+        <label class="check"><input type="checkbox" id="voicemail_enabled" /> Enable voicemail</label>
         <div class="row">
           <label for="voicemail_when">Answer with voicemail</label>
           <select id="voicemail_when"></select>
         </div>
-        <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
         <div class="row">
           <label for="voicemail_greeting_mode">Greeting comes from</label>
           <select id="voicemail_greeting_mode"></select>
@@ -777,7 +789,7 @@
       <div class="body">
         <label class="check"><input type="checkbox" id="record_calls" /> Keep call transcripts</label>
         <div class="row narrow">
-          <label for="record_keep">How many to keep</label>
+          <label for="record_keep">How many transcripts to keep</label>
           <input type="number" id="record_keep" min="1" max="500" step="1" />
         </div>
       </div>
@@ -984,8 +996,8 @@
           wrong. This is the thing to read when a call didn't go the way you
           expected.</p>
         <div class="diagbar" id="callBar" hidden>
-          <label class="pick"><input type="checkbox" id="callsOnlyBad" />
-            <span id="callsOnlyBadLabel">Only calls with problems</span></label>
+          <button type="button" class="runbtn" id="callsOnlyBad"
+                  title="Only calls with problems">! <span id="callsOnlyBadLabel"></span></button>
           <button type="button" class="runbtn" id="callsOnlyDown"
                   title="Only calls the caller rated thumbs down">&#128078; <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"

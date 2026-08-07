@@ -682,8 +682,11 @@
     // shape one are moot. Dashed rather than hidden — the operator can
     // still see what comes back when live calls do.
     const vmSel = $('voicemail_when');
-    const vmAlways = (vmSel ? (vmSel.value || resolved.voicemail_when)
-                            : resolved.voicemail_when) === 'always';
+    const vmOn = $('voicemail_enabled')
+      ? $('voicemail_enabled').checked : !!resolved.voicemail_enabled;
+    const vmAlways = vmOn
+      && (vmSel ? (vmSel.value || resolved.voicemail_when)
+                : resolved.voicemail_when) === 'always';
     const liveChk = $('live_calls_enabled');
     const liveOn = liveChk ? liveChk.checked
                            : resolved.live_calls_enabled !== false;
@@ -2423,7 +2426,7 @@
       }
       const staged = (d.personas || []).filter((p) => p.current).length;
       setTag('tagVoicemail',
-        (resolved.voicemail_when === 'never' ? 'off' : resolved.voicemail_when)
+        (!resolved.voicemail_enabled ? 'off' : resolved.voicemail_when)
         + ' · ' + staged + '/' + (d.personas || []).length + ' staged'
         + (d.messages ? ' · ' + d.messages + ' msg' : ''));
     } catch (e) { /* the section still works without the station */ }

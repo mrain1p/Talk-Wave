@@ -58,6 +58,7 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     "show_push_to_talk": True,
     "show_voicemail_button": True,
     "live_calls_enabled": True,
+    "voicemail_enabled": True,
     "voicemail_when": "closed",
 }), encoding="utf-8")
 

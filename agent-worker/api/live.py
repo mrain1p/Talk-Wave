@@ -235,7 +235,7 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # In look_payload as well as /live: the panel's preview exists to
         # show what a setting does to the card, and this one can turn the
         # Call button into "Leave a message".
-        "voicemailWhen": str(cfg.get("voicemail_when") or "never"),
+        "voicemailWhen": settings_store.voicemail_policy(cfg),
         "callLabel": call_button_label(cfg, persona_name),
         "askFeedback": bool(cfg.get("ask_call_feedback")),
     }
@@ -359,7 +359,7 @@ async def handle_live(request: web.Request) -> web.Response:
                     "callsPaused": bool(cfg.get("calls_paused")),
                     # The answering-machine policy, so the card can offer
                     # "Leave a message" exactly where it paints a refusal.
-                    "voicemailWhen": str(cfg.get("voicemail_when") or "never"),
+                    "voicemailWhen": settings_store.voicemail_policy(cfg),
                     # The widget's expiry maths stayed in minutes; only the SETTING
                     # moved to hours, so the wire stays compatible both ways.
                     "guestSessionMinutes":
@@ -385,7 +385,8 @@ async def handle_live(request: web.Request) -> web.Response:
                         "url": stream_url,
                         "alternates": stream_alternates,
                         "tuneIn": bool(cfg.get("tune_in_on_call")),
-                        "volume": int(cfg.get("tune_in_volume") or 0),
+                        "volume": (int(cfg.get("tune_in_volume") or 0)
+                                   if cfg.get("tune_in_audible", True) else 0),
                     },
                     # Everything that is a look rather than a fact — the theme,
                     # the corner controls, which lines of the who's-on-air

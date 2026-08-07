@@ -189,8 +189,36 @@
       + (c.persona?.name || 'DJ');
     sum.querySelector('.len').textContent = `${Math.round(c.durationSecs || 0)}s`;
     sum.querySelector('.did').textContent =
-      `${turns} turn${turns === 1 ? '' : 's'}`
-      + (tools ? ` · ${tools} tool${tools === 1 ? '' : 's'}` : '');
+      `${turns} turn${turns === 1 ? '' : 's'}`;
+    // Who placed it and what it touched, at a glance: the caller's tier as
+    // a chip, and the distinct tools by name (the count alone answered a
+    // question nobody was asking).
+    const tier = c.config && c.config.callerTier;
+    if (tier) {
+      const chip = document.createElement('span');
+      chip.className = 'ctier';
+      chip.textContent = tier;
+      sum.querySelector('.dj').appendChild(chip);
+    }
+    if (tools) {
+      const names = [...new Set((c.tools || []).map((t) =>
+        String(t.name || '').replace(/^subwave_/, '')))].filter(Boolean);
+      const wrap = document.createElement('span');
+      wrap.className = 'ctools';
+      names.slice(0, 3).forEach((n) => {
+        const t = document.createElement('span');
+        t.className = 'ctool';
+        t.textContent = n;
+        wrap.appendChild(t);
+      });
+      if (names.length > 3) {
+        const more = document.createElement('span');
+        more.className = 'ctool';
+        more.textContent = '+' + (names.length - 3);
+        wrap.appendChild(more);
+      }
+      sum.querySelector('.did').appendChild(wrap);
+    }
     sum.querySelector('.dt').textContent =
       (c.rating === 'down' ? '\ud83d\udc4e ' : c.rating === 'up' ? '\ud83d\udc4d ' : '')
       + v.note;
@@ -226,12 +254,14 @@
       // hunting failures, so the filter is a checkbox and not a remembered mode.
       const rough = calls.filter((c) => callVerdict(c).cls !== 'pass').length;
       const box = $('callsOnlyBad');
-      $('callsOnlyBadLabel').textContent = rough
-        ? `Only calls with problems (${rough} of ${calls.length})`
-        : `Only calls with problems — none of the last ${calls.length}`;
+      $('callsOnlyBadLabel').textContent = rough || '';
       box.disabled = !rough;
-      box.checked = false;
-      box.onchange = () => list.classList.toggle('onlybad', box.checked);
+      box.classList.remove('on');
+      box.onclick = () => {
+        const on = !list.classList.contains('onlybad');
+        list.classList.toggle('onlybad', on);
+        box.classList.toggle('on', on);
+      };
       // The caller's own verdicts, as filters. One at a time — a call can't
       // be rated both ways — and they stack with the problems checkbox.
       const down = calls.filter((c) => c.rating === 'down').length;

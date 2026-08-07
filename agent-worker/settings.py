@@ -169,7 +169,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # voicemail on is a voicemail-only line; off with voicemail off is a
     # closed line that says so.
     "live_calls_enabled":    (None, True),
-    "voicemail_when":        (None, "never"),
+    # The master switch, then when the machine answers. voicemail_when used
+    # to carry both jobs with its 'never' option, and the operator read the
+    # section as having no on/off at all.
+    "voicemail_enabled":     (None, False),
+    "voicemail_when":        (None, "closed"),
     # Who may use the machine, as a tier like every other caller permission.
     # Defaults open: switching voicemail on is already a decision, and the
     # door code still applies in front of this.
@@ -231,6 +235,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # station, quiet enough that it never competes with the DJ's voice — and,
     # on speakers, quiet enough not to bleed into the caller's own microphone
     # and be transcribed as if they had said it. Anything near 50 does both.
+    # Split from tune_in_on_call: counting as a LISTENER (which is what
+    # makes the station accept requests) and actually HEARING the broadcast
+    # are different wants, and volume 0 was carrying the second job as a
+    # trick nobody could discover.
+    "tune_in_audible":  (None, True),
     "tune_in_volume":   (None, 10),
     # Blank derives the stream from station_base_url, which is right for a
     # LAN deployment and wrong for every other one: the widget is served over
@@ -419,6 +428,15 @@ TIER_CHOICES = [
 ]
 
 
+def voicemail_policy(cfg: dict) -> str:
+    """The machine's effective policy: 'never' unless the master switch is
+    on, else the stored when. One resolver, because two call sites deciding
+    "is voicemail on" independently is how they drift."""
+    if not cfg.get("voicemail_enabled"):
+        return "never"
+    return str(cfg.get("voicemail_when") or "closed")
+
+
 def normalise_tier(value: Any) -> str:
     """Whatever is stored, as one of off/open/guest/admin.
 
@@ -575,9 +593,14 @@ GROUPS = [
     # Was inside Caller permissions, where it read as a fourth station-wide
     # permission. It is not a permission at all: it decides what happens when
     # the call DJ and the on-air DJ are the same voice.
-    ("onair",    "line",   "Sharing the microphone", "The call DJ and the on-air DJ are one voice."),
-    ("tunein",   "line",   "Tune the caller in",  "Whether the caller hears the broadcast."),
-    ("callback", "line",   "Back to air",         "What the station says after the call."),
+    # Its own switch, not a row inside Voicemail: whether the booth takes
+    # live callers and whether the machine answers are two decisions, and
+    # nesting one under the other implied a dependency neither has.
+    ("livecalls", "line",  "Live calls",          "Whether the booth takes live callers at all."),
+    ("onair",    "line",   "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
+    ("tunein",   "line",   "Tune the caller into the station",
+     "Whether the caller counts as a listener, and whether they hear the broadcast."),
+    ("callback", "line",   "Back-to-air commentary", "One line after the call — nothing more."),
     ("sounds",   "line",   "Call sounds",         "Ring, pickup and hang-up."),
     ("record",   "line",   "Call transcripts",    "What is written to disk, and for how long."),
     # Its own section, not rows inside another — the operator's explicit call.
@@ -847,6 +870,12 @@ SCHEMA: dict[str, dict] = {
              "while ringing. The station refuses requests when nobody is listening "
              "and a caller on the line doesn't otherwise count — and it sounds like "
              "a real phone-in. Recommended."),
+    "tune_in_audible": dict(group="tunein", kind="check",
+        needs=("tune_in_on_call", True),
+        label="Pipe the broadcast into the call",
+        help="Off, the caller still counts as a listener — requests keep "
+             "working — but hears only the DJ. On, the station plays "
+             "underneath at the volume below."),
     "tune_in_url": dict(group="tunein", kind="text", label="Stream URL",
         needs=("tune_in_on_call", True),
         placeholder="default: derived from the station address (plain http only)",
@@ -914,24 +943,30 @@ SCHEMA: dict[str, dict] = {
 
     # --- transcripts ---
     # --- voicemail ---
+    "voicemail_enabled": dict(group="voicemail", kind="check",
+        label="Enable voicemail",
+        help="The machine's master switch — everything below applies only "
+             "while this is on."),
     "voicemail_when": dict(group="voicemail", kind="select", label="Answer with voicemail",
-        help="'When a live call is impossible' turns every refusal — nobody on "
-             "air, line paused, over the caps, all lines busy — into a message "
-             "instead of silence. 'Always' makes the line voicemail-only, the "
-             "cheapest way to run it: no LLM turns at all."),
+        needs=("voicemail_enabled", True),
+        help="'When a live call is impossible' turns a closed or busy line's "
+             "refusal into a message instead of silence — the hourly and "
+             "daily caps and the redial wait still refuse, on purpose: a "
+             "message costs STT, and a robot redialling the machine is the "
+             "robot the caps exist for. 'Always' makes the line "
+             "voicemail-only, the cheapest way to run it: no LLM turns at "
+             "all."),
     "allow_voicemail": dict(group="perms", kind="select", tiered=True,
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
              "decides WHEN it answers; this decides WHO it answers for."),
-    "live_calls_enabled": dict(group="voicemail", kind="check",
+    "live_calls_enabled": dict(group="livecalls", kind="check",
         label="Take live calls",
-        help="The line's mode, together with the switch below: live on + "
-             "voicemail 'when a live call is impossible' is a phone with an "
-             "answering machine; live off (or voicemail 'always') is a "
-             "voicemail-only line; live on + voicemail 'never' is a plain "
-             "phone. It lives here, beside its other half — it used to sit "
-             "under Who answers, where the operator running a voicemail-only "
-             "line could not find the way back."),
+        help="Off, the Call button becomes the machine's door (with "
+             "voicemail on) or says the line is closed. Independent of "
+             "Voicemail below — the two switches together are the line's "
+             "mode: phone, phone with a machine, voicemail-only, or "
+             "closed."),
     "voicemail_greeting_mode": dict(group="voicemail", kind="select",
         label="Greeting comes from",
         help="Staged clips answer instantly. 'Fresh each call' writes a new "
@@ -964,7 +999,8 @@ SCHEMA: dict[str, dict] = {
         help="Both sides of each call, the tools it used and the settings it ran "
              "under, written to data/calls — how a bad call gets diagnosed, and "
              "also a stranger's conversation on your disk."),
-    "record_keep": dict(group="record", kind="number", label="How many to keep",
+    "record_keep": dict(group="record", kind="number",
+        label="How many transcripts to keep",
         needs=("record_calls", True),
         help="Older ones are deleted as new calls land. This is about how long a "
              "caller's words stay on your disk, not about space."),
@@ -1012,8 +1048,11 @@ SCHEMA: dict[str, dict] = {
     # --- back to air ---
     "callback_enabled": dict(group="callback", kind="check", admin=True,
         label="Mention the call on air",
-        help="One passing line between tracks after the caller hangs up, "
-             "re-voiced by the station in the persona."),
+        help="One passing line between tracks AFTER the caller hangs up, "
+             "re-voiced by the station in the persona. This is the whole "
+             "section: it is not the announcements or segments a caller "
+             "triggers mid-call — those speak on air through their own "
+             "permissions, under Caller permissions."),
     "callback_max_words": dict(group="callback", kind="number", label="Length (words)",
         needs=("callback_enabled", True),
         help="Short is better — a mention, not a recap."),
@@ -1050,14 +1089,16 @@ SCHEMA: dict[str, dict] = {
     "sound_ring": dict(group="sounds", kind="text", label="Ring",
         needs=("call_sounds", True),
         placeholder="default: the sound set above",
-        help="Paste a URL, or upload a file, to replace one sound."),
+        help="What the caller hears while the line rings."),
     "sound_pickup": dict(group="sounds", kind="text", label="Pick up",
-        needs=("call_sounds", True), placeholder="default: the sound set above"),
+        needs=("call_sounds", True), placeholder="default: the sound set above",
+        help="The click of the DJ answering."),
     "sound_hold": dict(group="sounds", kind="text", label="On hold",
         needs=("call_sounds", True), placeholder="default: the sound set above",
         help="Played once when the DJ steps onto the broadcast mid-call."),
     "sound_hangup": dict(group="sounds", kind="text", label="Hang up",
-        needs=("call_sounds", True), placeholder="default: the sound set above"),
+        needs=("call_sounds", True), placeholder="default: the sound set above",
+        help="The receiver going down at either end."),
     "sound_failed": dict(group="sounds", kind="text", label="Can't connect",
         needs=("call_sounds", True),
         placeholder="default: the sound set above",
@@ -1065,12 +1106,9 @@ SCHEMA: dict[str, dict] = {
              "couldn't connect."),
     "sound_vm_beep": dict(group="sounds", kind="text", label="Voicemail beep",
         placeholder="default: the classic tone",
-        help="The answering machine's beep, played by the server. An mp3 or "
-             "m4a chosen through this row's Upload button is converted to WAV "
-             "in the browser first — a plain WAV upload is preferred, since "
-             "it skips the conversion untouched. m4p is Apple-DRM'd audio "
-             "nothing can convert. Anything unplayable falls back to the "
-             "tone, never to silence; the verdict shows below."),
+        help="The answering machine's beep — the one server-played sound; "
+             "the formats note above applies double here. Unplayable falls "
+             "back to the tone; the verdict shows below."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
 }
@@ -1119,8 +1157,7 @@ STATIC_CHOICES = {
         ("fresh", "Fresh each call — in persona, staged clip as the backup"),
     ],
     "voicemail_when": [
-        ("never", "Never — the line rings out as it does today"),
-        ("closed", "When a live call is impossible (busy, paused, off air, capped)"),
+        ("closed", "When a live call is impossible (busy, paused, off air)"),
         ("always", "Always — the line is voicemail-only"),
     ],
     "voicemail_destination": [
@@ -1490,6 +1527,12 @@ def _migrate(stored: dict) -> dict:
     if "guest_session_hours" not in stored and "guest_session_minutes" in stored:
         minutes = _coerce(stored.get("guest_session_minutes"), 0)
         stored["guest_session_hours"] = -(-int(minutes) // 60) if minutes else 0
+    # 0.9.144: voicemail_when carried the off switch as its 'never' option;
+    # now a checkbox does. A stored policy IS the operator's answer to both.
+    if "voicemail_enabled" not in stored and "voicemail_when" in stored:
+        stored["voicemail_enabled"] = stored["voicemail_when"] in ("closed", "always")
+        if stored["voicemail_when"] == "never":
+            stored["voicemail_when"] = "closed"
     return stored
 
 

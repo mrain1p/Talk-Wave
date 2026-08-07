@@ -72,6 +72,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheEffectHasADial,
     TestThePanelReadsAtAGlance,
     TestTheBeepIsPreviewableAndWavOnly,
+    TestTheStylesheetParsesToTheEnd,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestATierIncludesTheOnesBelowIt,
