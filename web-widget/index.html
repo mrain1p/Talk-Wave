@@ -59,7 +59,6 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<body>
   <div class="card">
     <!-- The corner controls sit IN this row rather than being absolutely
          positioned over it. Absolute meant each one owned a hardcoded `right`
@@ -155,22 +154,23 @@
       </div>
     </div>
 
+      <!-- Meters and volume share ONE band: you | vol | DJ. The volume had a
+           row of its own, and on an embed that row was ~41px of mostly air —
+           the exact height that was stretching a host page's player column.
+           Everything here is level-shaped, so one band reads as one thing. -->
       <div class="meters">
         <div class="meter you" id="meterYou">
           <div class="mlabel" id="youLabel">You</div>
           <div class="bars" id="barsYou"></div>
         </div>
-        <div class="meter dj" id="meterDj">
-          <div class="mlabel" id="djLabel">DJ</div>
-          <div class="bars" id="barsDj"></div>
-        </div>
-      </div>
-
-      <div class="callrow">
         <div class="vol">
           <label for="volSlider">Vol</label>
           <input type="range" id="volSlider" min="0" max="100" value="100" />
           <span class="pct" id="volPct">100%</span>
+        </div>
+        <div class="meter dj" id="meterDj">
+          <div class="mlabel" id="djLabel">DJ</div>
+          <div class="bars" id="barsDj"></div>
         </div>
       </div>
 

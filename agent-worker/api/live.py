@@ -427,6 +427,12 @@ async def handle_live(request: web.Request) -> web.Response:
                     "limits": {
                         "maxCallSeconds": int(cfg.get("max_call_seconds") or 0),
                         "idlePromptSecs": int(cfg.get("idle_prompt_secs") or 0),
+                        # The machine's own clock — a voicemail's timer must
+                        # count against this, not the live call's: "/ 10:00"
+                        # on a 30-second machine read as the ceiling being
+                        # ignored.
+                        "voicemailMaxSeconds":
+                            max(5, int(cfg.get("voicemail_max_seconds") or 30)),
                     },
                     # Per sound: what the operator configured, else whatever
                     # the chosen pack bundles, else "" — which the widget

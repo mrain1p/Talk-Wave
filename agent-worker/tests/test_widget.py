@@ -517,17 +517,37 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
     def test_the_action_row_is_the_last_row_of_the_card(self):
         # Bottom-up: the Call button (and in-call, the state it becomes) is
         # the card's last row on every surface — so an embed's button lines
-        # up with the host page's own bottom row — with volume and the call
-        # buttons above it, the meters above those, and the words on top.
+        # up with the host page's own bottom row — with the talk bar above
+        # it, the meters band (which carries the volume since 0.9.134 — a
+        # row of its own was ~41px of air on every embed) above that, and
+        # the words on top.
         html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
         order = [html.index(m) for m in ('id="stateRow"', 'id="lineBox"',
-                                         'class="meters"', 'class="callrow"',
+                                         'class="meters"',
                                          'class="talkrow"', 'class="actionrow"')]
         self.assertEqual(order, sorted(order),
-                         "card order must be state, words, meters, volume, "
+                         "card order must be state, words, meters+volume, "
                          "talk row, action row")
+        self.assertNotIn('class="callrow"', html,
+                         "the volume's own row is dead; it lives in .meters")
+        self.assertIn('id="volSlider"',
+                      html.split('class="meters"')[1].split("talkrow")[0],
+                      "the volume control must sit inside the meters band")
         self.assertIn(".rig > .linebox, .rig > .meters, .rig > .actionrow "
                       "{ visibility: visible; }", self.css)
+
+    def test_the_compact_card_fits_a_station_page_column(self):
+        # The real page this embeds in gives its player column 400px and
+        # stretches its own marquee to match the frame — every pixel this
+        # card reports over ~356 (400 minus the host's caption row) came
+        # back as BLANK SPACE between the sleeve and "Up next" on a live
+        # station page, twice. The budget block is the fix; this pins its
+        # load-bearing pieces so a future band can't quietly regrow it.
+        self.assertIn("THE HEIGHT BUDGET", self.css)
+        for pinned in ("body.compact .eyebrow { height: 30px",
+                       "body.compact .tagline { display: none; }",
+                       "body.compact .bars { height: 14px; }"):
+            self.assertIn(pinned, self.css)
 
     def test_the_post_call_chrome_lives_inside_the_line_area(self):
         # The transcript drawer and the how-was-it buttons used to be bands

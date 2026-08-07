@@ -86,6 +86,32 @@ def beep_pcm(sample_rate: int, freq: int = 1000, ms: int = 400,
     return bytes(out)
 
 
+def custom_beep(cfg: dict, want_rate: int) -> bytes | None:
+    """The operator's own beep, when they uploaded one and it can play.
+
+    Server-side sound: the worker beeps into the room, so only an uploaded
+    file applies — there is no browser here to fetch a URL. Wrong rate or
+    shape fails soft to the synthesized tone, never to silence: the line is
+    open and a caller is waiting to be told to speak.
+    """
+    name = str(cfg.get("sound_vm_beep") or "")
+    if not name.startswith("upload:"):
+        return None
+    try:
+        from api.sounds import SOUNDS_DIR
+
+        pcm, rate = read_wav(SOUNDS_DIR / name[len("upload:"):])
+        if rate != want_rate:
+            log.warning("voicemail beep %s is %dHz but this line is %dHz — "
+                        "using the tone", name, rate, want_rate)
+            return None
+        return pcm
+    except Exception as e:                                    # noqa: BLE001
+        log.warning("voicemail beep %s unplayable (%s) — using the tone",
+                    name, e)
+        return None
+
+
 def read_wav(path: Path) -> tuple[bytes, int]:
     with wave.open(str(path), "rb") as w:
         if w.getnchannels() != 1 or w.getsampwidth() != 2:
@@ -248,7 +274,7 @@ async def answer(ctx: JobContext) -> None:
         if pcm:
             await _play(source, pcm, rate)
         await asyncio.sleep(0.25)
-        await _play(source, beep_pcm(rate), rate)
+        await _play(source, custom_beep(cfg, rate) or beep_pcm(rate), rate)
     except Exception as e:                                    # noqa: BLE001
         log.warning("voicemail greeting playback failed: %s", e)
 
@@ -307,4 +333,16 @@ async def answer(ctx: JobContext) -> None:
         await station.aclose()
     except Exception:                                         # noqa: BLE001
         pass
+    # Delete the ROOM, not just the job — ctx.shutdown() alone leaves the
+    # caller connected to an agent-less room with the mic hot and the timer
+    # counting, which the operator read (correctly) as the 30-second ceiling
+    # not being honored. Same close the live leg uses; the widget hears it
+    # as a normal remote hangup.
+    try:
+        from livekit import api as lk_api
+
+        await ctx.api.room.delete_room(
+            lk_api.DeleteRoomRequest(room=ctx.room.name))
+    except Exception as e:                                    # noqa: BLE001
+        log.warning("voicemail room delete failed (%s) — agent still leaves", e)
     ctx.shutdown(reason="voicemail complete")

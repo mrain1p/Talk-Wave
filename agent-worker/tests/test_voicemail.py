@@ -385,3 +385,68 @@ class TestAFreshGreetingIsBudgeted(unittest.TestCase):
         self.assertIn("greeting_text_for", source,
                       "the template must be the floor under the model line")
         self.assertIn("8 <= len(line)", source)
+
+
+class TestTheCeilingActuallyHangsUp(unittest.TestCase):
+    """The message loop always stopped at the ceiling, but ctx.shutdown()
+    alone ends the JOB, not the room — the caller stayed connected to an
+    agent-less room with the timer counting past 30 seconds, which the
+    operator read (correctly) as the limit not being honored."""
+
+    def test_the_vm_leg_deletes_the_room(self):
+        import inspect
+
+        from voicemail import capture
+
+        source = inspect.getsource(capture.answer)
+        self.assertIn("delete_room", source)
+        self.assertLess(source.index("delete_room"),
+                        source.index('ctx.shutdown(reason="voicemail'))
+
+    def test_the_card_counts_against_the_machines_clock(self):
+        from tests.support import AGENT_WORKER, REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        timer = js[js.index("function startTimer"):][:500]
+        self.assertIn("voicemailMaxSeconds", timer)
+        self.assertIn("vmCall", timer)
+        live_py = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        self.assertIn("voicemailMaxSeconds", live_py)
+
+
+class TestTheBeepCanBeTheOperators(unittest.TestCase):
+    """sound_vm_beep is the one server-played sound: uploads only, and
+    anything unplayable falls back to the tone — never to silence, because
+    the line is open and a caller is waiting to be told to speak."""
+
+    def test_upload_only_and_missing_fails_soft(self):
+        from voicemail import capture
+
+        self.assertIsNone(capture.custom_beep({}, 24000))
+        self.assertIsNone(capture.custom_beep(
+            {"sound_vm_beep": "https://x/beep.wav"}, 24000))
+        self.assertIsNone(capture.custom_beep(
+            {"sound_vm_beep": "upload:not-there.wav"}, 24000))
+
+    def test_a_matching_upload_plays_and_a_mismatched_one_does_not(self):
+        import tempfile
+        import wave as _wave
+
+        from api import sounds as api_sounds
+        from voicemail import capture
+
+        tmp = Path(tempfile.mkdtemp())
+        old = api_sounds.SOUNDS_DIR
+        api_sounds.SOUNDS_DIR = tmp
+        try:
+            with _wave.open(str(tmp / "beep.wav"), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(24000)
+                w.writeframes(b"\x00\x01" * 480)
+            cfg = {"sound_vm_beep": "upload:beep.wav"}
+            self.assertTrue(capture.custom_beep(cfg, 24000))
+            self.assertIsNone(capture.custom_beep(cfg, 48000),
+                              "a wrong-rate clip must fall back to the tone")
+        finally:
+            api_sounds.SOUNDS_DIR = old
