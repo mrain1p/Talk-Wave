@@ -667,14 +667,67 @@
   }
   .panelbar .gear { text-decoration: none; }
 
+  /* Wider than the call card on purpose, and the one place the two surfaces
+     are allowed to disagree about width. The card is a phone and wants to be
+     phone-shaped; the panel is a form full of sentences, and at 620px almost
+     every hint wrapped to three lines — which is what made a page of ordinary
+     help text read as a wall. The extra 240px buys roughly a third fewer
+     line breaks and costs nothing: it still collapses to 100% under 900px. */
   .panel {
-    width: min(620px, 100%); margin-top: 14px; display: none;
+    width: min(860px, 100%); margin-top: 14px; display: none;
     border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
-    padding: 20px; text-align: left;
+    padding: 20px 22px; text-align: left;
   }
   .panel.open { display: block; }
   .panel h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; }
   .panel .sub { margin: 0 0 16px; font-size: 12px; color: var(--dimmer); line-height: 1.5; }
+
+  /* --- getting around: the jump bar and the line's own state ------------- */
+  /* Six super-groups and roughly forty disclosures below them. Without this
+     the only way to the bottom is scrolling past every section in between,
+     which is also how a switch gets flipped on the way past. */
+  .panelnav {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 0 0 14px; padding-bottom: 13px; border-bottom: 1px solid var(--line);
+  }
+  .panelnav a {
+    text-decoration: none; color: var(--dim);
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700;
+    padding: 5px 9px; border-radius: 999px;
+    border: 1px solid var(--line2); background: transparent;
+  }
+  .panelnav a:hover { color: var(--text); background: var(--line2); }
+  .panelnav:empty { display: none; }
+
+  /* The kill switch, at the top where it can be reached without opening
+     anything. Bordered rather than dropped into the form, because it is not
+     one of the settings below — it takes effect the moment it is saved and
+     it is the control you want when something is going wrong right now. */
+  .linestate {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin: 0 0 16px; padding: 10px 13px;
+    border: 1px solid var(--line2); border-radius: 10px; background: var(--bg);
+  }
+  .linestate .check { margin: 0; font-weight: 600; }
+  .linestate-note { font-size: 11.5px; color: var(--dimmer); margin-left: auto; }
+  .linestate-note.paused { color: var(--warn); font-weight: 600; }
+
+  /* An "Advanced" fold inside a section, for a field that is derived, or one
+     that only a non-standard setup needs. It is a real setting either way —
+     hiding it outright is how a station that publishes MCP somewhere unusual
+     ends up with no way to say so. */
+  details.advanced { margin: 4px 0 10px; }
+  details.advanced > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--dimmer);
+    padding: 4px 0;
+  }
+  details.advanced > summary::-webkit-details-marker { display: none; }
+  details.advanced > summary::before { content: "▸ "; }
+  details.advanced[open] > summary::before { content: "▾ "; }
+  details.advanced > summary:hover { color: var(--text); }
 
   .supergroup {
     display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
@@ -737,16 +790,36 @@
   details.diag .stages { font-size: 11.5px; }
 
   .row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-  .row label { flex: 0 0 128px; font-size: 12.5px; color: var(--dim); }
+  .row label { flex: 0 0 168px; font-size: 12.5px; color: var(--dim); }
   .row select, .row input[type=text], .row input[type=number], .row input[type=password] {
     flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
     padding: 6px 9px; border-radius: 7px;
     border: 1px solid var(--line2); background: var(--bg); color: var(--text);
   }
   .row select:focus, .row input:focus { outline: none; border-color: var(--accent); }
+  /* A field that holds "2" does not need 600px to hold it. Every number in
+     the panel was stretched the full width of the row, which read as five
+     enormous empty boxes and made the numbers themselves hard to compare —
+     the thing you are actually doing in Usage controls. */
+  .row.narrow input[type=number] { flex: 0 0 96px; }
+  /* Two columns of short rows, for the sections that are nothing but numbers.
+     Collapses to one under 700px, where two columns of 96px inputs and their
+     labels no longer fit side by side. */
+  .grid2 {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 26px;
+  }
+  .grid2 > .row { margin-bottom: 8px; }
+  .grid2 > .row label { flex: 1 1 auto; }
+  /* Schema help is injected as the row's next sibling, so inside a two-column
+     grid it lands in the next cell rather than under its own field. Spanning
+     both columns puts it back under the row it describes. */
+  .grid2 > .hint { grid-column: 1 / -1; margin: -2px 0 8px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+
   .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12.5px; color: var(--text); }
   .check input { width: 15px; height: 15px; accent-color: var(--accent); }
-  .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 138px; line-height: 1.4; }
+  .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 178px; line-height: 1.4; }
   .hint.wide { margin-left: 0; }
 
   /* "Needs the station's own admin credentials." Coral while they are

@@ -323,326 +323,293 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 
 # Super-groups, in display order. The page renders these headers and orders
 # every section beneath them from this table — it does not keep its own copy.
-# "Configuration" used to hold five sections and a dozen buttons, which is
-# where the clutter came from: connecting the station, entering keys and
-# choosing models are three different jobs done at three different times.
+#
+# Six headings, and each one answers a different question an operator arrives
+# with. The shape before this had "Call settings" holding seven sections that
+# ranged from what the DJ's voice does to how loud the ring tone is, and
+# finding a sub-setting meant opening sections to see what was in them. The
+# split that fixed it is speaking (The conversation) against everything that
+# runs the call around the speaking (Running the line) — the two are looked
+# for at different times and by different people.
 SUPERGROUPS = [
-    ("access",  "Access",               "Who can open this panel, and who can call the booth."),
-    ("connect", "Connect",              "The station this answers for, and the keys to reach it."),
-    ("models",  "Models & voice",       "What listens, what thinks, and how it sounds."),
-    ("safety",  "Permissions & safety", "What a caller may trigger, and the limits around it."),
-    ("callcfg", "Call settings",        "How a call runs and how the DJ talks."),
+    ("config",  "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
+    ("safety",  "Permissions & safety", "What a caller may set in motion, and the limits around it."),
+    ("talk",    "The conversation",     "Who answers, how they speak, and what they know."),
+    ("line",    "Running the line",     "How a call starts, how it ends, and what happens after."),
+    ("card",    "The call card",        "What a caller sees — here, and on somebody else's page."),
     ("ref",     "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
 
 # (id, supergroup, title, blurb). Order within a supergroup is the order here.
 #
-# Sections without settings fields — API keys, the caller reference, the embed
-# snippet — are listed too, so ordering lives in exactly one place. Their
-# markup carries a matching data-group attribute.
+# Sections without settings fields — Connections, the embed snippet, the two
+# caller references — are listed too, so ordering lives in exactly one place.
+# Their markup carries a matching data-group attribute.
 GROUPS = [
-    ("security", "access",  "Passwords",          "Admin opens the controls; guest opens the phone."),
+    # Access first: the panel needs an admin password before anything below it
+    # is worth setting, and burying it under Connect meant a fresh install's
+    # first screen was a station URL rather than a lock.
+    ("security", "config", "Access",        "Who opens this panel, and who can call."),
+    ("station",  "config", "Station",       "Which SUB/WAVE this answers for."),
+    ("keys",     "config", "Connections",   "API keys, stored server-side."),
+    ("brains",   "config", "AI brains",     "The model that thinks."),
+    ("voice",    "config", "Voice",         "How the DJ sounds."),
+    # Split out of Brains. Listening and thinking are configured at different
+    # times, from different accounts, and one section holding both meant six
+    # rows where four of them were about something else.
+    ("ears",     "config", "Ears",          "How the DJ hears."),
 
-    ("station",  "connect", "Station",            "Which SUB/WAVE this answers for."),
-    ("keys",     "connect", "API keys",           "Credentials, stored server-side."),
+    ("perms",    "safety", "Caller permissions", "The station actions a caller can trigger."),
+    ("usage",    "safety", "Usage controls",     "Generous limits that stop runaway use."),
 
-    ("brains",   "models",  "Brains",             "The models that listen and think."),
-    ("voice",    "models",  "Voice",              "How the DJ sounds."),
+    ("call",     "talk",   "Who answers",        "Which DJ picks up, and how."),
+    ("turns",    "talk",   "Turn-taking",        "When the DJ decides you've finished."),
+    ("style",    "talk",   "House style",        "Light steers on top of the persona."),
+    ("context",  "talk",   "Station awareness",  "What the DJ knows before picking up."),
+    ("speech",   "talk",   "Speech hygiene",     "What never reaches the speaker."),
 
-    ("perms",    "safety",  "Caller permissions", "The station actions a caller can trigger."),
-    ("usage",    "safety",  "Usage controls",     "Generous limits that stop runaway use."),
-    ("speech",   "safety",  "Speech hygiene",     "What never reaches the speaker."),
+    ("limits",   "line",   "Call length",        "How long a call runs, and who ends it."),
+    # Was inside Caller permissions, where it read as a fourth station-wide
+    # permission. It is not a permission at all: it decides what happens when
+    # the call DJ and the on-air DJ are the same voice.
+    ("onair",    "line",   "Sharing the microphone", "The call DJ and the on-air DJ are one voice."),
+    ("tunein",   "line",   "Tune the caller in",  "Whether the caller hears the broadcast."),
+    ("callback", "line",   "Back to air",         "What the station says after the call."),
+    ("sounds",   "line",   "Call sounds",         "Ring, pickup and hang-up."),
+    ("record",   "line",   "Call transcripts",    "What is written to disk, and for how long."),
 
-    ("call",     "callcfg", "Call behaviour",     "How a call runs."),
-    ("turns",    "callcfg", "Turn-taking",        "When the DJ decides you've finished."),
-    ("context",  "callcfg", "Station awareness",  "What the DJ knows before picking up."),
-    ("style",    "callcfg", "House style",        "Light steers on top of the persona."),
-    ("callback", "callcfg", "Back to air",        "What the station says after the call."),
-    ("sounds",   "callcfg", "Call sounds",        "Ring, pickup and hang-up."),
-    # Was "Embed on another page", under Reference, and held nothing but the
-    # snippet. Everything that decides what the card LOOKS like was scattered
-    # through Call behaviour, where it sat between settings about how the DJ
-    # talks. The snippet stayed here because the page you paste it into is the
-    # second surface these answers are for.
-    ("player",   "callcfg", "Player settings",    "What the card shows, on this page and in an embed."),
+    ("player",   "card",   "Player settings",     "What the card shows, here and in an embed."),
+    ("embed",    "card",   "Embed on another page", "The snippet, and what it looks like."),
 
-    ("ask",      "ref",     "What callers can ask", "Driven by the permissions above."),
-    ("tools",    "ref",     "Station tools",       "Every tool the station publishes, and who can reach it."),
+    ("ask",      "ref",    "What callers can ask", "Driven by the permissions above."),
+    ("tools",    "ref",    "Station tools",        "Every tool the station publishes, and who can reach it."),
 ]
 
 SCHEMA: dict[str, dict] = {
     # --- station ---
     "station_base_url": dict(group="station", kind="text", label="Station API",
-        help="Everything else is discovered from here — personas, cards, voices, tools. "
+        help="Personas, cards, voices and tools are all discovered from here. "
              "Point it at a different SUB/WAVE to re-home the whole sidecar."),
     "station_mcp_url": dict(group="station", kind="text", label="MCP endpoint",
-        help="Where the agent's tools come from. Derived as {Station API}/mcp unless set."),
+        placeholder="derived: {Station API}/mcp",
+        help="Where the agent's tools come from. Only set this if the station "
+             "publishes MCP somewhere other than under its API."),
 
     # --- brains ---
-    "llm_provider": dict(group="brains", kind="select", label="LLM provider",
-        help="Who thinks. Ollama and OpenRouter need a URL or key; local Ollama keeps "
-             "everything on your network."),
+    "llm_provider": dict(group="brains", kind="select", label="Provider",
+        help="Only providers you have a key for are listed. Ollama is always "
+             "listed — it runs on your own network and needs no key."),
     "llm_model": dict(group="brains", kind="select", label="Model",
-        help="Read live from the provider. Faster models make the call feel more "
-             "natural — anything over ~1.5s to first token sounds laggy."),
-    "llm_base_url": dict(group="brains", kind="text", label="LLM URL",
+        help="Read live from the provider. Over ~1.5s to first token sounds "
+             "laggy on a call."),
+    "llm_base_url": dict(group="brains", kind="text", label="Endpoint",
         needs=("llm_provider", ("ollama", "openai", "openrouter")),
-        help="Only for self-hosted or gateway endpoints."),
+        placeholder="default: the provider's own address",
+        help="Only for a self-hosted or gateway endpoint."),
     "llm_temperature": dict(group="brains", kind="number", label="Temperature",
-        help="Higher is more freewheeling. 0.8 suits a DJ; below 0.5 sounds clipped."),
-    "stt_provider": dict(group="brains", kind="select", label="Speech-to-text",
-        help="Nothing to set up: 'local' is included in this container and runs "
-             "in-process — no key, no extra service, no network — so calls work out "
-             "of the box. Switch to a cloud provider only if you want live "
-             "word-by-word captions or better accuracy on names; those need a key."),
-    "stt_model": dict(group="brains", kind="select", label="STT model",
-        help="Leave it alone unless you have a reason. For local: base.en is the "
-             "sensible default, tiny.en is faster, small.en is more accurate on names."),
+        help="0.8 suits a DJ. Below 0.5 sounds clipped."),
+
+    # --- ears ---
+    "stt_provider": dict(group="ears", kind="select", label="Provider",
+        help="'local' is in this container already — no key, no network — so "
+             "calls work out of the box. A cloud provider buys word-by-word "
+             "captions and better accuracy on names, and needs a key."),
+    "stt_model": dict(group="ears", kind="select", label="Model",
+        help="For local: base.en is the default, tiny.en is faster, small.en "
+             "is better on names."),
 
     # --- voice ---
-    "tts_mode": dict(group="voice", kind="select", label="TTS backend",
+    "tts_mode": dict(group="voice", kind="select", label="Backend",
         help="'local' uses your VibeVoice persona voices but may be slower than "
              "realtime; 'cloud' is fast but won't match the on-air timbre."),
-    "tts_base_url": dict(group="voice", kind="text", label="Server URL",
-        help="Any OpenAI-compatible speech endpoint. This and the adapter below "
-             "are separate settings and nothing makes them agree — pointing "
-             "this at a new engine while leaving the old engine's adapter in "
-             "place is the classic way to get audio at the wrong sample rate, "
-             "which sounds broken and logs nothing. Press Test voice after "
-             "changing either: it measures the rate rather than trusting it."),
+    "tts_base_url": dict(group="voice", kind="text", label="Endpoint",
+        help="Any OpenAI-compatible speech endpoint. Press Test voice after "
+             "changing this or the adapter: a mismatched pair produces audio at "
+             "the wrong sample rate, which sounds broken and logs nothing."),
     "tts_voice": dict(group="voice", kind="select", label="Voice",
-        help="Leave on default to use the station's own voice for whoever is live."),
-    "tts_model": dict(group="voice", kind="text", label="TTS model",
+        help="Default uses the station's own voice for whoever is live."),
+    "tts_model": dict(group="voice", kind="text", label="Model",
         needs=("tts_mode", "cloud"),
-        help="Provider-specific. Blank uses the adapter's default."),
+        placeholder="default: the adapter's own",
+        help="Provider-specific."),
     "tts_adapter": dict(group="voice", kind="select", label="Adapter",
-        help="Describes a backend end to end: the request shape, where it lists "
-             "its voices, and what sample rate its audio really is. Only needed "
-             "for a non-standard API — but it must match the server URL above, "
-             "because a mismatched one fails quietly rather than loudly."),
+        help="Describes a backend end to end — request shape, voice list, real "
+             "sample rate. Only needed for a non-standard API, and it must match "
+             "the endpoint above."),
 
     # --- permissions ---
     "allow_requests": dict(group="perms", kind="check", label="Take song requests",
-        help="A title, an artist, a mood, an era, or 'more like this' — the station "
-             "resolves it and writes a spoken intro. Its own limits apply: one "
-             "request per 20 seconds, 8 per hour, and none at all while nobody is "
-             "listening (see 'Tune the caller in' under Call behaviour)."),
-    "confirm_requests": dict(group="perms", kind="check", label="Confirm requests before sending",
+        help="A title, an artist, a mood, an era or 'more like this'. The station "
+             "resolves it and writes the intro. Its own limits still apply: 1 per "
+             "20s, 8 an hour, and none while nobody is listening."),
+    "confirm_requests": dict(group="perms", kind="check", label="Confirm before sending",
         needs=("allow_requests", True),
-        help="The DJ says the track back and gets a quick yes before submitting. "
-             "Worth keeping on: the station has no way to cancel a request once "
-             "it's in — a changed mind before the confirm costs nothing."),
+        help="The DJ says the track back and waits for a yes. The station cannot "
+             "cancel a request once it is in; a changed mind before the confirm "
+             "costs nothing."),
     "shape_vague_requests": dict(group="perms", kind="check",
         label="Offer options for a mood request",
         needs=("allow_requests", True),
-        help="When a caller asks for a feeling rather than a track — \"something "
-             "fun\", \"a bit of energy\" — the DJ comes back with two or three real "
-             "directions before putting anything in: named artists or tracks it "
-             "actually found, not an open \"what kind of fun?\". Off by default, "
-             "because the fastest answer is to just play something; on, because "
-             "letting the caller pick is what makes it a conversation. One round "
-             "only either way — the DJ never asks twice."),
+        help="For \"something fun\", the DJ comes back with two or three real "
+             "tracks it found rather than playing the first match. Costs one turn, "
+             "and it only ever asks once."),
+    # Not admin=True, and that is the point: the panel used to tag this
+    # "Station admin" with a tooltip saying it would quietly never happen
+    # without credentials, which is false — the MCP tool needs no auth at all
+    # (registry.mcp_fallback). Only the local wrapper's extra retry does.
     "allow_library_search": dict(group="perms", kind="check", label="Search the music library",
-        admin=True,
-        help="Lets the DJ check a track really exists before promising it, and correct "
-             "a caller who has the artist wrong. Works without station credentials; "
-             "with them it also retries awkward phrasing like 'X by Y' before "
-             "reporting a miss."),
-    "allow_exact_queue": dict(group="perms", kind="check", label="Queue the exact track they picked",
+        help="Lets the DJ check a track exists before promising it. Works without "
+             "station credentials; with them it also retries phrasing like "
+             "'X by Y' before reporting a miss."),
+    "allow_exact_queue": dict(group="perms", kind="check", label="Queue the exact track picked",
         admin=True,
         needs=("allow_library_search", True),
-        help="When a caller chooses a track from what the DJ found, queue THAT "
-             "recording instead of sending the words back through the matcher — no "
-             "more \"that's not the version I meant\". Off by default for one honest "
-             "reason: it skips the station's request rate limit, so the only thing "
-             "holding a caller back is Actions per call under Usage controls. Needs "
-             "station admin credentials and library search."),
+        help="Queues the recording the caller chose out of the search results, "
+             "rather than re-matching the words. Skips the station's request rate "
+             "limit, so Actions per call is the only thing pacing it."),
     "allow_announcements": dict(group="perms", kind="check", label="Put messages on air",
         admin=True,
-        help="Hands a line to the on-air DJ to read in persona. Needs admin credentials."),
+        help="Hands a line to the on-air DJ to read in persona."),
     # These two read as the same switch until you see them side by side. They
     # are not: one is about what a caller may ASK FOR, the other about whether
     # the DJ may BRING IT UP first.
     "allow_skills": dict(group="perms", kind="check", label="Run segments when asked",
         admin=True,
-        help="Weather, news, dedications, story time. The caller asks — \"what's the "
-             "weather doing?\" — and the DJ runs the station's real segment on air. "
-             "With this off the DJ has no way to run one at all. The station "
-             "rate-limits each segment (25–60 min), so callers can't spam them."),
+        help="Weather, news, dedications, story time — the caller asks and the DJ "
+             "runs the station's real segment on air. The station rate-limits each "
+             "one (25–60 min), so callers cannot spam them."),
     "offer_skills": dict(group="perms", kind="check", label="…and let the DJ offer one",
         admin=True,
         needs=("allow_skills", True),
-        help="The other half: whether the DJ may raise a segment ITSELF when the "
-             "moment fits — \"want me to spin you a story?\" — instead of only "
-             "answering a request. With this off the DJ runs segments but never "
-             "brings them up. Occasional by design, never a menu, and never a list "
-             "of what's on offer."),
+        help="Whether the DJ may raise a segment itself — \"want me to spin you a "
+             "story?\" — instead of only answering a request. Never a menu."),
     "allow_skip_track": dict(group="perms", kind="check", admin=True,
-        label="Let a caller skip the current track",
-        help="Ends whatever is playing, for EVERYONE listening — not just the "
-             "caller who asked. Off by default, and worth leaving off on a station "
-             "with an audience: the station's own API treats skip as an operator "
-             "override and offers no listener-facing equivalent. Needs station "
-             "admin credentials, and each skip counts against Actions per call, "
-             "which is the only thing pacing it."),
+        label="Skip the current track",
+        help="Ends what is playing for EVERYONE listening, not just the caller who "
+             "asked. The station treats skip as an operator override and offers no "
+             "listener-facing equivalent. Counts against Actions per call."),
     "allow_dj_segment": dict(group="perms", kind="check", admin=True,
-        label="Let a caller fire a programme beat",
-        help="Station ID, the hour, a link, guest banter, a programme intro or "
-             "outro. Different from segments above: this is the programme's own "
-             "furniture rather than content someone asked for, and the station "
-             "documents that firing one explicitly bypasses its own frequency and "
-             "budget limits — so Actions per call is the only ceiling. Needs "
-             "station admin credentials. Off by default."),
+        label="Fire a programme beat",
+        help="Station ID, the hour, a link, guest banter, an intro or outro — the "
+             "programme's own furniture rather than something asked for. The station "
+             "documents that firing one bypasses its own frequency and budget gates, "
+             "so Actions per call is the only ceiling."),
     "allow_takeover": dict(group="perms", kind="check", admin=True,
-        label="Let a caller put a different show on air",
-        help="The station's own takeover: pins a show ahead of the weekly "
-             "schedule — a different DJ, for everyone listening — for an hour "
-             "by default, longer if the caller asks. Read that again before "
-             "turning it on: every other permission here is over inside a "
-             "minute, and this one keeps running after the caller has hung up. "
-             "The DJ can also cancel a takeover, including one YOU set from the "
-             "station's own admin page. The switch lands at the end of the "
-             "record playing at the time, not instantly. Needs station admin "
-             "credentials, counts against Actions per call, and is off by "
-             "default."),
+        label="Put a different show on air",
+        help="Pins a show over the weekly schedule — a different DJ, for everyone — "
+             "for an hour by default. The only caller action that outlives the call: "
+             "it keeps running after they hang up, and the DJ can also cancel a "
+             "takeover you set yourself from the station's admin page. Lands at the "
+             "end of the record playing at the time."),
 
-    # --- call behaviour ---
-    "max_call_seconds": dict(group="call", kind="number", label="Hang up after (s)",
-        help="Hard limit on call length. The DJ signs off in character first rather "
-             "than the audio just stopping. 600 = ten minutes."),
+    # --- call length ---
+    "max_call_seconds": dict(group="limits", kind="number", label="Hang up after (s)",
+        help="Hard ceiling. The DJ signs off in character first rather than the "
+             "audio just stopping. 600 = ten minutes."),
     "front_access": dict(group="security", kind="select",
-        label="Who can call the booth",
-        help="The panel is admin-only always — this is about the PHONE. "
-             "Open lets anyone who loads the page call, which is right on a "
-             "trusted network and an invitation to spend your API budget on a "
-             "public one. Guest code requires the code you hand out (the admin "
-             "password is accepted too, so you carry one). Admin only closes "
-             "the phone to callers entirely — useful while you are still "
-             "setting up. Choosing Guest or Admin without having set that "
-             "password means nobody can call, and the panel says so."),
+        label="Call-in access",
+        help="This is the PHONE. The panel is admin-only whatever you pick."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels
     # are short: the column heading carries the surface, not the label.
     "show_caller_help": dict(group="player", kind="check",
         label="“What can I ask?” button",
-        help="A small button on the card that opens the same live reference "
-             "this panel shows you — filtered to the permissions actually "
-             "enabled, so it can never suggest something the DJ would refuse. "
-             "Most callers assume a phone-in only takes requests."),
+        help="Opens the same live reference this panel shows you, filtered to "
+             "what is actually switched on. Most callers assume a phone-in only "
+             "takes requests."),
     "embed_caller_help": dict(group="player", kind="check",
         label="“What can I ask?” button (embed)",
         help="The same button, in a frame on somebody else's page."),
     "show_theme_toggle": dict(group="player", kind="check",
         label="Light / dark toggle",
-        help="Lets a viewer flip the card between light and dark and remembers "
-             "the choice. Forcing a theme below hides this either way — there "
-             "is nothing to toggle between."),
+        help="Forcing a theme below hides this either way — there is nothing "
+             "to toggle between."),
     "embed_theme_toggle": dict(group="player", kind="check",
         label="Light / dark toggle (embed)",
-        help="Usually worth turning OFF: an embed inherits the host page's "
-             "colours, and a caller flipping the card to light on a dark site "
-             "gets a bright rectangle in the middle of it."),
+        help="Usually worth off: a caller flipping the card to light on a dark "
+             "host page gets a bright rectangle in the middle of it."),
     "show_settings_gear": dict(group="player", kind="check",
         label="Settings gear",
-        help="The way into this panel from the call card. Turning it off does "
-             "not secure anything — /panel is still reachable by URL and still "
-             "asks for the admin password — it just stops advertising it to "
-             "whoever is looking at the phone."),
+        help="The way into this panel from the card. Off secures nothing — "
+             "/panel still answers by URL and still asks for the password — it "
+             "just stops advertising it."),
     "show_dj_avatar": dict(group="player", kind="check", label="DJ photo",
-        help="The persona's picture, served through this origin so it still "
-             "loads from an https page off your network."),
+        help="Served through this origin, so it still loads from an https page "
+             "off your network."),
     "embed_dj_avatar": dict(group="player", kind="check", label="DJ photo (embed)",
-        help="Off if the host page already shows the same photo beside it."),
+        help="Off if the host page already shows the same photo."),
     "show_dj_show": dict(group="player", kind="check", label="Show name",
-        help="The programme currently on air, above the tagline."),
+        help="The programme currently on air."),
     "embed_dj_show": dict(group="player", kind="check", label="Show name (embed)",
         help="Off if the host page already says what show is on."),
     "show_dj_tagline": dict(group="player", kind="check", label="DJ tagline",
         help="The persona's one-line blurb, as the station publishes it."),
     "embed_dj_tagline": dict(group="player", kind="check", label="DJ tagline (embed)",
-        help="Off if the host page already says what show is on."),
+        help="Off if the host page already carries it."),
     "show_now_playing": dict(group="player", kind="check", label="Now playing",
-        help="The track on air right now. It updates on the card's own poll, "
-             "which is every 20 seconds — slower than a host page's own ticker, "
-             "so two of them side by side will briefly disagree."),
+        help="Updates on the card's own 20-second poll, so it will briefly "
+             "disagree with a host page's faster ticker."),
     "embed_now_playing": dict(group="player", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
-    "call_button_label": dict(group="player", kind="text", label="Call button",
+    "call_button_label": dict(group="player", kind="text", label="Button text",
         needs=("call_button_uses_name", False),
         placeholder="Call the DJ",
-        help="What the button says before a call starts. Blank is “Call the "
-             "DJ”, which is the honest label when the card shows whoever "
-             "happens to be on air."),
+        help="What the button says before a call starts."),
     "call_button_uses_name": dict(group="player", kind="check",
         label="…or use the live DJ's name",
-        help="Says “Call Francesca” instead, and follows the roster as the "
-             "show changes. Reads better on a station whose listeners know "
-             "the DJs by name; it replaces the label above rather than "
-             "combining with it."),
+        help="Says “Call Francesca” instead, and follows the roster as the show "
+             "changes. Replaces the text above rather than combining with it."),
     "ask_call_feedback": dict(group="player", kind="check",
         label="Ask how the call went",
-        help="After the line drops, offers the caller a thumbs up or down. The "
-             "answer is stored against that call's own transcript, so a bad "
-             "call can be found and read back instead of remembered. Nothing "
-             "else is collected and the caller can ignore it."),
-    "widget_theme": dict(group="player", kind="select", label="Widget theme",
-        help="How the call card is coloured, including the Call, mute and hang-up "
-             "buttons. Auto follows the viewer's own light/dark setting and keeps "
-             "the in-widget toggle. Light and dark force one and hide the toggle. "
-             "Inherit matches the page the widget is embedded in — the right "
-             "choice on a site with its own colours; on the standalone page it "
-             "behaves as auto. An embed's own data-theme attribute still wins."),
-    "min_call_seconds": dict(group="call", kind="number",
-        label="Earliest the DJ may hang up (s)",
-        help="The DJ ends calls itself once one has run its course, and this is the "
-             "floor under that. 60 is the default because the opposite failure is "
-             "worse: a model deciding a call is finished after two words, with the "
-             "caller unable to tell being hung up on from the line dropping. Raise "
-             "it if calls end too briskly; 0 removes the guard and lets the DJ close "
-             "whenever it judges the conversation done. The hard limit above is the "
-             "other end of the same range."),
-    "idle_prompt_secs": dict(group="call", kind="number", label="Check in after (s)",
-        help="Seconds without SPOKEN WORDS from the caller before the DJ asks if "
-             "they're still there — background noise doesn't count, and the clock "
-             "starts each time the DJ finishes talking. 0 never checks in."),
-    "idle_max_nudges": dict(group="call", kind="number", label="Check-ins before hanging up",
+        help="A thumbs up or down under the card once the line drops, stored "
+             "against that call's own transcript so a bad one can be found and "
+             "read back. Nothing else is collected."),
+    "widget_theme": dict(group="player", kind="select", label="Colours",
+        help="Auto follows the viewer and keeps the toggle. Light and dark force "
+             "one and hide it. Inherit matches the page the widget is embedded "
+             "in; on this page it behaves as auto."),
+    "min_call_seconds": dict(group="limits", kind="number",
+        label="Earliest hang-up (s)",
+        help="The floor under the DJ ending a call itself. 60 by default: a model "
+             "deciding a call is over after two words is worse than one that "
+             "lingers, and the caller cannot tell it from the line dropping. "
+             "0 removes the guard."),
+    "idle_prompt_secs": dict(group="limits", kind="number", label="Check in after (s)",
+        help="Seconds without SPOKEN WORDS before the DJ asks if they're still "
+             "there. Background noise doesn't count. 0 never checks in."),
+    "idle_max_nudges": dict(group="limits", kind="number", label="Check-ins before hanging up",
         needs=("idle_prompt_secs", True),
-        help="After this many unanswered check-ins the DJ says goodbye and gets back "
-             "to the broadcast, rather than holding an empty line open."),
-    "tune_in_on_call": dict(group="call", kind="check", label="Tune the caller in",
-        help="Starts the live station stream in the caller's own browser once the "
-             "DJ picks up — never while it's still ringing. Two reasons: the station "
-             "refuses song requests when nobody is listening and a caller on the line "
-             "doesn't otherwise count, and it sounds like a real phone-in, with the "
-             "broadcast running quietly behind the conversation. Recommended."),
-    "tune_in_url": dict(group="call", kind="text", label="Station stream URL",
+        help="After this many unanswered check-ins the DJ signs off and gets back "
+             "to the broadcast."),
+
+    # --- tune the caller in ---
+    "tune_in_on_call": dict(group="tunein", kind="check", label="Tune the caller in",
+        help="Starts the station stream in the caller's browser at pickup, never "
+             "while ringing. The station refuses requests when nobody is listening "
+             "and a caller on the line doesn't otherwise count — and it sounds like "
+             "a real phone-in. Recommended."),
+    "tune_in_url": dict(group="tunein", kind="text", label="Stream URL",
         needs=("tune_in_on_call", True),
-        help="Where the caller's browser pulls the broadcast from. Leave blank to "
-             "derive it from the station address, which only works when the caller "
-             "is on the same network AND the page is served over plain http. If the "
-             "widget is behind TLS — anything through a reverse proxy — a browser "
-             "silently refuses to load an http stream into an https page, and the "
-             "call has no station behind it. Put the station's own https stream "
-             "address here (https://listen.example.com/stream.mp3). The pipeline "
-             "check tests it."),
-    "tune_in_volume": dict(group="call", kind="number", label="Station volume",
+        placeholder="default: derived from the station address (plain http only)",
+        help="Behind TLS a browser silently refuses to load an http stream into an "
+             "https page, and the call runs with no station behind it. Paste the "
+             "station's own https stream. The pipeline check tests it."),
+    "tune_in_volume": dict(group="tunein", kind="number", label="Volume (%)",
         needs=("tune_in_on_call", True),
-        help="How loud the broadcast sits behind the call, as a percentage. 10 is "
-             "the default: enough to feel like a live station behind the DJ, not "
-             "enough to fight with the voice. 0 keeps it silent — the caller still "
-             "counts as a listener, they just don't hear it. Much above 20 and, on "
-             "speakers, it bleeds into the caller's microphone and gets transcribed "
-             "as though they had said it."),
-    "avoid_on_air_overlap": dict(group="perms", kind="check", label="Pause the call while on air",
-        help="The call DJ and the on-air DJ are the same voice. With this on, anything "
-             "sent to air waits for the broadcast to go quiet, and the DJ steps back "
-             "from the call while it plays — telling the caller either side rather "
-             "than talking over itself."),
-    "on_air_quiet_secs": dict(group="perms", kind="number", label="Air counts as busy for (s)",
+        help="10 by default. 0 keeps it silent and the caller still counts as a "
+             "listener. Much above 20 and, on speakers, it bleeds into their "
+             "microphone and gets transcribed as if they had said it."),
+
+    # --- sharing the microphone ---
+    "avoid_on_air_overlap": dict(group="onair", kind="check", label="Pause the call while on air",
+        help="Anything sent to air waits for the broadcast to go quiet, and the DJ "
+             "steps back from the call while it plays — telling the caller either "
+             "side rather than talking over itself."),
+    "on_air_quiet_secs": dict(group="onair", kind="number", label="Air is busy for (s)",
         needs=("avoid_on_air_overlap", True),
-        help="How long after the on-air DJ speaks before the air is treated as clear. "
-             "A typical link runs 20-30 seconds."),
+        help="How long after the on-air DJ speaks before the air counts as clear. "
+             "A typical link runs 20–30 seconds."),
 
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "
@@ -653,151 +620,132 @@ SCHEMA: dict[str, dict] = {
     # style silently stopped mattering the moment you typed anything below.
     "greeting_style": dict(group="call", kind="select", label="Greeting style",
         needs=("greeting", False),
-        help="'Warm ask' picks up in persona and invites them in — what's on their "
-             "mind, or something they'd like to hear. 'Mid-world' just answers the "
-             "phone in character and lets the caller lead. Both carry the show; "
-             "neither reads out a menu."),
+        help="'Warm ask' picks up in persona and invites them in. 'Mid-world' "
+             "answers in character and lets the caller lead. Neither reads out "
+             "a menu."),
     "persona_override": dict(group="call", kind="select", label="Who answers",
-        help="Default is whoever is actually live on air — the honest answer, and "
-             "what a listener expects. Pin one DJ to force every call to them "
-             "(useful for testing a persona), or pick 'Random each call' to have a "
-             "different DJ from the roster pick up each time."),
+        help="Default is whoever is actually live on air. Pin one DJ to force "
+             "every call to them, or roll a different one from the roster each "
+             "call."),
     "greeting": dict(group="call", kind="text", label="Opening line",
-        placeholder="default: picks up in character and follows the greeting style above",
+        placeholder="default: in character, following the greeting style above",
         help="An instruction to the DJ, not a script it reads out. Writing one "
-             "REPLACES the greeting style above, which is why that field "
-             "disappears once there is anything here."),
+             "replaces the greeting style, which is why that field disappears."),
 
     "min_endpointing_delay": dict(group="turns", kind="number",
         label="Wait before replying (s)",
-        help="How long the DJ waits after you stop making sound before it "
-             "decides you have finished. Lower feels snappier and interrupts "
-             "people who pause to think; higher feels patient and adds that "
-             "much to every single reply. 0 leaves the SDK's tuned default "
-             "alone, which is the right answer until a real call says otherwise."),
+        help="How long the DJ waits after you stop making sound. Lower feels "
+             "snappier and cuts off anyone who pauses to think; higher adds that "
+             "much to every reply. 0 keeps the SDK's tuned default."),
     "max_endpointing_delay": dict(group="turns", kind="number",
         label="Longest wait (s)",
-        help="The ceiling on the above when someone is clearly mid-sentence — "
-             "trailing off, or ending on a word that expects more. 0 leaves "
-             "the default alone. Must not be below the minimum."),
+        help="The ceiling on the above when someone is clearly mid-sentence. "
+             "0 keeps the default. Must not be below the minimum."),
     "min_interruption_secs": dict(group="turns", kind="number",
         needs=("allow_interruptions", True),
         label="Sound needed to interrupt (s)",
-        help="How long a noise has to last before it stops the DJ mid-sentence. "
-             "The SDK's default is half a second of SOUND — not words — so on a "
-             "call where the station is playing into the room, half a second of "
-             "the record the caller is listening to cuts the DJ off. Real calls "
-             "came back with the DJ chopped into fragments because of it. Raise "
-             "this on a speakerphone or with tune-in on; 0 leaves the SDK's "
-             "default alone."),
+        help="The SDK's default is half a second of SOUND, not words — so with "
+             "tune-in on, half a second of the record cuts the DJ off. Real calls "
+             "came back chopped into fragments because of it. Raise it on a "
+             "speakerphone; 0 keeps the default."),
     "allow_interruptions": dict(group="turns", kind="check",
         label="Let the caller talk over the DJ",
-        help="On, a caller who starts talking stops the DJ mid-sentence, which "
-             "is how a phone call works. Off, the DJ finishes what it was "
-             "saying first — steadier on a speakerphone or a noisy line, where "
-             "the station's own audio bleeding back in can read as the caller "
+        help="On is how a phone call works. Off is steadier on a speakerphone, "
+             "where the station's own audio bleeding back can read as the caller "
              "interrupting."),
 
-    "record_calls": dict(group="call", kind="check", label="Keep call transcripts",
-        help="Writes both sides of each call, every tool it used and the "
-             "settings it ran under, to data/calls — which is how a bad call "
-             "gets diagnosed. It is also a record of a stranger's conversation "
-             "on your disk. Off writes nothing at all; Recent calls then only "
-             "shows what is already there."),
-    "record_keep": dict(group="call", kind="number", label="Transcripts to keep",
+    # --- transcripts ---
+    "record_calls": dict(group="record", kind="check", label="Keep call transcripts",
+        help="Both sides of each call, the tools it used and the settings it ran "
+             "under, written to data/calls — how a bad call gets diagnosed, and "
+             "also a stranger's conversation on your disk."),
+    "record_keep": dict(group="record", kind="number", label="How many to keep",
         needs=("record_calls", True),
-        help="Older ones are deleted as new calls land. A transcript is a few "
-             "kilobytes, so this is about how long a caller's words stay on "
-             "your disk rather than about space."),
+        help="Older ones are deleted as new calls land. This is about how long a "
+             "caller's words stay on your disk, not about space."),
 
     # --- usage ---
-    "max_concurrent_calls": dict(group="usage", kind="number", label="Simultaneous calls",
-        help="Callers on the line at the same time. Each is a separate model session. 0 = no limit."),
-    "calls_per_hour": dict(group="usage", kind="number", label="Calls per hour",
-        help="Total calls per hour across everybody — the main guard against a runaway loop. 0 = no limit."),
-    "calls_per_day": dict(group="usage", kind="number", label="Calls per day",
-        help="The hard ceiling on what a day can cost. Set this if the page is "
-             "reachable from the internet — the hourly limit alone still allows "
-             "24x that in a day. 0 = no limit."),
+    "max_concurrent_calls": dict(group="usage", kind="number", label="At once",
+        help="Callers on the line at the same time. Each is a separate model session."),
+    "calls_per_hour": dict(group="usage", kind="number", label="Per hour",
+        help="Across everybody — the main guard against a runaway loop."),
+    "calls_per_day": dict(group="usage", kind="number", label="Per day",
+        help="The hard ceiling on what a day can cost. The hourly limit alone "
+             "still allows 24× that."),
     "calls_paused": dict(group="usage", kind="check", label="Pause all calls",
-        help="Kill switch: the card still shows who's on air, but nobody can "
+        help="Kill switch. The card still shows who's on air, but nobody can "
              "start a call. Takes effect immediately."),
     "max_actions_per_call": dict(group="usage", kind="number", label="Actions per call",
-        help="How much one caller can set in motion in a single call — requests, "
-             "on-air messages and segments together. At the limit the DJ says so "
-             "warmly and keeps talking; it never sounds like an error. 0 = no cap."),
-    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait (seconds)",
-        help="How many seconds one caller waits before calling back. Set 0 while testing."),
+        help="Requests, on-air messages and segments together. At the limit the "
+             "DJ says so warmly and keeps talking — never an error."),
+    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait (s)",
+        help="How long one caller waits before calling back. 0 while testing."),
 
     # --- speech hygiene ---
     "strip_stage_directions": dict(group="speech", kind="check", label="Strip stage directions",
-        help="Models write *shuffles records* and (laughs); the voice reads them aloud. "
-             "This removes them whatever the model does."),
+        help="Models write *shuffles records* and (laughs), and the voice reads "
+             "them aloud. Removed whatever the model does."),
     "profanity_mode": dict(group="speech", kind="select", label="Expletives",
-        help="Applied to every spoken line, so it doesn't depend on the model behaving."),
+        help="Applied to every spoken line, so it never depends on the model "
+             "behaving."),
     "profanity_words": dict(group="speech", kind="text", label="Word list",
         placeholder="default: the built-in broadcast list",
-        help="Comma-separated. Blank uses the built-in list."),
+        help="Comma-separated."),
 
     # --- house style ---
     "style_conversation": dict(group="style", kind="text", label="Conversation",
-        placeholder="default: the persona sets the pace, the station keeps it moving",
-        help="Steers the call as a whole — how much the DJ leads, how fast it moves, "
-             "how it handles something it wasn't expecting. The other two only shape "
-             "the answers and the exit. e.g. 'let the caller lead; don't fill silences'."),
+        placeholder="default: the persona sets the pace",
+        help="Steers the call as a whole — how much the DJ leads, how fast it "
+             "moves. e.g. 'let the caller lead; don't fill silences'."),
     "style_answering": dict(group="style", kind="text", label="Answering",
-        placeholder="default: answer as the persona would, at its own length",
-        help="A light steer, not a character change. e.g. 'keep answers to two sentences'."),
+        placeholder="default: as the persona would, at its own length",
+        help="e.g. 'keep answers to two sentences'."),
     "style_signoff": dict(group="style", kind="text", label="Signing off",
-        placeholder="default: wrap up in character, no fixed formula",
+        placeholder="default: in character, no fixed formula",
         help="e.g. 'mention what's coming up next before you hang up'."),
 
     # --- back to air ---
     "callback_enabled": dict(group="callback", kind="check", admin=True,
         label="Mention the call on air",
-        help="One passing line between tracks after the caller hangs up. "
-             "Needs admin credentials."),
+        help="One passing line between tracks after the caller hangs up, "
+             "re-voiced by the station in the persona."),
     "callback_max_words": dict(group="callback", kind="number", label="Length (words)",
         needs=("callback_enabled", True),
-        help="Short is better — it's a mention, not a recap."),
+        help="Short is better — a mention, not a recap."),
     "callback_min_turns": dict(group="callback", kind="number", label="Min caller turns",
         needs=("callback_enabled", True),
         help="Calls that never got going aren't worth mentioning."),
     "callback_instructions": dict(group="callback", kind="text", label="Extra steer",
         needs=("callback_enabled", True),
-        placeholder="default: one passing mention, in character, no recap",
-        help="Shapes the line. e.g. 'never name the caller' or 'tie it to the current track'."),
+        placeholder="default: one passing mention, in character",
+        help="e.g. 'never name the caller' or 'tie it to the current track'."),
 
     # --- station awareness ---
     "context_recent_tracks": dict(group="context", kind="number", label="Recently played",
-        help="Each item costs time-to-first-token on every turn, not just at the start."),
+        help="Each item costs time-to-first-token on EVERY turn, not just at "
+             "the start. 0 leaves it out."),
     "context_upcoming": dict(group="context", kind="number", label="Coming up",
         help="Lets the DJ answer 'what's next' without guessing."),
     "context_booth_lines": dict(group="context", kind="number", label="On-air chatter",
         help="Recent lines from the on-air DJ, so the call doesn't repeat them."),
     "context_schedule": dict(group="context", kind="check", label="Know the rest of the line-up",
-        help="Adds the names of the station's OTHER shows, so the DJ can answer "
-             "\"what's on after this?\" instead of guessing or refusing. It does not "
-             "add times, other DJs' cards, or anything about the current show — "
-             "that comes from the Show Card and is always on. Off by default because "
-             "it costs prompt weight on every turn for a question most callers "
-             "never ask."),
+        help="The names of the station's OTHER shows, so \"what's on after this?\" "
+             "gets an answer. The current show is always known. Off by default: "
+             "prompt weight on every turn for a question most callers never ask."),
 
     # --- sounds ---
     "call_sounds": dict(group="sounds", kind="check", label="Play call sounds",
-        help="Ringing while connecting, the line picking up, a hold click when the "
-             "DJ steps onto the broadcast, hang-up, and an engaged tone when the "
-             "booth can't take the call."),
+        help="Ringing, the line picking up, a hold click when the DJ steps onto "
+             "the broadcast, hang-up, and an engaged tone."),
     "sound_pack": dict(group="sounds", kind="select", label="Sound set",
         needs=("call_sounds", True),
-        help="Both are generated in the browser — neither needs an audio file. "
-             "'Exchange' is the classic telephone-network set; 'Handset' is a "
-             "physical phone in a room: a real bell, the receiver lifting off the "
-             "cradle, the clunk of it going back down."),
+        help="Both are generated in the browser — neither needs a file. "
+             "'Exchange' is the telephone network; 'Handset' is a physical phone "
+             "in a room."),
     "sound_ring": dict(group="sounds", kind="text", label="Ring",
         needs=("call_sounds", True),
         placeholder="default: the sound set above",
-        help="Paste a URL, or upload a file, to replace this one sound."),
+        help="Paste a URL, or upload a file, to replace one sound."),
     "sound_pickup": dict(group="sounds", kind="text", label="Pick up",
         needs=("call_sounds", True), placeholder="default: the sound set above"),
     "sound_hold": dict(group="sounds", kind="text", label="On hold",

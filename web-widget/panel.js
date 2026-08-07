@@ -77,6 +77,7 @@
       const hdr = document.createElement('div');
       hdr.className = 'supergroup';
       hdr.dataset.super = sup.id;
+      hdr.id = 'sup-' + sup.id;
       hdr.innerHTML = '<span></span><em></em>';
       hdr.querySelector('span').textContent = sup.title;
       hdr.querySelector('em').textContent = sup.blurb || '';
@@ -90,6 +91,36 @@
         anchor.parentNode.insertBefore(byId[id], anchor);
       }
     });
+
+    buildNav(supers);
+  }
+
+  // Jump links across the top. The panel is six super-groups long and the only
+  // way to reach the bottom of it was scrolling past everything above — which
+  // is also how a setting gets changed on the way past. Built from the schema
+  // rather than written in the markup, so a new super-group appears here on
+  // its own; Diagnostics is appended because it is the one header the schema
+  // does not own.
+  function buildNav(supers) {
+    const nav = $('panelNav');
+    if (!nav) return;
+    nav.innerHTML = '';
+    const link = (id, title) => {
+      const a = document.createElement('a');
+      a.href = '#' + id;
+      a.textContent = title;
+      a.onclick = (e) => {
+        e.preventDefault();
+        const target = document.getElementById(id);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      nav.appendChild(a);
+    };
+    supers.forEach((sup) => {
+      if (!SCHEMA.groups.some((g) => g.super === sup.id)) return;
+      link('sup-' + sup.id, sup.title);
+    });
+    link('supDiag', 'Diagnostics');
   }
 
   function adoptSchema(schema) {
@@ -218,36 +249,68 @@
   }
 
   // Section headers summarise their own state, so the panel is readable folded.
+  // Every write goes through tag(): a summary is decoration, and a missing
+  // element must not be able to abort paint() half way and leave the panel
+  // looking like a failed load. That has happened, from one renamed id.
+  function setTag(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text == null ? '' : String(text);
+  }
+
   function paintTags() {
-    $('tagStation').textContent = (options.personas || []).length + ' personas';
+    setTag('tagStation', (options.personas || []).length + ' personas');
     const setKeys = Object.values(secrets).filter((s) => s.set).length;
-    $('tagKeys').textContent = setKeys ? setKeys + ' set' : 'none set';
-    $('tagVoice').textContent = (resolved.tts_mode || '') +
-      (resolved.tts_voice ? ' · ' + resolved.tts_voice : ' · station voice');
-    $('tagBrains').textContent = (resolved.llm_provider || '') + ' · ' + (resolved.llm_model || '');
+    setTag('tagKeys', setKeys ? setKeys + ' set' : 'none set');
+    setTag('tagVoice', (resolved.tts_mode || '') +
+      (resolved.tts_voice ? ' · ' + resolved.tts_voice : ' · station voice'));
+    setTag('tagBrains', (resolved.llm_provider || '') + ' · ' + (resolved.llm_model || ''));
+    setTag('tagEars', (resolved.stt_provider || '') + ' · ' + (resolved.stt_model || ''));
     // Permission count comes from the schema group, so it can't go stale when
     // a new permission is added.
     const permFields = Object.keys(SCHEMA.fields)
       .filter((f) => SCHEMA.fields[f].group === 'perms');
     const perms = permFields.filter((f) => resolved[f]).length;
-    $('tagPerms').textContent = perms + ' of ' + permFields.length + ' enabled';
-    $('tagSounds').textContent = resolved.call_sounds
-      ? (resolved.sound_pack === 'phone' ? 'handset' : 'exchange') : 'off';
-    $('tagStyle').textContent = [resolved.style_answering, resolved.style_signoff]
-      .filter(Boolean).length + ' set';
-    $('tagHygiene').textContent = (resolved.strip_stage_directions ? 'directions stripped' : 'raw')
-      + ' · ' + (resolved.profanity_mode === 'off' ? 'no filter' : resolved.profanity_mode);
-    $('tagUsage').textContent = resolved.calls_paused ? 'PAUSED — no calls'
-      : (resolved.max_concurrent_calls || '∞') + ' at once · '
-        + (resolved.calls_per_hour || '∞') + '/hr · '
-        + (resolved.calls_per_day || '∞') + '/day · '
-        + (resolved.max_actions_per_call || '∞') + ' actions';
-    $('tagCallback').textContent = resolved.callback_enabled
-      ? 'on · ' + resolved.callback_max_words + ' words' : 'off';
-    $('tagContext').textContent = [resolved.context_recent_tracks + ' played',
-      resolved.context_upcoming + ' queued', resolved.context_booth_lines + ' on-air'].join(' · ');
-    $('tagCall').textContent = (resolved.persona_override
-      ? 'pinned persona' : 'live DJ') + ' · ' + resolved.max_call_seconds + 's';
+    setTag('tagPerms', perms + ' of ' + permFields.length + ' enabled');
+    setTag('tagSounds', resolved.call_sounds
+      ? (resolved.sound_pack === 'phone' ? 'handset' : 'exchange') : 'off');
+    setTag('tagStyle', [resolved.style_conversation, resolved.style_answering,
+      resolved.style_signoff].filter(Boolean).length + ' set');
+    setTag('tagHygiene', (resolved.strip_stage_directions ? 'directions stripped' : 'raw')
+      + ' · ' + (resolved.profanity_mode === 'off' ? 'no filter' : resolved.profanity_mode));
+    setTag('tagUsage', (resolved.max_concurrent_calls || '∞') + ' at once · '
+      + (resolved.calls_per_hour || '∞') + '/hr · '
+      + (resolved.calls_per_day || '∞') + '/day · '
+      + (resolved.max_actions_per_call || '∞') + ' actions');
+    setTag('tagCallback', resolved.callback_enabled
+      ? 'on · ' + resolved.callback_max_words + ' words' : 'off');
+    setTag('tagContext', [resolved.context_recent_tracks + ' played',
+      resolved.context_upcoming + ' queued',
+      resolved.context_booth_lines + ' on-air'].join(' · '));
+    setTag('tagCall', resolved.persona_override ? 'pinned persona' : 'live DJ');
+    setTag('tagTurns', resolved.allow_interruptions ? 'interruptible' : 'finishes its sentence');
+    setTag('tagLimits', 'ends by ' + resolved.max_call_seconds + 's'
+      + (resolved.idle_prompt_secs ? ' · checks in at ' + resolved.idle_prompt_secs + 's' : ''));
+    setTag('tagOnair', resolved.avoid_on_air_overlap
+      ? 'waits ' + resolved.on_air_quiet_secs + 's for quiet air' : 'talks over the broadcast');
+    setTag('tagTunein', resolved.tune_in_on_call
+      ? 'on · ' + resolved.tune_in_volume + '%' : 'off — requests may be refused');
+    setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
+    setTag('tagPlayer', (resolved.call_button_uses_name ? "DJ's name" : 'generic label')
+      + ' · ' + (resolved.widget_theme || 'auto'));
+    paintLineState();
+  }
+
+  // The kill switch lives above every section, so its own state has to read
+  // from up there too — a paused line with the word "paused" three sections
+  // down is how an operator spends ten minutes wondering why nobody can call.
+  function paintLineState() {
+    const note = $('pausedNote');
+    if (!note) return;
+    const paused = $('calls_paused') ? $('calls_paused').checked : !!resolved.calls_paused;
+    note.textContent = paused
+      ? 'The line is closed — the card still shows who is on air.'
+      : 'The line is open.';
+    note.classList.toggle('paused', paused);
   }
 
   // Worked examples of what a caller can actually say, tied to the permission
@@ -418,7 +481,7 @@
     banner.innerHTML = '';
     banner.append('Start here: 1) add your ' + provider + ' API key under ');
     const jump = document.createElement('a');
-    jump.textContent = 'API keys';
+    jump.textContent = 'Connections';
     jump.href = '#';
     jump.onclick = (e) => {
       e.preventDefault();
@@ -504,9 +567,10 @@
   // none exists — an open panel is fine on a trusted LAN but should be a
   // choice, not an accident.
   function paintSecurity() {
-    $('tagSecurity').textContent =
-      (authConfigured ? 'admin set' : 'admin OPEN')
-      + ' · ' + (guestConfigured ? 'line private' : 'line open');
+    const MODE = { auto: 'automatic', open: 'open to anyone',
+                   guest: 'guest code', admin: 'admin only' };
+    setTag('tagSecurity', (MODE[resolved.front_access] || resolved.front_access || '')
+      + ' · ' + (authConfigured ? 'admin set' : 'ADMIN OPEN'));
     $('curPwRow').style.display = authConfigured ? '' : 'none';
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
     $('logoutBtn').hidden = !authConfigured;
@@ -523,7 +587,7 @@
       (sub || $('panel').firstElementChild).insertAdjacentElement('afterend', nudge);
     }
     nudge.textContent = 'No panel password set — anyone who can reach this page can '
-      + 'change settings and spend your API keys. Set one under Security before '
+      + 'change settings and spend your API keys. Set one under Access before '
       + 'exposing this beyond your own machine.';
   }
 
@@ -784,6 +848,7 @@
       const onChange = () => {
         markClean();
         applyVisibility();
+        if (f === 'calls_paused') paintLineState();
         // The two reference lists describe the permissions, so they follow
         // the switches rather than waiting for a save.
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'perms') {
@@ -822,8 +887,8 @@
       }
       tag.classList.toggle('missing', !have);
       tag.title = have
-        ? 'Uses the station admin credentials stored under API keys.'
-        : 'Needs the station admin username and password under API keys. '
+        ? 'Uses the station admin credentials stored under Station.'
+        : 'Needs the station admin username and password under Station. '
           + 'Without them this stays switched on and quietly never happens.';
     });
   }
@@ -843,6 +908,10 @@
       const anchor = prow || el.closest('.row') || el.closest('.check');
       if (prow && prow.dataset.help !== f) return;
       if (!anchor || !meta.help) return;
+      // The kill switch is rendered in the header bar rather than in its
+      // section, and a paragraph of schema help dropped into that bar would
+      // push every section below it down the page. It has its own line there.
+      if (anchor.closest('.linestate')) return;
       let hint = anchor.nextElementSibling;
       if (!hint || !hint.classList.contains('hint') || !hint.dataset.fromSchema) {
         hint = document.createElement('p');
