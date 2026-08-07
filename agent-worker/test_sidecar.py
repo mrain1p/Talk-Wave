@@ -48,10 +48,12 @@ from tests.test_http import (  # noqa: F401
     TestUsageControls,
 )
 from tests.test_widget import (  # noqa: F401
+    TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
+    TestPushToTalkIsPerSurfaceAndOffByDefault,
     TestSoundPacks,
     TestTheCallButtonSaysWhatTheOperatorChose,
     TestTheCallButtonSurvivesTheUpgrade,
@@ -60,6 +62,7 @@ from tests.test_widget import (  # noqa: F401
     TestThePreviewCannotDisagreeWithTheCard,
     TestTheServiceWorkerStaysOutOfTheWay,
     TestTheStationsOwnColoursReachTheCard,
+    TestTheWidgetActuallyParses,
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
 )
@@ -158,6 +161,13 @@ from tests.test_voice import (  # noqa: F401
     TestTheVoiceCanLiveInTheUrl,
     TestVoiceDiscoveryIsNotHardcodedToOneShape,
     TestWhatTheBackendSaidReachesTheOperator,
+)
+from tests.test_voicemail import (  # noqa: F401
+    TestAMessageIsNeverLost,
+    TestAVoicemailIsACallEntryToo,
+    TestGreetingClipsFollowWhatTheyWereRenderedFrom,
+    TestTheBeepIsRealAudio,
+    TestTheMachineAnswersThroughTheRightRefusals,
 )
 from tests.test_docs import (  # noqa: F401
     TestTheDocsKeepUpWithTheCode,

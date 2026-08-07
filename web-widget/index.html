@@ -183,6 +183,21 @@
         </div>
       </div>
 
+      <!-- Push to talk, when the operator switched it on for this surface.
+           The bar is the caller's microphone: lit means the DJ can hear them.
+           Tap latches it open, holding it is momentary, and space mirrors the
+           hold on a keyboard. The whole block only exists on a card whose
+           config asked for it (.card.ptt), so it costs no height anywhere
+           else — and it is inside the rig, so it reserves its space from
+           first paint like every other in-call band. -->
+      <div class="pttrow" id="pttRow">
+        <p class="ptthint">The DJ can only hear you while this bar is lit.</p>
+        <button class="pttbar" id="pttBtn" type="button" aria-pressed="false">
+          <span class="pttmain" id="pttMain">Tap to talk</span>
+          <span class="pttsub">or hold it down · space works too</span>
+        </button>
+      </div>
+
       <!-- The last row of the card, on every surface. -->
       <div class="actionrow">
         <button id="callBtn" disabled>Call the DJ</button>

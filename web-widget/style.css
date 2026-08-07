@@ -200,7 +200,12 @@
     color: var(--alpenglow); margin: 0 0 2px; letter-spacing: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .show {
+  /* Scoped to the who-row deliberately. "show" is also the ticker's
+     visibility class, and the bare selector dressed every lit transcript
+     line as a bold uppercase micro-label — seen on a real embed, reported as
+     "the transcript font is horrible", and invisible in review because the
+     two rules are 1,500 lines apart. */
+  .who-row .show {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; color: var(--sage-dim); font-weight: 700; margin: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -466,6 +471,45 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* --- push to talk ------------------------------------------------------
+     The bar IS the microphone: lit means the DJ can hear you. It only exists
+     on a card whose config asked for it, decided at first paint — so it never
+     changes an already-settled height, and everyone else pays nothing. */
+  .pttrow { display: none; }
+  .card.ptt .pttrow { display: block; padding: 9px 0 0; }
+  /* Open mic is a state like muted, not a second primary — so the fill only
+     arrives while the bar is genuinely live, in the amber the on-air chrome
+     already uses for "audio is happening". */
+  .card .pttbar {
+    width: 100%; height: 42px; padding: 0;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px;
+    border: 1px solid var(--amber); background: transparent; color: var(--amber);
+    touch-action: manipulation; -webkit-user-select: none; user-select: none;
+  }
+  .card .pttbar:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--amber) 10%, transparent); filter: none;
+  }
+  .card .pttbar.on {
+    background: var(--amber); color: var(--pine);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 35%, transparent);
+  }
+  .pttbar .pttmain {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  .pttbar .pttsub {
+    font: 700 8px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; opacity: .7;
+  }
+  .ptthint {
+    margin: 0 0 7px; font-size: 12px; line-height: 1.4;
+    color: var(--sage); text-align: center;
+  }
+  /* The Mute button is the open-mic world's control; with the bar owning the
+     microphone it is a second switch wired to the same wire. */
+  .card.ptt #muteBtn { display: none; }
+
   .controls { display: flex; gap: 9px; flex: 0 0 auto; flex-wrap: wrap; }
   /* Same reasoning as the volume slider above: this row's height is paid for
      on every idle embed, whether or not anybody is on a call. */
@@ -642,17 +686,11 @@
     scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
   }
   .captions.on { display: block; }
-  /* The one message surface. "Not connected", "No answer — the booth didn't
-     pick up", "Call ended" all land here, where the caller is already
-     looking, instead of in the header band next to ON AIR NOW where a
-     sentence sat inside a row of labels and read as one.
-     Absolutely placed so it shares the box with the transcript rather than
-     stacking above it — either the card is saying something or the DJ is,
-     never both. */
-  /* Absolutely placed so it SHARES the box with the transcript rather than
-     stacking above it — either the card is saying something or the DJ is,
-     never both, and stacking would have cost the box a third line it does
-     not have. */
+  /* The one message surface. "No answer — the booth didn't pick up" and
+     "Call ended" land here, where the caller is already looking, instead of
+     in the header band next to ON AIR NOW. Absolutely placed so it SHARES
+     the box with the transcript rather than stacking above it — either the
+     card is saying something or the DJ is, never both. */
   #status {
     position: absolute; inset: 9px 12px;
     display: flex; align-items: center; gap: 8px;
@@ -737,11 +775,8 @@
   .ticker.sys .who { color: var(--amber); }
 
   /* The corner controls sit in the 38px header band, level with its text.
-     They are chrome, not actions — no border, no fill, they never compete
-     with the primary button. */
-  /* Chrome, not actions — no border, no fill, never competing with the
-     primary button. Which of these exist at all is the backend's call; see
-     applyControls() in app.js. */
+     Chrome, not actions — never competing with the primary button. Which of
+     them exist at all is the backend's call; see applyControls() in call.js. */
   /* --- the corner controls and the ask popup ----------------------------- */
   /* Big enough to see and to hit. These were 26px of --sage-dim at 14px
      type — chrome so quiet that the theme toggle was reported missing while
@@ -809,6 +844,12 @@
     display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px;
   }
   .panelbar .gear { text-decoration: none; }
+  /* Sign out is a word, not a glyph — same quiet chrome, its own width. */
+  .panelbar .signout {
+    width: auto; padding: 0 9px;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase;
+  }
 
   /* Wider than the call card on purpose, and the one place the two surfaces
      are allowed to disagree about width. The card is a phone and wants to be
@@ -1256,6 +1297,14 @@
     font: inherit; font-size: 11.5px; padding: 4px 6px; border-radius: 6px;
     border: 1px solid var(--line2); background: var(--card); color: var(--dim);
   }
+  /* The Download control is an <a> so the browser's own save-as behaviour
+     does the work, but it sits in a row of buttons and has to dress like
+     one — an anchor gets none of the button element's base styling. */
+  .soundlist a.sdl {
+    display: inline-flex; align-items: center; text-decoration: none;
+    font: 600 11.5px var(--font-body); padding: 4px 10px; border-radius: 9px;
+    cursor: pointer;
+  }
   .result {
     font-size: 12px; line-height: 1.55; padding: 10px 12px; border-radius: 9px;
     background: var(--bg); border: 1px solid var(--line); color: var(--dim);
@@ -1615,7 +1664,7 @@
        page moved with it, with nobody touching anything. So each line still
        wraps, and each has a fixed number of lines to wrap into. */
     .who-row { flex-wrap: wrap; }
-    .dj, .show, .tagline {
+    .dj, .who-row .show, .tagline {
       white-space: normal; overflow: hidden; text-overflow: clip;
       display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
     }
@@ -1655,6 +1704,11 @@
   body.compact {
     padding: 10px; background: transparent;
     min-height: 100vh; display: flex; flex-direction: column;
+    /* Never a scrollbar inside the widget: the frame follows the reported
+       height, and a widget that scrolls itself inside somebody's page reads
+       as broken. If a host pins the frame too short, the bottom clips — the
+       honest trade, because data-height is the host saying it knows best. */
+    overflow: hidden;
   }
   body.compact .card { width: 100%; flex: 1 0 auto; display: flex; flex-direction: column; }
   /* Idle, the Call button sinks to the BOTTOM of whatever room the host gave
@@ -1672,8 +1726,12 @@
      inside it, so there is nothing to jump when a call starts. */
   body.compact .card .rig { margin-top: auto; }
   /* Idle in an embed the Call button is the frame's one action, sized like
-     the host page's own bottom-row buttons rather than a chip beside them. */
-  body.compact #callBtn:not(.ringing):not(.answering):not(.live) { width: 100%; }
+     the host page's own bottom-row buttons rather than a chip beside them —
+     including in HEIGHT: the station page's Send and Listen Live are ~44px,
+     and a 31px chip beside them read as belonging to a different page. */
+  body.compact #callBtn:not(.ringing):not(.answering):not(.live) {
+    width: 100%; height: 44px; font-size: 12px;
+  }
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
@@ -1701,13 +1759,7 @@
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
   }
-  /* Reserved, not removed. This is the caption surface an EMBED uses, so it
-     is the one that was making the host page jump: the row appeared on the
-     first spoken word and the frame grew under whoever was reading it. It now
-     holds its two lines from the moment the page loads, empty or not.
-     `visibility` rather than `display` so it is still skipped by a screen
-     reader while it has nothing in it. */
-  /* Reserved, not removed — it holds its two lines from the moment the page
+  /* Reserved, not removed — it holds its lines from the moment the page
      loads, empty or not, because this is the caption surface an EMBED uses
      and it is the one that was making the host page jump. `visibility`
      rather than `display` so a screen reader still skips it while empty. */

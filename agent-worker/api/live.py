@@ -221,6 +221,16 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
             "square" if str(cfg.get("avatar_style")) == "square" else "round"
         ),
         "speakerDefault": bool(cfg.get("default_to_speaker")),
+        # Like controls/card: /live is cached across every caller and cannot
+        # know which surface is asking, so both answers travel and the widget
+        # picks on `framed`.
+        "ptt": bool(cfg.get("show_push_to_talk")),
+        "embedPtt": bool(cfg.get("embed_push_to_talk")),
+        "voiceEffect": str(cfg.get("voice_effect") or "none"),
+        # In look_payload as well as /live: the panel's preview exists to
+        # show what a setting does to the card, and this one can turn the
+        # Call button into "Leave a message".
+        "voicemailWhen": str(cfg.get("voicemail_when") or "never"),
         "callLabel": call_button_label(cfg, persona_name),
         "askFeedback": bool(cfg.get("ask_call_feedback")),
     }
@@ -340,6 +350,9 @@ async def handle_live(request: web.Request) -> web.Response:
                     # The operator has closed the line; the card says so
                     # instead of offering a button that can't work.
                     "callsPaused": bool(cfg.get("calls_paused")),
+                    # The answering-machine policy, so the card can offer
+                    # "Leave a message" exactly where it paints a refusal.
+                    "voicemailWhen": str(cfg.get("voicemail_when") or "never"),
                     # True when several station reads in a row have failed —
                     # the card can say "station struggling" instead of the
                     # prompt just silently thinning.

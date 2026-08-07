@@ -56,6 +56,8 @@
          aria-label="Back to the call page">&#8592;</a>
       <button class="gear" id="themeBtn" title="Light / dark"
               aria-label="Toggle light or dark">&#9681;</button>
+      <button class="gear signout" id="dashLogoutBtn" hidden
+              title="Sign this browser out of the panel and the phone">Sign out</button>
     </div>
     <h2>Call-in settings</h2>
     <p class="sub">Applies to the next caller — no restart. Clearing a field
@@ -637,9 +639,11 @@
 
         <details class="advanced">
           <summary>Use your own</summary>
-          <p class="hint wide" style="margin-top:0">Each sound can be a built-in,
-            a file you upload here, or a URL you host. Uploads stay on this
-            machine — mp3, wav, ogg, m4a, aac or webm, up to 2 MB each.</p>
+          <p class="hint wide" style="margin-top:0">Pick each sound from the
+            dropdown: the set's default, a file you upload, or a URL you host.
+            Uploads stay on this machine — mp3, wav, ogg, m4a, aac or webm,
+            2&nbsp;MB each, 20 files / 20&nbsp;MB in total — and can be played,
+            downloaded or removed below. The built-in sets can't be deleted.</p>
           <div class="row">
             <label for="sound_ring">Ring</label>
             <input type="text" id="sound_ring" />
@@ -668,6 +672,55 @@
           <ul class="soundlist" id="soundList"></ul>
         </details>
         <div class="result" id="soundResult"></div>
+      </div>
+    </details>
+
+    <!-- Voicemail. The greeting clips are STAGED, not generated per call —
+         the button below renders one per persona through the configured TTS
+         and reports each result, because a persona whose voice the backend
+         does not have fails and the operator has to know which one. -->
+    <details data-group="voicemail" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Voicemail</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="voicemail_when">Answer with voicemail</label>
+          <select id="voicemail_when"></select>
+        </div>
+        <div class="row">
+          <label for="voicemail_greeting">Greeting</label>
+          <input type="text" id="voicemail_greeting" />
+        </div>
+        <div class="row narrow">
+          <label for="voicemail_max_seconds">Message ceiling (s)</label>
+          <input type="number" id="voicemail_max_seconds" min="5" max="120" step="5" />
+        </div>
+        <div class="row">
+          <label for="voicemail_destination">Messages go</label>
+          <select id="voicemail_destination"></select>
+        </div>
+
+        <h4 class="subhead">Staged greetings</h4>
+        <p class="hint wide" style="margin-top:0">Rendered once per persona in
+          their own voice, so the machine answers instantly instead of making a
+          caller wait on TTS. Re-run after changing the greeting text, a
+          persona's voice, or the voice backend — unchanged clips are skipped.</p>
+        <div class="testrow">
+          <button id="vmStageBtn">Stage greetings</button>
+          <span class="hint" style="margin:0">One TTS render per persona that
+            changed — the same money a single spoken line costs.</span>
+        </div>
+        <ul class="soundlist" id="vmStatusList"></ul>
+        <div class="result" id="vmStageResult"></div>
+
+        <h4 class="subhead">Messages</h4>
+        <p class="hint wide" style="margin-top:0">Every message lands here
+          whatever the delivery mode, so the night can always be read back.
+          Nothing is recorded as audio — the transcript is the message.</p>
+        <div class="testrow">
+          <button id="vmRefreshBtn" class="btnquiet">Load messages</button>
+          <button id="vmClearBtn" class="btnquiet">Clear</button>
+        </div>
+        <div class="result scrolly" id="vmMessages"></div>
       </div>
     </details>
 
@@ -740,6 +793,12 @@
 
           <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
 
+          <div class="prow" data-help="show_push_to_talk">
+            <span class="plabel">Push to talk</span>
+            <input type="checkbox" id="show_push_to_talk" aria-label="Push to talk on the page" />
+            <input type="checkbox" id="embed_push_to_talk" aria-label="Push to talk in an embed" />
+          </div>
+
           <div class="prow" data-help="show_dj_avatar">
             <span class="plabel">DJ photo</span>
             <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />
@@ -765,6 +824,10 @@
         <div class="row">
           <label for="avatar_style">DJ photo shape</label>
           <select id="avatar_style"></select>
+        </div>
+        <div class="row">
+          <label for="voice_effect">Voice effect</label>
+          <select id="voice_effect"></select>
         </div>
 
         <h4 class="subhead">The Call button</h4>

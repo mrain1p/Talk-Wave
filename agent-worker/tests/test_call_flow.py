@@ -33,8 +33,12 @@ class TestCallStructure(unittest.TestCase):
         import main
 
         body = inspect.getsource(main.entrypoint)
-        self.assertLess(len(body.splitlines()), 30)
+        # 40, up from 30 when voicemail arrived: routing a vm- room to the
+        # answering machine is exactly the deciding-who-answers this function
+        # is for. Call BEHAVIOUR appearing here is still the thing to refuse.
+        self.assertLess(len(body.splitlines()), 40)
         self.assertIn("probe-", body)          # still refuses probe rooms
+        self.assertIn("vm-", body)             # and routes the machine's rooms
         for phase in ("prepare()", "start()", "greet()"):
             self.assertIn(phase, body)
 

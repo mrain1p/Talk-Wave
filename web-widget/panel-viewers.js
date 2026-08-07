@@ -181,7 +181,9 @@
     // the row. The year is never the thing you are looking for in a list that
     // holds the last forty calls.
     sum.querySelector('.when').textContent = callTime(c.startedAt, 'short');
-    sum.querySelector('.dj').textContent = c.persona?.name || 'DJ';
+    sum.querySelector('.dj').textContent =
+      (c.kind === 'voicemail' ? '✉ Voicemail · ' : '')
+      + (c.persona?.name || 'DJ');
     sum.querySelector('.len').textContent = `${Math.round(c.durationSecs || 0)}s`;
     sum.querySelector('.did').textContent =
       `${turns} turn${turns === 1 ? '' : 's'}`

@@ -160,6 +160,15 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # say how long anything kept sticks around.
     "record_calls":     (None, True),
     "record_keep":      (None, 40),
+
+    # --- voicemail --------------------------------------------------------
+    # A second, much smaller kind of call: greeting, beep, one caller
+    # utterance through STT, delivered. Nothing is recorded as audio — the
+    # transcript is the message. docs/VOICEMAIL.md is the design.
+    "voicemail_when":        (None, "never"),
+    "voicemail_greeting":    (None, ""),
+    "voicemail_max_seconds": (None, 30),
+    "voicemail_destination": (None, "hold"),
     "max_call_seconds": (None, 600),
     # Floor on the DJ hanging up by itself. A model that decides a call is
     # finished after two words is worse than one that lingers, so nothing can
@@ -267,6 +276,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "show_settings_gear": (None, True),
     "show_dj_avatar":     (None, True),
     "embed_dj_avatar":    (None, True),
+    # Push to talk: the caller's microphone is closed except while they hold
+    # (or latch) the talk bar. Off by default — open-mic is what every
+    # existing deployment does, and a caller suddenly needing to press a
+    # button to be heard is a behaviour change, not a repaint.
+    "show_push_to_talk":  (None, False),
+    "embed_push_to_talk": (None, False),
+    # A colour on the DJ's voice, applied in the caller's browser only — the
+    # broadcast never hears it. One answer for both surfaces: the effect is
+    # part of the DJ's character, and a DJ who is CB on the page and clean in
+    # an embed is two characters.
+    "voice_effect":       (None, "none"),
     # Shape, not visibility — so it is one answer for both surfaces rather
     # than a third column in a matrix of on/off switches. Round is the
     # default because a portrait in a circle reads as a person and a portrait
@@ -518,6 +538,8 @@ GROUPS = [
     ("callback", "line",   "Back to air",         "What the station says after the call."),
     ("sounds",   "line",   "Call sounds",         "Ring, pickup and hang-up."),
     ("record",   "line",   "Call transcripts",    "What is written to disk, and for how long."),
+    # Its own section, not rows inside another — the operator's explicit call.
+    ("voicemail", "line",  "Voicemail",           "When the booth can't pick up, the machine does."),
 
     ("player",   "card",   "Player settings",     "What the card shows, here and in an embed."),
     ("embed",    "card",   "Embed on another page", "The snippet, and what it looks like."),
@@ -679,6 +701,20 @@ SCHEMA: dict[str, dict] = {
         help="The way into this panel from the card. Off secures nothing — "
              "/panel still answers by URL and still asks for the password — it "
              "just stops advertising it."),
+    "show_push_to_talk": dict(group="player", kind="check",
+        label="Push to talk",
+        help="The caller's mic stays closed except while they hold (or tap to "
+             "latch) a talk bar — space works on a keyboard. Better control in "
+             "a noisy room, and the DJ never hears a TV in the background. The "
+             "mic permission is still asked once, at pickup."),
+    "embed_push_to_talk": dict(group="player", kind="check",
+        label="Push to talk (embed)",
+        help="The same bar, on the embedded card."),
+    "voice_effect": dict(group="player", kind="select", label="Voice effect",
+        help="A radio colour on the DJ's voice, applied in the caller's "
+             "browser — the broadcast never hears it. On phones it plays "
+             "through the default output, so the Speaker/earpiece button has "
+             "nothing to route while an effect is on."),
     "show_dj_avatar": dict(group="player", kind="check", label="DJ photo",
         help="Served through this origin, so it still loads from an https page "
              "off your network."),
@@ -814,6 +850,29 @@ SCHEMA: dict[str, dict] = {
              "interrupting."),
 
     # --- transcripts ---
+    # --- voicemail ---
+    "voicemail_when": dict(group="voicemail", kind="select", label="Answer with voicemail",
+        help="'When a live call is impossible' turns every refusal — nobody on "
+             "air, line paused, over the caps, all lines busy — into a message "
+             "instead of silence. 'Always' makes the line voicemail-only, the "
+             "cheapest way to run it: no LLM turns at all."),
+    "voicemail_greeting": dict(group="voicemail", kind="text", label="Greeting",
+        placeholder="derived: “You've reached {station}. {DJ} is on the air — "
+                    "leave a request after the beep.”",
+        help="Spoken in the on-air DJ's own voice, so it is staged ahead of "
+             "time below rather than generated while a caller waits. Changing "
+             "this re-renders every persona's clip on the next staging run."),
+    "voicemail_max_seconds": dict(group="voicemail", kind="number",
+        label="Message ceiling (s)",
+        help="The hard stop on one message. STT runs for at most this long, "
+             "which is what makes voicemail cheap to leave wide open."),
+    "voicemail_destination": dict(group="voicemail", kind="select", label="Messages go",
+        help="'Held for you' is the safe default — messages land below, and "
+             "nothing reaches the air without you. The other two act on the "
+             "station and need its admin credentials: a request rides the same "
+             "path a live caller's does, and 'to the on-air DJ' hands the gist "
+             "to the broadcast as something to mention."),
+
     "record_calls": dict(group="record", kind="check", label="Keep call transcripts",
         help="Both sides of each call, the tools it used and the settings it ran "
              "under, written to data/calls — how a bad call gets diagnosed, and "
@@ -952,6 +1011,22 @@ STATIC_CHOICES = {
     "avatar_style": [
         ("round", "Round — a portrait"),
         ("square", "Square — a thumbnail"),
+    ],
+    "voice_effect": [
+        ("none", "None — the voice as the backend made it"),
+        ("telephone", "Telephone — narrow, like a real phone line"),
+        ("cb", "CB radio — squeezed and a little dirty"),
+        ("walkie", "Walkie-talkie — tight, crunchy, push-to-talk energy"),
+    ],
+    "voicemail_when": [
+        ("never", "Never — the line rings out as it does today"),
+        ("closed", "When a live call is impossible (busy, paused, off air, capped)"),
+        ("always", "Always — the line is voicemail-only"),
+    ],
+    "voicemail_destination": [
+        ("hold", "Held for you — read them in this panel"),
+        ("request", "Sent to the station as a song request"),
+        ("air", "Handed to the on-air DJ to mention"),
     ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),

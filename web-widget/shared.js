@@ -25,13 +25,19 @@ window.Callin = (function () {
   // file.
   const framed = window.parent !== window;
 
-  // Theme: an explicit choice is remembered and beats the OS setting. Embeds
-  // can force one with ?theme=light|dark so the widget matches the host page.
+  // Theme, three strengths. ?theme= FORCES one: the host has decided, the
+  // toggle goes away. ?themeDefault= is what embed.js sends for a host's
+  // data-theme now — the widget STARTS matched to the page, but the viewer's
+  // toggle still works and their explicit choice is remembered over it. The
+  // difference exists because the operator embedding on their own station
+  // page set data-theme="dark" and then reported the toggle missing: pinning
+  // the starting point and confiscating the control were one lever.
   const themeForcedByHost = !!params.get('theme');
+  const themeDefault = params.get('themeDefault') || '';
 
   (function theme() {
     const forced = params.get('theme');
-    const saved = forced || localStorage.getItem('callinTheme');
+    const saved = forced || localStorage.getItem('callinTheme') || themeDefault;
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
@@ -258,9 +264,9 @@ window.Callin = (function () {
   ];
 
   return {
-    $, params, compact, captionsMode, framed, themeForcedByHost,
+    $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     ASKS, NEVER, CALL_KEY, callKey,
-    ctx, tone, noise, pack, playSound, startRinging, stopRinging,
+    ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   };
 })();

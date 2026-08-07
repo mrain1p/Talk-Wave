@@ -113,6 +113,16 @@ async def entrypoint(ctx: JobContext) -> None:
     # the environment before building providers, since the SDKs read env.
     secrets_store.apply_to_env()
 
+    # A vm- room is the answering machine, not a degraded call: no agent, no
+    # tools, no LLM — a staged greeting, a beep, one utterance through STT.
+    # The prefix is decided when the token is minted, so it is known before
+    # anything connects. See voicemail/capture.py.
+    if ctx.room.name.startswith("vm-"):
+        from voicemail.capture import answer
+
+        await answer(ctx)
+        return
+
     call = CallSession(ctx)
     await call.prepare()    # the caller hears this as ringing
     await call.start()      # the DJ is on the line

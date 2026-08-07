@@ -1081,3 +1081,127 @@ class TestSoundPacks(unittest.TestCase):
         self._pack("vintage", ["ring.mp3"])
         choices = settings_store.schema_payload()["fields"]["sound_pack"]["choices"]
         self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
+
+
+class TestPushToTalkIsPerSurfaceAndOffByDefault(unittest.TestCase):
+    """The bar is the caller's microphone, and whether it exists is the
+    operator's per-surface answer, carried on /live like the corner controls.
+    Off by default: open-mic is what every existing deployment does, and a
+    caller suddenly needing to press a button to be heard is a behaviour
+    change, not a repaint."""
+
+    def test_defaults_off_on_both_surfaces(self):
+        from api import live as api_live
+
+        payload = api_live.look_payload({})
+        self.assertFalse(payload["ptt"])
+        self.assertFalse(payload["embedPtt"])
+
+    def test_each_surface_is_answered_separately(self):
+        from api import live as api_live
+
+        payload = api_live.look_payload(
+            {"show_push_to_talk": True, "embed_push_to_talk": False})
+        self.assertTrue(payload["ptt"])
+        self.assertFalse(payload["embedPtt"])
+
+    def test_the_widget_reads_both_keys(self):
+        # The same drift trap as the corner controls: a key renamed on one
+        # side silently loses the feature rather than raising anything.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("d.embedPtt : d.ptt", call_js)
+
+    def test_the_mic_starts_closed_on_a_ptt_call(self):
+        # Enabled first (that is the permission prompt and the track), then
+        # closed straight away — a caller on a push-to-talk line whose mic
+        # opens hot has been betrayed by the one promise the bar makes.
+        # UNLESS they already pressed the bar during the ring: a latch made
+        # early is a decision, and the post-connect close stomping it is how
+        # a lit bar ended up muted on a real call.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        start = call_js.split("await room.connect(url, token);")[1][:700]
+        self.assertIn("setMicrophoneEnabled(true)", start)
+        self.assertIn("setMicOpen(false)", start)
+        self.assertIn("!pttOpen", start)
+
+    def test_mic_switches_are_serialized_and_verified(self):
+        # Concurrent setMicrophoneEnabled calls resolve in whatever order the
+        # SDK pleases; the reported failure was a lit bar over a muted mic.
+        # One queue driving toward the LATEST intent, and a reconcile that
+        # tells the CALLER when the hardware still disagrees.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("micOp = micOp.then", call_js)
+        self.assertIn("pub.isMuted", call_js)
+        self.assertIn("tap the bar again", call_js)
+
+    def test_the_quiet_caller_nudge_knows_about_the_bar(self):
+        # "Check your microphone" to somebody deliberately holding it closed
+        # reads as the DJ not knowing its own phone.
+        source = (AGENT_WORKER / "call" / "lifecycle.py").read_text(encoding="utf-8")
+        self.assertIn("push to talk", source)
+        self.assertIn("show_push_to_talk", source)
+
+
+class TestAHostThemeIsADefaultNotADecree(unittest.TestCase):
+    """The operator embedded the widget on their own station page with
+    data-theme="dark" and then reported the theme toggle missing: pinning the
+    starting look and confiscating the control were one lever. They are two
+    now — data-theme seeds the widget, data-lock-theme is the decree."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.embed = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        cls.shared = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+
+    def test_embed_sends_the_soft_param_by_default(self):
+        self.assertIn('"&themeDefault="', self.embed)
+        self.assertIn('data-lock-theme', self.embed)
+
+    def test_only_a_real_force_hides_the_toggle(self):
+        # themeForcedByHost keys on ?theme= alone; a default must leave the
+        # toggle wired up.
+        self.assertIn("themeForcedByHost = !!params.get('theme')", self.shared)
+        self.assertIn("|| themeDefault", self.shared)
+
+    def test_the_dj_show_line_cannot_dress_the_ticker(self):
+        # "show" is both the DJ-show line's class and the ticker's visibility
+        # class. The bare `.show` selector dressed every lit transcript line
+        # as a bold uppercase micro-label — seen on a real embed. Scoped now,
+        # and this pins it scoped.
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        import re
+
+        bare = [m for m in re.finditer(r"(?m)^\s*\.show\s*[,{]", css)]
+        self.assertEqual([], bare,
+                         "a bare .show selector will restyle the lit ticker")
+
+
+class TestTheWidgetActuallyParses(unittest.TestCase):
+    """Every .js in web-widget/, syntax-checked for real.
+
+    0.9.128 shipped an unescaped apostrophe in one string literal in call.js.
+    The whole IIFE died, every embed froze at "Checking…" with no height
+    reporting, and 582 tests stayed green while it happened — the contract
+    test READS these files but nothing ever PARSED one. `node --check` is
+    that parse. CI's runner has node, so no broken widget reaches an image;
+    locally the test skips if node is missing, and the wavetalk-verify skill
+    is the local backstop: load both pages, read the console.
+    """
+
+    def test_every_widget_script_parses(self):
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed here — CI enforces this check")
+        for path in sorted((REPO / "web-widget").glob("*.js")):
+            with self.subTest(script=path.name):
+                proc = subprocess.run(
+                    [node, "--check", str(path)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(
+                    0, proc.returncode,
+                    f"{path.name} does not parse:\n{proc.stderr.strip()}",
+                )
