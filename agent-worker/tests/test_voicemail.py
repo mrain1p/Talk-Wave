@@ -162,18 +162,21 @@ class TestAMessageIsNeverLost(_VmDirs):
 
 
 class TestTheMachineAnswersThroughTheRightRefusals(unittest.TestCase):
-    """Voicemail exists FOR the closed line: paused and lines-busy must not
-    close it, while the caller cooldown and the daily ceilings still do. The
-    match is on the caller-facing wording, so this pins both sides."""
+    """Voicemail exists FOR the refusals a live call meets: lines-busy must
+    not close it, while the kill switch, the caller cooldown and the daily
+    ceilings still do. Paused used to answer through too, until the operator
+    drew the hierarchy: the kill switch is the LINE, and both transmission
+    modes hang off it — a paused line that still took messages made the
+    dashboard's one big switch a lie. The match is on the caller-facing
+    wording, so this pins both sides."""
 
     def test_the_line_state_refusals_are_the_ones_matched(self):
         from api import tokens
 
         self.assertTrue(tokens._refusal_is_line_state(
-            "The booth isn't taking calls at the moment — the line's closed for now."))
-        self.assertTrue(tokens._refusal_is_line_state(
             "The booth line is tied up with another caller. Give it a minute and try again."))
         for still_refused in (
+            "The booth isn't taking calls at the moment — the line's closed for now.",
             "You've only just hung up — give it 30s before ringing back.",
             "The switchboard has been lit up this hour. Try the booth again a little later.",
         ):
@@ -187,7 +190,6 @@ class TestTheMachineAnswersThroughTheRightRefusals(unittest.TestCase):
         from api import tokens
 
         source = inspect.getsource(tokens._check_usage)
-        self.assertIn("line's closed", source)
         self.assertIn("tied up", source)
 
 
@@ -545,11 +547,12 @@ class TestTheDjOnlySpeaksOnce(unittest.TestCase):
         self.assertIn("dropEffect()", before_attach)
 
 
-class TestTheMachineOnlyListensAfterTheBeep(unittest.TestCase):
-    """Two operator reports from one attempt: the mic was open before the
-    machine said it was listening, and the machine hung up almost the moment
-    it beeped — the quiet clock had been running since before the greeting,
-    so the nobody-spoke window was spent before the caller could start."""
+class TestTheBeepIsACueNotAGate(unittest.TestCase):
+    """Both halves are operator reports. The quiet clock restarts at the
+    beep (it once ran from before the greeting, and the machine hung up the
+    moment it beeped); the mic does NOT wait for it — the widget's old
+    mic-until-the-beep gate threw away everything said over the greeting,
+    and real messages arrived as their last two words."""
 
     def test_the_quiet_clock_restarts_at_the_beep(self):
         import inspect
@@ -571,15 +574,27 @@ class TestTheMachineOnlyListensAfterTheBeep(unittest.TestCase):
 
         self.assertIn('topic="vm-beep"', inspect.getsource(capture.answer))
 
-    def test_the_widget_holds_the_mic_until_it_hears_it(self):
+    def test_the_widget_listens_from_pickup(self):
+        # The beep used to GATE the caller's mic, so everything said over
+        # the greeting was thrown away — the operator's real messages
+        # arrived as their last two words ("…thank you."). Mic live from
+        # pickup now, like the worker's STT always was; the beep is a cue.
         from tests.support import REPO
 
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        self.assertIn("'vm-beep'", js)
-        # A voicemail closes the mic at connect whatever the PTT setting…
-        connect = js.split("setMicrophoneEnabled(true);", 1)[1][:600]
-        self.assertIn("if (vmCall) {", connect)
-        # …the bar refuses to open before the beep…
-        self.assertIn("vmCall && !vmBeepHeard", js)
-        # …and a worker too old to send the topic gets the fallback timer.
+        self.assertIn("'vm-beep'", js)          # still announced, still heard
+        # No voicemail branch closing the mic after connect, and the beep
+        # handler never forces it open (that would un-mute a caller who
+        # pressed Mute during the greeting).
+        self.assertNotIn("if (vmCall)",
+                         js.split("setMicrophoneEnabled(true);", 1)[1][:900])
+        self.assertNotIn("setMicOpen(true)",
+                         js.split("topic !== 'vm-beep'", 1)[1][:900])
+        # A worker too old to send the topic still gets the fallback timer.
         self.assertIn("15000", js)
+
+    def test_a_thinking_pause_does_not_end_the_message(self):
+        # 3.5s cut real messages off at the first pause for thought.
+        from voicemail import capture
+
+        self.assertGreaterEqual(capture._SETTLE_SECS, 6.0)

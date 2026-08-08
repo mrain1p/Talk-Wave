@@ -1020,15 +1020,18 @@ SCHEMA: dict[str, dict] = {
              "line in the persona's own voice at pickup — a model line plus a "
              "TTS render, a few seconds on slow backends — and falls back to "
              "the staged clip, then the beep, if it cannot make it in time."),
+    # The quoted default is the REAL one from voicemail/greetings.py, token
+    # case included: the filler drops unknown placeholders silently, so a
+    # panel that advertises {DJ} teaches operators a token that vanishes.
     "voicemail_greeting": dict(group="voicemail", kind="text", label="Greeting",
-        placeholder="derived: “You've reached {station}. {DJ} is on the air — "
-                    "leave a request after the beep.”",
+        placeholder="derived: “You've reached {station}. {dj} is on the air "
+                    "right now — leave a request after the beep.”",
         help="Spoken in the on-air DJ's own voice, so it is staged ahead of "
              "time below rather than generated while a caller waits. {station}, "
              "{dj} and {show} are filled in per persona; with nobody on air the "
              "machine answers as the station itself, in your default voice. "
              "Changing this re-renders every clip on the next staging run. "
-             "Blank reads: \u201cYou've reached {station}. {DJ} is on the air "
+             "Blank reads: \u201cYou've reached {station}. {dj} is on the air "
              "right now \u2014 leave a request after the beep.\u201d"),
     "voicemail_max_seconds": dict(group="voicemail", kind="number",
         label="Message ceiling (s)",

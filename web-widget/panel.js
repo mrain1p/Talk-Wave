@@ -408,12 +408,72 @@
     };
     mb('modeLiveBtn', liveOn);
     mb('modeVmBtn', vmOn2);
+    // The two doors hang off the line itself: while it is paused nothing
+    // answers whichever way they point — the server refuses the mint — so
+    // they grey out and stop taking presses until the line reopens.
+    ['modeLiveBtn', 'modeVmBtn'].forEach((id) => {
+      if ($(id)) $(id).disabled = paused;
+    });
+
+    // What each door amounts to, written on it — unsaved picks included,
+    // like every other live read on this page. Live calls: how many of the
+    // caller permissions each tier can actually use (the same current-value
+    // read the reference lists run on). Voicemail: who may talk to the
+    // machine and where a message goes afterwards. Switched off, each card
+    // goes back to saying what the switch does.
+    const cnOf = (id) => { const el = $(id); return el && el.querySelector('.cn'); };
+    const liveNote = cnOf('modeLiveBtn');
+    if (liveNote) {
+      if (liveOn) {
+        const RANK = { open: 0, guest: 1, admin: 2 };
+        const usable = { open: 0, guest: 0, admin: 0 };
+        Object.keys(SCHEMA.fields).forEach((f) => {
+          if (!SCHEMA.fields[f].tiered) return;
+          const v = permTier(f);
+          if (v === 'off') return;
+          Object.keys(RANK).forEach((t) => {
+            if (RANK[t] >= RANK[v]) usable[t] += 1;
+          });
+        });
+        liveNote.textContent = 'can do — anyone ' + usable.open
+          + ' · guest ' + usable.guest + ' · admin ' + usable.admin;
+        $('modeLiveBtn').title = 'How many caller permissions each tier can '
+          + 'use, counted from the switches under Permissions & safety.';
+      } else {
+        liveNote.textContent = 'the booth picks up';
+        $('modeLiveBtn').title = '';
+      }
+    }
+    const vmNote = cnOf('modeVmBtn');
+    if (vmNote) {
+      if (vmOn2) {
+        const WHO = { open: 'anyone may leave one',
+                      guest: 'guest code to leave one',
+                      admin: 'admin only',
+                      off: 'no caller may use it' };
+        const DEST = { hold: 'held for you',
+                       request: 'sent as song requests',
+                       air: 'handed to the on-air DJ',
+                       triage: 'triaged by the model' };
+        const dest = ($('voicemail_destination')
+          && $('voicemail_destination').value) || resolved.voicemail_destination;
+        vmNote.textContent = (WHO[permTier('allow_voicemail')] || WHO.open)
+          + ' · ' + (DEST[dest] || DEST.hold);
+      } else {
+        vmNote.textContent = 'the machine answers';
+      }
+    }
+
     if ($('modeSay')) {
-      $('modeSay').textContent = 'Together: ' + (liveOn && vmOn2
+      $('modeSay').textContent = paused
+        ? 'The line is paused — nothing answers, whatever these say, '
+          + 'until it reopens.'
+        : 'Together: ' + (liveOn && vmOn2
         ? 'a phone with an answering machine'
         : liveOn ? 'a plain phone — no machine'
         : vmOn2 ? 'a voicemail-only line'
-        : 'both off — the line is closed') + '.';
+        : 'both off — the line is closed, and the card tells callers so')
+          + '.';
     }
 
     const l = live || {};
@@ -485,13 +545,24 @@
       const down = calls.filter((c) => c.rating === 'down').length;
       tile('tileCalls',
         lives.length ? lives.length + ' recent' : 'none yet',
-        [rough && rough + ' with problems',
+        [rough && rough + ' failed',
          up && '\ud83d\udc4d' + up, down && '\ud83d\udc4e' + down]
           .filter(Boolean).join(' \u00b7 ')
           || (lives.length ? 'all clean' : 'records appear here'),
         rough ? 'warn' : lives.length ? 'ok' : undefined);
+      // Where the messages went, not just that they exist \u2014 delivery is the
+      // half of voicemail the operator cannot see from the card, and "held"
+      // means there is something waiting for them in the section.
+      const held = vms.filter((c) => /held/i.test(
+        (((c.tools || []).find((t) => t.name === 'voicemail_delivery') || {})
+          .result) || '')).length;
       tile('tileVm', vms.length ? vms.length + ' taken' : 'none yet',
-        vms.length ? 'open the section for the messages' : '');
+        vms.length
+          ? [(vms.length - held) && (vms.length - held) + ' passed on',
+             held && held + ' held for you']
+              .filter(Boolean).join(' \u00b7 ')
+          : '',
+        held ? 'warn' : vms.length ? 'ok' : undefined);
       $('tileCalls').onclick = jumpToRecords;
       $('tileVm').onclick = jumpToVoicemail;
     } catch (e) {
@@ -582,6 +653,9 @@
     } finally {
       btn.disabled = false;
       paintDash();
+      // The card-section note reads the line state too — pausing is exactly
+      // when it appears, so it cannot wait for the next field edit.
+      applyVisibility();
     }
   }
 
@@ -777,6 +851,32 @@
     const liveOff = vmAlways || !liveOn;
     const MOOT_WITHOUT_LIVE = ['call_button_mode', 'call_button_label',
                                'show_push_to_talk', 'embed_push_to_talk'];
+    // The mirror rule: with the machine off, the card never offers it, so
+    // the options that put its button up are equally moot.
+    const MOOT_WITHOUT_VM = ['show_voicemail_button', 'embed_voicemail_button'];
+
+    // The line status outranks everything in the card section: paused (or
+    // both modes off) the card shows its closed face whatever is set here,
+    // and the preview — a real card — shows that too. Say why, in one line,
+    // instead of leaving the operator to think their edits stopped landing.
+    const paused = $('calls_paused')
+      ? $('calls_paused').checked : !!resolved.calls_paused;
+    const note = $('previewLineNote');
+    if (note) {
+      const msg = paused
+        ? 'The line is paused — callers see the closed card whatever is set '
+          + 'here, and the preview shows what callers see. It all applies '
+          + 'again when the line reopens.'
+        : (!liveOn && !vmOn)
+        ? 'Live calls and voicemail are both off (Running the line) — the '
+          + 'line is closed, and the card says so instead of offering these.'
+        : liveOff
+        ? 'The line is voicemail-only — the card offers the machine, so the '
+          + 'live-call options are parked until live calls come back.'
+        : '';
+      note.textContent = msg;
+      note.hidden = !msg;
+    }
 
     // Every rule comes from the schema: a field declares what it depends on,
     // and advanced fields stay hidden until asked for.
@@ -784,7 +884,11 @@
       const el = $(f);
       if (!el) return;
       const meta = SCHEMA.fields[f];
-      const anchor = el.closest('.row') || el.closest('.check');
+      // .prow included: the matrix rows are anchors too, or a field that
+      // lives there can never be mooted — push to talk was listed in
+      // MOOT_WITHOUT_LIVE from the start and silently never dimmed.
+      const anchor = el.closest('.row') || el.closest('.check')
+        || el.closest('.prow');
       if (!anchor) return;
 
       if (MOOT_WITHOUT_LIVE.indexOf(f) !== -1) {
@@ -792,6 +896,12 @@
         anchor.title = liveOff
           ? 'The line is voicemail-only — there is no live Call button for '
             + 'this to apply to.' : '';
+      }
+      if (MOOT_WITHOUT_VM.indexOf(f) !== -1) {
+        anchor.classList.toggle('moot', !vmOn);
+        anchor.title = !vmOn
+          ? 'Voicemail is off (Running the line) — the card never offers '
+            + 'the machine, whichever way this points.' : '';
       }
 
       let visible = true;
@@ -1628,9 +1738,14 @@
         // — not on the next reload.
         if (f === 'front_access') { paintPermissions(); paintTags(); }
         // The two reference lists describe the permissions, so they follow
-        // the switches rather than waiting for a save.
+        // the switches rather than waiting for a save — and so does the
+        // Live calls card's per-tier count on the dashboard.
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'perms') {
-          paintAsks(); paintTools(); paintTags();
+          paintAsks(); paintTools(); paintTags(); paintDash();
+        }
+        // The Voicemail card reads the machine's who and where live too.
+        if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'voicemail') {
+          paintDash();
         }
         // The card in the frame follows the form, not the save button. That
         // is the entire point: you find out what "DJ photo off" looks like

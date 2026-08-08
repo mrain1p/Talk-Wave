@@ -34,6 +34,27 @@
       : d.toLocaleTimeString([], { hour12: false });
   }
 
+  // The same icons the caller sees when an action lands on the card
+  // (call/actions.py LABELS announces them over wavetalk.action) — one
+  // vocabulary on both surfaces. The short word is what the row chips show:
+  // full tool names clipped mid-word ("voicemail_del…") in the summary
+  // column, and a chip that can't say its word is worse than a shorter word.
+  const TOOL_BADGES = [
+    [/voicemail/i, '✉', 'voicemail'],
+    [/request|queue/i, '🎵', 'request'],
+    [/announce/i, '📢', 'announce'],
+    [/skill/i, '🎙', 'skill'],
+    [/skip/i, '⏭', 'skip'],
+    [/segment/i, '📻', 'segment'],
+    [/takeover|show/i, '🔀', 'takeover'],
+    [/search|library|music|track/i, '🔎', 'search'],
+  ];
+  function toolBadge(name) {
+    const hit = TOOL_BADGES.find(([re]) => re.test(String(name || '')));
+    return hit ? { icon: hit[1], word: hit[2] }
+               : { icon: '✅', word: String(name || '').replace(/^subwave_/, '') };
+  }
+
   // A call's verdict, in one glyph. "Had a problem entry" alone is too blunt
   // — a station 503 the DJ recovered from is not the same as a call where
   // nobody could hear anything — so the caller having actually spoken is what
@@ -146,9 +167,13 @@
       if (failed) line.className += ' bad';
       line.innerHTML = '<span class="t"></span><span class="w"></span><span class="x"></span>';
       line.querySelector('.t').textContent = callTime(e.t);
-      line.querySelector('.w').textContent = e.kind === 'tool' ? 'tool' : (who[e.kind] || e.kind);
+      // 'Tool', capitalised like its neighbours — 'tool' between 'DJ' and
+      // 'Caller' read as a rendering slip, not a row kind.
+      line.querySelector('.w').textContent =
+        e.kind === 'tool' ? 'Tool' : (who[e.kind] || e.kind);
       line.querySelector('.x').textContent = e.kind === 'tool'
-        ? e.name + (e.result ? ' → ' + e.result : '')
+        ? toolBadge(e.name).icon + ' ' + e.name
+          + (e.result ? ' → ' + e.result : '')
         : e.text;
       talk.appendChild(line);
     });
@@ -208,7 +233,9 @@
       names.slice(0, 3).forEach((n) => {
         const t = document.createElement('span');
         t.className = 'ctool';
-        t.textContent = n;
+        const badge = toolBadge(n);
+        t.textContent = badge.icon + ' ' + badge.word;
+        t.title = n;                 // the full name survives as the tooltip
         wrap.appendChild(t);
       });
       if (names.length > 3) {

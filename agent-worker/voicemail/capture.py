@@ -65,8 +65,10 @@ _FRAME_MS = 20
 
 # How long the line stays quiet after a FINAL transcript before the message
 # is considered finished. Deliberately generous: a caller mid-thought is
-# not a finished caller, and 30s is the real ceiling either way.
-_SETTLE_SECS = 3.5
+# not a finished caller, and the ceiling is the real bound either way.
+# 3.5s cut real messages off at the first thinking pause — the operator's
+# own test voicemails arrived as their opening phrase and nothing else.
+_SETTLE_SECS = 6.0
 
 
 def beep_pcm(sample_rate: int, freq: int = 1000, ms: int = 400,
@@ -262,7 +264,11 @@ async def answer(ctx: JobContext) -> None:
         except Exception as e:                                # noqa: BLE001
             log.warning("staged clip %s unreadable (%s) — beep only",
                         clip.name, e)
-    else:
+    elif not pcm:
+        # Only when there is truly nothing to play. A bare `else` here fired
+        # this warning every time the FRESH greeting succeeded (pcm full,
+        # clip deliberately None) — a log that says beep-only while a
+        # greeting plays sent a whole diagnosis down the wrong road.
         log.warning("no staged voicemail greeting — answering with the beep "
                     "alone. Stage greetings from the panel's Voicemail section.")
 

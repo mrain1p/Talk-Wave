@@ -681,20 +681,26 @@
     $('npTrack').textContent = '';
     $('djAvatar').classList.add('hidden');
     // Off air is exactly what the answering machine is for — but not
-    // offline: an unreachable station cannot take delivery either.
+    // offline: an unreachable station cannot take delivery either. And not
+    // paused: the kill switch closes the machine along with the booth, so
+    // a paused off-air line says closed rather than offering the recorder.
     const flags = shown || live || {};
-    const vmButton = vmPolicy() !== 'never' && reason !== 'offline'
+    const paused = !!flags.callsPaused;
+    const vmButton = vmPolicy() !== 'never' && reason !== 'offline' && !paused
       && !!(framed ? flags.embedVmBtn : flags.vmBtn);
     $('vmBtn').hidden = !vmButton || !!room;
     callBtn.dataset.vm = '';
-    if (reason !== 'offline' && vmPolicy() !== 'never' && !room && !vmButton) {
+    if (reason !== 'offline' && !paused
+        && vmPolicy() !== 'never' && !room && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
       callBtn.textContent = 'Leave a message';
       return;
     }
     callBtn.disabled = true;
-    callBtn.textContent = reason === 'offline' ? 'Station offline' : 'Nobody to call';
+    callBtn.textContent = paused && reason !== 'offline'
+      ? word('closed', 'Line closed')
+      : reason === 'offline' ? 'Station offline' : 'Nobody to call';
   }
 
   // The idle card's buttons, painted from one place — the 20s poll AND the
@@ -702,25 +708,46 @@
   // Call button and forget the message button: one failed call on a
   // voicemail-only line left the card stuck on a door that can only fail
   // until the page was reloaded. Operator-reported, from the live page.
+  // Whether the card, right now, has NO working door at all — the kill
+  // switch is down, or both transmission modes are off. One flag, read by
+  // paintIdleButtons and by the idle status line, so the button and the
+  // sentence under it cannot tell two different stories.
+  let lineClosedNow = false;
+
   function paintIdleButtons(d) {
     if (room) return;
     const needsCode = !!d.guestRequired && !callKey();
+    const machineOn = vmPolicy() !== 'never';
+    // The kill switch outranks the machine: paused means the booth answers
+    // NOTHING — /token refuses the voicemail mint too — so the card says
+    // closed instead of offering a door that can only fail. Live calls off
+    // with no machine behind them is the same closed line reached through
+    // the two mode switches instead of the one big one.
+    lineClosedNow = !!d.callsPaused
+      || (d.liveCalls === false && !machineOn);
     // The machine answers where a live call cannot: 'closed' turns each
     // refusal below into "Leave a message"; 'always' (or live calls
     // switched off) makes the line voicemail-only.
-    const vmOnly = vmPolicy() === 'always' || d.liveCalls === false;
+    const vmOnly = machineOn && !lineClosedNow
+      && (vmPolicy() === 'always' || d.liveCalls === false);
     const vmHere = vmOnly
-      || (vmPolicy() === 'closed' && (d.callsPaused || !d.onAir));
+      || (machineOn && !lineClosedNow && vmPolicy() === 'closed' && !d.onAir);
     // The operator can put the machine on the card as its own button,
     // per surface. With the button up, Call never morphs — two clear
     // doors beat one door with a changing sign.
-    const vmButton = vmPolicy() !== 'never'
+    const vmButton = machineOn && !lineClosedNow
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
     if (vmButton) $('vmBtn').textContent = word('vm_button', 'Leave a message');
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
-    if (needsCode) {
+    if (lineClosedNow) {
+      // A closed line is a deliberate state, not a fault: one disabled
+      // button, and the status line under the card says the booth is not
+      // taking calls — before asking for a code that would open nothing.
+      callBtn.disabled = true;
+      callBtn.textContent = word('closed', 'Line closed');
+    } else if (needsCode) {
       callBtn.disabled = true;
       callBtn.textContent = 'Enter the code';
     } else if (vmOnly && vmButton) {
@@ -732,12 +759,6 @@
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
       callBtn.textContent = word('vm_button', 'Leave a message');
-    } else if (d.callsPaused || vmOnly) {
-      // A paused or voicemail-only line is a deliberate state, not a
-      // fault: say so plainly rather than offering a button that fails.
-      callBtn.disabled = true;
-      callBtn.textContent = vmOnly && vmPolicy() === 'never'
-        ? word('closed', 'Line closed') : vmOnly ? word('message_only', 'Message only') : word('closed', 'Line closed');
     } else {
       callBtn.disabled = false;
       callBtn.textContent = callLabel();
@@ -852,7 +873,13 @@
       if (!room) {
         if (d.degraded) {
           setStatus('Station responding slowly — some info may be stale', 'connecting');
-        } else if (statusText.textContent.startsWith('Station responding slowly')) {
+        } else if (lineClosedNow) {
+          // A closed line explains itself in a sentence, not just a dead
+          // button — "Line closed" alone left callers wondering whose fault
+          // it was. Deliberate state, quiet colour, never 'error'.
+          setStatus("The booth isn't taking calls at the moment", '');
+        } else if (statusText.textContent.startsWith('Station responding slowly')
+                   || statusText.textContent.startsWith("The booth isn't taking calls")) {
           // Back to quiet, not back to "Not connected": an idle card with
           // nothing wrong has nothing to say, and the permanent grey sentence
           // read as a fault on every host page it was embedded in.
@@ -1468,15 +1495,15 @@
           callBtn.classList.remove('ringing');
           callBtn.classList.add('live');
           callBtn.textContent = word('recording', 'Recording…');
-          setStatus('Speak after the beep — transcript only, no audio is kept',
+          setStatus('The machine is listening — transcript only, no audio is kept',
                     'connected');
           // A worker from before the vm-beep topic never sends it; after
-          // the longest plausible greeting, act as though it beeped rather
-          // than leave the caller talking into a closed mic.
+          // the longest plausible greeting, treat it as beeped so the
+          // status stops waiting on a beep that already sounded. The mic
+          // is live either way — the beep stopped being a gate.
           setTimeout(() => {
             if (vmCall && !vmBeepHeard && room) {
               vmBeepHeard = true;
-              if (!pttOn()) setMicOpen(true);
               paintPtt();
             }
           }, 15000);
@@ -1537,13 +1564,15 @@
       watchActions(room);
       room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
         if (topic !== 'vm-beep' || !vmCall || vmBeepHeard) return;
+        // The beep is a cue, not a gate: the mic has been live since
+        // pickup, so this only moves the status line to "recording" —
+        // never a forced mic-open, which would un-mute a caller who
+        // pressed Mute during the greeting.
         vmBeepHeard = true;
         if (pttOn()) {
-          // The bar arms now — pressing it before the beep did nothing.
           paintPtt();
           setStatus('Recording — hold the bar and speak', 'connected');
         } else {
-          setMicOpen(true);
           setStatus('Recording — go ahead, transcript only', 'connected');
         }
       });
@@ -1554,12 +1583,12 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
-      if (vmCall) {
-        // Closed until the machine beeps — see the vm-beep data topic. A
-        // worker too old to send it gets the fallback timer at pickup, so
-        // a skewed deploy degrades to the old behaviour, not to dead air.
-        await setMicOpen(false);
-      } else if (pttOn() && !pttOpen) {
+      // A voicemail mic is live from PICKUP, exactly like a call: the worker
+      // wires STT before the greeting on purpose, because talking over an
+      // answering machine is how people use answering machines. The widget
+      // holding the mic shut until the beep threw all of that away — real
+      // messages arrived as their last two words. The beep is a cue now.
+      if (pttOn() && !pttOpen) {
         // Closed only if the caller has not already pressed the bar during
         // the ring — a latch made early is a decision, not a race to lose.
         await setMicOpen(false);
@@ -1849,9 +1878,10 @@
   // /live so the card can offer "Leave a message" exactly where it paints a
   // refusal — every closed line used to be a dead end.
   let vmCall = false;
-  // The worker announces the beep over the data channel; until it does, a
-  // voicemail caller's mic stays CLOSED — the machine must not hear anyone
-  // before it says it is listening.
+  // The worker announces the beep over the data channel. It used to gate
+  // the caller's mic; now the mic is live from pickup — the machine hears
+  // talk-over, like every answering machine — and the beep only moves the
+  // status line from "listening" to "recording".
   let vmBeepHeard = false;
   function vmPolicy() {
     return ((shown || live || {}).voicemailWhen) || 'never';
@@ -1906,10 +1936,10 @@
     if (!bar) return;
     bar.classList.toggle('on', pttOpen);
     bar.setAttribute('aria-pressed', pttOpen ? 'true' : 'false');
-    $('pttMain').textContent = (vmCall && !vmBeepHeard && room)
-      ? 'Wait for the beep…'
-      : pttOpen ? "You're live — tap to go quiet"
-                : word('ptt', 'Tap to talk');
+    // No "wait for the beep" state: the machine hears the bar from pickup.
+    $('pttMain').textContent =
+      pttOpen ? "You're live — tap to go quiet"
+              : word('ptt', 'Tap to talk');
     // The meter tells the same story as the bar, in the vocabulary the mute
     // button already taught it.
     if (room && pttOn()) {
@@ -1925,7 +1955,6 @@
 
     bar.addEventListener('pointerdown', (e) => {
       if (!room) return;             // the queue makes a ring-time press safe
-      if (vmCall && !vmBeepHeard) return;   // nothing to open before the beep
       e.preventDefault();
       bar.setPointerCapture?.(e.pointerId);
       pressed = true;

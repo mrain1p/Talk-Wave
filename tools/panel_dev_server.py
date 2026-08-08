@@ -155,6 +155,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # A posted settings patch really lands in the stub's TEMP store —
+        # /live reads the store back, so the closed-line states (pause the
+        # line, switch a mode off) can be driven end to end in a browser.
+        # Everything else answers like a GET, which is all the panel needs.
+        if self.path.split("?")[0] == "/settings":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                patch = json.loads(self.rfile.read(n) or b"{}")
+                if isinstance(patch, dict):
+                    settings_store.save(patch)
+            except Exception:
+                pass
         self.do_GET()
 
     def do_GET(self) -> None:
@@ -278,7 +290,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/live":
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
-                "callsPaused": False, "degraded": False,
+                # From the stub's own settings, like the real /live — the
+                # closed-line states can't be driven in a browser otherwise.
+                "callsPaused": bool(settings_store.load().get("calls_paused")),
+                "degraded": False,
                 "secureOrigin": "", "theme": "auto",
                 "name": "Francesca", "show": "The Piazza · Golden-era pop",
                 "tagline": "Velvet Harmonies & Mediterranean Dreams.",

@@ -39,10 +39,11 @@ voice, and no new privacy surface beyond the call transcripts that already exist
 
 ## Why it is worth building
 
-Every refusal is currently silence. Nobody on air, line paused, out of hours, three callers
-already on, over the daily cap — the card says "Nobody to call" and that is the end of it. The
-person who wanted to hear a song still wants to hear it. Voicemail turns each of those into
-something the station receives.
+Every refusal is currently silence. Nobody on air, out of hours, three callers already on,
+over the daily cap — the card says "Nobody to call" and that is the end of it. The person who
+wanted to hear a song still wants to hear it. Voicemail turns each of those into something the
+station receives. (The one refusal it does NOT answer through is Pause all calls: the kill
+switch closes the whole line, machine included.)
 
 It is also, unlike a live call, **cheap and bounded**: one STT leg, one pre-rendered greeting,
 no LLM turn on the critical path, and a hard 30-second ceiling. A deployment nervous about API
@@ -117,8 +118,9 @@ One message is one action, and it counts against `max_actions_per_call` in the s
 should have to choose one:
 
 - `never` — the default; nothing changes for anyone upgrading
-- `closed` — only when a live call is impossible: nobody on air, calls paused, over the caps,
-  or all concurrent slots taken
+- `closed` — only when a live call is impossible: nobody on air, live calls switched off, or
+  all concurrent slots taken. Not when the line is paused — the kill switch closes the machine
+  too — and not past the caps, which refuse both kinds of call
 - `always` — the line is voicemail-only, which is the cheap way to run this at all
 
 The widget already knows all four "closed" conditions — it is what paints "Line closed" and
@@ -163,12 +165,14 @@ Two later decisions, both from operating it:
   correctly, as the 30-second limit not being honored. The leg deletes the room the way a live
   call ends, and the card's timer counts against `voicemail_max_seconds` rather than the live
   call's limit.
-- **The mic only opens after the beep.** The worker announces the beep over the data channel
-  (`vm-beep` topic); the widget holds the caller's mic closed until it arrives, and push-to-talk
-  applies to voicemail like any call — the bar reads "Wait for the beep…" until then. The quiet
-  clock also restarts at the beep: it used to run from before the greeting, so the
-  nobody-spoke window was spent before the caller could start, and the machine hung up almost
-  the moment it beeped.
+- **The machine listens from pickup.** STT is wired before the greeting plays, so talking over
+  the machine works the way it does on every answering machine — the caller's first words are
+  kept, not lost to the recording. The worker still announces the beep over the data channel
+  (`vm-beep` topic), but the widget uses it only to flip the status line to "recording"; it
+  held the mic closed until the beep once, and real messages arrived as their last two words.
+  Push-to-talk applies to voicemail like any call. The quiet clock restarts at the beep: it
+  used to run from before the greeting, so the nobody-spoke window was spent before the caller
+  could start, and the machine hung up almost the moment it beeped.
 - **`sound_vm_beep`** replaces the synthesized beep with an uploaded WAV (Call sounds section).
   Server-played, so uploads only; wrong rate or shape falls back to the tone, never silence.
 

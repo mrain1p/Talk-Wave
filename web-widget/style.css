@@ -901,6 +901,15 @@
     display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px;
   }
   .panelbar .gear { text-decoration: none; }
+  /* The back arrow is an <a>, and anchors never inherit the button skin the
+     other two controls get from the generic button rule — it floated bare
+     beside two boxed buttons and read as a stray glyph. Same chrome, by hand. */
+  .panelbar a.gear {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 6px 13px; border-radius: 8px;
+    background: var(--line2); color: var(--text);
+    font-weight: 600; font-size: 11.5px; line-height: 1.2;
+  }
   /* Sign out is a word, not a glyph — same quiet chrome, its own width. */
   .panelbar .signout {
     width: auto; padding: 0 9px;
@@ -931,19 +940,41 @@
   /* Six super-groups and roughly forty disclosures below them. Without this
      the only way to the bottom is scrolling past every section in between,
      which is also how a switch gets flipped on the way past. */
+  /* The sections' menu, not a stray row of chips: full width, every entry an
+     equal share of the row, hairlines above and below like a nav strip, and
+     a micro-label saying what it is. Chips (999px pills, content-sized) read
+     as filters; a jump-to reads as a menu. Operator-requested. */
   .panelnav {
-    display: flex; flex-wrap: wrap; gap: 6px;
-    margin: 0 0 14px; padding-bottom: 13px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch;
+    width: 100%; margin: 0 0 14px; padding: 7px 0;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .panelnav::before {
+    content: "Jump to"; align-self: center; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    padding: 0 10px 0 2px;
   }
   .panelnav a {
+    flex: 1 1 auto; text-align: center;
     text-decoration: none; color: var(--dim);
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700;
-    padding: 5px 9px; border-radius: 999px;
-    border: 1px solid var(--line2); background: transparent;
+    padding: 6px 9px; border-radius: 8px;
+    border: 1px solid transparent; background: transparent;
   }
-  .panelnav a:hover { color: var(--text); background: var(--line2); }
+  .panelnav a:hover {
+    color: var(--text); background: var(--line2); border-color: var(--line2);
+  }
   .panelnav:empty { display: none; }
+
+  /* The dashboard's own band — the same voice as a super-group heading, but
+     its own class: applyVisibility() hides a .supergroup with no visible
+     sections under it, and this one is followed by cards, not sections. */
+  .dashband {
+    margin: 4px 0 7px; font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--text);
+  }
 
   /* The dashboard: the kill switch, and the four answers worth having before
      you change anything below. Bordered and above the fold because none of it
@@ -963,8 +994,8 @@
      Dimmed, not hidden: hiding them would read as the feature being gone
      rather than waiting. No line-through — striking out a dropdown's text
      read as a rendering fault, not a state. Operator-reported. */
-  .row.moot, .check.moot { opacity: .4; }
-  .row.moot select, .row.moot input, .check.moot input {
+  .row.moot, .check.moot, .prow.moot { opacity: .4; }
+  .row.moot select, .row.moot input, .check.moot input, .prow.moot input {
     pointer-events: none;
   }
 
@@ -1070,6 +1101,9 @@
     transition: border-color .15s, background .15s, transform .15s;
   }
   .ctrlcard:hover:not(:disabled) { transform: translateY(-1px); }
+  /* The two doors hang off the line itself: paused, they grey out and stop
+     taking presses (opacity only, per the moot-row rule — no strikethrough). */
+  .ctrlcard:disabled { opacity: .45; cursor: default; }
   .ctrlcard .ck {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
@@ -1208,6 +1242,11 @@
   }
   .runbtn:hover:not(:disabled) { background: var(--accent); color: #fff;
                                  box-shadow: none; }
+  /* The problems filter wears its mark in the fault colour INSIDE the chip —
+     the same red "!" the failed rows carry — instead of a plain glyph that
+     read as punctuation. Inherits back on hover, when the chip itself fills. */
+  .runbtn .bang { color: var(--accent); font-weight: 700; }
+  .runbtn:hover:not(:disabled) .bang { color: inherit; }
   .runbtn.running { opacity: .55; }
   /* Results in a diagnostics row scroll rather than growing the page. */
   .result.scrolly { max-height: 460px; overflow: auto; }
@@ -1801,8 +1840,12 @@
   .cbline .t { color: var(--dimmer); font-variant-numeric: tabular-nums; }
   .cbline .w { color: var(--dimmer); font-weight: 700; }
   .cbline .x { color: var(--dim); overflow-wrap: anywhere; white-space: pre-wrap; }
-  .cbline.dj .w { color: var(--ok); }
-  .cbline.caller .w { color: var(--text); }
+  /* The same voice colours a caller sees during the call — the DJ's meter
+     and captions are coral, the caller's are cool blue — so the log reads
+     in the vocabulary the card already taught. Green here read as "ok",
+     which is a verdict, not a speaker. */
+  .cbline.dj .w { color: var(--coral); }
+  .cbline.caller .w { color: var(--cool); }
   .cbline.caller .x { color: var(--text); }
   .cbline.tool .w, .cbline.tool .x { color: var(--dimmer); }
   /* A tool that came back with a refusal is the line you are looking for. */

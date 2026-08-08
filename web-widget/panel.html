@@ -59,9 +59,6 @@
       <button class="gear signout" id="dashLogoutBtn" hidden
               title="Sign this browser out of the panel and the phone">Sign out</button>
     </div>
-    <h2>Call-in settings</h2>
-    <p class="sub">Applies to the next caller — no restart. Clearing a field
-      falls back to the environment config.</p>
 
     <!-- First run. Shown until an admin password exists, and it ASKS rather
          than pointing: this used to be one sentence saying to go and set a
@@ -92,15 +89,6 @@
       <span id="loginMsg"></span>
     </div>
 
-    <!-- Jump links, one per super-group, built from the schema. The panel is
-         six screens long and every way of reaching the bottom of it was
-         scrolling past everything in between. -->
-    <!-- Sixty settings deserve a faster answer than category archaeology:
-         type, and only the rows whose label or help mention it remain. -->
-    <input type="search" id="settingsSearch" class="settingsearch"
-           placeholder="Find a setting…" autocomplete="off" />
-    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
-
     <!-- The dashboard. The kill switch lives here — out of Usage controls and
          into the one place it can be reached without opening anything, because
          three sections and one disclosure down is the wrong depth for the
@@ -122,7 +110,13 @@
          The tiles are the four things an operator opens this page to check
          before they change anything: who is on air, whether the station is
          answering, who is allowed to call, and whether the three legs of a
-         call are configured. Each one jumps to the section that owns it. -->
+         call are configured. Each one jumps to the section that owns it.
+
+         The dashboard leads the page (operator-requested): act and read
+         first, configure below. NOT a .supergroup — applyVisibility hides
+         any band with no visible <details> before the next band, and this
+         one is followed by the dash, the heading and the search. -->
+    <h3 class="dashband">Dashboard</h3>
     <div class="dash">
       <!-- Controls first, as CARDS in the same grid the status tiles use —
            a 37px chip floating over 64px tiles read as two different pages
@@ -173,6 +167,20 @@
         </button>
       </div>
     </div>
+
+    <h2>Call-in settings</h2>
+    <p class="sub">Applies to the next caller — no restart. Clearing a field
+      falls back to the environment config.</p>
+
+    <!-- Sixty settings deserve a faster answer than category archaeology:
+         type, and only the rows whose label or help mention it remain. -->
+    <input type="search" id="settingsSearch" class="settingsearch"
+           placeholder="Find a setting…" autocomplete="off" />
+    <!-- Jump links, one per super-group, built from the schema. The panel is
+         six screens long and every way of reaching the bottom of it was
+         scrolling past everything in between. Full width and labelled, so it
+         reads as the sections' menu rather than a stray row of chips. -->
+    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
 
     <!-- Every section's name and one-line subtitle are written here AND set
          from the schema by layoutPanel(), which is not belt-and-braces for its
@@ -895,6 +903,12 @@
           <iframe id="previewFrame" title="Live preview of the call card"
                   src="/?preview=1" loading="lazy"></iframe>
         </div>
+        <!-- Filled by applyVisibility() whenever the line status overrides
+             what this section configures — paused, closed, voicemail-only.
+             The preview above is a REAL card, so it already shows the
+             override; this line says why, so the operator doesn't read
+             their own kill switch as the preview being broken. -->
+        <p class="hint wide" id="previewLineNote" hidden></p>
 
         <div class="pmatrix">
           <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
@@ -1130,7 +1144,7 @@
           expected.</p>
         <div class="diagbar" id="callBar" hidden>
           <button type="button" class="runbtn" id="callsOnlyBad"
-                  title="Only calls with problems">! <span id="callsOnlyBadLabel"></span></button>
+                  title="Only calls with problems"><span class="bang">!</span> <span id="callsOnlyBadLabel"></span></button>
           <button type="button" class="runbtn" id="callsOnlyDown"
                   title="Only calls the caller rated thumbs down">&#128078; <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"
