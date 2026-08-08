@@ -1364,9 +1364,11 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
     the default without placing a call."""
 
     def test_the_dropdown_filters_to_wav(self):
+        # Anchored to the filter itself, not an occurrence count of the
+        # slot name — a Play button added elsewhere once shifted the split.
         js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
-        branch = js.split("slot === 'vm_beep'")[2][:300]
-        self.assertIn("\.wav$", branch)
+        i = js.index("const eligible = slot === 'vm_beep'")
+        self.assertIn("\\.wav$", js[i:i + 200])
 
     def test_the_testrow_has_a_beep_button(self):
         html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")

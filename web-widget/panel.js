@@ -2296,6 +2296,18 @@
       // the end it landed after the injected hint and read as furniture for
       // the wrong row. Operator-reported as "not intuitive", correctly.
       row.insertBefore(up, field.nextSibling);
+      // And a Play right there — hearing the CURRENT pick (the set's
+      // default included) should not mean finding the matching button in
+      // the row above. The beep routes through its own preview, since its
+      // default is synthesized server-side.
+      const hear = document.createElement('button');
+      hear.className = 'btnquiet';
+      hear.textContent = 'Play';
+      hear.onclick = () => {
+        if (slot === 'vm_beep') previewBeep();
+        else previewSound(slot);
+      };
+      row.insertBefore(hear, up.nextSibling);
     });
     // The default labels name the selected set, so they go stale the moment
     // the operator picks the other one.

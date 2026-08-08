@@ -8,7 +8,7 @@ Keep it that way; the whole thing is served as static files by `token_server.py`
 | File | Served at | What it is |
 |---|---|---|
 | `index.html` | `/` | The call page. Loads `shared.js` + `call.js` |
-| `panel.html` | `/panel` | The operator's page. Loads `shared.js` + `panel.js` + `panel-viewers.js` |
+| `panel.html` | `/settings` (`/panel` redirects) | The operator's page. Loads `shared.js` + `panel.js` + `panel-viewers.js` |
 | `shared.js` | `/shared.js` | What both pages need, published as the `Callin` global |
 | `call.js` | `/call.js` | The phone: the card, the meters, the captions, the call itself |
 | `panel.js` | `/panel.js` | The operator's surface: settings, secrets, `/test/*`, uploads |
@@ -21,7 +21,7 @@ The panel was a section of `index.html` until 0.9.105, which meant **every anony
 downloaded the whole operator interface** to look at a page with one button on it. Nothing
 leaked — every endpoint behind the panel checks admin auth for itself — but the two audiences
 could not be told apart by anything in front of the server. On its own URL they can be: if this
-box is reachable from outside your network, a rule in front of `/panel` in Caddy (an IP
+box is reachable from outside your network, a rule in front of `/settings` in the reverse proxy (an IP
 allowlist, or basic auth) is worth adding, and is the main reason the page exists separately.
 
 LiveKit's client SDK arrives from a CDN `<script>` tag in both pages, not from a package. The

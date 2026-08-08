@@ -3,6 +3,20 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.151
+
+- **/settings is the panel's one address** — it serves the page itself now,
+  and /panel redirects there for old bookmarks. A reverse-proxy allowlist
+  belongs in front of /settings.
+- Every sound row gets its **own Play button** beside Upload — hearing the
+  current pick (set defaults included) no longer means finding the matching
+  button in the row above.
+- **How the doors work states the lockout numbers**: 5 wrong tries → a
+  5-minute cooldown; a second round of 5 → banned until restart.
+- Call-in access says plainly that per-feature, per-tier grants live under
+  Caller permissions; the caller-asks reference says **examples, not
+  commands** — the DJ matches intent, no syntax to learn.
+
 ## 0.9.150
 
 ### The panel gets a face it chose on purpose

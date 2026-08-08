@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Wave Talk settings</title>
 <!--
-  The operator's surface, served at /panel.
+  The operator's surface, served at /settings (/panel redirects here).
 
   It lived inside index.html until 0.9.105, which meant every caller who
   loaded the phone also downloaded this entire interface. Nothing leaked —
@@ -14,9 +14,9 @@
   audiences could never be told apart by anything in front of the server.
 
   On its own URL they can be. If this box is reachable from outside your
-  network, putting a rule in front of /panel in Caddy — an IP allowlist, or
-  basic auth — is worth doing, and is the reason this page exists separately
-  rather than as a section of the other one.
+  network, putting a rule in front of /settings in the reverse proxy — an IP
+  allowlist, or basic auth — is worth doing, and is the reason this page
+  exists separately rather than as a section of the other one.
 
   LiveKit's client is loaded here because the full-pipeline check really does
   place a call: it mints a token, connects, reads the ICE candidates and hangs
@@ -197,8 +197,10 @@
             can call, inside the usage caps.</li>
         </ul>
         <p class="hint wide">What stands behind them: passwords are stored as
-          PBKDF2 hashes, never plaintext; repeated wrong guesses ban the
-          address fail2ban-style (a restart clears bans, and
+          PBKDF2 hashes, never plaintext; wrong guesses are rate-limited
+          fail2ban-style — <strong>5 wrong tries puts the address in a
+          5-minute cooldown, and a second round of 5 bans it until the app
+          restarts</strong> (a restart clears bans, and
           <code>CALLIN_ADMIN_KEY</code> in the environment is the recovery
           override); API keys are write-only — the panel shows last-four,
           never the key; join tokens are signed and short-lived, minted per
@@ -1059,7 +1061,11 @@
       <summary><span class="chev">▶</span><span class="secname">What callers can ask</span><em class="secblurb"></em><span class="tag" id="tagAsk"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Live reference — it follows the
-          permissions above as you tick them, before you save. Greyed is off.</p>
+          permissions above as you tick them, before you save. Greyed is off.
+          <strong>Examples, not commands</strong>: there is no syntax — the DJ
+          matches the caller's intent against the tools it actually holds, so
+          any phrasing that means one of these works, and anything outside
+          them gets an in-character no.</p>
         <ul class="asklist" id="askList"></ul>
       </div>
     </details>

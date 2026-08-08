@@ -767,8 +767,10 @@ SCHEMA: dict[str, dict] = {
              "until Sign out."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access",
-        help="This is the PHONE. The panel always needs the admin password, "
-             "whichever of these you pick."),
+        help="This is the PHONE — who may ring at all. What a caller may DO "
+             "once through is separate and per-tier, feature by feature, "
+             "under Caller permissions. The panel always needs the admin "
+             "password, whichever of these you pick."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels

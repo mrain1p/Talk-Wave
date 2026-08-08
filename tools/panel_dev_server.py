@@ -176,6 +176,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(look_payload(cfg, "Francesca"))
 
         if path == "/settings":
+            # Same content negotiation as the real handler: a browser
+            # navigation gets the page, the panel's fetch gets the JSON.
+            if "text/html" in (self.headers.get("Accept") or ""):
+                html = (WIDGET / "panel.html").read_text(encoding="utf-8").replace(
+                    LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
+                return self._send(200, html, "text/html")
             return self._json({
                 "schema": settings_store.schema_payload(),
                 "resolved": settings_store.load(),
@@ -298,7 +304,14 @@ class Handler(BaseHTTPRequestHandler):
         # Same two extensionless routes token_server serves. /panel is the
         # operator's page since 0.9.105; without it here, driving the panel in
         # a browser silently tests a 404.
-        name = {"/": "index.html", "/panel": "panel.html"}.get(path, path.lstrip("/"))
+        if path == "/panel":
+            # Mirrors the real server since 0.9.151: one address, /settings.
+            self.send_response(302)
+            self.send_header("Location", "/settings")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        name = {"/": "index.html", "/settings": "panel.html"}.get(path, path.lstrip("/"))
         f = WIDGET / name
         if not f.is_file():
             return self._send(404, "not found", "text/plain")
