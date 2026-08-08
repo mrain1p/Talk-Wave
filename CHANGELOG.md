@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.1
+
+### Real recordings on the shelf
+
+- **The Landline set** — seven genuine North American line sounds, recorded not synthesized: dial tone, ringback, two busy signals, touch-tone dialing, the "please hang up and try again" intercept, and the off-hook howl.
+- **Loose clips with character**: coins dropping into a metal box, radio static, morse-code SOS — and the actual White House phone recording from the 1981 government shutdown, for a hold message with a story.
+- All public-domain or CC0 from Wikimedia Commons, converted to the shelf's WAV shape, with each clip's exact source and licence recorded in the catalog. The shelf now holds 24 clips across four packs and seven categories.
+
 ## 0.10.0
 
 The night's work, rolled up: the sound board, the Transmission

@@ -54,6 +54,68 @@
     "category": "rotary",
     "pack": "Rotary"
   },
+  "landline-dialtone.wav": {
+    "label": "US dial tone (recorded)",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: US dial tone.ogg (CC0)"
+  },
+  "landline-ringback.wav": {
+    "label": "US ringback — the ring you hear calling",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: US ringback tone.ogg (CC0)"
+  },
+  "landline-busy.wav": {
+    "label": "Busy signal (North American)",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: NorthAmericanBusySignal.ogg (public domain)"
+  },
+  "landline-busy-old.wav": {
+    "label": "Busy signal — the old exchange",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: Old North American busy signal.ogg (public domain)"
+  },
+  "landline-dtmf.wav": {
+    "label": "Touch-tone dialing",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: DTMF dialing.ogg (public domain)"
+  },
+  "landline-intercept.wav": {
+    "label": "Intercept — please hang up and try again",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: Redial-recording-usa.ogg (CC0)"
+  },
+  "landline-offhook.wav": {
+    "label": "Off-hook howl",
+    "category": "landline",
+    "pack": "Landline",
+    "source": "Wikimedia Commons: Alternate North American Off-Hook Signal.ogg (public domain)"
+  },
+  "payphone-coins.wav": {
+    "label": "Coins into the box",
+    "category": "payphone",
+    "source": "Wikimedia Commons: Coins dropped in metallic moneybox 0.ogg (public domain)"
+  },
+  "radio-static.wav": {
+    "label": "Radio static",
+    "category": "radio",
+    "source": "Wikimedia Commons: White-noise-sound-20sec-mono-44100Hz.ogg (public domain)"
+  },
+  "morse-sos.wav": {
+    "label": "Morse code — SOS",
+    "category": "radio",
+    "source": "Wikimedia Commons: SOS morse code.ogg (public domain)"
+  },
+  "shutdown-hold-message.wav": {
+    "label": "White House shutdown message (1981)",
+    "category": "novelty",
+    "source": "Wikimedia Commons: 1981 government shutdown White House phone message.mp3 (public domain, US government)"
+  },
   "sad-trombone.wav": {
     "label": "Sad trombone",
     "category": "novelty"
