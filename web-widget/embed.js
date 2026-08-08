@@ -7,6 +7,12 @@
  * Renders an <iframe> pointing at the call page. Whoever is live on air
  * answers — the host page doesn't choose a persona.
  *
+ * data-mode="launcher" renders a floating pill in the page corner instead
+ * (data-position="left" for the other side); pressing it opens the widget
+ * in a fixed panel, support-chat style. The pill reads the line's state, so
+ * it says who answers — or that the line is closed — before it is pressed.
+ * Collapsing the panel does NOT hang up a call in progress.
+ *
  * Origin is derived from this script's own src, so the same file works in
  * local dev and behind a real domain with no edit. Override per-element with
  * data-origin if you're serving the script from a different host than the
@@ -44,6 +50,158 @@
     return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
 
+  /**
+   * The frame both modes share. One factory, because the microphone allow
+   * attribute and the transparent backdrop are load-bearing and were about
+   * to exist in two places.
+   */
+  function makeIframe(origin, compact, theme, lockTheme, captions) {
+    var iframe = document.createElement("iframe");
+    iframe.src = origin + "/?compact=" + (compact ? "1" : "0")
+      + (theme ? (lockTheme ? "&theme=" : "&themeDefault=")
+                 + encodeURIComponent(theme) : "")
+      + (captions ? "&captions=" + encodeURIComponent(captions) : "");
+    iframe.setAttribute("allow", "microphone");
+    iframe.setAttribute("title", "Call the SUB/WAVE DJ");
+    iframe.style.border = "none";
+    iframe.setAttribute("allowtransparency", "true");
+    iframe.style.background = "transparent";
+    iframe.style.width = "100%";
+    iframe.style.display = "block";
+    iframe.style.borderRadius = "16px";
+    if (theme) iframe.style.colorScheme = theme;
+    return iframe;
+  }
+
+  /**
+   * data-mode="launcher": a floating pill in the page corner — the shape a
+   * support-chat bubble taught everyone — that opens the widget in a fixed
+   * panel above it. The frame is created on FIRST open (a host page should
+   * not pay for a widget nobody pressed) and never torn down after:
+   * collapsing hides the panel and the call, if one is up, carries on.
+   * The pill reads /live so it can say who answers before anyone commits —
+   * or say the line is closed instead of opening a dead door.
+   */
+  function mountLauncher(el, origin, compact, theme, lockTheme, captions) {
+    var left = el.getAttribute("data-position") === "left";
+    var Z = "2147483000";
+
+    var pill = document.createElement("button");
+    pill.type = "button";
+    pill.setAttribute("aria-haspopup", "dialog");
+    pill.setAttribute("aria-expanded", "false");
+    var s = pill.style;
+    s.position = "fixed"; s.bottom = "18px"; s[left ? "left" : "right"] = "18px";
+    s.zIndex = Z; s.cursor = "pointer";
+    s.padding = "11px 18px"; s.borderRadius = "999px";
+    s.border = "1px solid rgba(255,255,255,.18)";
+    s.background = "#191b1f"; s.color = "#f2efe9";
+    s.font = "600 13.5px/1.2 system-ui, sans-serif";
+    s.boxShadow = "0 8px 28px rgba(0,0,0,.35)";
+    pill.textContent = "📞 Call the DJ";
+
+    var panel = document.createElement("div");
+    var p = panel.style;
+    p.position = "fixed"; p.bottom = "70px"; p[left ? "left" : "right"] = "16px";
+    p.zIndex = Z; p.display = "none";
+    p.width = "min(380px, calc(100vw - 24px))";
+    p.borderRadius = "16px"; p.overflow = "hidden";
+    p.boxShadow = "0 18px 48px rgba(0,0,0,.45)";
+
+    var iframe = null, frameHeight = 480, overlaid = false;
+    var maxHeight = function () { return Math.max(240, window.innerHeight - 110); };
+
+    function applyHeight() {
+      if (!iframe) return;
+      iframe.style.height = Math.min(frameHeight, maxHeight()) + "px";
+    }
+
+    function open() {
+      if (!iframe) {
+        iframe = makeIframe(origin, compact, theme, lockTheme, captions);
+        applyHeight();
+        panel.appendChild(iframe);
+        window.addEventListener("message", function (e) {
+          if (!iframe || e.source !== iframe.contentWindow) return;
+          var msg = e.data;
+          if (!msg) return;
+          // The panel is anchored to the bottom, so granting the ask list
+          // its room is just growing upward — no direction to negotiate.
+          if (msg.type === "subwave-callin:overlay") {
+            var wanted = Number(msg.px) || 0;
+            overlaid = wanted > 0;
+            if (overlaid) {
+              var granted = Math.max(
+                120, Math.min(wanted, maxHeight() - frameHeight));
+              iframe.style.height =
+                Math.min(frameHeight + granted, maxHeight()) + "px";
+              iframe.contentWindow.postMessage(
+                { type: "swtv:overlay", px: granted, up: false }, origin);
+            } else {
+              applyHeight();
+              iframe.contentWindow.postMessage(
+                { type: "swtv:overlay", px: 0, up: false }, origin);
+            }
+            return;
+          }
+          if (msg.type === "subwave-callin:height" && !overlaid) {
+            var px = Number(msg.px);
+            if (px > 80 && px < 2000) { frameHeight = px; applyHeight(); }
+          }
+        });
+        // The host's station-theming hook works in this mode too.
+        el.setCallinTheme = function (tokens) {
+          if (!tokens || !iframe || !iframe.contentWindow) return;
+          iframe.contentWindow.postMessage(
+            { type: "swtv:theme", tokens: tokens }, origin);
+        };
+      }
+      panel.style.display = "block";
+      pill.setAttribute("aria-expanded", "true");
+    }
+
+    function close() {
+      // Hide, never unmount: tearing the frame down would hang up a live
+      // call. Collapsed mid-call, the audio keeps going — a phone in the
+      // pocket, not a phone on the hook.
+      panel.style.display = "none";
+      pill.setAttribute("aria-expanded", "false");
+    }
+
+    pill.onclick = function () {
+      if (panel.style.display === "none") open(); else close();
+    };
+
+    // What the pill promises follows the line's real state, so a closed
+    // booth never dangles a button that can only refuse. Same resolution
+    // order the card itself uses, reduced to the three words a pill has
+    // room for.
+    function paintPill() {
+      fetch(origin + "/live").then(function (r) { return r.json(); })
+        .then(function (d) {
+          var machineOn = (d.voicemailWhen || "never") !== "never";
+          var closed = !!d.callsPaused
+            || (d.liveCalls === false && !machineOn);
+          var vmOnly = machineOn
+            && (d.voicemailWhen === "always" || d.liveCalls === false);
+          pill.disabled = closed;
+          s.opacity = closed ? ".6" : "";
+          pill.textContent = closed
+            ? ((d.wording && d.wording.closed) || "Line closed")
+            : vmOnly
+            ? "📞 " + ((d.wording && d.wording.vm_button)
+                                 || "Leave a message")
+            : "📞 " + (d.callLabel || "Call the DJ");
+        }).catch(function () { /* keep the last label */ });
+    }
+    paintPill();
+    setInterval(paintPill, 60000);
+    window.addEventListener("resize", applyHeight);
+
+    el.appendChild(pill);
+    el.appendChild(panel);
+  }
+
   document.querySelectorAll("[id^='subwave-callin']").forEach(function (el) {
     if (el.dataset.callinMounted) return;
     el.dataset.callinMounted = "1";
@@ -73,32 +231,19 @@
     // data-height="260px" overrides the frame height for tight layouts.
     var height = el.getAttribute("data-height") || "";
 
-    var iframe = document.createElement("iframe");
-    iframe.src = origin + "/?compact=" + (compact ? "1" : "0")
-      + (theme ? (lockTheme ? "&theme=" : "&themeDefault=")
-                 + encodeURIComponent(theme) : "")
-      + (captions ? "&captions=" + encodeURIComponent(captions) : "");
-    iframe.setAttribute("allow", "microphone");
-    iframe.setAttribute("title", "Call the SUB/WAVE DJ");
-    iframe.style.border = "none";
-    // Belt and braces against the opaque-backdrop rule: the widget also
-    // paints edge to edge, so a backdrop that does go opaque is invisible.
-    iframe.setAttribute("allowtransparency", "true");
-    iframe.style.background = "transparent";
-    iframe.style.width = "100%";
+    // data-mode="launcher": the floating pill + panel instead of an inline
+    // frame. Everything below this line is the inline card.
+    if (el.getAttribute("data-mode") === "launcher") {
+      mountLauncher(el, origin, compact, theme, lockTheme, captions);
+      return;
+    }
+
+    var iframe = makeIframe(origin, compact, theme, lockTheme, captions);
     // An iframe is inline by default, which leaves a few px of baseline gap
-    // under it — so the container measures taller than the frame it holds.
-    // That difference is invisible until something reads one and writes the
-    // other, and then it compounds: the overlay was restoring the frame to
-    // its CONTAINER's height, so every open-and-close of the ask list left
-    // the widget 3px taller than it started.
-    iframe.style.display = "block";
+    // under it (makeIframe sets display:block) — restoring the frame to its
+    // CONTAINER's height once compounded 3px per open-and-close of the ask
+    // list; see baseHeight/baseSlot below.
     iframe.style.height = height || (compact ? "190px" : "420px");
-    // The widget's own card carries the radius and the frame is transparent
-    // around it, so this is belt and braces: it only shows if a host or a
-    // station palette ends up painting the frame's background.
-    iframe.style.borderRadius = "16px";
-    if (theme) iframe.style.colorScheme = theme;
 
     el.appendChild(iframe);
 

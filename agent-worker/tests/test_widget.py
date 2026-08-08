@@ -1296,10 +1296,15 @@ class TestTheKillSwitchOutranksEveryDoor(unittest.TestCase):
         cls.panel = js["panel.js"]
 
     def test_a_paused_or_all_off_line_paints_closed(self):
-        closed = self.js.split("lineClosedNow = ")[1][:120]
+        # Anchored inside paintIdleButtons: a bare split matched the
+        # DECLARATION (`let lineClosedNow = false`) instead of the
+        # assignment, which this test only got to say once it was actually
+        # registered in test_sidecar.
+        painter = self.js.split("function paintIdleButtons")[1]
+        closed = painter.split("lineClosedNow = ")[1][:140]
         self.assertIn("d.callsPaused", closed)
         self.assertIn("d.liveCalls === false && !machineOn", closed)
-        branch = self.js.split("if (lineClosedNow) {")[1][:500]
+        branch = painter.split("if (lineClosedNow) {")[1][:500]
         self.assertIn("callBtn.disabled = true", branch)
 
     def test_the_closed_card_says_why_in_a_sentence(self):
@@ -1320,6 +1325,28 @@ class TestTheKillSwitchOutranksEveryDoor(unittest.TestCase):
         # The preview is a real card, so a paused line previews as closed —
         # the note is what stops that reading as the preview being broken.
         self.assertIn("previewLineNote", self.panel)
+
+
+class TestTheLauncherIsAPhoneInThePocket(unittest.TestCase):
+    """data-mode="launcher": a pill that opens the widget in a fixed panel.
+    Two promises worth pinning: collapsing hides and never unmounts —
+    tearing the frame down would hang up a live call — and the snippet
+    builder writes its data- attributes on the DIV, where embed.js actually
+    reads them (they shipped on the script tag once, silently doing
+    nothing)."""
+
+    def test_collapse_hides_and_never_unmounts(self):
+        js = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        self.assertIn("data-mode", js)
+        close_fn = js.split("function close()")[1][:500]
+        self.assertIn('display = "none"', close_fn)
+        self.assertNotIn("remove()", close_fn)
+        self.assertNotIn("iframe = null", close_fn)
+
+    def test_the_snippet_attrs_land_on_the_div(self):
+        pjs = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        snippet = pjs.split("function paintEmbedSnippet")[1][:1200]
+        self.assertIn("'<div id=\"subwave-callin\"' + attrs", snippet)
 
 
 class TestTheEmbedIsJustTheCard(unittest.TestCase):

@@ -69,6 +69,8 @@ from tests.test_widget import (  # noqa: F401
     TestThePaletteTravelsForTheCycle,
     TestAVoicemailOnlyLineHasOneDoor,
     TestTheEmbedIsJustTheCard,
+    TestTheKillSwitchOutranksEveryDoor,
+    TestTheLauncherIsAPhoneInThePocket,
     TestTheEffectHasADial,
     TestThePanelReadsAtAGlance,
     TestTheBeepIsPreviewableAndWavOnly,

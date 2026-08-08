@@ -5,6 +5,11 @@ commit-by-commit detail is in git history.
 
 ## 0.10.2
 
+### The floating launcher
+
+- **A third way to wear the widget**: `data-mode="launcher"` turns the embed into a floating call pill in the page corner — support-chat style — that names who answers ("📞 Call Francesca", "Leave a message", or "Line closed") before anyone presses it, and opens the card in a panel above. Collapsing the panel never hangs up a call in progress.
+- The embed section's snippet builder gained a **Shape** picker (inline card / floating launcher) — and while wiring it, a real bug fell out: the builder wrote `data-theme` and `data-captions` onto the *script* tag, where embed.js never looks, so those choices in copied snippets have silently done nothing. They land on the div now.
+
 ### The ring yields at pickup
 
 - **The ring stops (soft fade) the moment the DJ answers** — a long ringback used to keep singing over the hello, because only the ring *timer* stopped and the started file played to its end. A long ring also used to stack copies of itself every 2.6 seconds; now one plays at a time.

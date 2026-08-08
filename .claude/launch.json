@@ -13,6 +13,15 @@
         "agent-worker/token_server.py"
       ],
       "port": 8100
+    },
+    {
+      "name": "panel-stub",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "tools/panel_dev_server.py"
+      ],
+      "port": 8123,
+      "autoPort": true
     }
   ]
 }

@@ -1000,17 +1000,22 @@
 
   function paintEmbedSnippet() {
     if (!$('embedSnippet')) return;
+    // The attributes belong on the DIV — embed.js reads its mount element,
+    // never the script tag. The builder had them on the script, so a copied
+    // snippet's theme and captions choices silently did nothing.
     const attrs = [];
+    const mode = $('embedMode') && $('embedMode').value;
     const theme = $('embedTheme') && $('embedTheme').value;
     const caps = $('embedCaptions') && $('embedCaptions').value;
+    if (mode) attrs.push(' data-mode="' + mode + '"');
     if (theme) attrs.push(' data-theme="' + theme + '"');
     if (caps) attrs.push(' data-captions="' + caps + '"');
     $('embedSnippet').value =
-      '<div id="subwave-callin"></div>\n' +
-      '<script src="' + location.origin + '/embed.js"'
-      + attrs.join('') + '><\/script>';
+      '<div id="subwave-callin"' + attrs.join('') + '></div>\n' +
+      '<script src="' + location.origin + '/embed.js"><\/script>';
   }
   if ($('embedTheme')) {
+    $('embedMode').onchange = paintEmbedSnippet;
     $('embedTheme').onchange = paintEmbedSnippet;
     $('embedCaptions').onchange = paintEmbedSnippet;
   }
