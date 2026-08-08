@@ -2022,6 +2022,10 @@
     am:         { hp: 200, lp: 4800, grit: 12 },
     megaphone:  { hp: 500, lp: 4000, grit: 70 },
     underwater: { hp: 40,  lp: 500,  grit: 0 },
+    stadium:    { hp: 300, lp: 5000, grit: 35 },
+    intercom:   { hp: 800, lp: 2600, grit: 45 },
+    shortwave:  { hp: 600, lp: 2200, grit: 30 },
+    lofi:       { hp: 60,  lp: 6500, grit: 8 },
   };
 
   function fxCurve(amount) {

@@ -3,6 +3,16 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.148
+
+- **Effect intensity is back for every effect.** Its visibility rule still
+  named only the first three, so picking a newer colour hid the dial — which
+  read, fairly, as the volume control disappearing.
+- **Four more effects**: stadium PA, intercom squawk, shortwave, lo-fi
+  cassette — ten colours now, all under the same intensity dial.
+- The **dashboard is a real grid**: three tiles across (two on a narrow
+  panel), every row full, every tile the same size.
+
 ## 0.9.147
 
 ### The sound board
