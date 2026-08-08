@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.0
+
+The night's work, rolled up: the sound board, the Transmission
+dashboard, per-DJ voice effects and two shipped sound sets are enough
+new surface to move the minor number. Nothing changes between 0.9.157
+and this — the detail lives in the entries below.
+
 ## 0.9.157
 
 ### The dashboard, two columns
