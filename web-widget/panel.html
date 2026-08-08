@@ -138,11 +138,13 @@
             <span class="ck">Live calls</span>
             <span class="cv"></span>
             <span class="cn">the booth picks up</span>
+            <span class="switch small" aria-hidden="true"></span>
           </button>
           <button type="button" id="modeVmBtn" class="ctrlcard">
             <span class="ck">Voicemail</span>
             <span class="cv"></span>
             <span class="cn">the machine answers</span>
+            <span class="switch small" aria-hidden="true"></span>
           </button>
           <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
                  aria-hidden="true" />
@@ -190,6 +192,9 @@
       <input type="search" id="settingsSearch" class="settingsearch"
              placeholder="Find a setting…" autocomplete="off" />
     </div>
+    <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
+      reads every label, help line and section name. Try the thing's own noun
+      (“beep”, “password”, “skip”), or clear it and use Jump to.</p>
     <!-- Jump links, one per super-group, built from the schema. The panel is
          six screens long and every way of reaching the bottom of it was
          scrolling past everything in between. Full width and labelled, so it

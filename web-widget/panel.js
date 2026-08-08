@@ -422,21 +422,24 @@
     // machine and where a message goes afterwards. Switched off, each card
     // goes back to saying what the switch does.
     const cnOf = (id) => { const el = $(id); return el && el.querySelector('.cn'); };
+    // Counted once, read twice: the Live calls door and the Who-can-call
+    // tile answer with the same numbers, because they ARE the same numbers.
+    const RANK = { open: 0, guest: 1, admin: 2 };
+    const usable = { open: 0, guest: 0, admin: 0 };
+    Object.keys(SCHEMA.fields).forEach((f) => {
+      if (!SCHEMA.fields[f].tiered) return;
+      const v = permTier(f);
+      if (v === 'off') return;
+      Object.keys(RANK).forEach((t) => {
+        if (RANK[t] >= RANK[v]) usable[t] += 1;
+      });
+    });
+    const canDo = 'anyone ' + usable.open + ' · guest ' + usable.guest
+      + ' · admin ' + usable.admin;
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
-        const RANK = { open: 0, guest: 1, admin: 2 };
-        const usable = { open: 0, guest: 0, admin: 0 };
-        Object.keys(SCHEMA.fields).forEach((f) => {
-          if (!SCHEMA.fields[f].tiered) return;
-          const v = permTier(f);
-          if (v === 'off') return;
-          Object.keys(RANK).forEach((t) => {
-            if (RANK[t] >= RANK[v]) usable[t] += 1;
-          });
-        });
-        liveNote.textContent = 'can do — anyone ' + usable.open
-          + ' · guest ' + usable.guest + ' · admin ' + usable.admin;
+        liveNote.textContent = 'can do — ' + canDo;
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
           + 'use, counted from the switches under Permissions & safety.';
       } else {
@@ -499,8 +502,10 @@
     const ACCESS = { open: 'Anyone', guest: 'Guest code', admin: 'Admin only' };
     const access = ($('front_access') && $('front_access').value) || resolved.front_access;
     $('dashLogoutBtn').hidden = !authConfigured;
+    // The note answers "and what does each tier GET" — the missing-password
+    // warning still outranks it, because an open panel is the bigger fact.
     tile('tileAccess', ACCESS[access] || access || '—',
-      authConfigured ? 'panel password set' : 'this panel has no password',
+      authConfigured ? canDo + ' perms' : 'this panel has no password',
       authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
 
     // Named rather than counted: "3 of 3 configured" is true of a call that
@@ -1731,6 +1736,7 @@
     let timer = null;
     const apply = () => {
       const needle = (box.value || '').trim().toLowerCase();
+      let anywhere = false;
       document.querySelectorAll('details.sec').forEach((sec) => {
         const rows = sec.querySelectorAll('.row, label.check, .prow, .permrow');
         if (!needle) {
@@ -1742,18 +1748,28 @@
           }
           return;
         }
-        let any = false;
+        // A hit on the section's own name or blurb shows the WHOLE section
+        // — typing "sounds" used to find nothing, because no single row
+        // says the word its section is named after.
+        const head = sec.querySelector('summary');
+        const secHit = head
+          && head.textContent.toLowerCase().includes(needle);
+        let any = !!secHit;
         rows.forEach((r) => {
-          const hit = r.textContent.toLowerCase().includes(needle);
+          const hit = secHit || r.textContent.toLowerCase().includes(needle);
           r.style.display = hit ? '' : 'none';
           any = any || hit;
         });
         sec.style.display = any ? '' : 'none';
+        anywhere = anywhere || any;
         if (any && !sec.open) {
           sec.open = true;
           sec.dataset.searchOpened = '1';
         }
       });
+      // Say so when nothing matched — a page of collapsed nothing read as
+      // the panel being broken, not as a miss.
+      if ($('searchMiss')) $('searchMiss').hidden = !needle || anywhere;
     };
     box.oninput = () => { clearTimeout(timer); timer = setTimeout(apply, 120); };
   })();
@@ -2313,6 +2329,11 @@
     src.start();
   }
 
+  // Reassigned inside the guard below; declared here so the per-DJ list's
+  // own Test buttons (built elsewhere) can reach the one test path — two
+  // implementations of "render a line and colour it" would drift.
+  let runFxTest = async () => {};
+
   if ($('fxTestBtn')) {
     // The test can borrow ANY DJ's voice: the per-persona voices arrive
     // with the voicemail status, fetched when the section opens.
@@ -2330,7 +2351,7 @@
         });
     });
 
-    const runFxTest = async (kind, btn) => {
+    runFxTest = async (kind, btn, voiceOverride) => {
       const out = $('ttsResult');
       btn.disabled = true;
       out.className = 'result on';
@@ -2338,7 +2359,7 @@
         + (kind === 'none' ? 'clean path' : kind + ' effect') + '\u2026';
       try {
         const body = draft();
-        const voice = $('fxVoice') && $('fxVoice').value;
+        const voice = voiceOverride || ($('fxVoice') && $('fxVoice').value);
         if (voice) body.tts_voice = voice;
         const r = await afetch('/test/tts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2710,10 +2731,26 @@
       catIn.value = e.category || '';
       catIn.className = 'catbox';
       catIn.onchange = async () => {
-        await afetch('/settings/sounds/meta', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: e.name, category: catIn.value }),
-        });
+        // The server saved this all along; the CLIENT kept repainting the
+        // shelf from its stale local copy, so the very next repaint undid
+        // the edit on screen and the box read as refusing to save.
+        // Operator-reported. Update the source array the repaints read.
+        try {
+          const r = await afetch('/settings/sounds/meta', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: e.name, category: catIn.value }),
+          });
+          if (!r.ok) throw new Error('refused');
+          const src = (e.builtin ? soundLibrary : uploadMeta)
+            .find((s) => s.name === e.name);
+          if (src) src.category = catIn.value.trim() || 'misc';
+          showResult($('soundResult'), true, (e.label || e.name)
+            + ' filed under “' + (catIn.value.trim() || 'misc') + '”.');
+          paintSoundBoard();     // the category filter's options follow
+        } catch (err) {
+          showResult($('soundResult'), false,
+            'Could not save the category — ' + err.message);
+        }
       };
       cat.appendChild(catIn);
       // Where this sound is on duty, drafts included — reading the same
@@ -2916,6 +2953,7 @@
           });
           const d = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(d.error || 'refused');
+          current[p.id] = sel.value;
           showResult(out, true, sel.value
             ? p.name + ' now wears ' + sel.value + ' on every call.'
             : p.name + ' follows the shared setting again.');
@@ -2925,7 +2963,23 @@
           sel.value = current[p.id] || '';
         }
       };
-      li.append(who, sel);
+      // Hear THIS DJ through THIS row's pick — unsaved selection included,
+      // in the persona's own voice via the same one test path the section's
+      // buttons use. The voices ride the voicemail status; fetched once.
+      const hear = document.createElement('button');
+      hear.className = 'btnquiet';
+      hear.textContent = 'Test';
+      hear.title = 'Render one line in ' + p.name + '’s voice and play it '
+        + 'through the selected effect';
+      hear.onclick = async () => {
+        if (!vmPersonas.length) await loadVmStatus();
+        const per = vmPersonas.find((v) => v.id === p.id) || {};
+        const kind = sel.value
+          || ($('voice_effect') && $('voice_effect').value)
+          || resolved.voice_effect || 'none';
+        runFxTest(kind, hear, per.voice || '');
+      };
+      li.append(who, sel, hear);
       host.appendChild(li);
     });
   }

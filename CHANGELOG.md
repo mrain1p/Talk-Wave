@@ -3,6 +3,39 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.157
+
+### The dashboard, two columns
+
+- **Transmission holds the left column**; the six tiles fill the right,
+  two across. Live calls and Voicemail wear their own **smaller switches**
+  under The Line's big one — off is quiet, on is green, and only a thrown
+  kill switch goes coral.
+- **Who can call says what each tier gets**: *anyone 5 · guest 9 ·
+  admin 12 perms* — the same numbers the Live calls door counts.
+
+### The shelf, round three
+
+- **The ghost box between the cards is gone** — the empty picker menu's
+  own display beat its hidden attribute, the same trap as the URL rows
+  (and the calls toolbar, fixed while there).
+- **Category edits stop un-saving themselves** — the server kept them all
+  along; the shelf was repainting from its stale local copy and wiping
+  the edit off screen. Saved edits now confirm and refill the filter.
+- The shelf's disclosure looks **openable** — advanced doors (the shelf,
+  Per-DJ greetings, Per-DJ effects) wear the quiet chip chrome instead of
+  a whisper of small caps. The Use for… and category selects wear the
+  field skin, and prose under tables gets its breathing room.
+
+### Odds and ends
+
+- **Per-DJ effects rows gain a Test button** — one line rendered in that
+  persona's own voice, played through the row's pick, unsaved included.
+  (Picks still save the moment they're made — no Apply step to forget.)
+- **Find a setting matches section names too** — "sounds" now opens Call
+  sounds — and says plainly when nothing matches instead of collapsing
+  the page to nothing.
+
 ## 0.9.156
 
 - Housekeeping after the night's sweep: the test scaffolding redirects the

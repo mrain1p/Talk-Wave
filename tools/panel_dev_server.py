@@ -168,6 +168,15 @@ class Handler(BaseHTTPRequestHandler):
                     settings_store.save(patch)
             except Exception:
                 pass
+        # Category filing answers ok so the shelf's save path can be driven;
+        # the real handler persists to the sounds meta store.
+        if self.path.split("?")[0] == "/settings/sounds/meta":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(n)
+            except Exception:
+                pass
+            return self._json({"ok": True})
         # Per-DJ effects persist too — through the REAL store, pointed at
         # the stub's temp dir, so the panel's list can be driven end to end.
         if self.path.split("?")[0] == "/settings/voice-effects":
