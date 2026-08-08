@@ -331,23 +331,53 @@ async def _protocol_models(provider: str) -> list[str]:
         return []
 
 
-async def _compat_models(cfg: dict) -> list[str]:
-    """Whatever the operator's own OpenAI-compatible server says it serves.
+def _custom_llm_endpoint(cfg: dict) -> str:
+    """The operator's own OpenAI-protocol address, when the model dropdown
+    should be read from IT rather than from the provider's official catalogue.
 
-    Only asked when that provider is actually selected: the base URL field is
-    shared across providers, so an Ollama address left in it would otherwise
-    be probed as if it were vLLM on every panel load. No name filtering — the
-    ids are whatever the operator loaded into their own server.
+    A beta tester pointed the openai provider at llama-swap (llama.cpp's
+    multi-model router) and every model in the dropdown 404'd — "no router for
+    requested model" — because the list came from api.openai.com while the
+    calls went to their server. build_llm honours llm_base_url for openai,
+    deepseek, requesty, gateway and openai-compatible, so for those the
+    endpoint's own list is the only one whose names actually route. Empty for
+    providers that ignore the field (google, anthropic, openrouter) and for
+    ollama, which has its own /api/tags path — and empty when the URL is just
+    the provider's official host again.
+    """
+    p = str(cfg.get("llm_provider", "")).lower()
+    base = str(cfg.get("llm_base_url") or "").strip().rstrip("/")
+    if not base:
+        return ""
+    if p in ("openai-compatible", "openai"):
+        return base
+    if p in settings_store.OPENAI_PROTOCOL_HOSTS:
+        host, _default = settings_store.OPENAI_PROTOCOL_HOSTS[p]
+        if base != host.rstrip("/"):
+            return base
+    return ""
+
+
+async def _endpoint_models(cfg: dict) -> list[str]:
+    """Whatever the operator's own OpenAI-protocol server says it serves.
+
+    Mirrors the station's GET /settings/llm/discover: keyless on purpose — a
+    stored provider key must not travel to a custom host just to list models,
+    and local servers answer /models unauthenticated anyway. The one
+    exception is the openai-compatible provider's own opt-in key, which
+    already belongs to that endpoint. Only asked when the list should come
+    from the endpoint at all — see _custom_llm_endpoint; an Ollama address
+    left in the shared field is not probed as if it were vLLM. No name
+    filtering: the ids are whatever the operator loaded into their server.
     """
     import os
 
-    if str(cfg.get("llm_provider", "")).lower() != "openai-compatible":
-        return []
-    base = str(cfg.get("llm_base_url") or "").strip().rstrip("/")
+    base = _custom_llm_endpoint(cfg)
     if not base:
         return []
     headers = {}
-    if os.environ.get("OPENAI_COMPAT_API_KEY"):
+    if (str(cfg.get("llm_provider", "")).lower() == "openai-compatible"
+            and os.environ.get("OPENAI_COMPAT_API_KEY")):
         headers["Authorization"] = f"Bearer {os.environ['OPENAI_COMPAT_API_KEY']}"
     try:
         async with httpx.AsyncClient(timeout=6.0) as c:
@@ -355,8 +385,7 @@ async def _compat_models(cfg: dict) -> list[str]:
             r.raise_for_status()
             return sorted(m["id"] for m in r.json().get("data", []) if m.get("id"))
     except Exception as e:
-        log.info("openai-compatible model list unavailable at %s (%s)",
-                 base, describe(e))
+        log.info("endpoint model list unavailable at %s (%s)", base, describe(e))
         return []
 
 
@@ -439,7 +468,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
             _anthropic_models(secrets_store.get("anthropic_api_key")),
             station_cfg.llm_config(),
             *(_protocol_models(p) for p in settings_store.OPENAI_PROTOCOL_HOSTS),
-            _compat_models(cfg),
+            _endpoint_models(cfg),
         )
     finally:
         await station.aclose()
@@ -482,13 +511,22 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         "ollama": bool(ollama),
     }
     # protocol_m is the tail of the gather above: one list per entry in
-    # OPENAI_PROTOCOL_HOSTS, then the operator's own openai-compatible server.
-    compat_m = protocol_m[len(settings_store.OPENAI_PROTOCOL_HOSTS)]
+    # OPENAI_PROTOCOL_HOSTS, then the operator's own custom endpoint.
+    endpoint_m = protocol_m[len(settings_store.OPENAI_PROTOCOL_HOSTS)]
     for provider, found in zip(settings_store.OPENAI_PROTOCOL_HOSTS, protocol_m):
         models[provider] = found or models.get(provider, [])
         discovered[provider] = bool(found)
-    models["openai-compatible"] = compat_m
-    discovered["openai-compatible"] = bool(compat_m)
+    models.setdefault("openai-compatible", [])
+    # The endpoint's list WINS for whichever provider is pointed at it: the
+    # calls go to that URL, so a dropdown read from the official catalogue
+    # offers names the server cannot route (observed with llama-swap: every
+    # pick 404'd "no router for requested model"). Mirrors the station's
+    # /settings/llm/discover.
+    endpoint_provider = ""
+    if endpoint_m:
+        endpoint_provider = str(cfg.get("llm_provider", "")).lower()
+        models[endpoint_provider] = endpoint_m
+        discovered[endpoint_provider] = True
 
     # Only what the operator could actually pick. A provider with no key is not
     # a choice, it is a call that fails at the first turn — and it used to be
@@ -527,6 +565,9 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         "personas": personas,
         "voiceSource": voice_source,
         "modelsDiscovered": discovered,
+        # Which provider's list came from the operator's own endpoint rather
+        # than the provider's catalogue, so the panel can say so.
+        "modelsFromEndpoint": endpoint_provider,
         "stationLlm": station_llm,
     }
 

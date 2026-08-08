@@ -90,6 +90,7 @@ OPTIONS = {
                  {"id": "p_e28f6a", "name": "Dawn"}],
     "voiceSource": {"adminConfigured": True, "mirroringStation": True, "count": 18},
     "stationLlm": {"model": "gemini-3.1-flash-lite"},
+    "modelsFromEndpoint": "",
     "providerBaseUrls": settings_store.provider_base_urls(),
     "ttsBaseUrls": settings_store.tts_base_urls(),
 }
@@ -236,6 +237,23 @@ class Handler(BaseHTTPRequestHandler):
                 "guestConfigured": True,
             })
         if path == "/settings/options":
+            # A previewed llm_base_url answers the way the real handler does:
+            # the endpoint's own list replaces the provider's catalogue and
+            # modelsFromEndpoint says so — so the panel's "read from your
+            # endpoint" path can be driven here without a live server.
+            from urllib.parse import parse_qs, urlparse
+
+            q = parse_qs(urlparse(self.path).query)
+            if q.get("llm_base_url", [""])[0].strip():
+                cfg = settings_store.load()
+                p = str(cfg.get("llm_provider") or "google").lower()
+                echoed = dict(OPTIONS)
+                echoed["llmModels"] = dict(OPTIONS["llmModels"])
+                echoed["llmModels"][p] = ["llama-3.1-8b-q6", "qwen3-30b"]
+                echoed["modelsDiscovered"] = dict(OPTIONS["modelsDiscovered"])
+                echoed["modelsDiscovered"][p] = True
+                echoed["modelsFromEndpoint"] = p
+                return self._json(echoed)
             return self._json(OPTIONS)
         if path == "/settings/sounds":
             # Fixture uploads, REAL bundled library — the board and the

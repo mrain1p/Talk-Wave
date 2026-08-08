@@ -432,3 +432,43 @@ class TestAMissingModelNamesTheOnesTheServerHas(unittest.TestCase):
         # Garbage never becomes a hint.
         self.assertEqual(_model_names({"weird": True}), [])
         self.assertEqual(_model_names(None), [])
+
+
+class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
+    """A beta tester pointed the openai provider at llama-swap and every
+    dropdown pick 404'd — the model list came from api.openai.com while the
+    calls went to their server. The list must be read from wherever the calls
+    will actually go (mirroring the station's /settings/llm/discover), and
+    only for providers whose calls honour llm_base_url at all."""
+
+    def _endpoint(self, provider, base):
+        from api.settings import _custom_llm_endpoint
+
+        return _custom_llm_endpoint(
+            {"llm_provider": provider, "llm_base_url": base})
+
+    def test_a_custom_url_wins_for_openai_protocol_providers(self):
+        for provider in ("openai", "openai-compatible", "deepseek",
+                         "requesty", "gateway"):
+            self.assertEqual(
+                self._endpoint(provider, "http://192.168.1.201:18081/v1"),
+                "http://192.168.1.201:18081/v1", provider)
+
+    def test_no_url_means_the_official_catalogue(self):
+        for provider in ("openai", "deepseek", "openai-compatible"):
+            self.assertEqual(self._endpoint(provider, ""), "", provider)
+
+    def test_the_official_host_typed_back_in_is_not_custom(self):
+        # DeepSeek's own address in the box is the default spelled out, not a
+        # server of the operator's — the catalogue (with its key) still wins.
+        self.assertEqual(
+            self._endpoint("deepseek", "https://api.deepseek.com/v1"), "")
+
+    def test_providers_that_ignore_the_field_are_never_probed(self):
+        # build_llm passes no base_url to these, so a list read from it would
+        # describe a server the calls never reach. Ollama has its own
+        # /api/tags path and is handled there.
+        for provider in ("google", "anthropic", "openrouter", "ollama"):
+            self.assertEqual(
+                self._endpoint(provider, "http://192.168.1.201:18081/v1"),
+                "", provider)
