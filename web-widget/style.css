@@ -994,6 +994,24 @@
     width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
   }
 
+  .soundboard {
+    width: 100%; border-collapse: collapse; margin-top: 10px;
+    font-size: 12px;
+  }
+  .soundboard th {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line2);
+  }
+  .soundboard td { padding: 5px 8px; border-bottom: 1px solid var(--line2); }
+  .soundboard td:last-child { text-align: right; white-space: nowrap; }
+  .soundboard .catbox {
+    width: 110px; font: inherit; font-size: 11.5px; padding: 3px 7px;
+    border-radius: 6px; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text);
+  }
+  .soundboard button { margin-left: 6px; }
+
   .setchip {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700; margin-left: 8px;

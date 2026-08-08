@@ -40,6 +40,8 @@ class TestExposedSurface(unittest.TestCase):
         "GET /live": "public",                 # what the call card renders
         "GET /avatar/{persona_id}": "public",  # proxied so embeds work on https
         "GET /sounds/{name}": "public",        # uploaded call sounds
+        "GET /sound-lib/{name}": "public",     # bundled clips — the widget plays them on every caller's page
+        "POST /settings/sounds/meta": "admin", # category edits on the sound board
         "GET /sound-packs": "public",
         "GET /pack-sounds/{pack}/{name}": "public",
         # Gated twice over, which this column is too coarse to say: a real

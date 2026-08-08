@@ -198,10 +198,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/settings/options":
             return self._json(OPTIONS)
         if path == "/settings/sounds":
-            # Two fixture names so the per-sound dropdowns and the shelf's
-            # Play/Download/Remove rows are exercisable without uploading.
+            # Fixture uploads, REAL bundled library — the board and the
+            # dropdowns render the same shelf the deployed panel would.
+            import sounds as sound_assets
             return self._json({"sounds": ["my-ring.mp3", "old-bell.wav"],
-                               "prefix": "upload:"})
+                               "prefix": "upload:",
+                               "library": sound_assets.library(),
+                               "uploads": [
+                                   {"name": "my-ring.mp3", "secs": None,
+                                    "category": "upload", "url": "/sounds/my-ring.mp3"},
+                                   {"name": "old-bell.wav", "secs": 2.1,
+                                    "category": "upload", "url": "/sounds/old-bell.wav"},
+                               ]})
         if path == "/voicemail/status":
             return self._json({"personas": [
                 {"id": "p_default1", "name": "Rosie", "staged": True,

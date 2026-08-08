@@ -106,6 +106,51 @@ def file_for(pack: str, kind: str) -> Path | None:
     return None
 
 
+# --- the sound library ------------------------------------------------------
+# Loose bundled sounds, distinct from packs: a pack answers "what does RING
+# sound like", the library is a shelf of clips an operator assigns to any
+# slot. assets/sounds/library/*.wav, described by catalog.json beside them.
+# WAV only, by policy: every bundled sound must be playable by the SERVER
+# (the voicemail beep path), and WAV is the one format both ends read.
+LIBRARY_DIR_NAME = "library"
+
+
+def library_dir() -> Path:
+    return ASSETS_DIR / LIBRARY_DIR_NAME
+
+
+def library() -> list[dict]:
+    """Every bundled clip: name, label, category, seconds. Sorted by name so
+    the shelf is stable across restarts."""
+    import json
+    import wave
+
+    folder = library_dir()
+    if not folder.is_dir():
+        return []
+    try:
+        catalog = json.loads((folder / "catalog.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        catalog = {}
+    out = []
+    for f in sorted(folder.glob("*.wav")):
+        meta = catalog.get(f.name) or {}
+        secs = None
+        try:
+            with wave.open(str(f), "rb") as w:
+                secs = round(w.getnframes() / float(w.getframerate() or 1), 1)
+        except (OSError, wave.Error):
+            pass
+        out.append({
+            "name": f.name,
+            "label": str(meta.get("label") or f.stem.replace("-", " ")),
+            "category": str(meta.get("category") or "misc"),
+            "secs": secs,
+            "url": f"/sound-lib/{f.name}",
+        })
+    return out
+
+
 def asset_url(pack: str, kind: str) -> str:
     """What the browser should fetch, or "" to let it synthesize."""
     found = file_for(pack, kind)

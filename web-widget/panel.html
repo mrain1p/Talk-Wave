@@ -736,7 +736,15 @@
             <button id="uploadSoundBtn">Upload a sound…</button>
             <span class="hint" id="uploadHint" style="margin:0"></span>
           </div>
-          <ul class="soundlist" id="soundList"></ul>
+          <table class="soundboard" id="soundBoard" hidden>
+            <thead><tr><th>Sound</th><th>Length</th><th>Category</th><th></th></tr></thead>
+            <tbody id="soundBoardBody"></tbody>
+          </table>
+          <p class="hint wide">Want more? Good free sources:
+            <a href="https://freesound.org/search/?f=license%3A%22Creative+Commons+0%22&q=telephone" target="_blank" rel="noopener">freesound.org</a>
+            (filter to CC0) and
+            <a href="https://pixabay.com/sound-effects/search/telephone/" target="_blank" rel="noopener">pixabay.com/sound-effects</a>
+            (free, no attribution) — download, then upload here.</p>
         </details>
         <div class="result" id="soundResult"></div>
       </div>
@@ -961,6 +969,54 @@
 
         <h4 class="subhead">After the call</h4>
         <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
+      </div>
+    </details>
+
+    <details data-group="wording" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Wording</span><em class="secblurb"></em><span class="tag" id="tagWording"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Every fixed string on the
+          card, in your own voice. All of them (and the Call button's custom
+          label, and the voicemail greeting) take
+          <code>{station}</code> <code>{dj}</code> <code>{show}</code>
+          <code>{track}</code> <code>{tagline}</code> — filled live, and an
+          empty or unknown one simply disappears. Blank keeps the built-in.</p>
+        <div class="row">
+          <label for="word_ringing">Ringing</label>
+          <input type="text" id="word_ringing" />
+        </div>
+        <div class="row">
+          <label for="word_answering">Answering</label>
+          <input type="text" id="word_answering" />
+        </div>
+        <div class="row">
+          <label for="word_online">On the line</label>
+          <input type="text" id="word_online" />
+        </div>
+        <div class="row">
+          <label for="word_recording">Recording</label>
+          <input type="text" id="word_recording" />
+        </div>
+        <div class="row">
+          <label for="word_hangup">Hang up</label>
+          <input type="text" id="word_hangup" />
+        </div>
+        <div class="row">
+          <label for="word_vm_button">Leave a message</label>
+          <input type="text" id="word_vm_button" />
+        </div>
+        <div class="row">
+          <label for="word_ptt">Talk bar</label>
+          <input type="text" id="word_ptt" />
+        </div>
+        <div class="row">
+          <label for="word_closed">Line closed</label>
+          <input type="text" id="word_closed" />
+        </div>
+        <div class="row">
+          <label for="word_message_only">Voicemail-only line</label>
+          <input type="text" id="word_message_only" />
+        </div>
       </div>
     </details>
 
