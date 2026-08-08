@@ -448,12 +448,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # helper names back.
         "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
-        # 0.9.125 pushed it over making the quiet-caller nudge push-to-talk
-        # aware. The seam is the back-to-air mention (send_on_air_callback and
-        # its transcript summariser, ~100 lines): it runs AFTER the call, only
-        # reads the session, and nothing during-call reads it back.
-        "agent-worker/call/lifecycle.py": (651, "an after-the-call module for "
-                                                "the back-to-air mention"),
+        # lifecycle.py was here from 0.9.125 until 0.10.9, when the recorded
+        # seam was cut for real: the back-to-air mention and the transcript
+        # reader moved to call/handoff.py and lifecycle came back under the
+        # ceiling.
     }
 
     # Where shipped code lives. tools/ is developer scaffolding and docs are

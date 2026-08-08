@@ -228,7 +228,7 @@ class TestWidgetServerContract(unittest.TestCase):
     widget that silently does nothing — the exact failure mode this project
     treats as a bug rather than a nitpick.
 
-    Checked PER PAGE since the panel moved to /panel. That is stricter than
+    Checked PER PAGE since the panel moved to its own page. That is stricter than
     the old whole-widget check, not looser: panel.js reaching for an id that
     only exists on the call page used to pass, because both surfaces were one
     document and every id was in scope. Now it fails, which is right — those
@@ -1108,19 +1108,19 @@ class TestSoundPacks(unittest.TestCase):
         self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
 
 
-class TestPushToTalkIsPerSurfaceAndOffByDefault(unittest.TestCase):
+class TestPushToTalkIsPerSurfaceAndOnByDefault(unittest.TestCase):
     """The bar is the caller's microphone, and whether it exists is the
     operator's per-surface answer, carried on /live like the corner controls.
-    Off by default: open-mic is what every existing deployment does, and a
-    caller suddenly needing to press a button to be heard is a behaviour
-    change, not a repaint."""
+    On by default since 0.10.9 — an open mic feeds the DJ the caller's whole
+    room, and a beta tester's fresh install read the old default as broken
+    (mic hot from pickup, a spacebar that did nothing). Open-mic is the
+    opt-out now, per surface."""
 
-    def test_defaults_off_on_both_surfaces(self):
-        from api import live as api_live
-
-        payload = api_live.look_payload({})
-        self.assertFalse(payload["ptt"])
-        self.assertFalse(payload["embedPtt"])
+    def test_defaults_on_on_both_surfaces(self):
+        # The declared default itself, not a hand-built cfg — look_payload only
+        # reflects what it is handed, so handing it {} would test nothing.
+        self.assertTrue(settings_store.FIELDS["show_push_to_talk"][1])
+        self.assertTrue(settings_store.FIELDS["embed_push_to_talk"][1])
 
     def test_each_surface_is_answered_separately(self):
         from api import live as api_live

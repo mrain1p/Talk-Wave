@@ -70,12 +70,12 @@ are often already taken by another session.
   never fires (anything awaiting a frame hangs for 30s), and attribute-driven CSS may not
   recalc. To verify CSS, enumerate `document.styleSheets` rules instead of measuring computed
   styles after flipping `data-theme`.
-- **The panel is its own page at `/panel`** since 0.9.105 — navigate there rather than looking
+- **The panel is its own page at `/settings`** (the old /panel is retired, 404) — navigate there rather than looking
   for a gear to click. It loads its settings on arrival, but the fetches take a moment: a
   `setTimeout` inside the same call is still too early, so take the DOM snapshot in a
   **separate** `javascript_tool` call afterwards.
 - **The two pages load different scripts**, and that is worth checking rather than assuming:
-  `/` must load `shared.js` + `call.js` and no panel code; `/panel` loads `shared.js` +
+  `/` must load `shared.js` + `call.js` and no panel code; `/settings` loads `shared.js` +
   `panel.js` + `panel-viewers.js`. `read_network_requests` shows this directly.
 - **`/live` is cached 30s server-side and the widget polls every 20s.** Stubbing `window.fetch`
   needs a ~21s wait per state you want to observe. There is no hook to force a repaint.

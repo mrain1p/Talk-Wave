@@ -8,7 +8,7 @@ Keep it that way; the whole thing is served as static files by `token_server.py`
 | File | Served at | What it is |
 |---|---|---|
 | `index.html` | `/` | The call page. Loads `shared.js` + `call.js` |
-| `panel.html` | `/settings` (`/panel` redirects) | The operator's page. Loads `shared.js` + `panel.js` + `panel-viewers.js` |
+| `panel.html` | `/settings` | The operator's page. Loads `shared.js` + `panel.js` + `panel-viewers.js` |
 | `shared.js` | `/shared.js` | What both pages need, published as the `Callin` global |
 | `call.js` | `/call.js` | The phone: the card, the meters, the captions, the call itself |
 | `panel.js` | `/panel.js` | The operator's surface: settings, secrets, `/test/*`, uploads |

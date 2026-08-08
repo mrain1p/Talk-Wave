@@ -30,10 +30,15 @@ To try a prompt change WITHOUT redeploying, prepend the new conduct.py:
     { printf "NEW_CONDUCT = r'''\\n"; cat brain/conduct.py; printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
 
-What it cannot test: STT, TTS, the on-air overlap hold, the no-answer timeout
-and the idle check-in. Those need a real call with a real microphone.
+What it cannot test: STT, TTS, the on-air overlap hold, and the idle ladder's
+TIMING. Those need a real call with a real microphone. The ladder's WORDING it
+can test now: a turn written as "@nudge <instructions>" feeds the model an
+instruction with no new caller turn, the way attach_idle_watch does — and the
+runner flags the reply if it just re-says the DJ's previous line, which is
+exactly what a real caller heard three times in a row on 2026-08-08.
 """
 import asyncio
+import difflib
 import json
 import os
 import time
@@ -169,6 +174,18 @@ EXTRA = [
         "so anyway my day was long, the car broke down again",
         "and then the dog got out, honestly what a week",
     ]),
+    # The idle ladder's own wording, fed the way lifecycle feeds it. Keep the
+    # two @nudge strings in step with attach_idle_watch — they are copies,
+    # because the originals are literals inside a closure.
+    ("the idle nudge is not an echo", [
+        "play me something fun",
+        "@nudge The caller has gone quiet. Check they're still there — one "
+        "short line in your own voice, warm, no more than a few words. Don't "
+        "repeat yourself or start a new topic.",
+        "@nudge Still nothing from the caller. Say a brief goodbye in "
+        "character — you're letting them go and getting back to the "
+        "broadcast. One line, then stop.",
+    ]),
 ]
 
 SCENARIOS = [
@@ -225,8 +242,7 @@ async def invoke(tool, args: dict) -> str:
         return f"<tool raised {type(e).__name__}: {e}>"
 
 
-async def one_turn(llm, ctx, tools, text: str):
-    ctx.add_message(role="user", content=text)
+async def _stream(llm, ctx, tools):
     said, calls = "", []
     stream = llm.chat(chat_ctx=ctx, tools=tools)
     try:
@@ -243,17 +259,48 @@ async def one_turn(llm, ctx, tools, text: str):
     return said, calls
 
 
+async def one_turn(llm, ctx, tools, text: str):
+    ctx.add_message(role="user", content=text)
+    return await _stream(llm, ctx, tools)
+
+
+# A scripted turn that is an idle-ladder instruction, not a caller line.
+NUDGE = "@nudge "
+
+
 async def run_scenario(llm, tools, prompt, name, turns, log):
     by_name = {tool_name(t): t for t in tools}
     ctx = lk_llm.ChatContext.empty()
     ctx.add_message(role="system", content=prompt)
 
     log.append(f"\n{'=' * 72}\nSCENARIO: {name}\n{'=' * 72}")
+    last_dj = ""
     for text in turns:
+        if text.startswith(NUDGE):
+            # The ladder generates from instructions with NO new caller turn —
+            # the history ends on the DJ's own line, which is the shape a weak
+            # model answers by re-saying it. Delivered the way the plugins
+            # deliver per-turn instructions: a system message at the tail.
+            instructions = text[len(NUDGE):]
+            log.append(f"\n(idle) : {instructions[:70]}…")
+            ctx.add_message(role="system", content=instructions)
+            said, calls = await _stream(llm, ctx, tools)
+            if said.strip():
+                log.append(f"DJ     : {said.strip()}")
+                if last_dj and difflib.SequenceMatcher(
+                        None, last_dj.casefold(),
+                        said.strip().casefold()).ratio() > 0.85:
+                    log.append("  !! ECHO — the DJ re-said its previous line "
+                               "instead of following the nudge")
+                ctx.add_message(role="assistant", content=said)
+                last_dj = said.strip()
+            continue
+
         log.append(f"\nCALLER : {text}")
         said, calls = await one_turn(llm, ctx, tools, text)
         if said.strip():
             log.append(f"DJ     : {said.strip()}")
+            last_dj = said.strip()
 
         rounds = 0
         while calls and rounds < 3:
@@ -280,21 +327,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log):
                     call_id=tc.call_id, name=tc.name,
                     output=str(result), is_error=False))
 
-            said, calls = "", []
-            stream = llm.chat(chat_ctx=ctx, tools=tools)
-            try:
-                async for chunk in stream:
-                    delta = getattr(chunk, "delta", None)
-                    if not delta:
-                        continue
-                    if delta.content:
-                        said += delta.content
-                    for tc in (delta.tool_calls or []):
-                        calls.append(tc)
-            finally:
-                await stream.aclose()
+            said, calls = await _stream(llm, ctx, tools)
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
+                last_dj = said.strip()
 
         if said.strip():
             ctx.add_message(role="assistant", content=said)

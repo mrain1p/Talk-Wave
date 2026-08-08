@@ -91,14 +91,11 @@ async def handle_index(request: web.Request) -> web.Response:
                         content_type="text/html")
 
 
-async def handle_panel(request: web.Request) -> web.Response:
-    """/panel was the operator page's address until 0.9.151; the operator
-    chose /settings as the one name and asked for this one to stop working
-    as a page. A redirect rather than a 404: old bookmarks and reverse-proxy
-    rules land on the right door instead of a dead one. A proxy allowlist
-    now belongs in front of /settings (which serves the page for text/html
-    and the admin-gated JSON for everything else)."""
-    raise web.HTTPFound("/settings")
+# /panel — the operator page's address until 0.9.151, then a redirect —
+# is RETIRED outright as of 0.10.8, by the operator's word: one name,
+# /settings, and the old one answers 404 like any other unknown path. A
+# proxy allowlist belongs in front of /settings (which serves the page for
+# text/html and the admin-gated JSON for everything else).
 
 
 # Compressible and worth compressing. Audio, images and fonts are already

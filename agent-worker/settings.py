@@ -306,11 +306,14 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "show_dj_avatar":     (None, True),
     "embed_dj_avatar":    (None, True),
     # Push to talk: the caller's microphone is closed except while they hold
-    # (or latch) the talk bar. Off by default — open-mic is what every
-    # existing deployment does, and a caller suddenly needing to press a
-    # button to be heard is a behaviour change, not a repaint.
-    "show_push_to_talk":  (None, False),
-    "embed_push_to_talk": (None, False),
+    # (or latch) the talk bar. ON by default since 0.10.9 — an open mic feeds
+    # the DJ every TV and room noise behind the caller, and the bar release is
+    # what commits the turn promptly instead of waiting out endpointing. A
+    # beta tester's fresh install proved the old default the hard way: mic hot
+    # from pickup and a spacebar that "didn't work", both of which were just
+    # this switch being off. Open-mic is still a real choice, per surface.
+    "show_push_to_talk":  (None, True),
+    "embed_push_to_talk": (None, True),
     # A second button beside Call — the machine on offer even while a live
     # call is possible. Off by default; the policy alone still turns the
     # Call button INTO "Leave a message" where a live call is impossible.
@@ -806,7 +809,7 @@ SCHEMA: dict[str, dict] = {
     "show_settings_gear": dict(group="player", kind="check",
         label="Settings gear",
         help="The way into this panel from the card. Off secures nothing — "
-             "/panel still answers by URL and still asks for the password — it "
+             "/settings still answers by URL and still asks for the password — "
              "just stops advertising it."),
     "show_voicemail_button": dict(group="player", kind="check",
         label="\u201cLeave a message\u201d button",
@@ -821,7 +824,8 @@ SCHEMA: dict[str, dict] = {
         help="The caller's mic stays closed except while they hold (or tap to "
              "latch) a talk bar — space works on a keyboard. Better control in "
              "a noisy room, and the DJ never hears a TV in the background. The "
-             "mic permission is still asked once, at pickup."),
+             "mic permission is still asked once, at pickup. On by default; "
+             "switch off for an open mic from pickup."),
     "embed_push_to_talk": dict(group="player", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),

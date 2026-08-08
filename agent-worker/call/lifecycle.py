@@ -1,9 +1,10 @@
-"""What happens to a call while it is running, and just after it ends.
+"""What happens to a call while it is running.
 
 Each function here attaches one behaviour to a live session: keeping a caller
 out of dead air when a provider fails, logging what was heard, checking on a
-caller who has gone quiet, enforcing the time limit, opening the call, and
-handing a line back to the broadcast once it is over.
+caller who has gone quiet, enforcing the time limit, and opening the call.
+What happens AFTER the call — reading the transcript back, the back-to-air
+mention — lives in handoff.py.
 
 Separate functions rather than methods, so each reads as the one concern it
 is. These used to be interleaved closures inside a single 334-line function,
@@ -20,7 +21,6 @@ import time
 from livekit.agents import AgentSession, JobContext
 
 import speech_filter
-from station import StationClient
 
 from .background import spawn
 from .hangup import await_sign_off, end_call
@@ -29,11 +29,11 @@ log = logging.getLogger("callin.agent")
 
 # The user turn the call opens with, so the DJ has something to answer.
 #
-# Named rather than inline because two places have to agree about it: the
-# greeting sends it, and _transcript drops it. It is not something the caller
-# said — it describes the situation to the model — and anything that treats it
-# as a caller turn gets the transcript wrong. Bracketed, so the speech filter
-# strips it if it ever reaches the voice.
+# It is not something the caller said — it describes the situation to the
+# model — and anything that treats it as a caller turn gets the transcript
+# wrong; handoff.is_prime is what drops it (and every bracketed note like it)
+# on the way to the written record. Bracketed, so the speech filter strips it
+# if it ever reaches the voice.
 CALL_OPENING_PRIME = (
     "[Call connected. The caller is on the line and has not spoken yet — "
     "you speak first.]"
@@ -522,130 +522,3 @@ async def release_call_slot(room: str) -> None:
             await c.post(f"{base}/call-ended", json={"room": room})
     except Exception as e:
         log.debug("slot release beacon failed (harmless, will age out): %s", e)
-
-
-
-def _transcript(session: AgentSession, limit: int = 24) -> list[tuple[str, str]]:
-    """Flatten the call into (role, text) pairs, whatever shape the SDK's
-    chat items happen to take.
-
-    The opening prime is dropped. It sits in the history as a `user` message
-    because that is the only shape Gemini accepts, but the caller never said
-    it and never heard it — counting it as something they said made every
-    later caller line in the written transcript inherit the NEXT line's
-    timestamp, and inflated callerTurns by one (which gates the back-to-air
-    mention). Everything downstream of here treats a `user` turn as the caller
-    speaking, so this is the place to say it wasn't.
-    """
-    turns: list[tuple[str, str]] = []
-    try:
-        items = list(session.history.items)
-    except Exception:
-        return turns
-
-    for item in items[-limit:]:
-        role = getattr(item, "role", None)
-        if role not in ("user", "assistant"):
-            continue
-        content = getattr(item, "content", None)
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            text = " ".join(c for c in content if isinstance(c, str))
-        else:
-            text = getattr(item, "text_content", "") or ""
-        text = text.strip()
-        if text and text != CALL_OPENING_PRIME:
-            turns.append((role, text))
-    return turns
-
-
-async def send_on_air_callback(
-    session: AgentSession, station: StationClient, persona: dict, cfg: dict
-) -> None:
-    """After the call, give the on-air DJ a passing mention of it.
-
-    The point is continuity — a listener hears the same DJ refer to the call
-    that just happened. It's deliberately one line: a mention, not a recap, and
-    never a transcript. Nothing the caller said is repeated verbatim unless the
-    DJ chooses to.
-    """
-    if not cfg.get("callback_enabled"):
-        return
-
-    turns = _transcript(session)
-    caller_turns = sum(1 for role, _ in turns if role == "user")
-    if caller_turns < int(cfg.get("callback_min_turns", 2)):
-        log.info("skipping on-air handoff — only %d caller turn(s)", caller_turns)
-        return
-
-    max_words = int(cfg.get("callback_max_words", 30))
-    extra = str(cfg.get("callback_instructions") or "").strip()
-
-    convo = "\n".join(
-        f"{'Caller' if role == 'user' else 'You'}: {text}" for role, text in turns
-    )
-
-    ask = (
-        f"You are {persona.get('name', 'the DJ')}. The call just ended. Write ONE "
-        f"line to say on air about it, under {max_words} words, in your own voice.\n\n"
-        "Mention it the way a DJ passes over something between tracks — light, "
-        "in character, moving on. Do not greet the audience, do not read out a "
-        "summary, do not quote the caller word for word, and do not use their "
-        "personal details beyond a first name. If they asked you something about "
-        "yourself worth sharing, you may answer it briefly on air. If nothing "
-        "about the call is worth mentioning, reply with exactly: SKIP\n"
-    )
-    if extra:
-        ask += f"\nAlso: {extra}\n"
-    ask += f"\nThe call:\n{convo}\n"
-
-    try:
-        from livekit.agents import llm as lk_llm
-
-        ctx = lk_llm.ChatContext.empty()
-        ctx.add_message(role="user", content=ask)
-
-        # This runs during shutdown, when the session's own LLM may already be
-        # tearing down. Fall back to a fresh client rather than losing the
-        # handoff — it only gets one attempt per call.
-        try:
-            model = session.llm
-            assert model is not None
-        except Exception:
-            from .providers import build_llm
-
-            model = build_llm(cfg)
-
-        async def _compose() -> str:
-            out = ""
-            stream = model.chat(chat_ctx=ctx)
-            async for chunk in stream:
-                delta = getattr(chunk, "delta", None)
-                if delta and getattr(delta, "content", None):
-                    out += delta.content
-            await stream.aclose()
-            return out
-
-        # Capped so a stalled provider can't eat the whole shutdown budget.
-        text = await asyncio.wait_for(_compose(), timeout=25.0)
-    except asyncio.TimeoutError:
-        log.warning("on-air handoff compose timed out — skipping")
-        return
-    except Exception as e:
-        log.warning("could not compose the on-air handoff: %s", e)
-        return
-
-    line = text.strip().strip('"')
-    if not line or line.upper().startswith("SKIP"):
-        log.info("on-air handoff skipped — nothing worth mentioning")
-        return
-
-    log.info("handing back to air: %s", line)
-    # Fresh client: the session's StationClient may already be closed by an
-    # earlier shutdown callback by the time this runs.
-    fresh = StationClient()
-    try:
-        await fresh.dj_say(line, mode="styled", kind="callin")
-    finally:
-        await fresh.aclose()

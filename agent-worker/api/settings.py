@@ -35,11 +35,11 @@ log = logging.getLogger("callin.token")
 
 async def handle_get_settings(request: web.Request) -> web.Response:
     # A browser NAVIGATING here (Accept: text/html) gets the settings PAGE
-    # itself — /settings is the panel's one address now; /panel redirects
-    # here for old bookmarks. The page is public markup with its own login,
-    # so serving it does not weaken the admin gate below, which still
-    # guards everything else this handler returns. The panel's own fetch()
-    # calls carry no text/html Accept and never take this branch.
+    # itself — /settings is the panel's one and only address (the old
+    # /panel is retired outright, 0.10.8). The page is public markup with
+    # its own login, so serving it does not weaken the admin gate below,
+    # which still guards everything else this handler returns. The panel's
+    # own fetch() calls carry no text/html Accept and never take this branch.
     if "text/html" in (request.headers.get("Accept") or ""):
         from api.widget import _versioned_page
 

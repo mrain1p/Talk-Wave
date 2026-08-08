@@ -54,6 +54,7 @@ tests/test_call_record.py        what is written down about a call, and what is 
 tests/test_call_flow.py          a call while it runs: answering, holding, ending
 tests/test_tools_surface.py      which tools reach a caller at all — the allowlist
 tests/test_tools_logic.py        what a tool does, and what it may claim afterwards
+tests/test_music_tools.py        searches, requests, and what the caller is told about either
 tests/test_takeover.py           putting a show on air: the one action that outlives the call
 tests/test_brain.py              prompt assembly and what the DJ is told
 tests/test_speech_filter.py      what is allowed to reach the caller's ears
