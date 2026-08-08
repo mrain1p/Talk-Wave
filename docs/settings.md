@@ -14,9 +14,11 @@ Everything lives in the panel behind the gear, and changes apply to the **next
 caller**. Precedence is panel → `.env` → defaults; clearing a field falls
 through. Every field carries its own help text.
 
-Above every section sits the **Pause all calls** switch — the kill switch, kept
-out of the sections so it can be reached without opening one — and a row of jump
-links, one per group below.
+Above every section sits the dashboard: the **Pause all calls** kill switch,
+the **Transmission modes** toggles — Take live calls and Enable voicemail as
+instant-post buttons whose strip says what the combination amounts to (phone,
+phone with a machine, voicemail-only, closed) — and the status tiles. Push to
+talk per surface lives in Player settings.
 
 | Group | Section | What it controls |
 |---|---|---|
@@ -35,7 +37,6 @@ links, one per group below.
 | The conversation | **Turn-taking** | When the DJ decides you've finished speaking, and whether a caller may talk over it. The biggest lever on whether a call *feels* like a phone call |
 | The conversation | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | The conversation | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
-| Running the line | **Transmission modes** | The line's doors in one place: **Take live calls**, **Enable voicemail**, and **push to talk** per surface — the switches add up to a phone, a phone with a machine, voicemail-only, or a closed line, and the section says which |
 | Running the line | **On-air ducking** | Overlap protection: the call DJ and the on-air DJ are one voice |
 | Running the line | **Tune the caller into the station** | Whether the caller counts as a listener (which is what makes requests work), whether the broadcast is piped audibly into the call, the **stream URL**, and how loud it sits behind the DJ |
 | Running the line | **Back-to-air commentary** | The one passing line after a call ends — distinct from the announcements and segments a caller triggers mid-call, which run under their own permissions |
