@@ -394,3 +394,81 @@ class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
 # registration is a read-modify-write against a list we share with the
 # operator and with anything else they have wired up. Everything below defends
 # one half of that: our row lands, and nobody else's is disturbed.
+
+
+class TestAMissingModelNamesTheOnesTheServerHas(unittest.TestCase):
+    """From a beta tester's llama-swap (2026-08-08): pointing the LLM at a
+    multi-model router answered 404 "no router for requested model", because
+    that server routes by exact model name — while clients that pick from the
+    server's own /v1/models list connect fine. The test endpoint recognises
+    the miss and asks the server what it does offer, so the panel answers the
+    question instead of starting a support thread."""
+
+    def test_the_observed_llama_swap_error_is_recognised(self):
+        from api.diagnostics import _looks_like_no_such_model
+
+        self.assertTrue(_looks_like_no_such_model(
+            "Error code: 404 - {'error': 'no router for requested model', "
+            "'src': 'llama-swap'}"))
+        # OpenAI's own wording for the same miss.
+        self.assertTrue(_looks_like_no_such_model(
+            "The model `gpt-5x` does not exist or you do not have access"))
+
+    def test_an_ordinary_failure_is_not_mistaken_for_it(self):
+        from api.diagnostics import _looks_like_no_such_model
+
+        for err in ("Connection refused", "401 unauthorized",
+                    "timed out waiting for the first token"):
+            self.assertFalse(_looks_like_no_such_model(err), err)
+
+    def test_every_shape_a_models_endpoint_answers_with(self):
+        from api.diagnostics import _model_names
+
+        openai = {"data": [{"id": "llama-3.1-8b"}, {"id": "qwen3"}]}
+        ollama = {"models": [{"name": "mistral:7b"}]}
+        self.assertEqual(_model_names(openai), ["llama-3.1-8b", "qwen3"])
+        self.assertEqual(_model_names(ollama), ["mistral:7b"])
+        self.assertEqual(_model_names(["a", "b"]), ["a", "b"])
+        # Garbage never becomes a hint.
+        self.assertEqual(_model_names({"weird": True}), [])
+        self.assertEqual(_model_names(None), [])
+
+
+class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
+    """A beta tester pointed the openai provider at llama-swap and every
+    dropdown pick 404'd — the model list came from api.openai.com while the
+    calls went to their server. The list must be read from wherever the calls
+    will actually go (mirroring the station's /settings/llm/discover), and
+    only for providers whose calls honour llm_base_url at all."""
+
+    def _endpoint(self, provider, base):
+        from api.settings import _custom_llm_endpoint
+
+        return _custom_llm_endpoint(
+            {"llm_provider": provider, "llm_base_url": base})
+
+    def test_a_custom_url_wins_for_openai_protocol_providers(self):
+        for provider in ("openai", "openai-compatible", "deepseek",
+                         "requesty", "gateway"):
+            self.assertEqual(
+                self._endpoint(provider, "http://192.168.1.201:18081/v1"),
+                "http://192.168.1.201:18081/v1", provider)
+
+    def test_no_url_means_the_official_catalogue(self):
+        for provider in ("openai", "deepseek", "openai-compatible"):
+            self.assertEqual(self._endpoint(provider, ""), "", provider)
+
+    def test_the_official_host_typed_back_in_is_not_custom(self):
+        # DeepSeek's own address in the box is the default spelled out, not a
+        # server of the operator's — the catalogue (with its key) still wins.
+        self.assertEqual(
+            self._endpoint("deepseek", "https://api.deepseek.com/v1"), "")
+
+    def test_providers_that_ignore_the_field_are_never_probed(self):
+        # build_llm passes no base_url to these, so a list read from it would
+        # describe a server the calls never reach. Ollama has its own
+        # /api/tags path and is handled there.
+        for provider in ("google", "anthropic", "openrouter", "ollama"):
+            self.assertEqual(
+                self._endpoint(provider, "http://192.168.1.201:18081/v1"),
+                "", provider)

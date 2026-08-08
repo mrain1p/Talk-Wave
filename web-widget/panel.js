@@ -239,7 +239,12 @@
       note.textContent = 'Showing a fallback list — add the ' + llm
         + ' key and hit “Reload model lists” to read the real one.';
     } else if (liveList) {
-      note.textContent = list.length + ' models read live from ' + llm + '.'
+      // Read from the operator's own endpoint, or from the provider's
+      // catalogue — the difference matters: only the endpoint's names are
+      // guaranteed to route on a server like llama-swap.
+      note.textContent = list.length + ((options.modelsFromEndpoint || '') === llm
+          ? ' models read from your endpoint — these are the names it routes.'
+          : ' models read live from ' + llm + '.')
         + (station.model && list.includes(station.model)
             ? ' The station runs ' + station.model + '.' : '');
     } else { note.textContent = ''; }
@@ -2265,7 +2270,12 @@
     btn.disabled = true;
     out.className = 'result on'; out.textContent = 'Reading model lists…';
     try {
-      const o = await afetch('/settings/options?fresh=1').then((r) => r.json());
+      // The draft endpoint travels like reloadVoices' does, so a URL that
+      // hasn't been saved yet still gets ITS models into the dropdown —
+      // paste, reload, pick, save, in that order.
+      const q = new URLSearchParams({ fresh: '1' });
+      if ($('llm_base_url').value) q.set('llm_base_url', $('llm_base_url').value);
+      const o = await afetch('/settings/options?' + q.toString()).then((r) => r.json());
       options = o; syncModels();
       const liveL = Object.keys(o.modelsDiscovered || {}).filter((p) => o.modelsDiscovered[p]);
       showResult(out, liveL.length > 0, liveL.length

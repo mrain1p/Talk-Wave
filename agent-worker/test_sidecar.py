@@ -41,11 +41,13 @@ from tests.test_secrets_and_auth import (  # noqa: F401
     TestWrittenFilesGetExplicitModes,
 )
 from tests.test_http import (  # noqa: F401
+    TestAMissingModelNamesTheOnesTheServerHas,
     TestAnUnsignedWebhookCannotFillMemory,
     TestCallerIdentityCannotBeChosen,
     TestCallerIdentitySurvivesTwoProxies,
     TestHttpSurface,
     TestJoinTokensExpire,
+    TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
 )
 from tests.test_widget import (  # noqa: F401

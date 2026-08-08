@@ -253,6 +253,60 @@ async def handle_test_tts(request: web.Request) -> web.Response:
             await tts.aclose()
 
 
+def _model_names(payload) -> list[str]:
+    """Names out of whatever shape a /models endpoint answers with.
+
+    OpenAI-compatible servers say {"data": [{"id": …}]}, Ollama says
+    {"models": [{"name": …}]}, and the odd local server returns a bare list.
+    One parser, so the hint below works against all of them.
+    """
+    if isinstance(payload, dict):
+        rows = payload.get("data") or payload.get("models") or []
+    elif isinstance(payload, list):
+        rows = payload
+    else:
+        return []
+    names = []
+    for row in rows:
+        if isinstance(row, str):
+            name = row
+        elif isinstance(row, dict):
+            name = row.get("id") or row.get("name") or ""
+        else:
+            continue
+        name = str(name).strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def _looks_like_no_such_model(err: str) -> bool:
+    """Does this failure mean "the server doesn't route that model name"?"""
+    e = str(err).lower()
+    return ("404" in e or "no router" in e or "model_not_found" in e
+            or "model not found" in e or "does not exist" in e)
+
+
+async def _models_offered(base_url: str) -> list[str]:
+    """Ask an OpenAI-compatible endpoint what it actually serves.
+
+    Deliberately keyless: local routers answer /models unauthenticated, and a
+    stored key must not travel to a host just because a test failed against
+    it. If the server wants auth for its list, the hint is simply skipped.
+    """
+    import httpx
+
+    url = base_url.rstrip("/") + "/models"
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as c:
+            r = await c.get(url)
+            if r.status_code != 200:
+                return []
+            return _model_names(r.json())
+    except Exception:
+        return []
+
+
 async def handle_test_llm(request: web.Request) -> web.Response:
     """One short completion, with a tool offered. Reports whether the model
     actually emits a tool call — plenty of local models answer fluently but
@@ -330,11 +384,31 @@ async def handle_test_llm(request: web.Request) -> web.Response:
             ),
         )
     except Exception as e:
+        err = str(e)
+        # A model name the server does not route is a miss the server itself
+        # can explain. Observed with llama-swap (llama.cpp's multi-model
+        # router, 2026-08-08): it answers 404 "no router for requested model"
+        # unless the model field exactly matches one of its configured names —
+        # while clients that pick from /v1/models connect fine. So on a miss,
+        # ask the same endpoint what it does offer and say so, instead of
+        # leaving the operator to a support thread.
+        base = str(cfg.get("llm_base_url") or "").strip()
+        if base and _looks_like_no_such_model(err):
+            names = await _models_offered(base)
+            if names:
+                shown = ", ".join(names[:12])
+                more = f" (+{len(names) - 12} more)" if len(names) > 12 else ""
+                err += (
+                    f"\n\nThe server doesn't know '{cfg.get('llm_model')}'. "
+                    f"It says it offers: {shown}{more}. The model field must "
+                    "match one of these exactly — routers like llama-swap "
+                    "pick the model by its name."
+                )
         # With the note, because a withheld key is the likeliest reason a
         # previewed endpoint refuses us — and it is not the same problem as a
         # key that is missing or wrong.
         return _cors(request, web.json_response(
-            {"ok": False, "error": str(e), "note": cred_note}))
+            {"ok": False, "error": err, "note": cred_note}))
 
 
 async def handle_prompt_preview(request: web.Request) -> web.Response:

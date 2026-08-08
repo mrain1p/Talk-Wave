@@ -666,7 +666,10 @@ SCHEMA: dict[str, dict] = {
                                 "openai-compatible")),
         placeholder="default: the provider's own address",
         help="Only for a self-hosted or gateway endpoint. Required for "
-             "'OpenAI-compatible' — it is the address of your own server."),
+             "'OpenAI-compatible' — it is the address of your own server. "
+             "With one set, the Model list is read from it (hit “Reload "
+             "model lists”) — servers like llama-swap only route model "
+             "names they declare."),
     "llm_temperature": dict(group="brains", kind="number", label="Temperature",
         help="0.8 suits a DJ. Below 0.5 sounds clipped."),
 
