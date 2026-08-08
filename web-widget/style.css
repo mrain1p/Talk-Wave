@@ -955,18 +955,34 @@
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
     padding: 0 10px 0 2px;
   }
+  /* Each entry wears the quiet button skin at rest — bare text read as a
+     header row, not as eight places to go. flex-grow snaps every row of
+     them to the full width. Operator-requested, twice. */
   .panelnav a {
     flex: 1 1 auto; text-align: center;
     text-decoration: none; color: var(--dim);
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700;
-    padding: 6px 9px; border-radius: 8px;
-    border: 1px solid transparent; background: transparent;
+    padding: 7px 9px; border-radius: 8px;
+    border: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--text) 3%, transparent);
   }
   .panelnav a:hover {
-    color: var(--text); background: var(--line2); border-color: var(--line2);
+    color: var(--text); background: var(--line2); border-color: var(--line);
   }
   .panelnav:empty { display: none; }
+
+  /* The settings half's own header row: heading and promise left, the
+     finder right, folding to two lines on a narrow panel. */
+  .settingshead {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; margin: 18px 0 10px;
+  }
+  .settingshead h2 { margin: 0; }
+  .settingshead .sub { margin: 3px 0 0; }
+  .settingshead .settingsearch {
+    margin: 0; flex: 0 1 300px; min-width: 220px;
+  }
 
   /* The dashboard's own band — the same voice as a super-group heading, but
      its own class: applyVisibility() hides a .supergroup with no visible
@@ -975,6 +991,78 @@
     margin: 4px 0 7px; font-size: 11px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700; color: var(--text);
   }
+
+  /* --- the sound board: six moments as cards over one shelf -------------- */
+  /* Same grammar as the dashboard's control cards — micro label, value,
+     note, 10px surface — because they are the same kind of thing: press to
+     act, coloured by state. The ▶ is a SIBLING (buttons cannot nest). */
+  .slotarea { position: relative; }
+  .slotgrid {
+    display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr; margin: 12px 0 4px;
+  }
+  @media (max-width: 760px) { .slotgrid { grid-template-columns: repeat(2, 1fr); } }
+  .slotwrap { position: relative; display: flex; }
+  .slotcard {
+    flex: 1; display: flex; flex-direction: column; align-items: flex-start;
+    gap: 2px; padding: 9px 36px 9px 11px; min-height: 64px;
+    border-radius: 10px; border: 1px solid var(--line2);
+    background: var(--panel); color: var(--text); text-align: left;
+    cursor: pointer; transition: border-color .15s, transform .15s;
+  }
+  .slotcard:hover { transform: translateY(-1px); border-color: var(--line); }
+  .slotcard .ck {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+  }
+  .slotcard .cv { font-size: 12.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .slotcard .cn { font-size: 10.5px; color: var(--dim); }
+  /* A missing file or an unplayable beep is a fault ON THE CARD — the thing
+     that is broken wears the colour, not a paragraph somewhere below. */
+  .slotcard.missing, .slotcard.bad { border-color: var(--accent); }
+  .slotcard.missing .cv, .slotcard.bad .cv { color: var(--accent); }
+  .slotplay {
+    position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
+    padding: 0; border-radius: 8px; font-size: 10px; line-height: 1;
+  }
+  .slotmenu {
+    position: absolute; z-index: 30; min-width: 240px; max-width: 340px;
+    display: flex; flex-direction: column; gap: 2px; padding: 6px;
+    border: 1px solid var(--line2); border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+  .slotmenu button {
+    text-align: left; background: transparent; border-radius: 8px;
+    padding: 6px 9px; font-size: 11.5px; font-weight: 500;
+  }
+  .slotmenu button:hover { background: var(--line2); }
+  .slotmenu button.current { color: var(--ok); font-weight: 700; }
+  /* The shelf: sortable headers, a kind chip on every name, and used-for
+     chips reading the same fields the cards read. */
+  .soundboard th.sortable { cursor: pointer; user-select: none; }
+  .soundboard th.sortable.asc::after { content: " ▲"; color: var(--dim); }
+  .soundboard th.sortable.desc::after { content: " ▼"; color: var(--dim); }
+  .kindchip {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--dim);
+    border: 1px solid var(--line2); border-radius: 4px;
+    padding: 1px 5px; margin-left: 7px; white-space: nowrap;
+  }
+  .usedchip {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ok);
+    border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+    border-radius: 4px; padding: 1px 5px; margin-right: 3px; white-space: nowrap;
+  }
+  .soundboard td.unused { color: var(--dimmer); }
+  .shelfacts { white-space: nowrap; }
+  .shelfacts .usefor {
+    font-size: 10.5px; padding: 3px 6px; margin-left: 3px; width: auto;
+  }
+  .shelfacts a.btnquiet { text-decoration: none; display: inline-block; }
+  /* The drop target announces itself only while a file is over it. */
+  details.advanced.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; }
 
   /* The dashboard: the kill switch, and the four answers worth having before
      you change anything below. Bordered and above the fold because none of it

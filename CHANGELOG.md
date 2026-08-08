@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.154
+
+### The sound board
+
+- **The six call moments are cards now** — ring, pick up, on hold, hang up,
+  can't connect, voicemail beep — each showing what plays today, with ▶ to
+  hear it and a press to change it. A missing file or an unplayable beep
+  turns its own card red, with the fix one press away.
+- **One shelf for every sound the line can play** — built-ins and uploads
+  in a single sortable table, each row showing where it's used and taking
+  a job straight from **Use for…**. Uploads can be downloaded back out,
+  and a file dropped anywhere on the shelf uploads.
+- The six-dropdown stack, its eighteen buttons, and most of the prose are
+  gone; the WAV rule now lives on the beep alone, which is the only place
+  it applies.
+
 ## 0.9.153
 
 ### The line means what the switch says
