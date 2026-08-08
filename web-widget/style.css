@@ -1107,17 +1107,23 @@
      you change anything below. Bordered and above the fold because none of it
      is one of the settings — the button acts immediately, and the tiles are
      read-back rather than input. */
-  /* Four labelled groups since 0.10.2 (operator's sketch, round three):
-     Transmission | Station on top, Live calls | Voicemail beneath — each
-     door sits WITH the traffic it produces, and the three read-backs about
-     the station make one group. Stacks to one column when narrow. */
+  /* Four labelled groups (operator's sketch, round four): the ACTING side
+     fills the top — Transmission on the left, the two doors it feeds
+     stacked beside it — and the read-only Station strip runs full width
+     underneath. Each door still sits with the traffic it produces.
+     Stacks to one column when narrow. */
   .dash {
     margin: 0 0 16px; padding: 12px 13px;
     border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
     display: grid; gap: 10px;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
+    grid-template-areas: "trans live" "trans vm" "station station";
     align-items: stretch;
   }
+  .dash > .transmission { grid-area: trans; }
+  .dash > .livegroup { grid-area: live; }
+  .dash > .vmgroup { grid-area: vm; }
+  .dash > .stationgroup { grid-area: station; }
   .dashgroup {
     border: 1px solid var(--line2); border-radius: 10px;
     padding: 9px 10px 8px; display: flex; flex-direction: column;
@@ -1129,7 +1135,10 @@
   .stationgroup .grouprow { grid-template-columns: repeat(3, 1fr); }
   .transmission .dashctrl { flex: 1; grid-template-columns: 1fr; }
   @media (max-width: 940px) {
-    .dash { grid-template-columns: 1fr; }
+    .dash {
+      grid-template-columns: 1fr;
+      grid-template-areas: "trans" "live" "vm" "station";
+    }
   }
   @media (max-width: 700px) {
     .grouprow, .stationgroup .grouprow { grid-template-columns: 1fr; }

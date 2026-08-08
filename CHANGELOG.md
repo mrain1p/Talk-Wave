@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.6
+
+- **The dashboard's acting side fills the top**: Transmission on the left with Live calls and Voicemail stacked beside it — each door still paired with its own traffic — and the read-only Station strip full width underneath.
+- **The numbers say what they count**: Who-can-call reads *permissions — anyone 3 · guest 9 · admin 9* (tooltip naming the section that decides), and the Live calls door matches.
+- **The Voicemail card leads with its mode** — *fallback when the booth can't pick up* or *always on — voicemail-only* — before who may use it and where messages go.
+
 ## 0.10.5
 
 - **The thumbs are line icons now** — the rating buttons on the card and the panel's rating filters draw in the theme's own ink instead of the yellow emoji hands, and rating marks in the records use ▲/▼. The one element every theme couldn't touch, gone.

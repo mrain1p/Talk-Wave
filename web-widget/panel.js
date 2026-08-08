@@ -439,7 +439,7 @@
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
-        liveNote.textContent = 'can do — ' + canDo;
+        liveNote.textContent = 'permissions — ' + canDo;
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
           + 'use, counted from the switches under Permissions & safety.';
       } else {
@@ -450,17 +450,24 @@
     const vmNote = cnOf('modeVmBtn');
     if (vmNote) {
       if (vmOn2) {
-        const WHO = { open: 'anyone may leave one',
-                      guest: 'guest code to leave one',
+        // WHEN leads: "fallback" and "always on" are different machines,
+        // and the card never said which one was running. Operator-reported.
+        const when = (($('voicemail_when') && $('voicemail_when').value)
+          || resolved.voicemail_when) === 'always'
+          ? 'always on — voicemail-only'
+          : 'fallback when the booth can’t pick up';
+        const WHO = { open: 'open to anyone',
+                      guest: 'guest code needed',
                       admin: 'admin only',
                       off: 'no caller may use it' };
         const DEST = { hold: 'held for you',
                        request: 'sent as song requests',
-                       air: 'handed to the on-air DJ',
+                       air: 'handed to the DJ',
                        triage: 'triaged by the model' };
         const dest = ($('voicemail_destination')
           && $('voicemail_destination').value) || resolved.voicemail_destination;
-        vmNote.textContent = (WHO[permTier('allow_voicemail')] || WHO.open)
+        vmNote.textContent = when
+          + ' · ' + (WHO[permTier('allow_voicemail')] || WHO.open)
           + ' · ' + (DEST[dest] || DEST.hold);
       } else {
         vmNote.textContent = 'the machine answers';
@@ -502,11 +509,15 @@
     const ACCESS = { open: 'Anyone', guest: 'Guest code', admin: 'Admin only' };
     const access = ($('front_access') && $('front_access').value) || resolved.front_access;
     $('dashLogoutBtn').hidden = !authConfigured;
-    // The note answers "and what does each tier GET" — the missing-password
-    // warning still outranks it, because an open panel is the bigger fact.
+    // The note answers "and what does each tier GET" — named as what it
+    // counts, because bare numbers read as a riddle (operator-reported).
+    // The missing-password warning still outranks it.
     tile('tileAccess', ACCESS[access] || access || '—',
-      authConfigured ? canDo + ' perms' : 'this panel has no password',
+      authConfigured ? 'permissions — ' + canDo
+                     : 'this panel has no password',
       authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
+    $('tileAccess').title = 'How many caller permissions each door tier can '
+      + 'use — the switches under Caller permissions decide.';
 
     // Named rather than counted: "3 of 3 configured" is true of a call that
     // cannot happen, because a provider with no key is still a provider.
