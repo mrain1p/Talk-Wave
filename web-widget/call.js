@@ -1964,9 +1964,13 @@
     bar.classList.toggle('on', pttOpen);
     bar.setAttribute('aria-pressed', pttOpen ? 'true' : 'false');
     // No "wait for the beep" state: the machine hears the bar from pickup.
+    // The Space hint only where a keyboard is plausible — a phone
+    // advertising a key it does not have reads as broken. The operator's
+    // own wording (word_ptt) still wins on every device.
     $('pttMain').textContent =
       pttOpen ? "You're live — tap to go quiet"
-              : word('ptt', 'Tap to talk');
+              : word('ptt', matchMedia('(pointer: coarse)').matches
+                  ? 'Tap to talk' : 'Tap to talk — or hold Space');
     // The meter tells the same story as the bar, in the vocabulary the mute
     // button already taught it.
     if (room && pttOn()) {
