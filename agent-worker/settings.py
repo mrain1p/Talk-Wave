@@ -823,7 +823,10 @@ SCHEMA: dict[str, dict] = {
              "with effect' below."),
     "voice_effect_level": dict(group="effects", kind="number",
         label="Effect intensity",
-        needs=("voice_effect", ["telephone", "cb", "walkie"]),
+        # Every effect, not the first three — the dial vanished for anyone
+        # picking a newer colour, which the operator read (fairly) as the
+        # volume control disappearing. Operator-reported.
+        needs=("voice_effect", ["telephone", "cb", "walkie", "am", "megaphone", "underwater", "stadium", "intercom", "shortwave", "lofi"]),
         help="0–100. 100 is the effect at full character; lower settles it "
              "toward the clean voice — 40 is a hint of radio rather than a "
              "costume. Test with effect uses this number."),
@@ -1207,6 +1210,10 @@ STATIC_CHOICES = {
         ("am", "AM radio — warm, narrow, late-night"),
         ("megaphone", "Megaphone — a loud hailer, harsh on purpose"),
         ("underwater", "Underwater — everything above a murmur is gone"),
+        ("stadium", "Stadium PA — big room, hard consonants"),
+        ("intercom", "Intercom — drive-thru squawk"),
+        ("shortwave", "Shortwave — distant, fading in from somewhere"),
+        ("lofi", "Lo-fi cassette — soft top, a little dust"),
     ],
     "voicemail_greeting_mode": [
         ("staged", "Staged clips — instant, rendered ahead of time"),
