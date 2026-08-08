@@ -184,7 +184,47 @@ class CallRecord:
                          "text": extra[:MAX_TEXT]}
                     )
 
+    def _note_if_the_dj_repeated_itself(self) -> None:
+        """Say so, in the record, when the DJ said the same thing twice running.
+
+        Observed on a real call (2026-08-08): the caller went quiet, the idle
+        ladder fired exactly on schedule, and the model answered both the
+        check-in and the goodbye by re-generating its previous line — the
+        caller heard the same sentence three times and then the click. The
+        mechanism was right and the words were wrong, which no log line said:
+        it was only visible to a human reading the transcript. A model-side
+        failure, so the problem line points at the LLM setting.
+
+        Near-identical rather than equal — the third repeat differed by two
+        words. Short lines are exempt: two "Still with me?" in a row is the
+        canned fallback doing its job, not the model looping.
+        """
+        import difflib
+
+        try:
+            prev = ""
+            for t in self.data["turns"]:
+                if t["who"] != "dj":
+                    prev = ""
+                    continue
+                text = t["text"].strip()
+                if prev and len(text) >= 40 and difflib.SequenceMatcher(
+                        None, prev.casefold(), text.casefold()).ratio() >= 0.92:
+                    self.problem(
+                        "The DJ said practically the same line twice in a row. "
+                        "The model repeated itself instead of following its "
+                        "instructions — seen when the idle check-in echoes the "
+                        "previous turn instead of nudging. A model-side "
+                        "failure: check the LLM setting against one with "
+                        "proven instruction following."
+                    )
+                    return
+                prev = text
+        except Exception:
+            pass  # a diagnostic must never cost the record it annotates
+
     def write(self, reason: str = "", keep: int = 0) -> None:
+        self._note_if_the_dj_repeated_itself()
         self.data["endedAt"] = _iso(time.time())
         self.data["durationSecs"] = round(time.time() - self.started, 1)
         self.data["endedBecause"] = reason

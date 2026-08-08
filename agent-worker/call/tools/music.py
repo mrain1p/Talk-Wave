@@ -15,6 +15,7 @@ import logging
 from station import StationClient
 
 from ..actions import CallActions
+from ..background import spawn
 from .registry import library_search_needs_mcp
 
 log = logging.getLogger("callin.agent")
@@ -127,7 +128,134 @@ def _when_it_plays(position) -> str:
     )
 
 
-def build_library_tools(cfg: dict, station: StationClient, actions: CallActions) -> list:
+# One quick look before the tool answers — a station that resolves fast gets
+# the title into the tool result itself, which is the best outcome.
+_INLINE_POLL_SECS = 2.0
+
+# How long the station gets to say what a request matched, once the inline
+# poll has already missed. Observed on a real call (2026-08-08): the station
+# matched "Spiders" by Moby some time after the tool's 2s look, so the DJ told
+# the caller "something is lined up" and could not name it — the caller had to
+# ask, and the DJ had to go digging through station state to answer. Waiting
+# longer inline is the wrong fix: the tool return is latency the caller hears
+# as silence. So the tool answers immediately and this schedule keeps looking
+# in the background.
+_LATE_MATCH_DELAYS = (3.0, 5.0, 8.0, 13.0, 21.0)
+
+# How long the announcer waits for a quiet moment before giving up, in
+# half-second beats. A caller mid-sentence, a DJ mid-reply or a broadcast
+# hold must not be talked over for the sake of naming a song.
+_QUIET_BEATS = 40
+
+
+def _already_named(session, title: str) -> bool:
+    """Did the DJ already tell the caller which track it is?
+
+    Exactly what happened on the call that motivated all this: the caller
+    asked, the DJ read the answer off station state, and a late announcement
+    on top of that would read as the DJ forgetting the conversation.
+    """
+    needle = str(title or "").casefold()
+    if not needle:
+        return False
+    try:
+        items = list(session.history.items)[-12:]
+    except Exception:
+        return False
+    for item in items:
+        if getattr(item, "role", None) != "assistant":
+            continue
+        content = getattr(item, "content", None)
+        text = content if isinstance(content, str) else (
+            getattr(item, "text_content", "") or "")
+        if needle in str(text).casefold():
+            return True
+    return False
+
+
+async def _surface_late_match(
+    station: StationClient, rid: str, get_session=None, air=None, record=None,
+    delays=None,
+) -> None:
+    """Keep asking the station what a request matched, and pass it on.
+
+    Runs in the background after request_song has already answered. If the
+    match lands, the DJ volunteers it at the next quiet moment; if it never
+    does, the record says so — a request whose title never surfaced is the
+    thing an operator reads the transcript to find.
+    """
+    track: dict = {}
+    position = None
+    for delay in (_LATE_MATCH_DELAYS if delays is None else delays):
+        await asyncio.sleep(delay)
+        try:
+            st = await station.request_status(str(rid))
+        except Exception:
+            continue
+        t = st.get("track") or st.get("matched") or {}
+        if isinstance(t, dict) and t.get("title"):
+            track, position = t, st.get("queuePosition")
+            break
+
+    if not track:
+        if record:
+            record.problem(
+                "A request went in but the station never said what it matched, "
+                "so the caller was never told the track. Either the station's "
+                "resolver is slow past the polling window or the request "
+                "matched nothing — check the station's request queue."
+            )
+        return
+
+    if record:
+        record.tool("subwave_request_song",
+                    f"matched after the tool returned: {_fmt_track(track)}")
+
+    session = get_session() if get_session else None
+    if session is None:
+        return
+    if _already_named(session, track.get("title")):
+        return
+
+    # A quiet moment: the DJ is listening, the caller is not mid-word, and
+    # the broadcast does not have the microphone. If one never comes, stay
+    # quiet — the match is in the history-side receipts either way.
+    for _ in range(_QUIET_BEATS):
+        busy = (
+            str(getattr(session, "agent_state", "") or "") != "listening"
+            or str(getattr(session, "user_state", "") or "") == "speaking"
+            or bool(getattr(air, "on_air", False))
+        )
+        if not busy:
+            break
+        await asyncio.sleep(0.5)
+    else:
+        return
+
+    try:
+        # The bracketed user turn is the same trick the greeting uses: a
+        # generation prompted by instructions alone, on a history ending in
+        # the DJ's own turn, is exactly the shape weak models answer by
+        # re-saying that turn. The note is never spoken and never counts as
+        # a caller turn — see handoff.is_prime.
+        await session.generate_reply(
+            user_input=(
+                f"[The station has just resolved the earlier request: it "
+                f"matched {_fmt_track(track)}. {_when_it_plays(position)}]"
+            ),
+            instructions=(
+                "Pass the station's pick on to the caller — one short line in "
+                "your own voice, and it's queued, not playing yet. If the "
+                "conversation has moved on, drop it in lightly and come back "
+                "to what you were talking about."
+            ),
+        )
+    except Exception as e:
+        log.debug("late-match announcement failed (harmless): %s", e)
+
+
+def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
+                        get_session=None, air=None, record=None) -> list:
     """Search and request as local tools with deterministic fallbacks.
 
     Prompt guidance about query phrasing turned out to be soft — the model
@@ -264,7 +392,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
             # track on air as though it were spinning, minutes before it was.
             rid = res.get("requestId") or res.get("id")
             if rid:
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(_INLINE_POLL_SECS)
                 st = await station.request_status(str(rid))
                 track = st.get("track") or st.get("matched") or {}
                 ack = st.get("ack") or st.get("message") or st.get("reply") or ""
@@ -277,13 +405,32 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions)
                         "Tell the caller it's lined up, not that it's on."
                     )
                     return out + (f" Station says: {ack}" if ack else "")
+                # The station took the request but has not said what it
+                # matched yet. Don't hold the tool return hostage to a slow
+                # resolver — answer now, and keep asking in the background so
+                # the DJ can name the pick when it lands.
+                spawn(_surface_late_match(station, str(rid),
+                                          get_session=get_session, air=air,
+                                          record=record))
                 if ack:
                     actions.note("request", text[:120])
                     return f"It's in the queue, not on air yet. Station says: {ack}"
+            elif record:
+                # No id means no way to ever ask what was matched — the
+                # caller can only be told "something". Worth a problem line:
+                # this is the call the operator reads back wondering why the
+                # DJ never named the song.
+                record.problem(
+                    "The station accepted a request but returned no request "
+                    "id, so what it matched can never be surfaced to the "
+                    "caller."
+                )
             actions.note("request", text[:120])
             return (
                 "Request is in — the station is lining something up. It plays later "
-                "in the running order, not now."
+                "in the running order, not now. You don't know yet which track the "
+                "station will pick; if it resolves while you're still on the line, "
+                "you'll be told — don't guess a title in the meantime."
             )
 
         tools.append(request_song)

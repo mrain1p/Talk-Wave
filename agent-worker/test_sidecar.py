@@ -54,7 +54,7 @@ from tests.test_widget import (  # noqa: F401
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
-    TestPushToTalkIsPerSurfaceAndOffByDefault,
+    TestPushToTalkIsPerSurfaceAndOnByDefault,
     TestSoundPacks,
     TestTheCallButtonSaysWhatTheOperatorChose,
     TestTheCallButtonSurvivesTheUpgrade,
@@ -120,8 +120,11 @@ from tests.test_tools_surface import (  # noqa: F401
     TestTheDJDescribesRecordsItHasInformationAbout,
 )
 from tests.test_tools_logic import (  # noqa: F401
-    TestAMoodIsNotASearch,
     TestMainToolLogic,
+)
+from tests.test_music_tools import (  # noqa: F401
+    TestALateMatchStillReachesTheCaller,
+    TestAMoodIsNotASearch,
     TestSearchingForWhatTheCallerActuallySaid,
 )
 from tests.test_takeover import (  # noqa: F401

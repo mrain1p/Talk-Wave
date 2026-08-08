@@ -55,7 +55,7 @@ The README is the short version. The detail lives here:
   something is a claim; that line is the receipt.
 - Ring, pickup, hold, hang-up and engaged tones from shipped sound sets — Exchange, Handset, Modern and Rotary synthesized in the box, plus recorded dial-up handshakes and genuine North American line tones (public domain, receipts in the catalog) — every slot replaceable from a searchable, filterable shelf of clips and your own uploads. The ring yields the moment the DJ answers. See [Call sounds](docs/settings.md#call-sounds).
 - An answering machine: staged per-persona greetings in each DJ's own voice, messages held for you or delivered to the station, and a kill switch that outranks everything — see [Voicemail](docs/VOICEMAIL.md).
-- Push to talk (per surface), with the bar release committing the turn so the DJ answers promptly instead of waiting out its endpointing delay. Per-DJ voice effects: each persona can wear its own radio colour — telephone, CB, shortwave, lo-fi and friends — applied in the caller's browser only.
+- Push to talk (on by default, switchable per surface), with the bar release committing the turn so the DJ answers promptly instead of waiting out its endpointing delay. Per-DJ voice effects: each persona can wear its own radio colour — telephone, CB, shortwave, lo-fi and friends — applied in the caller's browser only.
 - In-character timeouts for silence and over-long calls; a caller who was just
   asked a question gets three times the usual wait — unless nothing has ever
   been heard from them, in which case the DJ says so, names the microphone as

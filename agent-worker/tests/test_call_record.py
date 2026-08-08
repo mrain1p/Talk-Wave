@@ -140,7 +140,7 @@ class TestCallRecord(unittest.TestCase):
         neither said nor heard it. Counting it inflates callerTurns, which is
         what `callback_min_turns` reads to decide whether a call was worth
         mentioning on air."""
-        from call import lifecycle
+        from call import handoff, lifecycle
 
         class _Item:
             def __init__(self, role, content):
@@ -153,9 +153,80 @@ class TestCallRecord(unittest.TestCase):
                 _Item("user", "Can you play me a song?"),
             ]})()
 
-        got = lifecycle._transcript(_Session())
+        got = handoff.transcript(_Session())
         self.assertEqual(got, [("assistant", "Yosemite FM, you're on with Dawn."),
                                ("user", "Can you play me a song?")])
+
+    def test_any_bracketed_note_is_a_prime_not_a_caller_turn(self):
+        """The opening prime stopped being the only one: the late request-match
+        note rides the same mechanism (a bracketed `user` turn the caller never
+        said). One rule covers them all — a user turn that is nothing but
+        bracketed text is ours — so a new note can't quietly re-inflate
+        callerTurns the way the opening prime once did. An STT never produces
+        brackets, so a real caller line is never mistaken for one."""
+        from call import handoff
+
+        class _Item:
+            def __init__(self, role, content):
+                self.role, self.content = role, content
+
+        class _Session:
+            history = type("H", (), {"items": [
+                _Item("assistant", "That's in for you, love."),
+                _Item("user", "[The station has just resolved the earlier "
+                              "request: it matched \"Spiders\" by Moby.]"),
+                _Item("assistant", "Turns out the station picked Spiders by Moby."),
+                # Brackets mid-sentence are ordinary words, not a prime.
+                _Item("user", "I said [something] in brackets once"),
+            ]})()
+
+        got = handoff.transcript(_Session())
+        self.assertEqual(got, [
+            ("assistant", "That's in for you, love."),
+            ("assistant", "Turns out the station picked Spiders by Moby."),
+            ("user", "I said [something] in brackets once"),
+        ])
+
+    def test_a_dj_repeating_itself_is_written_down_as_a_problem(self):
+        """From a real call (2026-08-08): the idle ladder fired on schedule and
+        the model answered the check-in AND the goodbye by re-generating its
+        previous line — the caller heard the same sentence three times, and
+        nothing in the record said anything was wrong. The transcript is the
+        thing an operator reads to find bad calls, so the record flags it."""
+        line = ("The station came up trumps, love — it's \"Spiders\" by Moby. "
+                "Bloody perfect, innit? It's in the queue a couple of tracks down.")
+        near = ("The station came up trumps, love — it's \"Spiders\" by Moby. "
+                "Bloody perfect, innit? It's sat in the queue a couple of tracks down.")
+        r = self._a_call()
+        r.turn("dj", line)
+        r.turn("dj", near)
+        r.write()
+        problems = " ".join(p["what"] for p in r.data["problems"])
+        self.assertIn("same line twice in a row", problems)
+
+    def test_an_answered_caller_is_not_a_repeat(self):
+        # The other half: a DJ who says similar things across a normal
+        # conversation — or twice with the caller answering in between — is
+        # just a DJ with a catchphrase, not a looping model.
+        line = ("That one's lined up for you, love — a couple of tracks down "
+                "the running order, so keep an ear out for it.")
+        r = self._a_call()
+        r.turn("dj", line)
+        r.turn("caller", "lovely, thanks")
+        r.turn("dj", line)
+        r.write()
+        problems = " ".join(p["what"] for p in r.data["problems"])
+        self.assertNotIn("same line twice in a row", problems)
+
+    def test_short_canned_lines_may_repeat(self):
+        # Two "Still with me?" in a row is the canned idle fallback doing its
+        # job — the floor keeps the detector off it.
+        r = self._a_call()
+        r.turn("dj", "Still with me?")
+        r.turn("dj", "Still with me?")
+        r.write()
+        self.assertEqual(
+            [p for p in r.data["problems"] if "twice in a row" in p["what"]], [])
 
     def test_problems_are_kept_with_the_call_that_had_them(self):
         r = self._a_call()

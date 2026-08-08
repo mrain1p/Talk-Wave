@@ -37,7 +37,7 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
-from . import lifecycle
+from . import handoff, lifecycle
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .record import CallRecord
@@ -224,7 +224,12 @@ class CallSession:
         local = build_on_air_tools(
             self.cfg, self.station, self.actions, self.air, guarded=guarded
         )
-        local += build_library_tools(self.cfg, self.station, self.actions)
+        # Same reason as the hang-up tool below: the session doesn't exist yet,
+        # so the late-match announcer is handed a way to read it later.
+        local += build_library_tools(
+            self.cfg, self.station, self.actions,
+            get_session=lambda: self.session, air=self.air, record=self.record,
+        )
         # The AgentSession doesn't exist yet — tools are built first — so the
         # hang-up tool is handed a way to read it later, not the thing itself.
         local += build_call_control_tools(
@@ -397,7 +402,7 @@ class CallSession:
                 # the live events only got the timing right.
                 final = [
                     ("caller" if role == "user" else "dj", text)
-                    for role, text in lifecycle._transcript(self.session, limit=400)
+                    for role, text in handoff.transcript(self.session, limit=400)
                 ]
                 self.record.finalise(final)
             except Exception as e:
@@ -416,6 +421,6 @@ class CallSession:
                          self.ctx.room.name)
 
         await lifecycle.release_call_slot(self.ctx.room.name)
-        await lifecycle.send_on_air_callback(
+        await handoff.send_on_air_callback(
             self.session, self.station, self.persona, self.cfg
         )
