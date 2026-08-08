@@ -69,6 +69,8 @@ from api.sounds import (
     handle_sound_packs,
     handle_sound_upload,
     handle_sounds_list,
+    handle_sound_lib,
+    handle_sound_meta,
 )
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
 from api.widget import WIDGET_DIR, _assets, handle_index, handle_panel
@@ -134,6 +136,8 @@ def build_app() -> web.Application:
     app.router.add_options("/settings/sounds", handle_options)
     app.router.add_delete("/settings/sounds/{name}", handle_sound_delete)
     app.router.add_get("/sounds/{name}", handle_sound_file)
+    app.router.add_get("/sound-lib/{name}", handle_sound_lib)
+    app.router.add_post("/settings/sounds/meta", handle_sound_meta)
     # Bundled packs ship in the image, so unlike uploads they are read-only
     # and need no auth — a caller's browser fetches them mid-call.
     app.router.add_get("/pack-sounds/{pack}/{name}", handle_pack_sound)

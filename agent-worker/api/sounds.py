@@ -107,13 +107,96 @@ def _uploaded_sounds() -> list[str]:
         return []
 
 
+# Operator notes about individual sounds — today just the category each
+# upload (or bundled clip) is filed under. data/ so it survives upgrades.
+META_PATH = Path(os.environ.get("SOUND_META_PATH",
+                                SOUNDS_DIR.parent / "sound-meta.json"))
+
+
+def _sound_meta() -> dict:
+    import json
+
+    try:
+        with open(META_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _wav_secs(path: Path):
+    import wave
+
+    try:
+        with wave.open(str(path), "rb") as w:
+            return round(w.getnframes() / float(w.getframerate() or 1), 1)
+    except (OSError, wave.Error):
+        return None
+
+
 async def handle_sounds_list(request: web.Request) -> web.Response:
     if not _write_allowed(request):
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "not allowed",
              "authRequired": bool(request.get("auth_required"))}, status=401))
+    meta = _sound_meta()
+    library = []
+    for entry in sound_assets.library():
+        entry = dict(entry)
+        override = meta.get(entry["name"]) or {}
+        if override.get("category"):
+            entry["category"] = override["category"]
+        library.append(entry)
+    uploads = []
+    for name in _uploaded_sounds():
+        path = SOUNDS_DIR / name
+        uploads.append({
+            "name": name,
+            "secs": _wav_secs(path) if name.lower().endswith(".wav") else None,
+            "category": str((meta.get(name) or {}).get("category") or "upload"),
+            "url": f"/sounds/{name}",
+        })
     return _cors(request, web.json_response(
-        {"sounds": _uploaded_sounds(), "prefix": UPLOAD_PREFIX}))
+        {"sounds": _uploaded_sounds(), "prefix": UPLOAD_PREFIX,
+         "library": library, "uploads": uploads}))
+
+
+async def handle_sound_meta(request: web.Request) -> web.Response:
+    """File one sound under a category — the operator's own taxonomy, which
+    is what makes the shelf filterable like a soft sound pack."""
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    import json
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = str((body or {}).get("name") or "")
+    known = set(_uploaded_sounds()) | {e["name"] for e in sound_assets.library()}
+    if name not in known:
+        return _cors(request, web.json_response(
+            {"error": "no such sound"}, status=404))
+    meta = _sound_meta()
+    meta.setdefault(name, {})["category"] = str(
+        (body or {}).get("category") or "")[:40] or "misc"
+    META_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(META_PATH, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    return _cors(request, web.json_response({"ok": True}))
+
+
+async def handle_sound_lib(request: web.Request) -> web.StreamResponse:
+    """A bundled library clip. Public like /sounds — the widget plays these
+    on every caller's page."""
+    name = request.match_info.get("name", "")
+    path = sound_assets.library_dir() / name
+    if ("/" in name or "\\" in name or not name.lower().endswith(".wav")
+            or not path.is_file()):
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={
+        "Cache-Control": "public, max-age=86400", "Content-Type": "audio/wav"})
 
 
 async def handle_sound_upload(request: web.Request) -> web.Response:

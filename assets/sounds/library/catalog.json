@@ -1,0 +1,14 @@
+{
+  "dial-up-1.wav": {
+    "label": "Dial-up handshake (long)",
+    "category": "dial-up"
+  },
+  "dial-up-2.wav": {
+    "label": "Dial-up handshake (short)",
+    "category": "dial-up"
+  },
+  "wilhelm.wav": {
+    "label": "Wilhelm scream",
+    "category": "novelty"
+  }
+}

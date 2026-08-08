@@ -2184,49 +2184,13 @@
   const SOUND_SLOTS = ['ring', 'pickup', 'hold', 'hangup', 'failed', 'vm_beep'];
 
   function paintSounds() {
-    const host = $('soundList');
-    if (!host) return;
-    host.innerHTML = '';
-    if (!uploaded.length) {
-      $('uploadHint').textContent = 'Nothing uploaded yet — the built-in set is in use.';
-    } else {
-      $('uploadHint').textContent = '';
+    // The shelf itself is the sound BOARD now (paintSoundBoard) — bundled
+    // clips and uploads in one table. This keeps only the hint and the
+    // dropdowns in step.
+    if ($('uploadHint')) {
+      $('uploadHint').textContent = uploaded.length
+        ? '' : 'Nothing uploaded yet — the built-in shelf is below.';
     }
-    uploaded.forEach((name) => {
-      const li = document.createElement('li');
-      const who = document.createElement('span');
-      who.className = 'sname';
-      who.textContent = name;
-
-      const play = document.createElement('button');
-      play.className = 'btnquiet'; play.textContent = 'Play';
-      play.onclick = () => { new Audio('/sounds/' + encodeURIComponent(name)).play(); };
-
-      // The file back out again — an upload the operator can't retrieve is a
-      // file they have to keep somewhere else too, which defeats the shelf.
-      const get = document.createElement('a');
-      get.className = 'btnquiet sdl';
-      get.textContent = 'Download';
-      get.href = '/sounds/' + encodeURIComponent(name);
-      get.download = name;
-
-      // Only uploads are removable. The bundled pack sounds never appear in
-      // this list, so the defaults cannot be deleted from anywhere.
-      const del = document.createElement('button');
-      del.className = 'btnquiet'; del.textContent = 'Remove';
-      del.onclick = async () => {
-        del.disabled = true;
-        const r = await afetch('/settings/sounds/' + encodeURIComponent(name),
-                               { method: 'DELETE' });
-        const d = await r.json().catch(() => ({}));
-        if (r.ok) { uploaded = d.sounds || []; paintSounds(); }
-        else { showResult($('soundResult'), false, d.error || 'Could not remove it.'); }
-      };
-
-      li.append(who, play, get, del);
-      host.appendChild(li);
-    });
-    // Which files exist just changed, and five dropdowns list them.
     syncSoundPickers();
   }
 
@@ -2302,6 +2266,10 @@
       // The beep is server-played and the server reads WAV only — offering
       // an m4a here is offering a file that will silently become the tone.
       // (m4p is Apple-DRM'd audio: nothing outside iTunes can play it.)
+      soundLibrary.forEach((e) => {
+        add(e.url, 'Built-in — ' + (e.label || e.name)
+          + (e.secs ? ' (' + e.secs + 's)' : ''));
+      });
       const eligible = slot === 'vm_beep'
         ? uploaded.filter((n) => /\.wav$/i.test(n)) : uploaded;
       eligible.forEach((n) => add(UPLOAD_PREFIX + n, 'Uploaded — ' + n));
@@ -2318,6 +2286,9 @@
     });
   }
 
+  let soundLibrary = [];
+  let uploadMeta = [];
+
   async function loadSounds() {
     // Bundled packs need no auth and are useful even if the upload list
     // fails, so they load independently.
@@ -2327,8 +2298,62 @@
       if (!r.ok) return;
       const d = await r.json();
       uploaded = d.sounds || [];
+      soundLibrary = d.library || [];
+      uploadMeta = d.uploads || [];
       paintSounds();
+      paintSoundBoard();
     } catch (e) { /* the built-ins still work */ }
+  }
+
+  // The whole shelf as one table — bundled clips and uploads together,
+  // playable, timed, and filed under an editable category: the operator's
+  // own taxonomy, which is what makes it a soft sound pack.
+  function paintSoundBoard() {
+    const board = $('soundBoard'), body = $('soundBoardBody');
+    if (!board || !body) return;
+    const rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
+      .concat(uploadMeta.map((e) => ({ ...e, builtin: false })));
+    board.hidden = !rows.length;
+    body.innerHTML = '';
+    const mmss = (secs) => secs == null ? '—'
+      : Math.floor(secs / 60) + ':' + String(Math.round(secs % 60)).padStart(2, '0');
+    rows.forEach((e) => {
+      const tr = document.createElement('tr');
+      const name = document.createElement('td');
+      name.textContent = (e.label || e.name)
+        + (e.builtin ? '' : ' (upload)');
+      const len = document.createElement('td');
+      len.textContent = mmss(e.secs);
+      const cat = document.createElement('td');
+      const catIn = document.createElement('input');
+      catIn.type = 'text';
+      catIn.value = e.category || '';
+      catIn.className = 'catbox';
+      catIn.onchange = async () => {
+        await afetch('/settings/sounds/meta', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: e.name, category: catIn.value }),
+        });
+      };
+      cat.appendChild(catIn);
+      const act = document.createElement('td');
+      const play = document.createElement('button');
+      play.className = 'btnquiet'; play.textContent = 'Play';
+      play.onclick = () => { new Audio(e.url).play().catch(() => {}); };
+      act.appendChild(play);
+      if (!e.builtin) {
+        const del = document.createElement('button');
+        del.className = 'btnquiet'; del.textContent = 'Remove';
+        del.onclick = async () => {
+          await afetch('/settings/sounds/' + encodeURIComponent(e.name),
+                       { method: 'DELETE' });
+          loadSounds();
+        };
+        act.appendChild(del);
+      }
+      tr.append(name, len, cat, act);
+      body.appendChild(tr);
+    });
   }
 
   // Set by a slot's own Upload… button, so the file lands assigned to the

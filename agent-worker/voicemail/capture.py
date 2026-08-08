@@ -135,13 +135,19 @@ def custom_beep(cfg: dict, want_rate: int) -> bytes | None:
     can't read (mp3 under a .wav name, compressed WAV) fails soft to the
     synthesized tone, never to silence."""
     name = str(cfg.get("sound_vm_beep") or "")
-    if not name.startswith("upload:"):
-        return None
     try:
-        from api.sounds import SOUNDS_DIR
+        if name.startswith("upload:"):
+            from api.sounds import SOUNDS_DIR
 
-        return _wav_as_mono16(SOUNDS_DIR / name[len("upload:"):],
-                              want_rate) or None
+            path = SOUNDS_DIR / name[len("upload:"):]
+        elif name.startswith("/sound-lib/"):
+            # A bundled library clip — WAV by policy, shipped in the image.
+            import sounds as sound_assets
+
+            path = sound_assets.library_dir() / name[len("/sound-lib/"):]
+        else:
+            return None
+        return _wav_as_mono16(path, want_rate) or None
     except Exception as e:                                    # noqa: BLE001
         log.warning("voicemail beep %s unplayable (%s) — using the tone",
                     name, e)

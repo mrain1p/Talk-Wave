@@ -350,6 +350,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     #   name     "Call Francesca", re-resolved as the roster changes
     #   custom   whatever is in call_button_label
     "call_button_mode":      (None, "default"),
+    # The card's fixed strings, blank = the built-in. All of them take
+    # {station}, {dj}, {show}, {track} and {tagline}, filled live.
+    "word_ringing":          (None, ""),
+    "word_answering":        (None, ""),
+    "word_online":           (None, ""),
+    "word_recording":        (None, ""),
+    "word_hangup":           (None, ""),
+    "word_vm_button":        (None, ""),
+    "word_ptt":              (None, ""),
+    "word_closed":           (None, ""),
+    "word_message_only":     (None, ""),
     "call_button_label":     (None, ""),
 
     # After the line drops, ask the caller whether that went well. Two
@@ -617,6 +628,10 @@ GROUPS = [
     ("voicemail", "line",  "Voicemail",           "When the booth can't pick up, the machine does."),
 
     ("player",   "card",   "Player settings",     "What the card shows, here and in an embed."),
+    # Every fixed string on the card, overridable — so a station whose whole
+    # page speaks in its own voice doesn't get "Ringing…" in ours. The
+    # operator asked for it as a group.
+    ("wording",  "card",   "Wording",             "What the card's buttons and states say."),
     ("embed",    "card",   "Embed on another page", "The snippet, and what it looks like."),
 
     ("ask",      "ref",    "What callers can ask", "Driven by the permissions above."),
@@ -843,6 +858,24 @@ SCHEMA: dict[str, dict] = {
              "disagree with a host page's faster ticker."),
     "embed_now_playing": dict(group="player", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
+    "word_ringing": dict(group="wording", kind="text", label="Ringing",
+        placeholder="default: Ringing…"),
+    "word_answering": dict(group="wording", kind="text", label="Answering",
+        placeholder="default: Answering…"),
+    "word_online": dict(group="wording", kind="text", label="On the line",
+        placeholder="default: On the line"),
+    "word_recording": dict(group="wording", kind="text", label="Recording",
+        placeholder="default: Recording…"),
+    "word_hangup": dict(group="wording", kind="text", label="Hang up",
+        placeholder="default: Hang up"),
+    "word_vm_button": dict(group="wording", kind="text", label="Leave a message",
+        placeholder="default: Leave a message"),
+    "word_ptt": dict(group="wording", kind="text", label="Talk bar",
+        placeholder="default: Tap to talk"),
+    "word_closed": dict(group="wording", kind="text", label="Line closed",
+        placeholder="default: Line closed"),
+    "word_message_only": dict(group="wording", kind="text", label="Voicemail-only line",
+        placeholder="default: Message only"),
     "call_button_mode": dict(group="player", kind="select", label="Call button",
         help="“Call the DJ” is the honest label when the card shows whoever "
              "happens to be on air. The DJ's name reads better on a station "

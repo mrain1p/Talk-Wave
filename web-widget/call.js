@@ -549,8 +549,30 @@
   // may have typed a label, or asked for the live DJ's name, and the rule for
   // which wins belongs in one place rather than in each of the four spots
   // here that put the button back to its resting state.
+  // {station}, {dj}, {show}, {track} and {tagline}, filled from the live
+  // card state — the same shorthand the voicemail greeting takes, offered
+  // everywhere a fixed string can be overridden. Unknown braces vanish.
+  function fillWords(text) {
+    const d = shown || live || {};
+    const map = {
+      station: d.station || 'the station',
+      dj: d.name || 'the DJ',
+      show: d.show || '',
+      track: (d.track && d.track.title) || (typeof d.track === 'string' ? d.track : '') || '',
+      tagline: d.tagline || '',
+    };
+    return String(text || '').replace(/\{(\w+)\}/g, (m, k) =>
+      Object.prototype.hasOwnProperty.call(map, k.toLowerCase())
+        ? map[k.toLowerCase()] : '').replace(/  +/g, ' ').trim();
+  }
+
+  function word(key, fallback) {
+    const w = ((shown || live || {}).wording) || {};
+    return fillWords(w[key] || fallback);
+  }
+
   function callLabel() {
-    return (shown && shown.callLabel) || 'Call the DJ';
+    return fillWords((shown && shown.callLabel) || 'Call the DJ');
   }
 
   // ------------------------------------------------------- embed height
@@ -695,6 +717,7 @@
     const vmButton = vmPolicy() !== 'never'
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
+    if (vmButton) $('vmBtn').textContent = word('vm_button', 'Leave a message');
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
     if (needsCode) {
@@ -708,13 +731,13 @@
     } else if (vmHere && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
-      callBtn.textContent = 'Leave a message';
+      callBtn.textContent = word('vm_button', 'Leave a message');
     } else if (d.callsPaused || vmOnly) {
       // A paused or voicemail-only line is a deliberate state, not a
       // fault: say so plainly rather than offering a button that fails.
       callBtn.disabled = true;
       callBtn.textContent = vmOnly && vmPolicy() === 'never'
-        ? 'Line closed' : vmOnly ? 'Message only' : 'Line closed';
+        ? word('closed', 'Line closed') : vmOnly ? word('message_only', 'Message only') : word('closed', 'Line closed');
     } else {
       callBtn.disabled = false;
       callBtn.textContent = callLabel();
@@ -1033,7 +1056,7 @@
     if (state === 'speaking' && room && !callBtn.classList.contains('live')) {
       callBtn.classList.remove('ringing', 'answering');
       callBtn.classList.add('live');
-      callBtn.textContent = 'On the line';
+      callBtn.textContent = word('online', 'On the line');
     }
   }
 
@@ -1343,7 +1366,7 @@
     }
     callBtn.disabled = true;
     $('vmBtn').hidden = true;
-    callBtn.textContent = 'Ringing…';
+    callBtn.textContent = word('ringing', 'Ringing…');
     callBtn.classList.add('ringing');
     $('rig').classList.add('on');
     $('stateChip').hidden = false;
@@ -1440,7 +1463,7 @@
         if (vmCall) {
           callBtn.classList.remove('ringing');
           callBtn.classList.add('live');
-          callBtn.textContent = 'Recording…';
+          callBtn.textContent = word('recording', 'Recording…');
           setStatus('Speak after the beep — transcript only, no audio is kept',
                     'connected');
           // A worker from before the vm-beep topic never sends it; after
@@ -1463,11 +1486,12 @@
         if (!vmCall) {
           callBtn.classList.remove('ringing');
           callBtn.classList.add('answering');
-          callBtn.textContent = 'Answering…';
+          callBtn.textContent = word('answering', 'Answering…');
         }
         // The bottom row flips: Call (or the machine's door) gives way to
         // Hang up, full width, exactly where a thumb expects it.
         callBtn.hidden = true;
+        hangBtn.textContent = word('hangup', 'Hang up');
         hangBtn.hidden = false;
         // Re-entrant on purpose: a mid-call reconnect re-fires
         // TrackSubscribed, and attaching again WITHOUT tearing down the
@@ -1881,7 +1905,7 @@
     $('pttMain').textContent = (vmCall && !vmBeepHeard && room)
       ? 'Wait for the beep…'
       : pttOpen ? "You're live — tap to go quiet"
-                : 'Tap to talk';
+                : word('ptt', 'Tap to talk');
     // The meter tells the same story as the bar, in the vocabulary the mute
     // button already taught it.
     if (room && pttOn()) {

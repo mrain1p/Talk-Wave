@@ -229,6 +229,15 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "embedVmBtn": bool(cfg.get("embed_voicemail_button")),
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
+        # The card's fixed strings, overrides only — the defaults live in
+        # the widget, so a blank costs nothing on the wire.
+        "wording": {
+            k[len("word_"):]: str(cfg.get(k) or "")
+            for k in ("word_ringing", "word_answering", "word_online",
+                      "word_recording", "word_hangup", "word_vm_button",
+                      "word_ptt", "word_closed", "word_message_only")
+            if cfg.get(k)
+        },
         "voiceEffect": str(cfg.get("voice_effect") or "none"),
         "voiceEffectLevel": max(0, min(100,
             int(cfg.get("voice_effect_level") or 100))),

@@ -3,6 +3,27 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.147
+
+### The sound board
+
+- **Three bundled clips ship in the image** — two dial-up handshakes and
+  the Wilhelm scream — as WAV, so the server-played beep can use them too.
+- Call sounds gains a **board**: bundled clips and uploads in one table,
+  each playable, with its length and an **editable category** — file your
+  shelf however you like, a soft sound pack. Every sound dropdown offers
+  the bundled clips alongside uploads, and links to good free sources
+  (freesound CC0, Pixabay) sit under the table.
+
+### Wording
+
+- A **Wording section** under The call card: every fixed string — Ringing,
+  Answering, On the line, Recording, Hang up, Leave a message, the talk
+  bar, the closed-line labels — overridable in the station's own voice.
+- All of them, plus the Call button's custom label and the voicemail
+  greeting, take **{station} {dj} {show} {track} {tagline}**, filled live;
+  an empty or unknown placeholder simply disappears.
+
 ## 0.9.146
 
 ### Transmission modes
