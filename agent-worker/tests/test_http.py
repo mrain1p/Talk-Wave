@@ -394,3 +394,41 @@ class TestAnUnsignedWebhookCannotFillMemory(unittest.TestCase):
 # registration is a read-modify-write against a list we share with the
 # operator and with anything else they have wired up. Everything below defends
 # one half of that: our row lands, and nobody else's is disturbed.
+
+
+class TestAMissingModelNamesTheOnesTheServerHas(unittest.TestCase):
+    """From a beta tester's llama-swap (2026-08-08): pointing the LLM at a
+    multi-model router answered 404 "no router for requested model", because
+    that server routes by exact model name — while clients that pick from the
+    server's own /v1/models list connect fine. The test endpoint recognises
+    the miss and asks the server what it does offer, so the panel answers the
+    question instead of starting a support thread."""
+
+    def test_the_observed_llama_swap_error_is_recognised(self):
+        from api.diagnostics import _looks_like_no_such_model
+
+        self.assertTrue(_looks_like_no_such_model(
+            "Error code: 404 - {'error': 'no router for requested model', "
+            "'src': 'llama-swap'}"))
+        # OpenAI's own wording for the same miss.
+        self.assertTrue(_looks_like_no_such_model(
+            "The model `gpt-5x` does not exist or you do not have access"))
+
+    def test_an_ordinary_failure_is_not_mistaken_for_it(self):
+        from api.diagnostics import _looks_like_no_such_model
+
+        for err in ("Connection refused", "401 unauthorized",
+                    "timed out waiting for the first token"):
+            self.assertFalse(_looks_like_no_such_model(err), err)
+
+    def test_every_shape_a_models_endpoint_answers_with(self):
+        from api.diagnostics import _model_names
+
+        openai = {"data": [{"id": "llama-3.1-8b"}, {"id": "qwen3"}]}
+        ollama = {"models": [{"name": "mistral:7b"}]}
+        self.assertEqual(_model_names(openai), ["llama-3.1-8b", "qwen3"])
+        self.assertEqual(_model_names(ollama), ["mistral:7b"])
+        self.assertEqual(_model_names(["a", "b"]), ["a", "b"])
+        # Garbage never becomes a hint.
+        self.assertEqual(_model_names({"weird": True}), [])
+        self.assertEqual(_model_names(None), [])
