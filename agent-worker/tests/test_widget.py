@@ -228,7 +228,7 @@ class TestWidgetServerContract(unittest.TestCase):
     widget that silently does nothing — the exact failure mode this project
     treats as a bug rather than a nitpick.
 
-    Checked PER PAGE since the panel moved to /panel. That is stricter than
+    Checked PER PAGE since the panel moved to its own page. That is stricter than
     the old whole-widget check, not looser: panel.js reaching for an id that
     only exists on the call page used to pass, because both surfaces were one
     document and every id was in scope. Now it fails, which is right — those

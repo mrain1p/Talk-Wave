@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.8
+
+- **/panel is retired outright.** /settings has been the panel's one address since 0.9.151; the old name kept answering as a redirect, and now it doesn't answer at all — update any bookmark or reverse-proxy rule still pointing at /panel. Every mention in the panel's own help, the docs and the dev tooling now says /settings.
+
 ## 0.10.7
 
 - The talk bar tells keyboard users about Space: on devices with a fine pointer it reads *"Tap to talk — or hold Space"*; phones keep the short label, and a custom Talk-bar wording still wins everywhere.

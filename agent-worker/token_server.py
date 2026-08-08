@@ -75,7 +75,7 @@ from api.sounds import (
     handle_sound_meta,
 )
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
-from api.widget import WIDGET_DIR, _assets, handle_index, handle_panel
+from api.widget import WIDGET_DIR, _assets, handle_index
 from api.wire import handle_options
 
 import log_setup
@@ -162,7 +162,6 @@ def build_app() -> web.Application:
     app.router.add_get("/", handle_index)
     # The operator's page on its own URL, so a reverse proxy can put a rule in
     # front of the admin surface that it could never put in front of the phone.
-    app.router.add_get("/panel", handle_panel)
     app.router.add_static("/", WIDGET_DIR, show_index=False, name="widget")
     app.cleanup_ctx.append(keep_station_warm)
     return app

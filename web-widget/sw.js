@@ -49,8 +49,9 @@ self.addEventListener('activate', (e) => {
   })());
 });
 
-// Paths this worker must never answer for. /panel is the operator's surface
-// and is not part of the app; the rest are live state and would be actively
+// Paths this worker must never answer for. /settings is the operator's
+// surface and not part of the app (/panel, its retired old name, stays
+// listed so a stale cache can never resurrect it); the rest are live state and would be actively
 // wrong from a cache. Anything not GET is out too — a cached POST is not a
 // thing that should ever be attempted.
 const NEVER = ['/panel', '/live', '/token', '/call-ended', '/call-feedback',

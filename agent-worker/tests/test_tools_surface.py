@@ -35,7 +35,6 @@ class TestExposedSurface(unittest.TestCase):
         # password gets them an empty form and a login prompt. It is its own
         # URL so that a reverse proxy CAN put a rule in front of it — which is
         # the operator's choice to make, not something this route assumes.
-        "GET /panel": "public",
         "GET /health": "public",
         "GET /live": "public",                 # what the call card renders
         "GET /avatar/{persona_id}": "public",  # proxied so embeds work on https

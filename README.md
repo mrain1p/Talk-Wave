@@ -95,7 +95,7 @@ The README is the short version. The detail lives here:
 - The caller's browser is optionally tuned into the stream at pickup, so
   stations that refuse requests at zero listeners accept them.
 
-**Operator panel** (its own page at `/settings`; `/panel` redirects)
+**Operator panel** (its own page at `/settings`)
 - A dashboard up top in four labelled groups: **Transmission** — The Line's kill switch with a real toggle, and who may call — beside a **Station** group (who is on air, station health, the configured call chain), with **Live calls** and **Voicemail** each pairing their own switch with the traffic it produces. Every switch posts the moment it is pressed, no save, no restart; pausing the line holds the two doors in amber.
 - Every runtime choice below it: station, providers, permissions, limits, call
   behaviour, house style. Changes apply to the next caller.

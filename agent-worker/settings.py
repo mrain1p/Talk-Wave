@@ -806,7 +806,7 @@ SCHEMA: dict[str, dict] = {
     "show_settings_gear": dict(group="player", kind="check",
         label="Settings gear",
         help="The way into this panel from the card. Off secures nothing — "
-             "/panel still answers by URL and still asks for the password — it "
+             "/settings still answers by URL and still asks for the password — "
              "just stops advertising it."),
     "show_voicemail_button": dict(group="player", kind="check",
         label="\u201cLeave a message\u201d button",
