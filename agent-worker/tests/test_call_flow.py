@@ -574,11 +574,12 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         guard = self._guard()
         guard.mark_on_air(600)
         waited = asyncio.run(guard.wait_until_clear(timeout=0.05))
-        # 0.045, not 0.05: Windows' ~15ms sleep granularity can return a hair
-        # under the asked-for timeout, and this test is about the guard giving
-        # UP at the ceiling, not about the scheduler's clock. Flaked at
-        # 0.0487 once.
-        self.assertGreaterEqual(waited, 0.045)
+        # The claim is that the guard WAITED and then gave up at the ceiling
+        # — not that Windows' timer honours 50ms under a loaded suite (it
+        # returned 48.7ms once and 38.9ms the next week). A floor well above
+        # zero proves the wait; the sub-second ceiling proves the giving up.
+        self.assertGreaterEqual(waited, 0.02)
+        self.assertLess(waited, 1.0)
         self.assertTrue(guard._clear.is_set(), "the caller was left in silence")
 
     def _watch(self, answers, stop_when):

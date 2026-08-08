@@ -227,9 +227,16 @@ _AMP = re.compile(r"\s*&\s*")
 _DASH = re.compile(r"\s*[—–]\s*")
 
 
-def normalize_for_tts(text: str) -> str:
+def normalize_for_tts(text: str, dash_style: str = "pause") -> str:
+    """dash_style is the operator's toggle: 'pause' speaks an em dash as a
+    breath (", "), 'hyphen' as a spoken " - ", 'keep' leaves it for the
+    backend to interpret. Ampersands always become "and" — no backend says
+    that one well."""
     out = _AMP.sub(" and ", text or "")
-    out = _DASH.sub(", ", out)
+    if dash_style == "hyphen":
+        out = _DASH.sub(" - ", out)
+    elif dash_style != "keep":
+        out = _DASH.sub(", ", out)
     return out
 
 
@@ -239,6 +246,7 @@ def clean_for_speech(
     strip_directions: bool = True,
     profanity_mode: str = "mask",
     profanity_words: list[str] | None = None,
+    dash_style: str = "pause",
 ) -> str:
     out = text or ""
     # Labels first: "Francesca: *adjusts headphones* right then" needs the
@@ -255,7 +263,7 @@ def clean_for_speech(
             log.info("stripped stage directions before speaking")
     # BEFORE the profanity mask, which spells its bleep with an em dash
     # ("s—") — normalising after would turn the mask into "s, ".
-    out = normalize_for_tts(out)
+    out = normalize_for_tts(out, dash_style)
     out = filter_profanity(
         out,
         profanity_words if profanity_words is not None else DEFAULT_PROFANITY,

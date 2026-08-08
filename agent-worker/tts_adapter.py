@@ -531,6 +531,7 @@ class AdapterTTS(tts.TTS):
         spoken = clean_for_speech(
             text,
             strip_directions=bool(cfg.get("strip_stage_directions", True)),
+            dash_style=str(cfg.get("tts_dash_style") or "pause"),
             profanity_mode=str(cfg.get("profanity_mode", "mask")),
             profanity_words=words,
         )

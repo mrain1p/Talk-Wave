@@ -493,6 +493,7 @@
     <details data-group="turns" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Turn-taking</span><em class="secblurb"></em><span class="tag" id="tagTurns"></span></summary>
       <div class="body">
+        <label class="check"><input type="checkbox" id="allow_interruptions" /> Let the caller talk over the DJ</label>
         <p class="hint wide" style="margin-top:0">The single biggest lever on
           whether a call feels like a phone call or a kiosk — and the one most
           worth leaving alone until a real call says otherwise.
@@ -508,8 +509,7 @@
             <input type="number" id="max_endpointing_delay" min="0" max="10" step="0.1" />
           </div>
         </div>
-        <label class="check"><input type="checkbox" id="allow_interruptions" /> Let the caller talk over the DJ</label>
-        <div class="row narrow">
+                <div class="row narrow">
           <label for="min_interruption_secs">Sound needed to interrupt (s)</label>
           <input type="number" id="min_interruption_secs" min="0" max="5" step="0.1" />
         </div>
@@ -519,9 +519,6 @@
     <details data-group="style" class="sec">
       <summary><span class="chev">▶</span><span class="secname">House style</span><em class="secblurb"></em><span class="tag" id="tagStyle"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Light steers layered on the
-          persona, not a replacement for it. Leave blank and the persona alone
-          decides.</p>
         <div class="row">
           <label for="style_answering">Answering</label>
           <input type="text" id="style_answering" />
@@ -541,15 +538,21 @@
     <details data-group="context" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Station awareness</span><em class="secblurb"></em><span class="tag" id="tagContext"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">What the DJ is told before the
-          call. Each item costs time-to-first-token on <em>every</em> turn, not
-          just the first.</p>
-        <p class="hint wide" style="margin-top:0">Always known without a dial
-          here: the persona's own DJ card, the current show's write-up and
-          episode angle (with guests and handoffs on programme shows), the
-          track playing right now, and the station's name. The music library
-          is <em>not</em> preloaded — the DJ searches it on demand, so it
-          always reflects what you actually have.</p>
+        <p class="hint wide" style="margin-top:0">What rides in the DJ's
+          prompt before the call — each item costs time-to-first-token on
+          <em>every</em> turn, not just the first.</p>
+        <ul class="hint wide" style="margin-top:0">
+          <li><strong>Always known, no dial:</strong> the persona's own DJ
+            card, the current show's write-up and episode angle (guests and
+            handoffs included on programme shows), the track playing right
+            now, and the station's name.</li>
+          <li><strong>Fetched live, never preloaded:</strong> the music
+            library (searched on demand, so it always reflects what you
+            actually have) — and the tools look things up for themselves
+            when invoked, which is why a caller with the takeover permission
+            can name another show even while “Know the rest of the
+            line-up” is off: that switch only shapes the prompt.</li>
+        </ul>
         <div class="grid2">
           <div class="row narrow">
             <label for="context_recent_tracks">Recently played songs</label>
@@ -576,7 +579,11 @@
         <p class="hint wide" style="margin-top:0">Applied to every spoken line on
           its way to the voice — so it holds whichever model is in use, and
           whether or not the prompt was obeyed.</p>
-        <label class="check"><input type="checkbox" id="strip_stage_directions" /> Strip stage directions (<em>*shuffles records*</em>, <em>(laughs)</em>)</label>
+        <label class="check"><input type="checkbox" id="strip_stage_directions" /> Strip stage directions</label>
+        <div class="row">
+          <label for="tts_dash_style">Em dashes</label>
+          <select id="tts_dash_style"></select>
+        </div>
         <div class="row">
           <label for="profanity_mode">Expletives</label>
           <select id="profanity_mode"></select>
@@ -584,16 +591,6 @@
         <div class="row">
           <label for="profanity_words">Word list</label>
           <input type="text" id="profanity_words" />
-        </div>
-      </div>
-    </details>
-
-    <details data-group="limits" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Call length</span><em class="secblurb"></em><span class="tag" id="tagLimits"></span></summary>
-      <div class="body">
-        <div class="row narrow">
-          <label for="max_call_seconds">Hang up after (s)</label>
-          <input type="number" id="max_call_seconds" min="30" step="30" />
         </div>
       </div>
     </details>
@@ -606,6 +603,10 @@
           <input type="text" id="style_signoff" />
         </div>
         <div class="grid2">
+          <div class="row narrow">
+            <label for="max_call_seconds">Hang up after (s)</label>
+            <input type="number" id="max_call_seconds" min="30" step="30" />
+          </div>
           <div class="row narrow">
             <label for="min_call_seconds">Earliest hang-up (s)</label>
             <input type="number" id="min_call_seconds" min="0" step="15" />
@@ -752,9 +753,15 @@
           <label for="voice_effect_level">Effect intensity</label>
           <input type="number" id="voice_effect_level" min="0" max="100" step="5" />
         </div>
+        <div class="row">
+          <label for="fxVoice">Test voice</label>
+          <select id="fxVoice"><option value="">Current voice (default)</option></select>
+        </div>
         <div class="testrow">
           <button id="fxTestBtn" class="btnquiet">Test with effect</button>
+          <button id="fxCleanBtn" class="btnquiet">Test clean</button>
         </div>
+        <div class="result" id="fxResultNote" hidden></div>
       </div>
     </details>
 
@@ -762,17 +769,27 @@
          the button below renders one per persona through the configured TTS
          and reports each result, because a persona whose voice the backend
          does not have fails and the operator has to know which one. -->
-    <details data-group="livecalls" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Live calls</span><em class="secblurb"></em><span class="tag" id="tagLivecalls"></span></summary>
+    <details data-group="modes" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Transmission modes</span><em class="secblurb"></em><span class="tag" id="tagModes"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
+        <label class="check"><input type="checkbox" id="voicemail_enabled" /> Enable voicemail</label>
+        <label class="check"><input type="checkbox" id="show_push_to_talk" /> Push to talk on this page</label>
+        <label class="check"><input type="checkbox" id="embed_push_to_talk" /> Push to talk in embeds</label>
+        <p class="hint wide">What the switches add up to: <strong>both
+          on</strong> — a phone with an answering machine; <strong>live
+          only</strong> — a plain phone; <strong>voicemail only</strong> —
+          every call goes to the machine; <strong>both off</strong> — the
+          line is closed and the card says so. On a live call the default is
+          the open line — the caller speaks freely and may talk over the DJ
+          (Turn-taking decides how) — unless push to talk is on for that
+          surface, where the mic opens only while the bar is held.</p>
       </div>
     </details>
 
     <details data-group="voicemail" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Voicemail</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="voicemail_enabled" /> Enable voicemail</label>
         <div class="row">
           <label for="voicemail_when">Answer with voicemail</label>
           <select id="voicemail_when"></select>
@@ -891,18 +908,6 @@
 
           <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
 
-          <div class="prow" data-help="show_voicemail_button">
-            <span class="plabel">“Leave a message” button</span>
-            <input type="checkbox" id="show_voicemail_button" aria-label="Voicemail button on the page" />
-            <input type="checkbox" id="embed_voicemail_button" aria-label="Voicemail button in an embed" />
-          </div>
-
-          <div class="prow" data-help="show_push_to_talk">
-            <span class="plabel">Push to talk</span>
-            <input type="checkbox" id="show_push_to_talk" aria-label="Push to talk on the page" />
-            <input type="checkbox" id="embed_push_to_talk" aria-label="Push to talk in an embed" />
-          </div>
-
           <div class="prow" data-help="show_dj_avatar">
             <span class="plabel">DJ photo</span>
             <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />
@@ -922,6 +927,11 @@
             <span class="plabel">Now playing</span>
             <input type="checkbox" id="show_now_playing" aria-label="Now playing on the page" />
             <input type="checkbox" id="embed_now_playing" aria-label="Now playing in an embed" />
+          </div>
+          <div class="prow" data-help="show_voicemail_button">
+            <span class="plabel">“Leave a message” button</span>
+            <input type="checkbox" id="show_voicemail_button" aria-label="Voicemail button on the page" />
+            <input type="checkbox" id="embed_voicemail_button" aria-label="Voicemail button in an embed" />
           </div>
         </div>
 
@@ -957,9 +967,26 @@
     <details data-group="embed" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Embed on another page</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Drops an iframe into the target
-          div. <code>allow="microphone"</code> is set for you — without it the mic
-          silently fails inside a frame.</p>
+        <p class="hint wide" style="margin-top:0">Paste the snippet where the
+          card should appear. <strong>Nothing else to add</strong>: the script
+          builds the iframe itself, microphone permission included.</p>
+        <div class="row">
+          <label for="embedTheme">Starting look</label>
+          <select id="embedTheme">
+            <option value="">Match the visitor's device</option>
+            <option value="inherit">Inherit the page's background</option>
+            <option value="light">Start light</option>
+            <option value="dark">Start dark</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="embedCaptions">Captions</label>
+          <select id="embedCaptions">
+            <option value="">Ticker — latest line, compact (default)</option>
+            <option value="full">Full transcript — taller card</option>
+            <option value="off">None</option>
+          </select>
+        </div>
         <textarea class="snippet" id="embedSnippet" readonly rows="3"></textarea>
         <div class="testrow" style="margin-top:9px">
           <button id="copyEmbedBtn">Copy snippet</button>

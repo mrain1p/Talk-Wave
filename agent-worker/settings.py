@@ -127,6 +127,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # independent of provider, model, or whether the prompt was obeyed.
     "strip_stage_directions": (None, True),
     "profanity_mode":     (None, "mask"),   # mask | drop | off
+    "tts_dash_style":     (None, "pause"),  # pause | hyphen | keep
     "profanity_words":    (None, ""),       # comma-separated; blank = built-in list
 
     # Free-text house style, layered on top of the persona rather than
@@ -409,6 +410,7 @@ TIER_OFF = "off"
 # requests work, it is not a capability anyone is being granted — and asking
 # who those apply to would be asking a question with no answer.
 TIERED_PERMISSIONS = (
+    "allow_voicemail",
     "allow_requests",
     "allow_library_search",
     "allow_exact_queue",
@@ -577,7 +579,6 @@ GROUPS = [
     # for it here. The rest of what "Call length" used to hold (sign-off,
     # check-ins, the earliest hang-up) is conversation behaviour and lives in
     # Closing the call below.
-    ("limits",   "safety", "Call length",  "The ceiling on one call."),
     ("speech",   "safety", "Speech hygiene", "What never reaches the speaker."),
 
     # Knowledge first, voice second, then the call's shape in the order a
@@ -589,8 +590,8 @@ GROUPS = [
     # the idle check-ins, and how early the DJ may hang up were scattered
     # across House style and Call length, and the operator asked where the
     # closing settings were. A fair question deserves a section.
-    ("closing",  "talk",   "Closing the call",   "How a call ends, in character."),
     ("turns",    "talk",   "Turn-taking",        "When the DJ decides you've finished."),
+    ("closing",  "talk",   "Closing the call",   "How a call ends, in character."),
 
 
     # Was inside Caller permissions, where it read as a fourth station-wide
@@ -599,7 +600,10 @@ GROUPS = [
     # Its own switch, not a row inside Voicemail: whether the booth takes
     # live callers and whether the machine answers are two decisions, and
     # nesting one under the other implied a dependency neither has.
-    ("livecalls", "line",  "Live calls",          "Whether the booth takes live callers at all."),
+    # The line's doors and how the caller talks, in ONE place — live calls,
+    # the machine, and push-to-talk were three sections' worth of one
+    # decision. The operator named it.
+    ("modes",    "line",   "Transmission modes",  "Which doors the line offers, and how the caller talks."),
     ("onair",    "line",   "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
     ("tunein",   "line",   "Tune the caller into the station",
      "Whether the caller counts as a listener, and whether they hear the broadcast."),
@@ -740,7 +744,7 @@ SCHEMA: dict[str, dict] = {
              "end of the record playing at the time."),
 
     # --- call length ---
-    "max_call_seconds": dict(group="limits", kind="number", label="Hang up after (s)",
+    "max_call_seconds": dict(group="closing", kind="number", label="Hang up after (s)",
         help="Hard ceiling. The DJ signs off in character first rather than the "
              "audio just stopping. 600 = ten minutes."),
     "guest_session_hours": dict(group="security", kind="number",
@@ -787,13 +791,13 @@ SCHEMA: dict[str, dict] = {
     "embed_voicemail_button": dict(group="player", kind="check",
         label="\u201cLeave a message\u201d button (embed)",
         help="The same second button, on the embedded card."),
-    "show_push_to_talk": dict(group="player", kind="check",
+    "show_push_to_talk": dict(group="modes", kind="check",
         label="Push to talk",
         help="The caller's mic stays closed except while they hold (or tap to "
              "latch) a talk bar — space works on a keyboard. Better control in "
              "a noisy room, and the DJ never hears a TV in the background. The "
              "mic permission is still asked once, at pickup."),
-    "embed_push_to_talk": dict(group="player", kind="check",
+    "embed_push_to_talk": dict(group="modes", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),
     "voice_effect": dict(group="effects", kind="select", label="Voice effect",
@@ -950,7 +954,7 @@ SCHEMA: dict[str, dict] = {
 
     # --- transcripts ---
     # --- voicemail ---
-    "voicemail_enabled": dict(group="voicemail", kind="check",
+    "voicemail_enabled": dict(group="modes", kind="check",
         label="Enable voicemail",
         help="The machine's master switch — everything below applies only "
              "while this is on."),
@@ -967,7 +971,7 @@ SCHEMA: dict[str, dict] = {
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
              "decides WHEN it answers; this decides WHO it answers for."),
-    "live_calls_enabled": dict(group="livecalls", kind="check",
+    "live_calls_enabled": dict(group="modes", kind="check",
         label="Take live calls",
         help="Off, the Call button becomes the machine's door (with "
              "voicemail on) or says the line is closed. Independent of "
@@ -1033,6 +1037,10 @@ SCHEMA: dict[str, dict] = {
     "strip_stage_directions": dict(group="speech", kind="check", label="Strip stage directions",
         help="Models write *shuffles records* and (laughs), and the voice reads "
              "them aloud. Removed whatever the model does."),
+    "tts_dash_style": dict(group="speech", kind="select", label="Em dashes",
+        help="Models love an em dash and voices stumble on it. Spoken as a "
+             "breath by default; 'a plain dash' speaks it as \" - \"; "
+             "'leave them' hands it to the voice backend as written."),
     "profanity_mode": dict(group="speech", kind="select", label="Expletives",
         help="Applied to every spoken line, so it never depends on the model "
              "behaving."),
@@ -1130,6 +1138,11 @@ RANDOM_PERSONA = "__random__"
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
+    "tts_dash_style": [
+        ("pause", "A breath — spoken as a short pause (default)"),
+        ("hyphen", "A plain dash — spoken as “ - ”"),
+        ("keep", "Leave them — the voice decides"),
+    ],
     "greeting_style": [("inviting", "Warm ask — what's on your mind?"), ("in-world", "Mid-world — no question")],
     # Three levels, and `auto` is not one of them.
     #
@@ -1158,6 +1171,9 @@ STATIC_CHOICES = {
         ("telephone", "Telephone — narrow, like a real phone line"),
         ("cb", "CB radio — squeezed and a little dirty"),
         ("walkie", "Walkie-talkie — tight, crunchy, push-to-talk energy"),
+        ("am", "AM radio — warm, narrow, late-night"),
+        ("megaphone", "Megaphone — a loud hailer, harsh on purpose"),
+        ("underwater", "Underwater — everything above a murmur is gone"),
     ],
     "voicemail_greeting_mode": [
         ("staged", "Staged clips — instant, rendered ahead of time"),

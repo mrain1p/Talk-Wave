@@ -1244,9 +1244,12 @@
   // freq window + grit per effect. Numbers chosen by ear against the three
   // things people actually mean: a phone line, a CB rig, a handheld.
   const FX = {
-    telephone: { hp: 300, lp: 3400, grit: 0 },
-    cb:        { hp: 400, lp: 2500, grit: 26 },
-    walkie:    { hp: 500, lp: 2800, grit: 55 },
+    telephone:  { hp: 300, lp: 3400, grit: 0 },
+    cb:         { hp: 400, lp: 2500, grit: 26 },
+    walkie:     { hp: 500, lp: 2800, grit: 55 },
+    am:         { hp: 200, lp: 4800, grit: 12 },
+    megaphone:  { hp: 500, lp: 4000, grit: 70 },
+    underwater: { hp: 40,  lp: 500,  grit: 0 },
   };
 
   // The operator's intensity dial, 0-100: 100 is the effect as designed,
