@@ -19,6 +19,22 @@ from .background import spawn
 log = logging.getLogger("callin.agent")
 
 
+def speaking_secs(spoken: str, fallback: int) -> int:
+    """How long the on-air DJ will be talking, sized from the words themselves.
+
+    A fixed hold was the wrong shape: an announcement is a sentence and a
+    segment can run a minute or more, so one number either reopens the gate
+    mid-delivery or gags the DJ long after the air is clear — both were heard
+    on real calls. The station's own voice serialiser holds its channel the
+    same way (word count at ~140wpm, padded), so count the words: about 2.4 a
+    second, plus a beat either side.
+    """
+    words = len(str(spoken or "").split())
+    if not words:
+        return fallback
+    return max(12, min(180, int(words / 2.4) + 4))
+
+
 class OnAirGuard:
     """Shared "is the broadcast actually talking right now" state for one call.
 
@@ -27,9 +43,10 @@ class OnAirGuard:
     cannot disagree with each other.
 
     "Busy" means ACTIVELY SPEAKING — not thinking, not queued. It's derived
-    from when the station last logged on-air speech, held for
-    `on_air_quiet_secs` (roughly how long a link runs), because the station
-    tells us when a link STARTED, not when it finished.
+    from when the station last logged on-air speech, held for as long as those
+    words take to say (`speaking_secs`), because the station tells us when a
+    link STARTED and what it says, not when it finished. `on_air_quiet_secs`
+    is the fallback hold for an entry with no words.
     """
 
     POLL_SECS = 4.0     # a station read per call every 4s, not per turn
@@ -49,14 +66,31 @@ class OnAirGuard:
         # announcement — observed on a real call, right after it had said it
         # was going off to air something.
         self._assumed_until = 0.0
+        # Whether the caller heard a hand-over line for the current busy spell.
+        # Only then is there anything to come back FROM: the gate also closes
+        # for a caller who dialled in mid-link, and "I'm back" to them is a
+        # line about nothing.
+        self.stepped_away = False
+        # The words that went out on air, for the come-back line to nod at in
+        # passing rather than the DJ returning as if nothing happened.
+        self.aired_text = ""
 
-    def mark_on_air(self, seconds: float = 25.0) -> None:
+    def mark_on_air(self, seconds: float = 25.0, spoken: str = "") -> None:
         """Treat the air as busy from now, because we just made it busy.
 
         The poll then confirms it and extends as needed; the gate does not
         reopen until BOTH this window has passed and the station log agrees.
+
+        `stepped_away` is set HERE and not only in the poll because this sets
+        `on_air` directly — the watch loop never sees a busy edge for the DJ's
+        own actions, so it never knew there was anything to come back from and
+        the DJ sat silent after its own announcement finished, waiting on a
+        caller it had told to hold. Heard on real calls, reported 2026-08-08.
         """
         self._assumed_until = max(self._assumed_until, time.time() + seconds)
+        if spoken:
+            self.aired_text = str(spoken)
+        self.stepped_away = True
         if self._clear.is_set():
             self._clear.clear()
             self.on_air = True
@@ -111,13 +145,19 @@ class OnAirGuard:
         is the fallback: coming back saying SOMETHING beats coming back
         silently, which is the failure being fixed.
         """
+        aired = (self.aired_text or "").strip()
+        self.aired_text = ""
+        nod = (
+            f" What went out on air was: \"{aired[:200]}\" — a passing nod to "
+            "it is fine, but don't read it back to them."
+        ) if aired else ""
         try:
             await session.generate_reply(instructions=(
                 "You just stepped away to let something go out on air, and "
                 "you're back on the call now. Say so in one short line — "
                 "\"alright, I'm back\" — and pick the conversation up where "
                 "you left it, in your own voice. Don't apologise at length, "
-                "don't recap, and don't start a new topic."
+                "don't recap, and don't start a new topic." + nod
             ))
         except asyncio.CancelledError:
             raise
@@ -132,6 +172,22 @@ class OnAirGuard:
             except Exception:
                 pass
 
+    def _log_says_busy(self, speech: tuple[float, str] | None) -> bool:
+        """Whether the station's log says its DJ is still talking.
+
+        The log records when an utterance STARTED and what was said — never
+        when it finished — so the end is sized from the words themselves
+        (`speaking_secs`), the same way the station's own voice serialiser
+        holds its channel. `on_air_quiet_secs` is only the fallback for an
+        entry with no words: as a fixed hold it either reopened the gate while
+        a long segment was still mid-delivery or gagged the call for most of a
+        minute over a one-line station ID.
+        """
+        if speech is None:
+            return False
+        since, text = speech
+        return since < speaking_secs(text, int(self.quiet_secs) or 30)
+
     async def watch(self, session: AgentSession) -> None:
         """Poll the station and flip the gate. Started as a task for the life
         of the call."""
@@ -142,29 +198,24 @@ class OnAirGuard:
         # waits) without the greeting being cut off by a hand-over line for a
         # broadcast that was already running when they picked up the phone.
         first = True
-        # Whether we actually cut the caller off for this link. Only then is
-        # there anything to come back FROM: the gate also closes for a caller
-        # who dialled in mid-link, and telling them "I'm back" when they never
-        # heard a hand-over is a line about nothing.
-        stepped_away = False
         while True:
             try:
-                since = await self.station.seconds_since_on_air_speech()
+                speech = await self.station.on_air_speech()
             except asyncio.CancelledError:
                 return
             except Exception as e:
                 log.debug("on-air check failed (assuming clear): %s", e)
-                since = None
+                speech = None
 
-            busy = (since is not None and since < self.quiet_secs) or (
-                time.time() < self._assumed_until
-            )
+            busy = self._log_says_busy(speech) or time.time() < self._assumed_until
             if busy != self.on_air:
                 self.on_air = busy
                 self._publish(busy)
                 if busy:
                     self._clear.clear()
                     log.info("on-air DJ is speaking — holding the call DJ back")
+                    if speech and speech[1]:
+                        self.aired_text = speech[1]
                     if not first:
                         # Cut the call DJ off mid-sentence if need be: the whole
                         # point is that the broadcast never hears itself doubled.
@@ -178,14 +229,14 @@ class OnAirGuard:
                                 # tool call follows it.
                                 add_to_chat_ctx=False,
                             )
-                            stepped_away = True
+                            self.stepped_away = True
                         except Exception as e:
                             log.debug("could not hand over to air cleanly: %s", e)
                 else:
                     self._clear.set()
                     log.info("air is clear — the call DJ has the floor again")
-                    if stepped_away:
-                        stepped_away = False
+                    if self.stepped_away:
+                        self.stepped_away = False
                         await self._come_back(session)
             first = False
             await asyncio.sleep(self.POLL_SECS)

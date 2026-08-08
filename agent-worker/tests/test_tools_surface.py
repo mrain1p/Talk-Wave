@@ -213,7 +213,7 @@ class TestStationWideTools(_TempStores):
         from call.tools import build_on_air_tools
 
         class _Guard:
-            def mark_on_air(self, secs):
+            def mark_on_air(self, secs, spoken=""):
                 pass
 
         from call.actions import CallActions
@@ -307,7 +307,7 @@ class TestStationWideTools(_TempStores):
         from call.actions import CallActions
 
         class _Guard:
-            def mark_on_air(self, secs):
+            def mark_on_air(self, secs, spoken=""):
                 pass
 
         class _Station:
