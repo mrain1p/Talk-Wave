@@ -446,7 +446,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # aware. The seam is the back-to-air mention (send_on_air_callback and
         # its transcript summariser, ~100 lines): it runs AFTER the call, only
         # reads the session, and nothing during-call reads it back.
-        "agent-worker/call/lifecycle.py": (616, "an after-the-call module for "
+        "agent-worker/call/lifecycle.py": (651, "an after-the-call module for "
                                                 "the back-to-air mention"),
     }
 

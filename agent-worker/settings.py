@@ -323,7 +323,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "voice_effect":       (None, "none"),
     # How hard the effect leans in, 0-100. 100 is the effect as designed;
     # lower opens the filters back toward the clean voice.
-    "voice_effect_level": (None, 100),
+    # 60 by default: every effect at full character read as a costume party;
+    # 60 keeps the colour audible while the words stay comfortably in front.
+    "voice_effect_level": (None, 60),
     # Shape, not visibility — so it is one answer for both surfaces rather
     # than a third column in a matrix of on/off switches. Round is the
     # default because a portrait in a circle reads as a person and a portrait

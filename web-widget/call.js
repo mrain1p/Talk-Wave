@@ -1912,8 +1912,21 @@
   let micOp = Promise.resolve();
 
   function setMicOpen(open) {
+    const wasOpen = pttOpen;
     pttOpen = !!open;
     paintPtt();
+    // Releasing the bar is the caller explicitly saying "your turn" — tell
+    // the worker, which commits the turn instead of waiting out its
+    // endpointing delay against a mic that is already shut (beta-tester
+    // report: mute and unmute was ALL release did). Live calls only: the
+    // machine has its own clock, and a plain mute button never comes here.
+    if (wasOpen && !pttOpen && room && !vmCall && pttOn()) {
+      try {
+        room.localParticipant.publishData(
+          new TextEncoder().encode('end'),
+          { reliable: true, topic: 'wavetalk.turn-end' });
+      } catch (e) { /* endpointing still ends the turn, just slower */ }
+    }
     micOp = micOp.then(async () => {
       if (!room) return;
       try {

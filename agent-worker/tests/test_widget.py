@@ -1380,7 +1380,9 @@ class TestTheEffectHasADial(unittest.TestCase):
         import settings as settings_store
         from api.live import look_payload
 
-        self.assertEqual(100, settings_store.FIELDS["voice_effect_level"][1])
+        # 60 since 0.10.4: full character on every effect read as a costume
+        # party; 60 keeps the colour audible with the words in front.
+        self.assertEqual(60, settings_store.FIELDS["voice_effect_level"][1])
         self.assertEqual(40, look_payload(
             {"voice_effect": "cb", "voice_effect_level": 40},
             "X")["voiceEffectLevel"])

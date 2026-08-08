@@ -2706,9 +2706,11 @@
   function paintSoundBoard() {
     const board = $('soundBoard'), body = $('soundBoardBody');
     if (!board || !body) return;
-    let rows = defaultRows()
+    // Real clips lead, defaults trail: the rows you can DO something with
+    // should not sit behind a page of read-only set defaults.
+    let rows = uploadMeta.map((e) => ({ ...e, builtin: false }))
       .concat(soundLibrary.map((e) => ({ ...e, builtin: true })))
-      .concat(uploadMeta.map((e) => ({ ...e, builtin: false })));
+      .concat(defaultRows());
     rows.forEach((e) => {
       if (e.isDefault) {
         // A default is "in use" for its own slot while that slot is empty
@@ -2745,10 +2747,22 @@
           .toLowerCase().includes(needle));
     }
     if (wantCat) rows = rows.filter((e) => e.category === wantCat);
+    const wantType = ($('shelfType') && $('shelfType').value) || '';
+    if (wantType) {
+      rows = rows.filter((e) => e.used.indexOf(wantType) !== -1
+        || e.suggests === wantType
+        || (e.isDefault && e.kind === wantType));
+    }
     if (shelfSort.key) {
+      // The type column sorts by the TYPE — assignment, else declared type,
+      // else a default's own kind — so rings group with rings. Sorting by
+      // the count of assignments put one used clip on top and shuffled the
+      // rest, which read as the column not sorting at all.
+      const typeOf = (e) => SLOT_NAMES[e.used[0] || e.suggests
+        || (e.isDefault ? e.kind : '')] || '~';
       const keyOf = (e) =>
         shelfSort.key === 'secs' ? (e.secs || 0)
-        : shelfSort.key === 'used' ? e.used.length
+        : shelfSort.key === 'used' ? typeOf(e)
         : shelfSort.key === 'category' ? String(e.category || '').toLowerCase()
         : String(e.label || e.name).toLowerCase();
       rows.sort((a, b) => {
@@ -2845,11 +2859,20 @@
             body: JSON.stringify({ name: e.name, category: catIn.value }),
           });
           if (!r.ok) throw new Error('refused');
+          if (!catIn.value.trim()) {
+            // Blank CLEARS, per the settings invariant — the mistyped
+            // "test" on a shipped clip needed a way home. The server
+            // dropped the override; refetch for the true category.
+            showResult($('soundResult'), true, (e.label || e.name)
+              + ' goes back to its shipped category.');
+            loadSounds();
+            return;
+          }
           const src = (e.builtin ? soundLibrary : uploadMeta)
             .find((s) => s.name === e.name);
-          if (src) src.category = catIn.value.trim() || 'misc';
+          if (src) src.category = catIn.value.trim();
           showResult($('soundResult'), true, (e.label || e.name)
-            + ' filed under “' + (catIn.value.trim() || 'misc') + '”.');
+            + ' filed under “' + catIn.value.trim() + '”.');
           paintSoundBoard();     // the category filter's options follow
         } catch (err) {
           showResult($('soundResult'), false,
@@ -2867,6 +2890,38 @@
           chip.textContent = SLOT_NAMES[slot];
           used.appendChild(chip);
         });
+      } else if (!e.builtin) {
+        // An upload's type is the OPERATOR's to declare — a shipped clip
+        // knows what it is, a mystery.wav does not. Saved to the meta
+        // store the moment it is picked, like the category beside it.
+        const typeSel = document.createElement('select');
+        typeSel.className = 'usefor';
+        const blank = document.createElement('option');
+        blank.value = ''; blank.textContent = 'type…';
+        typeSel.appendChild(blank);
+        Object.keys(SLOT_NAMES).forEach((slot) => {
+          const o = document.createElement('option');
+          o.value = slot; o.textContent = SLOT_NAMES[slot];
+          typeSel.appendChild(o);
+        });
+        typeSel.value = e.suggests || '';
+        typeSel.onchange = async () => {
+          try {
+            const r = await afetch('/settings/sounds/meta', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: e.name, suggests: typeSel.value }),
+            });
+            if (!r.ok) throw new Error('refused');
+            const src = uploadMeta.find((s) => s.name === e.name);
+            if (src) src.suggests = typeSel.value;
+            paintSoundBoard();   // the type filter and sort follow
+          } catch (err) {
+            showResult($('soundResult'), false,
+              'Could not save the type — ' + err.message);
+            typeSel.value = e.suggests || '';
+          }
+        };
+        used.appendChild(typeSel);
       } else if (e.suggests && SLOT_NAMES[e.suggests]) {
         // Not on duty, but MADE for a slot — a busy signal is a
         // can't-connect whatever the operator does with it. Dim, so a
@@ -2949,6 +3004,7 @@
       shelfTimer = setTimeout(() => { shelfPage = 0; paintSoundBoard(); }, 120);
     };
     $('shelfCat').onchange = () => { shelfPage = 0; paintSoundBoard(); };
+    $('shelfType').onchange = () => { shelfPage = 0; paintSoundBoard(); };
   }
   if ($('shelfPager')) {
     $('shelfPager').querySelector('.pprev').onclick = () => {

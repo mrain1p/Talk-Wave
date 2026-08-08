@@ -808,13 +808,22 @@
             <select id="shelfCat" class="shelfcat" aria-label="Filter by category">
               <option value="">All categories</option>
             </select>
+            <select id="shelfType" class="shelfcat" aria-label="Filter by sound type">
+              <option value="">All types</option>
+              <option value="ring">Rings</option>
+              <option value="pickup">Pick ups</option>
+              <option value="hold">On holds</option>
+              <option value="hangup">Hang ups</option>
+              <option value="failed">Can't connects</option>
+              <option value="vm_beep">Voicemail beeps</option>
+            </select>
           </div>
           <table class="soundboard" id="soundBoard" hidden>
             <thead><tr>
               <th data-sort="name" class="sortable">Sound</th>
               <th data-sort="secs" class="sortable">Length</th>
               <th data-sort="category" class="sortable">Category</th>
-              <th data-sort="used" class="sortable">Used for</th>
+              <th data-sort="used" class="sortable">Sound type</th>
               <th></th>
             </tr></thead>
             <tbody id="soundBoardBody"></tbody>

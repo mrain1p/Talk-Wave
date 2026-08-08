@@ -100,6 +100,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestBackgroundWorkIsNotGarbageCollected,
     TestCallRecordTimestamps,
     TestCallStructure,
+    TestTheBarReleaseEndsTheTurn,
     TestComingBackFromAirIsAnnounced,
     TestEndingACallDisconnectsTheCaller,
     TestNothingToSay,

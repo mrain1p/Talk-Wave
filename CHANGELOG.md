@@ -3,12 +3,29 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.2
+## 0.10.4
+
+### Releasing the talk bar ends the turn
+
+- **Push-to-talk's release now tells the DJ you're done.** It used to only mute — the DJ then waited out its endpointing delay against a mic that was already shut, up to a couple of seconds of dead air after every release. Credit to a beta tester's side-by-side reading for the catch. The widget announces the release; the worker commits the turn — and only when you were actually mid-sentence, so a stray tap never makes the DJ answer silence. An older worker simply ignores the announcement and behaves as before.
+- **Voice effect intensity defaults to 60** — colour you can hear with the words still in front. And a stored intensity of 0 now means the clean voice it says, instead of silently becoming full blast.
+
+### The shelf, listening to its first real user
+
+- **"Used for" is "Sound type" now, with its own filter** (Rings, Hang ups, Can't connects…) beside the category one — and sorting the column groups by type instead of shuffling by how many slots happened to use a clip.
+- **Real clips lead, set defaults trail**, so the rows you can act on aren't behind a page of read-only defaults.
+- **Uploads file under "custom" and declare their own type** — a little type picker on each upload row, saved as picked, feeding the filter and the sort.
+- **Blanking a category puts the clip back** to its shipped category (or "custom" for uploads) — a mistyped filing used to be unremovable, which is how a dial-up handshake ended up labelled "test" for good.
+- (Removing an upload was already there — the Remove button on its row — it just sat on a later page.)
+
+## 0.10.3
 
 ### The floating launcher
 
 - **A third way to wear the widget**: `data-mode="launcher"` turns the embed into a floating call pill in the page corner — support-chat style — that names who answers ("📞 Call Francesca", "Leave a message", or "Line closed") before anyone presses it, and opens the card in a panel above. Collapsing the panel never hangs up a call in progress.
 - The embed section's snippet builder gained a **Shape** picker (inline card / floating launcher) — and while wiring it, a real bug fell out: the builder wrote `data-theme` and `data-captions` onto the *script* tag, where embed.js never looks, so those choices in copied snippets have silently done nothing. They land on the div now.
+
+## 0.10.2
 
 ### The ring yields at pickup
 
