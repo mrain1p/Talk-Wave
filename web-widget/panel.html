@@ -134,6 +134,16 @@
         </span>
 
       </div>
+      <div class="dashmodes">
+        <span class="dk">Transmission modes</span>
+        <button type="button" id="modeLiveBtn" class="modebtn">Live calls</button>
+        <button type="button" id="modeVmBtn" class="modebtn">Voicemail</button>
+        <span class="dashmodesay" id="modeSay"></span>
+        <input type="checkbox" id="live_calls_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
+        <input type="checkbox" id="voicemail_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
+      </div>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
           <img class="tavatar" id="tileOnAirImg" alt="" hidden />
@@ -777,24 +787,6 @@
          the button below renders one per persona through the configured TTS
          and reports each result, because a persona whose voice the backend
          does not have fails and the operator has to know which one. -->
-    <details data-group="modes" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Transmission modes</span><em class="secblurb"></em><span class="tag" id="tagModes"></span></summary>
-      <div class="body">
-        <label class="check"><input type="checkbox" id="live_calls_enabled" /> Take live calls</label>
-        <label class="check"><input type="checkbox" id="voicemail_enabled" /> Enable voicemail</label>
-        <label class="check"><input type="checkbox" id="show_push_to_talk" /> Push to talk on this page</label>
-        <label class="check"><input type="checkbox" id="embed_push_to_talk" /> Push to talk in embeds</label>
-        <p class="hint wide">What the switches add up to: <strong>both
-          on</strong> — a phone with an answering machine; <strong>live
-          only</strong> — a plain phone; <strong>voicemail only</strong> —
-          every call goes to the machine; <strong>both off</strong> — the
-          line is closed and the card says so. On a live call the default is
-          the open line — the caller speaks freely and may talk over the DJ
-          (Turn-taking decides how) — unless push to talk is on for that
-          surface, where the mic opens only while the bar is held.</p>
-      </div>
-    </details>
-
     <details data-group="voicemail" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Voicemail</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
       <div class="body">
@@ -916,6 +908,11 @@
 
           <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
 
+          <div class="prow" data-help="show_push_to_talk">
+            <span class="plabel">Push to talk</span>
+            <input type="checkbox" id="show_push_to_talk" aria-label="Push to talk on the page" />
+            <input type="checkbox" id="embed_push_to_talk" aria-label="Push to talk in an embed" />
+          </div>
           <div class="prow" data-help="show_dj_avatar">
             <span class="plabel">DJ photo</span>
             <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />

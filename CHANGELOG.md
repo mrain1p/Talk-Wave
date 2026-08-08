@@ -3,6 +3,17 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.149
+
+- **Transmission modes moved onto the dashboard** — Take live calls and
+  Enable voicemail as proper toggle buttons under the kill switch, lit
+  green when a door is open, posting the moment they're pressed, with a
+  strip saying what the combination amounts to: phone, phone with a
+  machine, voicemail-only, or closed.
+- The push-to-talk per-surface switches return to **Player settings**,
+  where the other per-surface choices live; the Transmission modes section
+  retires.
+
 ## 0.9.148
 
 - **Effect intensity is back for every effect.** Its visibility rule still

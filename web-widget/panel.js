@@ -395,6 +395,27 @@
         : 'Takes effect the moment you press it — no Save, no restart.';
     }
 
+    const liveOn = $('live_calls_enabled')
+      ? $('live_calls_enabled').checked : !!resolved.live_calls_enabled;
+    const vmOn2 = $('voicemail_enabled')
+      ? $('voicemail_enabled').checked : !!resolved.voicemail_enabled;
+    const mb = (id, on) => {
+      const el = $(id);
+      if (el) {
+        el.classList.toggle('on', on);
+        el.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    };
+    mb('modeLiveBtn', liveOn);
+    mb('modeVmBtn', vmOn2);
+    if ($('modeSay')) {
+      $('modeSay').textContent = liveOn && vmOn2
+        ? 'phone with an answering machine'
+        : liveOn ? 'plain phone — no machine'
+        : vmOn2 ? 'voicemail only'
+        : 'both off — the line is closed';
+    }
+
     const l = live || {};
     const face = $('tileOnAirImg');
     if (face) {
@@ -497,6 +518,46 @@
   // response — the ordinary save path calls paint(), which refills every field
   // from the server and would silently throw away whatever edits were in
   // progress further down the page.
+  // The two mode switches post the moment they're pressed — closing a door
+  // is a thing you are doing, not a setting you are drafting. Same contract
+  // as the kill switch above them.
+  async function saveMode(field, next, btn) {
+    const box = $(field);
+    if (!box) return;
+    const before = box.checked;
+    box.checked = next;
+    if (btn) btn.disabled = true;
+    paintDash();
+    try {
+      const r = await afetch('/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: next }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'refused');
+      resolved[field] = next;
+      overrides[field] = next;
+    } catch (e) {
+      box.checked = before;
+      showResult($('saveMsg') ? { className: '', textContent: '' } : null, false, '');
+    } finally {
+      if (btn) btn.disabled = false;
+      paintDash();
+      applyVisibility();
+      markClean();
+    }
+  }
+
+  function bindModeButtons() {
+    const wire = (btnId, field) => {
+      const btn = $(btnId);
+      if (!btn) return;
+      btn.onclick = () => saveMode(field, !$(field).checked, btn);
+    };
+    wire('modeLiveBtn', 'live_calls_enabled');
+    wire('modeVmBtn', 'voicemail_enabled');
+  }
+  bindModeButtons();
+
   async function savePaused(next) {
     const box = $('calls_paused'), btn = $('pauseBtn');
     if (!box) return;

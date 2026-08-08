@@ -611,10 +611,6 @@ GROUPS = [
     # Its own switch, not a row inside Voicemail: whether the booth takes
     # live callers and whether the machine answers are two decisions, and
     # nesting one under the other implied a dependency neither has.
-    # The line's doors and how the caller talks, in ONE place — live calls,
-    # the machine, and push-to-talk were three sections' worth of one
-    # decision. The operator named it.
-    ("modes",    "line",   "Transmission modes",  "Which doors the line offers, and how the caller talks."),
     ("onair",    "line",   "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
     ("tunein",   "line",   "Tune the caller into the station",
      "Whether the caller counts as a listener, and whether they hear the broadcast."),
@@ -806,13 +802,13 @@ SCHEMA: dict[str, dict] = {
     "embed_voicemail_button": dict(group="player", kind="check",
         label="\u201cLeave a message\u201d button (embed)",
         help="The same second button, on the embedded card."),
-    "show_push_to_talk": dict(group="modes", kind="check",
+    "show_push_to_talk": dict(group="player", kind="check",
         label="Push to talk",
         help="The caller's mic stays closed except while they hold (or tap to "
              "latch) a talk bar — space works on a keyboard. Better control in "
              "a noisy room, and the DJ never hears a TV in the background. The "
              "mic permission is still asked once, at pickup."),
-    "embed_push_to_talk": dict(group="modes", kind="check",
+    "embed_push_to_talk": dict(group="player", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),
     "voice_effect": dict(group="effects", kind="select", label="Voice effect",
@@ -990,7 +986,7 @@ SCHEMA: dict[str, dict] = {
 
     # --- transcripts ---
     # --- voicemail ---
-    "voicemail_enabled": dict(group="modes", kind="check",
+    "voicemail_enabled": dict(group="usage", kind="check",
         label="Enable voicemail",
         help="The machine's master switch — everything below applies only "
              "while this is on."),
@@ -1007,7 +1003,7 @@ SCHEMA: dict[str, dict] = {
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
              "decides WHEN it answers; this decides WHO it answers for."),
-    "live_calls_enabled": dict(group="modes", kind="check",
+    "live_calls_enabled": dict(group="usage", kind="check",
         label="Take live calls",
         help="Off, the Call button becomes the machine's door (with "
              "voicemail on) or says the line is closed. Independent of "
