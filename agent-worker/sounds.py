@@ -145,6 +145,9 @@ def library() -> list[dict]:
             "name": f.name,
             "label": str(meta.get("label") or f.stem.replace("-", " ")),
             "category": str(meta.get("category") or "misc"),
+            # Which shipped set the clip belongs to, if any — "Dial-up",
+            # "Modern"… Blank is a loose clip; the shelf filters on both.
+            "pack": str(meta.get("pack") or ""),
             "secs": secs,
             "url": f"/sound-lib/{f.name}",
         })

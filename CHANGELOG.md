@@ -3,6 +3,56 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.155
+
+### Per-DJ voice effects
+
+- **Each persona can wear its own colour** — a Per-DJ effects list in Voice
+  effects, the staged-greetings shape: pick a colour per DJ, saved on the
+  spot; “Shared setting” hands the persona back to the main dropdown. The
+  override rides /live, so callers hear it the moment that DJ is on air.
+
+### The shelf grows up, and the packs arrive
+
+- **Two new shipped sets**: *Modern* (marimba ring, warm pop pickup, soft
+  hold, falling hang-up, double-buzz can't-connect) and *Rotary* (two-bell
+  strike, dial pulses, cradle clunks) — synthesized, like Exchange and
+  Handset, so they ship with no licence sheet. Plus one loose novelty:
+  the sad trombone. Every clip carries a category and its pack.
+- **Find and filter on the shelf** — a search box and a category pick next
+  to Upload; one chip per row names the pack (or built-in/upload).
+- **Fixed: the six URL rows sat fully visible under the slot cards** — the
+  row skin's own display beat the hidden attribute, and the section read
+  as duplicated. They now appear only for a slot set to a URL.
+- Category headers (Configuration, Permissions & safety…) sit on a
+  **darker band** than their sections, so the hierarchy reads at a glance.
+
+### Transmission
+
+- **The dashboard's three controls are one labelled group now** — The Line
+  spans the top wearing a real switch (green open, coral paused), with
+  Live calls and Voicemail under it. Paused, the two doors dim and warm
+  amber: held, not broken — and the action cards finally read apart from
+  the read-only tiles.
+
+### Permissions that say who and what, truthfully
+
+- **Caller-requested segments bypass the station's skill cooldowns** — they
+  always did (the station's manual trigger is an operator override), but
+  the help claimed the opposite. It now says so, names the roster as the
+  station's own Skills panel, and leaves Actions per call as the pacing.
+- **Search the music library carries "Station admin optional"** — it works
+  without credentials; with them the DJ retries phrasing. The unlabelled
+  row next to hard-required ones read as an unknown.
+- **Every ask in the reference carries a who-chip** — always-available
+  rows say *always* instead of nothing.
+- **"Seen as" on the reference**: Everything / Anyone / Guest code / Admin
+  — preview exactly the menu each tier's caller gets, the same filter the
+  card's "?" popup applies for real.
+- The card's "?" popup quietly names whose menu it is — *for guest
+  callers*, *for the operator* — so a shorter list reads as the door you
+  came through, not a fault.
+
 ## 0.9.154
 
 ### The sound board

@@ -71,6 +71,10 @@ class TestExposedSurface(unittest.TestCase):
         "GET /settings": "admin",
         "POST /settings": "admin",
         "GET /settings/options": "admin",
+        # Per-DJ voice effects: panel furniture both ways — the caller-facing
+        # answer rides /live, which stays public.
+        "GET /settings/voice-effects": "admin",
+        "POST /settings/voice-effects": "admin",
         "POST /settings/secrets": "admin",
         "GET /settings/sounds": "admin",
         "POST /settings/sounds": "admin",

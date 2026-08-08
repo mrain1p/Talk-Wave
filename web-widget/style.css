@@ -870,7 +870,15 @@
   }
   .askpop-head {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 6px; font-size: 12.5px; color: var(--text);
+    gap: 8px; margin-bottom: 6px; font-size: 12.5px; color: var(--text);
+  }
+  /* Whose menu this is — a micro-chip, not a heading: the answer matters
+     once, quietly, and the list itself is the point. */
+  .askrole {
+    margin-left: auto; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 7px;
   }
   .askpop-close {
     background: transparent; border: 0; color: var(--dimmer);
@@ -997,6 +1005,10 @@
      note, 10px surface — because they are the same kind of thing: press to
      act, coloured by state. The ▶ is a SIBLING (buttons cannot nest). */
   .slotarea { position: relative; }
+  /* The .row skin sets display, and an author display beats the UA's
+     [hidden] rule — so the six URL rows sat fully visible under the cards,
+     which read (correctly) as the whole section duplicated. */
+  .row.sloturl[hidden] { display: none; }
   .slotgrid {
     display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr);
     grid-auto-rows: 1fr; margin: 12px 0 4px;
@@ -1063,6 +1075,13 @@
   .shelfacts a.btnquiet { text-decoration: none; display: inline-block; }
   /* The drop target announces itself only while a file is over it. */
   details.advanced.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; }
+  .shelffind {
+    font: inherit; font-size: 11.5px; padding: 5px 9px; width: 170px;
+    border-radius: 8px; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text);
+  }
+  .shelffind:focus { outline: none; border-color: var(--accent); }
+  .shelfcat { font-size: 11px; padding: 5px 6px; width: auto; }
 
   /* The dashboard: the kill switch, and the four answers worth having before
      you change anything below. Bordered and above the fold because none of it
@@ -1177,10 +1196,45 @@
      Structure per card: micro label / state word / one-line note. All
      three post the moment they're pressed. */
   .dashctrl {
-    display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr);
+    display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: 1fr;
   }
-  @media (max-width: 760px) { .dashctrl { grid-template-columns: repeat(2, 1fr); } }
+  /* The Transmission group: the one outlined cluster on the dashboard,
+     because these three ACT — everything else up here reads. The line
+     spans the top; the two doors it feeds sit beneath it. */
+  .transmission {
+    border: 1px solid var(--line2); border-radius: 10px;
+    padding: 9px 10px 8px; margin-bottom: 8px;
+  }
+  .transmission .tlabel {
+    margin: 0 0 7px; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+    color: var(--sage-dim);
+  }
+  .transmission .dashmodesay { margin: 8px 2px 0; }
+  .ctrlcard.kill { grid-column: 1 / -1; position: relative; padding-right: 66px; }
+  /* A drawn switch, so the master card READS as the toggle it is — the
+     whole card is still the button; this is its state, not a second
+     control. Open: knob right, line-green. Paused: knob left, coral. */
+  .ctrlcard .switch {
+    position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 22px; border-radius: 999px;
+    background: var(--ok); transition: background .15s;
+  }
+  .ctrlcard .switch::after {
+    content: ""; position: absolute; top: 2px; left: 20px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--bg); transition: left .15s;
+  }
+  .ctrlcard.kill.paused .switch { background: var(--accent); }
+  .ctrlcard.kill.paused .switch::after { left: 2px; }
+  /* Held, not broken: while the line is paused the two doors keep saying
+     which way they point, dimmed and warmed amber — waiting, in the state
+     vocabulary, rather than off or at fault. */
+  .dashctrl .ctrlcard:disabled {
+    border-color: color-mix(in srgb, var(--warn) 55%, var(--line2));
+  }
+  .dashctrl .ctrlcard:disabled .cv { color: var(--warn); }
   .ctrlcard {
     display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
     padding: 9px 11px; min-height: 64px; border-radius: 10px;
@@ -1264,13 +1318,19 @@
   details.advanced[open] > summary::before { content: "▾ "; }
   details.advanced > summary:hover { color: var(--text); }
 
+  /* A band, not just a rule: the category row sits a step DARKER than the
+     section rows under it, so the hierarchy reads at a glance instead of
+     five same-weight lines in a column. Mixed toward black so it lands
+     darker in both themes — mixing toward --text would brighten dark mode. */
   .supergroup {
     display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-    margin: 15px 0 1px; padding-top: 11px; border-top: 2px solid var(--line2);
+    margin: 15px 0 1px; padding: 9px 10px 7px;
+    border-top: 2px solid var(--line2); border-radius: 0 0 8px 8px;
+    background: color-mix(in srgb, #000 14%, transparent);
     font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
     font-weight: 700; color: var(--text);
   }
-  .supergroup:first-of-type { margin-top: 6px; border-top: none; padding-top: 0; }
+  .supergroup:first-of-type { margin-top: 6px; border-top: none; }
   .supergroup em {
     font-style: normal; text-transform: none; letter-spacing: 0;
     font-size: 11.5px; font-weight: 400; color: var(--dimmer);
@@ -1472,6 +1532,10 @@
     color: color-mix(in srgb, var(--warn) 80%, var(--text));
     border-color: color-mix(in srgb, var(--warn) 40%, transparent);
   }
+  /* No switch behind it — quieter than a granted tier, but present: an
+     unlabelled row in a column of who-gets-this answers read as a gap. */
+  .whotier.t-always { color: var(--dimmer); border-style: dashed; }
+  .askbar { margin-bottom: 10px; }
 
   @media (max-width: 620px) {
     .permgrid { grid-template-columns: minmax(0, 1fr) 46px 46px 46px; }

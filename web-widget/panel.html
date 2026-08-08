@@ -118,33 +118,41 @@
          one is followed by the dash, the heading and the search. -->
     <h3 class="dashband">Dashboard</h3>
     <div class="dash">
-      <!-- Controls first, as CARDS in the same grid the status tiles use —
-           a 37px chip floating over 64px tiles read as two different pages
-           sharing a corner. Press = act: all three post immediately. -->
-      <div class="dashctrl">
-        <button type="button" id="pauseBtn" class="ctrlcard kill">
-          <span class="ck">The line</span>
-          <span class="cv" id="pausedNote"></span>
-          <span class="cn" id="pausedSub"></span>
-        </button>
-        <button type="button" id="modeLiveBtn" class="ctrlcard">
-          <span class="ck">Live calls</span>
-          <span class="cv"></span>
-          <span class="cn">the booth picks up</span>
-        </button>
-        <button type="button" id="modeVmBtn" class="ctrlcard">
-          <span class="ck">Voicemail</span>
-          <span class="cv"></span>
-          <span class="cn">the machine answers</span>
-        </button>
-        <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
-               aria-hidden="true" />
-        <input type="checkbox" id="live_calls_enabled" class="fieldonly"
-               tabindex="-1" aria-hidden="true" />
-        <input type="checkbox" id="voicemail_enabled" class="fieldonly"
-               tabindex="-1" aria-hidden="true" />
+      <!-- The controls as one labelled group — TRANSMISSION, the operator's
+           own sketch: the line spans the top wearing a real switch, and the
+           two doors it feeds sit under it. Cards, not chips, in the tiles'
+           own grammar; press = act, all three post immediately. While the
+           line is paused the doors dim AND warm amber — held, not broken —
+           which is what finally tells the action cards apart from the
+           read-only tiles below. -->
+      <div class="transmission">
+        <p class="tlabel">Transmission</p>
+        <div class="dashctrl">
+          <button type="button" id="pauseBtn" class="ctrlcard kill">
+            <span class="ck">The line</span>
+            <span class="cv" id="pausedNote"></span>
+            <span class="cn" id="pausedSub"></span>
+            <span class="switch" aria-hidden="true"></span>
+          </button>
+          <button type="button" id="modeLiveBtn" class="ctrlcard">
+            <span class="ck">Live calls</span>
+            <span class="cv"></span>
+            <span class="cn">the booth picks up</span>
+          </button>
+          <button type="button" id="modeVmBtn" class="ctrlcard">
+            <span class="ck">Voicemail</span>
+            <span class="cv"></span>
+            <span class="cn">the machine answers</span>
+          </button>
+          <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
+                 aria-hidden="true" />
+          <input type="checkbox" id="live_calls_enabled" class="fieldonly"
+                 tabindex="-1" aria-hidden="true" />
+          <input type="checkbox" id="voicemail_enabled" class="fieldonly"
+                 tabindex="-1" aria-hidden="true" />
+        </div>
+        <p class="dashmodesay" id="modeSay"></p>
       </div>
-      <p class="dashmodesay" id="modeSay"></p>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
           <img class="tavatar" id="tileOnAirImg" alt="" hidden />
@@ -771,6 +779,15 @@
             <button id="uploadSoundBtn">Upload a sound…</button>
             <span class="hint" id="uploadHint" style="margin:0">or drop an
               audio file anywhere on the shelf</span>
+            <span class="grow"></span>
+            <!-- Finding beats scrolling once the library grows: a needle
+                 across name, category and pack, and a category pick built
+                 from whatever the shelf actually holds. -->
+            <input type="search" id="shelfSearch" class="shelffind"
+                   placeholder="Find a sound…" autocomplete="off" />
+            <select id="shelfCat" class="shelfcat" aria-label="Filter by category">
+              <option value="">All categories</option>
+            </select>
           </div>
           <table class="soundboard" id="soundBoard" hidden>
             <thead><tr>
@@ -811,6 +828,17 @@
           <button id="fxTestBtn" class="btnquiet">Test with effect</button>
           <button id="fxCleanBtn" class="btnquiet">Test clean</button>
         </div>
+        <!-- Per-DJ colours, the staged-greetings shape: one row per persona,
+             saved the moment it is picked. A persona's own colour outranks
+             the shared pick above while that DJ is on air. -->
+        <details class="advanced">
+          <summary>Per-DJ effects</summary>
+          <p class="hint wide" style="margin-top:0">A colour per persona —
+            it overrides the shared pick above while that DJ is on air, at
+            the same intensity. Saved as you pick it; “Shared setting” hands
+            the persona back to the dropdown above.</p>
+          <ul class="soundlist" id="fxDjList"></ul>
+        </details>
         <div class="result" id="fxResultNote" hidden></div>
       </div>
     </details>
@@ -1095,6 +1123,16 @@
           matches the caller's intent against the tools it actually holds, so
           any phrasing that means one of these works, and anything outside
           them gets an in-character no.</p>
+        <!-- Point of view: everything, or exactly what one tier's caller
+             would be offered — the same filter the card's "?" popup applies
+             for real, so the operator can preview any caller's menu. -->
+        <div class="diagbar askbar">
+          <span class="hint" style="margin:0">Seen as</span>
+          <button type="button" class="runbtn on" id="askViewAll">Everything</button>
+          <button type="button" class="runbtn" id="askViewOpen">Anyone</button>
+          <button type="button" class="runbtn" id="askViewGuest">Guest code</button>
+          <button type="button" class="runbtn" id="askViewAdmin">Admin</button>
+        </div>
         <ul class="asklist" id="askList"></ul>
       </div>
     </details>

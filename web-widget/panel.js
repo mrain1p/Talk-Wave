@@ -733,6 +733,12 @@
     return TIER_IDS.indexOf(value) === -1 ? 'off' : value;
   }
 
+  // Which caller the reference is being read AS. 'all' is the operator's
+  // overview; a tier shows exactly the list that tier's caller would be
+  // offered — the same filter the card's own "?" popup applies for real.
+  let askView = 'all';
+  const TIER_RANK = { open: 0, guest: 1, admin: 2 };
+
   function paintAsks() {
     const host = $('askList');
     if (!host) return;
@@ -741,6 +747,13 @@
     ASKS.forEach((a) => {
       const enabled = !a.need || permOn(a.need);
       if (enabled) on++;
+      // A tier view hides what that caller would never be offered — the
+      // point is the caller's own menu, not the operator's inventory.
+      if (askView !== 'all') {
+        const reachable = enabled && (!a.need || !isTiered(a.need)
+          || TIER_RANK[askView] >= TIER_RANK[permTier(a.need)]);
+        if (!reachable) return;
+      }
       // Three cells, not a paragraph. The "why" used to be nested inside the
       // example, so nineteen rows were nineteen two-line blocks and there was
       // no way to read down either column. Side by side, the panel is wide
@@ -761,6 +774,15 @@
         chip.textContent = { open: 'anyone', guest: 'guest code',
                              admin: 'admin' }[permTier(a.need)];
         li.querySelector('.why').appendChild(chip);
+      } else if (enabled) {
+        // No switch behind it — reads of live state and in-character talk.
+        // Unlabelled, these rows sat as the odd ones out in a column of
+        // answers to "who gets this". Operator-reported.
+        const chip = document.createElement('span');
+        chip.className = 'whotier t-always';
+        chip.textContent = 'always';
+        chip.title = 'No switch — available to every caller, whatever is set.';
+        li.querySelector('.why').appendChild(chip);
       }
       host.appendChild(li);
     });
@@ -780,6 +802,22 @@
     const tag = $('tagAsk');
     if (tag) tag.textContent = on + ' of ' + ASKS.length + ' available';
   }
+
+  // The reference's point of view, one press each. Everything is the
+  // operator's inventory; a tier is that caller's own menu.
+  const ASK_VIEWS = { askViewAll: 'all', askViewOpen: 'open',
+                      askViewGuest: 'guest', askViewAdmin: 'admin' };
+  Object.keys(ASK_VIEWS).forEach((id) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.onclick = () => {
+      askView = ASK_VIEWS[id];
+      Object.keys(ASK_VIEWS).forEach((b) => {
+        if ($(b)) $(b).classList.toggle('on', b === id);
+      });
+      paintAsks();
+    };
+  });
 
   // The station's whole tool surface, straight from the schema so it can't
   // drift from what the worker actually allows.
@@ -1779,6 +1817,11 @@
     Object.keys(SCHEMA.fields).forEach((f) => {
       const el = $(f);
       if (!el || !SCHEMA.fields[f].admin) return;
+      // "optional" is the third answer the operator asked for by name: the
+      // rows with no chip read as unknowns next to the STATION ADMIN ones.
+      // It never goes coral — the tool works without the credentials, they
+      // only sharpen it — and the tooltip says exactly that.
+      const optional = SCHEMA.fields[f].admin === 'optional';
       const anchor = el.closest('.row') || el.closest('.check');
       if (!anchor) return;
       // A .permrow is display:contents so its cells share the grid's columns,
@@ -1789,11 +1832,17 @@
       if (!tag) {
         tag = document.createElement('span');
         tag.className = 'needsadmin';
-        tag.textContent = 'Station admin';
         host.appendChild(tag);
       }
-      tag.classList.toggle('missing', !have);
-      tag.title = have
+      tag.textContent = optional ? 'Station admin optional' : 'Station admin';
+      tag.classList.toggle('missing', !have && !optional);
+      tag.title = optional
+        ? (have
+          ? 'Works on its own; the stored station admin credentials also let '
+            + 'it retry phrasing before reporting a miss.'
+          : 'Works without the station admin credentials — storing them under '
+            + 'Station adds a retry pass before reporting a miss.')
+        : have
         ? 'Uses the station admin credentials stored under Station.'
         : 'Needs the station admin username and password under Station. '
           + 'Without them this stays switched on and quietly never happens.';
@@ -2595,9 +2644,33 @@
   function paintSoundBoard() {
     const board = $('soundBoard'), body = $('soundBoardBody');
     if (!board || !body) return;
-    const rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
+    let rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
       .concat(uploadMeta.map((e) => ({ ...e, builtin: false })));
     rows.forEach((e) => { e.used = slotUses(e); });
+    // The category pick offers whatever the shelf actually holds — built
+    // from the UNFILTERED rows, or picking a category would empty its own
+    // list of alternatives.
+    const catSel = $('shelfCat');
+    if (catSel) {
+      const cats = [...new Set(rows.map((e) => e.category).filter(Boolean))].sort();
+      const keep = catSel.value;
+      catSel.innerHTML = '<option value="">All categories</option>';
+      cats.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        catSel.appendChild(o);
+      });
+      catSel.value = cats.includes(keep) ? keep : '';
+    }
+    const needle = (($('shelfSearch') && $('shelfSearch').value) || '')
+      .trim().toLowerCase();
+    const wantCat = (catSel && catSel.value) || '';
+    if (needle) {
+      rows = rows.filter((e) =>
+        [e.label, e.name, e.category, e.pack].join(' ')
+          .toLowerCase().includes(needle));
+    }
+    if (wantCat) rows = rows.filter((e) => e.category === wantCat);
     if (shelfSort.key) {
       const keyOf = (e) =>
         shelfSort.key === 'secs' ? (e.secs || 0)
@@ -2621,9 +2694,13 @@
       const tr = document.createElement('tr');
       const name = document.createElement('td');
       name.textContent = e.label || e.name;
+      // One chip, the most specific true thing: the pack a clip ships in,
+      // else which side of the shelf it came from. A pack chip AND a
+      // built-in chip on every row was the duplication it read as.
       const kind = document.createElement('span');
       kind.className = 'kindchip';
-      kind.textContent = e.builtin ? 'built-in' : 'upload';
+      kind.textContent = e.pack || (e.builtin ? 'built-in' : 'upload');
+      if (e.pack) kind.title = 'Ships with the ' + e.pack + ' set';
       name.appendChild(kind);
       const len = document.createElement('td');
       len.textContent = mmss(e.secs);
@@ -2713,6 +2790,15 @@
       };
     });
   }
+  // The find box and the category pick repaint the shelf as they change.
+  if ($('shelfSearch')) {
+    let shelfTimer = null;
+    $('shelfSearch').oninput = () => {
+      clearTimeout(shelfTimer);
+      shelfTimer = setTimeout(paintSoundBoard, 120);
+    };
+    $('shelfCat').onchange = paintSoundBoard;
+  }
 
   // Set by a slot's own Upload… button, so the file lands assigned to the
   // sound it was uploaded for instead of arriving on a shelf to be wired up
@@ -2789,6 +2875,66 @@
       } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
       finally { $('soundFile').value = ''; }
   }
+  // ------------------------------------------------- per-DJ voice effects
+  // The staged-greetings shape: one row per persona, its own colour, saved
+  // the moment it is picked — a costume for a character is a decision, not
+  // a draft. Painted only when the section opens, like the greeting list.
+  async function loadFxDjList() {
+    const host = $('fxDjList');
+    if (!host) return;
+    let current = {};
+    try {
+      const r = await afetch('/settings/voice-effects');
+      if (r.ok) current = (await r.json()).effects || {};
+    } catch (e) { /* the list still paints, showing the shared default */ }
+    host.innerHTML = '';
+    const kinds = (SCHEMA.fields.voice_effect
+      && SCHEMA.fields.voice_effect.choices) || [];
+    (options.personas || []).forEach((p) => {
+      const li = document.createElement('li');
+      li.className = 'vmrow';
+      const who = document.createElement('span');
+      who.className = 'sname';
+      who.textContent = p.name;
+      const sel = document.createElement('select');
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'Shared setting — the pick above';
+      sel.appendChild(none);
+      kinds.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c[0]; o.textContent = c[1] || c[0];
+        sel.appendChild(o);
+      });
+      sel.value = current[p.id] || '';
+      sel.onchange = async () => {
+        const out = $('fxResultNote');
+        try {
+          const r = await afetch('/settings/voice-effects', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ personaId: p.id, effect: sel.value }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || 'refused');
+          showResult(out, true, sel.value
+            ? p.name + ' now wears ' + sel.value + ' on every call.'
+            : p.name + ' follows the shared setting again.');
+        } catch (e) {
+          showResult(out, false, 'Could not save ' + p.name + '’s effect — '
+            + e.message);
+          sel.value = current[p.id] || '';
+        }
+      };
+      li.append(who, sel);
+      host.appendChild(li);
+    });
+  }
+
+  const fxSec = document.querySelector('details.sec[data-group="effects"]');
+  if (fxSec) {
+    fxSec.addEventListener('toggle', () => { if (fxSec.open) loadFxDjList(); });
+  }
+
   // ------------------------------------------------------------ voicemail
   // Staging renders one greeting per persona through the real TTS and
   // reports each result by name — a persona whose voice this backend does

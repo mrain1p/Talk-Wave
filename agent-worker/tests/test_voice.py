@@ -688,3 +688,48 @@ class TestTheVoiceCanLiveInTheUrl(unittest.TestCase):
         finally:
             del os.environ["ELEVENLABS_API_KEY"]
             del os.environ["TTS_API_KEY"]
+
+
+class TestAPersonaCanWearItsOwnEffect(unittest.TestCase):
+    """Per-DJ voice effects, the greeting-overrides pattern: one colour per
+    persona, blank hands the persona back to the shared setting, and the
+    override rides /live so the caller's browser follows without asking."""
+
+    def setUp(self):
+        import os
+
+        self._dir = tempfile.TemporaryDirectory()
+        os.environ["VOICE_FX_PATH"] = str(
+            Path(self._dir.name) / "voice-effects.json")
+
+    def tearDown(self):
+        import os
+
+        os.environ.pop("VOICE_FX_PATH", None)
+        self._dir.cleanup()
+
+    def test_blank_clears_instead_of_storing_empty(self):
+        import voice_effects
+
+        voice_effects.set_effect("p_1", "walkie")
+        self.assertEqual("walkie", voice_effects.effect_for("p_1"))
+        voice_effects.set_effect("p_1", "")
+        self.assertEqual("", voice_effects.effect_for("p_1"))
+        self.assertEqual({}, voice_effects.read())
+
+    def test_the_api_refuses_kinds_the_dropdown_never_offered(self):
+        # A stored kind the widget doesn't know would ride /live into every
+        # caller's WebAudio graph as a named no-op — refused at the door,
+        # against the same CHOICES list the dropdown is built from.
+        import settings as settings_store
+
+        legal = {v for v, _ in settings_store.STATIC_CHOICES["voice_effect"]}
+        self.assertIn("walkie", legal)
+        self.assertNotIn("chipmunk", legal)
+
+    def test_the_override_is_read_per_persona(self):
+        import voice_effects
+
+        voice_effects.set_effect("p_cliff", "shortwave")
+        self.assertEqual("shortwave", voice_effects.effect_for("p_cliff"))
+        self.assertEqual("", voice_effects.effect_for("p_flow"))
