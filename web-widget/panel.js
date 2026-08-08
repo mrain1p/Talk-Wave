@@ -382,17 +382,15 @@
     const paused = $('calls_paused') ? $('calls_paused').checked : !!resolved.calls_paused;
     const btn = $('pauseBtn'), note = $('pausedNote'), sub = $('pausedSub');
     if (btn) {
-      btn.textContent = paused ? 'Take calls again' : 'Pause all calls';
-      btn.classList.toggle('resume', paused);
+      btn.classList.toggle('paused', paused);
+      btn.title = paused ? 'Press to take calls again'
+                         : 'Press to pause all calls immediately';
     }
-    if (note) {
-      note.textContent = paused ? 'The line is closed' : 'The line is open';
-      note.classList.toggle('paused', paused);
-    }
+    if (note) note.textContent = paused ? 'Paused' : 'Open';
     if (sub) {
       sub.textContent = paused
-        ? 'Callers are turned away; the card still shows who is on air.'
-        : 'Takes effect the moment you press it — no Save, no restart.';
+        ? 'callers are turned away — press to reopen'
+        : 'press to pause every call at once';
     }
 
     const liveOn = $('live_calls_enabled')
@@ -404,16 +402,18 @@
       if (el) {
         el.classList.toggle('on', on);
         el.setAttribute('aria-pressed', on ? 'true' : 'false');
+        const v = el.querySelector('.cv');
+        if (v) v.textContent = on ? 'On' : 'Off';
       }
     };
     mb('modeLiveBtn', liveOn);
     mb('modeVmBtn', vmOn2);
     if ($('modeSay')) {
-      $('modeSay').textContent = liveOn && vmOn2
-        ? 'phone with an answering machine'
-        : liveOn ? 'plain phone — no machine'
-        : vmOn2 ? 'voicemail only'
-        : 'both off — the line is closed';
+      $('modeSay').textContent = 'Together: ' + (liveOn && vmOn2
+        ? 'a phone with an answering machine'
+        : liveOn ? 'a plain phone — no machine'
+        : vmOn2 ? 'a voicemail-only line'
+        : 'both off — the line is closed') + '.';
     }
 
     const l = live || {};

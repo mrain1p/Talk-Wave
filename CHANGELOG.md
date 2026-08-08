@@ -3,6 +3,23 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.150
+
+### The panel gets a face it chose on purpose
+
+- **Dashboard controls are cards now** — The line / Live calls / Voicemail
+  share the status tiles' own grid, height and radius, each with a micro
+  label, a state word and a one-line note, colour-edged by state. A 37px
+  chip floating over 64px tiles read as two pages sharing a corner.
+- **One radius scale, no strays**: 8px controls, 10px contained surfaces,
+  12px section bodies — the audit found four unrelated radii in play.
+- **Tables are surfaces**: the sound board gains its container — border,
+  radius, header band, row hover — instead of bare rows in the section.
+- **Button rows stop floating**: a testrow that follows content is the
+  section's footer, hairline and all.
+- Tiles and section headers **answer the pointer** — a small lift, a quiet
+  tint; the page stops feeling inert.
+
 ## 0.9.149
 
 - **Transmission modes moved onto the dashboard** — Take live calls and

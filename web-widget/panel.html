@@ -124,26 +124,33 @@
          answering, who is allowed to call, and whether the three legs of a
          call are configured. Each one jumps to the section that owns it. -->
     <div class="dash">
-      <div class="dashmain">
-        <button type="button" id="pauseBtn" class="killbtn">Pause all calls</button>
+      <!-- Controls first, as CARDS in the same grid the status tiles use —
+           a 37px chip floating over 64px tiles read as two different pages
+           sharing a corner. Press = act: all three post immediately. -->
+      <div class="dashctrl">
+        <button type="button" id="pauseBtn" class="ctrlcard kill">
+          <span class="ck">The line</span>
+          <span class="cv" id="pausedNote"></span>
+          <span class="cn" id="pausedSub"></span>
+        </button>
+        <button type="button" id="modeLiveBtn" class="ctrlcard">
+          <span class="ck">Live calls</span>
+          <span class="cv"></span>
+          <span class="cn">the booth picks up</span>
+        </button>
+        <button type="button" id="modeVmBtn" class="ctrlcard">
+          <span class="ck">Voicemail</span>
+          <span class="cv"></span>
+          <span class="cn">the machine answers</span>
+        </button>
         <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
                aria-hidden="true" />
-        <span class="dashsay">
-          <strong id="pausedNote"></strong>
-          <span id="pausedSub"></span>
-        </span>
-
-      </div>
-      <div class="dashmodes">
-        <span class="dk">Transmission modes</span>
-        <button type="button" id="modeLiveBtn" class="modebtn">Live calls</button>
-        <button type="button" id="modeVmBtn" class="modebtn">Voicemail</button>
-        <span class="dashmodesay" id="modeSay"></span>
         <input type="checkbox" id="live_calls_enabled" class="fieldonly"
                tabindex="-1" aria-hidden="true" />
         <input type="checkbox" id="voicemail_enabled" class="fieldonly"
                tabindex="-1" aria-hidden="true" />
       </div>
+      <p class="dashmodesay" id="modeSay"></p>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
           <img class="tavatar" id="tileOnAirImg" alt="" hidden />
