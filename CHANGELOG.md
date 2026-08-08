@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.7
+
+- The talk bar tells keyboard users about Space: on devices with a fine pointer it reads *"Tap to talk — or hold Space"*; phones keep the short label, and a custom Talk-bar wording still wins everywhere.
+
 ## 0.10.6
 
 - **The dashboard's acting side fills the top**: Transmission on the left with Live calls and Voicemail stacked beside it — each door still paired with its own traffic — and the read-only Station strip full width underneath.
