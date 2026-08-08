@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.5
+
+- **The thumbs are line icons now** — the rating buttons on the card and the panel's rating filters draw in the theme's own ink instead of the yellow emoji hands, and rating marks in the records use ▲/▼. The one element every theme couldn't touch, gone.
+- The harness turned on itself, at the operator's prodding: a new test reads the aggregator against every class under tests/ (two classes existed that had **never run once** — one of them then failed its own first real run), and another sweeps every element shipped hidden against the stylesheet, so a fifth [hidden]-beaten ghost cannot ship. The verify skill learned the ways, not just the things: hiding is proven by visibility, sorts by the order they produce, saves through a repaint, and audio with a long file.
+- The README and settings reference catch up with the month: /settings as the panel's address, the four-group dashboard, voicemail, the sound shelf and shipped sets, per-DJ effects, push-to-talk turn commit, and the launcher embed's attributes.
+
 ## 0.10.4
 
 ### Releasing the talk bar ends the turn

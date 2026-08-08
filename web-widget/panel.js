@@ -551,7 +551,7 @@
       tile('tileCalls',
         lives.length ? lives.length + ' recent' : 'none yet',
         [rough && rough + ' failed',
-         up && '\ud83d\udc4d' + up, down && '\ud83d\udc4e' + down]
+         up && '\u25b2' + up, down && '\u25bc' + down]
           .filter(Boolean).join(' \u00b7 ')
           || (lives.length ? 'all clean' : 'records appear here'),
         rough ? 'warn' : lives.length ? 'ok' : undefined);
