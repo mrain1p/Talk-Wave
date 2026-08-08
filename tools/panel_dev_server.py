@@ -155,6 +155,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # A posted settings patch really lands in the stub's TEMP store —
+        # /live reads the store back, so the closed-line states (pause the
+        # line, switch a mode off) can be driven end to end in a browser.
+        # Everything else answers like a GET, which is all the panel needs.
+        if self.path.split("?")[0] == "/settings":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                patch = json.loads(self.rfile.read(n) or b"{}")
+                if isinstance(patch, dict):
+                    settings_store.save(patch)
+            except Exception:
+                pass
         self.do_GET()
 
     def do_GET(self) -> None:
@@ -176,6 +188,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(look_payload(cfg, "Francesca"))
 
         if path == "/settings":
+            # Same content negotiation as the real handler: a browser
+            # navigation gets the page, the panel's fetch gets the JSON.
+            if "text/html" in (self.headers.get("Accept") or ""):
+                html = (WIDGET / "panel.html").read_text(encoding="utf-8").replace(
+                    LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
+                return self._send(200, html, "text/html")
             return self._json({
                 "schema": settings_store.schema_payload(),
                 "resolved": settings_store.load(),
@@ -272,7 +290,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/live":
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
-                "callsPaused": False, "degraded": False,
+                # From the stub's own settings, like the real /live — the
+                # closed-line states can't be driven in a browser otherwise.
+                "callsPaused": bool(settings_store.load().get("calls_paused")),
+                "degraded": False,
                 "secureOrigin": "", "theme": "auto",
                 "name": "Francesca", "show": "The Piazza · Golden-era pop",
                 "tagline": "Velvet Harmonies & Mediterranean Dreams.",
@@ -298,7 +319,14 @@ class Handler(BaseHTTPRequestHandler):
         # Same two extensionless routes token_server serves. /panel is the
         # operator's page since 0.9.105; without it here, driving the panel in
         # a browser silently tests a 404.
-        name = {"/": "index.html", "/panel": "panel.html"}.get(path, path.lstrip("/"))
+        if path == "/panel":
+            # Mirrors the real server since 0.9.151: one address, /settings.
+            self.send_response(302)
+            self.send_header("Location", "/settings")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        name = {"/": "index.html", "/settings": "panel.html"}.get(path, path.lstrip("/"))
         f = WIDGET / name
         if not f.is_file():
             return self._send(404, "not found", "text/plain")

@@ -767,8 +767,10 @@ SCHEMA: dict[str, dict] = {
              "until Sign out."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access",
-        help="This is the PHONE. The panel always needs the admin password, "
-             "whichever of these you pick."),
+        help="This is the PHONE — who may ring at all. What a caller may DO "
+             "once through is separate and per-tier, feature by feature, "
+             "under Caller permissions. The panel always needs the admin "
+             "password, whichever of these you pick."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels
@@ -938,7 +940,8 @@ SCHEMA: dict[str, dict] = {
              "side rather than talking over itself."),
     "on_air_quiet_secs": dict(group="onair", kind="number", label="Air is busy for (s)",
         needs=("avoid_on_air_overlap", True),
-        help="How long after the on-air DJ speaks before the air counts as clear. "
+        help="Fallback for when the station's log doesn't say what was spoken — "
+             "when it does, the hold is sized to the words themselves. "
              "A typical link runs 20–30 seconds."),
 
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
@@ -992,13 +995,14 @@ SCHEMA: dict[str, dict] = {
              "while this is on."),
     "voicemail_when": dict(group="voicemail", kind="select", label="Answer with voicemail",
         needs=("voicemail_enabled", True),
-        help="'When a live call is impossible' turns a closed or busy line's "
-             "refusal into a message instead of silence — the hourly and "
-             "daily caps and the redial wait still refuse, on purpose: a "
-             "message costs STT, and a robot redialling the machine is the "
-             "robot the caps exist for. 'Always' makes the line "
-             "voicemail-only, the cheapest way to run it: no LLM turns at "
-             "all."),
+        help="'When a live call is impossible' turns a busy or off-air "
+             "line's refusal into a message instead of silence. Pause all "
+             "calls closes the machine too — the kill switch outranks it — "
+             "and the hourly and daily caps and the redial wait still "
+             "refuse, on purpose: a message costs STT, and a robot "
+             "redialling the machine is the robot the caps exist for. "
+             "'Always' makes the line voicemail-only, the cheapest way to "
+             "run it: no LLM turns at all."),
     "allow_voicemail": dict(group="perms", kind="select", tiered=True,
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
@@ -1016,15 +1020,18 @@ SCHEMA: dict[str, dict] = {
              "line in the persona's own voice at pickup — a model line plus a "
              "TTS render, a few seconds on slow backends — and falls back to "
              "the staged clip, then the beep, if it cannot make it in time."),
+    # The quoted default is the REAL one from voicemail/greetings.py, token
+    # case included: the filler drops unknown placeholders silently, so a
+    # panel that advertises {DJ} teaches operators a token that vanishes.
     "voicemail_greeting": dict(group="voicemail", kind="text", label="Greeting",
-        placeholder="derived: “You've reached {station}. {DJ} is on the air — "
-                    "leave a request after the beep.”",
+        placeholder="derived: “You've reached {station}. {dj} is on the air "
+                    "right now — leave a request after the beep.”",
         help="Spoken in the on-air DJ's own voice, so it is staged ahead of "
              "time below rather than generated while a caller waits. {station}, "
              "{dj} and {show} are filled in per persona; with nobody on air the "
              "machine answers as the station itself, in your default voice. "
              "Changing this re-renders every clip on the next staging run. "
-             "Blank reads: \u201cYou've reached {station}. {DJ} is on the air "
+             "Blank reads: \u201cYou've reached {station}. {dj} is on the air "
              "right now \u2014 leave a request after the beep.\u201d"),
     "voicemail_max_seconds": dict(group="voicemail", kind="number",
         label="Message ceiling (s)",
@@ -1058,7 +1065,8 @@ SCHEMA: dict[str, dict] = {
              "still allows 24× that."),
     "calls_paused": dict(group="usage", kind="check", label="Pause all calls",
         help="Kill switch. The card still shows who's on air, but nobody can "
-             "start a call. Takes effect immediately."),
+             "start a call — the answering machine stays silent too. Takes "
+             "effect immediately."),
     "max_actions_per_call": dict(group="usage", kind="number", label="Actions per call",
         help="Requests, on-air messages and segments together. At the limit the "
              "DJ says so warmly and keeps talking — never an error."),
@@ -1216,7 +1224,7 @@ STATIC_CHOICES = {
         ("fresh", "Fresh each call — in persona, staged clip as the backup"),
     ],
     "voicemail_when": [
-        ("closed", "When a live call is impossible (busy, paused, off air)"),
+        ("closed", "When a live call is impossible (busy, off air, live calls off)"),
         ("always", "Always — the line is voicemail-only"),
     ],
     "voicemail_destination": [

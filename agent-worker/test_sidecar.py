@@ -148,6 +148,7 @@ from tests.test_station import (  # noqa: F401
     TestTheDJKnowsWhoIsListening,
     TestTheHoldMatchesHowLongTheStationWillTalk,
     TestTheLiveShowRecordSurvivesTheScheduleLookup,
+    TestTheStationLogSaysWhatWasSaid,
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
@@ -182,7 +183,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestTheBeepCanBeTheOperators,
     TestTheBeepVerdictIsVisible,
     TestTheDjOnlySpeaksOnce,
-    TestTheMachineOnlyListensAfterTheBeep,
+    TestTheBeepIsACueNotAGate,
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,

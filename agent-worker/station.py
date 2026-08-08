@@ -204,16 +204,22 @@ class StationClient:
         "link", "dj-speak", "station-id", "sfx", "hourly", "segment", "skill",
     }
 
-    async def seconds_since_on_air_speech(self, state: dict | None = None) -> float | None:
-        """How long since the on-air DJ last said something, in seconds.
+    async def on_air_speech(self, state: dict | None = None) -> tuple[float, str] | None:
+        """The newest thing the on-air DJ said: (seconds since it started, the
+        words themselves). Returns None if the log shows no speech.
 
         Used to avoid the same persona talking on air and on the call at the
-        same time. Returns None if it can't tell.
+        same time. The words matter as much as the clock: the log records when
+        an utterance started, never when it ended, so the guard sizes the end
+        from the words (call/air.speaking_secs). The station stamps `t` as the
+        clip is handed to the playout, so "since" runs from roughly when it
+        became audible.
         """
         from datetime import datetime, timezone
 
         st = state if state is not None else await self.state()
         newest = None
+        message = ""
         for entry in (st.get("djLog") or []):
             kind = str(entry.get("kind") or "")
             # Skill segments are logged under their own name, so treat anything
@@ -230,10 +236,12 @@ class StationClient:
                 continue
             if newest is None or when > newest:
                 newest = when
+                message = str(entry.get("message") or "")
 
         if newest is None:
             return None
-        return max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
+        since = max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
+        return since, message
 
     async def dj_say(self, text: str, mode: str = "styled", kind: str = "callin") -> dict:
         """Hand a line to the on-air DJ. `styled` lets the station rewrite it in

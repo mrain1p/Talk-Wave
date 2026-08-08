@@ -529,6 +529,68 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         self.assertEqual(len(spoken), 1)
         self.assertIn("back", spoken[0].lower())
 
+    def test_the_comeback_line_can_nod_at_what_went_out(self):
+        # "I'm back" alone reads as if the trip to air never happened. The
+        # words that went out ride along so the DJ can reference them in
+        # passing — and they are consumed, so a later spell with no words
+        # doesn't nod at something aired minutes earlier.
+        import asyncio
+        import types
+
+        from call.air import OnAirGuard
+
+        said = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                said.append(str(kw.get("instructions", "")))
+
+        guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        guard.aired_text = "Big shout to Dave from the call line."
+        asyncio.run(guard._come_back(_Session()))
+        self.assertIn("Dave", said[0])
+        self.assertEqual(guard.aired_text, "")
+        asyncio.run(guard._come_back(_Session()))
+        self.assertNotIn("Dave", said[1])
+
+    def test_the_djs_own_action_gets_a_comeback_line_too(self):
+        # mark_on_air() sets `on_air` directly, so the watch loop never saw a
+        # busy edge for the DJ's own announcements — `stepped_away` stayed
+        # False and the DJ came back from its own segment saying nothing,
+        # waiting on a caller it had told to hold. Reported 2026-08-08.
+        import asyncio
+
+        from call.air import OnAirGuard
+
+        said = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                said.append(str(kw.get("instructions", "")))
+
+        class _Station:
+            # The log never notices our action — only the assumed window holds.
+            async def on_air_speech(self):
+                return None
+
+        async def _run():
+            guard = OnAirGuard(
+                _Station(), {"avoid_on_air_overlap": True, "on_air_quiet_secs": 30})
+            guard.POLL_SECS = 0.01
+            task = asyncio.create_task(guard.watch(_Session()))
+            await asyncio.sleep(0.03)
+            guard.mark_on_air(seconds=0.05, spoken="Big shout to Dave.")
+            for _ in range(300):
+                await asyncio.sleep(0.01)
+                if said:
+                    break
+            task.cancel()
+
+        asyncio.run(_run())
+        self.assertTrue(said, "the DJ came back from its own action silently")
+        self.assertIn("back", said[0].lower())
+        self.assertIn("Dave", said[0])
+
 
 async def _noop_async(*a, **k):
     return None
@@ -566,6 +628,20 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         self.assertTrue(guard.on_air)
         self.assertFalse(guard._clear.is_set())
 
+    def test_the_hold_is_sized_to_what_the_station_is_saying(self):
+        # One fixed number either reopened the gate while a minute-long
+        # segment was still mid-delivery (the caller heard the DJ talk over
+        # its own broadcast) or gagged the call for half a minute over a
+        # one-line station ID. Both were heard on real calls, 2026-08-08.
+        guard = self._guard()
+        a_minute_of_words = " ".join(["word"] * 120)
+        self.assertTrue(guard._log_says_busy((40.0, a_minute_of_words)))
+        self.assertFalse(guard._log_says_busy((40.0, "Quick station ID.")))
+        # No words at all falls back to on_air_quiet_secs (30 here).
+        self.assertTrue(guard._log_says_busy((20.0, "")))
+        self.assertFalse(guard._log_says_busy((31.0, "")))
+        self.assertFalse(guard._log_says_busy(None))
+
     def test_dead_air_is_worse_than_an_overlap(self):
         # If the station has been "speaking" for longer than any real link,
         # the log is stale — let the call carry on rather than sit in silence.
@@ -589,8 +665,11 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
             def __init__(self):
                 self.left = list(answers)
 
-            async def seconds_since_on_air_speech(self):
-                return self.left.pop(0) if self.left else None
+            async def on_air_speech(self):
+                since = self.left.pop(0) if self.left else None
+                # No words: the guard falls back to on_air_quiet_secs, which
+                # keeps these scenarios about the edges rather than the hold.
+                return None if since is None else (since, "")
 
         class _Session:
             def __init__(self):

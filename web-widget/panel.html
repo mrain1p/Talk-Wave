@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Wave Talk settings</title>
 <!--
-  The operator's surface, served at /panel.
+  The operator's surface, served at /settings (/panel redirects here).
 
   It lived inside index.html until 0.9.105, which meant every caller who
   loaded the phone also downloaded this entire interface. Nothing leaked —
@@ -14,9 +14,9 @@
   audiences could never be told apart by anything in front of the server.
 
   On its own URL they can be. If this box is reachable from outside your
-  network, putting a rule in front of /panel in Caddy — an IP allowlist, or
-  basic auth — is worth doing, and is the reason this page exists separately
-  rather than as a section of the other one.
+  network, putting a rule in front of /settings in the reverse proxy — an IP
+  allowlist, or basic auth — is worth doing, and is the reason this page
+  exists separately rather than as a section of the other one.
 
   LiveKit's client is loaded here because the full-pipeline check really does
   place a call: it mints a token, connects, reads the ICE candidates and hangs
@@ -59,9 +59,6 @@
       <button class="gear signout" id="dashLogoutBtn" hidden
               title="Sign this browser out of the panel and the phone">Sign out</button>
     </div>
-    <h2>Call-in settings</h2>
-    <p class="sub">Applies to the next caller — no restart. Clearing a field
-      falls back to the environment config.</p>
 
     <!-- First run. Shown until an admin password exists, and it ASKS rather
          than pointing: this used to be one sentence saying to go and set a
@@ -92,15 +89,6 @@
       <span id="loginMsg"></span>
     </div>
 
-    <!-- Jump links, one per super-group, built from the schema. The panel is
-         six screens long and every way of reaching the bottom of it was
-         scrolling past everything in between. -->
-    <!-- Sixty settings deserve a faster answer than category archaeology:
-         type, and only the rows whose label or help mention it remain. -->
-    <input type="search" id="settingsSearch" class="settingsearch"
-           placeholder="Find a setting…" autocomplete="off" />
-    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
-
     <!-- The dashboard. The kill switch lives here — out of Usage controls and
          into the one place it can be reached without opening anything, because
          three sections and one disclosure down is the wrong depth for the
@@ -122,28 +110,41 @@
          The tiles are the four things an operator opens this page to check
          before they change anything: who is on air, whether the station is
          answering, who is allowed to call, and whether the three legs of a
-         call are configured. Each one jumps to the section that owns it. -->
+         call are configured. Each one jumps to the section that owns it.
+
+         The dashboard leads the page (operator-requested): act and read
+         first, configure below. NOT a .supergroup — applyVisibility hides
+         any band with no visible <details> before the next band, and this
+         one is followed by the dash, the heading and the search. -->
+    <h3 class="dashband">Dashboard</h3>
     <div class="dash">
-      <div class="dashmain">
-        <button type="button" id="pauseBtn" class="killbtn">Pause all calls</button>
+      <!-- Controls first, as CARDS in the same grid the status tiles use —
+           a 37px chip floating over 64px tiles read as two different pages
+           sharing a corner. Press = act: all three post immediately. -->
+      <div class="dashctrl">
+        <button type="button" id="pauseBtn" class="ctrlcard kill">
+          <span class="ck">The line</span>
+          <span class="cv" id="pausedNote"></span>
+          <span class="cn" id="pausedSub"></span>
+        </button>
+        <button type="button" id="modeLiveBtn" class="ctrlcard">
+          <span class="ck">Live calls</span>
+          <span class="cv"></span>
+          <span class="cn">the booth picks up</span>
+        </button>
+        <button type="button" id="modeVmBtn" class="ctrlcard">
+          <span class="ck">Voicemail</span>
+          <span class="cv"></span>
+          <span class="cn">the machine answers</span>
+        </button>
         <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
                aria-hidden="true" />
-        <span class="dashsay">
-          <strong id="pausedNote"></strong>
-          <span id="pausedSub"></span>
-        </span>
-
-      </div>
-      <div class="dashmodes">
-        <span class="dk">Transmission modes</span>
-        <button type="button" id="modeLiveBtn" class="modebtn">Live calls</button>
-        <button type="button" id="modeVmBtn" class="modebtn">Voicemail</button>
-        <span class="dashmodesay" id="modeSay"></span>
         <input type="checkbox" id="live_calls_enabled" class="fieldonly"
                tabindex="-1" aria-hidden="true" />
         <input type="checkbox" id="voicemail_enabled" class="fieldonly"
                tabindex="-1" aria-hidden="true" />
       </div>
+      <p class="dashmodesay" id="modeSay"></p>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
           <img class="tavatar" id="tileOnAirImg" alt="" hidden />
@@ -166,6 +167,20 @@
         </button>
       </div>
     </div>
+
+    <h2>Call-in settings</h2>
+    <p class="sub">Applies to the next caller — no restart. Clearing a field
+      falls back to the environment config.</p>
+
+    <!-- Sixty settings deserve a faster answer than category archaeology:
+         type, and only the rows whose label or help mention it remain. -->
+    <input type="search" id="settingsSearch" class="settingsearch"
+           placeholder="Find a setting…" autocomplete="off" />
+    <!-- Jump links, one per super-group, built from the schema. The panel is
+         six screens long and every way of reaching the bottom of it was
+         scrolling past everything in between. Full width and labelled, so it
+         reads as the sections' menu rather than a stray row of chips. -->
+    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
 
     <!-- Every section's name and one-line subtitle are written here AND set
          from the schema by layoutPanel(), which is not belt-and-braces for its
@@ -190,8 +205,10 @@
             can call, inside the usage caps.</li>
         </ul>
         <p class="hint wide">What stands behind them: passwords are stored as
-          PBKDF2 hashes, never plaintext; repeated wrong guesses ban the
-          address fail2ban-style (a restart clears bans, and
+          PBKDF2 hashes, never plaintext; wrong guesses are rate-limited
+          fail2ban-style — <strong>5 wrong tries puts the address in a
+          5-minute cooldown, and a second round of 5 bans it until the app
+          restarts</strong> (a restart clears bans, and
           <code>CALLIN_ADMIN_KEY</code> in the environment is the recovery
           override); API keys are write-only — the panel shows last-four,
           never the key; join tokens are signed and short-lived, minted per
@@ -886,6 +903,12 @@
           <iframe id="previewFrame" title="Live preview of the call card"
                   src="/?preview=1" loading="lazy"></iframe>
         </div>
+        <!-- Filled by applyVisibility() whenever the line status overrides
+             what this section configures — paused, closed, voicemail-only.
+             The preview above is a REAL card, so it already shows the
+             override; this line says why, so the operator doesn't read
+             their own kill switch as the preview being broken. -->
+        <p class="hint wide" id="previewLineNote" hidden></p>
 
         <div class="pmatrix">
           <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
@@ -1052,7 +1075,11 @@
       <summary><span class="chev">▶</span><span class="secname">What callers can ask</span><em class="secblurb"></em><span class="tag" id="tagAsk"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Live reference — it follows the
-          permissions above as you tick them, before you save. Greyed is off.</p>
+          permissions above as you tick them, before you save. Greyed is off.
+          <strong>Examples, not commands</strong>: there is no syntax — the DJ
+          matches the caller's intent against the tools it actually holds, so
+          any phrasing that means one of these works, and anything outside
+          them gets an in-character no.</p>
         <ul class="asklist" id="askList"></ul>
       </div>
     </details>
@@ -1117,7 +1144,7 @@
           expected.</p>
         <div class="diagbar" id="callBar" hidden>
           <button type="button" class="runbtn" id="callsOnlyBad"
-                  title="Only calls with problems">! <span id="callsOnlyBadLabel"></span></button>
+                  title="Only calls with problems"><span class="bang">!</span> <span id="callsOnlyBadLabel"></span></button>
           <button type="button" class="runbtn" id="callsOnlyDown"
                   title="Only calls the caller rated thumbs down">&#128078; <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"

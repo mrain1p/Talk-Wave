@@ -1144,7 +1144,7 @@ class TestPushToTalkIsPerSurfaceAndOffByDefault(unittest.TestCase):
         # early is a decision, and the post-connect close stomping it is how
         # a lit bar ended up muted on a real call.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        start = call_js.split("await room.connect(url, token);")[1][:700]
+        start = call_js.split("await room.connect(url, token);")[1][:1200]
         self.assertIn("setMicrophoneEnabled(true)", start)
         self.assertIn("setMicOpen(false)", start)
         self.assertIn("!pttOpen", start)
@@ -1281,6 +1281,47 @@ class TestAVoicemailOnlyLineHasOneDoor(unittest.TestCase):
         self.assertIn("vmCall = false", refusal[:1600])
 
 
+class TestTheKillSwitchOutranksEveryDoor(unittest.TestCase):
+    """The operator drew the hierarchy out loud: THE LINE is the master, and
+    the two transmission modes hang off it. Paused, the card offers nothing
+    — not even the machine — and says why in a sentence; the panel greys the
+    two mode cards; both modes off is the same closed line reached the other
+    way. The server half (a paused line refusing the voicemail mint) is
+    pinned in test_voicemail."""
+
+    @classmethod
+    def setUpClass(cls):
+        js = widget_js()
+        cls.js = js["call.js"]
+        cls.panel = js["panel.js"]
+
+    def test_a_paused_or_all_off_line_paints_closed(self):
+        closed = self.js.split("lineClosedNow = ")[1][:120]
+        self.assertIn("d.callsPaused", closed)
+        self.assertIn("d.liveCalls === false && !machineOn", closed)
+        branch = self.js.split("if (lineClosedNow) {")[1][:500]
+        self.assertIn("callBtn.disabled = true", branch)
+
+    def test_the_closed_card_says_why_in_a_sentence(self):
+        # "Line closed" alone left callers wondering whose fault it was.
+        self.assertIn("The booth isn't taking calls at the moment", self.js)
+
+    def test_a_paused_line_never_offers_the_machine(self):
+        # Both idle painters: the on-air card's buttons and the off-air card.
+        self.assertIn("machineOn && !lineClosedNow", self.js)
+        off_air = self.js.split("function paintOffAir")[1]
+        off_air = off_air[:off_air.index("function paintIdleButtons")]
+        self.assertIn("!paused", off_air)
+
+    def test_the_panel_greys_the_mode_cards_while_paused(self):
+        self.assertIn("$(id).disabled = paused", self.panel)
+
+    def test_the_card_section_carries_the_line_override_note(self):
+        # The preview is a real card, so a paused line previews as closed —
+        # the note is what stops that reading as the preview being broken.
+        self.assertIn("previewLineNote", self.panel)
+
+
 class TestTheEmbedIsJustTheCard(unittest.TestCase):
     """The 10px inset showed as a white ring on any host whose color-scheme
     the browser decided disagreed with ours — the frame's backdrop paints
@@ -1364,9 +1405,11 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
     the default without placing a call."""
 
     def test_the_dropdown_filters_to_wav(self):
+        # Anchored to the filter itself, not an occurrence count of the
+        # slot name — a Play button added elsewhere once shifted the split.
         js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
-        branch = js.split("slot === 'vm_beep'")[2][:300]
-        self.assertIn("\.wav$", branch)
+        i = js.index("const eligible = slot === 'vm_beep'")
+        self.assertIn("\\.wav$", js[i:i + 200])
 
     def test_the_testrow_has_a_beep_button(self):
         html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")

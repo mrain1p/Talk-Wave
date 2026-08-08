@@ -13,7 +13,7 @@ import logging
 from station import StationClient
 
 from ..actions import CallActions
-from ..air import OnAirGuard
+from ..air import OnAirGuard, speaking_secs
 
 log = logging.getLogger("callin.agent")
 
@@ -66,19 +66,12 @@ def build_on_air_tools(
     """
     from livekit.agents import llm as lk_llm
 
-    def speaking_secs(spoken: str, fallback: int) -> int:
-        """How long the station will be talking, from the words it told us.
-
-        A fixed hold was the wrong shape: an announcement is a sentence and a
-        segment can run a minute or more, so one number either reopens the
-        gate mid-delivery or gags the DJ long after the air is clear. Both
-        /dj/say and /dj/skill return the text they are about to speak, so
-        count it — about 2.4 words a second, plus a beat either side.
-        """
-        words = len(str(spoken or "").split())
-        if not words:
-            return fallback
-        return max(12, min(180, int(words / 2.4) + 4))
+    # How long the station will be talking is sized from the words it told us:
+    # both /dj/say and /dj/skill return the text they are about to speak. The
+    # formula (`speaking_secs`) lives in ..air so the guard's own poll sizes
+    # its hold the same way — two definitions of "how long does speech take"
+    # is how the tools and the reply gate end up disagreeing about whether
+    # the air is busy.
 
     async def wait_for_clear_air() -> float:
         """Block until the on-air DJ stops. One source of truth (the guard),
@@ -130,8 +123,10 @@ def build_on_air_tools(
             actions.note("announcement", message[:120])
             # The gate closes now, not when the station log catches up — and
             # stays closed for as long as the station will actually be talking.
-            secs = speaking_secs(result.get("spoken") or message, 25)
-            guard.mark_on_air(secs)
+            # The spoken words ride along so the come-back line can nod at them.
+            spoken = result.get("spoken") or message
+            secs = speaking_secs(spoken, 25)
+            guard.mark_on_air(secs, spoken=spoken)
             return after_action(
                 "Your announcement", waited, result.get("unconfirmed"), secs)
 
@@ -158,7 +153,7 @@ def build_on_air_tools(
             # voice on the broadcast. 60s is the fallback when the station
             # doesn't tell us what it said.
             secs = speaking_secs(result.get("spoken"), 60)
-            guard.mark_on_air(secs)
+            guard.mark_on_air(secs, spoken=result.get("spoken") or "")
             return after_action(
                 f"The {name} segment", waited, result.get("unconfirmed"), secs)
 
@@ -189,7 +184,7 @@ def build_on_air_tools(
                 )
             actions.note("segment", type)
             secs = speaking_secs(result.get("spoken"), 30)
-            guard.mark_on_air(secs)
+            guard.mark_on_air(secs, spoken=result.get("spoken") or "")
             return after_action(
                 f"The {type} beat", waited, result.get("unconfirmed"), secs)
 

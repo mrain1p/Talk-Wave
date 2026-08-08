@@ -92,15 +92,13 @@ async def handle_index(request: web.Request) -> web.Response:
 
 
 async def handle_panel(request: web.Request) -> web.Response:
-    """The operator's page. Deliberately its own URL rather than a section of
-    the call page: that is what lets a reverse proxy put an IP allowlist or a
-    basic-auth rule in front of the admin surface without also putting one in
-    front of the phone. The panel's own password still applies either way —
-    every endpoint behind it checks admin auth for itself, and this route
-    serves markup, not settings.
-    """
-    return web.Response(text=_versioned_page("panel.html"),
-                        content_type="text/html")
+    """/panel was the operator page's address until 0.9.151; the operator
+    chose /settings as the one name and asked for this one to stop working
+    as a page. A redirect rather than a 404: old bookmarks and reverse-proxy
+    rules land on the right door instead of a dead one. A proxy allowlist
+    now belongs in front of /settings (which serves the page for text/html
+    and the admin-gated JSON for everything else)."""
+    raise web.HTTPFound("/settings")
 
 
 # Compressible and worth compressing. Audio, images and fonts are already

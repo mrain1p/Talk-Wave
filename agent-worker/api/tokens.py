@@ -90,8 +90,14 @@ def _refusal_is_line_state(refusal: str) -> bool:
     """Which refusals the answering machine answers THROUGH. Matched on the
     caller-facing wording because that is the one string both sides share —
     brittle-looking, but pinned by tests, and it keeps _check_usage returning
-    exactly what a caller is told."""
-    return ("line's closed" in refusal) or ("tied up" in refusal)
+    exactly what a caller is told.
+
+    Busy only. Paused used to be here too, until the operator drew the
+    hierarchy out loud: the kill switch is the LINE, and the two transmission
+    modes hang off it — paused means the booth answers nothing, the machine
+    included. A paused line that still took messages made the dashboard's
+    one big switch a lie."""
+    return "tied up" in refusal
 
 
 def _check_usage(request: web.Request, cfg: dict) -> str | None:
@@ -232,11 +238,13 @@ async def handle_token(request: web.Request) -> web.Response:
             ))
         refusal = _check_usage(request, cfg)
         if voicemail:
-            # The answering machine exists FOR the refusals: paused and
-            # lines-busy are exactly when it should pick up, so those two do
-            # not close it. The per-caller cooldown and the hour/day ceilings
-            # still hold — a message costs STT, and a robot redialling the
-            # machine is the same robot the ceilings exist for.
+            # The answering machine exists FOR the refusals a live call
+            # meets: lines-busy is exactly when it should pick up, so that
+            # one does not close it. Paused DOES — the kill switch closes
+            # the whole line, machine included (see _refusal_is_line_state).
+            # The per-caller cooldown and the hour/day ceilings still hold —
+            # a message costs STT, and a robot redialling the machine is the
+            # same robot the ceilings exist for.
             policy = settings_store.voicemail_policy(cfg)
             if policy == "never":
                 return _cors(request, web.json_response(

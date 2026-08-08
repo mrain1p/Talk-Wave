@@ -3,6 +3,90 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.153
+
+### The line means what the switch says
+
+- **Pausing the line closes everything — the answering machine included.**
+  A paused line used to keep taking messages, which made the dashboard's
+  one big switch a lie. The machine still answers through busy and off-air.
+- While the line is paused the two mode cards **grey out and stop taking
+  presses**; with both modes off, the card says the line is closed instead
+  of offering a "Leave a message" button that could only fail. Either way
+  the card explains itself: *"The booth isn't taking calls at the moment."*
+- Player options the line status overrides are **dimmed with a note saying
+  why**, and the preview — a real card — shows the closed face with the
+  same explanation, so a paused line doesn't read as a broken preview.
+
+### Voicemail hears the whole message
+
+- **The machine listens from pickup.** Talking over the greeting no longer
+  costs the start of the message — real ones arrived as their last two
+  words. The beep still plays; it marks where "recording" begins.
+- **A pause for thought no longer hangs up** — the quiet window that ends
+  a message grew from 3.5 to 6 seconds.
+- The "no staged greeting" warning stops firing when a fresh greeting
+  succeeded, and the panel now quotes the real derived greeting —
+  *You've reached {station}. {dj} is on the air right now — leave a
+  request after the beep* — with the working `{dj}` token, not `{DJ}`,
+  which the filler silently drops.
+
+### The panel reads faster
+
+- **The dashboard leads the page** under its own band; the settings
+  heading, search and a full-width **Jump to** menu sit below it.
+- The Live calls card counts what each caller tier **can do**; the
+  Voicemail card says who may leave a message and where it goes; the
+  Calls tile counts failures and thumbs; the Voicemails tile splits
+  passed-on from held.
+- **Call logs speak the card's colours** — DJ coral, caller blue — tools
+  carry their action's emoji instead of clipping mid-word, the problems
+  filter wears its red "!" inside the chip, and the back button matches
+  its neighbours.
+
+## 0.9.152
+
+- **The DJ comes back from its own airings.** Sending an announcement or
+  segment to air never tripped the step-away watch, so the DJ returned
+  from its own broadcast saying nothing — while the caller it had told to
+  hold sat waiting. The come-back line fires now, and can nod at what
+  just went out.
+- **The busy hold fits the words.** One fixed number either reopened the
+  gate mid-segment or gagged the call for half a minute over a one-line
+  station ID; the hold is now sized from what the station logged as said,
+  at the station's own ~140wpm.
+
+## 0.9.151
+
+- **/settings is the panel's one address** — it serves the page itself now,
+  and /panel redirects there for old bookmarks. A reverse-proxy allowlist
+  belongs in front of /settings.
+- Every sound row gets its **own Play button** beside Upload — hearing the
+  current pick (set defaults included) no longer means finding the matching
+  button in the row above.
+- **How the doors work states the lockout numbers**: 5 wrong tries → a
+  5-minute cooldown; a second round of 5 → banned until restart.
+- Call-in access says plainly that per-feature, per-tier grants live under
+  Caller permissions; the caller-asks reference says **examples, not
+  commands** — the DJ matches intent, no syntax to learn.
+
+## 0.9.150
+
+### The panel gets a face it chose on purpose
+
+- **Dashboard controls are cards now** — The line / Live calls / Voicemail
+  share the status tiles' own grid, height and radius, each with a micro
+  label, a state word and a one-line note, colour-edged by state. A 37px
+  chip floating over 64px tiles read as two pages sharing a corner.
+- **One radius scale, no strays**: 8px controls, 10px contained surfaces,
+  12px section bodies — the audit found four unrelated radii in play.
+- **Tables are surfaces**: the sound board gains its container — border,
+  radius, header band, row hover — instead of bare rows in the section.
+- **Button rows stop floating**: a testrow that follows content is the
+  section's footer, hairline and all.
+- Tiles and section headers **answer the pointer** — a small lift, a quiet
+  tint; the page stops feeling inert.
+
 ## 0.9.149
 
 - **Transmission modes moved onto the dashboard** — Take live calls and

@@ -294,6 +294,48 @@ class TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays(unittest.TestCase):
         self.assertEqual(_fmt_show_shape({"genres": [], "moods": []}), "")
 
 
+class TestTheStationLogSaysWhatWasSaid(unittest.TestCase):
+    """The djLog records when an utterance STARTED and what was said — never
+    when it ended. The guard sizes the end of its hold from the words, so the
+    words have to survive the trip out of the log with their timestamp."""
+
+    def _speech(self, entries):
+        from station import StationClient
+
+        async def _run():
+            client = StationClient(base_url="http://station.invalid")
+            try:
+                return await client.on_air_speech(state={"djLog": entries})
+            finally:
+                await client.aclose()
+
+        return asyncio.run(_run())
+
+    def test_the_newest_utterance_comes_back_with_its_words(self):
+        from datetime import datetime, timedelta, timezone
+
+        def iso(when):
+            return when.isoformat().replace("+00:00", "Z")
+
+        now = datetime.now(timezone.utc)
+        got = self._speech([
+            {"kind": "scheduler", "message": "picked the next track", "t": iso(now)},
+            {"kind": "link", "message": "That was the new one from the lab.",
+             "t": iso(now - timedelta(seconds=10))},
+            {"kind": "link", "message": "an older link",
+             "t": iso(now - timedelta(seconds=120))},
+        ])
+        self.assertIsNotNone(got)
+        since, words = got
+        self.assertAlmostEqual(since, 10, delta=5)
+        self.assertEqual(words, "That was the new one from the lab.")
+
+    def test_a_log_with_no_speech_says_none(self):
+        self.assertIsNone(self._speech(
+            [{"kind": "scheduler", "message": "bookkeeping",
+              "t": "2026-01-01T00:00:00Z"}]))
+
+
 class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
     """A fixed hold was the wrong shape. An announcement is a sentence and a
     segment can run a minute or more, so one number either reopens the gate
@@ -307,9 +349,11 @@ class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
         class _Guard:
             def __init__(self):
                 self.holds = []
+                self.spokens = []
 
-            def mark_on_air(self, secs=25.0):
+            def mark_on_air(self, secs=25.0, spoken=""):
                 self.holds.append(secs)
+                self.spokens.append(spoken)
 
             async def wait_until_clear(self, timeout=None):
                 return 0.0
@@ -345,6 +389,17 @@ class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
         self.assertGreater(long_guard.holds[0], short_guard.holds[0])
         self.assertLessEqual(long_guard.holds[0], 180)
         self.assertGreaterEqual(short_guard.holds[0], 12)
+
+    def test_the_words_ride_along_for_the_comeback_line(self):
+        # The guard remembers what went out so the DJ can nod at it when it
+        # comes back to the caller, instead of returning as if the trip to
+        # air never happened.
+        import asyncio
+
+        tools, guard, _ = self._tools(
+            self._station(ok=True, spoken="Shout to Dave."))
+        asyncio.run(tools["subwave_dj_announce"]("go on air"))
+        self.assertEqual(guard.spokens, ["Shout to Dave."])
 
     def test_a_refused_announcement_is_never_reported_as_done(self):
         import asyncio

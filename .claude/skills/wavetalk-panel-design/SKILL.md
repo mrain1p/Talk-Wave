@@ -51,15 +51,26 @@ section — merged, not stacked (the sounds section's three-paragraph pile-up wa
 
 ## Button families
 
-- `.killbtn` — the one destructive/immediate primary (Pause). Filled.
-- `.modebtn` — dashboard toggles; hollow off, green-lit `.on`. **Post immediately**, never
-  through Save (closing a door is a thing you're doing, not a setting you're drafting).
+- `.ctrlcard` — dashboard CONTROLS: card-shaped (the tiles' grid, height and radius), micro
+  label / state word / note, colour-edged by state (green open, coral paused). **Post
+  immediately**, never through Save — a 37px chip floating over 64px tiles was reported as
+  two pages sharing a corner, which is why controls are cards now.
 - `.runbtn` — diagnostics headers and toolbar toggles (thumbs, problems filter — all three
   match; a checkbox next to toggle-buttons was reported).
 - `.btnquiet` — secondary actions in a testrow.
 - plain `button` in a `.testrow` — the section's primary action (Save keys, Stage greetings).
+- **A testrow that follows content is the section's FOOTER**: hairline above, breathing room
+  (`.row + .testrow` etc.) — buttons drifting after content read as appended.
 - Two-step reveal for rare fields: the New-password box exists only after "Change password…" is
   pressed. Copy that pattern for any usually-irrelevant input.
+
+## Radius & surface scale
+
+Three steps, no strays: **8px** controls (buttons, inputs, selects, summary hover),
+**10px** contained surfaces (tiles, control cards, banners, results, tables, snippets),
+**12px** section bodies. Tables are surfaces: border, radius, `overflow:hidden`, a
+`--panel` header band, row hover — a bare `<table>` in a section was reported as
+slapped together.
 
 ## The dashboard
 

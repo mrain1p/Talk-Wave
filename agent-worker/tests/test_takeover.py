@@ -27,7 +27,7 @@ class _Guard:
     def __init__(self) -> None:
         self.marked = []
 
-    def mark_on_air(self, secs=None):
+    def mark_on_air(self, secs=None, spoken=""):
         self.marked.append(secs)
 
 

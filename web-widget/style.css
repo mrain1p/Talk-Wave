@@ -229,7 +229,7 @@
   /* --- buttons, and what the Call button looks like in each state -------- */
   button {
     font: inherit; font-weight: 600; font-size: 11.5px;
-    padding: 6px 13px; border-radius: 9px; border: none; cursor: pointer;
+    padding: 6px 13px; border-radius: 8px; border: none; cursor: pointer;
     background: var(--line2); color: var(--text);
     transition: filter .15s ease, opacity .15s ease, background .15s ease;
   }
@@ -901,6 +901,15 @@
     display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 2px;
   }
   .panelbar .gear { text-decoration: none; }
+  /* The back arrow is an <a>, and anchors never inherit the button skin the
+     other two controls get from the generic button rule — it floated bare
+     beside two boxed buttons and read as a stray glyph. Same chrome, by hand. */
+  .panelbar a.gear {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 6px 13px; border-radius: 8px;
+    background: var(--line2); color: var(--text);
+    font-weight: 600; font-size: 11.5px; line-height: 1.2;
+  }
   /* Sign out is a word, not a glyph — same quiet chrome, its own width. */
   .panelbar .signout {
     width: auto; padding: 0 9px;
@@ -931,19 +940,41 @@
   /* Six super-groups and roughly forty disclosures below them. Without this
      the only way to the bottom is scrolling past every section in between,
      which is also how a switch gets flipped on the way past. */
+  /* The sections' menu, not a stray row of chips: full width, every entry an
+     equal share of the row, hairlines above and below like a nav strip, and
+     a micro-label saying what it is. Chips (999px pills, content-sized) read
+     as filters; a jump-to reads as a menu. Operator-requested. */
   .panelnav {
-    display: flex; flex-wrap: wrap; gap: 6px;
-    margin: 0 0 14px; padding-bottom: 13px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch;
+    width: 100%; margin: 0 0 14px; padding: 7px 0;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .panelnav::before {
+    content: "Jump to"; align-self: center; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    padding: 0 10px 0 2px;
   }
   .panelnav a {
+    flex: 1 1 auto; text-align: center;
     text-decoration: none; color: var(--dim);
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700;
-    padding: 5px 9px; border-radius: 999px;
-    border: 1px solid var(--line2); background: transparent;
+    padding: 6px 9px; border-radius: 8px;
+    border: 1px solid transparent; background: transparent;
   }
-  .panelnav a:hover { color: var(--text); background: var(--line2); }
+  .panelnav a:hover {
+    color: var(--text); background: var(--line2); border-color: var(--line2);
+  }
   .panelnav:empty { display: none; }
+
+  /* The dashboard's own band — the same voice as a super-group heading, but
+     its own class: applyVisibility() hides a .supergroup with no visible
+     sections under it, and this one is followed by cards, not sections. */
+  .dashband {
+    margin: 4px 0 7px; font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--text);
+  }
 
   /* The dashboard: the kill switch, and the four answers worth having before
      you change anything below. Bordered and above the fold because none of it
@@ -963,8 +994,8 @@
      Dimmed, not hidden: hiding them would read as the feature being gone
      rather than waiting. No line-through — striking out a dropdown's text
      read as a rendering fault, not a state. Operator-reported. */
-  .row.moot, .check.moot { opacity: .4; }
-  .row.moot select, .row.moot input, .check.moot input {
+  .row.moot, .check.moot, .prow.moot { opacity: .4; }
+  .row.moot select, .row.moot input, .check.moot input, .prow.moot input {
     pointer-events: none;
   }
 
@@ -983,31 +1014,54 @@
   .settingsearch {
     display: block; width: 100%; max-width: 340px; margin: 0 0 10px;
     font: inherit; font-size: 12.5px; padding: 7px 10px;
-    border-radius: 7px; border: 1px solid var(--line2);
+    border-radius: 8px; border: 1px solid var(--line2);
     background: var(--bg); color: var(--text);
   }
   .settingsearch:focus { outline: none; border-color: var(--accent); }
+  /* A run of buttons after content is the section's FOOTER, and says so
+     with a hairline — buttons drifting after whatever came before read
+     as appended. First-thing button rows (right under a heading) keep
+     their place without the line. */
+  .body .row + .testrow, .body .result + .testrow, .body table + .testrow,
+  .body .keyblock + .testrow, .body ul + .testrow, .body .hint + .testrow {
+    border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px;
+  }
   /* the on-air face, riding the tile's right edge */
-  .tile { position: relative; }
+  .tile { position: relative; transition: border-color .15s, transform .15s; }
+  .tile:hover { transform: translateY(-1px); border-color: var(--dimmer, var(--sage-dim)); }
+  details.sec > summary { transition: background .15s; border-radius: 8px; }
+  details.sec > summary:hover {
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+  }
   .tile .tavatar {
     position: absolute; top: 10px; right: 10px;
     width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
   }
 
+  /* A table is a surface like any other here: contained, header band,
+     rows that answer hover — bare rows floating in the section read as
+     unfinished. Operator-reported. */
   .soundboard {
-    width: 100%; border-collapse: collapse; margin-top: 10px;
-    font-size: 12px;
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    margin-top: 10px; font-size: 12px;
+    border: 1px solid var(--line2); border-radius: 10px; overflow: hidden;
+    background: var(--bg);
   }
   .soundboard th {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
-    text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line2);
+    text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line2);
+    background: var(--panel);
   }
-  .soundboard td { padding: 5px 8px; border-bottom: 1px solid var(--line2); }
+  .soundboard td { padding: 6px 10px; border-bottom: 1px solid var(--line2); }
+  .soundboard tbody tr:last-child td { border-bottom: 0; }
+  .soundboard tbody tr:hover td {
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+  }
   .soundboard td:last-child { text-align: right; white-space: nowrap; }
   .soundboard .catbox {
     width: 110px; font: inherit; font-size: 11.5px; padding: 3px 7px;
-    border-radius: 6px; border: 1px solid var(--line2);
+    border-radius: 8px; border: 1px solid var(--line2);
     background: var(--bg); color: var(--text);
   }
   .soundboard button { margin-left: 6px; }
@@ -1029,41 +1083,42 @@
   }
   /* Sized and coloured like the thing it is. Every other button on this page
      is a test or a save; this one closes the line for everybody. */
-  /* The mode toggles: dashboard controls, not form rows. Lit green when a
-     door is open, hollow when shut, and they post immediately — the strip
-     under the kill switch says what the combination amounts to. */
-  .dashmodes {
-    display: flex; align-items: center; gap: 9px; margin-top: 10px;
-    flex-wrap: wrap;
+  /* The dashboard's controls are CARDS in the tiles' own grid — same
+     columns, same height, same radius — because a chip row floating above
+     a card grid read as two pages sharing a corner. Operator-reported.
+     Structure per card: micro label / state word / one-line note. All
+     three post the moment they're pressed. */
+  .dashctrl {
+    display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr;
   }
-  .dashmodes .dk {
+  @media (max-width: 760px) { .dashctrl { grid-template-columns: repeat(2, 1fr); } }
+  .ctrlcard {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 9px 11px; min-height: 64px; border-radius: 10px;
+    border: 1px solid var(--line2); background: var(--panel);
+    color: var(--text); text-align: left; cursor: pointer;
+    transition: border-color .15s, background .15s, transform .15s;
+  }
+  .ctrlcard:hover:not(:disabled) { transform: translateY(-1px); }
+  /* The two doors hang off the line itself: paused, they grey out and stop
+     taking presses (opacity only, per the moot-row rule — no strikethrough). */
+  .ctrlcard:disabled { opacity: .45; cursor: default; }
+  .ctrlcard .ck {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
   }
-  .modebtn {
-    font: 700 11px/1 var(--font-mono); letter-spacing: .1em;
-    text-transform: uppercase; padding: 9px 14px; border-radius: 8px;
-    background: transparent; color: var(--dim);
-    box-shadow: inset 0 0 0 1px var(--line2); cursor: pointer;
-  }
-  .modebtn.on {
-    background: color-mix(in srgb, var(--ok) 14%, transparent);
-    color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok);
-  }
-  .modebtn:hover:not(:disabled) { filter: brightness(1.12); }
-  .dashmodesay { font-size: 11.5px; color: var(--dim); }
-
-  .killbtn {
-    flex: 0 0 auto; padding: 10px 18px; font-size: 13px; font-weight: 700;
-    background: var(--accent); color: #fff;
-  }
-  .killbtn.resume { background: var(--ok); color: #fff; }
-  .killbtn:hover:not(:disabled) { filter: brightness(1.08); }
-  .dashsay { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .dashsay strong { font-size: 13px; color: var(--ok); }
-  .dashsay strong.paused { color: var(--warn); }
-  .dashsay span { font-size: 11.5px; color: var(--dimmer); }
-  #dashCheckBtn { margin-left: auto; }
+  .ctrlcard .cv { font-size: 15px; font-weight: 700; }
+  .ctrlcard .cn { font-size: 10.5px; color: var(--dim); }
+  /* State on the card: an open door is green-edged, a shut one neutral,
+     the paused line coral — colour carries state, fill stays quiet. */
+  .ctrlcard.on { border-color: var(--ok); }
+  .ctrlcard.on .cv { color: var(--ok); }
+  .ctrlcard.kill .cv { color: var(--ok); }
+  .ctrlcard.kill.paused { border-color: var(--accent); }
+  .ctrlcard.kill.paused .cv { color: var(--accent); }
+  .dashmodesay { font-size: 11.5px; color: var(--dim); margin: 8px 0 0; }
+  .dashtiles { margin-top: 8px; }
 
   /* Four read-backs, not four settings. Buttons because each one jumps to the
      section that owns its answer — the whole reason to look at a dashboard is
@@ -1083,7 +1138,7 @@
     display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
     padding: 9px 11px; text-align: left; min-width: 0; min-height: 64px;
     background: var(--panel); color: var(--text);
-    border-radius: 9px; box-shadow: inset 0 0 0 1px var(--line);
+    border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line);
   }
   .tile:hover { box-shadow: inset 0 0 0 1px var(--line2); }
   .tile .tk {
@@ -1164,7 +1219,7 @@
      where one section ends and the next begins when several are open. */
   details.sec > .body {
     padding: 14px 14px 12px; margin: 0 0 12px;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 11px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
   }
   /* …which means anything that WAS recessed has to lift, or it disappears
      into the body it sits on. */
@@ -1187,6 +1242,11 @@
   }
   .runbtn:hover:not(:disabled) { background: var(--accent); color: #fff;
                                  box-shadow: none; }
+  /* The problems filter wears its mark in the fault colour INSIDE the chip —
+     the same red "!" the failed rows carry — instead of a plain glyph that
+     read as punctuation. Inherits back on hover, when the chip itself fills. */
+  .runbtn .bang { color: var(--accent); font-weight: 700; }
+  .runbtn:hover:not(:disabled) .bang { color: inherit; }
   .runbtn.running { opacity: .55; }
   /* Results in a diagnostics row scroll rather than growing the page. */
   .result.scrolly { max-height: 460px; overflow: auto; }
@@ -1216,7 +1276,7 @@
   .testrow input[type=text], .testrow input[type=password] {
     flex: 0 1 260px; max-width: 260px;
     min-width: 0; font: inherit; font-size: 12.5px;
-    padding: 6px 9px; border-radius: 7px;
+    padding: 6px 9px; border-radius: 8px;
     border: 1px solid var(--line2); background: var(--bg); color: var(--text);
   }
   /* The only greedy thing in the row. It gets whatever the label and the
@@ -1369,7 +1429,7 @@
   .alert em { color: var(--text); font-style: normal; font-weight: 600; }
   /* Banners share the michelp look: theme-var colors so light mode holds. */
   .banner {
-    font-size: 12px; padding: 10px 12px; border-radius: 9px; line-height: 1.5;
+    font-size: 12px; padding: 10px 12px; border-radius: 10px; line-height: 1.5;
     background: var(--bg); border: 1px solid var(--warn); color: var(--warn);
     margin-bottom: 14px;
   }
@@ -1461,11 +1521,11 @@
      one — an anchor gets none of the button element's base styling. */
   .soundlist a.sdl {
     display: inline-flex; align-items: center; text-decoration: none;
-    font: 600 11.5px var(--font-body); padding: 4px 10px; border-radius: 9px;
+    font: 600 11.5px var(--font-body); padding: 4px 10px; border-radius: 10px;
     cursor: pointer;
   }
   .result {
-    font-size: 12px; line-height: 1.55; padding: 10px 12px; border-radius: 9px;
+    font-size: 12px; line-height: 1.55; padding: 10px 12px; border-radius: 10px;
     background: var(--bg); border: 1px solid var(--line); color: var(--dim);
     white-space: pre-wrap; display: none; font-family: ui-monospace, SFMono-Regular, monospace;
   }
@@ -1780,8 +1840,12 @@
   .cbline .t { color: var(--dimmer); font-variant-numeric: tabular-nums; }
   .cbline .w { color: var(--dimmer); font-weight: 700; }
   .cbline .x { color: var(--dim); overflow-wrap: anywhere; white-space: pre-wrap; }
-  .cbline.dj .w { color: var(--ok); }
-  .cbline.caller .w { color: var(--text); }
+  /* The same voice colours a caller sees during the call — the DJ's meter
+     and captions are coral, the caller's are cool blue — so the log reads
+     in the vocabulary the card already taught. Green here read as "ok",
+     which is a verdict, not a speaker. */
+  .cbline.dj .w { color: var(--coral); }
+  .cbline.caller .w { color: var(--cool); }
   .cbline.caller .x { color: var(--text); }
   .cbline.tool .w, .cbline.tool .x { color: var(--dimmer); }
   /* A tool that came back with a refusal is the line you are looking for. */
@@ -1791,7 +1855,7 @@
 
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;
-    padding: 11px; border-radius: 9px; border: 1px solid var(--line2);
+    padding: 11px; border-radius: 10px; border: 1px solid var(--line2);
     background: var(--bg); color: var(--text); resize: vertical; min-height: 70px; line-height: 1.5;
   }
 
@@ -2046,7 +2110,7 @@
      is styled by the rules above rather than by anything here — which is the
      point: there is no second set of preview styles to drift. */
   .preview {
-    margin: 12px 0 4px; border: 1px solid var(--line2); border-radius: 9px;
+    margin: 12px 0 4px; border: 1px solid var(--line2); border-radius: 10px;
     background: var(--bg); overflow: hidden;
   }
   .previewbar {
