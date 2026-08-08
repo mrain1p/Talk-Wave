@@ -437,35 +437,46 @@
   }
 
   async function paintNightTile() {
-    const el = $('tileNight');
-    if (!el) return;
+    if (!$('tileCalls')) return;
+    const jumpToRecords = () => {
+      const sec = document.querySelector('details.diag[data-diag="calls"]');
+      if (sec) {
+        sec.open = true;
+        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        $('viewCallsBtn').click();
+      }
+    };
+    const jumpToVoicemail = () => {
+      const sec = document.querySelector('details.sec[data-group="voicemail"]');
+      if (sec) {
+        sec.open = true;
+        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
     try {
       const d = await afetch('/calls').then((r) => r.json());
       const calls = d.calls || [];
-      if (!calls.length) {
-        tile('tileNight', 'none yet', 'call records appear here');
-        return;
-      }
-      const vm = calls.filter((c) => c.kind === 'voicemail').length;
-      const rough = calls.filter((c) =>
+      const vms = calls.filter((c) => c.kind === 'voicemail');
+      const lives = calls.filter((c) => c.kind !== 'voicemail');
+      const rough = lives.filter((c) =>
         (c.problems || []).length || !(c.callerTurns || 0)).length;
       const up = calls.filter((c) => c.rating === 'up').length;
       const down = calls.filter((c) => c.rating === 'down').length;
-      tile('tileNight', calls.length + ' call' + (calls.length === 1 ? '' : 's'),
-        [vm && vm + ' voicemail' + (vm === 1 ? '' : 's'),
-         rough && rough + ' with problems',
+      tile('tileCalls',
+        lives.length ? lives.length + ' recent' : 'none yet',
+        [rough && rough + ' with problems',
          up && '\ud83d\udc4d' + up, down && '\ud83d\udc4e' + down]
-          .filter(Boolean).join(' \u00b7 ') || 'all clean',
-        rough ? 'warn' : 'ok');
-      el.onclick = () => {
-        const sec = document.querySelector('details.diag[data-diag="calls"]');
-        if (sec) {
-          sec.open = true;
-          sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          $('viewCallsBtn').click();
-        }
-      };
-    } catch (e) { tile('tileNight', '\u2014', 'sign in to read the records'); }
+          .filter(Boolean).join(' \u00b7 ')
+          || (lives.length ? 'all clean' : 'records appear here'),
+        rough ? 'warn' : lives.length ? 'ok' : undefined);
+      tile('tileVm', vms.length ? vms.length + ' taken' : 'none yet',
+        vms.length ? 'open the section for the messages' : '');
+      $('tileCalls').onclick = jumpToRecords;
+      $('tileVm').onclick = jumpToVoicemail;
+    } catch (e) {
+      tile('tileCalls', '\u2014', 'sign in to read the records');
+      tile('tileVm', '\u2014', '');
+    }
   }
 
   function tile(id, value, note, tone) {
@@ -541,12 +552,24 @@
   }
 
   $('dashCheckBtn').onclick = () => {
+    // Everything Diagnostics offers, in reading order: the pipeline, the
+    // speed test, the recent calls, the server logs. One button, because
+    // "run the full check" that ran a third of the page was a name writing
+    // a cheque the button didn't cash.
     const sec = document.querySelector('details.sec[data-diag="pipeline"]');
     if (sec) {
       sec.open = true;
       sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     $('runAllBtn').click();
+    ['speedBtn', 'viewCallsBtn', 'viewLogsBtn'].forEach((id) => {
+      const btn = $(id);
+      if (btn && !btn.disabled) {
+        const owner = btn.closest('details');
+        if (owner) owner.open = true;
+        btn.click();
+      }
+    });
   };
 
   // Worked examples of what a caller can actually say, tied to the permission
@@ -803,7 +826,9 @@
     // aggregators rather than vendors.
     fill('llm_provider', options.llmProviders,
       { labels: options.llmProviderLabels || null });
-    fill('stt_provider', options.sttProviders);
+    fill('stt_provider', options.sttProviders, {
+      labels: { local: 'Built-in Whisper — local, no key (default)' },
+    });
 
     // "Random each call" sits alongside the roster because it's the same
     // choice: who answers the phone. Blank stays the honest default.
@@ -1064,6 +1089,21 @@
       const save = document.createElement('button');
       save.textContent = 'Save keys';
       bar.appendChild(save);
+      if (group === 'station') {
+        // The operator wants the station's four buttons on one row. The
+        // block repaints wholesale, so the static three are RELOCATED here
+        // on every paint; their original row is left empty and hidden.
+        ['testAdminBtn', 'testStationBtn', 'reloadStationBtn'].forEach((id) => {
+          const btn = $(id);
+          if (btn) {
+            if (btn.parentElement && btn.parentElement !== bar) {
+              btn.parentElement.hidden = true;
+            }
+            bar.appendChild(btn);
+            btn.hidden = false;
+          }
+        });
+      }
 
       const out = document.createElement('div');
       out.className = 'result';
@@ -1268,14 +1308,23 @@
     });
     return patch;
   }
+  let userTouched = false;
+  ['input', 'change'].forEach((kind) => {
+    document.addEventListener(kind, (e) => {
+      if (e.isTrusted) userTouched = true;
+    }, true);
+  });
+
   function markClean() {
     const n = Object.keys(pendingPatch()).length;
     $('saveBtn').classList.toggle('clean', n === 0);
     $('saveBtn').textContent = n ? 'Save ' + n + ' change' + (n > 1 ? 's' : '') : 'Save';
-    // The floating verdict: visible exactly while anything is unsaved.
+    // The floating verdict: visible exactly while anything is unsaved AND a
+    // human has actually edited something this visit — repaints during load
+    // briefly disagree with themselves and must not flash the bar.
     const bar = $('saveOverlay');
     if (bar) {
-      bar.hidden = n === 0;
+      bar.hidden = n === 0 || !userTouched;
       $('saveOverlayMsg').textContent =
         n + ' unsaved change' + (n === 1 ? '' : 's');
     }

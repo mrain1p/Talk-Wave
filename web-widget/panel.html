@@ -132,15 +132,18 @@
           <strong id="pausedNote"></strong>
           <span id="pausedSub"></span>
         </span>
-        <button type="button" id="dashCheckBtn" class="btnquiet">Run the full check</button>
+
       </div>
       <div class="dashtiles">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
           <img class="tavatar" id="tileOnAirImg" alt="" hidden />
           <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
         </button>
-        <button type="button" class="tile" id="tileNight">
-          <span class="tk">Recent calls</span><span class="tv">—</span><span class="tn"></span>
+        <button type="button" class="tile" id="tileCalls">
+          <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileVm">
+          <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
         </button>
         <button type="button" class="tile" id="tileStation" data-jump="station">
           <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
@@ -161,6 +164,34 @@
          whose heading and whose schema disagreed about what the section was.
          The markup carries the current text so the page reads correctly before
          any javascript runs, or if it never does. -->
+    <details data-group="secinfo" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">How the doors work</span><em class="secblurb"></em><span class="tag">reference</span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Three tiers, each including
+          the ones below it:</p>
+        <ul class="hint wide" style="margin-top:0">
+          <li><strong>Admin</strong> — always exists. Opens this panel, the
+            keys and the test buttons; also opens the phone. Set under Access
+            below.</li>
+          <li><strong>Guest</strong> — an optional code you hand out that
+            opens the phone. No username; expires per device if you set a
+            clock; the card offers a lock button to forget it early.</li>
+          <li><strong>Open</strong> — no code: anyone who can load the page
+            can call, inside the usage caps.</li>
+        </ul>
+        <p class="hint wide">What stands behind them: passwords are stored as
+          PBKDF2 hashes, never plaintext; repeated wrong guesses ban the
+          address fail2ban-style (a restart clears bans, and
+          <code>CALLIN_ADMIN_KEY</code> in the environment is the recovery
+          override); API keys are write-only — the panel shows last-four,
+          never the key; join tokens are signed and short-lived, minted per
+          call; each caller's tier rides inside the signed token, so a caller
+          cannot raise their own; and the station tools a caller can reach go
+          through a hard allowlist — the destructive ones are never on the
+          line at any setting.</p>
+      </div>
+    </details>
+
     <details data-group="security" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
@@ -215,19 +246,16 @@
           <label for="station_base_url">Station API</label>
           <input type="text" id="station_base_url" placeholder="http://your-station:7700/api" />
         </div>
-        <!-- Derived from the address above unless somebody says otherwise, so
-             it is behind a disclosure rather than sitting in the form looking
-             like a thing to fill in. It is still a real field: a station that
-             publishes MCP elsewhere needs it, and a browser autofilling this
-             one with a person's name cost a deployment days of tool-less
-             calls, which is why it is reachable at all. -->
-        <details class="advanced">
-          <summary>Advanced</summary>
-          <div class="row">
-            <label for="station_mcp_url">MCP endpoint</label>
-            <input type="text" id="station_mcp_url" placeholder="derived: {Station API}/mcp" />
-          </div>
-        </details>
+        <!-- In the open since 0.9.145 (the operator found the disclosure a
+             hiding place, not tidiness), but still a real field: a station
+             publishing MCP elsewhere needs it, and a browser autofilling it
+             with a person's name once cost days of tool-less calls. -->
+        <div class="row">
+          <label for="station_mcp_url">MCP endpoint</label>
+          <input type="text" id="station_mcp_url" placeholder="derived: {Station API}/mcp" />
+        </div>
+        <p class="hint wide" style="margin-top:0">Derived from the address
+          above automatically — usually nothing to do here.</p>
 
         <h4 class="subhead">Station admin credentials</h4>
         <p class="hint wide" style="margin-top:0">The station's own login.
@@ -240,7 +268,7 @@
              adding a key is an entry in that table rather than an edit here. -->
         <div class="keyblock" id="keys_station"></div>
         <div class="testrow">
-          <button id="testAdminBtn">Test admin access</button>
+          <button id="testAdminBtn">Test access</button>
           <button id="testStationBtn">Test station + tools</button>
           <button id="reloadStationBtn">Reload from station</button>
         </div>
@@ -319,17 +347,10 @@
           <label for="tts_model">Model</label>
           <input type="text" id="tts_model" placeholder="adapter default" />
         </div>
-        <div class="row">
-          <label for="voice_effect">Voice effect</label>
-          <select id="voice_effect"></select>
-        </div>
-        <div class="row">
-          <label for="voice_effect_level">Effect intensity</label>
-          <input type="number" id="voice_effect_level" min="0" max="100" step="5" />
-        </div>
+
         <div class="testrow">
           <button id="testTtsBtn">Test voice</button>
-          <button id="fxTestBtn" class="btnquiet">Test with effect</button>
+
           <button id="refreshVoicesBtn" class="btnquiet">Reload voice list</button>
           <span class="hint" style="margin:0">Synthesizes one real line.</span>
         </div>
@@ -720,6 +741,23 @@
       </div>
     </details>
 
+    <details data-group="effects" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Voice effects</span><em class="secblurb"></em><span class="tag" id="tagEffects"></span></summary>
+      <div class="body">
+        <div class="row">
+          <label for="voice_effect">Voice effect</label>
+          <select id="voice_effect"></select>
+        </div>
+        <div class="row">
+          <label for="voice_effect_level">Effect intensity</label>
+          <input type="number" id="voice_effect_level" min="0" max="100" step="5" />
+        </div>
+        <div class="testrow">
+          <button id="fxTestBtn" class="btnquiet">Test with effect</button>
+        </div>
+      </div>
+    </details>
+
     <!-- Voicemail. The greeting clips are STAGED, not generated per call —
          the button below renders one per persona through the configured TTS
          and reports each result, because a persona whose voice the backend
@@ -961,6 +999,8 @@
     <!-- No subtext, matching the built super-group bands — see layoutPanel. -->
     <div class="supergroup" data-static="1" id="supDiag">
       <span>Diagnostics</span><em></em>
+      <button type="button" id="dashCheckBtn" class="btnquiet"
+              style="margin-left:auto">Run the full check</button>
     </div>
 
     <details class="sec diag" data-diag="pipeline">

@@ -3,6 +3,36 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.145
+
+### The panel stops crying wolf
+
+- **No more phantom "6 unsaved changes" on a fresh load** — the save bar
+  now appears only after a real edit; repaints during load briefly disagree
+  with themselves and no longer flash it.
+- **/settings works as the panel's address** (easier to remember); /panel
+  keeps working, and every fetch behind the page is untouched.
+
+### Finding and running things
+
+- **Voice effects moved under Running the line**, between Call sounds and
+  Call transcripts, with its intensity dial and test button.
+- The dashboard splits the night into **Calls** and **Voicemails** tiles,
+  each a jump to its records, and the **On air tile wears the DJ's photo**.
+- **Run the full check** moved into the Diagnostics header and now runs
+  everything there: pipeline, speed test, recent calls, server logs.
+
+### Saying what things are
+
+- The **MCP endpoint** sits in the open under Station API with a "derived
+  automatically" note instead of hiding behind Advanced; the station's four
+  buttons share one row; **Test access** drops the "admin".
+- Ears says it plainly: **"Built-in Whisper — local, no key (default)"**.
+- A **"How the doors work"** reference card leads Permissions & safety: the
+  three tiers and the layers behind them — PBKDF2, fail2ban-style lockouts,
+  write-only keys, signed tokens, the tool allowlist.
+- Guest-code expiry says it runs **per device**.
+
 ## 0.9.144
 
 ### The line, said plainly

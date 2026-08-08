@@ -1967,6 +1967,6 @@
   const gear = $('gearBtn');
   // Inert in a preview: the frame is already inside the panel, and following
   // the link would load the settings page into a corner of the settings page.
-  if (gear) gear.onclick = () => { if (!previewMode) location.href = '/panel'; };
+  if (gear) gear.onclick = () => { if (!previewMode) location.href = '/settings'; };
 })();
 

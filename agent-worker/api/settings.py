@@ -34,6 +34,14 @@ log = logging.getLogger("callin.token")
 
 
 async def handle_get_settings(request: web.Request) -> web.Response:
+    # A browser NAVIGATING here (Accept: text/html) wants the settings PAGE —
+    # /settings is the address an operator can remember; /panel is the one
+    # the code grew up with. The redirect reveals nothing (the page is public
+    # markup with its own login), so the admin gate below still guards
+    # everything this handler actually returns. The panel's own fetch()
+    # calls carry no text/html Accept and never take this branch.
+    if "text/html" in (request.headers.get("Accept") or ""):
+        raise web.HTTPFound("/panel")
     # Config is operator-only once a password exists; before one is set
     # (first-run) it stays open so the panel can render and nudge.
     if not _write_allowed(request):

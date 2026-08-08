@@ -566,6 +566,9 @@ GROUPS = [
     # beside the permissions they guard than at the top of Configuration.
     # A fresh install still isn't stranded: the first-run password nudge is
     # its own banner at the top of the page, wherever this section sits.
+    # Prose, not fields: what stands in front of the line, said once. The
+    # operator asked for the layers to be explained where the doors are.
+    ("secinfo",  "safety", "How the doors work", "The layers in front of the line."),
     ("security", "safety", "Access",        "Who opens this panel, and who can call."),
     ("perms",    "safety", "Caller permissions", "The station actions a caller can trigger."),
     ("usage",    "safety", "Usage controls",     "Generous limits that stop runaway use."),
@@ -602,6 +605,9 @@ GROUPS = [
      "Whether the caller counts as a listener, and whether they hear the broadcast."),
     ("callback", "line",   "Back-to-air commentary", "One line after the call — nothing more."),
     ("sounds",   "line",   "Call sounds",         "Ring, pickup and hang-up."),
+    # Moved out of Voice: the effect shapes the CALL's sound, not the TTS
+    # backend, and the operator kept looking for it here.
+    ("effects",  "line",   "Voice effects",       "A radio colour on the DJ's voice."),
     ("record",   "line",   "Call transcripts",    "What is written to disk, and for how long."),
     # Its own section, not rows inside another — the operator's explicit call.
     ("voicemail", "line",  "Voicemail",           "When the booth can't pick up, the machine does."),
@@ -739,10 +745,11 @@ SCHEMA: dict[str, dict] = {
              "audio just stopping. 600 = ten minutes."),
     "guest_session_hours": dict(group="security", kind="number",
         label="Guest code expires (hours)",
-        help="On a shared or public machine, a typed code should not outlive "
-             "its typist. The card forgets it after this long and shows a "
-             "lock button to forget it immediately. 0 remembers it until "
-             "Sign out."),
+        help="Per device: each browser that typed the code runs its own "
+             "clock. On a shared or public machine, a typed code should not "
+             "outlive its typist — the card forgets it after this long and "
+             "shows a lock button to forget it immediately. 0 remembers it "
+             "until Sign out."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access",
         help="This is the PHONE. The panel always needs the admin password, "
@@ -789,13 +796,13 @@ SCHEMA: dict[str, dict] = {
     "embed_push_to_talk": dict(group="player", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),
-    "voice_effect": dict(group="voice", kind="select", label="Voice effect",
+    "voice_effect": dict(group="effects", kind="select", label="Voice effect",
         help="A radio colour on the DJ's voice, applied in the caller's "
              "browser — the broadcast never hears it. On phones it plays "
              "through the default output, so the Speaker/earpiece button has "
              "nothing to route while an effect is on. Hear it with 'Test "
              "with effect' below."),
-    "voice_effect_level": dict(group="voice", kind="number",
+    "voice_effect_level": dict(group="effects", kind="number",
         label="Effect intensity",
         needs=("voice_effect", ["telephone", "cb", "walkie"]),
         help="0–100. 100 is the effect at full character; lower settles it "
