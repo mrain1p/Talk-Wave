@@ -2,42 +2,50 @@
   "dial-up-1.wav": {
     "label": "Dial-up handshake (long)",
     "category": "dial-up",
-    "pack": "Dial-up"
+    "pack": "Dial-up",
+    "suggests": "ring"
   },
   "dial-up-2.wav": {
     "label": "Dial-up handshake (short)",
     "category": "dial-up",
-    "pack": "Dial-up"
+    "pack": "Dial-up",
+    "suggests": "ring"
   },
   "modern-ring.wav": {
     "label": "Modern ring — marimba figure",
     "category": "modern",
-    "pack": "Modern"
+    "pack": "Modern",
+    "suggests": "ring"
   },
   "modern-pickup.wav": {
     "label": "Modern pickup — warm pop",
     "category": "modern",
-    "pack": "Modern"
+    "pack": "Modern",
+    "suggests": "pickup"
   },
   "modern-hold.wav": {
     "label": "Modern hold — two soft notes",
     "category": "modern",
-    "pack": "Modern"
+    "pack": "Modern",
+    "suggests": "hold"
   },
   "modern-hangup.wav": {
     "label": "Modern hang-up — falling third",
     "category": "modern",
-    "pack": "Modern"
+    "pack": "Modern",
+    "suggests": "hangup"
   },
   "modern-failed.wav": {
     "label": "Modern can't-connect — double buzz",
     "category": "modern",
-    "pack": "Modern"
+    "pack": "Modern",
+    "suggests": "failed"
   },
   "rotary-ring.wav": {
     "label": "Rotary ring — two-bell strike",
     "category": "rotary",
-    "pack": "Rotary"
+    "pack": "Rotary",
+    "suggests": "ring"
   },
   "rotary-dial.wav": {
     "label": "Rotary dial — seven pulses",
@@ -47,36 +55,42 @@
   "rotary-pickup.wav": {
     "label": "Rotary pickup — off the cradle",
     "category": "rotary",
-    "pack": "Rotary"
+    "pack": "Rotary",
+    "suggests": "pickup"
   },
   "rotary-hangup.wav": {
     "label": "Rotary hang-up — back on the cradle",
     "category": "rotary",
-    "pack": "Rotary"
+    "pack": "Rotary",
+    "suggests": "hangup"
   },
   "landline-dialtone.wav": {
     "label": "US dial tone (recorded)",
     "category": "landline",
     "pack": "Landline",
-    "source": "Wikimedia Commons: US dial tone.ogg (CC0)"
+    "source": "Wikimedia Commons: US dial tone.ogg (CC0)",
+    "suggests": "pickup"
   },
   "landline-ringback.wav": {
     "label": "US ringback — the ring you hear calling",
     "category": "landline",
     "pack": "Landline",
-    "source": "Wikimedia Commons: US ringback tone.ogg (CC0)"
+    "source": "Wikimedia Commons: US ringback tone.ogg (CC0)",
+    "suggests": "ring"
   },
   "landline-busy.wav": {
     "label": "Busy signal (North American)",
     "category": "landline",
     "pack": "Landline",
-    "source": "Wikimedia Commons: NorthAmericanBusySignal.ogg (public domain)"
+    "source": "Wikimedia Commons: NorthAmericanBusySignal.ogg (public domain)",
+    "suggests": "failed"
   },
   "landline-busy-old.wav": {
     "label": "Busy signal — the old exchange",
     "category": "landline",
     "pack": "Landline",
-    "source": "Wikimedia Commons: Old North American busy signal.ogg (public domain)"
+    "source": "Wikimedia Commons: Old North American busy signal.ogg (public domain)",
+    "suggests": "failed"
   },
   "landline-dtmf.wav": {
     "label": "Touch-tone dialing",
@@ -88,23 +102,27 @@
     "label": "Intercept — please hang up and try again",
     "category": "landline",
     "pack": "Landline",
-    "source": "Wikimedia Commons: Redial-recording-usa.ogg (CC0)"
+    "source": "Wikimedia Commons: Redial-recording-usa.ogg (CC0)",
+    "suggests": "failed"
   },
   "landline-offhook.wav": {
     "label": "Off-hook howl",
     "category": "landline",
     "pack": "Landline",
-    "source": "Wikimedia Commons: Alternate North American Off-Hook Signal.ogg (public domain)"
+    "source": "Wikimedia Commons: Alternate North American Off-Hook Signal.ogg (public domain)",
+    "suggests": "failed"
   },
   "payphone-coins.wav": {
     "label": "Coins into the box",
     "category": "payphone",
-    "source": "Wikimedia Commons: Coins dropped in metallic moneybox 0.ogg (public domain)"
+    "source": "Wikimedia Commons: Coins dropped in metallic moneybox 0.ogg (public domain)",
+    "suggests": "pickup"
   },
   "radio-static.wav": {
     "label": "Radio static",
     "category": "radio",
-    "source": "Wikimedia Commons: White-noise-sound-20sec-mono-44100Hz.ogg (public domain)"
+    "source": "Wikimedia Commons: White-noise-sound-20sec-mono-44100Hz.ogg (public domain)",
+    "suggests": "hold"
   },
   "morse-sos.wav": {
     "label": "Morse code — SOS",
@@ -114,11 +132,13 @@
   "shutdown-hold-message.wav": {
     "label": "White House shutdown message (1981)",
     "category": "novelty",
-    "source": "Wikimedia Commons: 1981 government shutdown White House phone message.mp3 (public domain, US government)"
+    "source": "Wikimedia Commons: 1981 government shutdown White House phone message.mp3 (public domain, US government)",
+    "suggests": "hold"
   },
   "sad-trombone.wav": {
     "label": "Sad trombone",
-    "category": "novelty"
+    "category": "novelty",
+    "suggests": "failed"
   },
   "wilhelm.wav": {
     "label": "Wilhelm scream",

@@ -206,6 +206,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "calls_per_day":        (None, 100),  # the hard wallet ceiling
     "caller_cooldown_secs": (None, 45),   # per caller, between calls
     "max_concurrent_calls": (None, 2),    # simultaneous live calls
+    # Whether the ring stops (soft fade) the moment the DJ answers. On is
+    # how a phone behaves; off lets a long ring or jingle finish under the
+    # DJ's hello. One-shots are never cut either way.
+    "ring_cut_at_pickup":   (None, True),
     # Instant kill switch: the card still shows who's on air, but nobody
     # can start a call.
     "calls_paused":         (None, False),
@@ -1172,6 +1176,13 @@ SCHEMA: dict[str, dict] = {
              "back to the tone; the verdict shows below."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
+    "ring_cut_at_pickup": dict(group="sounds", kind="check",
+        needs=("call_sounds", True),
+        label="Ring yields at pickup",
+        help="The ring fades out the moment the DJ answers — how a phone "
+             "behaves, and recommended. Off lets a long ring or jingle "
+             "finish underneath the DJ's hello. Short one-shots (the pickup "
+             "click, a beep) are never cut either way."),
 }
 
 # Sentinel value for persona_override: roll a different DJ from the roster on

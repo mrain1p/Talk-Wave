@@ -3,6 +3,23 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.2
+
+### The ring yields at pickup
+
+- **The ring stops (soft fade) the moment the DJ answers** — a long ringback used to keep singing over the hello, because only the ring *timer* stopped and the started file played to its end. A long ring also used to stack copies of itself every 2.6 seconds; now one plays at a time.
+- **"Ring yields at pickup"** in Call sounds turns the old behaviour back on if your ring is a jingle you want whole (not recommended). Short one-shots — the pickup click, a beep — are never cut either way.
+
+### The dashboard, four groups
+
+- **Each door lives with its own traffic**: the Live calls toggle sits beside the call records, the Voicemail toggle beside the messages. Transmission keeps The Line and Who-can-call; On air, Station and Brains·Voice·Ears make one Station group. No more toggle in one corner answering for a tile in the other.
+
+### The shelf tells the whole truth
+
+- **The set defaults are ON the shelf now** — five synthesized sounds per set plus the classic beep, playable in place, marked *default*, with a used-for chip when a slot is actually falling through to them.
+- **Twelve rows a page** — with the defaults and four packs the shelf passed thirty rows; the pager keeps it a glance, and a filter always lands you back on page one.
+- **Every clip says what it was made for** — a dashed *for Can't connect* chip on a busy signal that isn't assigned yet, straight from the catalog's new suggested-use field.
+
 ## 0.10.1
 
 ### Real recordings on the shelf

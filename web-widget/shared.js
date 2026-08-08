@@ -197,18 +197,30 @@ window.Callin = (function () {
   }
 
   let ringTimer = null;
+  // The ring that is PLAYING right now, when it came from a file. Only the
+  // ring gets a handle: the one-shots — a pickup click, a one-second beep —
+  // must never be cut short by an answer, which is the opposite ditch.
+  let ringAudio = null;
   function playSound(kind) {
     const s = soundConfig;
     if (!s.enabled) return;
     const url = s[kind];
     const builtin = pack()[kind];
     if (url) {
+      // A ring file longer than the 2.6s cadence used to STACK — a second
+      // and third copy started over the first, and a six-second ringback
+      // became a chorus. One ring at a time; the cadence resumes when the
+      // file ends.
+      if (kind === 'ring' && ringAudio && !ringAudio.ended && !ringAudio.paused) {
+        return;
+      }
       try {
         const a = new Audio(url);
         a.volume = Math.min(1, volume / 100);
         // A configured file that won't load must not mean silence — the
         // built-in is always there to fall back on.
         a.play().catch(() => builtin && builtin());
+        if (kind === 'ring') ringAudio = a;
         return;
       } catch (e) { /* fall through to built-in */ }
     }
@@ -221,6 +233,20 @@ window.Callin = (function () {
   }
   function stopRinging() {
     if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
+    // The ring yields the moment the line answers — a long ringback used to
+    // keep singing over the DJ's hello, because only the TIMER stopped and
+    // the started file ran to its end. A short fade rather than a hard
+    // pause, so stopping mid-waveform never clicks. cutRing:false is the
+    // old behaviour, kept for an operator whose ring is a jingle they want
+    // whole — the started cycle finishes, no new one begins.
+    const a = ringAudio;
+    ringAudio = null;
+    if (!a || soundConfig.cutRing === false) return;
+    const step = () => {
+      if (a.volume > 0.08) { a.volume -= 0.08; setTimeout(step, 25); }
+      else { try { a.pause(); } catch (e) { /* already gone */ } }
+    };
+    step();
   }
 
   // Shared by the caller's card and the operator's panel, so the two can

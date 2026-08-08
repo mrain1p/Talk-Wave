@@ -670,7 +670,7 @@
   // section's group id, and it OPENS the section as well as scrolling to it:
   // everything here is folded by default, so a scroll alone lands on a
   // one-line heading with the answer still hidden behind it.
-  document.querySelectorAll('.dashtiles .tile').forEach((el) => {
+  document.querySelectorAll('.dash .tile').forEach((el) => {
     el.onclick = () => {
       const sec = document.querySelector(
         'details.sec[data-group="' + el.dataset.jump + '"]');
@@ -2662,12 +2662,60 @@
     });
   }
 
+  // What the currently pickable SET DEFAULTS are, as shelf rows — the
+  // operator looked for them in the list and they were nowhere: five
+  // synthesized sounds per set plus the machine's classic tone, playable
+  // right here. Not assignable from the shelf (a default IS the empty
+  // slot), so they carry Play and nothing else.
+  function defaultRows() {
+    const sel = $('sound_pack');
+    if (!sel) return [];
+    const packs = [...sel.options].map((o) => ({
+      id: o.value || 'classic',
+      label: (o.textContent || o.value).split('—')[0].trim(),
+    }));
+    const rows = [];
+    packs.forEach((p) => {
+      ['ring', 'pickup', 'hold', 'hangup', 'failed'].forEach((kind) => {
+        rows.push({
+          name: 'default:' + p.id + ':' + kind,
+          label: p.label + ' — ' + SLOT_NAMES[kind].toLowerCase(),
+          category: 'set default', pack: p.label, secs: null,
+          isDefault: true, packId: p.id, kind, suggests: kind,
+          url: (packAssets[p.id] || {})[kind] || '',
+        });
+      });
+    });
+    rows.push({
+      name: 'default:vm_beep',
+      label: 'Classic tone — voicemail beep',
+      category: 'set default', pack: '', secs: null,
+      isDefault: true, kind: 'vm_beep', suggests: 'vm_beep', url: '',
+    });
+    return rows;
+  }
+
+  let shelfPage = 0;
+  const SHELF_PAGE_SIZE = 12;
+
   function paintSoundBoard() {
     const board = $('soundBoard'), body = $('soundBoardBody');
     if (!board || !body) return;
-    let rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
+    let rows = defaultRows()
+      .concat(soundLibrary.map((e) => ({ ...e, builtin: true })))
       .concat(uploadMeta.map((e) => ({ ...e, builtin: false })));
-    rows.forEach((e) => { e.used = slotUses(e); });
+    rows.forEach((e) => {
+      if (e.isDefault) {
+        // A default is "in use" for its own slot while that slot is empty
+        // and its set is the chosen one (the beep's default needs no set).
+        const chosen = ($('sound_pack') && $('sound_pack').value) || 'classic';
+        const field = $('sound_' + e.kind);
+        e.used = (field && !field.value.trim()
+          && (e.kind === 'vm_beep' || e.packId === chosen)) ? [e.kind] : [];
+      } else {
+        e.used = slotUses(e);
+      }
+    });
     // The category pick offers whatever the shelf actually holds — built
     // from the UNFILTERED rows, or picking a category would empty its own
     // list of alternatives.
@@ -2708,6 +2756,22 @@
       th.classList.toggle('desc', shelfSort.key === th.dataset.sort && shelfSort.dir === -1);
     });
     board.hidden = !rows.length;
+    // Twelve to a page: with the defaults listed and four packs shipped the
+    // shelf passed thirty rows, and a table that long stops being a glance.
+    const pages = Math.max(1, Math.ceil(rows.length / SHELF_PAGE_SIZE));
+    shelfPage = Math.min(shelfPage, pages - 1);
+    const pager = $('shelfPager');
+    if (pager) {
+      pager.hidden = pages < 2;
+      const from = shelfPage * SHELF_PAGE_SIZE + 1;
+      const to = Math.min(rows.length, from + SHELF_PAGE_SIZE - 1);
+      pager.querySelector('.pcount').textContent =
+        from + '–' + to + ' of ' + rows.length;
+      pager.querySelector('.pprev').disabled = shelfPage === 0;
+      pager.querySelector('.pnext').disabled = shelfPage >= pages - 1;
+    }
+    rows = rows.slice(shelfPage * SHELF_PAGE_SIZE,
+                      (shelfPage + 1) * SHELF_PAGE_SIZE);
     body.innerHTML = '';
     const mmss = (secs) => secs == null ? '—'
       : Math.floor(secs / 60) + ':' + String(Math.round(secs % 60)).padStart(2, '0');
@@ -2720,12 +2784,47 @@
       // built-in chip on every row was the duplication it read as.
       const kind = document.createElement('span');
       kind.className = 'kindchip';
-      kind.textContent = e.pack || (e.builtin ? 'built-in' : 'upload');
-      if (e.pack) kind.title = 'Ships with the ' + e.pack + ' set';
+      kind.textContent = e.isDefault ? 'default'
+        : (e.pack || (e.builtin ? 'built-in' : 'upload'));
+      if (e.pack && !e.isDefault) kind.title = 'Ships with the ' + e.pack + ' set';
       name.appendChild(kind);
       const len = document.createElement('td');
       len.textContent = mmss(e.secs);
       const cat = document.createElement('td');
+      if (e.isDefault) {
+        // A default's category is a fact, not a filing decision.
+        cat.textContent = 'set default';
+        cat.className = 'unused';
+        const len0 = document.createElement('td');
+        len0.textContent = mmss(e.secs);
+        const used0 = document.createElement('td');
+        if (e.used.length) {
+          const chip = document.createElement('span');
+          chip.className = 'usedchip';
+          chip.textContent = SLOT_NAMES[e.kind];
+          used0.appendChild(chip);
+        } else {
+          const sug = document.createElement('span');
+          sug.className = 'suggestchip';
+          sug.textContent = 'for ' + SLOT_NAMES[e.kind];
+          used0.appendChild(sug);
+        }
+        const act0 = document.createElement('td');
+        act0.className = 'shelfacts';
+        const play0 = document.createElement('button');
+        play0.className = 'btnquiet'; play0.textContent = 'Play';
+        play0.onclick = () => {
+          if (e.kind === 'vm_beep') return previewBeep();
+          if (e.url) { new Audio(e.url).play().catch(() => {}); return; }
+          // Synthesized: feed the engine that set and let it speak.
+          setSounds({ enabled: true, pack: e.packId });
+          playSound(e.kind);
+        };
+        act0.appendChild(play0);
+        tr.append(name, len0, cat, used0, act0);
+        body.appendChild(tr);
+        return;
+      }
       const catIn = document.createElement('input');
       catIn.type = 'text';
       catIn.value = e.category || '';
@@ -2763,6 +2862,14 @@
           chip.textContent = SLOT_NAMES[slot];
           used.appendChild(chip);
         });
+      } else if (e.suggests && SLOT_NAMES[e.suggests]) {
+        // Not on duty, but MADE for a slot — a busy signal is a
+        // can't-connect whatever the operator does with it. Dim, so a
+        // suggestion never reads as an assignment.
+        const sug = document.createElement('span');
+        sug.className = 'suggestchip';
+        sug.textContent = 'for ' + SLOT_NAMES[e.suggests];
+        used.appendChild(sug);
       } else {
         used.textContent = '—';
         used.className = 'unused';
@@ -2827,14 +2934,24 @@
       };
     });
   }
-  // The find box and the category pick repaint the shelf as they change.
+  // The find box and the category pick repaint the shelf as they change —
+  // and put it back on page one, because a filter that lands you on an
+  // empty page 3 reads as "no results".
   if ($('shelfSearch')) {
     let shelfTimer = null;
     $('shelfSearch').oninput = () => {
       clearTimeout(shelfTimer);
-      shelfTimer = setTimeout(paintSoundBoard, 120);
+      shelfTimer = setTimeout(() => { shelfPage = 0; paintSoundBoard(); }, 120);
     };
-    $('shelfCat').onchange = paintSoundBoard;
+    $('shelfCat').onchange = () => { shelfPage = 0; paintSoundBoard(); };
+  }
+  if ($('shelfPager')) {
+    $('shelfPager').querySelector('.pprev').onclick = () => {
+      shelfPage = Math.max(0, shelfPage - 1); paintSoundBoard();
+    };
+    $('shelfPager').querySelector('.pnext').onclick = () => {
+      shelfPage += 1; paintSoundBoard();
+    };
   }
 
   // Set by a slot's own Upload… button, so the file lands assigned to the

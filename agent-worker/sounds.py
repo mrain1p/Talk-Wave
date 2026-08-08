@@ -148,6 +148,10 @@ def library() -> list[dict]:
             # Which shipped set the clip belongs to, if any — "Dial-up",
             # "Modern"… Blank is a loose clip; the shelf filters on both.
             "pack": str(meta.get("pack") or ""),
+            # The slot this clip was MADE for, when it was made for one —
+            # a busy signal is a can't-connect whatever the operator does
+            # with it. The shelf shows it where the used-for chips go.
+            "suggests": str(meta.get("suggests") or ""),
             "secs": secs,
             "url": f"/sound-lib/{f.name}",
         })

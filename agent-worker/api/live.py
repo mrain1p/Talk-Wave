@@ -461,6 +461,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # had when nothing is set.
                     "sounds": {
                         "enabled": bool(cfg.get("call_sounds")),
+                        # Whether the ring yields (soft fade) at pickup —
+                        # the widget's engine reads it as cutRing:false to
+                        # keep the old let-it-finish behaviour.
+                        "cutRing": bool(cfg.get("ring_cut_at_pickup", True)),
                         "pack": sound_pack,
                         "ring": _resolved_sound(cfg, sound_pack, "ring"),
                         "pickup": _resolved_sound(cfg, sound_pack, "pickup"),
