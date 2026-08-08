@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.156
+
+- Housekeeping after the night's sweep: the test scaffolding redirects the
+  new per-DJ effects store like every other writable path, the URL-row fix
+  is pinned by its own test, and the panel design skill learned the
+  Transmission group, the slot-card grammar and the per-persona list
+  pattern. No behaviour changes.
+
 ## 0.9.155
 
 ### Per-DJ voice effects

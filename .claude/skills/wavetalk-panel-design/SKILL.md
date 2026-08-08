@@ -17,6 +17,8 @@ tuple, and its supergroup assignment is the second element of that tuple.
 
 - `summary` = chev + secname + secblurb (filled from schema) + `.tag` (state chip).
 - **Super-group bands carry no subtext** (operator: noise). Sections explain themselves.
+  Since 0.9.155 the band sits on a darker fill than its sections (mixed toward black, so it
+  lands darker in BOTH themes — mixing toward `--text` brightens dark mode).
 - **Section tags carry state in colour** via `setTag()`: first word `on/open/always` paints
   green, `off/never/closed/none` dims. Write tags so the first word IS the state.
 - A section whose only field moved elsewhere **retires** — don't leave a one-field section
@@ -63,6 +65,19 @@ section — merged, not stacked (the sounds section's three-paragraph pile-up wa
   (`.row + .testrow` etc.) — buttons drifting after content read as appended.
 - Two-step reveal for rare fields: the New-password box exists only after "Change password…" is
   pressed. Copy that pattern for any usually-irrelevant input.
+- **Slot cards** (`.slotcard`, the sound board): a moment's card shows what is assigned, ▶ as a
+  SIBLING button (buttons cannot nest), press opens one shared `.slotmenu` picker. The hidden
+  per-slot inputs stay the real settings; faults (missing file, unplayable beep) paint the
+  card coral. A field row that must start hidden needs `[hidden]` re-asserted in CSS — the
+  `.row` skin's display beats the UA hidden rule, and six "hidden" URL rows once sat fully
+  visible (operator-reported; pinned by TestTheUrlRowsOnlyExistInUrlMode).
+- **Per-persona lists** (staged greetings, per-DJ voice effects): a `.soundlist` of `.vmrow`s,
+  painted lazily on the section's `toggle`, each row saving IMMEDIATELY on change with a
+  result line — a costume or a greeting is a decision about a character, not a form draft.
+- The station-admin chip is three-valued: `admin=True` (dies without credentials, coral when
+  missing), `admin="optional"` (works without, never coral), absent. `schema_payload` must
+  pass "optional" through — `bool()` flattened it once and the panel claimed a hard
+  requirement that did not exist.
 
 ## Radius & surface scale
 
@@ -74,11 +89,23 @@ slapped together.
 
 ## The dashboard
 
-A control strip, not a form: kill switch → Transmission modes toggles (+ caption reading out
-the combination) → **tiles in a strict grid** — `repeat(3, 1fr)`, two columns under 760px,
+Leads the page since 0.9.153, under its own `.dashband` label; the settings heading + search
+share one header row (`.settingshead`) below it, then the full-width `.panelnav` jump menu
+(entries wear the quiet button skin and flex to fill each row).
+
+The three controls live in the **Transmission group** (0.9.155, the operator's own sketch): a
+bordered `.transmission` cluster whose micro-label is the only outlined group on the dash —
+because these three ACT and everything else reads. The Line spans the top (`grid-column:
+1/-1`) wearing a drawn `.switch` (knob right + line-green open, left + coral paused); Live
+calls and Voicemail sit under it and, while the line is paused, go `disabled` + dimmed +
+**amber** — held, not broken. The `#modeSay` caption reads out the combination.
+
+Below it, **tiles in a strict grid** — `repeat(3, 1fr)`, two columns under 760px,
 `grid-auto-rows: 1fr`, every row full, every tile one height. Tiles are glanceable
 (value + note + tone class ok/warn/bad), jump somewhere on click, and may carry one image
 (the on-air avatar). New status belongs here only if an operator opens the page to check it.
+Cards carry their meat in the note line (per-tier can-do counts, failed/thumbs, held
+messages) — informative, never forced.
 
 ## State & colour
 

@@ -1421,6 +1421,20 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
         self.assertIn("previewBeep()", play)
 
 
+class TestTheUrlRowsOnlyExistInUrlMode(unittest.TestCase):
+    """Operator-reported from the deployed board: the .row skin sets its own
+    display, an author display beats the UA's [hidden] rule, and all six URL
+    rows sat fully visible under the slot cards — the whole sound section
+    read as duplicated."""
+
+    def test_the_hidden_attribute_wins_for_sloturl_rows(self):
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".row.sloturl[hidden]", css)
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        # Every URL row ships hidden; paintSlotCards() is the only unhider.
+        self.assertEqual(6, html.count('class="row sloturl" hidden'))
+
+
 class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
     """A single unclosed brace mid-file silently kills every rule after it —
     a duplicated selector line once dropped the whole compact block and the

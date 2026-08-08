@@ -42,6 +42,11 @@ class _TempStores(unittest.TestCase):
         self._old_secrets_path = secrets_store.SECRETS_PATH
         settings_store.SETTINGS_PATH = tmp / "settings.json"
         secrets_store.SECRETS_PATH = tmp / "secrets.json"
+        # The per-DJ effects store reads its env per call, so pointing the
+        # var here covers every inheriting test — a future test that saves
+        # an effect must land in this temp dir, never in real data/.
+        self._old_vfx = os.environ.get("VOICE_FX_PATH")
+        os.environ["VOICE_FX_PATH"] = str(tmp / "voice-effects.json")
         self._old_env = {k: os.environ.get(k) for k in self.ENV_VARS}
         for k in self.ENV_VARS:
             os.environ.pop(k, None)
@@ -49,6 +54,10 @@ class _TempStores(unittest.TestCase):
     def tearDown(self):
         settings_store.SETTINGS_PATH = self._old_settings_path
         secrets_store.SECRETS_PATH = self._old_secrets_path
+        if self._old_vfx is None:
+            os.environ.pop("VOICE_FX_PATH", None)
+        else:
+            os.environ["VOICE_FX_PATH"] = self._old_vfx
         for k, v in self._old_env.items():
             if v is None:
                 os.environ.pop(k, None)
