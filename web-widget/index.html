@@ -93,6 +93,10 @@
     <div class="askpop" id="askPop" hidden role="dialog" aria-label="What you can ask">
       <div class="askpop-head">
         <strong>You can ask for…</strong>
+        <!-- Whose menu this is. The list is already filtered to the caller's
+             own tier server-side; this says so, quietly, instead of leaving
+             a guest to wonder why a friend's list looked longer. -->
+        <span class="askrole" id="askRole" hidden></span>
         <button class="askpop-close" id="askClose" aria-label="Close">&times;</button>
       </div>
       <ul class="askpop-list" id="askPopList"></ul>

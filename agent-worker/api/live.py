@@ -16,6 +16,7 @@ import admin_auth
 import settings as settings_store
 import station as station_mod
 import tune_in
+import voice_effects
 from api.auth import _write_allowed, caller_tier
 from api.env import LIVEKIT_PUBLIC_URL
 from api.live_cache import _LIVE_TTL, _live_cache
@@ -409,6 +410,11 @@ async def handle_live(request: web.Request) -> web.Response:
                     # across every caller and cannot know which one is asking;
                     # the widget picks by whether it is in a frame.
                     **look_payload(cfg, persona.get("name")),
+                    # This persona's own colour, when the operator gave it
+                    # one — a per-DJ costume outranks the shared pick, the
+                    # same override direction the greeting overrides take.
+                    **({"voiceEffect": fx} if (fx := voice_effects.effect_for(
+                        persona.get("id") or "")) else {}),
                     # The on-air show's own palette, already translated into
                     # this widget's token names, when "the station's own
                     # colours" is the choice. Null every other time, including

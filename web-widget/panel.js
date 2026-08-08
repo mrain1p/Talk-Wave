@@ -152,7 +152,7 @@
     decoratePermissions();
     bindFieldEvents();
     decorateFields();
-    decorateSoundRows();
+    buildSlotCards();
   }
 
   // Starts empty rather than null: the panel now paints as soon as the
@@ -422,21 +422,24 @@
     // machine and where a message goes afterwards. Switched off, each card
     // goes back to saying what the switch does.
     const cnOf = (id) => { const el = $(id); return el && el.querySelector('.cn'); };
+    // Counted once, read twice: the Live calls door and the Who-can-call
+    // tile answer with the same numbers, because they ARE the same numbers.
+    const RANK = { open: 0, guest: 1, admin: 2 };
+    const usable = { open: 0, guest: 0, admin: 0 };
+    Object.keys(SCHEMA.fields).forEach((f) => {
+      if (!SCHEMA.fields[f].tiered) return;
+      const v = permTier(f);
+      if (v === 'off') return;
+      Object.keys(RANK).forEach((t) => {
+        if (RANK[t] >= RANK[v]) usable[t] += 1;
+      });
+    });
+    const canDo = 'anyone ' + usable.open + ' · guest ' + usable.guest
+      + ' · admin ' + usable.admin;
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
-        const RANK = { open: 0, guest: 1, admin: 2 };
-        const usable = { open: 0, guest: 0, admin: 0 };
-        Object.keys(SCHEMA.fields).forEach((f) => {
-          if (!SCHEMA.fields[f].tiered) return;
-          const v = permTier(f);
-          if (v === 'off') return;
-          Object.keys(RANK).forEach((t) => {
-            if (RANK[t] >= RANK[v]) usable[t] += 1;
-          });
-        });
-        liveNote.textContent = 'can do — anyone ' + usable.open
-          + ' · guest ' + usable.guest + ' · admin ' + usable.admin;
+        liveNote.textContent = 'can do — ' + canDo;
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
           + 'use, counted from the switches under Permissions & safety.';
       } else {
@@ -499,8 +502,10 @@
     const ACCESS = { open: 'Anyone', guest: 'Guest code', admin: 'Admin only' };
     const access = ($('front_access') && $('front_access').value) || resolved.front_access;
     $('dashLogoutBtn').hidden = !authConfigured;
+    // The note answers "and what does each tier GET" — the missing-password
+    // warning still outranks it, because an open panel is the bigger fact.
     tile('tileAccess', ACCESS[access] || access || '—',
-      authConfigured ? 'panel password set' : 'this panel has no password',
+      authConfigured ? canDo + ' perms' : 'this panel has no password',
       authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
 
     // Named rather than counted: "3 of 3 configured" is true of a call that
@@ -733,6 +738,12 @@
     return TIER_IDS.indexOf(value) === -1 ? 'off' : value;
   }
 
+  // Which caller the reference is being read AS. 'all' is the operator's
+  // overview; a tier shows exactly the list that tier's caller would be
+  // offered — the same filter the card's own "?" popup applies for real.
+  let askView = 'all';
+  const TIER_RANK = { open: 0, guest: 1, admin: 2 };
+
   function paintAsks() {
     const host = $('askList');
     if (!host) return;
@@ -741,6 +752,13 @@
     ASKS.forEach((a) => {
       const enabled = !a.need || permOn(a.need);
       if (enabled) on++;
+      // A tier view hides what that caller would never be offered — the
+      // point is the caller's own menu, not the operator's inventory.
+      if (askView !== 'all') {
+        const reachable = enabled && (!a.need || !isTiered(a.need)
+          || TIER_RANK[askView] >= TIER_RANK[permTier(a.need)]);
+        if (!reachable) return;
+      }
       // Three cells, not a paragraph. The "why" used to be nested inside the
       // example, so nineteen rows were nineteen two-line blocks and there was
       // no way to read down either column. Side by side, the panel is wide
@@ -761,6 +779,15 @@
         chip.textContent = { open: 'anyone', guest: 'guest code',
                              admin: 'admin' }[permTier(a.need)];
         li.querySelector('.why').appendChild(chip);
+      } else if (enabled) {
+        // No switch behind it — reads of live state and in-character talk.
+        // Unlabelled, these rows sat as the odd ones out in a column of
+        // answers to "who gets this". Operator-reported.
+        const chip = document.createElement('span');
+        chip.className = 'whotier t-always';
+        chip.textContent = 'always';
+        chip.title = 'No switch — available to every caller, whatever is set.';
+        li.querySelector('.why').appendChild(chip);
       }
       host.appendChild(li);
     });
@@ -780,6 +807,22 @@
     const tag = $('tagAsk');
     if (tag) tag.textContent = on + ' of ' + ASKS.length + ' available';
   }
+
+  // The reference's point of view, one press each. Everything is the
+  // operator's inventory; a tier is that caller's own menu.
+  const ASK_VIEWS = { askViewAll: 'all', askViewOpen: 'open',
+                      askViewGuest: 'guest', askViewAdmin: 'admin' };
+  Object.keys(ASK_VIEWS).forEach((id) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.onclick = () => {
+      askView = ASK_VIEWS[id];
+      Object.keys(ASK_VIEWS).forEach((b) => {
+        if ($(b)) $(b).classList.toggle('on', b === id);
+      });
+      paintAsks();
+    };
+  });
 
   // The station's whole tool surface, straight from the schema so it can't
   // drift from what the worker actually allows.
@@ -1043,7 +1086,7 @@
 
     syncModels();
     paintPermissions();
-    syncSoundPickers();
+    paintSlotCards();
     applyVisibility();
     setEmbedSnippet();
     paintAdminNeeded();
@@ -1075,6 +1118,9 @@
           : 'Using the local persona–voice fallback. Add the station admin credentials to mirror the station instead.';
       }
     }
+    // The slot cards read the sound fields AND the pack picker's selected
+    // label, both of which this repaint just refilled — without this they
+    // sat on "sound set default" until the first user edit.
   }
 
   // Station admin credentials belong with the station they unlock. They are
@@ -1690,6 +1736,7 @@
     let timer = null;
     const apply = () => {
       const needle = (box.value || '').trim().toLowerCase();
+      let anywhere = false;
       document.querySelectorAll('details.sec').forEach((sec) => {
         const rows = sec.querySelectorAll('.row, label.check, .prow, .permrow');
         if (!needle) {
@@ -1701,18 +1748,28 @@
           }
           return;
         }
-        let any = false;
+        // A hit on the section's own name or blurb shows the WHOLE section
+        // — typing "sounds" used to find nothing, because no single row
+        // says the word its section is named after.
+        const head = sec.querySelector('summary');
+        const secHit = head
+          && head.textContent.toLowerCase().includes(needle);
+        let any = !!secHit;
         rows.forEach((r) => {
-          const hit = r.textContent.toLowerCase().includes(needle);
+          const hit = secHit || r.textContent.toLowerCase().includes(needle);
           r.style.display = hit ? '' : 'none';
           any = any || hit;
         });
         sec.style.display = any ? '' : 'none';
+        anywhere = anywhere || any;
         if (any && !sec.open) {
           sec.open = true;
           sec.dataset.searchOpened = '1';
         }
       });
+      // Say so when nothing matched — a page of collapsed nothing read as
+      // the panel being broken, not as a miss.
+      if ($('searchMiss')) $('searchMiss').hidden = !needle || anywhere;
     };
     box.oninput = () => { clearTimeout(timer); timer = setTimeout(apply, 120); };
   })();
@@ -1747,6 +1804,9 @@
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'voicemail') {
           paintDash();
         }
+        // The slot cards and the shelf's used-for chips read the sound
+        // fields live — a URL being typed, or the set changing name.
+        if (f === 'sound_pack' || f.indexOf('sound_') === 0) paintSlotCards();
         // The card in the frame follows the form, not the save button. That
         // is the entire point: you find out what "DJ photo off" looks like
         // before you commit it to everyone who rings.
@@ -1773,6 +1833,11 @@
     Object.keys(SCHEMA.fields).forEach((f) => {
       const el = $(f);
       if (!el || !SCHEMA.fields[f].admin) return;
+      // "optional" is the third answer the operator asked for by name: the
+      // rows with no chip read as unknowns next to the STATION ADMIN ones.
+      // It never goes coral — the tool works without the credentials, they
+      // only sharpen it — and the tooltip says exactly that.
+      const optional = SCHEMA.fields[f].admin === 'optional';
       const anchor = el.closest('.row') || el.closest('.check');
       if (!anchor) return;
       // A .permrow is display:contents so its cells share the grid's columns,
@@ -1783,11 +1848,17 @@
       if (!tag) {
         tag = document.createElement('span');
         tag.className = 'needsadmin';
-        tag.textContent = 'Station admin';
         host.appendChild(tag);
       }
-      tag.classList.toggle('missing', !have);
-      tag.title = have
+      tag.textContent = optional ? 'Station admin optional' : 'Station admin';
+      tag.classList.toggle('missing', !have && !optional);
+      tag.title = optional
+        ? (have
+          ? 'Works on its own; the stored station admin credentials also let '
+            + 'it retry phrasing before reporting a miss.'
+          : 'Works without the station admin credentials — storing them under '
+            + 'Station adds a retry pass before reporting a miss.')
+        : have
         ? 'Uses the station admin credentials stored under Station.'
         : 'Needs the station admin username and password under Station. '
           + 'Without them this stays switched on and quietly never happens.';
@@ -2258,6 +2329,11 @@
     src.start();
   }
 
+  // Reassigned inside the guard below; declared here so the per-DJ list's
+  // own Test buttons (built elsewhere) can reach the one test path — two
+  // implementations of "render a line and colour it" would drift.
+  let runFxTest = async () => {};
+
   if ($('fxTestBtn')) {
     // The test can borrow ANY DJ's voice: the per-persona voices arrive
     // with the voicemail status, fetched when the section opens.
@@ -2275,7 +2351,7 @@
         });
     });
 
-    const runFxTest = async (kind, btn) => {
+    runFxTest = async (kind, btn, voiceOverride) => {
       const out = $('ttsResult');
       btn.disabled = true;
       out.className = 'result on';
@@ -2283,7 +2359,7 @@
         + (kind === 'none' ? 'clean path' : kind + ' effect') + '\u2026';
       try {
         const body = draft();
-        const voice = $('fxVoice') && $('fxVoice').value;
+        const voice = voiceOverride || ($('fxVoice') && $('fxVoice').value);
         if (voice) body.tts_voice = voice;
         const r = await afetch('/test/tts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2364,119 +2440,193 @@
   const SOUND_SLOTS = ['ring', 'pickup', 'hold', 'hangup', 'failed', 'vm_beep'];
 
   function paintSounds() {
-    // The shelf itself is the sound BOARD now (paintSoundBoard) — bundled
-    // clips and uploads in one table. This keeps only the hint and the
-    // dropdowns in step.
-    if ($('uploadHint')) {
-      $('uploadHint').textContent = uploaded.length
-        ? '' : 'Nothing uploaded yet — the built-in shelf is below.';
-    }
-    syncSoundPickers();
+    paintSlotCards();
   }
 
-  // ------------------------------------------- the per-sound dropdowns
-  // Each sound slot used to be a free-text box whose useful values ("",
-  // "upload:name.mp3", a URL) all had to be known in advance. The text field
-  // is still the real setting — Save diffs it and the server stores it — but
-  // it is driven by a dropdown now, the same trick the permission matrix
-  // uses: sound-set default, any uploaded file, or "a URL you host", which is
-  // the one case that reveals the box itself.
-  function decorateSoundRows() {
-    SOUND_SLOTS.forEach((slot) => {
-      const field = $('sound_' + slot);
-      const row = field && field.closest('.row');
-      if (!row || row.dataset.soundBuilt) return;
-      row.dataset.soundBuilt = '1';
+  // ------------------------------------------------- the six slot cards
+  // Each call moment is a CARD: what plays now, ▶ to hear it, press to
+  // change it. The hidden sound_X inputs stay the real settings — Save
+  // diffs them, the server stores them — the same contract the dashboard's
+  // cards keep with their checkboxes. This replaced six dropdown rows over
+  // a shelf that could not assign anything: eighteen controls, and the one
+  // gesture people reach for (see a sound, give it a job) missing.
+  const SLOT_NAMES = { ring: 'Ring', pickup: 'Pick up', hold: 'On hold',
+                       hangup: 'Hang up', failed: "Can't connect",
+                       vm_beep: 'Voicemail beep' };
 
-      const pick = document.createElement('select');
-      pick.id = 'soundpick_' + slot;
-      pick.onchange = () => {
-        if (pick.value === '__url__') {
-          if (field.value.startsWith(UPLOAD_PREFIX)) field.value = '';
-          field.hidden = false;
-          field.focus();
-        } else {
-          field.value = pick.value;
-          field.hidden = true;
-        }
-        markClean();
-      };
-      row.insertBefore(pick, field);
-
-      const up = document.createElement('button');
-      up.className = 'btnquiet'; up.textContent = 'Upload…';
-      up.title = 'Upload a file and use it for this sound';
-      up.onclick = () => { pendingAssignSlot = slot; $('soundFile').click(); };
-      // Beside the dropdown it serves, BEFORE the row's help — appended at
-      // the end it landed after the injected hint and read as furniture for
-      // the wrong row. Operator-reported as "not intuitive", correctly.
-      row.insertBefore(up, field.nextSibling);
-      // And a Play right there — hearing the CURRENT pick (the set's
-      // default included) should not mean finding the matching button in
-      // the row above. The beep routes through its own preview, since its
-      // default is synthesized server-side.
-      const hear = document.createElement('button');
-      hear.className = 'btnquiet';
-      hear.textContent = 'Play';
-      hear.onclick = () => {
-        if (slot === 'vm_beep') previewBeep();
-        else previewSound(slot);
-      };
-      row.insertBefore(hear, up.nextSibling);
-    });
-    // The default labels name the selected set, so they go stale the moment
-    // the operator picks the other one.
-    if ($('sound_pack') && !$('sound_pack').dataset.syncBound) {
-      $('sound_pack').dataset.syncBound = '1';
-      $('sound_pack').addEventListener('change', syncSoundPickers);
-    }
-    syncSoundPickers();
-  }
-
-  function syncSoundPickers() {
-    // "Sound set default" answered the wrong question — the operator asked
-    // WHICH sound that is (Exchange? Handset?). Name the set that is
-    // actually selected, and for the beep — which no set carries; the
-    // default is synthesized by the server — say exactly that.
-    const packSel = $('sound_pack');
-    const packName = packSel && packSel.selectedIndex >= 0
-      ? packSel.options[packSel.selectedIndex].textContent.split('—')[0].trim()
+  function packName() {
+    const sel = $('sound_pack');
+    return sel && sel.selectedIndex >= 0
+      ? sel.options[sel.selectedIndex].textContent.split('—')[0].trim()
       : 'sound set';
-    SOUND_SLOTS.forEach((slot) => {
-      const field = $('sound_' + slot), pick = $('soundpick_' + slot);
-      if (!field || !pick) return;
-      const value = (field.value || '').trim();
-      pick.innerHTML = '';
-      const add = (v, label) => {
-        const o = document.createElement('option');
-        o.value = v; o.textContent = label;
-        pick.appendChild(o);
-      };
-      add('', slot === 'vm_beep'
-        ? 'Classic tone — synthesized (default)'
-        : 'Default — the ' + packName + ' set’s ' + slot.replace('_', ' '));
-      // The beep is server-played and the server reads WAV only — offering
-      // an m4a here is offering a file that will silently become the tone.
-      // (m4p is Apple-DRM'd audio: nothing outside iTunes can play it.)
-      soundLibrary.forEach((e) => {
-        add(e.url, 'Built-in — ' + (e.label || e.name)
-          + (e.secs ? ' (' + e.secs + 's)' : ''));
-      });
-      const eligible = slot === 'vm_beep'
-        ? uploaded.filter((n) => /\.wav$/i.test(n)) : uploaded;
-      eligible.forEach((n) => add(UPLOAD_PREFIX + n, 'Uploaded — ' + n));
-      // A slot pointing at a file that was deleted must say so, not silently
-      // show the default while the caller hears the fallback.
-      if (value.startsWith(UPLOAD_PREFIX)
-          && !uploaded.includes(value.slice(UPLOAD_PREFIX.length))) {
-        add(value, 'Missing upload — ' + value.slice(UPLOAD_PREFIX.length));
-      }
-      add('__url__', 'A URL you host…');
-      const isUrl = value && !value.startsWith(UPLOAD_PREFIX);
-      pick.value = isUrl ? '__url__' : value;
-      field.hidden = !isUrl;
-    });
   }
+
+  // What a slot's stored value amounts to — the card and the shelf's
+  // used-for chips both read this, so they cannot disagree.
+  function describePick(slot) {
+    const field = $('sound_' + slot);
+    const value = ((field && field.value) || '').trim();
+    if (!value) {
+      return { text: slot === 'vm_beep' ? 'Classic tone'
+                                        : packName() + ' default',
+               kind: 'default' };
+    }
+    if (value.startsWith(UPLOAD_PREFIX)) {
+      const name = value.slice(UPLOAD_PREFIX.length);
+      if (!uploaded.includes(name)) return { text: 'Missing — ' + name, kind: 'missing' };
+      return { text: name, kind: 'upload' };
+    }
+    const lib = soundLibrary.find((e) => e.url === value);
+    if (lib) return { text: lib.label || lib.name, kind: 'library' };
+    return { text: value.replace(/^https?:\/\//, ''), kind: 'url' };
+  }
+
+  function buildSlotCards() {
+    const grid = $('slotGrid');
+    if (!grid || grid.dataset.built) return;
+    grid.dataset.built = '1';
+    SOUND_SLOTS.forEach((slot) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'slotwrap';
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'slotcard';
+      card.id = 'slot_' + slot;
+      card.dataset.slot = slot;
+      card.innerHTML =
+        '<span class="ck"></span><span class="cv"></span><span class="cn"></span>';
+      card.querySelector('.ck').textContent = SLOT_NAMES[slot];
+      card.onclick = () => openSlotMenu(slot, card);
+      // ▶ is a SIBLING, not a child — a button cannot nest a button, and
+      // hearing the current pick must not open the picker.
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'slotplay';
+      play.title = 'Play the current pick';
+      play.textContent = '▶';
+      play.onclick = (ev) => {
+        ev.stopPropagation();
+        if (slot === 'vm_beep') previewBeep(); else previewSound(slot);
+      };
+      wrap.append(card, play);
+      grid.appendChild(wrap);
+    });
+    paintSlotCards();
+  }
+
+  function paintSlotCards() {
+    if (!$('slotGrid') || !$('slotGrid').dataset.built) return;
+    SOUND_SLOTS.forEach((slot) => {
+      const card = $('slot_' + slot), field = $('sound_' + slot);
+      if (!card || !field) return;
+      const pick = describePick(slot);
+      card.querySelector('.cv').textContent = pick.text;
+      card.classList.toggle('missing', pick.kind === 'missing');
+      card.querySelector('.cn').textContent =
+        pick.kind === 'default' ? 'press to change'
+        : pick.kind === 'upload' ? 'uploaded file'
+        : pick.kind === 'library' ? 'built-in clip'
+        : pick.kind === 'url' ? 'a URL you host'
+        : 'press to fix — callers hear the default';
+      const meta = SCHEMA.fields['sound_' + slot];
+      if (meta && meta.help) card.title = meta.help;
+      // The slot's URL row surfaces only while the slot points at a URL —
+      // and never hides under a focused cursor mid-edit.
+      const row = field.closest('.sloturl');
+      if (row && document.activeElement !== field) {
+        row.hidden = pick.kind !== 'url';
+      }
+    });
+    paintSoundBoard();          // the used-for chips follow the cards
+  }
+
+  // One floating picker, rebuilt under whichever card was pressed.
+  function closeSlotMenu() {
+    const m = $('slotMenu');
+    if (!m) return;
+    m.hidden = true;
+    m.innerHTML = '';
+    m.dataset.slot = '';
+  }
+
+  function openSlotMenu(slot, anchor) {
+    const m = $('slotMenu');
+    if (!m) return;
+    if (!m.hidden && m.dataset.slot === slot) { closeSlotMenu(); return; }
+    m.innerHTML = '';
+    m.dataset.slot = slot;
+    const field = $('sound_' + slot);
+    const value = (field.value || '').trim();
+    const choose = (v) => {
+      field.value = v;
+      markClean();
+      closeSlotMenu();
+      paintSlotCards();
+    };
+    const add = (label, fn, current) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (current) b.className = 'current';
+      b.onclick = fn;
+      m.appendChild(b);
+    };
+    add(slot === 'vm_beep'
+      ? 'Classic tone — synthesized (default)'
+      : 'Default — the ' + packName() + ' set’s ' + slot.replace('_', ' '),
+      () => choose(''), !value);
+    soundLibrary.forEach((e) => {
+      add('Built-in — ' + (e.label || e.name)
+        + (e.secs ? ' (' + e.secs + 's)' : ''),
+        () => choose(e.url), value === e.url);
+    });
+    // The beep is server-played and the server reads WAV only — offering
+    // an m4a here is offering a file that silently becomes the tone.
+    const eligible = slot === 'vm_beep'
+      ? uploaded.filter((n) => /\.wav$/i.test(n)) : uploaded;
+    eligible.forEach((n) => {
+      add('Uploaded — ' + n, () => choose(UPLOAD_PREFIX + n),
+          value === UPLOAD_PREFIX + n);
+    });
+    // A slot pointing at a deleted file must say so, not silently show the
+    // default while the caller hears the fallback.
+    if (value.startsWith(UPLOAD_PREFIX)
+        && !uploaded.includes(value.slice(UPLOAD_PREFIX.length))) {
+      add('Missing upload — ' + value.slice(UPLOAD_PREFIX.length), () => {});
+    }
+    // No URL for the beep: the worker plays it, and a URL it cannot fetch
+    // would silently become the tone — the trap the old dropdown offered.
+    if (slot !== 'vm_beep') {
+      add('A URL you host…', () => {
+        if (field.value.startsWith(UPLOAD_PREFIX)) field.value = '';
+        closeSlotMenu();
+        const row = field.closest('.sloturl');
+        if (row) row.hidden = false;
+        field.focus();
+      }, !!value && !value.startsWith(UPLOAD_PREFIX)
+         && !soundLibrary.some((e) => e.url === value));
+    }
+    add('Upload a file for this…', () => {
+      pendingAssignSlot = slot;
+      closeSlotMenu();
+      $('soundFile').click();
+    });
+    // Under the pressed card, inside the slot area's own coordinates.
+    const area = anchor.closest('.slotarea');
+    const ar = anchor.getBoundingClientRect(), gr = area.getBoundingClientRect();
+    m.hidden = false;
+    m.style.left = Math.max(0, ar.left - gr.left) + 'px';
+    m.style.top = (ar.bottom - gr.top + 4) + 'px';
+  }
+
+  document.addEventListener('click', (ev) => {
+    const m = $('slotMenu');
+    if (m && !m.hidden && !m.contains(ev.target)
+        && !ev.target.closest('.slotcard')) closeSlotMenu();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') closeSlotMenu();
+  });
 
   let soundLibrary = [];
   let uploadMeta = [];
@@ -2498,13 +2648,65 @@
   }
 
   // The whole shelf as one table — bundled clips and uploads together,
-  // playable, timed, and filed under an editable category: the operator's
-  // own taxonomy, which is what makes it a soft sound pack.
+  // playable, timed, sortable, and each row able to say where it is USED
+  // and to take a job (Use for…). Assignment flows from the sound as well
+  // as from the slot: seeing a clip and giving it a job was the gesture
+  // the old two-halves layout could not make at all.
+  let shelfSort = { key: '', dir: 1 };
+
+  function slotUses(entry) {
+    const target = entry.builtin ? entry.url : UPLOAD_PREFIX + entry.name;
+    return SOUND_SLOTS.filter((slot) => {
+      const f = $('sound_' + slot);
+      return f && f.value.trim() === target;
+    });
+  }
+
   function paintSoundBoard() {
     const board = $('soundBoard'), body = $('soundBoardBody');
     if (!board || !body) return;
-    const rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
+    let rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
       .concat(uploadMeta.map((e) => ({ ...e, builtin: false })));
+    rows.forEach((e) => { e.used = slotUses(e); });
+    // The category pick offers whatever the shelf actually holds — built
+    // from the UNFILTERED rows, or picking a category would empty its own
+    // list of alternatives.
+    const catSel = $('shelfCat');
+    if (catSel) {
+      const cats = [...new Set(rows.map((e) => e.category).filter(Boolean))].sort();
+      const keep = catSel.value;
+      catSel.innerHTML = '<option value="">All categories</option>';
+      cats.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        catSel.appendChild(o);
+      });
+      catSel.value = cats.includes(keep) ? keep : '';
+    }
+    const needle = (($('shelfSearch') && $('shelfSearch').value) || '')
+      .trim().toLowerCase();
+    const wantCat = (catSel && catSel.value) || '';
+    if (needle) {
+      rows = rows.filter((e) =>
+        [e.label, e.name, e.category, e.pack].join(' ')
+          .toLowerCase().includes(needle));
+    }
+    if (wantCat) rows = rows.filter((e) => e.category === wantCat);
+    if (shelfSort.key) {
+      const keyOf = (e) =>
+        shelfSort.key === 'secs' ? (e.secs || 0)
+        : shelfSort.key === 'used' ? e.used.length
+        : shelfSort.key === 'category' ? String(e.category || '').toLowerCase()
+        : String(e.label || e.name).toLowerCase();
+      rows.sort((a, b) => {
+        const av = keyOf(a), bv = keyOf(b);
+        return (av < bv ? -1 : av > bv ? 1 : 0) * shelfSort.dir;
+      });
+    }
+    board.querySelectorAll('th.sortable').forEach((th) => {
+      th.classList.toggle('asc', shelfSort.key === th.dataset.sort && shelfSort.dir === 1);
+      th.classList.toggle('desc', shelfSort.key === th.dataset.sort && shelfSort.dir === -1);
+    });
     board.hidden = !rows.length;
     body.innerHTML = '';
     const mmss = (secs) => secs == null ? '—'
@@ -2512,8 +2714,15 @@
     rows.forEach((e) => {
       const tr = document.createElement('tr');
       const name = document.createElement('td');
-      name.textContent = (e.label || e.name)
-        + (e.builtin ? '' : ' (upload)');
+      name.textContent = e.label || e.name;
+      // One chip, the most specific true thing: the pack a clip ships in,
+      // else which side of the shelf it came from. A pack chip AND a
+      // built-in chip on every row was the duplication it read as.
+      const kind = document.createElement('span');
+      kind.className = 'kindchip';
+      kind.textContent = e.pack || (e.builtin ? 'built-in' : 'upload');
+      if (e.pack) kind.title = 'Ships with the ' + e.pack + ' set';
+      name.appendChild(kind);
       const len = document.createElement('td');
       len.textContent = mmss(e.secs);
       const cat = document.createElement('td');
@@ -2522,18 +2731,78 @@
       catIn.value = e.category || '';
       catIn.className = 'catbox';
       catIn.onchange = async () => {
-        await afetch('/settings/sounds/meta', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: e.name, category: catIn.value }),
-        });
+        // The server saved this all along; the CLIENT kept repainting the
+        // shelf from its stale local copy, so the very next repaint undid
+        // the edit on screen and the box read as refusing to save.
+        // Operator-reported. Update the source array the repaints read.
+        try {
+          const r = await afetch('/settings/sounds/meta', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: e.name, category: catIn.value }),
+          });
+          if (!r.ok) throw new Error('refused');
+          const src = (e.builtin ? soundLibrary : uploadMeta)
+            .find((s) => s.name === e.name);
+          if (src) src.category = catIn.value.trim() || 'misc';
+          showResult($('soundResult'), true, (e.label || e.name)
+            + ' filed under “' + (catIn.value.trim() || 'misc') + '”.');
+          paintSoundBoard();     // the category filter's options follow
+        } catch (err) {
+          showResult($('soundResult'), false,
+            'Could not save the category — ' + err.message);
+        }
       };
       cat.appendChild(catIn);
+      // Where this sound is on duty, drafts included — reading the same
+      // fields the cards read, so the two can never disagree.
+      const used = document.createElement('td');
+      if (e.used.length) {
+        e.used.forEach((slot) => {
+          const chip = document.createElement('span');
+          chip.className = 'usedchip';
+          chip.textContent = SLOT_NAMES[slot];
+          used.appendChild(chip);
+        });
+      } else {
+        used.textContent = '—';
+        used.className = 'unused';
+      }
       const act = document.createElement('td');
+      act.className = 'shelfacts';
       const play = document.createElement('button');
       play.className = 'btnquiet'; play.textContent = 'Play';
       play.onclick = () => { new Audio(e.url).play().catch(() => {}); };
       act.appendChild(play);
+      // The assignment gesture, on the sound itself. The beep only takes
+      // what the server can play: built-ins (WAV by policy) and WAV uploads.
+      const use = document.createElement('select');
+      use.className = 'usefor';
+      const first = document.createElement('option');
+      first.value = ''; first.textContent = 'Use for…';
+      use.appendChild(first);
+      SOUND_SLOTS.forEach((slot) => {
+        if (slot === 'vm_beep' && !e.builtin && !/\.wav$/i.test(e.name)) return;
+        const o = document.createElement('option');
+        o.value = slot; o.textContent = SLOT_NAMES[slot];
+        use.appendChild(o);
+      });
+      use.onchange = () => {
+        const slot = use.value;
+        if (!slot) return;
+        use.value = '';
+        $('sound_' + slot).value = e.builtin ? e.url : UPLOAD_PREFIX + e.name;
+        markClean();
+        paintSlotCards();
+        showResult($('soundResult'), true, (e.label || e.name) + ' set as the '
+          + SLOT_NAMES[slot] + ' sound — press Save to apply it to the next '
+          + 'caller.');
+      };
+      act.appendChild(use);
       if (!e.builtin) {
+        const dl = document.createElement('a');
+        dl.className = 'btnquiet'; dl.textContent = 'Download';
+        dl.href = e.url; dl.setAttribute('download', e.name);
+        act.appendChild(dl);
         const del = document.createElement('button');
         del.className = 'btnquiet'; del.textContent = 'Remove';
         del.onclick = async () => {
@@ -2543,9 +2812,29 @@
         };
         act.appendChild(del);
       }
-      tr.append(name, len, cat, act);
+      tr.append(name, len, cat, used, act);
       body.appendChild(tr);
     });
+  }
+
+  // Column headers sort; a second press flips the direction.
+  if ($('soundBoard')) {
+    $('soundBoard').querySelectorAll('th.sortable').forEach((th) => {
+      th.onclick = () => {
+        shelfSort = { key: th.dataset.sort,
+                      dir: shelfSort.key === th.dataset.sort ? -shelfSort.dir : 1 };
+        paintSoundBoard();
+      };
+    });
+  }
+  // The find box and the category pick repaint the shelf as they change.
+  if ($('shelfSearch')) {
+    let shelfTimer = null;
+    $('shelfSearch').oninput = () => {
+      clearTimeout(shelfTimer);
+      shelfTimer = setTimeout(paintSoundBoard, 120);
+    };
+    $('shelfCat').onchange = paintSoundBoard;
   }
 
   // Set by a slot's own Upload… button, so the file lands assigned to the
@@ -2555,11 +2844,30 @@
 
   if ($('uploadSoundBtn')) {
     $('uploadSoundBtn').onclick = () => { pendingAssignSlot = null; $('soundFile').click(); };
-    $('soundFile').onchange = async () => {
+    $('soundFile').onchange = () => {
       const file = $('soundFile').files[0];
       const slot = pendingAssignSlot;
       pendingAssignSlot = null;
-      if (!file) return;
+      if (file) uploadSoundFile(file, slot);
+    };
+    // Dropping a file on the shelf uploads it — the same path the button
+    // takes, so the WAV conversion and the ceilings apply identically.
+    const dropHost = $('soundDrop').closest('details');
+    ['dragover', 'dragleave', 'drop'].forEach((kind) => {
+      dropHost.addEventListener(kind, (ev) => {
+        if (kind !== 'dragleave'
+            && !(ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes('Files'))) return;
+        ev.preventDefault();
+        dropHost.classList.toggle('dropping', kind === 'dragover');
+        if (kind === 'drop') {
+          const file = ev.dataTransfer.files && ev.dataTransfer.files[0];
+          if (file) uploadSoundFile(file, null);
+        }
+      });
+    });
+  }
+
+  async function uploadSoundFile(file, slot) {
       const out = $('soundResult');
       // The beep is server-played and the server reads WAV only — but the
       // BROWSER ships mp3/m4a decoders, so instead of refusing (0.9.138 did,
@@ -2597,13 +2905,90 @@
         }
         paintSounds();
         showResult(out, true, slot
-          ? d.name + ' uploaded and set as the ' + slot + ' sound — press Save '
-            + 'to apply it to the next caller.'
-          : d.name + " uploaded. Pick it from a sound's dropdown, then Save.");
+          ? d.name + ' uploaded and set as the ' + SLOT_NAMES[slot]
+            + ' sound — press Save to apply it to the next caller.'
+          : d.name + ' uploaded — it is on the shelf. Give it a job with '
+            + 'Use for…, then Save.');
       } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
       finally { $('soundFile').value = ''; }
-    };
   }
+  // ------------------------------------------------- per-DJ voice effects
+  // The staged-greetings shape: one row per persona, its own colour, saved
+  // the moment it is picked — a costume for a character is a decision, not
+  // a draft. Painted only when the section opens, like the greeting list.
+  async function loadFxDjList() {
+    const host = $('fxDjList');
+    if (!host) return;
+    let current = {};
+    try {
+      const r = await afetch('/settings/voice-effects');
+      if (r.ok) current = (await r.json()).effects || {};
+    } catch (e) { /* the list still paints, showing the shared default */ }
+    host.innerHTML = '';
+    const kinds = (SCHEMA.fields.voice_effect
+      && SCHEMA.fields.voice_effect.choices) || [];
+    (options.personas || []).forEach((p) => {
+      const li = document.createElement('li');
+      li.className = 'vmrow';
+      const who = document.createElement('span');
+      who.className = 'sname';
+      who.textContent = p.name;
+      const sel = document.createElement('select');
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'Shared setting — the pick above';
+      sel.appendChild(none);
+      kinds.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c[0]; o.textContent = c[1] || c[0];
+        sel.appendChild(o);
+      });
+      sel.value = current[p.id] || '';
+      sel.onchange = async () => {
+        const out = $('fxResultNote');
+        try {
+          const r = await afetch('/settings/voice-effects', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ personaId: p.id, effect: sel.value }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || 'refused');
+          current[p.id] = sel.value;
+          showResult(out, true, sel.value
+            ? p.name + ' now wears ' + sel.value + ' on every call.'
+            : p.name + ' follows the shared setting again.');
+        } catch (e) {
+          showResult(out, false, 'Could not save ' + p.name + '’s effect — '
+            + e.message);
+          sel.value = current[p.id] || '';
+        }
+      };
+      // Hear THIS DJ through THIS row's pick — unsaved selection included,
+      // in the persona's own voice via the same one test path the section's
+      // buttons use. The voices ride the voicemail status; fetched once.
+      const hear = document.createElement('button');
+      hear.className = 'btnquiet';
+      hear.textContent = 'Test';
+      hear.title = 'Render one line in ' + p.name + '’s voice and play it '
+        + 'through the selected effect';
+      hear.onclick = async () => {
+        if (!vmPersonas.length) await loadVmStatus();
+        const per = vmPersonas.find((v) => v.id === p.id) || {};
+        const kind = sel.value
+          || ($('voice_effect') && $('voice_effect').value)
+          || resolved.voice_effect || 'none';
+        runFxTest(kind, hear, per.voice || '');
+      };
+      li.append(who, sel, hear);
+      host.appendChild(li);
+    });
+  }
+
+  const fxSec = document.querySelector('details.sec[data-group="effects"]');
+  if (fxSec) {
+    fxSec.addEventListener('toggle', () => { if (fxSec.open) loadFxDjList(); });
+  }
+
   // ------------------------------------------------------------ voicemail
   // Staging renders one greeting per persona through the real TTS and
   // reports each result by name — a persona whose voice this backend does
@@ -2728,12 +3113,18 @@
               + 'pickup. If callers still hear the classic tone, the WORKER '
               + 'container is running an older version — pull and restart '
               + 'both.'
-            : 'Custom beep ' + beep.name + ' cannot play (' 
+            : 'Custom beep ' + beep.name + ' cannot play ('
               + (beep.error || 'unreadable')
               + ') — callers get the classic tone. Re-export it as a plain '
               + 'PCM WAV and upload again.';
         }
       }
+      // The verdict lands on the beep's own card too — the fault colour on
+      // the thing that is broken, not only a paragraph below the grid. By
+      // data-slot: the cards are built at runtime, and the widget contract
+      // test rightly refuses ids that exist in no markup.
+      const beepCard = document.querySelector('.slotcard[data-slot="vm_beep"]');
+      if (beepCard) beepCard.classList.toggle('bad', !!(beep.set && !beep.ok));
       const staged = (d.personas || []).filter((p) => p.current).length;
       setTag('tagVoicemail',
         (!resolved.voicemail_enabled ? 'off' : resolved.voicemail_when)
@@ -3305,13 +3696,9 @@
     osc.stop(c.currentTime + 0.42);
     out.textContent = 'Playing the classic tone — the synthesized default.';
   }
-  $('testBeepBtn').onclick = previewBeep;
+  // The per-moment preview buttons became the ▶ on each slot card — one
+  // family of controls instead of a row above and a row below it.
 
-  $('testRingBtn').onclick = () => previewSound('ring');
-  $('testPickupBtn').onclick = () => previewSound('pickup');
-  $('testHoldBtn').onclick = () => previewSound('hold');
-  $('testHangupBtn').onclick = () => previewSound('hangup');
-  $('testFailedBtn').onclick = () => previewSound('failed');
 
   $('viewPromptBtn').onclick = async () => {
     const btn = $('viewPromptBtn'), out = $('promptResult');

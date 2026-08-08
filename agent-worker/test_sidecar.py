@@ -73,6 +73,7 @@ from tests.test_widget import (  # noqa: F401
     TestThePanelReadsAtAGlance,
     TestTheBeepIsPreviewableAndWavOnly,
     TestTheStylesheetParsesToTheEnd,
+    TestTheUrlRowsOnlyExistInUrlMode,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestATierIncludesTheOnesBelowIt,
@@ -163,6 +164,7 @@ from tests.test_webhooks import (  # noqa: F401
 from tests.test_voice import (  # noqa: F401
     TestABackendTooSlowToBeOnAPhoneCallSaysSo,
     TestADeclaredSampleRateIsMeasuredNotTrusted,
+    TestAPersonaCanWearItsOwnEffect,
     TestAVoiceTheBackendCannotSpeakIsNotSilence,
     TestEveryPersonaIsCheckedNotOnlyTheOneOnAir,
     TestShippedAdaptersAreWellFormed,

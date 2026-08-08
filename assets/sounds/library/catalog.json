@@ -1,11 +1,62 @@
 {
   "dial-up-1.wav": {
     "label": "Dial-up handshake (long)",
-    "category": "dial-up"
+    "category": "dial-up",
+    "pack": "Dial-up"
   },
   "dial-up-2.wav": {
     "label": "Dial-up handshake (short)",
-    "category": "dial-up"
+    "category": "dial-up",
+    "pack": "Dial-up"
+  },
+  "modern-ring.wav": {
+    "label": "Modern ring — marimba figure",
+    "category": "modern",
+    "pack": "Modern"
+  },
+  "modern-pickup.wav": {
+    "label": "Modern pickup — warm pop",
+    "category": "modern",
+    "pack": "Modern"
+  },
+  "modern-hold.wav": {
+    "label": "Modern hold — two soft notes",
+    "category": "modern",
+    "pack": "Modern"
+  },
+  "modern-hangup.wav": {
+    "label": "Modern hang-up — falling third",
+    "category": "modern",
+    "pack": "Modern"
+  },
+  "modern-failed.wav": {
+    "label": "Modern can't-connect — double buzz",
+    "category": "modern",
+    "pack": "Modern"
+  },
+  "rotary-ring.wav": {
+    "label": "Rotary ring — two-bell strike",
+    "category": "rotary",
+    "pack": "Rotary"
+  },
+  "rotary-dial.wav": {
+    "label": "Rotary dial — seven pulses",
+    "category": "rotary",
+    "pack": "Rotary"
+  },
+  "rotary-pickup.wav": {
+    "label": "Rotary pickup — off the cradle",
+    "category": "rotary",
+    "pack": "Rotary"
+  },
+  "rotary-hangup.wav": {
+    "label": "Rotary hang-up — back on the cradle",
+    "category": "rotary",
+    "pack": "Rotary"
+  },
+  "sad-trombone.wav": {
+    "label": "Sad trombone",
+    "category": "novelty"
   },
   "wilhelm.wav": {
     "label": "Wilhelm scream",

@@ -1411,11 +1411,28 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
         i = js.index("const eligible = slot === 'vm_beep'")
         self.assertIn("\\.wav$", js[i:i + 200])
 
-    def test_the_testrow_has_a_beep_button(self):
-        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
-        self.assertIn('id="testBeepBtn"', html)
+    def test_the_beep_is_previewable_from_its_card(self):
+        # The per-moment test buttons became the ▶ on each slot card; the
+        # beep's ▶ must still route through its OWN preview — its default is
+        # synthesized server-side, and the browser sound engine can't play it.
         js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
         self.assertIn("function previewBeep", js)
+        play = js.split("play.onclick", 1)[1][:200]
+        self.assertIn("previewBeep()", play)
+
+
+class TestTheUrlRowsOnlyExistInUrlMode(unittest.TestCase):
+    """Operator-reported from the deployed board: the .row skin sets its own
+    display, an author display beats the UA's [hidden] rule, and all six URL
+    rows sat fully visible under the slot cards — the whole sound section
+    read as duplicated."""
+
+    def test_the_hidden_attribute_wins_for_sloturl_rows(self):
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".row.sloturl[hidden]", css)
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        # Every URL row ships hidden; paintSlotCards() is the only unhider.
+        self.assertEqual(6, html.count('class="row sloturl" hidden'))
 
 
 class TestTheStylesheetParsesToTheEnd(unittest.TestCase):

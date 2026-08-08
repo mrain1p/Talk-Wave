@@ -870,7 +870,15 @@
   }
   .askpop-head {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 6px; font-size: 12.5px; color: var(--text);
+    gap: 8px; margin-bottom: 6px; font-size: 12.5px; color: var(--text);
+  }
+  /* Whose menu this is — a micro-chip, not a heading: the answer matters
+     once, quietly, and the list itself is the point. */
+  .askrole {
+    margin-left: auto; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .1em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 7px;
   }
   .askpop-close {
     background: transparent; border: 0; color: var(--dimmer);
@@ -955,18 +963,34 @@
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
     padding: 0 10px 0 2px;
   }
+  /* Each entry wears the quiet button skin at rest — bare text read as a
+     header row, not as eight places to go. flex-grow snaps every row of
+     them to the full width. Operator-requested, twice. */
   .panelnav a {
     flex: 1 1 auto; text-align: center;
     text-decoration: none; color: var(--dim);
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700;
-    padding: 6px 9px; border-radius: 8px;
-    border: 1px solid transparent; background: transparent;
+    padding: 7px 9px; border-radius: 8px;
+    border: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--text) 3%, transparent);
   }
   .panelnav a:hover {
-    color: var(--text); background: var(--line2); border-color: var(--line2);
+    color: var(--text); background: var(--line2); border-color: var(--line);
   }
   .panelnav:empty { display: none; }
+
+  /* The settings half's own header row: heading and promise left, the
+     finder right, folding to two lines on a narrow panel. */
+  .settingshead {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; margin: 18px 0 10px;
+  }
+  .settingshead h2 { margin: 0; }
+  .settingshead .sub { margin: 3px 0 0; }
+  .settingshead .settingsearch {
+    margin: 0; flex: 0 1 300px; min-width: 220px;
+  }
 
   /* The dashboard's own band — the same voice as a super-group heading, but
      its own class: applyVisibility() hides a .supergroup with no visible
@@ -976,14 +1000,116 @@
     text-transform: uppercase; font-weight: 700; color: var(--text);
   }
 
+  /* --- the sound board: six moments as cards over one shelf -------------- */
+  /* Same grammar as the dashboard's control cards — micro label, value,
+     note, 10px surface — because they are the same kind of thing: press to
+     act, coloured by state. The ▶ is a SIBLING (buttons cannot nest). */
+  .slotarea { position: relative; }
+  /* The .row skin sets display, and an author display beats the UA's
+     [hidden] rule — so the six URL rows sat fully visible under the cards,
+     which read (correctly) as the whole section duplicated. */
+  .row.sloturl[hidden] { display: none; }
+  .slotgrid {
+    display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr; margin: 12px 0 4px;
+  }
+  @media (max-width: 760px) { .slotgrid { grid-template-columns: repeat(2, 1fr); } }
+  .slotwrap { position: relative; display: flex; }
+  .slotcard {
+    flex: 1; display: flex; flex-direction: column; align-items: flex-start;
+    gap: 2px; padding: 9px 36px 9px 11px; min-height: 64px;
+    border-radius: 10px; border: 1px solid var(--line2);
+    background: var(--panel); color: var(--text); text-align: left;
+    cursor: pointer; transition: border-color .15s, transform .15s;
+  }
+  .slotcard:hover { transform: translateY(-1px); border-color: var(--line); }
+  .slotcard .ck {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+  }
+  .slotcard .cv { font-size: 12.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .slotcard .cn { font-size: 10.5px; color: var(--dim); }
+  /* A missing file or an unplayable beep is a fault ON THE CARD — the thing
+     that is broken wears the colour, not a paragraph somewhere below. */
+  .slotcard.missing, .slotcard.bad { border-color: var(--accent); }
+  .slotcard.missing .cv, .slotcard.bad .cv { color: var(--accent); }
+  .slotplay {
+    position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
+    padding: 0; border-radius: 8px; font-size: 10px; line-height: 1;
+  }
+  /* Same trap as .guestgate: an author display beats [hidden], and the
+     empty picker sat as a ghost box floating over the cards. Spot rule,
+     the house pattern. */
+  .slotmenu[hidden] { display: none; }
+  .slotmenu {
+    position: absolute; z-index: 30; min-width: 240px; max-width: 340px;
+    display: flex; flex-direction: column; gap: 2px; padding: 6px;
+    border: 1px solid var(--line2); border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+  .slotmenu button {
+    text-align: left; background: transparent; border-radius: 8px;
+    padding: 6px 9px; font-size: 11.5px; font-weight: 500;
+  }
+  .slotmenu button:hover { background: var(--line2); }
+  .slotmenu button.current { color: var(--ok); font-weight: 700; }
+  /* The shelf: sortable headers, a kind chip on every name, and used-for
+     chips reading the same fields the cards read. */
+  .soundboard th.sortable { cursor: pointer; user-select: none; }
+  .soundboard th.sortable.asc::after { content: " ▲"; color: var(--dim); }
+  .soundboard th.sortable.desc::after { content: " ▼"; color: var(--dim); }
+  .kindchip {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--dim);
+    border: 1px solid var(--line2); border-radius: 4px;
+    padding: 1px 5px; margin-left: 7px; white-space: nowrap;
+  }
+  .usedchip {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ok);
+    border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+    border-radius: 4px; padding: 1px 5px; margin-right: 3px; white-space: nowrap;
+  }
+  .soundboard td.unused { color: var(--dimmer); }
+  .shelfacts { white-space: nowrap; }
+  /* The two shelf selects wear the field skin every other control wears —
+     bare UA selects in the table read as foreign. */
+  .shelfacts .usefor, .shelfcat {
+    font: inherit; font-size: 10.5px; padding: 4px 7px; width: auto;
+    margin-left: 3px; border-radius: 8px; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text);
+  }
+  .shelfacts a.btnquiet { text-decoration: none; display: inline-block; }
+  /* The drop target announces itself only while a file is over it. */
+  details.advanced.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; }
+  .shelffind {
+    font: inherit; font-size: 11.5px; padding: 5px 9px; width: 170px;
+    border-radius: 8px; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text);
+  }
+  .shelffind:focus { outline: none; border-color: var(--accent); }
+
   /* The dashboard: the kill switch, and the four answers worth having before
      you change anything below. Bordered and above the fold because none of it
      is one of the settings — the button acts immediately, and the tiles are
      read-back rather than input. */
+  /* Two columns since 0.9.157 (operator's sketch, round two): Transmission
+     holds the LEFT column — the acting cluster gets a side of its own —
+     and the six read-back tiles fill the right in a 2×3 grid, so the whole
+     dashboard is one glance wide. Stacks back to one column when narrow. */
   .dash {
     margin: 0 0 16px; padding: 12px 13px;
     border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
+    display: grid; gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr);
+    align-items: stretch;
   }
+  .dash > .transmission {
+    margin-bottom: 0; display: flex; flex-direction: column;
+  }
+  .transmission .dashctrl { flex: 1; }
+  @media (max-width: 940px) { .dash { grid-template-columns: 1fr; } }
   .dashmain { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
   /* The real field behind the button. Not `hidden` and not display:none —
      both remove it from the form in ways that have surprised people before —
@@ -1089,10 +1215,57 @@
      Structure per card: micro label / state word / one-line note. All
      three post the moment they're pressed. */
   .dashctrl {
-    display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr);
+    display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: 1fr;
   }
-  @media (max-width: 760px) { .dashctrl { grid-template-columns: repeat(2, 1fr); } }
+  /* The Transmission group: the one outlined cluster on the dashboard,
+     because these three ACT — everything else up here reads. The line
+     spans the top; the two doors it feeds sit beneath it. */
+  .transmission {
+    border: 1px solid var(--line2); border-radius: 10px;
+    padding: 9px 10px 8px; margin-bottom: 8px;
+  }
+  .transmission .tlabel {
+    margin: 0 0 7px; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+    color: var(--sage-dim);
+  }
+  .transmission .dashmodesay { margin: 8px 2px 0; }
+  .ctrlcard.kill { grid-column: 1 / -1; position: relative; padding-right: 66px; }
+  .ctrlcard { position: relative; }
+  /* Drawn switches, so every card READS as the toggle it is — the whole
+     card is still the button; the switch is its state, not a second
+     control. Off: knob left, quiet. On: knob right, line-green. The kill
+     switch alone goes coral when thrown, because a paused line is the one
+     off-state that is a deliberate act against the callers of right now. */
+  .ctrlcard .switch {
+    position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 22px; border-radius: 999px;
+    background: var(--line2); transition: background .15s;
+  }
+  .ctrlcard .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--bg); transition: left .15s;
+  }
+  .ctrlcard.on .switch,
+  .ctrlcard.kill:not(.paused) .switch { background: var(--ok); }
+  .ctrlcard.on .switch::after,
+  .ctrlcard.kill:not(.paused) .switch::after { left: 20px; }
+  .ctrlcard.kill.paused .switch { background: var(--accent); }
+  /* The two doors wear smaller switches than the master — same vocabulary,
+     lower rank. Their cards make room on the right. */
+  .dashctrl .ctrlcard:not(.kill) { padding-right: 48px; }
+  .ctrlcard .switch.small { width: 30px; height: 17px; right: 11px; }
+  .ctrlcard .switch.small::after { width: 13px; height: 13px; }
+  .ctrlcard.on .switch.small::after { left: 15px; }
+  /* Held, not broken: while the line is paused the two doors keep saying
+     which way they point, dimmed and warmed amber — waiting, in the state
+     vocabulary, rather than off or at fault. */
+  .dashctrl .ctrlcard:disabled {
+    border-color: color-mix(in srgb, var(--warn) 55%, var(--line2));
+  }
+  .dashctrl .ctrlcard:disabled .cv { color: var(--warn); }
   .ctrlcard {
     display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
     padding: 9px 11px; min-height: 64px; border-radius: 10px;
@@ -1118,7 +1291,7 @@
   .ctrlcard.kill.paused { border-color: var(--accent); }
   .ctrlcard.kill.paused .cv { color: var(--accent); }
   .dashmodesay { font-size: 11.5px; color: var(--dim); margin: 8px 0 0; }
-  .dashtiles { margin-top: 8px; }
+  /* No own top margin since the dash grid gaps for it. */
 
   /* Four read-backs, not four settings. Buttons because each one jumps to the
      section that owns its answer — the whole reason to look at a dashboard is
@@ -1127,9 +1300,17 @@
      narrow panel), every row full, every tile the same height — auto-fit
      used to leave a ragged last row. Operator-reported. */
   .dashtiles {
-    display: grid; gap: 8px; margin-top: 12px;
-    grid-template-columns: repeat(3, 1fr);
+    display: grid; gap: 8px;
+    grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: 1fr;
+  }
+  /* Stacked under Transmission on a narrow panel, the tiles go back to
+     filling the width three across. */
+  @media (max-width: 940px) {
+    .dashtiles { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 700px) {
+    .dashtiles { grid-template-columns: repeat(2, 1fr); }
   }
   @media (max-width: 760px) {
     .dashtiles { grid-template-columns: repeat(2, 1fr); }
@@ -1164,25 +1345,44 @@
      that only a non-standard setup needs. It is a real setting either way —
      hiding it outright is how a station that publishes MCP somewhere unusual
      ends up with no way to say so. */
-  details.advanced { margin: 4px 0 10px; }
+  details.advanced { margin: 14px 0 10px; }
+  /* A visible door, not a whisper: bare micro-caps read as a stray label,
+     and the operator missed that the shelf was openable at all. Same quiet
+     chip chrome the jump menu wears — recognisably pressable, still
+     subordinate to real section summaries. */
   details.advanced > summary {
     list-style: none; cursor: pointer; user-select: none;
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .14em;
-    text-transform: uppercase; font-weight: 700; color: var(--dimmer);
-    padding: 4px 0;
+    text-transform: uppercase; font-weight: 700; color: var(--dim);
+    padding: 7px 10px; border: 1px solid var(--line2); border-radius: 8px;
+    background: color-mix(in srgb, var(--text) 3%, transparent);
   }
+  details.advanced[open] > summary { margin-bottom: 8px; }
   details.advanced > summary::-webkit-details-marker { display: none; }
   details.advanced > summary::before { content: "▸ "; }
   details.advanced[open] > summary::before { content: "▾ "; }
-  details.advanced > summary:hover { color: var(--text); }
+  details.advanced > summary:hover {
+    color: var(--text); border-color: var(--line); background: var(--line2);
+  }
+  /* Prose directly under a table sat on its bottom border — reported from
+     the shelf's sources line, and visible under every table on the page. */
+  .body table + .hint, .body .soundlist + .hint, .body .result + .hint {
+    margin-top: 12px;
+  }
 
+  /* A band, not just a rule: the category row sits a step DARKER than the
+     section rows under it, so the hierarchy reads at a glance instead of
+     five same-weight lines in a column. Mixed toward black so it lands
+     darker in both themes — mixing toward --text would brighten dark mode. */
   .supergroup {
     display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-    margin: 15px 0 1px; padding-top: 11px; border-top: 2px solid var(--line2);
+    margin: 15px 0 1px; padding: 9px 10px 7px;
+    border-top: 2px solid var(--line2); border-radius: 0 0 8px 8px;
+    background: color-mix(in srgb, #000 14%, transparent);
     font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
     font-weight: 700; color: var(--text);
   }
-  .supergroup:first-of-type { margin-top: 6px; border-top: none; padding-top: 0; }
+  .supergroup:first-of-type { margin-top: 6px; border-top: none; }
   .supergroup em {
     font-style: normal; text-transform: none; letter-spacing: 0;
     font-size: 11.5px; font-weight: 400; color: var(--dimmer);
@@ -1384,6 +1584,10 @@
     color: color-mix(in srgb, var(--warn) 80%, var(--text));
     border-color: color-mix(in srgb, var(--warn) 40%, transparent);
   }
+  /* No switch behind it — quieter than a granted tier, but present: an
+     unlabelled row in a column of who-gets-this answers read as a gap. */
+  .whotier.t-always { color: var(--dimmer); border-style: dashed; }
+  .askbar { margin-bottom: 10px; }
 
   @media (max-width: 620px) {
     .permgrid { grid-template-columns: minmax(0, 1fr) 46px 46px 46px; }
@@ -1557,6 +1761,9 @@
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     margin: 0 0 8px; font-size: 11.5px; color: var(--dimmer);
   }
+  /* display:flex beats [hidden] — the calls toolbar ships hidden until its
+     records load, and without this it sat empty on the page. */
+  .diagbar[hidden] { display: none; }
   .diagbar label { font-size: 11.5px; color: var(--dimmer); }
   .diagbar .grow { flex: 1 1 auto; }
   .diagbar select[multiple] {

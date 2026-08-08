@@ -253,6 +253,20 @@
   function paintAskPopup(canAsk) {
     const host = $('askPopList');
     if (!host) return;
+    // Whose menu this is — the server already filtered the list to this
+    // caller's tier, and saying so beats a guest wondering why a friend's
+    // list looked longer. Quiet: one micro-chip in the head, no room lost.
+    const role = $('askRole');
+    if (role) {
+      const tier = (shown || live || {}).callerTier;
+      role.hidden = !tier;
+      if (tier) {
+        role.textContent = { open: 'for any caller', guest: 'for guest callers',
+                             admin: 'for the operator' }[tier] || '';
+        role.title = 'What this list offers follows how you got in — the '
+          + 'guest code or the operator password can add more.';
+      }
+    }
     host.innerHTML = '';
     ASKS.filter((a) => !a.need || canAsk[a.need]).forEach((a) => {
       const li = document.createElement('li');

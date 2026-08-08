@@ -709,7 +709,11 @@ SCHEMA: dict[str, dict] = {
     # "Station admin" with a tooltip saying it would quietly never happen
     # without credentials, which is false — the MCP tool needs no auth at all
     # (registry.mcp_fallback). Only the local wrapper's extra retry does.
+    # admin="optional": the chip reads "Station admin — optional" and never
+    # goes coral. A bare admin=True here would claim the tool dies without
+    # credentials, which is false — see the note above.
     "allow_library_search": dict(group="perms", kind="select", tiered=True, label="Search the music library",
+        admin="optional",
         help="Lets the DJ check a track exists before promising it. Works without "
              "station credentials; with them it also retries phrasing like "
              "'X by Y' before reporting a miss."),
@@ -727,9 +731,11 @@ SCHEMA: dict[str, dict] = {
     # the DJ may BRING IT UP first.
     "allow_skills": dict(group="perms", kind="select", tiered=True, label="Run segments when asked",
         admin=True,
-        help="Weather, news, dedications, story time — the caller asks and the DJ "
-             "runs the station's real segment on air. The station rate-limits each "
-             "one (25–60 min), so callers cannot spam them."),
+        help="The station's own skills — the same roster its Skills panel loads: "
+             "weather, news, dedications, story time — run on air in the DJ's "
+             "voice when the caller asks. Fired through the station's manual "
+             "trigger, which bypasses its frequency gates and cooldowns on "
+             "purpose, so Actions per call is the only pacing."),
     "offer_skills": dict(group="perms", kind="check", label="…and let the DJ offer one",
         admin=True,
         needs=("allow_skills", TIERS),
@@ -1282,7 +1288,12 @@ def schema_payload() -> dict:
                 # refuses and our client returns an empty list or a soft
                 # failure, so from the panel a switched-on feature that never
                 # happens is indistinguishable from one that is working.
-                "admin": bool(meta.get("admin")),
+                # Three-valued since 0.9.155: True (dies without them),
+                # "optional" (works, credentials only sharpen it), False.
+                # bool() here flattened "optional" to True and the panel
+                # showed a hard requirement that does not exist.
+                "admin": meta.get("admin") if meta.get("admin") == "optional"
+                         else bool(meta.get("admin")),
                 # Rendered as three columns of checkboxes rather than a
                 # dropdown: what an operator wants to see is which callers get
                 # this, all three answers at once, down a page of permissions.

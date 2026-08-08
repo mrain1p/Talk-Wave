@@ -51,6 +51,7 @@ os.environ.setdefault("SETTINGS_PATH", str(_TMP / "settings.json"))
 os.environ.setdefault("SECRETS_PATH", str(_TMP / "secrets.json"))
 os.environ.setdefault("ADMIN_AUTH_PATH", str(_TMP / "auth.json"))
 os.environ.setdefault("CALLS_PATH", str(_TMP / "calls"))
+os.environ.setdefault("VOICE_FX_PATH", str(_TMP / "voice-effects.json"))
 os.environ.setdefault("LOG_TO_FILE", "0")
 (_TMP / "settings.json").write_text(json.dumps({
     "llm_provider": "google", "llm_model": "gemini-3.1-flash-lite",
@@ -167,6 +168,27 @@ class Handler(BaseHTTPRequestHandler):
                     settings_store.save(patch)
             except Exception:
                 pass
+        # Category filing answers ok so the shelf's save path can be driven;
+        # the real handler persists to the sounds meta store.
+        if self.path.split("?")[0] == "/settings/sounds/meta":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(n)
+            except Exception:
+                pass
+            return self._json({"ok": True})
+        # Per-DJ effects persist too — through the REAL store, pointed at
+        # the stub's temp dir, so the panel's list can be driven end to end.
+        if self.path.split("?")[0] == "/settings/voice-effects":
+            import voice_effects
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+                voice_effects.set_effect(
+                    str(body.get("personaId") or ""), str(body.get("effect") or ""))
+            except Exception:
+                pass
+            return self._json({"ok": True, "effects": voice_effects.read()})
         self.do_GET()
 
     def do_GET(self) -> None:
@@ -285,6 +307,9 @@ class Handler(BaseHTTPRequestHandler):
         # station pushing back at us, which is the half that fails in the wild.
         if path == "/hooks/test":
             return self._json(dict(HOOK_TEST))
+        if path == "/settings/voice-effects":
+            import voice_effects
+            return self._json({"effects": voice_effects.read()})
         if path == "/health":
             return self._json({"ok": True, "version": "dev", "livekit": "ws://stub"})
         if path == "/live":
@@ -303,6 +328,9 @@ class Handler(BaseHTTPRequestHandler):
                 "canAsk": {"allow_requests": True, "allow_library_search": True,
                            "allow_exact_queue": True, "allow_announcements": True,
                            "allow_skills": True},
+                # Like the real /live: _for_this_caller stamps who is asking,
+                # and the card's "?" popup shows whose menu it is.
+                "callerTier": "admin",
                 # Resolved by the real code, like the preview above — a stub
                 # whose card disagrees with the card is not a stub of it.
                 **__import__("api.live", fromlist=["live"]).look_payload(

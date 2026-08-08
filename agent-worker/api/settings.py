@@ -133,6 +133,58 @@ async def handle_post_settings(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"resolved": resolved}))
 
 
+# --- per-DJ voice effects ----------------------------------------------------
+# The greeting-overrides pattern on the settings surface: one colour per
+# persona, overriding the shared Voice effects pick while that DJ is on air.
+# Saved the moment it is picked (like the dashboard controls), because a
+# per-DJ costume is a decision about a character, not a draft of a form.
+
+async def handle_voice_effects(request: web.Request) -> web.Response:
+    """The whole map — persona id to effect kind. Admin: it is panel
+    furniture, and the caller-facing answer already rides /live."""
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
+    import voice_effects
+
+    return _cors(request, web.json_response({"effects": voice_effects.read()}))
+
+
+async def handle_voice_effect_set(request: web.Request) -> web.Response:
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
+    try:
+        body = await request.json()
+    except Exception:
+        return _cors(request, web.json_response({"error": "invalid JSON"}, status=400))
+    pid = str((body or {}).get("personaId") or "").strip()
+    effect = str((body or {}).get("effect") or "").strip()
+    if not pid:
+        return _cors(request, web.json_response(
+            {"error": "personaId is required"}, status=400))
+    # Legal kinds are exactly the dropdown's — the same CHOICES list — plus
+    # blank for "the shared setting decides". An unknown kind stored here
+    # would ride /live into every caller's WebAudio graph as a no-op with a
+    # name, which is the quiet kind of wrong.
+    legal = {v for v, _ in settings_store.STATIC_CHOICES.get("voice_effect", [])}
+    if effect and effect not in legal:
+        return _cors(request, web.json_response(
+            {"error": f"unknown effect '{effect}'"}, status=400))
+    import voice_effects
+
+    voice_effects.set_effect(pid, effect)
+    _live_cache["data"] = None
+    return _cors(request, web.json_response(
+        {"ok": True, "effects": voice_effects.read()}))
+
+
 async def _tts_voices(base_url: str, cfg: dict | None = None) -> list[str]:
     """Ask the configured TTS server what voices it actually has.
 

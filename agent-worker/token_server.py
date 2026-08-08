@@ -61,6 +61,8 @@ from api.settings import (
     handle_post_secrets,
     handle_post_settings,
     handle_settings_options,
+    handle_voice_effect_set,
+    handle_voice_effects,
 )
 from api.sounds import (
     handle_pack_sound,
@@ -120,6 +122,9 @@ def build_app() -> web.Application:
     app.router.add_post("/auth/guest", handle_guest_login)
     app.router.add_options("/auth/guest", handle_options)
     app.router.add_get("/settings/options", handle_settings_options)
+    app.router.add_get("/settings/voice-effects", handle_voice_effects)
+    app.router.add_post("/settings/voice-effects", handle_voice_effect_set)
+    app.router.add_options("/settings/voice-effects", handle_options)
     app.router.add_get("/voicemail/status", handle_voicemail_status)
     app.router.add_post("/voicemail/stage", handle_voicemail_stage)
     app.router.add_get("/voicemail/messages", handle_voicemail_messages)
