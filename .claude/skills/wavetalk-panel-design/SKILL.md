@@ -1,0 +1,98 @@
+---
+name: wavetalk-panel-design
+description: The settings panel's design system — section anatomy, row shapes, where help text sits, button families, state colour, and the dashboard's grammar. Read BEFORE adding or moving anything in panel.html, and use as the checklist when the operator says a section "doesn't look clean or consistent". Every rule here is one the operator has already corrected once.
+---
+
+# The panel's design system
+
+The operator's bar: **intentional layout, typography and elements chosen for the right
+occasion** — their words, after a stretch where sections were "slapped on top of each other".
+Every rule below exists because its violation was reported. Don't re-earn them.
+
+## Section anatomy
+
+One section = one `<details class="sec" data-group="...">`. The order on the page comes from
+`GROUPS` in settings.py, never from markup position — moving a section means editing the GROUPS
+tuple, and its supergroup assignment is the second element of that tuple.
+
+- `summary` = chev + secname + secblurb (filled from schema) + `.tag` (state chip).
+- **Super-group bands carry no subtext** (operator: noise). Sections explain themselves.
+- **Section tags carry state in colour** via `setTag()`: first word `on/open/always` paints
+  green, `off/never/closed/none` dims. Write tags so the first word IS the state.
+- A section whose only field moved elsewhere **retires** — don't leave a one-field section
+  standing (Call length died this way; Transmission modes retired into the dashboard).
+
+## Row shapes — pick the right one
+
+| Shape | Use for | Help goes |
+|---|---|---|
+| `.row` | label + one control | **inline right** (`hint inrow`, injected from schema) |
+| `.row.narrow` (in `.grid2`) | short numbers | inline right |
+| `label.check` | one checkbox | **inline after the label** (`hint inlabel` span) |
+| `.prow` (matrix) | per-surface Page/Embed pair | **inside `.plabel`** as `hint inlabel` |
+| `.permrow` (permgrid) | tiered permission | sibling `hint wide` (grid rules — do NOT inline) |
+| `.testrow` | a run of buttons, or field+buttons on one line | n/a — `.testrow` inputs wear the `.row` field skin |
+
+**Never** add a static `<p class="hint wide">` under a single field — field help belongs in the
+schema (`help=`), which injects it in the right place per shape. Static paragraphs are only for
+whole-section prose (a prerequisite, a warning, what a run of buttons does), and ONE per
+section — merged, not stacked (the sounds section's three-paragraph pile-up was reported).
+
+## Help text rules
+
+- Labels say what the thing IS, with its noun: "Calls per hour", not "Per hour"; "How many
+  transcripts to keep", not "How many to keep".
+- Selects: every option label is `value — plain-words consequence`. Dropdown defaults NAME what
+  they stand for ("Default — the Exchange set's ring", "Classic tone — synthesized (default)").
+- Placeholders on text fields carry the default: `default: in character, no fixed formula`.
+- Anything accepting `{station} {dj} {show} {track} {tagline}` says so.
+- Comments in help cite behaviour, not mechanism, and true claims only — the docs test and the
+  operator both check ("turns every refusal into a message" was an overclaim; it got caught).
+
+## Button families
+
+- `.killbtn` — the one destructive/immediate primary (Pause). Filled.
+- `.modebtn` — dashboard toggles; hollow off, green-lit `.on`. **Post immediately**, never
+  through Save (closing a door is a thing you're doing, not a setting you're drafting).
+- `.runbtn` — diagnostics headers and toolbar toggles (thumbs, problems filter — all three
+  match; a checkbox next to toggle-buttons was reported).
+- `.btnquiet` — secondary actions in a testrow.
+- plain `button` in a `.testrow` — the section's primary action (Save keys, Stage greetings).
+- Two-step reveal for rare fields: the New-password box exists only after "Change password…" is
+  pressed. Copy that pattern for any usually-irrelevant input.
+
+## The dashboard
+
+A control strip, not a form: kill switch → Transmission modes toggles (+ caption reading out
+the combination) → **tiles in a strict grid** — `repeat(3, 1fr)`, two columns under 760px,
+`grid-auto-rows: 1fr`, every row full, every tile one height. Tiles are glanceable
+(value + note + tone class ok/warn/bad), jump somewhere on click, and may carry one image
+(the on-air avatar). New status belongs here only if an operator opens the page to check it.
+
+## State & colour
+
+Colour carries state; fill never does (except the one primary). Green = on/ok, dimmed = off,
+coral = bad/not-set. `.setchip` (set / not set), `.tag[data-state]`, tile tones — same
+vocabulary everywhere. Moot rows (voicemail-only greying the call-button options): opacity +
+pointer-events only — **no strikethrough** (read as a rendering fault).
+
+## Typography
+
+Mono uppercase micro-labels (9–11px, letterspaced) for labels-of-things: section names, tags,
+chips, meter labels, table headers. Body sans for prose and values. No new font sizes without
+reason — the diagnostics viewers were re-cut once because the call list ran its own sizes.
+
+## Hard-won mechanics (violations ship silently)
+
+- A field is FIVE places: FIELDS, SCHEMA, panel markup control, a reader, tests. The panel
+  silently skips a field with no matching id — `/wavetalk-setting` has the walk.
+- `needs=` lists must name **every** qualifying value — the intensity dial vanished for the
+  newer effects because its list still named the first three.
+- Duplicate ids: `byKind` fills the FIRST match; the second sits empty-looking (the twin
+  Signing-off box). Moving a row = move, then verify the old copy is gone.
+- CSS braces must balance — one duplicated selector killed every rule after it, silently
+  (there's a test now, but don't rely on it to think for you).
+- The save overlay appears only after a **trusted** user edit; dash controls post immediately
+  and never touch it.
+- Verify in the stub (`/wavetalk-verify`) — the pane hides, screenshots fail, and the per-DJ
+  list paints only when its section opens. Structure-probe with javascript_tool, not eyes.
