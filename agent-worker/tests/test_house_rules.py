@@ -440,7 +440,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # adapter_api_key/adapter_headers) against synthesis (AdapterTTS and
         # its stream). Discovery never reads the class; the class needs two
         # helper names back.
-        "agent-worker/tts_adapter.py": (653, "a voice-discovery module split "
+        "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
         # 0.9.125 pushed it over making the quiet-caller nudge push-to-talk
         # aware. The seam is the back-to-air mention (send_on_air_callback and

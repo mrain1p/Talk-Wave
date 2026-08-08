@@ -35,7 +35,7 @@ links, one per group below.
 | The conversation | **Turn-taking** | When the DJ decides you've finished speaking, and whether a caller may talk over it. The biggest lever on whether a call *feels* like a phone call |
 | The conversation | **House style** | Steers on conversation, answering, sign-off; prompt preview with token budget |
 | The conversation | **Station awareness** | How much live context the DJ carries; each item costs latency every turn |
-| Running the line | **Live calls** | Whether the booth takes live callers at all — with Voicemail below, the line's mode: phone, phone with a machine, voicemail-only, or closed |
+| Running the line | **Transmission modes** | The line's doors in one place: **Take live calls**, **Enable voicemail**, and **push to talk** per surface — the switches add up to a phone, a phone with a machine, voicemail-only, or a closed line, and the section says which |
 | Running the line | **On-air ducking** | Overlap protection: the call DJ and the on-air DJ are one voice |
 | Running the line | **Tune the caller into the station** | Whether the caller counts as a listener (which is what makes requests work), whether the broadcast is piped audibly into the call, the **stream URL**, and how loud it sits behind the DJ |
 | Running the line | **Back-to-air commentary** | The one passing line after a call ends — distinct from the announcements and segments a caller triggers mid-call, which run under their own permissions |

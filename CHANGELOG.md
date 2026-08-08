@@ -3,6 +3,45 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.9.146
+
+### Transmission modes
+
+- One section now holds the line's doors: **Take live calls**, **Enable
+  voicemail**, and **push to talk per surface** (moved in from the player
+  matrix), with a plain statement of what each combination adds up to —
+  phone, phone with a machine, voicemail-only, closed — and where the open
+  line's talk-over behaviour is decided.
+
+### The conversation, tidied
+
+- Turn-taking sits **between Greeting and Closing the call** and leads with
+  "Let the caller talk over the DJ". The **hard ceiling joins Closing the
+  call**; the one-field Call length section retires.
+- Station awareness is one deliberate block: what's always known (DJ card,
+  show write-up and episode angle, current track, station name), what's
+  fetched live — and why the takeover permission can name another show even
+  with "Know the rest of the line-up" off: **tools look things up for
+  themselves**; the dials only shape the prompt.
+- Speech hygiene gains the **em-dash toggle** — a breath (default), a plain
+  " - ", or leave them — beside a cleaned-up row layout.
+
+### Voice effects
+
+- Three new colours: **AM radio, megaphone, underwater** — the intensity
+  dial applies to all six.
+- The test can **borrow any DJ's voice** and run **clean or through the
+  effect**, side by side.
+
+### Player & embed
+
+- Who's on air leads with the face: DJ photo, show name, tagline, now
+  playing, then the photo's shape beside them.
+- The embed section says plainly there is **nothing to add by hand**, and
+  the snippet follows two real choices — starting look and captions style.
+- "Can I leave a message for the DJ?" joins the caller-asks reference,
+  tiered like everything else.
+
 ## 0.9.145
 
 ### The panel stops crying wolf

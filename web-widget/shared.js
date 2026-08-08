@@ -227,6 +227,8 @@ window.Callin = (function () {
   // never describe the phone differently. Defined above the compact
   // cut-off below because an embed needs it as much as the full page.
   const ASKS = [
+    { need: 'allow_voicemail', say: '“Can I leave a message for the DJ?”',
+      why: 'The answering machine — available wherever the voicemail switches allow it.' },
     { need: null, say: '“What’s playing right now?”',
       why: 'Reads live station state — always available.' },
     { need: null, say: '“What have you been playing tonight?”',

@@ -781,9 +781,24 @@
   }
 
   function setEmbedSnippet() {
+    paintEmbedSnippet();
+  }
+
+  function paintEmbedSnippet() {
+    if (!$('embedSnippet')) return;
+    const attrs = [];
+    const theme = $('embedTheme') && $('embedTheme').value;
+    const caps = $('embedCaptions') && $('embedCaptions').value;
+    if (theme) attrs.push(' data-theme="' + theme + '"');
+    if (caps) attrs.push(' data-captions="' + caps + '"');
     $('embedSnippet').value =
       '<div id="subwave-callin"></div>\n' +
-      '<script src="' + location.origin + '/embed.js"><\/script>';
+      '<script src="' + location.origin + '/embed.js"'
+      + attrs.join('') + '><\/script>';
+  }
+  if ($('embedTheme')) {
+    $('embedTheme').onchange = paintEmbedSnippet;
+    $('embedCaptions').onchange = paintEmbedSnippet;
   }
 
   // First-run guidance: a fresh install opens on a panel with no keys and no
@@ -2001,9 +2016,12 @@
   // mirror call.js's FX table — the caller's browser is the canonical copy,
   // and this is a preview of it, kept in step by eye and by ear.
   const FX_PREVIEW = {
-    telephone: { hp: 300, lp: 3400, grit: 0 },
-    cb:        { hp: 400, lp: 2500, grit: 26 },
-    walkie:    { hp: 500, lp: 2800, grit: 55 },
+    telephone:  { hp: 300, lp: 3400, grit: 0 },
+    cb:         { hp: 400, lp: 2500, grit: 26 },
+    walkie:     { hp: 500, lp: 2800, grit: 55 },
+    am:         { hp: 200, lp: 4800, grit: 12 },
+    megaphone:  { hp: 500, lp: 4000, grit: 70 },
+    underwater: { hp: 40,  lp: 500,  grit: 0 },
   };
 
   function fxCurve(amount) {
@@ -2061,17 +2079,35 @@
   }
 
   if ($('fxTestBtn')) {
-    $('fxTestBtn').onclick = async () => {
-      const btn = $('fxTestBtn'), out = $('ttsResult');
-      const kind = $('voice_effect').value || resolved.voice_effect || 'none';
+    // The test can borrow ANY DJ's voice: the per-persona voices arrive
+    // with the voicemail status, fetched when the section opens.
+    const fxSec = document.querySelector('details.sec[data-group="effects"]');
+    if (fxSec) fxSec.addEventListener('toggle', async () => {
+      if (!fxSec.open || !$('fxVoice') || $('fxVoice').options.length > 1) return;
+      await loadVmStatus();
+      const pick = $('fxVoice');
+      vmPersonas.filter((per) => per.voice && per.id !== '_station')
+        .forEach((per) => {
+          const o = document.createElement('option');
+          o.value = per.voice;
+          o.textContent = per.name + ' \u2014 ' + per.voice;
+          pick.appendChild(o);
+        });
+    });
+
+    const runFxTest = async (kind, btn) => {
+      const out = $('ttsResult');
       btn.disabled = true;
       out.className = 'result on';
       out.textContent = 'Rendering one line, then playing it through the '
-        + (kind === 'none' ? 'clean path' : kind + ' effect') + '…';
+        + (kind === 'none' ? 'clean path' : kind + ' effect') + '\u2026';
       try {
+        const body = draft();
+        const voice = $('fxVoice') && $('fxVoice').value;
+        if (voice) body.tts_voice = voice;
         const r = await afetch('/test/tts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(draft()),
+          body: JSON.stringify(body),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.pcmBase64) {
@@ -2080,11 +2116,19 @@
         }
         playPcmWithEffect(d.pcmBase64, d.sampleRate || 24000, kind);
         showResult(out, true, kind === 'none'
-          ? 'Playing clean — pick an effect to hear the difference.'
+          ? 'Playing clean \u2014 the same line the effect button colours.'
           : 'Playing through the ' + kind + ' effect. The broadcast never '
             + 'hears this; only callers do.');
       } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
       finally { btn.disabled = false; }
+    };
+    if ($('fxCleanBtn')) {
+      $('fxCleanBtn').onclick = () => runFxTest('none', $('fxCleanBtn'));
+    }
+    $('fxTestBtn').onclick = async () => {
+      const btn = $('fxTestBtn'), out = $('ttsResult');
+      const kind = $('voice_effect').value || resolved.voice_effect || 'none';
+      return runFxTest(kind, btn);
     };
   }
 
