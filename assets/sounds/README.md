@@ -61,3 +61,7 @@ synthesized ring for Exchange and leaves its other four alone.
 
 Uploads through the panel go to `data/sounds/` and override everything here —
 they're per-deployment, these are per-build.
+
+## Where the library clips came from
+
+Every clip in `library/` is either synthesized by `tools/make_library_sounds.py` (Modern, Rotary, the sad trombone — pure maths, no provenance to track) or a public-domain/CC0 recording from Wikimedia Commons, converted to mono 16-bit WAV. The recorded ones carry a `source` field in `catalog.json` naming the exact Commons file and its licence — if a clip ever needs defending, that field is the receipt. Nothing here requires attribution, but the receipts stay anyway.

@@ -439,7 +439,7 @@
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
-        liveNote.textContent = 'can do — ' + canDo;
+        liveNote.textContent = 'permissions — ' + canDo;
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
           + 'use, counted from the switches under Permissions & safety.';
       } else {
@@ -450,17 +450,24 @@
     const vmNote = cnOf('modeVmBtn');
     if (vmNote) {
       if (vmOn2) {
-        const WHO = { open: 'anyone may leave one',
-                      guest: 'guest code to leave one',
+        // WHEN leads: "fallback" and "always on" are different machines,
+        // and the card never said which one was running. Operator-reported.
+        const when = (($('voicemail_when') && $('voicemail_when').value)
+          || resolved.voicemail_when) === 'always'
+          ? 'always on — voicemail-only'
+          : 'fallback when the booth can’t pick up';
+        const WHO = { open: 'open to anyone',
+                      guest: 'guest code needed',
                       admin: 'admin only',
                       off: 'no caller may use it' };
         const DEST = { hold: 'held for you',
                        request: 'sent as song requests',
-                       air: 'handed to the on-air DJ',
+                       air: 'handed to the DJ',
                        triage: 'triaged by the model' };
         const dest = ($('voicemail_destination')
           && $('voicemail_destination').value) || resolved.voicemail_destination;
-        vmNote.textContent = (WHO[permTier('allow_voicemail')] || WHO.open)
+        vmNote.textContent = when
+          + ' · ' + (WHO[permTier('allow_voicemail')] || WHO.open)
           + ' · ' + (DEST[dest] || DEST.hold);
       } else {
         vmNote.textContent = 'the machine answers';
@@ -502,11 +509,15 @@
     const ACCESS = { open: 'Anyone', guest: 'Guest code', admin: 'Admin only' };
     const access = ($('front_access') && $('front_access').value) || resolved.front_access;
     $('dashLogoutBtn').hidden = !authConfigured;
-    // The note answers "and what does each tier GET" — the missing-password
-    // warning still outranks it, because an open panel is the bigger fact.
+    // The note answers "and what does each tier GET" — named as what it
+    // counts, because bare numbers read as a riddle (operator-reported).
+    // The missing-password warning still outranks it.
     tile('tileAccess', ACCESS[access] || access || '—',
-      authConfigured ? canDo + ' perms' : 'this panel has no password',
+      authConfigured ? 'permissions — ' + canDo
+                     : 'this panel has no password',
       authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
+    $('tileAccess').title = 'How many caller permissions each door tier can '
+      + 'use — the switches under Caller permissions decide.';
 
     // Named rather than counted: "3 of 3 configured" is true of a call that
     // cannot happen, because a provider with no key is still a provider.
@@ -551,7 +562,7 @@
       tile('tileCalls',
         lives.length ? lives.length + ' recent' : 'none yet',
         [rough && rough + ' failed',
-         up && '\ud83d\udc4d' + up, down && '\ud83d\udc4e' + down]
+         up && '\u25b2' + up, down && '\u25bc' + down]
           .filter(Boolean).join(' \u00b7 ')
           || (lives.length ? 'all clean' : 'records appear here'),
         rough ? 'warn' : lives.length ? 'ok' : undefined);
@@ -670,7 +681,7 @@
   // section's group id, and it OPENS the section as well as scrolling to it:
   // everything here is folded by default, so a scroll alone lands on a
   // one-line heading with the answer still hidden behind it.
-  document.querySelectorAll('.dashtiles .tile').forEach((el) => {
+  document.querySelectorAll('.dash .tile').forEach((el) => {
     el.onclick = () => {
       const sec = document.querySelector(
         'details.sec[data-group="' + el.dataset.jump + '"]');
@@ -1000,17 +1011,22 @@
 
   function paintEmbedSnippet() {
     if (!$('embedSnippet')) return;
+    // The attributes belong on the DIV — embed.js reads its mount element,
+    // never the script tag. The builder had them on the script, so a copied
+    // snippet's theme and captions choices silently did nothing.
     const attrs = [];
+    const mode = $('embedMode') && $('embedMode').value;
     const theme = $('embedTheme') && $('embedTheme').value;
     const caps = $('embedCaptions') && $('embedCaptions').value;
+    if (mode) attrs.push(' data-mode="' + mode + '"');
     if (theme) attrs.push(' data-theme="' + theme + '"');
     if (caps) attrs.push(' data-captions="' + caps + '"');
     $('embedSnippet').value =
-      '<div id="subwave-callin"></div>\n' +
-      '<script src="' + location.origin + '/embed.js"'
-      + attrs.join('') + '><\/script>';
+      '<div id="subwave-callin"' + attrs.join('') + '></div>\n' +
+      '<script src="' + location.origin + '/embed.js"><\/script>';
   }
   if ($('embedTheme')) {
+    $('embedMode').onchange = paintEmbedSnippet;
     $('embedTheme').onchange = paintEmbedSnippet;
     $('embedCaptions').onchange = paintEmbedSnippet;
   }
@@ -2662,12 +2678,62 @@
     });
   }
 
+  // What the currently pickable SET DEFAULTS are, as shelf rows — the
+  // operator looked for them in the list and they were nowhere: five
+  // synthesized sounds per set plus the machine's classic tone, playable
+  // right here. Not assignable from the shelf (a default IS the empty
+  // slot), so they carry Play and nothing else.
+  function defaultRows() {
+    const sel = $('sound_pack');
+    if (!sel) return [];
+    const packs = [...sel.options].map((o) => ({
+      id: o.value || 'classic',
+      label: (o.textContent || o.value).split('—')[0].trim(),
+    }));
+    const rows = [];
+    packs.forEach((p) => {
+      ['ring', 'pickup', 'hold', 'hangup', 'failed'].forEach((kind) => {
+        rows.push({
+          name: 'default:' + p.id + ':' + kind,
+          label: p.label + ' — ' + SLOT_NAMES[kind].toLowerCase(),
+          category: 'set default', pack: p.label, secs: null,
+          isDefault: true, packId: p.id, kind, suggests: kind,
+          url: (packAssets[p.id] || {})[kind] || '',
+        });
+      });
+    });
+    rows.push({
+      name: 'default:vm_beep',
+      label: 'Classic tone — voicemail beep',
+      category: 'set default', pack: '', secs: null,
+      isDefault: true, kind: 'vm_beep', suggests: 'vm_beep', url: '',
+    });
+    return rows;
+  }
+
+  let shelfPage = 0;
+  const SHELF_PAGE_SIZE = 12;
+
   function paintSoundBoard() {
     const board = $('soundBoard'), body = $('soundBoardBody');
     if (!board || !body) return;
-    let rows = soundLibrary.map((e) => ({ ...e, builtin: true }))
-      .concat(uploadMeta.map((e) => ({ ...e, builtin: false })));
-    rows.forEach((e) => { e.used = slotUses(e); });
+    // Real clips lead, defaults trail: the rows you can DO something with
+    // should not sit behind a page of read-only set defaults.
+    let rows = uploadMeta.map((e) => ({ ...e, builtin: false }))
+      .concat(soundLibrary.map((e) => ({ ...e, builtin: true })))
+      .concat(defaultRows());
+    rows.forEach((e) => {
+      if (e.isDefault) {
+        // A default is "in use" for its own slot while that slot is empty
+        // and its set is the chosen one (the beep's default needs no set).
+        const chosen = ($('sound_pack') && $('sound_pack').value) || 'classic';
+        const field = $('sound_' + e.kind);
+        e.used = (field && !field.value.trim()
+          && (e.kind === 'vm_beep' || e.packId === chosen)) ? [e.kind] : [];
+      } else {
+        e.used = slotUses(e);
+      }
+    });
     // The category pick offers whatever the shelf actually holds — built
     // from the UNFILTERED rows, or picking a category would empty its own
     // list of alternatives.
@@ -2692,10 +2758,22 @@
           .toLowerCase().includes(needle));
     }
     if (wantCat) rows = rows.filter((e) => e.category === wantCat);
+    const wantType = ($('shelfType') && $('shelfType').value) || '';
+    if (wantType) {
+      rows = rows.filter((e) => e.used.indexOf(wantType) !== -1
+        || e.suggests === wantType
+        || (e.isDefault && e.kind === wantType));
+    }
     if (shelfSort.key) {
+      // The type column sorts by the TYPE — assignment, else declared type,
+      // else a default's own kind — so rings group with rings. Sorting by
+      // the count of assignments put one used clip on top and shuffled the
+      // rest, which read as the column not sorting at all.
+      const typeOf = (e) => SLOT_NAMES[e.used[0] || e.suggests
+        || (e.isDefault ? e.kind : '')] || '~';
       const keyOf = (e) =>
         shelfSort.key === 'secs' ? (e.secs || 0)
-        : shelfSort.key === 'used' ? e.used.length
+        : shelfSort.key === 'used' ? typeOf(e)
         : shelfSort.key === 'category' ? String(e.category || '').toLowerCase()
         : String(e.label || e.name).toLowerCase();
       rows.sort((a, b) => {
@@ -2708,6 +2786,22 @@
       th.classList.toggle('desc', shelfSort.key === th.dataset.sort && shelfSort.dir === -1);
     });
     board.hidden = !rows.length;
+    // Twelve to a page: with the defaults listed and four packs shipped the
+    // shelf passed thirty rows, and a table that long stops being a glance.
+    const pages = Math.max(1, Math.ceil(rows.length / SHELF_PAGE_SIZE));
+    shelfPage = Math.min(shelfPage, pages - 1);
+    const pager = $('shelfPager');
+    if (pager) {
+      pager.hidden = pages < 2;
+      const from = shelfPage * SHELF_PAGE_SIZE + 1;
+      const to = Math.min(rows.length, from + SHELF_PAGE_SIZE - 1);
+      pager.querySelector('.pcount').textContent =
+        from + '–' + to + ' of ' + rows.length;
+      pager.querySelector('.pprev').disabled = shelfPage === 0;
+      pager.querySelector('.pnext').disabled = shelfPage >= pages - 1;
+    }
+    rows = rows.slice(shelfPage * SHELF_PAGE_SIZE,
+                      (shelfPage + 1) * SHELF_PAGE_SIZE);
     body.innerHTML = '';
     const mmss = (secs) => secs == null ? '—'
       : Math.floor(secs / 60) + ':' + String(Math.round(secs % 60)).padStart(2, '0');
@@ -2720,12 +2814,47 @@
       // built-in chip on every row was the duplication it read as.
       const kind = document.createElement('span');
       kind.className = 'kindchip';
-      kind.textContent = e.pack || (e.builtin ? 'built-in' : 'upload');
-      if (e.pack) kind.title = 'Ships with the ' + e.pack + ' set';
+      kind.textContent = e.isDefault ? 'default'
+        : (e.pack || (e.builtin ? 'built-in' : 'upload'));
+      if (e.pack && !e.isDefault) kind.title = 'Ships with the ' + e.pack + ' set';
       name.appendChild(kind);
       const len = document.createElement('td');
       len.textContent = mmss(e.secs);
       const cat = document.createElement('td');
+      if (e.isDefault) {
+        // A default's category is a fact, not a filing decision.
+        cat.textContent = 'set default';
+        cat.className = 'unused';
+        const len0 = document.createElement('td');
+        len0.textContent = mmss(e.secs);
+        const used0 = document.createElement('td');
+        if (e.used.length) {
+          const chip = document.createElement('span');
+          chip.className = 'usedchip';
+          chip.textContent = SLOT_NAMES[e.kind];
+          used0.appendChild(chip);
+        } else {
+          const sug = document.createElement('span');
+          sug.className = 'suggestchip';
+          sug.textContent = 'for ' + SLOT_NAMES[e.kind];
+          used0.appendChild(sug);
+        }
+        const act0 = document.createElement('td');
+        act0.className = 'shelfacts';
+        const play0 = document.createElement('button');
+        play0.className = 'btnquiet'; play0.textContent = 'Play';
+        play0.onclick = () => {
+          if (e.kind === 'vm_beep') return previewBeep();
+          if (e.url) { new Audio(e.url).play().catch(() => {}); return; }
+          // Synthesized: feed the engine that set and let it speak.
+          setSounds({ enabled: true, pack: e.packId });
+          playSound(e.kind);
+        };
+        act0.appendChild(play0);
+        tr.append(name, len0, cat, used0, act0);
+        body.appendChild(tr);
+        return;
+      }
       const catIn = document.createElement('input');
       catIn.type = 'text';
       catIn.value = e.category || '';
@@ -2741,11 +2870,20 @@
             body: JSON.stringify({ name: e.name, category: catIn.value }),
           });
           if (!r.ok) throw new Error('refused');
+          if (!catIn.value.trim()) {
+            // Blank CLEARS, per the settings invariant — the mistyped
+            // "test" on a shipped clip needed a way home. The server
+            // dropped the override; refetch for the true category.
+            showResult($('soundResult'), true, (e.label || e.name)
+              + ' goes back to its shipped category.');
+            loadSounds();
+            return;
+          }
           const src = (e.builtin ? soundLibrary : uploadMeta)
             .find((s) => s.name === e.name);
-          if (src) src.category = catIn.value.trim() || 'misc';
+          if (src) src.category = catIn.value.trim();
           showResult($('soundResult'), true, (e.label || e.name)
-            + ' filed under “' + (catIn.value.trim() || 'misc') + '”.');
+            + ' filed under “' + catIn.value.trim() + '”.');
           paintSoundBoard();     // the category filter's options follow
         } catch (err) {
           showResult($('soundResult'), false,
@@ -2763,6 +2901,46 @@
           chip.textContent = SLOT_NAMES[slot];
           used.appendChild(chip);
         });
+      } else if (!e.builtin) {
+        // An upload's type is the OPERATOR's to declare — a shipped clip
+        // knows what it is, a mystery.wav does not. Saved to the meta
+        // store the moment it is picked, like the category beside it.
+        const typeSel = document.createElement('select');
+        typeSel.className = 'usefor';
+        const blank = document.createElement('option');
+        blank.value = ''; blank.textContent = 'type…';
+        typeSel.appendChild(blank);
+        Object.keys(SLOT_NAMES).forEach((slot) => {
+          const o = document.createElement('option');
+          o.value = slot; o.textContent = SLOT_NAMES[slot];
+          typeSel.appendChild(o);
+        });
+        typeSel.value = e.suggests || '';
+        typeSel.onchange = async () => {
+          try {
+            const r = await afetch('/settings/sounds/meta', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: e.name, suggests: typeSel.value }),
+            });
+            if (!r.ok) throw new Error('refused');
+            const src = uploadMeta.find((s) => s.name === e.name);
+            if (src) src.suggests = typeSel.value;
+            paintSoundBoard();   // the type filter and sort follow
+          } catch (err) {
+            showResult($('soundResult'), false,
+              'Could not save the type — ' + err.message);
+            typeSel.value = e.suggests || '';
+          }
+        };
+        used.appendChild(typeSel);
+      } else if (e.suggests && SLOT_NAMES[e.suggests]) {
+        // Not on duty, but MADE for a slot — a busy signal is a
+        // can't-connect whatever the operator does with it. Dim, so a
+        // suggestion never reads as an assignment.
+        const sug = document.createElement('span');
+        sug.className = 'suggestchip';
+        sug.textContent = 'for ' + SLOT_NAMES[e.suggests];
+        used.appendChild(sug);
       } else {
         used.textContent = '—';
         used.className = 'unused';
@@ -2827,14 +3005,25 @@
       };
     });
   }
-  // The find box and the category pick repaint the shelf as they change.
+  // The find box and the category pick repaint the shelf as they change —
+  // and put it back on page one, because a filter that lands you on an
+  // empty page 3 reads as "no results".
   if ($('shelfSearch')) {
     let shelfTimer = null;
     $('shelfSearch').oninput = () => {
       clearTimeout(shelfTimer);
-      shelfTimer = setTimeout(paintSoundBoard, 120);
+      shelfTimer = setTimeout(() => { shelfPage = 0; paintSoundBoard(); }, 120);
     };
-    $('shelfCat').onchange = paintSoundBoard;
+    $('shelfCat').onchange = () => { shelfPage = 0; paintSoundBoard(); };
+    $('shelfType').onchange = () => { shelfPage = 0; paintSoundBoard(); };
+  }
+  if ($('shelfPager')) {
+    $('shelfPager').querySelector('.pprev').onclick = () => {
+      shelfPage = Math.max(0, shelfPage - 1); paintSoundBoard();
+    };
+    $('shelfPager').querySelector('.pnext').onclick = () => {
+      shelfPage += 1; paintSoundBoard();
+    };
   }
 
   // Set by a slot's own Upload… button, so the file lands assigned to the

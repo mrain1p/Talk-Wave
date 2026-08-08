@@ -69,9 +69,12 @@ from tests.test_widget import (  # noqa: F401
     TestThePaletteTravelsForTheCycle,
     TestAVoicemailOnlyLineHasOneDoor,
     TestTheEmbedIsJustTheCard,
+    TestTheKillSwitchOutranksEveryDoor,
+    TestTheLauncherIsAPhoneInThePocket,
     TestTheEffectHasADial,
     TestThePanelReadsAtAGlance,
     TestTheBeepIsPreviewableAndWavOnly,
+    TestHiddenActuallyHides,
     TestTheStylesheetParsesToTheEnd,
     TestTheUrlRowsOnlyExistInUrlMode,
 )
@@ -98,6 +101,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestBackgroundWorkIsNotGarbageCollected,
     TestCallRecordTimestamps,
     TestCallStructure,
+    TestTheBarReleaseEndsTheTurn,
     TestComingBackFromAirIsAnnounced,
     TestEndingACallDisconnectsTheCaller,
     TestNothingToSay,
@@ -138,6 +142,7 @@ from tests.test_brain import (  # noqa: F401
 )
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,
+    TestPunctuationIsSpokenNotSpelled,
     TestSpeechFilter,
 )
 from tests.test_station import (  # noqa: F401
@@ -195,6 +200,7 @@ from tests.test_docs import (  # noqa: F401
 )
 from tests.test_house_rules import (  # noqa: F401
     TestEverySkillWouldActuallyLoad,
+    TestEveryTestClassIsAggregated,
     TestNewCodeDoesNotArriveUntested,
     TestNoFileGrowsWithoutSomebodyDeciding,
     TestTheCommitGateIsStillWiredUp,

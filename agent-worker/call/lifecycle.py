@@ -149,6 +149,41 @@ _CLOSE_REASONS = {
 }
 
 
+def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
+    """Push-to-talk's other half: the widget says the turn is OVER.
+
+    Releasing the talk bar mutes the mic, and until now that was all it did
+    — the DJ then waited out its endpointing delay (0.3–2.5s here) against
+    a line that was already silent, which a beta tester's side-by-side read
+    correctly called out: mute and unmute, no commit. The bar release is
+    the one moment a caller explicitly says "your turn", so the widget now
+    announces it (`wavetalk.turn-end`) and this hands it to the session.
+
+    Guarded on the user actually being mid-turn: a release with nothing
+    said must not commit an empty turn and make the DJ answer silence —
+    normal endpointing already handled anything that finished earlier.
+    """
+
+    def _on_data(packet) -> None:
+        if getattr(packet, "topic", "") != "wavetalk.turn-end":
+            return
+        try:
+            if str(getattr(session, "user_state", "")) != "speaking":
+                return
+            # skip_reply stays False: committing IS the reply cue. The
+            # future is fire-and-forget — the transcript still arrives
+            # through the ordinary user_input_transcribed path.
+            session.commit_user_turn()
+        except RuntimeError:
+            pass          # session already draining; nothing to commit
+        except Exception as e:                                # noqa: BLE001
+            # An old SDK without the API degrades to the old behaviour —
+            # endpointing — rather than taking the call down.
+            log.info("turn commit unavailable: %s", e)
+
+    ctx.room.on("data_received", _on_data)
+
+
 def attach_close_reason(session: AgentSession, ended: dict) -> None:
     """Record why the session closed.
 

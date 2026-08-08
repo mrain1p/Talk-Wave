@@ -303,6 +303,7 @@ class CallSession:
 
         lifecycle.attach_close_reason(session, self.ended)
         lifecycle.attach_error_recovery(session, self.record)
+        lifecycle.attach_turn_commit(ctx, session)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard)

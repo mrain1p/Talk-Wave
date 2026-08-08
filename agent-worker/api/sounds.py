@@ -152,7 +152,10 @@ async def handle_sounds_list(request: web.Request) -> web.Response:
         uploads.append({
             "name": name,
             "secs": _wav_secs(path) if name.lower().endswith(".wav") else None,
-            "category": str((meta.get(name) or {}).get("category") or "upload"),
+            "category": str((meta.get(name) or {}).get("category") or "custom"),
+            # An upload's sound type is the OPERATOR's to declare — shipped
+            # clips get theirs from the catalog, uploads from this store.
+            "suggests": str((meta.get(name) or {}).get("suggests") or ""),
             "url": f"/sounds/{name}",
         })
     return _cors(request, web.json_response(
@@ -179,8 +182,31 @@ async def handle_sound_meta(request: web.Request) -> web.Response:
         return _cors(request, web.json_response(
             {"error": "no such sound"}, status=404))
     meta = _sound_meta()
-    meta.setdefault(name, {})["category"] = str(
-        (body or {}).get("category") or "")[:40] or "misc"
+    entry = meta.setdefault(name, {})
+    if "category" in (body or {}):
+        category = str(body.get("category") or "").strip()[:40]
+        # Blank CLEARS, per the settings invariant: the shipped clip falls
+        # back to its catalog category, an upload to "custom". Storing
+        # blank-as-misc is how a mistyped "test" became unremovable.
+        if category:
+            entry["category"] = category
+        else:
+            entry.pop("category", None)
+    if "suggests" in (body or {}):
+        # The sound-type declaration, uploads only in the UI but harmless
+        # anywhere. Unknown kinds are refused — a type the slots don't have
+        # would dangle a filter that can never match an assignment.
+        suggests = str(body.get("suggests") or "").strip()
+        legal = {"ring", "pickup", "hold", "hangup", "failed", "vm_beep"}
+        if suggests and suggests not in legal:
+            return _cors(request, web.json_response(
+                {"error": f"unknown sound type '{suggests}'"}, status=400))
+        if suggests:
+            entry["suggests"] = suggests
+        else:
+            entry.pop("suggests", None)
+    if not entry:
+        meta.pop(name, None)
     META_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(META_PATH, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)

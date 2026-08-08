@@ -53,8 +53,9 @@ The README is the short version. The detail lives here:
   call timer — every indicator driven by a real signal.
 - Caller actions get their own transcript line. The DJ *saying* it did
   something is a claim; that line is the receipt.
-- Synthesized ring, pickup, hold, hang-up and engaged tones, each replaceable
-  — see [Call sounds](docs/settings.md#call-sounds).
+- Ring, pickup, hold, hang-up and engaged tones from shipped sound sets — Exchange, Handset, Modern and Rotary synthesized in the box, plus recorded dial-up handshakes and genuine North American line tones (public domain, receipts in the catalog) — every slot replaceable from a searchable, filterable shelf of clips and your own uploads. The ring yields the moment the DJ answers. See [Call sounds](docs/settings.md#call-sounds).
+- An answering machine: staged per-persona greetings in each DJ's own voice, messages held for you or delivered to the station, and a kill switch that outranks everything — see [Voicemail](docs/VOICEMAIL.md).
+- Push to talk (per surface), with the bar release committing the turn so the DJ answers promptly instead of waiting out its endpointing delay. Per-DJ voice effects: each persona can wear its own radio colour — telephone, CB, shortwave, lo-fi and friends — applied in the caller's browser only.
 - In-character timeouts for silence and over-long calls; a caller who was just
   asked a question gets three times the usual wait — unless nothing has ever
   been heard from them, in which case the DJ says so, names the microphone as
@@ -76,7 +77,7 @@ The README is the short version. The detail lives here:
   segments, and — off by default because they reach every listener rather than
   the caller — skipping the current track and firing a programme beat. Sound
   effects and playlist rebuilds are **never** exposed at any setting. The panel
-  lists all 17 tools with each one's status, so the boundary is visible.
+  lists every tool with each one's status, so the boundary is visible.
 - Anything that changes something is a local wrapper, not a raw MCP call, so
   **Actions per call** caps it. That distinction is the ceiling: a tool served
   straight over MCP would have none.
@@ -94,10 +95,8 @@ The README is the short version. The detail lives here:
 - The caller's browser is optionally tuned into the stream at pickup, so
   stations that refuse requests at zero listeners accept them.
 
-**Operator panel** (its own page at `/panel`)
-- A dashboard up top: who is on air, whether the station is answering, who may
-  call, and the configured call chain — plus a **Pause all calls** button that
-  takes effect the moment it is pressed, no save, no restart.
+**Operator panel** (its own page at `/settings`; `/panel` redirects)
+- A dashboard up top in four labelled groups: **Transmission** — The Line's kill switch with a real toggle, and who may call — beside a **Station** group (who is on air, station health, the configured call chain), with **Live calls** and **Voicemail** each pairing their own switch with the traffic it produces. Every switch posts the moment it is pressed, no save, no restart; pausing the line holds the two doors in amber.
 - Every runtime choice below it: station, providers, permissions, limits, call
   behaviour, house style. Changes apply to the next caller.
 - API keys are entered in the section that uses them — model keys under
@@ -249,6 +248,8 @@ which repaints in place without dropping a call.
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |
 | `data-origin` | Widget origin when the script is served from elsewhere |
+| `data-mode="launcher"` | A floating call pill in the page corner instead of an inline card — it names who answers (or says the line is closed) before it is pressed, and opens the card in a panel above it, support-chat style. Collapsing the panel never hangs up a call in progress |
+| `data-position="left"` | Puts the launcher pill in the left corner (right is the default) |
 
 Any page you embed on can mint call tokens, so treat an embed as publishing the
 phone. Set a guest code if that isn't what you want.

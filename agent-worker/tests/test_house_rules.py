@@ -424,6 +424,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
             "three above.",
+        "agent-worker/tests/test_house_rules.py":
+            "one subject: how this repo is kept. It grows a rule per "
+            "incident — the aggregator sweep alone (0.10.5) came from two "
+            "test classes that had silently never run — and splitting the "
+            "rules about structure across files would defeat the point of "
+            "having one place that states them.",
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).
@@ -446,7 +452,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # aware. The seam is the back-to-air mention (send_on_air_callback and
         # its transcript summariser, ~100 lines): it runs AFTER the call, only
         # reads the session, and nothing during-call reads it back.
-        "agent-worker/call/lifecycle.py": (616, "an after-the-call module for "
+        "agent-worker/call/lifecycle.py": (651, "an after-the-call module for "
                                                 "the back-to-air mention"),
     }
 
@@ -589,3 +595,32 @@ class TestTheLogKeepsTheLinesThatMatter(unittest.TestCase):
         before = len(_logging.getLogger().handlers)
         log_setup.setup("tests-again", console=True)
         self.assertEqual(len(_logging.getLogger().handlers), before)
+
+
+class TestEveryTestClassIsAggregated(unittest.TestCase):
+    """test_sidecar.py is the one entry CI and the commit hook run — a class
+    that exists in tests/ but is not imported there NEVER RUNS, silently.
+    TestTheKillSwitchOutranksEveryDoor shipped that way in 0.9.153 and sat
+    green-by-absence for four releases; its first real run then failed on
+    its own assertions. The aggregator is a hand-written list, so this is
+    the test that reads both sides."""
+
+    def test_no_test_class_is_silently_skipped(self):
+        import ast
+        from pathlib import Path
+
+        tests_dir = Path(__file__).parent
+        defined = set()
+        for path in sorted(tests_dir.glob("test_*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in tree.body:
+                if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+                    defined.add(node.name)
+        aggregator = (tests_dir.parent / "test_sidecar.py").read_text(
+            encoding="utf-8")
+        missing = sorted(name for name in defined if name not in aggregator)
+        self.assertEqual(
+            [], missing,
+            "defined under tests/ but never imported by test_sidecar.py — "
+            "these classes DO NOT RUN in CI or the commit hook: "
+            f"{missing}")

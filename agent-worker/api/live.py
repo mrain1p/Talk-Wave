@@ -240,8 +240,12 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
             if cfg.get(k)
         },
         "voiceEffect": str(cfg.get("voice_effect") or "none"),
-        "voiceEffectLevel": max(0, min(100,
-            int(cfg.get("voice_effect_level") or 100))),
+        # Not `or 60`: a stored 0 is a real answer (the clean voice), and
+        # the old `or 100` silently turned intensity-zero into full blast.
+        # Blank only happens through the preview's unsaved patch.
+        "voiceEffectLevel": max(0, min(100, int(
+            lvl if (lvl := cfg.get("voice_effect_level")) not in ("", None)
+            else 60))),
         # In look_payload as well as /live: the panel's preview exists to
         # show what a setting does to the card, and this one can turn the
         # Call button into "Leave a message".
@@ -461,6 +465,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # had when nothing is set.
                     "sounds": {
                         "enabled": bool(cfg.get("call_sounds")),
+                        # Whether the ring yields (soft fade) at pickup —
+                        # the widget's engine reads it as cutRing:false to
+                        # keep the old let-it-finish behaviour.
+                        "cutRing": bool(cfg.get("ring_cut_at_pickup", True)),
                         "pack": sound_pack,
                         "ring": _resolved_sound(cfg, sound_pack, "ring"),
                         "pickup": _resolved_sound(cfg, sound_pack, "pickup"),

@@ -247,7 +247,10 @@
       sum.querySelector('.did').appendChild(wrap);
     }
     sum.querySelector('.dt').textContent =
-      (c.rating === 'down' ? '\ud83d\udc4e ' : c.rating === 'up' ? '\ud83d\udc4d ' : '')
+      // Neutral marks in the row's own ink \u2014 the emoji thumbs were the one
+      // thing on the page the theme could not colour. \u25b2\u25bc match the sort
+      // arrows' vocabulary: direction, no cartoon.
+      (c.rating === 'down' ? '\u25bc ' : c.rating === 'up' ? '\u25b2 ' : '')
       + v.note;
     el.appendChild(sum);
     el.appendChild(callBody(c));

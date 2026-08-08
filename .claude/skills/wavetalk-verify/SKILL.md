@@ -107,6 +107,29 @@ in CI, but locally node may be absent and the browser is the only parser in
 the room. A page that loads clean and paints its data is the bar; "the suite
 passed" is not.
 
+## Lessons paid for on 2026-08-08 — verify these WAYS, not just these things
+
+- **Verify hiding by `offsetParent === null`, never by the hidden attribute.**
+  An author `display` rule beats the UA's `[hidden]` rule; four separate
+  ghosts shipped while probes reported `el.hidden === true` and the element
+  sat fully visible. `TestHiddenActuallyHides` now sweeps markup-shipped
+  cases mechanically, but JS-toggled ones still need the visibility probe.
+- **Verify semantics, not activity.** "The sort ran" let sort-by-assignment-
+  count ship as sort-by-type; "the POST fired" let category edits revert on
+  the next repaint. Read the ORDER a sort produced; drive a repaint or a
+  reload over a save before believing it; count what a filter left behind.
+- **Long-file audio is its own test case.** The ring played OVER the pickup
+  and stacked copies of itself, invisible with the short synthesized tones.
+  After `stopRinging()` with a file-based ring, assert the engine's ring
+  Audio element is paused; play a 6-second file, not just the built-in.
+- **A control that talks to the session needs the session's word for it.**
+  Push-to-talk muted the mic and called it done; the SDK's end-of-turn is
+  `commit_user_turn`, and nothing local would ever have shown the gap —
+  no harness here places a real call. Real-call behaviours (turn latency,
+  ducking, what a caller actually hears) are only provable on the deployed
+  stack: after each pull, one real call with push-to-talk on is part of
+  verification, not an optional extra.
+
 ## What counts as done
 
 Report the observed result, not the intent. Name the thing you saw: the text that rendered, the

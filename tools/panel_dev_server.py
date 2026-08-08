@@ -246,9 +246,9 @@ class Handler(BaseHTTPRequestHandler):
                                "library": sound_assets.library(),
                                "uploads": [
                                    {"name": "my-ring.mp3", "secs": None,
-                                    "category": "upload", "url": "/sounds/my-ring.mp3"},
+                                    "category": "custom", "url": "/sounds/my-ring.mp3"},
                                    {"name": "old-bell.wav", "secs": 2.1,
-                                    "category": "upload", "url": "/sounds/old-bell.wav"},
+                                    "category": "custom", "url": "/sounds/old-bell.wav"},
                                ]})
         if path == "/voicemail/status":
             return self._json({"personas": [

@@ -839,3 +839,59 @@ class TestTheCloseReasonIsReadable(unittest.TestCase):
         # This runs on the way out of a call, after the audio is done but
         # before the on-air handoff.
         self.assertEqual(self._reason(None), "")
+
+
+class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
+    """Push-to-talk's release used to only mute — the DJ then waited out its
+    endpointing delay against a mic that was already shut, which a beta
+    tester's side-by-side correctly called out. The widget announces the
+    release (wavetalk.turn-end) and the worker commits the turn — but only
+    when the caller was actually mid-turn: committing silence would make
+    the DJ answer nothing."""
+
+    def _wire(self, user_state, raises=None):
+        from call import lifecycle
+
+        calls = []
+        handlers = {}
+
+        def commit(**kw):
+            if raises:
+                raise raises
+            calls.append(kw)
+
+        room = types.SimpleNamespace(on=lambda name, fn: handlers.update({name: fn}))
+        ctx = types.SimpleNamespace(room=room)
+        session = types.SimpleNamespace(user_state=user_state,
+                                        commit_user_turn=commit)
+        lifecycle.attach_turn_commit(ctx, session)
+        return handlers["data_received"], calls
+
+    def test_release_commits_only_a_turn_in_progress(self):
+        packet = types.SimpleNamespace(topic="wavetalk.turn-end")
+        fire, calls = self._wire("speaking")
+        fire(packet)
+        self.assertEqual(1, len(calls))
+        fire, calls = self._wire("listening")
+        fire(packet)
+        self.assertEqual([], calls)
+
+    def test_other_topics_and_a_draining_session_stay_harmless(self):
+        fire, calls = self._wire("speaking")
+        fire(types.SimpleNamespace(topic="vm-beep"))
+        self.assertEqual([], calls)
+        # A session already closing raises RuntimeError; the handler shrugs
+        # rather than letting one late release take the teardown down.
+        fire, _ = self._wire("speaking", raises=RuntimeError("draining"))
+        fire(types.SimpleNamespace(topic="wavetalk.turn-end"))
+
+    def test_the_widget_announces_the_release(self):
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("wavetalk.turn-end", js)
+        # Only a real open-to-closed transition on a live call announces —
+        # the voicemail machine has its own clock, and the initial
+        # post-connect close is not a caller finishing a sentence.
+        guard = js.split("wavetalk.turn-end")[0][-700:]
+        self.assertIn("wasOpen && !pttOpen && room && !vmCall", guard)

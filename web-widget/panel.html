@@ -118,14 +118,14 @@
          one is followed by the dash, the heading and the search. -->
     <h3 class="dashband">Dashboard</h3>
     <div class="dash">
-      <!-- The controls as one labelled group — TRANSMISSION, the operator's
-           own sketch: the line spans the top wearing a real switch, and the
-           two doors it feeds sit under it. Cards, not chips, in the tiles'
-           own grammar; press = act, all three post immediately. While the
-           line is paused the doors dim AND warm amber — held, not broken —
-           which is what finally tells the action cards apart from the
-           read-only tiles below. -->
-      <div class="transmission">
+      <!-- Four labelled groups (operator's sketch, round three): each door
+           lives WITH the traffic it produces — the Live calls toggle beside
+           the call records, the Voicemail toggle beside the messages — the
+           line and its access stand together as TRANSMISSION, and the three
+           who/what/how-it-thinks read-backs make one STATION group. Press =
+           act on every switch card; tiles jump. Paused still ambers the two
+           doors, wherever they sit. -->
+      <div class="dashgroup transmission">
         <p class="tlabel">Transmission</p>
         <div class="dashctrl">
           <button type="button" id="pauseBtn" class="ctrlcard kill">
@@ -134,17 +134,8 @@
             <span class="cn" id="pausedSub"></span>
             <span class="switch" aria-hidden="true"></span>
           </button>
-          <button type="button" id="modeLiveBtn" class="ctrlcard">
-            <span class="ck">Live calls</span>
-            <span class="cv"></span>
-            <span class="cn">the booth picks up</span>
-            <span class="switch small" aria-hidden="true"></span>
-          </button>
-          <button type="button" id="modeVmBtn" class="ctrlcard">
-            <span class="ck">Voicemail</span>
-            <span class="cv"></span>
-            <span class="cn">the machine answers</span>
-            <span class="switch small" aria-hidden="true"></span>
+          <button type="button" class="tile" id="tileAccess" data-jump="security">
+            <span class="tk">Who can call</span><span class="tv">—</span><span class="tn"></span>
           </button>
           <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
                  aria-hidden="true" />
@@ -155,26 +146,48 @@
         </div>
         <p class="dashmodesay" id="modeSay"></p>
       </div>
-      <div class="dashtiles">
-        <button type="button" class="tile" id="tileOnAir" data-jump="call">
-          <img class="tavatar" id="tileOnAirImg" alt="" hidden />
-          <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
-        </button>
-        <button type="button" class="tile" id="tileCalls">
-          <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
-        </button>
-        <button type="button" class="tile" id="tileVm">
-          <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
-        </button>
-        <button type="button" class="tile" id="tileStation" data-jump="station">
-          <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
-        </button>
-        <button type="button" class="tile" id="tileAccess" data-jump="security">
-          <span class="tk">Who can call</span><span class="tv">—</span><span class="tn"></span>
-        </button>
-        <button type="button" class="tile" id="tileChain" data-jump="brains">
-          <span class="tk">Brains · Voice · Ears</span><span class="tv">—</span><span class="tn"></span>
-        </button>
+      <div class="dashgroup livegroup">
+        <p class="tlabel">Live calls</p>
+        <div class="grouprow">
+          <button type="button" id="modeLiveBtn" class="ctrlcard">
+            <span class="ck">Live calls</span>
+            <span class="cv"></span>
+            <span class="cn">the booth picks up</span>
+            <span class="switch small" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="tile" id="tileCalls">
+            <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
+          </button>
+        </div>
+      </div>
+      <div class="dashgroup vmgroup">
+        <p class="tlabel">Voicemail</p>
+        <div class="grouprow">
+          <button type="button" id="modeVmBtn" class="ctrlcard">
+            <span class="ck">Voicemail</span>
+            <span class="cv"></span>
+            <span class="cn">the machine answers</span>
+            <span class="switch small" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="tile" id="tileVm">
+            <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
+          </button>
+        </div>
+      </div>
+      <div class="dashgroup stationgroup">
+        <p class="tlabel">Station</p>
+        <div class="grouprow">
+          <button type="button" class="tile" id="tileOnAir" data-jump="call">
+            <img class="tavatar" id="tileOnAirImg" alt="" hidden />
+            <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
+          </button>
+          <button type="button" class="tile" id="tileStation" data-jump="station">
+            <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
+          </button>
+          <button type="button" class="tile" id="tileChain" data-jump="brains">
+            <span class="tk">Brains · Voice · Ears</span><span class="tv">—</span><span class="tn"></span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -732,6 +745,8 @@
           <label for="call_volume">Default volume</label>
           <input type="number" id="call_volume" min="0" max="100" step="5" />
         </div>
+        <label class="check"><input type="checkbox" id="ring_cut_at_pickup" />
+          Ring yields at pickup</label>
         <!-- The six call moments as CARDS: what plays now, ▶ to hear it,
              press to change it. The six sound_X inputs below stay the real
              settings (Save diffs them, the server stores them); the cards
@@ -793,17 +808,33 @@
             <select id="shelfCat" class="shelfcat" aria-label="Filter by category">
               <option value="">All categories</option>
             </select>
+            <select id="shelfType" class="shelfcat" aria-label="Filter by sound type">
+              <option value="">All types</option>
+              <option value="ring">Rings</option>
+              <option value="pickup">Pick ups</option>
+              <option value="hold">On holds</option>
+              <option value="hangup">Hang ups</option>
+              <option value="failed">Can't connects</option>
+              <option value="vm_beep">Voicemail beeps</option>
+            </select>
           </div>
           <table class="soundboard" id="soundBoard" hidden>
             <thead><tr>
               <th data-sort="name" class="sortable">Sound</th>
               <th data-sort="secs" class="sortable">Length</th>
               <th data-sort="category" class="sortable">Category</th>
-              <th data-sort="used" class="sortable">Used for</th>
+              <th data-sort="used" class="sortable">Sound type</th>
               <th></th>
             </tr></thead>
             <tbody id="soundBoardBody"></tbody>
           </table>
+          <!-- Twelve rows a page: with the set defaults listed and four
+               packs shipped, the whole shelf stopped being a glance. -->
+          <div class="shelfpager" id="shelfPager" hidden>
+            <button type="button" class="btnquiet pprev">‹ Prev</button>
+            <span class="pcount hint" style="margin:0"></span>
+            <button type="button" class="btnquiet pnext">Next ›</button>
+          </div>
           <p class="hint wide">Want more? Good free sources:
             <a href="https://freesound.org/search/?f=license%3A%22Creative+Commons+0%22&q=telephone" target="_blank" rel="noopener">freesound.org</a>
             (filter to CC0) and
@@ -1095,6 +1126,13 @@
           card should appear. <strong>Nothing else to add</strong>: the script
           builds the iframe itself, microphone permission included.</p>
         <div class="row">
+          <label for="embedMode">Shape</label>
+          <select id="embedMode">
+            <option value="">Inline card — sits in the page where pasted</option>
+            <option value="launcher">Floating launcher — a call pill in the corner that opens the card</option>
+          </select>
+        </div>
+        <div class="row">
           <label for="embedTheme">Starting look</label>
           <select id="embedTheme">
             <option value="">Match the visitor's device</option>
@@ -1204,9 +1242,9 @@
           <button type="button" class="runbtn" id="callsOnlyBad"
                   title="Only calls with problems"><span class="bang">!</span> <span id="callsOnlyBadLabel"></span></button>
           <button type="button" class="runbtn" id="callsOnlyDown"
-                  title="Only calls the caller rated thumbs down">&#128078; <span></span></button>
+                  title="Only calls the caller rated thumbs down"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg> <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"
-                  title="Only calls the caller rated thumbs up">&#128077; <span></span></button>
+                  title="Only calls the caller rated thumbs up"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg> <span></span></button>
           <span class="grow"></span>
           <span class="tag" id="callCount"></span>
           <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>

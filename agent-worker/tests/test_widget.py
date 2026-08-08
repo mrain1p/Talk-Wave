@@ -1296,10 +1296,15 @@ class TestTheKillSwitchOutranksEveryDoor(unittest.TestCase):
         cls.panel = js["panel.js"]
 
     def test_a_paused_or_all_off_line_paints_closed(self):
-        closed = self.js.split("lineClosedNow = ")[1][:120]
+        # Anchored inside paintIdleButtons: a bare split matched the
+        # DECLARATION (`let lineClosedNow = false`) instead of the
+        # assignment, which this test only got to say once it was actually
+        # registered in test_sidecar.
+        painter = self.js.split("function paintIdleButtons")[1]
+        closed = painter.split("lineClosedNow = ")[1][:140]
         self.assertIn("d.callsPaused", closed)
         self.assertIn("d.liveCalls === false && !machineOn", closed)
-        branch = self.js.split("if (lineClosedNow) {")[1][:500]
+        branch = painter.split("if (lineClosedNow) {")[1][:500]
         self.assertIn("callBtn.disabled = true", branch)
 
     def test_the_closed_card_says_why_in_a_sentence(self):
@@ -1320,6 +1325,28 @@ class TestTheKillSwitchOutranksEveryDoor(unittest.TestCase):
         # The preview is a real card, so a paused line previews as closed —
         # the note is what stops that reading as the preview being broken.
         self.assertIn("previewLineNote", self.panel)
+
+
+class TestTheLauncherIsAPhoneInThePocket(unittest.TestCase):
+    """data-mode="launcher": a pill that opens the widget in a fixed panel.
+    Two promises worth pinning: collapsing hides and never unmounts —
+    tearing the frame down would hang up a live call — and the snippet
+    builder writes its data- attributes on the DIV, where embed.js actually
+    reads them (they shipped on the script tag once, silently doing
+    nothing)."""
+
+    def test_collapse_hides_and_never_unmounts(self):
+        js = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        self.assertIn("data-mode", js)
+        close_fn = js.split("function close()")[1][:500]
+        self.assertIn('display = "none"', close_fn)
+        self.assertNotIn("remove()", close_fn)
+        self.assertNotIn("iframe = null", close_fn)
+
+    def test_the_snippet_attrs_land_on_the_div(self):
+        pjs = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        snippet = pjs.split("function paintEmbedSnippet")[1][:1200]
+        self.assertIn("'<div id=\"subwave-callin\"' + attrs", snippet)
 
 
 class TestTheEmbedIsJustTheCard(unittest.TestCase):
@@ -1353,7 +1380,9 @@ class TestTheEffectHasADial(unittest.TestCase):
         import settings as settings_store
         from api.live import look_payload
 
-        self.assertEqual(100, settings_store.FIELDS["voice_effect_level"][1])
+        # 60 since 0.10.4: full character on every effect read as a costume
+        # party; 60 keeps the colour audible with the words in front.
+        self.assertEqual(60, settings_store.FIELDS["voice_effect_level"][1])
         self.assertEqual(40, look_payload(
             {"voice_effect": "cb", "voice_effect_level": 40},
             "X")["voiceEffectLevel"])
@@ -1450,3 +1479,74 @@ class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
         # The canary: the LAST load-bearing rule must still be reachable,
         # so a balanced-but-broken file still has to keep it intact.
         self.assertIn("body.measuring", css)
+
+
+class TestHiddenActuallyHides(unittest.TestCase):
+    """An author `display` beats the UA's [hidden] rule, and this codebase
+    has now paid for that four separate times: .guestgate (spot-fixed long
+    ago), the six URL rows sitting fully visible under the slot cards, the
+    empty picker menu floating as a ghost box, and the calls toolbar's
+    latent copy of the same fault. Every element the markup ships hidden
+    whose class also sets a display must carry a `.cls[hidden]` spot rule —
+    found mechanically, so the fifth one cannot ship."""
+
+    def test_every_shipped_hidden_element_can_actually_hide(self):
+        import re
+
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+        # Every selector whose SUBJECT (last compound) is class-based and
+        # whose body sets a display other than none. Ancestor context is
+        # ignored on purpose — over-matching there is a spot rule someone
+        # writes once, under-matching is the fifth shipped ghost.
+        subjects = []              # (tag or "", frozenset(classes))
+        for rule in css.split("}"):
+            if "{" not in rule:
+                continue
+            sel, body = rule.split("{", 1)
+            # (?!\s*none): without the inner \s* the outer \s* backtracks a
+            # space and the lookahead inspects " none", which passes.
+            if not re.search(r"display\s*:(?!\s*none\b)", body):
+                continue
+            for one in sel.split(","):
+                compound = one.strip().split()[-1] if one.strip() else ""
+                if "[hidden]" in compound or ":" in compound:
+                    continue
+                tag = (re.match(r"([a-z][\w-]*)", compound) or [None, ""])[1]
+                classes = frozenset(re.findall(r"\.([A-Za-z][\w-]*)", compound))
+                if classes:
+                    subjects.append((tag, classes))
+
+        unhideable = []
+        for page in ("index.html", "panel.html"):
+            html = (REPO / "web-widget" / page).read_text(encoding="utf-8")
+            for m in re.finditer(r"<(\w+)([^>]*)>", html):
+                tag, attrs = m.group(1), m.group(2)
+                cls = re.search(r'class="([^"]+)"', attrs)
+                # The ATTRIBUTE, not the word: class="avatar hidden" names a
+                # CSS class that hides by rule, not the browser attribute.
+                bare = attrs.replace(cls.group(0), "") if cls else attrs
+                if not re.search(r"\bhidden\b", bare):
+                    continue
+                if not cls:
+                    continue
+                el_classes = set(cls.group(1).split())
+                for sub_tag, sub_classes in subjects:
+                    if sub_tag and sub_tag != tag:
+                        continue
+                    if not sub_classes <= el_classes:
+                        continue
+                    # A spot rule re-hiding any of the element's classes is
+                    # the accepted fix; .pill's visibility reserve counts.
+                    if any(re.search(r"\." + re.escape(c) + r"[^,{]*\[hidden\]",
+                                     css) for c in el_classes):
+                        continue
+                    unhideable.append(
+                        f"{page}: <{tag} class=\"{cls.group(1)}\">")
+                    break
+
+        self.assertEqual(
+            [], sorted(set(unhideable)),
+            "these ship hidden but a display rule targets them, which beats "
+            "the UA's [hidden] rule — add a `.cls[hidden]` spot rule: "
+            f"{sorted(set(unhideable))}")

@@ -3,6 +3,65 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.6
+
+- **The dashboard's acting side fills the top**: Transmission on the left with Live calls and Voicemail stacked beside it — each door still paired with its own traffic — and the read-only Station strip full width underneath.
+- **The numbers say what they count**: Who-can-call reads *permissions — anyone 3 · guest 9 · admin 9* (tooltip naming the section that decides), and the Live calls door matches.
+- **The Voicemail card leads with its mode** — *fallback when the booth can't pick up* or *always on — voicemail-only* — before who may use it and where messages go.
+
+## 0.10.5
+
+- **The thumbs are line icons now** — the rating buttons on the card and the panel's rating filters draw in the theme's own ink instead of the yellow emoji hands, and rating marks in the records use ▲/▼. The one element every theme couldn't touch, gone.
+- The harness turned on itself, at the operator's prodding: a new test reads the aggregator against every class under tests/ (two classes existed that had **never run once** — one of them then failed its own first real run), and another sweeps every element shipped hidden against the stylesheet, so a fifth [hidden]-beaten ghost cannot ship. The verify skill learned the ways, not just the things: hiding is proven by visibility, sorts by the order they produce, saves through a repaint, and audio with a long file.
+- The README and settings reference catch up with the month: /settings as the panel's address, the four-group dashboard, voicemail, the sound shelf and shipped sets, per-DJ effects, push-to-talk turn commit, and the launcher embed's attributes.
+
+## 0.10.4
+
+### Releasing the talk bar ends the turn
+
+- **Push-to-talk's release now tells the DJ you're done.** It used to only mute — the DJ then waited out its endpointing delay against a mic that was already shut, up to a couple of seconds of dead air after every release. Credit to a beta tester's side-by-side reading for the catch. The widget announces the release; the worker commits the turn — and only when you were actually mid-sentence, so a stray tap never makes the DJ answer silence. An older worker simply ignores the announcement and behaves as before.
+- **Voice effect intensity defaults to 60** — colour you can hear with the words still in front. And a stored intensity of 0 now means the clean voice it says, instead of silently becoming full blast.
+
+### The shelf, listening to its first real user
+
+- **"Used for" is "Sound type" now, with its own filter** (Rings, Hang ups, Can't connects…) beside the category one — and sorting the column groups by type instead of shuffling by how many slots happened to use a clip.
+- **Real clips lead, set defaults trail**, so the rows you can act on aren't behind a page of read-only defaults.
+- **Uploads file under "custom" and declare their own type** — a little type picker on each upload row, saved as picked, feeding the filter and the sort.
+- **Blanking a category puts the clip back** to its shipped category (or "custom" for uploads) — a mistyped filing used to be unremovable, which is how a dial-up handshake ended up labelled "test" for good.
+- (Removing an upload was already there — the Remove button on its row — it just sat on a later page.)
+
+## 0.10.3
+
+### The floating launcher
+
+- **A third way to wear the widget**: `data-mode="launcher"` turns the embed into a floating call pill in the page corner — support-chat style — that names who answers ("📞 Call Francesca", "Leave a message", or "Line closed") before anyone presses it, and opens the card in a panel above. Collapsing the panel never hangs up a call in progress.
+- The embed section's snippet builder gained a **Shape** picker (inline card / floating launcher) — and while wiring it, a real bug fell out: the builder wrote `data-theme` and `data-captions` onto the *script* tag, where embed.js never looks, so those choices in copied snippets have silently done nothing. They land on the div now.
+
+## 0.10.2
+
+### The ring yields at pickup
+
+- **The ring stops (soft fade) the moment the DJ answers** — a long ringback used to keep singing over the hello, because only the ring *timer* stopped and the started file played to its end. A long ring also used to stack copies of itself every 2.6 seconds; now one plays at a time.
+- **"Ring yields at pickup"** in Call sounds turns the old behaviour back on if your ring is a jingle you want whole (not recommended). Short one-shots — the pickup click, a beep — are never cut either way.
+
+### The dashboard, four groups
+
+- **Each door lives with its own traffic**: the Live calls toggle sits beside the call records, the Voicemail toggle beside the messages. Transmission keeps The Line and Who-can-call; On air, Station and Brains·Voice·Ears make one Station group. No more toggle in one corner answering for a tile in the other.
+
+### The shelf tells the whole truth
+
+- **The set defaults are ON the shelf now** — five synthesized sounds per set plus the classic beep, playable in place, marked *default*, with a used-for chip when a slot is actually falling through to them.
+- **Twelve rows a page** — with the defaults and four packs the shelf passed thirty rows; the pager keeps it a glance, and a filter always lands you back on page one.
+- **Every clip says what it was made for** — a dashed *for Can't connect* chip on a busy signal that isn't assigned yet, straight from the catalog's new suggested-use field.
+
+## 0.10.1
+
+### Real recordings on the shelf
+
+- **The Landline set** — seven genuine North American line sounds, recorded not synthesized: dial tone, ringback, two busy signals, touch-tone dialing, the "please hang up and try again" intercept, and the off-hook howl.
+- **Loose clips with character**: coins dropping into a metal box, radio static, morse-code SOS — and the actual White House phone recording from the 1981 government shutdown, for a hold message with a story.
+- All public-domain or CC0 from Wikimedia Commons, converted to the shelf's WAV shape, with each clip's exact source and licence recorded in the catalog. The shelf now holds 24 clips across four packs and seven categories.
+
 ## 0.10.0
 
 The night's work, rolled up: the sound board, the Transmission
