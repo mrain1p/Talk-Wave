@@ -496,17 +496,19 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.assertIn(rule, self.css)
 
-    def test_the_line_area_is_always_the_same_three_lines(self):
-        # Reserved from first paint at a fixed height, the same on every
-        # surface. Three lines of 12.5px/1.45 plus 9px padding each side plus
-        # the border — three rather than two because the box carries more
-        # than speech now: the door code and the post-call strip live inside
-        # it instead of being bands that grew the card.
+    def test_the_line_area_is_reserved_at_a_fixed_height(self):
+        # Reserved from first paint at a fixed height — the invariant is that
+        # the box NEVER resizes mid-call, not the particular number. Four
+        # lines of 12.5px/1.45 plus 9px padding each side plus the border on
+        # the standalone card (was three; the operator asked for more of the
+        # conversation on screen, 2026-08-09); the embed keeps two, because
+        # its height is a promise to the host page's layout.
         block = self.css.split(".linebox {")[1].split("}")[0]
         self.assertIn("height: var(--lines-h)", block)
         self.assertNotIn("height: auto", block)
-        self.assertIn("--lines-h: 75px", self.css)
-        # No per-surface override left: one height, chosen once.
+        self.assertIn("--lines-h: 93px", self.css)
+        # No per-surface override left except compact's own value: one
+        # height per surface, chosen once.
         self.assertNotIn("body:not(.compact) { --lines-h", self.css)
 
     def test_only_reading_back_a_finished_call_may_change_it(self):
