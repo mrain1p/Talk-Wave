@@ -10,9 +10,11 @@
 #   - copy .env.example -> .env; LIVEKIT_PUBLIC_URL must be what the BROWSER
 #     reaches (wss://... via your reverse proxy), not the internal name
 #   - make ./data usable by the container's user (see the volume note below)
-#   - put a reverse proxy (Caddy/Traefik/nginx) in front of port 8100, set
-#     CALLIN_ALLOWED_ORIGINS to your real origins and CALLIN_ADMIN_KEY to a
-#     secret before this is reachable beyond your LAN
+#   - the caddy service below is the TLS front door (browsers only grant the microphone on HTTPS
+#     origins). Already running your own reverse proxy? Delete it and terminate TLS there — but
+#     carry over BOTH routes from the Caddyfile: the widget to token-server:8100 AND /rtc to
+#     livekit-server:7880, or calls connect with no audio. Either way, set CALLIN_ALLOWED_ORIGINS
+#     to your real origins and CALLIN_ADMIN_KEY to a secret before this is reachable beyond your LAN
 #   - set SUBWAVE_STREAM_URL to the station's PUBLIC https stream. Serving the
 #     widget over TLS (which the bundled caddy below does, and which browsers
 #     require for the microphone) means the caller's browser will refuse the

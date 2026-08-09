@@ -203,6 +203,16 @@ only allow the microphone on HTTPS origins; the first visit shows a one-time
 certificate screen. Add an API key, run the pipeline check, press Call. Plain
 `http://<HOST_IP>:8100` works for everything except placing calls.
 
+**Do you need the bundled Caddy?** Only for TLS, and only because the
+microphone requires it — it is the zero-config way to get an HTTPS origin on a
+LAN. If you already run a reverse proxy (Caddy, Traefik, nginx, a NAS's built
+in one), delete the `caddy` service and terminate TLS there instead — but
+replicate both routes from the `Caddyfile`, not just one: the widget to
+`token-server:8100` **and** `/rtc` to `livekit-server:7880` (WebSocket). The
+`/rtc` half is the one people forget; without it the page loads, the call
+connects, and no audio ever flows. Set `LIVEKIT_PUBLIC_URL` to
+`wss://your-hostname` so the browser signals through the same origin.
+
 ### Local, no Docker (Windows)
 
 ```powershell
