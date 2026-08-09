@@ -181,6 +181,29 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
         )
 
 
+class TestTheCallHarnessOnlyDialsLocal(unittest.TestCase):
+    """tools/call_harness.py places REAL calls — a minted token dispatches an
+    agent job that spends LLM and TTS money and, on the live box, occupies the
+    concurrency slot. The master plan's toolbox rule is 'never mint a token
+    against the live deployment', so the harness hard-refuses any non-localhost
+    server with no override flag: a convenience flag is how 'never' becomes
+    'once, by accident'. Source-read from here (the harness itself needs a
+    running stack, which the suite must never touch) in the same way
+    TestWidgetServerContract reads the widget."""
+
+    def test_the_refusal_exists_and_has_no_escape_hatch(self):
+        src = (REPO / "tools" / "call_harness.py").read_text(encoding="utf-8")
+        self.assertIn("refuse_remote(args.server)", src,
+                      "the harness no longer checks its target before minting")
+        self.assertIn('("localhost", "127.0.0.1", "::1")', src,
+                      "the localhost allowlist changed shape — make sure it "
+                      "still refuses everything else")
+        for flag in ("--remote-ok", "--force", "--i-know", "--unsafe"):
+            self.assertNotIn(flag, src,
+                             "the guard has grown an override flag; remove it "
+                             "— pointing this at a deployment is never right")
+
+
 class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
     """CLAUDE.md is loaded into every agent's context, so a stale path there is
     worse than no path — it sends the next person (or model) confidently to a
