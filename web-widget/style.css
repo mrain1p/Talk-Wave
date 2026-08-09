@@ -61,12 +61,15 @@
        height it was the tallest band on a card whose actual subject is the
        conversation below it. */
     --action-h: 26px;
-    /* THREE lines of 12.5px/1.45 speech (18.125px each), plus the box's own
+    /* FOUR lines of 12.5px/1.45 speech (18.125px each), plus the box's own
        9px padding top and bottom and its 1px border. Reserved from first
-       paint and never changed — see .linebox. Three rather than two because
-       the box carries more than speech now: the door code fits inside it,
-       and the post-call strip overlays its bottom edge. */
-    --lines-h: 75px;
+       paint and never changed — see .linebox. Was three; the operator asked
+       for more of the conversation on screen (2026-08-09), and on the
+       standalone page the card is the only thing there — the extra line is
+       the cheapest reading surface available. The embed keeps two lines
+       (--lines-h below in body.compact): that height is a promise to the
+       host page's layout. */
+    --lines-h: 93px;
 
     /* Legacy aliases — settings panel only. */
     --bg: var(--pine); --panel: var(--granite);
@@ -768,36 +771,41 @@
   .linebox:has(.ticker.show) #status { display: none; }
   .captions::-webkit-scrollbar { width: 8px; }
   .captions::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 0; }
-  /* A gutter wide enough for the longest label and no wider. It has been
-     86px and then 62 — twice and then one-and-a-half times what "You" needs —
-     and in a 430px embed the transcript's own text paid for the spare width
-     in wrapped lines. 44px still lets both speakers' text start on the same
-     edge, which is what makes this read as a script rather than columns. */
+  /* The label runs INLINE with the speech. It was a right-aligned gutter
+     column — 86px, then 62, then 44 — and at every width the operator read
+     the same thing: dead space to the left of the words, and continuation
+     lines indented past it. Inline, the label costs its own width once and
+     every wrapped line gets the full box. The tint still says who is
+     speaking; the script-column look was the thing being paid for, and
+     nobody was buying it (operator, 2026-08-09). */
   .cap {
-    display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 9px;
-    margin: 0 0 6px; align-items: baseline;
-    /* minmax(0,1fr) plus the min-width/white-space below is what actually
-       stops a long turn from pushing the grid wider than its container. */
-    max-width: 100%;
+    display: block; margin: 0 0 6px; max-width: 100%;
+    /* What stops a long unbroken turn pushing wider than the container. */
+    overflow-wrap: break-word; word-break: break-word;
   }
   .cap:last-child { margin-bottom: 0; }
   .cap .who {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
-    text-transform: uppercase; font-weight: 700; text-align: right;
-    white-space: nowrap;
+    text-transform: uppercase; font-weight: 700;
+    white-space: nowrap; margin-right: 8px;
   }
   /* Identity is carried by the label and REINFORCED by a text tint, never
      replaced by it — tinted body text at 13.5px has to stay readable. */
   .cap.dj .who { color: var(--coral); }
   .cap.you .who { color: var(--cool); }
   .cap .said {
-    color: var(--alpenglow); min-width: 0; max-width: 100%;
+    color: var(--alpenglow);
     white-space: normal; overflow-wrap: break-word; word-break: break-word;
     font-size: 12.5px; font-weight: 400; line-height: 1.45;
   }
   .cap.dj .said { color: var(--alpenglow); }
   .cap.you .said { color: var(--sage); }
-  .cap.interim .said { color: var(--sage-dim); font-style: italic; }
+  /* Interim speech is dimmer, and that is ALL it is. It was italic too, and
+     italics re-measure every word each time the recogniser revises the line
+     — a few times a second — which read as the text twitching while you
+     talked. The finalisation flip is now a colour change only, which the eye
+     reads as settling rather than movement. */
+  .cap.interim .said { color: var(--sage-dim); }
 
   /* A change should register as movement, not as text that was simply
      different when you looked back. Same rise-and-fade the host uses for
@@ -816,7 +824,9 @@
     border-left: 2px solid var(--coral);
     border-radius: 0;
     padding: 7px 9px; margin: 9px 0;
-    grid-template-columns: 20px minmax(0, 1fr); gap: 9px;
+    /* display here, not inherited: .cap stopped being a grid when the
+       speech labels went inline, and this card's icon column still is one. */
+    display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 9px;
     align-items: start;
   }
   .cap.sys .ico { font-size: 12.5px; line-height: 1.2; text-align: center; }
@@ -2110,7 +2120,9 @@
        the standalone page the card is the only thing on screen, and the
        reading surface is what the extra 18px is worth spending on. */
     .linebox.open { height: 44vh; }
-    .cap, .ticker { grid-template-columns: 44px minmax(0, 1fr); }
+    /* .cap is a block with inline labels now; only the ticker keeps a grid,
+       and its column is already as narrow as the labels allow. */
+    .ticker { grid-template-columns: 26px minmax(0, 1fr); }
     /* Nothing gets ellipsized while most of the screen sits empty: text
        wraps onto new lines, and the now-playing track takes a full row of
        its own instead of a squeezed corner.
@@ -2277,7 +2289,10 @@
      station page mid-call. The row is always two lines tall whether it holds
      nothing, one line or a paragraph, so the frame stops moving. */
   .ticker {
-    display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 9px;
+    /* 26px fits "YOU", the widest label, with nothing spare — this row keeps
+       its grid (unlike .cap) because it reserves exact height for the host
+       page, but the 44px script gutter went with the transcript's. */
+    display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 7px;
     align-items: baseline; padding: 0;
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;

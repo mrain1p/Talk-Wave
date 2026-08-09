@@ -203,6 +203,16 @@ only allow the microphone on HTTPS origins; the first visit shows a one-time
 certificate screen. Add an API key, run the pipeline check, press Call. Plain
 `http://<HOST_IP>:8100` works for everything except placing calls.
 
+**Do you need the bundled Caddy?** Only for TLS, and only because the
+microphone requires it — it is the zero-config way to get an HTTPS origin on a
+LAN. If you already run a reverse proxy (Caddy, Traefik, nginx, a NAS's built
+in one), delete the `caddy` service and terminate TLS there instead — but
+replicate both routes from the `Caddyfile`, not just one: the widget to
+`token-server:8100` **and** `/rtc` to `livekit-server:7880` (WebSocket). The
+`/rtc` half is the one people forget; without it the page loads, the call
+connects, and no audio ever flows. Set `LIVEKIT_PUBLIC_URL` to
+`wss://your-hostname` so the browser signals through the same origin.
+
 ### Local, no Docker (Windows)
 
 ```powershell
@@ -236,6 +246,12 @@ it would open nothing.
 |---|---|
 | `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. The toggle cycles light → dark → the station's show colours (when the panel has them on offer) → match the page. Omit for OS preference |
 | `data-lock-theme="true"` | Pin `data-theme` outright and remove the toggle, for a page that needs one look |
+| `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
+| `data-height="260px"` | Frame height for tight layouts |
+| `data-compact="false"` | Full card instead of the compact one |
+| `data-origin` | Widget origin when the script is served from elsewhere |
+| `data-mode="launcher"` | A floating call pill in the page corner instead of an inline card — it names who answers (or says the line is closed) before it is pressed, and opens the card in a panel above it, support-chat style. Collapsing the panel never hangs up a call in progress |
+| `data-position="left"` | Puts the launcher pill in the left corner (right is the default) |
 
 **The station's own colours** are not an embed attribute — set **Player
 settings → Colours → "The station's own colours"** in the panel and every
@@ -244,12 +260,6 @@ station's `/themes` (a host's `data-theme` is only the starting point, so it
 does not block this). A host page can also push its own palette *and fonts*
 into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` —
 which repaints in place without dropping a call.
-| `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
-| `data-height="260px"` | Frame height for tight layouts |
-| `data-compact="false"` | Full card instead of the compact one |
-| `data-origin` | Widget origin when the script is served from elsewhere |
-| `data-mode="launcher"` | A floating call pill in the page corner instead of an inline card — it names who answers (or says the line is closed) before it is pressed, and opens the card in a panel above it, support-chat style. Collapsing the panel never hangs up a call in progress |
-| `data-position="left"` | Puts the launcher pill in the left corner (right is the default) |
 
 Any page you embed on can mint call tokens, so treat an embed as publishing the
 phone. Set a guest code if that isn't what you want.

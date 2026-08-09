@@ -125,10 +125,17 @@ passed" is not.
 - **A control that talks to the session needs the session's word for it.**
   Push-to-talk muted the mic and called it done; the SDK's end-of-turn is
   `commit_user_turn`, and nothing local would ever have shown the gap —
-  no harness here places a real call. Real-call behaviours (turn latency,
-  ducking, what a caller actually hears) are only provable on the deployed
-  stack: after each pull, one real call with push-to-talk on is part of
-  verification, not an optional extra.
+  at the time no harness here placed a real call. Since 2026-08-09 one does:
+  `tools/call_harness.py` (venv python, local stack via run-local.ps1) joins a
+  real room against the real worker, times answer/greeting/turn, and can speak
+  a WAV and record the DJ's reply — use it after any change to the call path.
+  It is localhost-only by design. What it still cannot prove — ducking, the
+  widget's own controls, what a caller's browser actually hears — remains a
+  deployed-stack check: after each pull, one real call with push-to-talk on is
+  part of verification, not an optional extra. Local gotcha: a dev-box guest
+  code means --guest-code, or a second token server in first-run mode
+  (TOKEN_SERVER_PORT=8101 with ADMIN_AUTH_PATH pointed at a file that does
+  not exist).
 
 ## What counts as done
 

@@ -208,6 +208,7 @@ from tests.test_house_rules import (  # noqa: F401
     TestEveryTestClassIsAggregated,
     TestNewCodeDoesNotArriveUntested,
     TestNoFileGrowsWithoutSomebodyDeciding,
+    TestTheCallHarnessOnlyDialsLocal,
     TestTheCommitGateIsStillWiredUp,
     TestTheLogKeepsTheLinesThatMatter,
     TestTheRoutingTableIsInOnePlace,

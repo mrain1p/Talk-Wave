@@ -3,6 +3,38 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.15
+
+Covers 0.10.9 through 0.10.15 — the changelog had fallen behind main.
+
+### The call
+
+- **Push to talk is the default on both surfaces.** A fresh install read the old open-mic default as broken — mic hot from pickup, a spacebar that did nothing. Open mic stays a per-surface choice.
+- **A request the station matches late gets announced anyway**: a background poll surfaces the resolved track at the DJ's next quiet moment, skips it if the caller already knows, and the record gains a problem line when a title never surfaces at all.
+- **The record flags a DJ repeating itself** — the idle ladder once made the model echo its own line three times running, visible only to a human reading the transcript. Now the transcript says so.
+
+### The transcript on the card
+
+- **Speaker labels run inline with the words** — the dead gutter to the left of the speech is gone, and every wrapped line gets the full width of the box.
+- **The text stops twitching while anyone talks**: interim speech updates in place instead of replaying the rise-and-fade on every revision, and the italic flicker on unfinished lines is now a quiet colour settling.
+- **The standalone card shows four lines of conversation** instead of three. Embeds keep two — that height is a promise to the host page's layout.
+
+### Models on your own endpoint
+
+- **The Brains model list is read from wherever the calls will actually go**: point `llm_base_url` at your own server (llama.cpp, vLLM, LM Studio, llama-swap) and the dropdown lists that endpoint's own models instead of api.openai.com's — paste, reload, pick, save.
+- **A model the server does not route gets named alternatives** instead of a bare 404 mid-call.
+
+### Deploying
+
+- **Containers get names a person can read**: `wavetalk-worker`, `wavetalk-web`, `livekit-server`, `wavetalk-caddy` — no more `stack-wavetalk-wavetalk-worker-1` in your GUI.
+- **Redeploys stop killing calls mid-shutdown**: `stop_grace_period: 2m` on the worker, because Docker's 10-second default SIGKILLed the transcript write, the slot release and the wrap-up line.
+- **When you need the bundled Caddy — and when you don't — is written down**: it exists only because browsers grant the microphone to HTTPS origins; bring your own proxy and it can go, provided you carry over both routes (the widget *and* `/rtc`, the one people forget).
+- The README's embed-attribute table renders as a table again, and the docs cover the theme toggle's four looks.
+
+### For anyone hacking on it
+
+- **The repo can finally place its own calls**: `tools/call_harness.py` dials the local stack for real (timings, a spoken line, a recording of the DJ side), and `tools/call_scenarios.py` walks nine call shapes — live, voicemail, fallback, push to talk, timeouts, tool use — on a scratch stack with every on-air path forced off.
+
 ## 0.10.8
 
 - **/panel is retired outright.** /settings has been the panel's one address since 0.9.151; the old name kept answering as a redirect, and now it doesn't answer at all — update any bookmark or reverse-proxy rule still pointing at /panel. Every mention in the panel's own help, the docs and the dev tooling now says /settings.

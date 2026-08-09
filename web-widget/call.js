@@ -1159,20 +1159,30 @@
   // frame twitched on the first word of every call. A zero-width space is a
   // line box with a baseline and nothing to read.
   const NBSP_LINE = '​';
-  function setLine(el, text) {
+  function setLine(el, text, animate) {
     const t = text || NBSP_LINE;
-    if (!el || el.textContent === t) return;      // only animate real changes
+    if (!el || el.textContent === t) return;
     el.textContent = t;
-    if (text) rollIn(el);                         // never animate the blank
+    if (text && animate) rollIn(el);              // never animate the blank
   }
 
   let tickerTimer = null;
+  // What the ticker last showed, so a growing interim line can be told from
+  // a new turn. The recogniser rewrites the SAME sentence a few times a
+  // second while someone talks, and replaying the rise-and-fade on each
+  // rewrite made the line flicker for the whole turn — operator-reported as
+  // "volatile, keeps flashing". Only a fresh turn moves now; a line that is
+  // merely growing updates in place.
+  let tickerWho = '', tickerText = '';
   function showTicker(who, text) {
     const t = $('ticker');
     if (!t) return;
+    const fresh = who !== tickerWho
+      || !(text.startsWith(tickerText) || tickerText.startsWith(text));
+    tickerWho = who; tickerText = text;
     t.querySelector('.who').textContent =
       who === 'dj' ? 'DJ' : (who === 'sys' ? '•' : 'You');
-    setLine(t.querySelector('.line'), text);
+    setLine(t.querySelector('.line'), text, fresh);
     t.hidden = false;
     t.classList.add('show');
     t.classList.toggle('sys', who === 'sys');
