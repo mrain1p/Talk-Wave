@@ -43,8 +43,15 @@ services:
   # ONE deployment variable: HOST_IP — the LAN address of the machine running this stack. It drives
   # the LiveKit media address, the URL browsers connect to, and the webhook callback. Set it in .env
   # or your stack GUI's environment panel; every service below derives from it.
+  #
+  # Every service pins container_name because without it compose derives <project>-<service>-1 and
+  # a stack GUI reads "stack-wavetalk-wavetalk-worker-1" where a person wants "wavetalk-worker".
+  # The cost — no `--scale` on a named service — is nothing here: the ports are fixed anyway.
+  # In-network DNS still uses the SERVICE names (token-server, livekit-server), so the URLs below
+  # are unaffected.
   livekit-server:
     image: livekit/livekit-server:v1.13.5
+    container_name: livekit-server
     # Without --node-ip a containerized LiveKit advertises its CONTAINER IP as the media address —
     # signalling works, audio never flows, calls hang at "Ringing". The pipeline's "Browser media
     # path" stage catches this.
@@ -67,10 +74,16 @@ services:
 
   agent-worker:
     image: ghcr.io/mrainone7p/wave-talk:latest
+    container_name: wavetalk-worker
     build:
       context: .
       dockerfile: agent-worker/Dockerfile
     restart: unless-stopped
+    # Docker's default is 10 seconds and then SIGKILL — which lands mid-call on redeploy: the
+    # worker's own shutdown budget is 60s (transcript write, slot release, the wrap-up line), and
+    # a kill inside it loses all three. Two minutes covers the budget with room; `compose down`
+    # only actually waits when a call is up.
+    stop_grace_period: 2m
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
@@ -111,6 +124,7 @@ services:
 
   token-server:
     image: ghcr.io/mrainone7p/wave-talk:latest
+    container_name: wavetalk-web
     build:
       context: .
       dockerfile: agent-worker/Dockerfile
@@ -163,6 +177,7 @@ services:
   # station webhook callback.
   caddy:
     image: caddy:2
+    container_name: wavetalk-caddy
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

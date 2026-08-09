@@ -25,6 +25,14 @@ Not part of test_sidecar on purpose: it needs the venv (livekit), a running
 stack, and working STT/LLM/TTS backends. The suite stays stdlib-only and
 network-free; this is the tool for the layer the suite structurally cannot
 see.
+
+One caution that has already bitten: this dials the local stack ON ITS REAL
+SETTINGS, and the dev .env points at the real station. With
+`callback_enabled` on, a scripted call that reaches two caller turns fires
+the back-to-air handoff — a real line, spoken on real air (it happened; Wade
+mentioned the harness's test call to the station's listeners). Prefer
+call_scenarios.py, which forces every on-air path off; if you use this
+directly, check the callback and permission settings first.
 """
 
 from __future__ import annotations
