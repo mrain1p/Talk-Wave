@@ -73,6 +73,34 @@ class TestAMoodIsNotASearch(unittest.TestCase):
         self.assertFalse(looks_like_a_vibe(None))
 
 
+class TestLikingTheTrackOnAir(unittest.TestCase):
+    """A caller liking the record on air is the same heart any listener taps —
+    public at the station, low-harm, off by default. Added on the operator's
+    ask (2026-08-10). The gate is what's load-bearing: it must not build unless
+    the operator switched it on."""
+
+    def _names(self, cfg):
+        from call.tools.music import build_library_tools
+        from call.actions import CallActions
+
+        class _Station:
+            async def now_playing(self):
+                return {"nowPlaying": {"id": "s1", "title": "X", "artist": "Y"}}
+
+            async def like_track(self, song_id):
+                return {"ok": True, "count": 3}
+
+            async def search_library(self, q):
+                return []
+
+        built = build_library_tools(cfg, _Station(), CallActions(5))
+        return {t.info.name for t in built}
+
+    def test_the_like_tool_is_gated_by_allow_favorite(self):
+        self.assertNotIn("subwave_like_track", self._names({}))
+        self.assertIn("subwave_like_track", self._names({"allow_favorite": True}))
+
+
 class TestALateMatchStillReachesTheCaller(unittest.TestCase):
     """The station's resolver can land after the request tool has already
     answered. Observed on a real call (2026-08-08): the station matched

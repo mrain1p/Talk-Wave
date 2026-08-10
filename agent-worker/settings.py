@@ -102,6 +102,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Off by default: it bypasses the station's own request rate limit, so it
     # leans entirely on `max_actions_per_call` to keep one caller in check.
     "allow_exact_queue":  (None, "off"),
+    # The lowest-harm action there is: a like on the current record, exactly
+    # what any listener taps in the app — no credentials, no audio changed.
+    # Off by default only for consistency; the station's own Likes toggle and
+    # per-IP rate limit are the real gates.
+    "allow_favorite":     (None, "off"),
     # Off by default: this puts audio on air on the caller's say-so. Skills
     # are the station's own segments (weather, news, dedications, story
     # time…). Safe-ish, but a stranger triggers them. (Sound effects were
@@ -477,6 +482,7 @@ TIERED_PERMISSIONS = (
     "allow_requests",
     "allow_library_search",
     "allow_exact_queue",
+    "allow_favorite",
     "allow_announcements",
     "allow_skills",
     "allow_skip_track",
@@ -792,6 +798,11 @@ SCHEMA: dict[str, dict] = {
         help="Queues the recording the caller chose out of the search results, "
              "rather than re-matching the words. Skips the station's request rate "
              "limit, so Actions per call is the only thing pacing it."),
+    "allow_favorite": dict(group="perms", kind="select", tiered=True, label="Like the track on air",
+        help="Adds a like to the record playing now — the same heart a listener taps "
+             "in the app, so it needs no station credentials and changes no one's "
+             "audio. The station gates it on its own Likes toggle and rate-limits it "
+             "per caller. Likes the CURRENT track only; there is no un-like from a call."),
     "allow_announcements": dict(group="perms", kind="select", tiered=True, label="Put messages on air",
         admin=True,
         help="Hands a line to the on-air DJ to read in persona."),

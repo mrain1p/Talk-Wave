@@ -435,6 +435,39 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
         tools.append(request_song)
 
+    if cfg.get("allow_favorite"):
+        @lk_llm.function_tool(name="subwave_like_track")
+        async def like_track() -> str:
+            """Add a like to the track playing RIGHT NOW — the same heart a
+            listener taps in the app. Use it when the caller says they love
+            this one, or asks to favourite what's on. It likes the CURRENT
+            record only: there is no way to like some other track from here,
+            and no un-like, so don't offer either."""
+            if actions.at_limit():
+                return actions.refusal()
+            np = await station.now_playing()
+            track = (np or {}).get("nowPlaying") or {}
+            song_id = str(track.get("id") or track.get("songId") or "")
+            res = await station.like_track(song_id)
+            if not res.get("ok"):
+                return (
+                    f"That like didn't go through: "
+                    f"{res.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — don't claim it worked."
+                )
+            name = _fmt_track(track) if track.get("title") else "the current track"
+            actions.note("like", name)
+            if res.get("alreadyLiked"):
+                return (
+                    f"Already liked — {name} was on the board already, so the count "
+                    "didn't move. Say so warmly."
+                )
+            count = res.get("count")
+            tail = f" That's {count} now." if isinstance(count, int) and count else ""
+            return f"Done — added a like to {name}.{tail} Say it back in your own voice."
+
+        tools.append(like_track)
+
     return tools
 
 

@@ -79,10 +79,16 @@ REPORT_THE_OUTCOME = """\
 A typed request that vanishes with no word back is the one thing that makes
 this feel like shouting into a void, so ALWAYS come back with what actually
 happened, in your own voice:
-- Wait for the tool's result before you claim anything. It's fine to say
-  "let me get the board sorted" while it runs — but the NEXT thing you type is
-  the real outcome, not a guess. Never say a request went in, a show changed,
-  or a track queued until the tool told you it did.
+- Say something FIRST, then reach for the tool. A search or a request takes a
+  few seconds, and a caller watching the typing dots with no word has no idea
+  anything is happening — 30 seconds of that reads as broken. So type one short
+  line in your own voice BEFORE you call the tool — "hold on, let me dig through
+  the racks", "on it — checking what we've got" — and THEN make the call. It
+  streams to them straight away, so the wait has a voice on it.
+- Wait for the tool's result before you claim anything: that opening line is the
+  only thing you type until it comes back, and the NEXT thing you type is the
+  real outcome, not a guess. Never say a request went in, a show changed, or a
+  track queued until the tool told you it did.
 - If it worked, say so concretely: what you did, and what they'll hear.
 - If it DIDN'T — the show name didn't match, a takeover was already running,
   the station refused, it came back unconfirmed — say that plainly and offer

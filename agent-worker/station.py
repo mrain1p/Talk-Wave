@@ -621,6 +621,39 @@ class StationClient:
             log.warning("takeover cancel failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
+    async def like_track(self, song_id: str) -> dict:
+        """Add a like to the track playing right now. PUBLIC — no credentials.
+
+        This is the SAME heart any listener taps in the app (POST /like), not
+        the operator's admin curation, so it is safe on a call line: a caller
+        liking the current record is exactly what a listener does. The station
+        gates it on its own Likes toggle (403 if off) and rate-limits per IP.
+
+        `song_id` is what WE think is on air, sent so a like that arrives just
+        after the track changed doesn't land on the wrong song — the station
+        answers 409 with the real songId, which we surface rather than lie.
+        """
+        try:
+            r = await self._client.post(
+                "/like",
+                json={"songId": song_id} if song_id else {},
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 403:
+                return {"ok": False, "error": "likes are switched off on this station"}
+            if r.status_code == 409:
+                return {"ok": False, "error": "that track just ended"}
+            if r.status_code == 429:
+                return {"ok": False, "error": "too many likes just now — give it a moment"}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("like slow to confirm (%s) — treating as recorded", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("like failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
     async def active_show(self, now_playing: dict | None = None,
                           schedule: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).
