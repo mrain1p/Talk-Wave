@@ -317,6 +317,82 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertGreater(int(settings_store.FIELDS["chat_reprompt_secs"][1]), 0)
         self.assertTrue(hasattr(ChatSession("c1", "open"), "nudge"))
 
+    def test_the_nudge_lands_as_one_dj_turn(self):
+        # Drive nudge() end to end with a faked station, prompt and model: it
+        # must stream a line and land it as a DJ turn (not vanish, not double).
+        from chat import session as chat_session
+        import brain.assemble as assemble_mod
+        import call.providers as providers_mod
+
+        class _FakeStation:
+            async def resolve_live_persona(self):
+                return {"name": "Ash"}
+
+            async def aclose(self):
+                pass
+
+        class _Stream:
+            def __init__(self, text):
+                self._chunks = [types.SimpleNamespace(
+                    delta=types.SimpleNamespace(content=text, tool_calls=[]))]
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self._chunks:
+                    raise StopAsyncIteration
+                return self._chunks.pop(0)
+
+            async def aclose(self):
+                pass
+
+        class _Model:
+            def chat(self, chat_ctx=None, tools=None):
+                return _Stream("Still weighing it up?")
+
+            async def aclose(self):
+                pass
+
+        async def _fake_prompt(*a, **k):
+            return "SYS"
+
+        orig = (chat_session.StationClient, assemble_mod.build_system_prompt,
+                providers_mod.build_llm)
+        chat_session.StationClient = _FakeStation
+        assemble_mod.build_system_prompt = _fake_prompt
+        providers_mod.build_llm = lambda cfg: _Model()
+        try:
+            chat = chat_session.ChatSession("n1", "open")
+            chat.turns.append(("dj", "Hey, Ash here."))
+            events = []
+            asyncio.run(chat.nudge({}, events.append))
+        finally:
+            (chat_session.StationClient, assemble_mod.build_system_prompt,
+             providers_mod.build_llm) = orig
+
+        self.assertEqual(events[-1]["type"], "done")
+        self.assertTrue(any("weighing" in (e.get("text") or "") for e in events))
+        self.assertEqual(chat.turns[-1], ("dj", "Still weighing it up?"))
+
+    def test_the_handler_nudges_on_a_receive_timeout(self):
+        # The WS loop waits with a timeout while the ball is in the caller's
+        # court and fires the nudge when it lands — verified as wiring so a
+        # refactor can't quietly drop it (aiohttp re-raises asyncio.TimeoutError
+        # from receive(timeout=), which this must catch).
+        import inspect
+
+        from api import chat as chat_api
+
+        src = inspect.getsource(chat_api)
+        self.assertIn("ws.receive(timeout=", src)
+        self.assertIn("asyncio.TimeoutError", src)
+        self.assertIn("chat.nudge", src)
+        self.assertIn("chat_reprompt", src)
+        # And it must not fire before the caller has said anything — nudging
+        # right after the greeting reads as pushy (review, 2026-08-10).
+        self.assertIn("caller_spoke", src)
+
     def test_a_canned_greeting_speaks_first_in_the_djs_name(self):
         from chat import session as chat_session
 

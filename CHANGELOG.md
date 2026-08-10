@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.44
+
+- **The quiet-caller nudge waits for the caller to speak first.** It no longer fires right after the opening greeting — nudging someone 15 seconds after "you're through to the booth" read as pushy. It only kicks in once a real conversation is underway.
+
+## 0.10.43
+
+No behaviour change — a review pass that put tests around the things the last few releases had shipped untested: the quiet-caller nudge lands as one DJ turn, the idle check-in stays silent while the DJ is the one working, and the four embed shapes were verified end to end.
+
 ## 0.10.42
 
 Waiting, quiet, and a longer log — the seconds where a line feels alive or dead.
