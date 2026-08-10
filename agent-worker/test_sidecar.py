@@ -122,6 +122,7 @@ from tests.test_tools_surface import (  # noqa: F401
     TestTheDJDescribesRecordsItHasInformationAbout,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
 )
 from tests.test_music_tools import (  # noqa: F401
@@ -137,6 +138,7 @@ from tests.test_takeover import (  # noqa: F401
     TestTheStationEndpointsAreTheOnesUpstreamServes,
 )
 from tests.test_brain import (  # noqa: F401
+    TestTheDJKnowsTheStationsShows,
     TestACallerCanBeToldNothingIsKept,
     TestBrainSplit,
     TestCallerContext,
