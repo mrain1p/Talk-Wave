@@ -105,6 +105,62 @@ class ChatSession:
         finally:
             await station.aclose()
 
+    async def nudge(self, cfg: dict, on_event) -> None:
+        """The caller has gone quiet with the ball in their court. ONE short,
+        in-persona line to keep the line breathing — a text chat that sits
+        silent after its own last message feels dead and turn-based (operator's
+        ask). Explicitly NOT "are you still there?": this is a conversation, not
+        a roll call. No tools; fired once per silence by the WS idle timer."""
+        import secrets_store
+        secrets_store.apply_to_env()
+
+        from livekit.agents import llm as lk_llm
+
+        from brain.assemble import build_system_prompt
+        from call.providers import build_llm
+
+        station = StationClient()
+        try:
+            persona = await station.resolve_live_persona()
+            self.persona_name = persona.get("name") or self.persona_name
+            prompt = await build_system_prompt(station, persona, cfg=cfg,
+                                               mode="chat")
+            ctx = lk_llm.ChatContext.empty()
+            ctx.add_message(role="system", content=prompt)
+            for who, said in self.turns[-12:]:
+                ctx.add_message(role="user" if who == "caller" else "assistant",
+                                content=said)
+            ctx.add_message(role="user", content=(
+                "[The caller has gone quiet since your last message — they "
+                "haven't typed for a little while. Type ONE short, warm line in "
+                "your own voice to keep the conversation breathing: pick the "
+                "thread back up, or lightly offer a next thing. NOT 'are you "
+                "still there?' — this is a chat, not a roll call — and no "
+                "question they must answer to stay. A light nudge, then leave "
+                "it with them.]"))
+            model = build_llm(cfg)
+            out = ""
+            try:
+                stream = model.chat(chat_ctx=ctx)
+                async for chunk in stream:
+                    delta = getattr(chunk, "delta", None)
+                    if delta and delta.content:
+                        out += delta.content
+                        on_event({"type": "delta", "text": delta.content})
+                await stream.aclose()
+            finally:
+                try:
+                    await model.aclose()
+                except Exception:                              # noqa: BLE001
+                    pass
+            out = out.strip()
+            if out:
+                self.turns.append(("dj", out))
+                self.last_active = time.time()
+            on_event({"type": "done", "text": out, "dj": self.persona_name})
+        finally:
+            await station.aclose()
+
     async def _fresh_greeting(self, cfg, station, persona) -> str:
         """One short in-persona opener, written at open. The same prompt a
         reply uses, with no tools and a single instruction — the voicemail

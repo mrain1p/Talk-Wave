@@ -175,7 +175,7 @@ def _already_named(session, title: str) -> bool:
 
 async def _surface_late_match(
     station: StationClient, rid: str, get_session=None, air=None, record=None,
-    delays=None,
+    delays=None, actions=None,
 ) -> None:
     """Keep asking the station what a request matched, and pass it on.
 
@@ -187,6 +187,11 @@ async def _surface_late_match(
     track: dict = {}
     position = None
     for delay in (_LATE_MATCH_DELAYS if delays is None else delays):
+        # The caller is waiting on THIS, so hold the 'DJ is working' flag across
+        # the whole poll — otherwise the idle watcher reads the quiet as the
+        # caller having left and asks "still there?" (the Zeppelin call).
+        if actions is not None:
+            actions.mark_working(delay + 10)
         await asyncio.sleep(delay)
         try:
             st = await station.request_status(str(rid))
@@ -411,7 +416,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 # the DJ can name the pick when it lands.
                 spawn(_surface_late_match(station, str(rid),
                                           get_session=get_session, air=air,
-                                          record=record))
+                                          record=record, actions=actions))
                 if ack:
                     actions.note("request", text[:120])
                     return f"It's in the queue, not on air yet. Station says: {ack}"
@@ -467,6 +472,32 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             return f"Done — added a like to {name}.{tail} Say it back in your own voice."
 
         tools.append(like_track)
+
+    if cfg.get("allow_unfavorite") and not library_search_needs_mcp():
+        @lk_llm.function_tool(name="subwave_unlike_track")
+        async def unlike_track() -> str:
+            """Remove the operator's heart from the track playing RIGHT NOW.
+            Admin only. This undoes the OPERATOR's own curation heart on the
+            current record — not a listener's public like, which cannot be
+            undone. Use it when a signed-in operator asks to un-favourite what's
+            on. Likes the current track only; there is no arbitrary song here."""
+            if actions.at_limit():
+                return actions.refusal()
+            np = await station.now_playing()
+            track = (np or {}).get("nowPlaying") or {}
+            song_id = str(track.get("id") or track.get("songId") or "")
+            res = await station.unlike_track(song_id)
+            if not res.get("ok"):
+                return (
+                    f"That didn't go through: "
+                    f"{res.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — don't claim it worked."
+                )
+            name = _fmt_track(track) if track.get("title") else "the current track"
+            actions.note("unlike", name)
+            return f"Done — took the heart off {name}. Say it back in your own voice."
+
+        tools.append(unlike_track)
 
     return tools
 

@@ -331,6 +331,8 @@ window.Callin = (function () {
       why: 'Queues that exact recording from the search results, not a re-match.' },
     { group: 'request', need: 'allow_favorite', say: '“I love this one — give it a like.”',
       why: 'Adds your like to the track on air, the same heart a listener taps.' },
+    { group: 'request', need: 'allow_unfavorite', say: '“Actually, take the like off this.”',
+      why: 'Removes the operator’s heart from the current track — admin only.' },
     { group: 'request', need: 'allow_requests', say: '“Where’s my song in the running order?”',
       why: 'Reads its real position — “third up, about ten minutes” rather than a guess.' },
     // --- on the air (reaches every listener) ---

@@ -100,6 +100,23 @@ class TestLikingTheTrackOnAir(unittest.TestCase):
         self.assertNotIn("subwave_like_track", self._names({}))
         self.assertIn("subwave_like_track", self._names({"allow_favorite": True}))
 
+    def test_the_unlike_tool_is_admin_gated_and_needs_credentials(self):
+        # Un-hearting is the operator's curation, over an admin endpoint, so it
+        # must not even build without station credentials — and never without
+        # its own switch. Pretend creds exist to prove the switch, then confirm
+        # that with no creds it stays gone even when switched on.
+        from call.tools import music
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False   # as if creds were set
+        try:
+            self.assertNotIn("subwave_unlike_track", self._names({}))
+            self.assertIn("subwave_unlike_track", self._names({"allow_unfavorite": True}))
+        finally:
+            music.library_search_needs_mcp = orig
+        # No credentials in this env, so it cannot be built at all.
+        self.assertNotIn("subwave_unlike_track", self._names({"allow_unfavorite": True}))
+
 
 class TestALateMatchStillReachesTheCaller(unittest.TestCase):
     """The station's resolver can land after the request tool has already

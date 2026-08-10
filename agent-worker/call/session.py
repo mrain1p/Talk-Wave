@@ -328,7 +328,7 @@ class CallSession:
         lifecycle.attach_turn_commit(ctx, session)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
-                                    heard=self.heard)
+                                    heard=self.heard, actions=self.actions)
         lifecycle.attach_time_limit(ctx, session, cfg)
         ctx.add_shutdown_callback(self._on_shutdown)
 

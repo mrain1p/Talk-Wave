@@ -2153,6 +2153,14 @@
     text-overflow: ellipsis;
   }
   .logline .lm { color: var(--dim); overflow-wrap: anywhere; }
+  /* Pages back through older lines — the tail (newest) shows first. Sits at the
+     top of the buffer, above the lines it reveals. */
+  .logmore {
+    display: block; width: 100%; margin: 0 0 4px; padding: 5px 8px;
+    background: transparent; border: 1px dashed var(--line2); border-radius: 6px;
+    color: var(--dim); font-size: 11px; cursor: pointer;
+  }
+  .logmore:hover { color: var(--text); border-color: var(--edge); }
   @media (max-width: 620px) {
     /* Three fixed columns plus a message do not fit; the logger is the one
        that can go, and it stays in the row's title. */
