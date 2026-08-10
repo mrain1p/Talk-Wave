@@ -389,6 +389,9 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertIn("asyncio.TimeoutError", src)
         self.assertIn("chat.nudge", src)
         self.assertIn("chat_reprompt", src)
+        # And it must not fire before the caller has said anything — nudging
+        # right after the greeting reads as pushy (review, 2026-08-10).
+        self.assertIn("caller_spoke", src)
 
     def test_a_canned_greeting_speaks_first_in_the_djs_name(self):
         from chat import session as chat_session

@@ -172,18 +172,22 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
     chat = None
     msg_times: list[float] = []
     nudged = False
+    caller_spoke = False
     try:
         while True:
             # When the ball is in the CALLER's court, wait only so long before
             # the DJ nudges once — a text line that sits silent after its own
             # last message feels dead and turn-based (operator's ask). On by
             # default; the switch and interval are settings. Never repeated
-            # (reset when they type) and never while a turn is mid-flight, so it
-            # can't fire while the DJ is the one still owing a reply.
+            # (reset when they type), never while a turn is mid-flight (so it
+            # can't fire while the DJ is the one still owing a reply), and NOT
+            # until the caller has actually said something — nudging 15s after
+            # the opening greeting, before they've typed a word, reads as pushy
+            # rather than warm, which is the opposite of the point.
             reprompt = (
                 float(cfg.get("chat_reprompt_secs") or 0)
                 if cfg.get("chat_reprompt", True) and chat is not None
-                and not nudged and not chat.lock.locked()
+                and caller_spoke and not nudged and not chat.lock.locked()
                 else 0
             )
             try:
@@ -266,8 +270,10 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 if not text:
                     continue
                 # They typed — the ball is back with the DJ, so the next silence
-                # earns a fresh nudge.
+                # earns a fresh nudge, and from here on a nudge is allowed at all
+                # (it never fires before the caller's first message).
                 nudged = False
+                caller_spoke = True
                 # The flood brake, per chat: a human types a handful of
                 # messages a minute; a script does not.
                 now = time.time()
