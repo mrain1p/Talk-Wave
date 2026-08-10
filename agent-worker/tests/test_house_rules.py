@@ -224,6 +224,25 @@ class TestTheCallHarnessOnlyDialsLocal(unittest.TestCase):
                              "— pointing this at a deployment is never right")
 
 
+class TestTheToolEvalUsesFakeTools(unittest.TestCase):
+    """tools/tool_eval.py runs the REAL model (`build_llm`) to MEASURE whether
+    the DJ fires the right tool on a caller line — but the tools it hands the
+    model are FAKE: they only record what was called and return a canned
+    string, so an eval run can never take over a show, request a song, or make
+    any sound on a live station. Source-read from here (a run needs a provider
+    key and a live model, which the suite must never do); this also keeps the
+    dev harness NAMED in the suite, the coverage floor every module owes."""
+
+    def test_the_tools_are_fake_and_the_station_is_never_touched(self):
+        src = (REPO / "tools" / "tool_eval.py").read_text(encoding="utf-8")
+        self.assertIn("FIRED.append", src)   # tools only RECORD
+        self.assertIn("FAKE tools", src)      # and say so
+        # No real station client or MCP toolset is built — the model is handed
+        # the recording stubs, nothing that reaches the booth.
+        self.assertNotIn("StationClient", src)
+        self.assertNotIn("MCPToolset", src)
+
+
 class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
     """CLAUDE.md is loaded into every agent's context, so a stale path there is
     worse than no path — it sends the next person (or model) confidently to a

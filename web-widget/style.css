@@ -547,6 +547,13 @@
      looks broken until it isn't. */
   /* --- level meters ------------------------------------------------------ */
   .meters { display: flex; gap: var(--band-gap); padding: 9px 0 0; flex-wrap: nowrap; }
+  /* Volume sits to the LEFT, so the two WAVEFORMS — YOU and DJ — sit next to
+     each other where they can be read as a pair, rather than split by the
+     volume rail between them (operator's ask). Order only; the DOM keeps the
+     you/vol/dj sequence the reservation logic relies on. */
+  .meters .vol { order: -1; }
+  .meters .meter.you { order: 0; }
+  .meters .meter.dj { order: 1; }
   /* Floors, not just flex: squeezed by the volume rail, the You meter once
      shrank until "MIC OFF" wrapped into a two-line tower and the DJ meter
      left the row entirely. From the operator's live call. */
@@ -2443,6 +2450,12 @@
      Unconditional now: every band that used to render outside the rig lives
      inside it, so there is nothing to jump when a call starts. */
   body.compact .card .rig { margin-top: auto; }
+  /* ...EXCEPT the text line, which should FILL the frame rather than sink to
+     the bottom with a tall empty gap above the greeting (operator-reported
+     from an embed: "blank space above the text box"). The transcript flexes,
+     so filling here puts the conversation up top and the input at the bottom
+     with no dead band between the header and the chat. */
+  body.compact .card[data-mode="chat"] .rig { margin-top: 0; flex: 1 1 auto; }
   /* Idle in an embed the Call button is the frame's one action, sized like
      the host page's own bottom-row buttons rather than a chip beside them —
      including in HEIGHT: the station page's Send and Listen Live are ~44px,
@@ -2576,6 +2589,48 @@
     /* Status chips likewise: they share one row edge to edge instead of
        breaking into a ragged second line. */
     .actionrow .pill { flex: 1 1 auto; justify-content: center; }
+  }
+
+  /* --- mobile: a whole-phone experience ----------------------------------
+     On a phone the standalone player becomes the real thing — a call, a text
+     line, or a voicemail, not a card floating on a page. The DJ's face LEADS
+     (the top quarter), the words and state sit in the middle, and the actions
+     pin to the bottom where a thumb expects them. Standalone only: an embed
+     lives inside a host page and keeps its compact shape. */
+  @media (max-width: 500px) {
+    body:not(.panelpage):not(.compact) {
+      padding: 0; min-height: 100dvh;
+      align-items: stretch; justify-content: flex-start;
+    }
+    body:not(.panelpage):not(.compact) .card {
+      width: 100%; min-height: 100dvh; border: 0; border-radius: 0;
+      display: flex; flex-direction: column; padding: 0 20px 20px;
+    }
+    /* Identity as a centred PORTRAIT — the call-screen look. The text line
+       keeps a tight left-aligned header so the conversation gets the room. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row {
+      flex-direction: column; align-items: center; text-align: center;
+      gap: 12px; padding: 7vh 0 18px;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar {
+      width: 124px; height: 124px;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .meta { flex: 0 0 auto; }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj { font-size: 22px; }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .show { text-align: center; }
+    /* Now-playing drops below the name, centred, instead of clinging to a
+       right edge that no longer exists in a column. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .track {
+      margin: 2px 0 0; max-width: 100%; padding-left: 0; text-align: center;
+      align-self: center;
+    }
+    /* The working half fills the middle; the action row is the bottom of the
+       screen. A generous tap target for the one big action. */
+    body:not(.compact) .card .rig { flex: 1 1 auto; margin-top: 0; }
+    body:not(.compact) .actionrow #callBtn,
+    body:not(.compact) .actionrow #hangBtn,
+    body:not(.compact) .actionrow #vmBtn,
+    body:not(.compact) .actionrow #chatBtn { height: 52px; font-size: 12px; }
   }
 
   /* --- the panel's live preview ------------------------------------------
