@@ -286,6 +286,13 @@
   // actually switched on, so it can never suggest something the DJ would
   // refuse. What a caller CANNOT do is deliberately left out: that list is
   // for the operator deciding what to allow, not for a stranger on the line.
+  // What the ask popup depends on: the permission set AND the tier that names
+  // it. A change in either has to repaint it — the tier alone drives the
+  // "whose menu this is" chip, and the two do not always move together.
+  function askSignature(d) {
+    return JSON.stringify([(d && d.callerTier) || null, (d && d.canAsk) || null]);
+  }
+
   function paintAskPopup(canAsk) {
     const host = $('askPopList');
     if (!host) return;
@@ -981,15 +988,19 @@
         // read the load-time palette as a show change. Any tokens it re-sets
         // are the ones the line above just applied.
         followStationPalette(d);
-        lastCanAsk = JSON.stringify(d.canAsk || null);
+        lastCanAsk = askSignature(d);
       } else {
         followStationPalette(d);
         // A tier change (signing in or out) changes what this caller may ask
         // and which corner controls apply — rebuild those, but ONLY when the
-        // menu actually changed, so an ordinary poll never rebuilds the popup
-        // under the caller's finger. This is what makes sign-out drop the
-        // on-air group the same way sign-in added it.
-        const nowCanAsk = JSON.stringify(d.canAsk || null);
+        // signature actually changed, so an ordinary poll never rebuilds the
+        // popup under the caller's finger. This is what makes sign-out drop the
+        // on-air group the same way sign-in added it. The signature carries the
+        // TIER as well as the menu: an admin whose permissions happen to match
+        // a guest's still needs the "for the operator" label, and without the
+        // tier in the key a guest→admin switch left the popup saying "for guest
+        // callers" until the page was reloaded (operator-reported 2026-08-10).
+        const nowCanAsk = askSignature(d);
         if (nowCanAsk !== lastCanAsk) {
           lastCanAsk = nowCanAsk;
           setupAskPopup(d.canAsk);
@@ -1797,7 +1808,18 @@
       const { token, url, room: roomName } = await res.json();
       currentRoom = roomName;
 
-      room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+      // Echo cancellation, noise suppression and auto-gain set EXPLICITLY, not
+      // left to whatever the client library defaults to this version: they are
+      // what a phone in a room full of the station's own output needs to be
+      // transcribed, and on a speakerphone the echo canceller is the only thing
+      // keeping the DJ's voice out of the caller's transcript. Stated here so
+      // the README can promise them and mean it.
+      room = new LivekitClient.Room({
+        adaptiveStream: true, dynacast: true,
+        audioCaptureDefaults: {
+          echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+        },
+      });
 
       // Nobody has to answer. If the worker is down, mid-restart, or never
       // gets dispatched, the room connects fine and then nothing happens —

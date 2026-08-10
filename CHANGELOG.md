@@ -3,9 +3,17 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.37
+## 0.10.38
 
-More of the same polish, closer to the edges — leaving a message, the narrow phone, and the seconds before the DJ speaks.
+More of the same polish, closer to the edges — leaving a message, the narrow phone, signing in, and the seconds before the DJ speaks.
+
+### Signing in
+
+- **The "what can I ask?" list now names the tier you're actually on.** Signing in from guest to operator on the card, without a reload, relabels the menu to "for the operator" and reopens the actions your tier unlocks — it used to keep saying "for guest callers" until you refreshed.
+
+### Voice
+
+- **The caller's microphone is cleaned up before it's heard** — echo cancellation, noise suppression and automatic gain are on by default, so the station playing in a caller's room isn't transcribed over their own speaker, and on a speakerphone the DJ's voice stays out of the caller's transcript. The README and settings now spell out when a cloud STT or TTS is worth the upgrade over the local defaults.
 
 ### Voicemail
 
