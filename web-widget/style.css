@@ -694,10 +694,11 @@
   /* Open mic is a state like muted, not a second primary — the fill only
      arrives while the bar is genuinely live. */
   .card .pttbar {
-    /* Taller than the buttons beside it — it is the primary control on a call
-       and it is HELD, not tapped, so it wants a thumb-sized target. It was
-       36px and the operator reported it hard to press. */
-    flex: 1 1 auto; min-width: 0; height: 46px; padding: 0;
+    /* 36px here, 60px on phones (media block below). The "hard to press"
+       report that grew this bar was about THUMBS — the operator later
+       clarified desktop was never the problem — so the tall target is a
+       phone-only treatment and regular screens keep the ordinary height. */
+    flex: 1 1 auto; min-width: 0; height: 36px; padding: 0;
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 3px;
     border: 1px solid var(--amber); background: transparent; color: var(--amber);
@@ -1425,50 +1426,52 @@
      you change anything below. Bordered and above the fold because none of it
      is one of the settings — the button acts immediately, and the tiles are
      read-back rather than input. */
-  /* Four labelled groups (operator's sketch, round four): the ACTING side
-     fills the top — Transmission on the left, the two doors it feeds
-     stacked beside it — and the read-only Station strip runs full width
-     underneath. Each door still sits with the traffic it produces.
-     Stacks to one column when narrow. */
+  /* The newspaper order (spec §2b): the read-only station strip leads —
+     four columns directly under the masthead — then TRANSMISSION with its
+     LINES indented beneath THE LINE, each door beside the traffic it
+     produces. Stacks to one column when narrow. */
   .dash {
     margin: 0 0 16px; padding: 12px 13px;
     border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
-    display: grid; gap: 10px;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
-    /* Transmission spans the left; the three MODES — live calls, voicemail,
-       the text line — stack on the right as parallel switch+traffic cards;
-       Station's read-only tiles run full width underneath. The text line
-       used to have no grid-area at all, so it fell out of the grid and sat
-       orphaned below everything (operator-reported "ugly"). */
-    grid-template-areas: "trans live" "trans vm" "trans chat" "station station";
-    align-items: stretch;
+    display: flex; flex-direction: column; gap: 10px;
   }
-  .dash > .transmission { grid-area: trans; }
-  .dash > .livegroup { grid-area: live; }
-  .dash > .vmgroup { grid-area: vm; }
-  .dash > .chatgroup { grid-area: chat; }
-  .dash > .stationgroup { grid-area: station; }
+  .stationstrip {
+    display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
   .dashgroup {
     border: 1px solid var(--line2); border-radius: 10px;
     padding: 9px 10px 8px; display: flex; flex-direction: column;
   }
-  .grouprow {
-    display: grid; gap: 8px; grid-auto-rows: 1fr; flex: 1;
-    grid-template-columns: repeat(2, 1fr);
+  /* Caption row: the group's micro-label left, the what-it-amounts-to
+     sentence right, sharing one rule. */
+  .dashcaption {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
   }
-  .stationgroup .grouprow { grid-template-columns: repeat(3, 1fr); }
-  .transmission .dashctrl { flex: 1; grid-template-columns: 1fr; }
+  .dashcaption .dashmodesay { margin: 0; text-align: right; }
+  .lines { margin-top: 8px; }
+  .lineslabel {
+    margin: 0 0 2px; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+    color: var(--sage-dim);
+  }
+  .lineslabel em {
+    font-style: normal; font-weight: 400; letter-spacing: .04em;
+    color: var(--sage-dim); margin-left: 8px; text-transform: none;
+  }
+  /* One row per line: the switch card takes the width, the stat pair keeps
+     a fixed right column so numbers line up down the block. */
+  .linerow {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+    gap: 8px; align-items: stretch;
+  }
   @media (max-width: 940px) {
-    .dash {
-      grid-template-columns: 1fr;
-      grid-template-areas: "trans" "live" "vm" "chat" "station";
-    }
+    .stationstrip { grid-template-columns: repeat(2, 1fr); }
   }
   @media (max-width: 700px) {
-    .grouprow, .stationgroup .grouprow { grid-template-columns: 1fr; }
+    .stationstrip { grid-template-columns: 1fr; }
+    .linerow { grid-template-columns: 1fr; }
   }
-  @media (max-width: 940px) { .dash { grid-template-columns: 1fr; } }
-  .dashmain { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
   /* The real field behind the button. Not `hidden` and not display:none —
      both remove it from the form in ways that have surprised people before —
      but it must not be clickable, focusable or visible, because clicking it
@@ -1561,17 +1564,6 @@
     position: absolute; width: 1px; height: 1px; overflow: hidden;
     clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
   }
-  /* Sized and coloured like the thing it is. Every other button on this page
-     is a test or a save; this one closes the line for everybody. */
-  /* The dashboard's controls are CARDS in the tiles' own grid — same
-     columns, same height, same radius — because a chip row floating above
-     a card grid read as two pages sharing a corner. Operator-reported.
-     Structure per card: micro label / state word / one-line note. All
-     three post the moment they're pressed. */
-  .dashctrl {
-    display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 1fr;
-  }
   /* Every dashboard group carries the same micro-label voice. The box
      itself is .dashgroup, defined with the dash grid above. */
   .dashgroup .tlabel {
@@ -1579,8 +1571,7 @@
     letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
     color: var(--sage-dim);
   }
-  .transmission .dashmodesay { margin: 8px 2px 0; }
-  .ctrlcard.kill { grid-column: 1 / -1; position: relative; padding-right: 66px; }
+  .ctrlcard.kill { position: relative; padding-right: 66px; }
   .ctrlcard { position: relative; }
   /* Drawn switches, so every card READS as the toggle it is — the whole
      card is still the button; the switch is its state, not a second
@@ -1602,19 +1593,19 @@
   .ctrlcard.on .switch::after,
   .ctrlcard.kill:not(.paused) .switch::after { left: 20px; }
   .ctrlcard.kill.paused .switch { background: var(--accent); }
-  /* The two doors wear smaller switches than the master — same vocabulary,
+  /* The three lines wear smaller switches than the master — same vocabulary,
      lower rank. Their cards make room on the right. */
-  .dashctrl .ctrlcard:not(.kill) { padding-right: 48px; }
+  .linerow .ctrlcard:not(.kill) { padding-right: 48px; }
   .ctrlcard .switch.small { width: 30px; height: 17px; right: 11px; }
   .ctrlcard .switch.small::after { width: 13px; height: 13px; }
   .ctrlcard.on .switch.small::after { left: 15px; }
-  /* Held, not broken: while the line is paused the two doors keep saying
+  /* Held, not broken: while the line is paused the three lines keep saying
      which way they point, dimmed and warmed amber — waiting, in the state
      vocabulary, rather than off or at fault. */
-  .dashctrl .ctrlcard:disabled {
+  .linerow .ctrlcard:disabled {
     border-color: color-mix(in srgb, var(--warn) 55%, var(--line2));
   }
-  .dashctrl .ctrlcard:disabled .cv { color: var(--warn); }
+  .linerow .ctrlcard:disabled .cv { color: var(--warn); }
   .ctrlcard {
     display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
     padding: 9px 11px; min-height: 64px; border-radius: 10px;
@@ -3034,6 +3025,107 @@
   body.panelpage .ctrlcard .switch.small { width: 30px; height: 17px; }
   body.panelpage .ctrlcard .switch.small::after { width: 13px; height: 13px; top: 2px; left: 2px; }
   body.panelpage .ctrlcard.on .switch.small::after { left: 15px; }
+
+  /* --- spec §2b/§6: the station strip and the LINES hierarchy -------------- */
+  /* The four read-backs as one ruled strip under the masthead: columns, not
+     cards — each tile keeps only its own ink and the strip carries the rule. */
+  body.panelpage .stationstrip {
+    border-bottom: 1px solid var(--hairline); padding-bottom: 6px;
+  }
+  body.panelpage .stationstrip .tile { border-bottom: 0; }
+  /* Square avatar, per the spec's data-avatar note — circles are the one
+     rounded shape left on a page that zeroed every other radius. */
+  body.panelpage .stationstrip .tavatar { border-radius: 0; }
+  body.panelpage .dashcaption {
+    border-bottom: 1px solid var(--hairline); padding-bottom: 6px;
+    margin-bottom: 8px;
+  }
+  body.panelpage .dashcaption .tlabel {
+    border-bottom: 0; padding-bottom: 0; margin-bottom: 0;
+  }
+  body.panelpage .dashcaption .dashmodesay {
+    font-style: italic; color: var(--sage);
+  }
+  /* THE LINE speaks a size up — it is the master, and "Open" in 19px coral
+     is the one glance the whole band exists for. */
+  body.panelpage .ctrlcard.kill .cv { font-size: 19px; }
+  /* LINES indent under the door they hang off: a 1px --edge left rule, the
+     sub-caption, and one hairline-ruled row per line. */
+  body.panelpage .lines {
+    margin: 10px 0 0 10px; padding-left: 14px;
+    border-left: 1px solid var(--edge);
+  }
+  body.panelpage .linerow { border-bottom: 1px solid var(--hairline); }
+  body.panelpage .linerow:last-child { border-bottom: 0; }
+  body.panelpage .linerow .ctrlcard,
+  body.panelpage .linerow .tile { border-bottom: 0; }
+  /* A line row reads left to right: switch, "Live calls · On", then the
+     chips and detail underneath — the switch spans both text rows. */
+  body.panelpage .linerow .ctrlcard {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-areas: "sw name state" "sw note note";
+    column-gap: 10px; row-gap: 4px; align-items: center;
+    padding: 9px 2px; min-height: 0;
+  }
+  /* relative, not static: the knob is an absolute ::after and must keep
+     anchoring to its own track — static re-anchored it to the card and the
+     knob sat loose above the outline. */
+  body.panelpage .linerow .ctrlcard .switch {
+    position: relative; right: auto; top: auto; transform: none;
+    grid-area: sw; justify-self: start;
+  }
+  body.panelpage .linerow .ctrlcard .ck {
+    grid-area: name; font-size: 13px; letter-spacing: .02em;
+    color: var(--alpenglow); text-transform: none;
+  }
+  body.panelpage .linerow .ctrlcard .cv {
+    grid-area: state; font-size: 13px; justify-self: start;
+  }
+  body.panelpage .linerow .ctrlcard .cv::before { content: "· "; }
+  body.panelpage .linerow .ctrlcard .cn {
+    grid-area: note; display: flex; flex-wrap: wrap; align-items: center;
+    gap: 4px 6px; font-size: 11px; color: var(--sage);
+  }
+  /* Permission chips (spec §6): what each tier gets, worn on the row rather
+     than buried in a muted sentence. paintDash builds them. */
+  body.panelpage .permchip {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--sage);
+    border: 1px solid var(--edge); padding: 3px 6px; white-space: nowrap;
+  }
+  /* The stat pair rides the row's right edge: value over note, failures in
+     coral — the spec is explicit that a failure count is never amber. */
+  body.panelpage .linerow .tile {
+    display: flex; flex-direction: column; align-items: flex-end;
+    justify-content: center; gap: 2px; text-align: right;
+    padding: 6px 2px; min-height: 0;
+  }
+  body.panelpage .linerow .tile .tk { display: none; }
+  body.panelpage .linerow .tile .tv {
+    font-size: 15px; font-weight: 700; color: var(--alpenglow);
+  }
+  body.panelpage .linerow .tile .tn { font-size: 11px; color: var(--sage); }
+  body.panelpage .linerow .tile.warn .tn { color: var(--coral); }
+  @media (max-width: 700px) {
+    body.panelpage .linerow .tile {
+      align-items: flex-start; text-align: left; padding-top: 0;
+    }
+  }
+
+  /* --- spec §8: the jump bar sticks ----------------------------------------- */
+  /* One row always: chips slide horizontally on a narrow panel instead of
+     wrapping into a block that pushes the settings below the fold. */
+  body.panelpage .panelnav {
+    position: sticky; top: 0; z-index: 40; background: var(--pine);
+    border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--edge);
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  }
+  body.panelpage .panelnav::-webkit-scrollbar { display: none; }
+  body.panelpage .panelnav a { flex: 1 0 auto; white-space: nowrap; }
+  body.panelpage .panelnav a.navtop {
+    color: var(--coral); border-color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 10%, transparent);
+  }
 
   /* --- footer -------------------------------------------------------------- */
   body.panelpage .panelfoot {

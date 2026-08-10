@@ -121,6 +121,18 @@
     const nav = $('panelNav');
     if (!nav) return;
     nav.innerHTML = '';
+    // The bar is sticky (spec §8), so once it has followed the reader down
+    // the page the dashboard is the one place its links can't reach — the
+    // first chip is the way back up.
+    const top = document.createElement('a');
+    top.href = '#';
+    top.className = 'navtop';
+    top.textContent = '↑ Dashboard';
+    top.onclick = (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    nav.appendChild(top);
     const link = (id, title) => {
       const a = document.createElement('a');
       a.href = '#' + id;
@@ -454,6 +466,12 @@
     });
     const canDo = 'anyone ' + usable.open + ' · guest ' + usable.guest
       + ' · admin ' + usable.admin;
+    // Chips, not a muted sentence (spec §6): each line row wears its
+    // permissions as square chips, with the remaining detail as plain text
+    // after them. Every word here is this file's own vocabulary — nothing
+    // caller-supplied reaches the innerHTML.
+    const chip = (t) => '<span class="permchip">' + t + '</span>';
+    const said = (t) => '<span>' + t + '</span>';
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
@@ -461,8 +479,9 @@
           && $('voicemail_when').value) || resolved.voicemail_when) !== 'always');
         const fallback = vmFallback && chatOn ? 'voicemail + text'
           : vmFallback ? 'voicemail' : chatOn ? 'text line' : 'none';
-        liveNote.textContent = 'permissions — ' + canDo
-          + ' · fallback: ' + fallback;
+        liveNote.innerHTML = chip('anyone ' + usable.open)
+          + chip('guest ' + usable.guest) + chip('admin ' + usable.admin)
+          + said('fallback: ' + fallback);
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
           + 'use, counted from the switches under Permissions & safety. '
           + 'Fallback is what answers when a live call cannot start.';
@@ -476,10 +495,10 @@
       if (chatOn) {
         const WHO2 = { open: 'open to anyone', guest: 'guest code needed',
                        admin: 'admin only', off: 'no caller may use it' };
-        chatNote.textContent = (WHO2[permTier('allow_chat')] || 'open to anyone')
-          + ' · closes after '
-          + (($('chat_idle_minutes') && $('chat_idle_minutes').value)
-             || resolved.chat_idle_minutes || 30) + 'm quiet';
+        chatNote.innerHTML = chip(WHO2[permTier('allow_chat')] || 'open to anyone')
+          + said('closes after '
+            + (($('chat_idle_minutes') && $('chat_idle_minutes').value)
+               || resolved.chat_idle_minutes || 30) + 'm quiet');
       } else {
         chatNote.textContent = 'typed chat with the booth';
       }
@@ -503,9 +522,8 @@
                        triage: 'triaged by the model' };
         const dest = ($('voicemail_destination')
           && $('voicemail_destination').value) || resolved.voicemail_destination;
-        vmNote.textContent = when
-          + ' · ' + (WHO[permTier('allow_voicemail')] || WHO.open)
-          + ' · ' + (DEST[dest] || DEST.hold);
+        vmNote.innerHTML = chip(WHO[permTier('allow_voicemail')] || WHO.open)
+          + said(when + ' · ' + (DEST[dest] || DEST.hold));
       } else {
         vmNote.textContent = 'the machine answers';
       }

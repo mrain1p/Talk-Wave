@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.48
+
+- **The dashboard reads like the front page.** The four read-backs (on air, station, brains·voice·ears, who can call) lead as one ruled strip under the masthead; TRANSMISSION shows THE LINE with its three LINES indented beneath it — each door's switch beside the traffic it produces, permissions worn as square chips, failure counts in red on the row's right edge. The jump bar now sticks to the top as you scroll, with an ↑ DASHBOARD chip to get back up. Every switch and tile works exactly as before — same ids, same immediate posting.
+- **Thumbs up/down is now per door.** Ask-how-it-went after a live call, after a text chat, and after a voicemail are three separate switches under Player settings → After the conversation. Chat and voicemail are off by default and only ask when the caller actually said something; a rating lands on that conversation's own transcript either way.
+- **Push to talk is back to normal height on desktop.** The thumb-size bar was a fix for phones and stays 60px there; on a regular screen it matches the controls beside it again.
+
 ## 0.10.47
 
 - **Server logs stay inside their box.** The log viewer lost its scroll skin in a rewrite — lines poured straight through the border and over the page footer. Both diagnostics viewers scroll again, and a test now pins the class so it can't silently drop a second time.

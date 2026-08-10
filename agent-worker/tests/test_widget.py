@@ -99,6 +99,30 @@ class TestAssetVersioning(unittest.TestCase):
         self.assertGreater(len(html), 2000)
 
 
+class TestThumbsArePerDoor(_TempStores):
+    """Feedback is offered per door (operator's ask, 0.10.48): the call, the
+    text line and the machine each read their own switch, so switching one on
+    must not light the other two."""
+
+    DOORS = (("ask_call_feedback", "askFeedback"),
+             ("ask_chat_feedback", "askChatFeedback"),
+             ("ask_vm_feedback", "askVmFeedback"))
+
+    def test_each_door_reads_its_own_switch(self):
+        import settings as settings_store
+        from api.live import look_payload
+
+        base = settings_store.load()
+        off = look_payload(dict(base), "Rosie")
+        for _, flag in self.DOORS:
+            self.assertFalse(off[flag], flag)
+        for field, flag in self.DOORS:
+            on = look_payload({**base, field: True}, "Rosie")
+            for _, other in self.DOORS:
+                self.assertEqual(on[other], other == flag,
+                                 f"{field} lit {other}")
+
+
 class TestDiagnosticsResultsKeepTheirScrollSkin(unittest.TestCase):
     """The viewers' result boxes must keep the 'scrolly' class on rewrite.
 

@@ -2226,9 +2226,14 @@
     // read as the machine fishing for a compliment.
     if (wasVm) {
       showVmReceipt();
+      // The machine may ask too — the operator's per-door switch. Only after
+      // a message actually left: a thumbs prompt under an empty receipt is
+      // the machine fishing twice over.
+      offerFeedback(endedRoom, live && live.askVmFeedback
+        && capBox.querySelectorAll('.cap.you').length > 0);
     } else {
       collapseTranscript();
-      offerFeedback(endedRoom);
+      offerFeedback(endedRoom, live && live.askFeedback);
     }
     setBtn(callBtn, 'call', 'phone', callLabel());
     callBtn.classList.remove('live', 'ringing', 'answering');
@@ -2298,17 +2303,19 @@
   }
 
   // ------------------------------------------------------ was that any good?
-  // Two buttons, offered once per call and only when the operator asked for
-  // them. Deliberately not a modal: a popup over the card the moment a call
-  // ends is in the way of the transcript, and the one thing a caller might
-  // want after a bad call is to read what was said.
+  // Two buttons, offered once per conversation and only when the operator
+  // asked for them — per door since 0.10.48: the call, the text line and the
+  // machine each carry their own switch, so the caller passes in whether THIS
+  // door's switch is on. Deliberately not a modal: a popup over the card the
+  // moment a call ends is in the way of the transcript, and the one thing a
+  // caller might want after a bad call is to read what was said.
   //
-  // The answer lands on that call's own transcript, so "find me the bad ones"
-  // is a question the panel can answer. Nothing else is collected.
-  function offerFeedback(endedRoom) {
+  // The answer lands on that conversation's own transcript, so "find me the
+  // bad ones" is a question the panel can answer. Nothing else is collected.
+  function offerFeedback(endedRoom, enabled) {
     const bar = $('rateBar');
     if (!bar) return;
-    if (!endedRoom || !(live && live.askFeedback)) { bar.hidden = true; return; }
+    if (!endedRoom || !enabled) { bar.hidden = true; return; }
     $('rateLabel').textContent = 'How was it?';
     $('rateBtns').hidden = false;
     bar.hidden = false;
@@ -2497,11 +2504,20 @@
   // and fold the card back to idle. Safe to call with no socket — the reset
   // is the part that always has to happen.
   function endChat() {
+    // Captured before the id is forgotten: the chat's record is filed under
+    // the id's own tail (chat/session.py write_record), and /call-feedback
+    // matches on that same tail — so the id IS the room for rating purposes.
+    const endedChat = localStorage.getItem('callinChat') || '';
+    const typed = !!capBox.querySelector('.cap.you');
     if (chatWs && chatWs.readyState === 1) {
       try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
     }
     localStorage.removeItem('callinChat');
     resetChatUI('Chat ended');
+    // After the reset, which folds the card to idle — the bar sits under the
+    // idle card exactly as it does after a call. Only a chat the caller
+    // actually typed in: an untouched chat writes no record to rate.
+    offerFeedback(endedChat, typed && live && live.askChatFeedback);
   }
 
   function resetChatUI(note) {

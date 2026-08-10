@@ -436,6 +436,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # every caller sees, and an operator who is not going to read the answers
     # should not be collecting them.
     "ask_call_feedback": (None, False),
+    # Per-door, not one switch: the operator asked to decide separately for
+    # the text line and the machine — a thumbs prompt that reads fine after a
+    # live call can read as fishing after a voicemail, and that is their call
+    # to make, not ours.
+    "ask_chat_feedback": (None, False),
+    "ask_vm_feedback": (None, False),
 
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
@@ -1109,6 +1115,15 @@ SCHEMA: dict[str, dict] = {
         help="A thumbs up or down under the card once the line drops, stored "
              "against that call's own transcript so a bad one can be found and "
              "read back. Nothing else is collected."),
+    "ask_chat_feedback": dict(group="player", kind="check",
+        label="Ask after a text chat",
+        help="The same thumbs, offered when the caller ends a chat they "
+             "actually typed in. Stored against the chat's transcript."),
+    "ask_vm_feedback": dict(group="player", kind="check",
+        label="Ask after a voicemail",
+        help="The same thumbs after a message is left. Off keeps the "
+             "machine's receipt as the last word — asking “how was "
+             "it?” over “message left” can read as fishing."),
     "widget_theme": dict(group="player", kind="select", label="Colours",
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
