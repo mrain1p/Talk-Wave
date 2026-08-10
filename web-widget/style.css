@@ -254,6 +254,19 @@
   .card button:hover:not(:disabled) {
     filter: none; background: color-mix(in srgb, var(--coral) 12%, transparent);
   }
+  /* A new DJ or show brings a new palette — applyTokens() writes it onto
+     :root and every var() resolves to the new colour in one frame, which
+     snapped the whole card over abruptly (operator asked for a graceful
+     phase). These transitions fade the SURFACES and TEXT instead. The meter
+     bars (which animate many times a second) and the state chips (which must
+     read instantly, listening vs speaking) are deliberately left off this so
+     they keep their own timing. */
+  .card,
+  .card .who-row, .card .dj, .card .show, .card .tagline, .card .track,
+  .card .eyebrow, .card .linebox, .card .avatar,
+  .card .actionrow button, .card .talkrow button, .card .chatrow button {
+    transition: background-color .6s ease, border-color .6s ease, color .6s ease;
+  }
   /* Exactly one filled button in any state — so a disabled action gives up
      the fill rather than sitting there looking like the thing to press. */
   .card button:disabled {
@@ -367,7 +380,16 @@
   .card[data-mode="chat"] .meters,
   .card[data-mode="chat"] .talkrow,
   .card[data-mode="chat"] .actionrow { display: none !important; }
-  .card[data-mode="voicemail"] .talkrow { display: none !important; }
+  /* Voicemail IS push-to-talk (operator's ask), so the talk bar stays — but
+     Speaker and Mute do not belong on a recording: there is no DJ audio to
+     route and the bar is already the mic control. The DJ meter and the volume
+     are meaningless too (nothing is playing back), so the level band is just
+     the caller's own YOU meter, which is the "is it registering?" feedback
+     the operator wanted. */
+  .card[data-mode="voicemail"] .talkrow #spkBtn,
+  .card[data-mode="voicemail"] .talkrow #muteBtn,
+  .card[data-mode="voicemail"] .meters .dj,
+  .card[data-mode="voicemail"] .meters .vol { display: none !important; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -392,20 +414,37 @@
      the row wider than the card: the label ellipsises rather than wrapping to
      a second row or clipping the button beside it (operator-reported on a
      narrow embed). The icon has flex-shrink 0 so only the word gives. */
-  .actionrow #callBtn, .actionrow #chatBtn, .actionrow #vmBtn {
+  /* All three worded doors have to FIT their own text on one shared row at the
+     standalone width — "Leave a message" was clipping to "eave a messag"
+     because the card's 18px button padding and .14em tracking pushed the
+     longest label past its equal third (operator-reported). Tighter padding
+     and tracking here, scoped to these three, so every default label fits
+     without touching the card's look elsewhere. The ellipsis stays only as a
+     last resort for pathologically long CUSTOM wording. */
+  /* :not([hidden]) is load-bearing — an id selector out-specifies the plain
+     [hidden] { display:none }, so WITHOUT it a hidden door still rendered at
+     full width and stole the row from the visible ones, squeezing "Leave a
+     message" until it clipped (the exact overflow the operator reported). */
+  .actionrow #callBtn:not([hidden]),
+  .actionrow #chatBtn:not([hidden]),
+  .actionrow #vmBtn:not([hidden]) {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 8px; letter-spacing: .05em;
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
   .actionrow .btnemoji { flex: 0 0 auto; }
-  /* Idle, the doors — Call, and whichever of Text / Message the operator
-     offers — sit on ONE row and size to their CONTENT (operator's ask): with
-     mixed styles (Call as emoji+word, Text and Message as bare emoji) an
-     emoji button is naturally narrow and a worded one wider, which reads
-     right. They may grow to share slack but never wrap to a second row. */
+  /* Idle, the doors sit on ONE row at EQUAL width — flex-basis 0, not auto.
+     With `auto` the basis is each button's own content, and the browser then
+     handed the widest label almost the whole row while the other two shrank
+     BELOW their content and clipped ("Call the DJ" full width, "Leave a
+     message" cut to "eave a messag" — operator-reported). Basis 0 gives every
+     door an identical third regardless of its label; the tightened padding and
+     tracking above keep the longest default label inside that third. They
+     never wrap to a second row. */
   .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   .actionrow #chatBtn:not([hidden]),
   .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 auto; min-width: 0;
+    flex: 1 1 0; min-width: 0;
   }
   /* The icon on a button: a line drawing in the button's own ink (it inherits
      currentColor), so it is neutral by construction — no filter can make an
@@ -920,29 +959,39 @@
   /* The corner controls sit in the 38px header band, level with its text.
      Chrome, not actions — never competing with the primary button. Which of
      them exist at all is the backend's call; see applyControls() in call.js. */
-  /* The text line's input row. Same square controls as everything else;
-     the input takes the row, Send keeps its natural width. Hidden until a
-     chat opens — the row is only offered once there is a line to type on. */
-  .chatrow { display: flex; gap: 8px; margin-top: 8px; }
+  /* The text line's input area, in TWO rows: the box gets a full row to
+     itself, and Close / Send sit on a row beneath it. It used to be one row
+     — [Close] [input] [Send] — which squeezed the box into the middle third
+     and made the two buttons (44px, big padding) the loudest thing on the
+     card (operator-reported: "the input box should be a full row, those
+     buttons are too large"). flex-wrap + order gives the box the whole width
+     and drops the buttons below without touching the markup. Hidden until a
+     chat opens. */
+  .chatrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .chatrow[hidden] { display: none; }
   /* A real, unmistakable text box — the earlier version used undefined
      tokens (--field/--ink/--soft-border) and rendered transparent on a
      transparent card, so the operator quite reasonably could not see it.
-     These are the same tokens the door-code input uses, at a taller 44px so
-     it reads as the thing you type into. */
+     These are the same tokens the door-code input uses. Full width, its own
+     row (order:1, 100% basis), a comfortable typing height. */
   .chatrow input {
-    flex: 1 1 auto; min-width: 0; height: 44px;
+    order: 1; flex: 1 1 100%; min-width: 0; height: 40px;
     background: var(--granite-hi); color: var(--alpenglow);
     border: 1px solid var(--hairline); border-radius: 0;
     padding: 0 12px; font-family: var(--font-body); font-size: 14px;
   }
   .chatrow input::placeholder { color: var(--sage-dim); }
   .chatrow input:focus { outline: none; border-color: var(--coral); }
-  .chatrow button { height: 44px; padding: 0 16px; flex: 0 0 auto; }
-  /* End is a quiet exit, never competing with Send: no fill, muted ink,
-     narrow. Send stays the one lit action on the row. */
+  /* The button row beneath the box: Close on the left, Send filling the rest,
+     both at the slim action height so they match the card's other doors
+     rather than towering over the message. */
+  .chatrow #chatEndBtn { order: 2; flex: 0 0 auto; }
+  .chatrow #chatSendBtn { order: 3; flex: 1 1 auto; }
+  .chatrow button { height: var(--action-h); padding: 0 14px; }
+  /* Close is a quiet exit, never competing with Send: no fill, muted ink.
+     Send stays the one lit action on the row. */
   .chatrow .chatend {
-    padding: 0 12px; background: transparent; color: var(--sage);
+    background: transparent; color: var(--sage);
     border: 1px solid var(--hairline);
   }
   .chatrow .chatend:hover { color: var(--alpenglow); border-color: var(--sage-dim); }
@@ -2353,8 +2402,8 @@
   body.compact .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   body.compact .actionrow #chatBtn:not([hidden]),
   body.compact .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 auto; width: auto; min-width: 0; height: 44px;
-    font-size: 11px; padding: 0 10px;
+    flex: 1 1 0; width: auto; min-width: 0; height: 44px;
+    font-size: 11px; padding: 0 8px; letter-spacing: .05em;
   }
   body.compact #hangBtn { height: 44px; flex: 1 1 auto; }
   body.compact .ticker .line { -webkit-line-clamp: 2; }

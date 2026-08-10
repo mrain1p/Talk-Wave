@@ -209,7 +209,7 @@ class StationConfig:
     must still connect if the station is mid-restart or creds are absent."""
 
     def __init__(
-        self, base_url: str | None = None, timeout: float = 8.0,
+        self, base_url: str | None = None, timeout: float = 4.5,
         with_auth: bool = True,
     ) -> None:
         """`with_auth=False` reads the station without logging in.
@@ -218,6 +218,13 @@ class StationConfig:
         nowhere else. A caller pointing this at some other base_url — which the
         panel does when previewing an unsaved URL — must not have the password
         sent along with it.
+
+        4.5s, down from 8s (2026-08-10), to match StationClient. This read
+        (the persona-voices mirror) sits on the call-setup path, and at 8s a
+        slow station added most of a second timeout's worth of ringing AFTER
+        the snapshot. persona_voices has its own last-known-good disk cache, so
+        a miss falls to the right voices fast rather than making the caller
+        wait.
         """
         import settings as settings_store
 

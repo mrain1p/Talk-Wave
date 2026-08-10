@@ -155,10 +155,17 @@ class StationClient:
     async def live_dj(self) -> dict:
         """Who is on air right now — name, tagline, and `soul` (the DJ Card).
 
-        The one known-slow endpoint (lazy cache on the station side), so it
-        gets the one retry. Everything else answers in ~20ms or is down.
+        The one known-slow endpoint (lazy cache on the station side). It USED
+        to get one retry, on the theory that a cold first read warms the
+        station cache for a fast second. But a retry doubles the worst case —
+        two full timeouts, ~9s of ringing in front of the caller — and since
+        both the persona and the voice now have last-known-good DISK caches, a
+        read that misses the window falls to the RIGHT DJ (stale by minutes)
+        far faster than a second attempt could ever return. Speed beats a
+        marginally fresher persona on a line where the caller is listening to
+        the phone ring. No retry: one timeout, then the cache.
         """
-        return await self._get("/dj", retries=1)
+        return await self._get("/dj")
 
     async def personas(self) -> list[dict]:
         return (await self._get("/personas")).get("personas", [])

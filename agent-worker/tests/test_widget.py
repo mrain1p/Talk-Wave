@@ -1229,13 +1229,25 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
                 f"chat mode no longer hides {band} — the text line will show "
                 "the call's controls again")
 
-    def test_voicemail_mode_hides_the_talk_bar(self):
-        # TAP TO TALK and MUTE over a recording read as controls that did
-        # nothing (operator-reported): the machine's mic is simply open.
-        self.assertRegex(
+    def test_voicemail_keeps_the_bar_but_drops_speaker_and_mute(self):
+        import re
+
+        # Voicemail is push-to-talk (operator's ask), so the talk bar stays —
+        # hiding the whole row left a "MIC OFF" card with nothing to hold. What
+        # a recording does NOT need is Speaker and Mute (no DJ audio to route,
+        # the bar is already the mic), and the DJ meter and volume (nothing is
+        # playing back). Those are hidden; the row and the caller's own YOU
+        # meter remain.
+        self.assertNotRegex(
             self.css,
-            r'\.card\[data-mode="voicemail"\][^{]*\.talkrow[^{]*\{[^}]*display:\s*none',
-            "voicemail no longer hides the push-to-talk row")
+            r'\.card\[data-mode="voicemail"\]\s+\.talkrow\s*\{[^}]*display:\s*none',
+            "voicemail must NOT hide the whole talk bar — that is the MIC-OFF "
+            "regression with no control to hold")
+        for hidden in ("#spkBtn", "#muteBtn", ".meters .dj", ".meters .vol"):
+            self.assertRegex(
+                self.css,
+                r'\.card\[data-mode="voicemail"\][^}]*' + re.escape(hidden),
+                f"voicemail should hide {hidden} — it has no use on a recording")
 
     def test_the_chat_input_declares_its_own_visibility(self):
         # The input lives in .rig, which is reserved-hidden between calls; the
@@ -1315,6 +1327,74 @@ class TestEveryDoorReadsForItself(unittest.TestCase):
         self.assertNotIn("buttonStyle", call_js)
         panel_html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
         self.assertNotIn('id="button_style"', panel_html)
+
+
+class TestTheDoorsShareTheRowEvenly(unittest.TestCase):
+    """The three idle doors have to sit on ONE row, at EQUAL width, with every
+    default label fully visible. Two separate CSS bugs broke that and both were
+    operator-reported from the live card:
+
+      1. flex-basis `auto` sized each door to its own label, and the browser
+         handed the widest almost the whole row while the others shrank BELOW
+         their content and clipped ("Leave a message" -> "eave a messag").
+         Fixed with flex-basis 0 — identical thirds regardless of label.
+      2. an id-specificity display rule (`.actionrow #callBtn { display:flex }`)
+         out-specified `[hidden] { display:none }`, so a HIDDEN door still
+         rendered at full width and stole the row. Fixed with :not([hidden]). """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_doors_share_the_row_at_equal_width(self):
+        # flex-basis 0 (not auto) is what makes them equal — auto is the bug.
+        self.assertRegex(
+            self.css,
+            r'\.actionrow #callBtn:not\(\.ringing\)[^{]*\{[^}]*flex:\s*1 1 0',
+            "the idle doors must use flex-basis 0 for equal thirds; `auto` let "
+            "the widest label take the row and clipped the others")
+
+    def test_a_hidden_door_gives_up_its_width(self):
+        # The display rule must be guarded so a hidden door is display:none,
+        # not a full-width invisible box stealing the row.
+        self.assertIn("#callBtn:not([hidden])", self.css)
+        self.assertIn("#vmBtn:not([hidden])", self.css)
+
+
+class TestTheTextLineIsShapedForTyping(unittest.TestCase):
+    """The input box gets its own full row with Close/Send beneath, not the
+    old [Close][input][Send] where the box was squeezed into the middle third
+    and the two buttons towered over the message (operator-reported: "the input
+    box should be a full row, those buttons are too large"). And the terminal
+    control is on the card from the instant a call/voicemail is initiated — no
+    button phasing through Ringing -> Answering while the caller waits."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+
+    def test_the_input_takes_its_own_row(self):
+        # 100% basis on the input is what drops the buttons to the next line.
+        self.assertRegex(
+            self.css, r'\.chatrow input\s*\{[^}]*flex:\s*1 1 100%',
+            "the chat input must span the row (flex-basis 100%) so Close/Send "
+            "fall beneath it rather than squeezing it into the middle")
+
+    def test_close_and_send_are_the_slim_action_height(self):
+        # --action-h, not the old towering 44px.
+        self.assertRegex(
+            self.css, r'\.chatrow button\s*\{[^}]*height:\s*var\(--action-h\)')
+
+    def test_the_end_control_is_there_from_the_press(self):
+        # startCall shows Hang up / End message and flips to .oncall BEFORE it
+        # awaits the token — the state chip carries "Reaching the booth", so
+        # the button never has to phase through Ringing -> Answering.
+        start = self.js.split("async function startCall(", 1)[1]
+        start = start.split("await fetch('/token'", 1)[0]
+        self.assertIn("hangBtn.hidden = false", start)
+        self.assertIn("'oncall'", start)
+        self.assertIn("End message", start)   # voicemail's terminal label
 
 
 class TestTheAskMenuOffersEveryPermission(unittest.TestCase):

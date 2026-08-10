@@ -1646,10 +1646,24 @@
       updateMicHelp();
       return;
     }
-    callBtn.disabled = true;
-    $('vmBtn').hidden = true;
-    callBtn.textContent = word('ringing', 'Ringing…');
-    callBtn.classList.add('ringing');
+    // The end control is on the card from the instant of the press — no
+    // button phasing through Ringing -> Answering -> On the line while the
+    // caller waits, which the operator asked to be rid of. Hang up (or End
+    // message) is the one action during setup, and pressing it cancels a call
+    // that has not connected yet. The state chip carries "Connecting…", so the
+    // status is not lost by dropping it off the button.
+    callBtn.hidden = true;
+    callBtn.classList.remove('ringing', 'answering', 'live');
+    hangBtn.textContent = asVoicemail ? word('vm_hangup', 'End message')
+                                      : word('hangup', 'Hang up');
+    hangBtn.hidden = false;
+    const card = document.querySelector('.card');
+    card.classList.add('oncall');
+    // Voicemail is push-to-talk too (operator's ask): show the bar from the
+    // press so the caller has a mic control immediately instead of a dead
+    // "MIC OFF" with nothing to hold. Follows the same per-surface PTT switch
+    // a call does, which is ON by default.
+    card.classList.toggle('ptt', pttOn());
     $('rig').classList.add('on');
     $('stateChip').hidden = false;
     djHasSpoken = false;          // a second call rings like the first one did
@@ -1758,12 +1772,20 @@
           callBtn.classList.remove('ringing');
           callBtn.classList.add('live');
           callBtn.textContent = word('recording', 'Recording…');
-          // Voicemail is not a conversation and not push-to-talk: drop the
-          // PTT bar so the card doesn't tell a caller to "hold the bar" while
-          // the machine is already listening on an open mic.
-          document.querySelector('.card').classList.remove('ptt');
-          setStatus('The machine is listening — speak after the beep, transcript only',
-                    'connected');
+          // The machine records what it hears — and on a push-to-talk card
+          // that is whatever the caller sends while the bar is held or
+          // latched. The bar STAYS (operator's ask): a tap latches the mic
+          // open so even a caller who does not hold still leaves a message,
+          // and holding is momentary. Only an open-mic card (PTT switched
+          // off) drops the bar and records continuously.
+          if (pttOn()) {
+            setStatus('Hold the bar — or tap it — and leave your message after the beep',
+                      'connected');
+          } else {
+            document.querySelector('.card').classList.remove('ptt');
+            setStatus('The machine is listening — speak after the beep, transcript only',
+                      'connected');
+          }
         } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
@@ -1779,7 +1801,8 @@
         // The bottom row flips: Call (or the machine's door) gives way to
         // Hang up, full width, exactly where a thumb expects it.
         callBtn.hidden = true;
-        hangBtn.textContent = word('hangup', 'Hang up');
+        hangBtn.textContent = vmCall ? word('vm_hangup', 'End message')
+                                     : word('hangup', 'Hang up');
         hangBtn.hidden = false;
         // Re-entrant on purpose: a mid-call reconnect re-fires
         // TrackSubscribed, and attaching again WITHOUT tearing down the
@@ -1837,17 +1860,18 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
-      // Voicemail is NEVER push-to-talk: the machine records whatever it
-      // hears from pickup, so the mic must stay OPEN. Applying PTT here shut
-      // the mic (it defaults closed) so the machine heard nothing — an empty
-      // message, no transcript, and a "hold the bar" prompt on a card that
-      // isn't a conversation. Operator-reported 2026-08-10. PTT is a call
-      // thing only; the guards below and the card class both check vmCall.
-      if (!vmCall && pttOn() && !pttOpen) {
+      // Push-to-talk on a call AND on voicemail (operator's ask): the mic
+      // starts closed and the bar opens it. A caller who taps latches it open
+      // and leaves a message exactly like an open mic; one who holds is
+      // momentary. This once shut the mic on a voicemail card that had NO
+      // visible bar (the "MIC OFF, nothing to hold" report) — the bar is
+      // present now, so the control the closed mic implies is actually there.
+      // Only a card with PTT switched off keeps the historic open mic.
+      if (pttOn() && !pttOpen) {
         // Closed only if the caller has not already pressed the bar during
         // the ring — a latch made early is a decision, not a race to lose.
         await setMicOpen(false);
-      } else if (!vmCall && pttOn()) {
+      } else if (pttOn()) {
         paintPtt();
       }
 
