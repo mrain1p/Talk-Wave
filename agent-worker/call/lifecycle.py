@@ -239,7 +239,8 @@ async def _say_something(
 
 
 def attach_idle_watch(
-    ctx: JobContext, session: AgentSession, cfg: dict, air=None, heard=None
+    ctx: JobContext, session: AgentSession, cfg: dict, air=None, heard=None,
+    actions=None,
 ) -> None:
     """A caller who goes quiet gets checked on in character, then let go.
 
@@ -317,6 +318,14 @@ def attach_idle_watch(
             # itself. Seen on a real call: held 10:29:47-10:30:15, check-in
             # fired at 10:30:11, and the caller had done nothing wrong.
             if air is not None and getattr(air, "on_air", False):
+                state["last_words"] = time.time()
+                continue
+            # Nor while the DJ is mid-task ON THE CALLER'S BEHALF — a search
+            # running, a request still resolving in the background. The caller
+            # is waiting on US; asking whether THEY are still there is exactly
+            # backwards, and it happened on a real call (a Zeppelin request
+            # that took a while to resolve, then "are you still there?").
+            if actions is not None and actions.is_working():
                 state["last_words"] = time.time()
                 continue
             # Thinking time, not dead air: give a caller who was just asked

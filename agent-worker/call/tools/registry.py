@@ -98,6 +98,13 @@ TOOLS: tuple[Tool, ...] = (
          "from the app. The station gates it on its own Likes toggle and rate-"
          "limits it per caller. Off by default like every action, and it counts "
          "against Actions per call."),
+    Tool("subwave_unlike_track", "allow_unfavorite", LOCAL,
+         "Removes the OPERATOR's heart from the track playing now.",
+         "Station admin credentials required — this is the operator's own "
+         "curation heart, not the public listener like, and the public like has "
+         "no un-like. It only means anything to a caller who signed in as the "
+         "operator, so leave it at the admin tier. Counts against Actions per call.",
+         needs_station_admin=True),
 
     # --- the broadcast ----------------------------------------------------
     Tool("subwave_dj_announce", "allow_announcements", LOCAL,

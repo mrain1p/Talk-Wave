@@ -306,6 +306,17 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertEqual(settings_store.FIELDS["chat_greeting_mode"][1], "canned")
         self.assertGreater(int(settings_store.FIELDS["chat_reply_timeout_secs"][1]), 0)
 
+    def test_a_quiet_caller_is_nudged_once_by_default(self):
+        # A chat that sits silent after its own last line reads as dead /
+        # turn-based (operator's ask, 2026-08-10): the DJ nudges once, on by
+        # default, after a natural pause. The method the WS idle timer calls
+        # must exist.
+        from chat.session import ChatSession
+
+        self.assertIs(settings_store.FIELDS["chat_reprompt"][1], True)
+        self.assertGreater(int(settings_store.FIELDS["chat_reprompt_secs"][1]), 0)
+        self.assertTrue(hasattr(ChatSession("c1", "open"), "nudge"))
+
     def test_a_canned_greeting_speaks_first_in_the_djs_name(self):
         from chat import session as chat_session
 

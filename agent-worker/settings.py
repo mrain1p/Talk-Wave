@@ -107,6 +107,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Off by default only for consistency; the station's own Likes toggle and
     # per-IP rate limit are the real gates.
     "allow_favorite":     (None, "off"),
+    # The operator's own un-heart of the current track (admin likes system, not
+    # the public like above, which has no un-like). Only coherent for a caller
+    # signed in AS the operator, so it wants the admin tier and needs station
+    # credentials to work at all.
+    "allow_unfavorite":   (None, "off"),
     # Off by default: this puts audio on air on the caller's say-so. Skills
     # are the station's own segments (weather, news, dedications, story
     # time…). Safe-ish, but a stranger triggers them. (Sound effects were
@@ -209,6 +214,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "chat_greeting_mode":    (None, "canned"),
     "chat_greeting":         (None, ""),
     "chat_reply_timeout_secs": (None, 45),
+    # Keep a chat feeling like a conversation, not a turn-based move: when the
+    # CALLER has gone quiet with the ball in their court, the DJ nudges once. On
+    # by default; 0 or the switch off disables it. Never fires while the DJ is
+    # the one still owing a reply.
+    "chat_reprompt":         (None, True),
+    "chat_reprompt_secs":    (None, 15),
     "voicemail_greeting":    (None, ""),
     "voicemail_greeting_mode": (None, "staged"),
     "voicemail_max_seconds": (None, 30),
@@ -483,6 +494,7 @@ TIERED_PERMISSIONS = (
     "allow_library_search",
     "allow_exact_queue",
     "allow_favorite",
+    "allow_unfavorite",
     "allow_announcements",
     "allow_skills",
     "allow_skip_track",
@@ -802,7 +814,13 @@ SCHEMA: dict[str, dict] = {
         help="Adds a like to the record playing now — the same heart a listener taps "
              "in the app, so it needs no station credentials and changes no one's "
              "audio. The station gates it on its own Likes toggle and rate-limits it "
-             "per caller. Likes the CURRENT track only; there is no un-like from a call."),
+             "per caller. Likes the CURRENT track only; there is no public un-like."),
+    "allow_unfavorite": dict(group="perms", kind="select", tiered=True, label="Un-like the track on air",
+        admin=True,
+        help="Removes the OPERATOR's own heart from the current record (the admin "
+             "likes system, not the public like above). Only means anything to a "
+             "caller signed in as the operator, so keep it at the admin tier. Needs "
+             "station admin credentials."),
     "allow_announcements": dict(group="perms", kind="select", tiered=True, label="Put messages on air",
         admin=True,
         help="Hands a line to the on-air DJ to read in persona."),
@@ -921,6 +939,18 @@ SCHEMA: dict[str, dict] = {
         help="How long the DJ may take to answer one message before the line "
              "gives up and says so, so a stalled model never leaves the caller "
              "watching a typing dot forever. 0 = wait indefinitely."),
+    "chat_reprompt": dict(group="chat", kind="check",
+        label="Nudge a quiet caller",
+        help="Keeps a chat feeling like a conversation rather than a turn-based "
+             "move: when the CALLER has gone quiet after the DJ's last message, "
+             "the DJ sends ONE short in-persona line to keep it breathing — "
+             "never \"are you still there?\", and never while the DJ is the one "
+             "still owing a reply. On by default."),
+    "chat_reprompt_secs": dict(group="chat", kind="number",
+        label="…after how many seconds",
+        needs=("chat_reprompt", True),
+        help="How long a caller may be quiet, the ball in their court, before "
+             "that one nudge. 15 is a natural pause; too short reads as pushy."),
     "show_theme_toggle": dict(group="player", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "

@@ -171,8 +171,32 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
 
     chat = None
     msg_times: list[float] = []
+    nudged = False
     try:
-        async for msg in ws:
+        while True:
+            # When the ball is in the CALLER's court, wait only so long before
+            # the DJ nudges once — a text line that sits silent after its own
+            # last message feels dead and turn-based (operator's ask). On by
+            # default; the switch and interval are settings. Never repeated
+            # (reset when they type) and never while a turn is mid-flight, so it
+            # can't fire while the DJ is the one still owing a reply.
+            reprompt = (
+                float(cfg.get("chat_reprompt_secs") or 0)
+                if cfg.get("chat_reprompt", True) and chat is not None
+                and not nudged and not chat.lock.locked()
+                else 0
+            )
+            try:
+                msg = (await ws.receive(timeout=reprompt) if reprompt > 0
+                       else await ws.receive())
+            except asyncio.TimeoutError:
+                nudged = True
+                if chat is not None and not chat.lock.locked():
+                    await _run_turn(ws, chat, lambda put: chat.nudge(cfg, put), cfg)
+                continue
+            if msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING,
+                            WSMsgType.CLOSED, WSMsgType.ERROR):
+                break
             if msg.type != WSMsgType.TEXT:
                 continue
             try:
@@ -241,6 +265,9 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 text = str(body.get("text") or "").strip()[:2000]
                 if not text:
                     continue
+                # They typed — the ball is back with the DJ, so the next silence
+                # earns a fresh nudge.
+                nudged = False
                 # The flood brake, per chat: a human types a handful of
                 # messages a minute; a script does not.
                 now = time.time()

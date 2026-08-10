@@ -127,6 +127,9 @@ class TestExposedSurface(unittest.TestCase):
         # The lowest-harm action: a like on the current record, the same heart
         # any listener taps. Public station endpoint, so no admin credentials.
         "subwave_like_track": "allow_favorite",
+        # Its admin-only counterpart: un-hearts the operator's own curation
+        # like (the public like has none), so station admin creds and admin tier.
+        "subwave_unlike_track": "allow_unfavorite",
         "subwave_dj_announce": "allow_announcements",
         "subwave_list_skills": "allow_skills",
         "subwave_run_skill": "allow_skills",

@@ -654,6 +654,38 @@ class StationClient:
             log.warning("like failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
+    async def unlike_track(self, song_id: str) -> dict:
+        """Remove the OPERATOR's heart from a song. Admin-only.
+
+        This is the other likes system: not the public per-airing like above
+        (that has no un-like), but the operator's own curation heart on a
+        specific song id — DELETE /likes/song/:id/operator. So it only means
+        anything to a caller signed in AS the operator, which is why it is
+        gated to the admin tier and needs station credentials. Idempotent:
+        un-hearting a song that was never hearted still succeeds.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not song_id:
+            return {"ok": False, "error": "nothing is playing to un-like right now"}
+        try:
+            r = await self._client.delete(
+                f"/likes/song/{song_id}/operator",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("un-like slow to confirm (%s) — treating as done", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("un-like failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
     async def active_show(self, now_playing: dict | None = None,
                           schedule: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).

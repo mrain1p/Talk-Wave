@@ -3,6 +3,27 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.42
+
+Waiting, quiet, and a longer log — the seconds where a line feels alive or dead.
+
+### The call
+
+- **The DJ never asks "are you still there?" while it's the one working.** A request that takes a moment to resolve used to leave the caller in silence and then get asked if they'd left — while they were waiting on the DJ. Now the DJ holds a "working" flag across a search or a resolving request, and says a short line ("let me dig that out") before the lookup so the wait has a voice on it.
+
+### The text line
+
+- **A quiet caller gets one gentle nudge, not dead air.** When the caller has gone quiet with the ball in their court, the DJ sends one short in-persona line to keep the chat feeling like a conversation rather than a turn-based move — never "are you still there?", and never while the DJ is the one still owing a reply. On by default (~15s); switch and interval under **Text line**. (Close-after-turns/seconds and idle-close were already there.)
+
+### The booth
+
+- **Un-like the track on air** — the admin counterpart to the like: a caller signed in as the operator can take the operator's own heart off the current record. Admin only, badged **Station admin** in the panel.
+
+### The panel
+
+- **The server log shows the most recent 20 and pages back** through older lines, instead of dropping the whole buffer onto the settings page.
+- Every permission that needs the station admin credentials is clearly badged **Station admin**, and the permissions, the "what callers can ask" list, the station-tools reference and the caller's "?" popup were reconciled so they all describe what the line can actually do.
+
 ## 0.10.41
 
 A new caller action, and two ways the DJ handles a music request better.

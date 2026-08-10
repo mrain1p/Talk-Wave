@@ -340,6 +340,11 @@
   // look different from a station read and the 20-second poll can be hidden to
   // leave the calls visible — neither of which is possible against a string.
   let logRecords = [];
+  // The log buffer runs to hundreds of lines; dropping all of them into the
+  // settings page at once made it a wall to scroll past (operator-reported).
+  // Show the most recent LOG_PAGE and reveal older ones a page at a time.
+  const LOG_PAGE = 20;
+  let logShown = LOG_PAGE;
 
   // Levels in severity order, so the filter reads as a scale rather than as
   // whatever order the server happened to see them in.
@@ -366,7 +371,18 @@
         ? 'Nothing matches that filter.' : 'No log lines yet.';
       out.appendChild(p);
     } else {
-      rows.forEach((r) => {
+      // The newest are what an operator looks at first, so show the TAIL and
+      // let them page back through older lines rather than scroll a wall.
+      const shown = rows.slice(-logShown);
+      if (rows.length > shown.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'logmore';
+        more.textContent = 'Show older — ' + (rows.length - shown.length) + ' more';
+        more.onclick = () => { logShown += LOG_PAGE; paintLogs(); };
+        out.appendChild(more);
+      }
+      shown.forEach((r) => {
         const line = document.createElement('div');
         line.className = 'logline lvl-' + String(r.level || 'INFO').toLowerCase();
         line.innerHTML = '<span class="lt"></span><span class="ll"></span>'
@@ -419,17 +435,20 @@
         [...$('logLevels').options].some((o) => o.value === keep) ? keep : '';
       $('logFilters').hidden = false;
       out.className = 'result on logs';
+      logShown = LOG_PAGE;
       paintLogs();
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };
 
-  $('logLevels').onchange = paintLogs;
-  $('logSearch').oninput = paintLogs;
+  // A filter change is a new result set, so page back to the most recent.
+  const repaintFromTop = () => { logShown = LOG_PAGE; paintLogs(); };
+  $('logLevels').onchange = repaintFromTop;
+  $('logSearch').oninput = repaintFromTop;
   $('logClearFilters').onclick = () => {
     $('logLevels').value = '';
     $('logSearch').value = '';
-    paintLogs();
+    repaintFromTop();
   };
 
   // No confirm here, unlike the call records: this buffer is in memory and

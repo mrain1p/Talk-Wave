@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from .background import spawn
 
@@ -30,6 +31,7 @@ class CallActions:
     LABELS = {
         "request": ("🎵", "Song request scheduled"),
         "like": ("❤️", "Liked the track on air"),
+        "unlike": ("🤍", "Removed the like"),
         "announcement": ("📢", "Message sent to air"),
         "skill": ("🎙", "Station segment running"),
         # Both reach every listener rather than the caller, so the receipt
@@ -55,6 +57,21 @@ class CallActions:
         # chat's WebSocket sets it; a call leaves it alone.
         self.taken: list[tuple[str, str]] = []
         self.on_note = None
+        # When the DJ is mid-task ON THE CALLER'S BEHALF — a search running, a
+        # request still resolving in the background — the ball is in the DJ's
+        # court, not the caller's. The idle watcher reads this so it never asks
+        # "still there?" of a caller who is only waiting on us (the Zeppelin
+        # call, 2026-08-10: a long resolve, then "are you still there?").
+        self.working_until = 0.0
+
+    def mark_working(self, secs: float = 8.0) -> None:
+        """Hold the 'DJ is working' flag for `secs` from now. Called repeatedly
+        while a background task is still running, so the window follows the work
+        rather than guessing its length up front."""
+        self.working_until = max(self.working_until, time.time() + secs)
+
+    def is_working(self) -> bool:
+        return time.time() < self.working_until
 
     def at_limit(self) -> bool:
         return self.limit > 0 and self.count >= self.limit
