@@ -27,8 +27,50 @@ from chat.session import SHELF
 log = logging.getLogger("callin.chat")
 
 # Fresh chats opened, as timestamps — the global ceiling's ledger, exactly
-# _recent_mints' shape in tokens.py.
+# _recent_mints' shape in tokens.py: a full day is kept so the daily wallet
+# cap has something to count, and the hourly figure is a slice of it.
 _recent_opens: list[float] = []
+# caller key -> when they last opened a chat. The PER-IP brake the phone has
+# (caller_cooldown_secs) and chat lacked: the global ceilings stop a runaway,
+# but without this one abuser is never singled out from everyone else. Same
+# shape as tokens._caller_last.
+_chat_caller_last: dict[str, float] = {}
+
+
+def _open_refusal(cfg: dict, request: web.Request) -> str | None:
+    """Ceilings that apply only to OPENING a fresh chat, not to resuming or
+    to sending within one. Kept apart from _refusal (which answers "may this
+    caller use the line at all") because a resume must skip these — the cost
+    is a new conversation, and resuming spends nothing new here.
+
+    Mirrors _check_usage in tokens.py: per-IP cooldown, global daily wallet,
+    global hourly. In-world wording, because a stranger opening a chat should
+    read the booth as busy, not be shown a rate-limit code."""
+    import time as _time
+
+    now = _time.time()
+    _recent_opens[:] = [t for t in _recent_opens if t > now - 86400]
+    for k, at in list(_chat_caller_last.items()):
+        if now - at > 86400:
+            _chat_caller_last.pop(k, None)
+
+    cooldown = int(cfg.get("chat_caller_cooldown_secs") or 0)
+    if cooldown > 0:
+        last = _chat_caller_last.get(_caller_key(request))
+        if last and (now - last) < cooldown:
+            wait = int(cooldown - (now - last))
+            return f"You've only just been in — give it {wait}s before opening another."
+
+    per_day = int(cfg.get("chats_per_day") or 0)
+    if per_day > 0 and len(_recent_opens) >= per_day:
+        return ("The text line has had a lot of attention today. "
+                "Try again tomorrow.")
+
+    per_hour = int(cfg.get("chats_per_hour") or 0)
+    this_hour = sum(1 for t in _recent_opens if t > now - 3600)
+    if per_hour > 0 and this_hour >= per_hour:
+        return "The text line has been busy this hour — try again a little later."
+    return None
 
 
 def _refusal(cfg: dict, request: web.Request, key: str) -> str | None:
@@ -89,16 +131,16 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 if refusal:
                     await ws.send_json({"type": "refused", "error": refusal})
                     break
-                now = time.time()
-                _recent_opens[:] = [t for t in _recent_opens if t > now - 3600]
                 wanted = str(body.get("chat") or "")
                 is_fresh = wanted not in SHELF.chats
-                per_hour = int(cfg.get("chats_per_hour") or 0)
-                if is_fresh and per_hour and len(_recent_opens) >= per_hour:
-                    await ws.send_json({"type": "refused", "error":
-                                        "The text line has been busy this "
-                                        "hour — try again a little later."})
-                    break
+                # Only a FRESH open faces the ceilings — resuming an existing
+                # conversation costs nothing new and must not be rate-limited
+                # out of the caller's own chat.
+                if is_fresh:
+                    over = _open_refusal(cfg, request)
+                    if over:
+                        await ws.send_json({"type": "refused", "error": over})
+                        break
                 chat = SHELF.get_or_open(wanted, _tier_for(key), cfg)
                 if chat is None:
                     await ws.send_json({"type": "refused", "error":
@@ -106,7 +148,9 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                                         "tied up — give it a minute."})
                     break
                 if is_fresh:
+                    now = time.time()
                     _recent_opens.append(now)
+                    _chat_caller_last[_caller_key(request)] = now
                     log.info("chat %s opened (%s, %d open)", chat.id,
                              chat.tier, len(SHELF.chats))
                 # The transcript rides back so a resumed chat repaints what

@@ -13,7 +13,12 @@ only, never station facts.
 
 from __future__ import annotations
 
-from brain.conduct import DOORWAY, RUNNING_THE_CALL, _tools
+from brain.conduct import (
+    DOORWAY,
+    LANGUAGE_AND_MIMICRY,
+    RUNNING_THE_CALL,
+    _tools,
+)
 
 HOW_TO_TYPE = """\
 # How to type
@@ -56,4 +61,5 @@ def rules(cfg: dict) -> str:
         CHAT_CLOSING,
         _tools(cfg),
         TYPED_TOOLS_NOTE,
+        LANGUAGE_AND_MIMICRY,
     ])

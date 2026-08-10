@@ -191,6 +191,8 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "chat_max_hours":        (None, 12),
     "max_open_chats":        (None, 20),
     "chats_per_hour":        (None, 0),
+    "chats_per_day":         (None, 0),
+    "chat_caller_cooldown_secs": (None, 30),
     "chat_msgs_per_minute":  (None, 10),
     "voicemail_greeting":    (None, ""),
     "voicemail_greeting_mode": (None, "staged"),
@@ -852,6 +854,17 @@ SCHEMA: dict[str, dict] = {
         label="New chats per hour",
         help="Fresh conversations opened per hour, all callers together. "
              "0 = unlimited. Resuming an existing chat is never counted."),
+    "chats_per_day": dict(group="chat", kind="number",
+        label="New chats per day",
+        help="The hard wallet ceiling on fresh chats, all callers together — "
+             "the text line's equivalent of Calls per day. 0 = unlimited."),
+    "chat_caller_cooldown_secs": dict(group="chat", kind="number",
+        label="Reopen wait time (s)",
+        help="How long ONE caller must wait between opening chats — the "
+             "per-visitor brake the phone has as Redial wait. A text line "
+             "is scriptable in a way a call is not, so this singles out one "
+             "abuser where the hourly and daily caps only stop a crowd. "
+             "Resuming an open chat never waits."),
     "chat_msgs_per_minute": dict(group="chat", kind="number",
         label="Messages per minute",
         help="Per chat. A human types a handful; a script does not. The "

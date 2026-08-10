@@ -58,6 +58,52 @@ class TestTheTextLineHasADoor(_TempStores):
                                          "allow_chat": "open"}))
 
 
+class TestOneAbuserIsSingledOut(_TempStores):
+    """The text line is scriptable where a voice call is not, so the phone's
+    per-IP cooldown and daily wallet had to reach chat too — the hourly and
+    daily caps only stop a crowd; this stops one script. Resuming an open
+    chat never faces any of them."""
+
+    def _open(self, cfg, key=""):
+        import types
+
+        from api import chat as api_chat
+
+        req = types.SimpleNamespace(headers={}, remote="9.9.9.9",
+                                    transport=None)
+        return api_chat._open_refusal(cfg, req)
+
+    def setUp(self):
+        super().setUp()
+        from api import chat as api_chat
+
+        api_chat._recent_opens.clear()
+        api_chat._chat_caller_last.clear()
+
+    def test_the_same_caller_waits_between_opens(self):
+        cfg = {"chat_caller_cooldown_secs": 30}
+        self.assertIsNone(self._open(cfg))          # first open allowed
+        # Record it the way the hello branch does, then a second open refuses.
+        import time
+
+        from api import chat as api_chat
+        api_chat._chat_caller_last["9.9.9.9"] = time.time()
+        out = self._open(cfg)
+        self.assertIsNotNone(out)
+        self.assertIn("give it", out)
+
+    def test_the_daily_wallet_closes_the_line(self):
+        import time
+
+        from api import chat as api_chat
+        api_chat._recent_opens.extend([time.time()] * 5)
+        self.assertIn("tomorrow", self._open({"chats_per_day": 5}))
+
+    def test_zero_means_unlimited(self):
+        self.assertIsNone(self._open({"chat_caller_cooldown_secs": 0,
+                                      "chats_per_day": 0, "chats_per_hour": 0}))
+
+
 class TestChatsEndInsteadOfAccumulating(_TempStores):
     """Resumable is not immortal: the idle clock, the message ceiling and
     the age cap each close a chat, and closing writes the record — the
@@ -137,6 +183,16 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         # phone physics; their headings must not leak into the typed prompt.
         self.assertNotIn("# How to talk", text)
         self.assertNotIn("# Closing a call", text)
+
+    def test_both_modes_carry_the_language_and_mimicry_guard(self):
+        # SUB/WAVE's raid lesson (2026-07-28): a caller directing a language
+        # switch or quoting text as an instruction is testing the line, not
+        # making a request. The clause is always on, in BOTH mouths.
+        from brain import conduct, conduct_chat
+
+        for text in (conduct.rules({}), conduct_chat.rules({})):
+            self.assertIn("language you answer in", text)
+            self.assertIn("testing the line", text)
 
     def test_the_tool_loop_answers_and_runs_tools(self):
         from livekit.agents import llm as lk_llm
