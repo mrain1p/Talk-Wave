@@ -1073,8 +1073,37 @@
       '<div id="subwave-callin"' + attrs.join('') + '></div>\n' +
       '<script src="' + location.origin + '/embed.js"><\/script>';
   }
+  // The preview stage wears whichever shape is selected: inline shows the card
+  // as-is; launcher/dock/button dress the frame as that shape with a mock
+  // trigger, so the operator sees what they picked before copying it. Only in
+  // the Embed view — the Page tab is the standalone phone, which has no shape.
+  function paintPreviewShape() {
+    const stage = $('previewStage');
+    if (!stage) return;
+    const mode = ($('embedMode') && $('embedMode').value) || '';
+    const shaped = previewSurface === 'embed'
+      && (mode === 'launcher' || mode === 'dock' || mode === 'button');
+    stage.dataset.shape = shaped ? mode : 'inline';
+    stage.classList.toggle('shaped', shaped);
+    // A shape starts CLOSED (the trigger showing), so the operator sees the
+    // resting state first; the frame appears when they press it. Inline is
+    // always "open" — there is nothing to press.
+    stage.classList.toggle('open', !shaped);
+    const trig = $('previewTrigger');
+    if (trig) trig.hidden = !shaped;
+  }
+  if ($('previewTrigger')) {
+    $('previewTrigger').onclick = () =>
+      $('previewStage').classList.toggle('open');
+  }
   if ($('embedTheme')) {
-    $('embedMode').onchange = paintEmbedSnippet;
+    $('embedMode').onchange = () => {
+      paintEmbedSnippet();
+      // Picking a shape is a request to SEE it — jump the preview to Embed.
+      const mode = $('embedMode').value;
+      if (mode && previewSurface !== 'embed') setPreviewSurface('embed');
+      else paintPreviewShape();
+    };
     $('embedTheme').onchange = paintEmbedSnippet;
     $('embedCaptions').onchange = paintEmbedSnippet;
   }
@@ -1704,6 +1733,9 @@
     // then waits. The load event is the earliest it can be told about the
     // unsaved changes.
     f.onload = pushPreview;
+    // Switching surface may change whether a shape applies (shapes are an
+    // Embed-only idea), so re-dress the stage.
+    if (typeof paintPreviewShape === 'function') paintPreviewShape();
   }
 
   if ($('previewPage')) {
@@ -1719,6 +1751,10 @@
       const f = $('previewFrame');
       if (!f || !e.data || e.data.type !== 'subwave-callin:height') return;
       if (e.source !== f.contentWindow) return;
+      // A shaped stage sizes the frame itself (the pop-up panel is a fixed box
+      // on a mock page), so the frame's own height report must not override it.
+      const stage = $('previewStage');
+      if (stage && stage.classList.contains('shaped')) return;
       f.style.height = Math.max(220, Math.min(760, e.data.px | 0)) + 'px';
     });
   }

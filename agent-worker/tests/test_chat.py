@@ -175,6 +175,22 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         self.assertIn("# How to type", text)           # the typed register
         self.assertIn("# Typed, not spoken", text)     # the two-places override
 
+    def test_the_schedule_is_offered_as_a_table_only_when_the_roster_is_held(self):
+        # "What's on?" reads as a wall in prose, so the typed DJ lays the
+        # schedule out as a Markdown table the widget renders (operator ask,
+        # 2026-08-10). But only when the DJ actually has the roster — the same
+        # switches that put it in the briefing — or the rule is dead weight in
+        # front of a DJ with no shows to list.
+        from brain import conduct_chat
+
+        self.assertNotIn("# When they ask what's on", conduct_chat.rules({}))
+        for cfg in ({"context_schedule": True}, {"allow_takeover": True}):
+            text = conduct_chat.rules(cfg)
+            self.assertIn("# When they ask what's on", text)
+            self.assertIn("Markdown table", text)
+            # The example table proves the exact shape the widget parses.
+            self.assertIn("| Time", text)
+
     def test_typed_rules_drop_the_spoken_physics(self):
         from brain import conduct_chat
 

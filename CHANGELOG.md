@@ -3,6 +3,20 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.40
+
+Embedding, and the text line.
+
+### Embedding
+
+- **Four off-the-shelf shapes, and the preview wears the one you pick.** Drop the widget in as an inline card, a floating **launcher** pill in a corner, a **docked** bar across the bottom, or an inline **button** that opens the card in a centred pop-up — chosen in the panel's **Embed** section, where the preview now shows the shape itself (press the mock trigger and the card opens where it would on a real page) so you see what you're copying before you paste it. All of them name who answers, or say the line is closed, before they're pressed.
+
+### The text line
+
+- **Ask what's on and the schedule comes back as a table.** The DJ still talks about it in its own voice, but lays the shows out in a compact table the chat renders as a real one, so a roster reads at a glance instead of as a run-on sentence.
+- **Actions stay in the conversation.** When the DJ queues a track or changes the show mid-chat, the receipt now lands in the transcript in its own styling and stays there — it used to flash up as a popup outside the chat and vanish.
+- **The DJ's replies type at a readable pace.** A long reply used to flash past too fast to follow; it now streams over a few seconds like someone writing it.
+
 ## 0.10.39
 
 More of the same polish, closer to the edges — leaving a message, the narrow phone, signing in, embedding on a station page, and the seconds before the DJ speaks.
