@@ -3,6 +3,35 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.39
+
+More of the same polish, closer to the edges — leaving a message, the narrow phone, signing in, embedding on a station page, and the seconds before the DJ speaks.
+
+### On a station page
+
+- **No colour flash when the widget opens on an embed.** It remembers the station's palette and paints in those colours on the first frame, instead of showing the default accent for a beat until the host page's colours arrive.
+- **A DJ with no photo shows their initials, not an empty circle** — including when the station serves a 1×1 placeholder image for a persona that has none.
+
+### Signing in
+
+- **The "what can I ask?" list now names the tier you're actually on.** Signing in from guest to operator on the card, without a reload, relabels the menu to "for the operator" and reopens the actions your tier unlocks — it used to keep saying "for guest callers" until you refreshed.
+
+### Voice
+
+- **The caller's microphone is cleaned up before it's heard** — echo cancellation, noise suppression and automatic gain are on by default, so the station playing in a caller's room isn't transcribed over their own speaker, and on a speakerphone the DJ's voice stays out of the caller's transcript. The README and settings now spell out when a cloud STT or TTS is worth the upgrade over the local defaults.
+
+### Voicemail
+
+- **You can see the message you're leaving, and it stays put when you hang up.** Your words appear as you speak them and stack up sentence by sentence, so you can read back the whole message rather than catching only the last line — and when the recording ends the transcript stays on the card, with a note that the DJ will review your request shortly.
+
+### On a phone
+
+- **The controls fit and the mic state is clearer.** Push-to-talk is a bigger target under the thumb; whether you're muted, live, or holding a push-to-talk line reads off a small chip beside your meter instead of a label that ran into the one next to it; the call timer keeps its place on one line; and the level meters no longer crowd each other on a narrow screen.
+
+### The call
+
+- **Quicker to answer, and it ends less abruptly.** A congested station no longer makes prompt assembly re-read the same thing twice before the DJ can speak, so first words come sooner. When a caller's request sets a show takeover in motion, the new DJ and palette now catch up within a few seconds of it airing rather than a poll later. And the DJ is nudged to leave a real next step in the air at the end of a call instead of stopping flat the moment it's done something.
+
 ## 0.10.36
 
 Mostly mobile and polish — on a phone, the card now reads like the real thing.

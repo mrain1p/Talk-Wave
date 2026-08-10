@@ -674,27 +674,23 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         self.assertEqual(guard._pending_until, 0.0)
         self.assertFalse(guard._assess((999.0, "Quick station ID."), False))
 
-    def test_a_failing_poll_holds_the_gate_briefly(self):
-        # A read that timed out cannot prove the air is clear, and congestion —
-        # when reads fail — is exactly when the on-air DJ is most likely
-        # mid-link. Assuming clear here put Dawn on the air and on the call at
-        # once, the same voice doubled (2026-08-10). A failed poll now holds for
-        # a SHORT window (FAIL_HOLD), reset the moment a clean read comes back,
-        # and bounded so a quiet-but-slow station is never gagged for long
-        # (wait_until_clear still caps any single hold at MAX_HOLD).
-        import time
-
+    def test_a_failing_poll_holds_the_current_state(self):
+        # A read that timed out cannot MOVE the gate: it holds whatever the last
+        # clean read said. Air BUSY stays busy (the on-air DJ is most likely
+        # still mid-link — this is what stops the Dawn/Ash overlap, where
+        # "assume clear" doubled the voice). Air CLEAR stays clear (so a
+        # quiet-but-slow station under congestion does NOT gag every reply — an
+        # earlier version assumed busy on any failed read and added seconds to
+        # every answer while the station struggled).
         guard = self._guard()
-        # A failed read holds, even with nothing pending.
+        # Clear to start: a failed poll leaves it clear.
+        self.assertFalse(guard.on_air)
+        self.assertFalse(guard._assess(None, poll_failed=True))
+        # Now busy (our own action): a failed poll leaves it busy.
+        guard.on_air = True
         self.assertTrue(guard._assess(None, poll_failed=True))
-        self.assertGreater(guard._fail_until, time.time())
-        # A clean read that shows nothing clears the hold at once.
+        # A clean read that shows nothing moves it back to clear.
         self.assertFalse(guard._assess(None, poll_failed=False))
-        self.assertEqual(guard._fail_until, 0.0)
-        # The hold is bounded — once the window has elapsed, a still-failing
-        # poll that lands after it does not keep the gate shut forever; the
-        # window simply re-arms for another FAIL_HOLD, which MAX_HOLD caps.
-        self.assertLessEqual(guard.FAIL_HOLD, 15.0)
 
     def test_the_pending_hold_expires_rather_than_gagging_the_call(self):
         import time as _time
@@ -706,14 +702,13 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # delivery never appeared, and the station is answering again.
         self.assertFalse(guard._assess(None, poll_failed=False))
         self.assertEqual(guard._pending_until, 0.0)
-        # A still-FAILING poll after the pending window doesn't gag forever
-        # either: the pending state clears, and only the SHORT, bounded
-        # fail-hold remains (which the next clean read or MAX_HOLD ends).
+        # A still-FAILING poll after the pending window clears the pending
+        # state and then holds the CURRENT gate (clear here) — it does not gag.
         guard.mark_pending_air("hello")
         guard._pending_until = _time.time() - 0.1
-        self.assertTrue(guard._assess(None, poll_failed=True))
+        guard.on_air = False
+        self.assertFalse(guard._assess(None, poll_failed=True))
         self.assertEqual(guard._pending_until, 0.0)
-        self.assertLessEqual(guard._fail_until - _time.time(), guard.FAIL_HOLD + 1)
 
     def _watch(self, answers, stop_when):
         import asyncio

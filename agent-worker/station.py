@@ -621,11 +621,15 @@ class StationClient:
             log.warning("takeover cancel failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
-    async def active_show(self, now_playing: dict | None = None) -> dict:
+    async def active_show(self, now_playing: dict | None = None,
+                          schedule: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).
 
-        Accepts an already-fetched /now-playing payload so prompt assembly
-        doesn't request it twice per call.
+        Accepts already-fetched /now-playing and /schedule payloads so prompt
+        assembly doesn't request either twice per call. The snapshot gathers
+        both concurrently at the top of the call; on a congested station the
+        serial re-reads this used to do timed out one after another in front of
+        every caller (measured 2026-08-10) — pass the snapshot's copies in.
 
         The two records are merged rather than one replacing the other, and
         that is the whole point. /now-playing carries the show as it is
@@ -642,7 +646,8 @@ class StationClient:
         if not show_id:
             return active
 
-        for show in (await self.schedule()).get("shows", []):
+        shows = schedule if schedule is not None else await self.schedule()
+        for show in shows.get("shows", []):
             if show.get("id") == show_id:
                 # The schedule still wins wherever it has something to say, so
                 # nothing already reaching the prompt changes shape; it just

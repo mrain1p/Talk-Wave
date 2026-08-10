@@ -47,16 +47,19 @@ class TestBrainSplit(_TempStores):
                     "Keep the call moving", "# What you can do")
 
     class _FakeStation:
-        """The only station call the briefing makes on its own."""
+        """The briefing makes no station call of its own — every read, the
+        schedule included, rides in the snapshot. A schedule() that raised
+        would prove that; this one is here only so an accidental call is loud."""
 
         async def schedule(self):
-            return {"shows": [{"id": "s_other", "name": "Morning Drive"}]}
+            raise AssertionError("the briefing must reuse snap['schedule'], not re-read")
 
     def _facts(self, cfg: dict, snap: dict | None = None) -> str:
         import asyncio
 
         snap = snap or {
             "now_playing": {"nowPlaying": {"title": "Dreams", "artist": "Fleetwood Mac"}},
+            "schedule": {"shows": [{"id": "s_other", "name": "Morning Drive"}]},
             "state": {"history": [{"title": "Tusk", "artist": "Fleetwood Mac"}],
                       "upcoming": [{"title": "Sara", "artist": "Fleetwood Mac"}]},
             "session": {},
@@ -225,7 +228,7 @@ class TestPromptAssembly(_TempStores):
         import asyncio
 
         class _Station:
-            async def active_show(self, now_playing=None):
+            async def active_show(self, now_playing=None, schedule=None):
                 return {"id": "s_pub", "name": "Donovan's Pub",
                         "topic": "Irish folk and trad.",
                         "episodeAngle": "A relaxed morning session."}
@@ -442,18 +445,17 @@ class TestTheDJKnowsTheStationsShows(unittest.TestCase):
                        for i in range(14)]}
 
     class _Station:
-        def __init__(self, payload):
-            self.payload = payload
-            self.reads = 0
+        """The roster comes from the snapshot now; a station read here is a
+        regression, so make one raise rather than quietly re-fetch."""
 
         async def schedule(self):
-            self.reads += 1
-            return self.payload
+            raise AssertionError("the briefing must reuse snap['schedule'], not re-read")
 
     def _context(self, cfg):
-        snap = {"now_playing": {}, "state": {}, "session": {}, "skills": []}
+        snap = {"now_playing": {}, "state": {}, "session": {}, "skills": [],
+                "schedule": self.SHOWS}
         return asyncio.run(briefing.station_context(
-            self._Station(self.SHOWS), cfg, snap, {"id": "s0"}))
+            self._Station(), cfg, snap, {"id": "s0"}))
 
     def test_the_roster_names_twelve_shows_not_four(self):
         line = briefing._fmt_schedule(self.SHOWS, "s0")

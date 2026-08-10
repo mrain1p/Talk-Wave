@@ -150,6 +150,19 @@ config file — ElevenLabs and Fish Audio adapters ship in the box, plus one
 matching SUB/WAVE's own Remote `/speak` contract so a TTS server built for the
 station carries the call line too).
 
+**The caller's microphone is cleaned up before it is heard.** Echo cancellation,
+noise suppression and automatic gain control are applied to the caller's audio
+by default — so a listener who dials in with the station playing in the room
+isn't transcribed over their own speaker, and on a speakerphone the DJ's voice
+is kept out of the caller's own transcript. For the sharpest transcription,
+especially from a phone in a noisy place, a **cloud STT** (Deepgram, OpenAI or
+Google) reads more accurately than the in-process faster-whisper base model,
+which trades some accuracy for needing no key and no network — a good default to
+start on, worth upgrading if callers are misheard. **TTS** is the same trade: a
+cloud voice (ElevenLabs, Fish Audio, or the station's own Remote `/speak`) is
+warmer and quicker to first audio than a local model on CPU, and matching the
+voice the station already uses keeps the call-in DJ sounding like the on-air one.
+
 **Performance**: the station's slow endpoint is kept warm by a background ping,
 per-call reads are one concurrent snapshot, and the prompt is budgeted because
 every token is paid on time-to-first-token every turn. Local TTS and STT are

@@ -340,8 +340,11 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
 async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
     """Everything true about the station right now, as prompt text.
 
-    The one station read that isn't already in the snapshot is the schedule,
-    and it only happens when the operator asked for it — hence the client.
+    Every read is already in the SNAPSHOT — including the schedule — so this
+    adds nothing to the caller's wait. It used to re-read /schedule here, a
+    second serial round-trip that on a congested station timed out for a full
+    4.5-9s on top of the snapshot's, in front of every call (measured
+    2026-08-10). The snapshot already gathered it concurrently; reuse it.
     """
     parts = [
         _fmt_now_playing(snap["now_playing"]),
@@ -359,10 +362,10 @@ async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
     # context_schedule setting says: a caller who may switch the station to
     # another show is talking to a DJ who must recognise that show's name.
     # Wade refused The Overlook as caller nonsense because the permission was
-    # on and this line was off (2026-08-09). One schedule read per call, and
-    # the takeover tool reads it again anyway when used.
+    # on and this line was off (2026-08-09). The schedule comes from the
+    # snapshot — no extra read — and the takeover tool reads it fresh when used.
     if cfg.get("context_schedule") or cfg.get("allow_takeover"):
-        parts.append(_fmt_schedule(await station.schedule(), show.get("id", ""),
+        parts.append(_fmt_schedule(snap.get("schedule") or {}, show.get("id", ""),
                                    takeover=bool(cfg.get("allow_takeover"))))
     # Only when segments are actually enabled — otherwise it's a list of things
     # the DJ is about to be told it can't do.

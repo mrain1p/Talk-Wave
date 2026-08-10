@@ -222,6 +222,12 @@
       const v = String(tokens[k]);
       if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
     });
+    // Remember the last palette so the NEXT load can paint in the station's
+    // colours on its first frame, instead of flashing the default accent until
+    // /live or the host's swtv:theme lands (radio.drearburh.uk, embedded on a
+    // SUB/WAVE page that posts its palette after the frame paints — the coral →
+    // purple flash reported 2026-08-10). shared.js reads this at boot.
+    try { localStorage.setItem('callinPalette', JSON.stringify(tokens)); } catch (e) { /* private mode */ }
   }
 
   // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
@@ -286,6 +292,13 @@
   // actually switched on, so it can never suggest something the DJ would
   // refuse. What a caller CANNOT do is deliberately left out: that list is
   // for the operator deciding what to allow, not for a stranger on the line.
+  // What the ask popup depends on: the permission set AND the tier that names
+  // it. A change in either has to repaint it — the tier alone drives the
+  // "whose menu this is" chip, and the two do not always move together.
+  function askSignature(d) {
+    return JSON.stringify([(d && d.callerTier) || null, (d && d.canAsk) || null]);
+  }
+
   function paintAskPopup(canAsk) {
     const host = $('askPopList');
     if (!host) return;
@@ -941,6 +954,33 @@
     }
   }
 
+  // After a call ends the on-air show may have JUST changed: a takeover the
+  // caller asked for lands at the next TRACK BOUNDARY, not the moment the tool
+  // fires, and the station only pushes a cache-bust (track.play) when the new
+  // show actually airs. The ordinary 20s poll can then leave the card on the
+  // old DJ and palette for most of a minute — operator-reported, and worst on a
+  // short voicemail where the whole interaction is over before the record is.
+  // A brief faster poll catches the handover within a few seconds of it airing.
+  // Idle-only and self-cancelling, so it never runs during a call or forever.
+  let burstTimer = null;
+  function burstLive(secs = 40, every = 4000) {
+    if (burstTimer) clearInterval(burstTimer);
+    const until = Date.now() + secs * 1000;
+    burstTimer = setInterval(() => {
+      if (room || Date.now() > until) { clearInterval(burstTimer); burstTimer = null; return; }
+      refreshLive();
+    }, every);
+  }
+
+  // A DJ's initials for the no-image ring: first and last word, or the first
+  // two letters of a single-word name. "Sergeant Fred Colon" -> "SC".
+  function monogram(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  }
+
   function paintLive(d, first) {
     try {
       // What is actually on screen, which is `live` plus any preview overlay
@@ -963,15 +1003,19 @@
         // read the load-time palette as a show change. Any tokens it re-sets
         // are the ones the line above just applied.
         followStationPalette(d);
-        lastCanAsk = JSON.stringify(d.canAsk || null);
+        lastCanAsk = askSignature(d);
       } else {
         followStationPalette(d);
         // A tier change (signing in or out) changes what this caller may ask
         // and which corner controls apply — rebuild those, but ONLY when the
-        // menu actually changed, so an ordinary poll never rebuilds the popup
-        // under the caller's finger. This is what makes sign-out drop the
-        // on-air group the same way sign-in added it.
-        const nowCanAsk = JSON.stringify(d.canAsk || null);
+        // signature actually changed, so an ordinary poll never rebuilds the
+        // popup under the caller's finger. This is what makes sign-out drop the
+        // on-air group the same way sign-in added it. The signature carries the
+        // TIER as well as the menu: an admin whose permissions happen to match
+        // a guest's still needs the "for the operator" label, and without the
+        // tier in the key a guest→admin switch left the popup saying "for guest
+        // callers" until the page was reloaded (operator-reported 2026-08-10).
+        const nowCanAsk = askSignature(d);
         if (nowCanAsk !== lastCanAsk) {
           lastCanAsk = nowCanAsk;
           setupAskPopup(d.canAsk);
@@ -1020,17 +1064,37 @@
       // later has no business overruling them.
       if (!room) { onSpeaker = d.speakerDefault !== false; paintSpeakerBtn(); }
 
-      const img = $('djAvatar');
-      if (parts.avatar === false) { img.classList.add('hidden'); }
-      else if (d.avatar) {
+      const img = $('djAvatar'), mono = $('djMono');
+      // Initials in the ring when there's no usable image. showMono is also the
+      // fallback for the station's 1x1 placeholder: it is a valid PNG, so it
+      // LOADS rather than erroring, and without the size check below it stretched
+      // one pixel across the whole avatar and read as an empty circle
+      // (radio.drearburh.uk, a persona with no image — diagnosed 2026-08-10).
+      const showMono = () => {
+        img.classList.add('hidden');
+        if (mono) {
+          const ini = monogram(d.name);
+          mono.textContent = ini;
+          mono.classList.toggle('hidden', !ini);
+        }
+      };
+      const showImg = () => { if (mono) mono.classList.add('hidden'); img.classList.remove('hidden'); };
+      if (parts.avatar === false) {
+        // Avatar turned off for this surface — no image AND no initials.
+        img.classList.add('hidden');
+        if (mono) mono.classList.add('hidden');
+      } else if (d.avatar) {
+        img.alt = d.name || 'DJ';
+        img.onerror = showMono;
+        img.onload = () =>
+          (img.naturalWidth <= 2 || img.naturalHeight <= 2) ? showMono() : showImg();
         if (img.dataset.pid !== d.personaId) {
           img.dataset.pid = d.personaId || '';
-          img.src = d.avatar + '?v=' + (d.personaId || '');
+          img.src = d.avatar + '?v=' + (d.personaId || '');  // fires onload/onerror
+        } else if (img.complete && img.src) {
+          img.onload();   // src unchanged on a poll repaint — re-judge in place
         }
-        img.alt = d.name || 'DJ';
-        img.classList.remove('hidden');
-        img.onerror = () => img.classList.add('hidden');
-      } else { img.classList.add('hidden'); }
+      } else { showMono(); }
 
       // One place decides what the Call button says and whether it works.
       // Split across two blocks, the later one silently undid the earlier.
@@ -1344,9 +1408,20 @@
       // settles, exactly like a live call's captions.
       if (topic === 'vm-heard') {
         let m; try { m = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
-        if (m && m.text) {
-          capBox.classList.add('on');
-          addCaption('vm-heard', 'you', m.text, m.final !== false);
+        if (!m || !m.text) return;
+        $('lineBox').classList.add('open');
+        capBox.classList.add('on');
+        // The machine publishes each SENTENCE on its own, interim then final.
+        // Rewriting one fixed line (as this did) showed only the caller's last
+        // sentence — so a message read back as a single stray phrase. Instead a
+        // finished sentence retires its line and the next one stacks beneath
+        // it, and the caller sees the whole message they're leaving. `force`
+        // puts it in the box even on a ticker-mode embed: a voicemail has no
+        // other transcript, so this is the only sign it's registering a word.
+        addCaption('vm-interim', 'you', m.text, m.final !== false, true);
+        if (m.final !== false) {
+          capNodes.delete('vm-interim');
+          delete lastByWho.you;
         }
         return;
       }
@@ -1409,9 +1484,12 @@
     tickerTimer = setTimeout(() => t.classList.remove('show'), 6000);
   }
 
-  function addCaption(id, who, text, final) {
+  function addCaption(id, who, text, final, force) {
     if (!text) return;
-    if (captionsMode !== 'full' && !chatOpen) {
+    // `force` overrides the caption mode: a voicemail has no DJ captions and no
+    // audible reply, so the caller's own words must land in the box even when
+    // the card is otherwise in ticker mode — the transcript IS the receipt.
+    if (!force && captionsMode !== 'full' && !chatOpen) {
       if (captionsMode === 'ticker') showTicker(who, text);
       return;
     }
@@ -1456,9 +1534,9 @@
   // reaching the air, a segment starting. It gets its own line in the
   // timeline, styled apart from the conversation, because the caller
   // otherwise has only the DJ's word that anything happened.
-  function addSystemLine(icon, label, detail) {
-    if (captionsMode === 'off') return;
-    if (captionsMode !== 'full') {
+  function addSystemLine(icon, label, detail, force) {
+    if (captionsMode === 'off' && !force) return;
+    if (!force && captionsMode !== 'full') {
       showTicker('sys', label + (detail ? ' — ' + detail : ''));
       return;
     }
@@ -1765,7 +1843,18 @@
       const { token, url, room: roomName } = await res.json();
       currentRoom = roomName;
 
-      room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+      // Echo cancellation, noise suppression and auto-gain set EXPLICITLY, not
+      // left to whatever the client library defaults to this version: they are
+      // what a phone in a room full of the station's own output needs to be
+      // transcribed, and on a speakerphone the echo canceller is the only thing
+      // keeping the DJ's voice out of the caller's transcript. Stated here so
+      // the README can promise them and mean it.
+      room = new LivekitClient.Room({
+        adaptiveStream: true, dynacast: true,
+        audioCaptureDefaults: {
+          echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+        },
+      });
 
       // Nobody has to answer. If the worker is down, mid-restart, or never
       // gets dispatched, the room connects fine and then nothing happens —
@@ -2051,11 +2140,18 @@
     setAgentState('idle');
     const ticker = $('ticker');
     if (ticker) { ticker.classList.remove('show'); ticker.hidden = true; }
-    collapseTranscript();
-    // No verdict buttons after a voicemail — there was no conversation to
-    // rate, and "How was it?" over "Message left" read as the machine
-    // fishing for a compliment. Operator-reported.
-    if (!wasVm) offerFeedback(endedRoom);
+    // A voicemail keeps its transcript OPEN on the ended card — the caller
+    // should still see what they submitted, with a line saying it's now the
+    // DJ's to read (operator-reported: "when it ends you can't see what you
+    // left"). A call folds the transcript into the drawer as before, and only
+    // a call offers the verdict buttons — "How was it?" over "Message left"
+    // read as the machine fishing for a compliment.
+    if (wasVm) {
+      showVmReceipt();
+    } else {
+      collapseTranscript();
+      offerFeedback(endedRoom);
+    }
     setBtn(callBtn, 'call', 'phone', callLabel());
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
@@ -2069,10 +2165,38 @@
     const pttBar = $('pttBtn');
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
     $('meterYou').classList.remove('muted');
-    setStatus(wasVm ? 'Message left — it gets passed on.' : 'Call ended');
+    setMicChip('live');
+    // The captions box, when it has lines, hides this status line — so on a
+    // voicemail with a transcript the review note lives IN the box (see
+    // showVmReceipt) and this is the fallback for a message that left no
+    // transcribable words.
+    setStatus(wasVm ? 'Message received — the DJ will review your request shortly.'
+                    : 'Call ended');
     // The card's idle truth — including the second button — comes back from
-    // the next /live read rather than being reconstructed by hand here.
+    // the next /live read rather than being reconstructed by hand here. The
+    // burst catches a takeover this call may have set in motion, which airs at
+    // the next track boundary and would otherwise show up to a poll late.
     refreshLive();
+    burstLive();
+    notifyHeight();
+  }
+
+  // A voicemail's receipt: keep the caller's own words on screen after the
+  // beep, with a line telling them the message is now the DJ's to read. There
+  // is no reply and no rating, so the transcript is the whole of what a caller
+  // gets to take away — folding it into a collapsed drawer (as a call does)
+  // hid the one thing they wanted to check. If nothing was transcribed there is
+  // nothing to show, so it falls back to the ordinary collapse and the status
+  // line carries the note instead.
+  function showVmReceipt() {
+    const spoken = capBox.querySelectorAll('.cap.you').length;
+    if (!spoken) { collapseTranscript(); return; }
+    $('lineBox').classList.add('open');
+    capBox.classList.add('on');
+    $('endedBar').hidden = true;
+    addSystemLine('✓', 'Message received',
+                  'The DJ will review your request shortly.', true);
+    capBox.scrollTop = capBox.scrollHeight;
     notifyHeight();
   }
 
@@ -2439,6 +2563,23 @@
     return micOp;
   }
 
+  // One place owns the mic-state chip beside the You meter, so the PTT bar and
+  // the Mute button can never leave contradictory text on it. 'live' hides it
+  // (a moving meter already says you're heard); 'off' is the PTT resting state
+  // and reads dim; 'muted' is a deliberate act and stays loud. The label under
+  // it is always just "You" — the state rides on the chip, not the label.
+  function setMicChip(state) {
+    const chip = $('micChip');
+    if (chip) {
+      chip.classList.remove('off', 'muted');
+      if (state === 'off') { chip.textContent = 'Mic off'; chip.classList.add('off'); chip.hidden = false; }
+      else if (state === 'muted') { chip.textContent = 'Muted'; chip.classList.add('muted'); chip.hidden = false; }
+      else { chip.hidden = true; }
+    }
+    const label = $('youLabel');
+    if (label) label.textContent = 'You';
+  }
+
   function paintPtt() {
     const bar = $('pttBtn');
     if (!bar) return;
@@ -2456,7 +2597,7 @@
     // button already taught it.
     if (room && pttOn()) {
       $('meterYou').classList.toggle('muted', !pttOpen);
-      $('youLabel').textContent = pttOpen ? 'You' : 'You — mic off';
+      setMicChip(pttOpen ? 'live' : 'off');
     }
   }
 
@@ -2517,7 +2658,7 @@
     muteBtn.textContent = muted ? 'Unmute' : 'Mute';
     muteBtn.classList.toggle('on', muted);
     $('meterYou').classList.toggle('muted', muted);
-    $('youLabel').textContent = muted ? 'You — muted' : 'You';
+    setMicChip(muted ? 'muted' : 'live');
   };
 
   // ------------------------------------------------------------ installable

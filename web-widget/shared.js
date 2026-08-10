@@ -41,6 +41,28 @@ window.Callin = (function () {
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
+    // Paint in the LAST station palette synchronously, before /live or a host's
+    // swtv:theme arrives — otherwise the card shows the default accent for the
+    // frame or two until one of those lands, which on an embedded SUB/WAVE page
+    // read as a coral→station-colour flash on every open (reported 2026-08-10).
+    // Only the accent tokens; light/dark is handled above. Skipped when the
+    // VIEWER has toggled a manual theme — that toggle deliberately clears these
+    // tokens, so restoring them would undo their choice. A themeDefault or a
+    // host-forced light/dark does NOT skip it: those pick the mode, not the hue.
+    const manual = localStorage.getItem('callinTheme');
+    if (manual !== 'light' && manual !== 'dark') {
+      try {
+        const cached = JSON.parse(localStorage.getItem('callinPalette') || 'null');
+        if (cached && typeof cached === 'object') {
+          const root = document.documentElement;
+          Object.keys(cached).forEach((k) => {
+            if (!/^--[a-z0-9-]+$/i.test(k)) return;
+            const v = String(cached[k]);
+            if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
+          });
+        }
+      } catch (e) { /* a corrupt cache costs one more flash, never a broken card */ }
+    }
     const btn = document.getElementById('themeBtn');
     // The glyph is the DESTINATION, not the state: a sun on a dark card
     // ("tap for light"), a moon on a light one. The operator found the old
@@ -67,6 +89,10 @@ window.Callin = (function () {
         .forEach((p) => root.style.removeProperty(p));
       root.setAttribute('data-theme', next);
       localStorage.setItem('callinTheme', next);
+      // The viewer chose a manual theme, so a cached station palette must not
+      // paint over it on the next load — drop it. It re-caches the moment the
+      // station palette is applied again (if they toggle back to it).
+      try { localStorage.removeItem('callinPalette'); } catch (e) { /* private mode */ }
       glyph();
     };
   })();
