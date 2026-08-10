@@ -574,6 +574,21 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
 
         self.assertIn('topic="vm-beep"', inspect.getsource(capture.answer))
 
+    def test_the_caller_sees_the_machine_hearing_them(self):
+        # A voicemail card sat silent while someone spoke — no sign a word was
+        # registering (operator, 2026-08-10). The worker now publishes what it
+        # hears on its own topic; the widget renders it as the caller's line.
+        import inspect
+
+        from voicemail import capture
+
+        from tests.support import REPO
+
+        src = inspect.getsource(capture.answer)
+        self.assertIn('topic="vm-heard"', src)
+        widget = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("'vm-heard'", widget)
+
     def test_the_widget_listens_from_pickup(self):
         # The beep used to GATE the caller's mic, so everything said over
         # the greeting was thrown away — the operator's real messages

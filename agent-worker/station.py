@@ -13,8 +13,11 @@ All endpoints used here are public reads; no auth needed.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import time
+from pathlib import Path
 
 import httpx
 
@@ -71,6 +74,39 @@ def _sent_but_unconfirmed(e: Exception) -> bool:
 # waiting, so a slow read falls back to the last one that worked.
 _persona_cache: dict = {"value": None, "at": 0.0}
 _PERSONA_TTL = 300.0
+
+# The same fallback, but on DISK — because every call is its own job process,
+# so the in-process cache above is empty at the start of each one and can only
+# help within a single call. When the whole station is timing out (observed
+# 2026-08-10: every read ReadTimeout, so /dj, /now-playing AND /personas all
+# failed), a fresh process had nothing to fall back to and answered as the
+# generic "the DJ" on "SUB/WAVE" — the wrong DJ, the wrong station name, on a
+# real caller. This file lets the next process reuse the last persona and
+# station name that actually resolved.
+_PERSONA_FILE = Path(
+    os.environ.get("LAST_PERSONA_PATH",
+                   Path(__file__).parent.parent / "data" / "last-persona.json")
+)
+
+
+def _remember_persona(persona: dict, station: str) -> None:
+    try:
+        _PERSONA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _PERSONA_FILE.write_text(json.dumps(
+            {"persona": persona, "station": station, "at": time.time()}))
+    except Exception as e:                                    # noqa: BLE001
+        log.debug("could not remember the last persona (harmless): %s", e)
+
+
+def _recall_persona() -> dict | None:
+    """The last persona+station that resolved, if recent enough to trust."""
+    try:
+        d = json.loads(_PERSONA_FILE.read_text())
+        if time.time() - float(d.get("at") or 0) < _PERSONA_TTL:
+            return d
+    except Exception:                                         # noqa: BLE001
+        pass
+    return None
 
 
 class StationClient:
@@ -176,14 +212,30 @@ class StationClient:
             "name": name or "the DJ",
             "soul": dj.get("soul", ""),
             "tagline": dj.get("tagline", ""),
+            # Carried on the persona so the prompt's station-name line has a
+            # fallback when /dj timed out — see brain/assemble.py.
+            "station": dj.get("station", ""),
         }
 
         if name:
             _persona_cache["value"] = resolved
             _persona_cache["at"] = time.time()
-        elif _persona_cache["value"] and (time.time() - _persona_cache["at"]) < _PERSONA_TTL:
-            log.warning("station /dj was slow or empty — using the last known persona")
+            _remember_persona(resolved, resolved["station"])
+            return resolved
+
+        # No live answer. Prefer the in-process cache (fastest, same call),
+        # then the disk cache from a previous call's process — either beats
+        # collapsing a real DJ into the generic default.
+        if _persona_cache["value"] and (time.time() - _persona_cache["at"]) < _PERSONA_TTL:
+            log.warning("station /dj was slow or empty — using this process's last persona")
             return _persona_cache["value"]
+        recalled = _recall_persona()
+        if recalled and recalled.get("persona"):
+            log.warning("station /dj was slow or empty — using the last persona "
+                        "on record (%s)", recalled["persona"].get("name"))
+            p = dict(recalled["persona"])
+            p.setdefault("station", recalled.get("station", ""))
+            return p
 
         return resolved
 

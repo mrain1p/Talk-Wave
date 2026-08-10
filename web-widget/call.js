@@ -1259,6 +1259,19 @@
   function watchActions(r) {
     const decoder = new TextDecoder();
     r.on(LivekitClient.RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
+      // The answering machine publishes what it hears on its own topic, so a
+      // caller leaving a message SEES their words land instead of talking
+      // into a silent card. Rendered as the caller's own transcript line, the
+      // same caption box a call uses; the interim/final flag dims it until it
+      // settles, exactly like a live call's captions.
+      if (topic === 'vm-heard') {
+        let m; try { m = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
+        if (m && m.text) {
+          capBox.classList.add('on');
+          addCaption('vm-heard', 'you', m.text, m.final !== false);
+        }
+        return;
+      }
       if (topic && topic !== 'wavetalk.action') return;
       let msg;
       try { msg = JSON.parse(decoder.decode(payload)); } catch (e) { return; }

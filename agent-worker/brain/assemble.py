@@ -50,8 +50,13 @@ async def build_system_prompt(
     # radio station" for everybody, so a DJ on Yosemite FM told callers they
     # were live on SUB/WAVE — the software's name, which no listener has ever
     # heard of. GET /dj has carried the real one all along.
+    # /dj first; then the station name carried on the persona (recovered from
+    # the last-known-good record when the live read timed out — otherwise a
+    # station-wide timeout put a caller through to "SUB/WAVE" instead of the
+    # real station name); the generic name only when nothing else is known.
     station_name = demojibake(
-        str((snap.get("dj") or {}).get("station") or "").strip()
+        str((snap.get("dj") or {}).get("station")
+            or persona.get("station") or "").strip()
     ) or "the SUB/WAVE radio station"
     dj_card = clip(persona.get("soul", ""), CARD_BUDGET)
     show_name = demojibake(show.get("name", ""))

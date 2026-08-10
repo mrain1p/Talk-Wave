@@ -395,6 +395,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "one module per job, and /test/* is genuinely one job: eight probes "
             "that all answer 'can this box reach that thing'. Splitting them "
             "would scatter one answer across eight files.",
+        "agent-worker/station.py":
+            "the read-only SUB/WAVE REST client — one method per station "
+            "endpoint plus the persona/show resolution that stitches several "
+            "reads into one answer. It grows a method when the station gains "
+            "an endpoint, the same declarative-surface reason settings.py is "
+            "exempt; splitting it scatters one client across files that all "
+            "hold the same httpx session and the same last-known-good caches.",
         "web-widget/panel.js":
             "measured rather than assumed. The log and call viewers had a real "
             "boundary and left in 0.9.106. What remains does not: the test "
@@ -441,6 +448,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "one subject: the browser half, guarded from here. It is the "
             "substitute for the JS unit tests this repo has no toolchain to "
             "run, so it carries text checks the widget cannot make itself.",
+        "agent-worker/tests/test_voicemail.py":
+            "one subject: the answering machine — greeting resolution, the "
+            "beep as a cue, the bounded recording, delivery, and now the "
+            "caller seeing their own words land. Same subject-placement rule "
+            "as the test modules below.",
         "agent-worker/tests/test_voice.py":
             "one subject: whether a speech backend can say the thing — "
             "discovery, sample rates, pace, and now the shipped adapter "
