@@ -3,7 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.18–0.10.22 (unreleased on main — currently on dev)
+## 0.10.24
+
+Everything since 0.10.15: the text line, callers signing in for more, the
+call-quality fixes, and a batch of front-end polish.
 
 ### The text line
 
@@ -20,6 +23,17 @@ commit-by-commit detail is in git history.
 ### Every mode
 
 - **A language / instruction guard**, always on: a caller directing the DJ to switch languages, drop its rules, or follow “instructions” quoted at it is testing the line, not making a request — and is treated as such. Mirrors a fix the station itself made after a real raid.
+
+### Call quality, from reading real calls
+
+- **The station’s colours follow the programme.** With “the station’s own colours” chosen, the card repaints to the on-air show’s palette when the show changes, instead of holding the previous one until a reload.
+- **The DJ stops talking over its own announcement on a slow station.** An announcement the station is slow to confirm now holds the call DJ quiet until the broadcast actually airs it, rather than counting down from a guess — and stops promising a duration nobody knows.
+- **The DJ knows the station’s other shows**, so a caller asking to put another show on air is recognised instead of refused as nonsense.
+
+### Front-end polish
+
+- **The chat text box is visible** — it was rendering transparent on a transparent card (a real bug); it’s now a proper 44px field.
+- **The Call / Text / Message buttons line up** at equal width, and wrap tidily in a compact embed instead of overflowing.
 
 ## 0.10.15
 
