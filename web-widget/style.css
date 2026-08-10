@@ -2861,3 +2861,202 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
+
+  /* ============================================================================
+     PANEL NEWSPAPER REDESIGN (3a). Scoped to body.panelpage so the neutral,
+     embeddable CALL CARD is untouched (HOST-STYLE-GUIDE section 2). It rides the
+     same token cascade — system default, data-theme override, and the station
+     third theme all keep working: station mode sets inline tokens on :root and
+     adds .theme-station to the body, which drops the newspaper palette so those
+     inline tokens inherit straight through. Everything is behind the scope
+     class, so a grep for body.panelpage is the leak check.
+     ============================================================================ */
+
+  /* --- tokens: light = cream newspaper sheet, dark = near-black ------------- */
+  body.panelpage:not(.theme-station) {
+    --pine: #100e0c; --granite: #100e0c; --granite-hi: #181513;
+    --alpenglow: #f3efe6; --sage: #969187; --sage-dim: #5c574f;
+    --coral: #c5302a; --amber: #d8a13a;
+    --hairline: rgba(243,239,230,.12); --edge: rgba(243,239,230,.30);
+    --shadow: none;
+    --bg: var(--pine); --panel: var(--granite); --line: var(--hairline);
+    --line2: var(--edge); --text: var(--alpenglow); --dim: var(--sage);
+    --dimmer: var(--sage-dim); --accent: var(--coral); --warn: var(--amber);
+  }
+  @media (prefers-color-scheme: light) {
+    body.panelpage:not(.theme-station) {
+      --pine: #f3efe6; --granite: #f3efe6; --granite-hi: #eae5d9;
+      --alpenglow: #1a1613; --sage: #7a7268; --sage-dim: #a49b8e;
+      --coral: #c5302a; --amber: #9a6b16;
+      --hairline: rgba(26,22,19,.12); --edge: rgba(26,22,19,.30);
+    }
+  }
+  :root[data-theme="dark"] body.panelpage:not(.theme-station) {
+    --pine: #100e0c; --granite: #100e0c; --granite-hi: #181513;
+    --alpenglow: #f3efe6; --sage: #969187; --sage-dim: #5c574f;
+    --coral: #c5302a; --amber: #d8a13a;
+    --hairline: rgba(243,239,230,.12); --edge: rgba(243,239,230,.30);
+  }
+  :root[data-theme="light"] body.panelpage:not(.theme-station) {
+    --pine: #f3efe6; --granite: #f3efe6; --granite-hi: #eae5d9;
+    --alpenglow: #1a1613; --sage: #7a7268; --sage-dim: #a49b8e;
+    --coral: #c5302a; --amber: #9a6b16;
+    --hairline: rgba(26,22,19,.12); --edge: rgba(26,22,19,.30);
+  }
+
+  /* --- global chrome: flat page, square corners, ruled not nested ----------- */
+  body.panelpage { background: var(--pine); }
+  body.panelpage .panel {
+    background: transparent; border: 0; border-radius: 0;
+    box-shadow: none; padding: 26px 30px 40px; max-width: 1180px;
+  }
+  body.panelpage :is(button, input, select, textarea, .tile, .ctrlcard,
+    .supergroup, .panelnav a, .runbtn, .tag, .gear, .banner, .permgrid,
+    details.sec > summary, .snippet, .result, .preview, .previewstage,
+    .switch, .chip, .pill) {
+    border-radius: 0 !important;
+  }
+
+  /* --- masthead ------------------------------------------------------------ */
+  body.panelpage .masthead {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; padding: 0 0 10px; margin: 0 0 26px;
+    border-bottom: 1px solid var(--edge); position: relative;
+  }
+  body.panelpage .masthead::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+    border-top: 3px solid var(--coral);
+  }
+  body.panelpage .masttitle {
+    font: 700 30px/1 var(--font-mono); letter-spacing: .06em; color: var(--text);
+  }
+  body.panelpage .mastsub {
+    margin-top: 6px; font: 700 11px/1 var(--font-mono); letter-spacing: .24em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  body.panelpage .masthead .panelbar {
+    display: flex; gap: 8px; align-items: center; margin: 0;
+  }
+  /* :not([hidden]) so the sign-out button (hidden until logged in) and the
+     call page's corner gears stay hideable — a bare .gear display rule beats
+     the UA [hidden] and un-hides them (TestHiddenActuallyHides). */
+  body.panelpage .masthead .gear:not([hidden]) {
+    border: 1px solid var(--edge); background: transparent; color: var(--text);
+    font: 700 11px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+    min-width: 40px; height: 34px; padding: 0 12px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  body.panelpage .masthead .gear:hover { background: var(--granite-hi); }
+  body.panelpage .dashband { display: none; }
+
+  /* --- super-group section slabs: heading + a coral rule filling the line --- */
+  body.panelpage .supergroup {
+    background: transparent !important; border: 0 !important; padding: 0 !important;
+    margin: 30px 0 10px; display: flex; align-items: center; gap: 14px;
+    font: 700 15px/1.1 var(--font-mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text);
+  }
+  body.panelpage .supergroup > * { flex: 0 0 auto; }
+  body.panelpage .supergroup::after {
+    content: ""; flex: 1 1 auto; height: 2px; background: var(--coral); min-width: 30px;
+  }
+
+  /* --- section rows (details.sec) ------------------------------------------ */
+  body.panelpage details.sec { border: 0; background: transparent; }
+  body.panelpage details.sec > summary {
+    background: transparent; border: 0; border-bottom: 1px solid var(--hairline);
+    padding: 11px 2px;
+  }
+  body.panelpage details.sec > summary:hover {
+    background: color-mix(in srgb, var(--alpenglow) 4%, transparent);
+  }
+  body.panelpage .chev { color: var(--coral); }
+  body.panelpage .secname {
+    font-family: var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
+  }
+
+  /* --- jump bar, buttons, inputs: square, ruled, transparent --------------- */
+  body.panelpage .panelnav a {
+    border: 1px solid var(--edge); background: transparent; color: var(--dim);
+  }
+  body.panelpage .panelnav a:hover { background: var(--granite-hi); color: var(--text); }
+  body.panelpage :is(.runbtn, .snippet) {
+    border: 1px solid var(--edge); background: transparent; color: var(--text);
+    font-family: var(--font-mono); letter-spacing: .04em;
+  }
+  body.panelpage .runbtn:hover { background: var(--granite-hi); }
+  body.panelpage input, body.panelpage select, body.panelpage textarea {
+    border: 1px solid var(--edge); background: transparent;
+  }
+
+  /* --- dashboard: de-nest the groups, rule the cards, square red toggles ---- */
+  body.panelpage .dashgroup {
+    background: transparent; border: 0; padding: 0;
+  }
+  body.panelpage .dashgroup .tlabel {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .28em;
+    text-transform: uppercase; color: var(--sage);
+    border-bottom: 1px solid var(--hairline); padding-bottom: 6px; margin-bottom: 6px;
+  }
+  body.panelpage .tile, body.panelpage .ctrlcard {
+    border: 0; border-bottom: 1px solid var(--hairline);
+    background: transparent; box-shadow: none;
+  }
+  body.panelpage .tile:hover, body.panelpage .ctrlcard:hover {
+    transform: none; background: color-mix(in srgb, var(--alpenglow) 4%, transparent);
+  }
+  body.panelpage .ctrlcard.kill:not(.paused) {
+    border-left: 4px solid var(--coral); padding-left: 11px;
+    background: color-mix(in srgb, var(--coral) 8%, transparent);
+  }
+  body.panelpage .ctrlcard .switch {
+    border: 1px solid var(--edge); background: transparent;
+  }
+  body.panelpage .ctrlcard .switch::after {
+    width: 16px; height: 16px; top: 3px; left: 3px; background: var(--sage-dim);
+  }
+  body.panelpage .ctrlcard.on .switch,
+  body.panelpage .ctrlcard.kill:not(.paused) .switch,
+  body.panelpage .ctrlcard.kill.paused .switch {
+    border-color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
+  }
+  body.panelpage .ctrlcard.on .switch::after,
+  body.panelpage .ctrlcard.kill:not(.paused) .switch::after,
+  body.panelpage .ctrlcard.kill.paused .switch::after {
+    background: var(--coral); left: 21px;
+  }
+  body.panelpage .ctrlcard .switch.small { width: 30px; height: 17px; }
+  body.panelpage .ctrlcard .switch.small::after { width: 13px; height: 13px; top: 2px; left: 2px; }
+  body.panelpage .ctrlcard.on .switch.small::after { left: 15px; }
+
+  /* --- footer -------------------------------------------------------------- */
+  body.panelpage .panelfoot {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--edge);
+    font: 700 11px/1 var(--font-mono); letter-spacing: .08em; color: var(--sage);
+    text-transform: uppercase;
+  }
+
+  /* --- redesign polish pass ------------------------------------------------ */
+  /* the whole dashboard was one bordered card; flatten it like the groups */
+  body.panelpage .dash {
+    border: 0; background: transparent; padding: 0; margin: 0 0 6px;
+  }
+  /* square toggle knob (the base ::after is a circle) */
+  body.panelpage .ctrlcard .switch::after { border-radius: 0; }
+  /* ON states in chrome read CORAL, not the semantic pass/fail green */
+  body.panelpage .ctrlcard.on .cv,
+  body.panelpage .ctrlcard.kill .cv { color: var(--coral); }
+  body.panelpage .ctrlcard.kill.paused .cv { color: var(--coral); }
+  /* section action buttons: square, transparent, ruled — not grey fills */
+  body.panelpage .body button:not(.tile):not(.ctrlcard):not(.chev),
+  body.panelpage .testrow button {
+    border: 1px solid var(--edge); background: transparent; color: var(--text);
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em;
+    text-transform: uppercase; padding: 7px 12px;
+  }
+  body.panelpage .body button:not(.tile):not(.ctrlcard):hover:not(:disabled),
+  body.panelpage .testrow button:hover:not(:disabled) {
+    background: var(--granite-hi); filter: none;
+  }

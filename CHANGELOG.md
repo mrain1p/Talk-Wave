@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.46
+
+- **The settings panel has a new look — a newspaper.** A "WAVE TALK" masthead over a red rule, flat cream-and-ink sheets (near-black in dark mode), ruled rows instead of boxed-in cards, square red toggles, section headings with a rule filling the line, and a proper footer. It's the panel only — the call card stays deliberately neutral — and light, dark, the station's own colours and match-the-page all keep working. Pure restyle: every control and setting is exactly where it was.
+
 ## 0.10.45
 
 - **Caller permissions are grouped by what they need.** The ones that run on the station's own controls (queue an exact track, un-like, put a message on air, run a segment) now sit in their own **"needs station admin credentials"** block, apart from the ones that need nothing (requests, search, like, voicemail, text) and the station-wide switches. All still off by default and never reach a guest unless you point the row there.

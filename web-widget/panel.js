@@ -1595,10 +1595,12 @@
       // current value, they just cannot be picked from a list.
       console.info('provider lists unavailable:', e && e.message);
     }
-    // Which build is this? Anchors every bug report and change over time.
+    // The masthead nameplate sub-line and the footer both carry the host; the
+    // footer also carries the build, which anchors every bug report over time.
+    if ($('mastSub')) $('mastSub').textContent = 'DASHBOARD · ' + location.host;
+    if ($('footHost')) $('footHost').textContent = location.host;
     fetch('/health').then((r) => r.json()).then((h) => {
-      $('versionLine').textContent = 'Wave Talk v' + (h.version || '?')
-        + ' · ' + location.host;
+      $('versionLine').textContent = 'Wave Talk v' + (h.version || '?');
     }).catch(() => {});
   }
 
@@ -1795,6 +1797,10 @@
     const root = document.documentElement;
     [...root.style].filter((prop) => prop.startsWith('--'))
       .forEach((prop) => root.style.removeProperty(prop));
+    // The newspaper redesign paints its own light/dark palette on body.panelpage.
+    // When the operator picks the STATION colours, drop that class so the
+    // station's inline :root tokens inherit through instead (see the CSS).
+    document.body.classList.toggle('theme-station', choice === 'station');
     if (choice === 'station' && panelStationTheme) {
       root.setAttribute('data-theme',
         panelStationTheme.mode === 'light' ? 'light' : 'dark');
