@@ -179,6 +179,19 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Defaults open: switching voicemail on is already a decision, and the
     # door code still applies in front of this.
     "allow_voicemail":       (None, "open"),
+    # The text line. Enabled is the master (the dashboard's third door);
+    # the ceilings exist because a typed endpoint that spends LLM money is
+    # scriptable with curl in a way a WebRTC call never was — the station's
+    # own text surface took a real raid (2026-07-28) and grew the same
+    # shape of gate.
+    "chat_enabled":          (None, False),
+    "allow_chat":            (None, "open"),
+    "chat_idle_minutes":     (None, 30),
+    "chat_max_messages":     (None, 60),
+    "chat_max_hours":        (None, 12),
+    "max_open_chats":        (None, 20),
+    "chats_per_hour":        (None, 0),
+    "chat_msgs_per_minute":  (None, 10),
     "voicemail_greeting":    (None, ""),
     "voicemail_greeting_mode": (None, "staged"),
     "voicemail_max_seconds": (None, 30),
@@ -319,6 +332,8 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Call button INTO "Leave a message" where a live call is impossible.
     "show_voicemail_button":  (None, False),
     "embed_voicemail_button": (None, False),
+    "show_chat_button":       (None, True),
+    "embed_chat_button":      (None, False),
     # A colour on the DJ's voice, applied in the caller's browser only — the
     # broadcast never hears it. One answer for both surfaces: the effect is
     # part of the DJ's character, and a DJ who is CB on the page and clean in
@@ -431,6 +446,7 @@ TIER_OFF = "off"
 # who those apply to would be asking a question with no answer.
 TIERED_PERMISSIONS = (
     "allow_voicemail",
+    "allow_chat",
     "allow_requests",
     "allow_library_search",
     "allow_exact_queue",
@@ -631,6 +647,7 @@ GROUPS = [
     ("record",   "line",   "Call transcripts",    "What is written to disk, and for how long."),
     # Its own section, not rows inside another — the operator's explicit call.
     ("voicemail", "line",  "Voicemail",           "When the booth can't pick up, the machine does."),
+    ("chat",      "line",  "Text line",           "Typed chat with whoever is on air — same brain, no microphone."),
 
     ("player",   "card",   "Player settings",     "What the card shows, here and in an embed."),
     # Every fixed string on the card, overridable — so a station whose whole
@@ -801,6 +818,31 @@ SCHEMA: dict[str, dict] = {
     "embed_caller_help": dict(group="player", kind="check",
         label="“What can I ask?” button (embed)",
         help="The same button, in a frame on somebody else's page."),
+    "chat_idle_minutes": dict(group="chat", kind="number",
+        label="Close after quiet (min)",
+        help="A chat with nothing said for this long is over: the record is "
+             "written and the id stops resuming. The widget keeps its side, "
+             "so a returning caller simply starts a fresh conversation."),
+    "chat_max_messages": dict(group="chat", kind="number",
+        label="Messages per chat",
+        help="A ceiling on one conversation, not a rate: hitting it closes "
+             "the chat politely. 0 = no ceiling."),
+    "chat_max_hours": dict(group="chat", kind="number",
+        label="Longest chat (hours)",
+        help="However active, a chat this old is closed and written down. "
+             "Resumable is not immortal."),
+    "max_open_chats": dict(group="chat", kind="number",
+        label="Open chats at once",
+        help="Across all callers. Each open chat is a transcript in memory "
+             "and a potential LLM spend; 0 = unlimited."),
+    "chats_per_hour": dict(group="chat", kind="number",
+        label="New chats per hour",
+        help="Fresh conversations opened per hour, all callers together. "
+             "0 = unlimited. Resuming an existing chat is never counted."),
+    "chat_msgs_per_minute": dict(group="chat", kind="number",
+        label="Messages per minute",
+        help="Per chat. A human types a handful; a script does not. The "
+             "excess is refused in-world, not queued."),
     "show_theme_toggle": dict(group="player", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "
@@ -814,6 +856,15 @@ SCHEMA: dict[str, dict] = {
         help="The way into this panel from the card. Off secures nothing — "
              "/settings still answers by URL and still asks for the password — "
              "just stops advertising it."),
+    "show_chat_button": dict(group="player", kind="check",
+        label="“Text the booth” button",
+        help="A third way in, beside Call: typed conversation with the "
+             "on-air DJ. Needs the text line switched on under Running "
+             "the line."),
+    "embed_chat_button": dict(group="player", kind="check",
+        label="“Text the booth” button (embed)",
+        help="The same door on the embedded card. Off by default: three "
+             "buttons crowd a 190px frame."),
     "show_voicemail_button": dict(group="player", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "
@@ -1008,6 +1059,12 @@ SCHEMA: dict[str, dict] = {
 
     # --- transcripts ---
     # --- voicemail ---
+    "chat_enabled": dict(group="usage", kind="check",
+        label="Take text chats",
+        help="The text line: typed conversation with whoever is on air, "
+             "same brain and same tools as the phone, over a plain "
+             "WebSocket — no WebRTC, so it works where calls cannot. "
+             "The Line's pause switch closes this door too."),
     "voicemail_enabled": dict(group="usage", kind="check",
         label="Enable voicemail",
         help="The machine's master switch — everything below applies only "
@@ -1026,6 +1083,10 @@ SCHEMA: dict[str, dict] = {
         label="Leave a voicemail",
         help="Who may talk to the machine at all. The Voicemail section "
              "decides WHEN it answers; this decides WHO it answers for."),
+    "allow_chat": dict(group="perms", kind="select", tiered=True,
+        label="Text the booth",
+        help="Who may open the text line at all. The Text line section "
+             "holds its clocks and ceilings; this decides WHO gets in."),
     "live_calls_enabled": dict(group="usage", kind="check",
         label="Take live calls",
         help="Off, the Call button becomes the machine's door (with "

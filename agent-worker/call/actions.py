@@ -47,6 +47,13 @@ class CallActions:
         self.limit = max(0, int(limit or 0))
         self.count = 0
         self._room = room
+        # What actually happened, for consumers with no room to publish to:
+        # the chat line writes its record from this, the way the call's
+        # record hears the room. And an optional hook for delivering the
+        # caption card somewhere other than a LiveKit data channel — the
+        # chat's WebSocket sets it; a call leaves it alone.
+        self.taken: list[tuple[str, str]] = []
+        self.on_note = None
 
     def at_limit(self) -> bool:
         return self.limit > 0 and self.count >= self.limit
@@ -65,6 +72,13 @@ class CallActions:
         self.count += 1
         icon, label = self.LABELS.get(kind, ("✅", "Action completed"))
         log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)
+        self.taken.append((kind, detail))
+        if self.on_note is not None:
+            try:
+                self.on_note({"kind": kind, "icon": icon,
+                              "label": label, "detail": detail})
+            except Exception as e:                             # noqa: BLE001
+                log.debug("action note hook failed (harmless): %s", e)
         if self._room is None:
             return
         try:

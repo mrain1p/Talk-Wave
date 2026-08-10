@@ -844,6 +844,20 @@
   /* The corner controls sit in the 38px header band, level with its text.
      Chrome, not actions — never competing with the primary button. Which of
      them exist at all is the backend's call; see applyControls() in call.js. */
+  /* The text line's input row. Same square controls as everything else;
+     the input takes the row, Send keeps its natural width. Hidden until a
+     chat opens — the row is only offered once there is a line to type on. */
+  .chatrow { display: flex; gap: 8px; margin-top: 8px; }
+  .chatrow[hidden] { display: none; }
+  .chatrow input {
+    flex: 1 1 auto; min-width: 0; height: var(--control-h);
+    background: var(--field); color: var(--ink);
+    border: 1px solid var(--soft-border); border-radius: 0;
+    padding: 0 10px; font-family: var(--font-body); font-size: 13px;
+  }
+  .chatrow input:focus { outline: none; border-color: var(--accent); }
+  .chatrow button { height: var(--control-h); padding: 0 16px; }
+
   /* --- the corner controls and the ask popup ----------------------------- */
   /* Big enough to see and to hit. These were 26px of --sage-dim at 14px
      type — chrome so quiet that the theme toggle was reported missing while

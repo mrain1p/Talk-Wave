@@ -143,6 +143,8 @@
                  tabindex="-1" aria-hidden="true" />
           <input type="checkbox" id="voicemail_enabled" class="fieldonly"
                  tabindex="-1" aria-hidden="true" />
+          <input type="checkbox" id="chat_enabled" class="fieldonly"
+                 tabindex="-1" aria-hidden="true" />
         </div>
         <p class="dashmodesay" id="modeSay"></p>
       </div>
@@ -171,6 +173,20 @@
           </button>
           <button type="button" class="tile" id="tileVm">
             <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
+          </button>
+        </div>
+      </div>
+      <div class="dashgroup chatgroup">
+        <p class="tlabel">Text line</p>
+        <div class="grouprow">
+          <button type="button" id="modeChatBtn" class="ctrlcard">
+            <span class="ck">Text line</span>
+            <span class="cv"></span>
+            <span class="cn">typed chat with the booth</span>
+            <span class="switch small" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="tile" id="tileChat">
+            <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
           </button>
         </div>
       </div>
@@ -476,6 +492,7 @@
           <div class="row permrow" data-perm="allow_exact_queue"><select id="allow_exact_queue"></select></div>
           <div class="row permrow" data-perm="allow_announcements"><select id="allow_announcements"></select></div>
           <div class="row permrow" data-perm="allow_voicemail"><select id="allow_voicemail"></select></div>
+          <div class="row permrow" data-perm="allow_chat"><select id="allow_chat"></select></div>
           <div class="row permrow" data-perm="allow_skills"><select id="allow_skills"></select></div>
           <label class="check"><input type="checkbox" id="offer_skills" /> …and let the DJ offer one</label>
         </div>
@@ -935,6 +952,36 @@
       </div>
     </details>
 
+    <details data-group="chat" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Text line</span><em class="secblurb"></em><span class="tag" id="tagChat"></span></summary>
+      <div class="body">
+        <div class="row narrow">
+          <label for="chat_idle_minutes">Close after quiet (min)</label>
+          <input type="number" id="chat_idle_minutes" min="5" max="240" step="5" />
+        </div>
+        <div class="row narrow">
+          <label for="chat_max_messages">Messages per chat</label>
+          <input type="number" id="chat_max_messages" min="0" max="500" step="10" />
+        </div>
+        <div class="row narrow">
+          <label for="chat_max_hours">Longest chat (hours)</label>
+          <input type="number" id="chat_max_hours" min="1" max="48" step="1" />
+        </div>
+        <div class="row narrow">
+          <label for="max_open_chats">Open chats at once</label>
+          <input type="number" id="max_open_chats" min="0" max="200" step="5" />
+        </div>
+        <div class="row narrow">
+          <label for="chats_per_hour">New chats per hour</label>
+          <input type="number" id="chats_per_hour" min="0" max="500" step="5" />
+        </div>
+        <div class="row narrow">
+          <label for="chat_msgs_per_minute">Messages per minute</label>
+          <input type="number" id="chat_msgs_per_minute" min="1" max="60" step="1" />
+        </div>
+      </div>
+    </details>
+
     <details data-group="record" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Call transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
       <div class="body">
@@ -1039,6 +1086,11 @@
             <span class="plabel">“Leave a message” button</span>
             <input type="checkbox" id="show_voicemail_button" aria-label="Voicemail button on the page" />
             <input type="checkbox" id="embed_voicemail_button" aria-label="Voicemail button in an embed" />
+          </div>
+          <div class="prow" data-help="show_chat_button">
+            <span class="plabel">“Text the booth” button</span>
+            <input type="checkbox" id="show_chat_button" aria-label="Chat button on the page" />
+            <input type="checkbox" id="embed_chat_button" aria-label="Chat button in an embed" />
           </div>
         </div>
 

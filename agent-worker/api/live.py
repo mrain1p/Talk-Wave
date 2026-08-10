@@ -228,6 +228,12 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "liveCalls": bool(cfg.get("live_calls_enabled", True)),
         "vmBtn": bool(cfg.get("show_voicemail_button")),
         "embedVmBtn": bool(cfg.get("embed_voicemail_button")),
+        # The text line: enabled is the door's state (The Line's pause is
+        # applied widget-side like the other modes), the buttons are per
+        # surface like the voicemail pair.
+        "chatEnabled": bool(cfg.get("chat_enabled")),
+        "chatBtn": bool(cfg.get("show_chat_button")),
+        "embedChatBtn": bool(cfg.get("embed_chat_button")),
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
         # The card's fixed strings, overrides only — the defaults live in

@@ -405,6 +405,7 @@
   const statusText = $('statusText'), dot = $('dot'), capBox = $('captions');
 
   let room = null, muted = false, live = null;
+  let chatOpen = false;                       // the text line, not a call
   let djEl = null, rafId = null, streamEl = null;
 
   // `live` is what the server last said. `shown` is what is on the card,
@@ -779,6 +780,12 @@
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
     if (vmButton) $('vmBtn').textContent = word('vm_button', 'Leave a message');
+    // The text line's door, same rules as the machine's: the kill switch
+    // outranks it, the door code gates it, and it is per-surface. Never
+    // hidden mid-chat — the input row is the conversation.
+    const chatButton = !!d.chatEnabled && !lineClosedNow
+      && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode;
+    if ($('chatBtn')) $('chatBtn').hidden = !chatButton || chatOpen;
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
     if (lineClosedNow) {
@@ -1224,7 +1231,7 @@
 
   function addCaption(id, who, text, final) {
     if (!text) return;
-    if (captionsMode !== 'full') {
+    if (captionsMode !== 'full' && !chatOpen) {
       if (captionsMode === 'ticker') showTicker(who, text);
       return;
     }
@@ -1908,6 +1915,91 @@
   callBtn.onclick = () => {
     if (!room && !previewMode) startCall(callBtn.dataset.vm === '1');
   };
+  // ------------------------------------------------- the text line
+  // A chat is a WebSocket to /chat/ws and the same caption box the call
+  // writes — no LiveKit, no room, no microphone, which is exactly the point:
+  // it works where WebRTC cannot, and while the media server is down. The
+  // id in localStorage is what makes it resumable per browser; the server
+  // holds the transcript and replays it on hello.
+  let chatWs = null, chatPend = null, chatText = '', capSeq = 0;
+
+  function chatSay(who, text, final) {
+    addCaption('chat-' + (++capSeq), who, text, final !== false);
+  }
+
+  function openChat() {
+    if (chatOpen || previewMode) return;
+    chatOpen = true;
+    $('chatRow').hidden = false;
+    $('chatBtn').hidden = true;
+    document.querySelector('.linebox').classList.add('open');
+    capBox.classList.add('on');
+    setStatus('Opening the text line…', 'connected');
+    const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    chatWs = new WebSocket(scheme + location.host + '/chat/ws');
+    chatWs.onopen = () => chatWs.send(JSON.stringify({
+      type: 'hello',
+      chat: localStorage.getItem('callinChat') || '',
+      key: callKey() || '',
+    }));
+    chatWs.onmessage = (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (msg.type === 'ready') {
+        localStorage.setItem('callinChat', msg.chat || '');
+        (msg.turns || []).forEach((t) => chatSay(t.who === 'dj' ? 'dj' : 'you', t.text));
+        setStatus(msg.turns && msg.turns.length
+          ? 'Back on the text line' : 'Texting the booth — go ahead', 'connected');
+        $('chatInput').focus();
+      } else if (msg.type === 'refused') {
+        // A refused RESUME usually means the old chat aged out server-side:
+        // drop the id and let the next attempt start fresh.
+        setStatus(msg.error || 'The text line is closed', 'error');
+        if (localStorage.getItem('callinChat')) localStorage.removeItem('callinChat');
+      } else if (msg.type === 'action') {
+        addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
+      } else if (msg.type === 'delta') {
+        chatText += msg.text || '';
+        if (!chatPend) chatPend = 'chat-' + (++capSeq);
+        addCaption(chatPend, 'dj', chatText, false);
+      } else if (msg.type === 'done') {
+        addCaption(chatPend || ('chat-' + (++capSeq)), 'dj',
+                   msg.text || chatText, true);
+        chatPend = null; chatText = '';
+        setStatus('', 'connected');
+      }
+    };
+    chatWs.onclose = () => {
+      if (chatOpen) setStatus('Text line closed — send to reopen', 'error');
+      chatWs = null;
+    };
+  }
+
+  function sendChat() {
+    const input = $('chatInput');
+    const text = (input.value || '').trim();
+    if (!text) return;
+    if (!chatWs || chatWs.readyState !== 1) { openChatSocket(); return; }
+    input.value = '';
+    chatSay('you', text);
+    setStatus('…', 'connected');
+    chatWs.send(JSON.stringify({ type: 'msg', text }));
+  }
+
+  // Reopen after a drop without losing what was typed — the hello replays
+  // the transcript, then the pending message goes on the next press.
+  function openChatSocket() {
+    chatOpen = false;
+    openChat();
+  }
+
+  if ($('chatBtn')) $('chatBtn').onclick = () => { if (!room) openChat(); };
+  if ($('chatSendBtn')) $('chatSendBtn').onclick = sendChat;
+  if ($('chatInput')) {
+    $('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+    });
+  }
+
   $('vmBtn').onclick = () => { if (!room && !previewMode) startCall(true); };
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };

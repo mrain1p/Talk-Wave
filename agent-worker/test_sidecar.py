@@ -202,6 +202,11 @@ from tests.test_voicemail import (  # noqa: F401
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,
 )
+from tests.test_chat import (  # noqa: F401
+    TestChatsEndInsteadOfAccumulating,
+    TestTheTextLineHasADoor,
+    TestTheTypedBrainIsTheSameBrainInADifferentRegister,
+)
 from tests.test_docs import (  # noqa: F401
     TestTheDocsKeepUpWithTheCode,
 )

@@ -193,11 +193,18 @@
         <button id="muteBtn">Mute</button>
       </div>
 
+      <div class="chatrow" id="chatRow" hidden>
+        <input type="text" id="chatInput" maxlength="2000"
+               placeholder="Type to the booth…" autocomplete="off" />
+        <button id="chatSendBtn" type="button">Send</button>
+      </div>
+
       <!-- The last row of the card, on every surface. Idle it is Call (and
            the machine's door, if offered); on a call it is Hang up, full
            width, exactly where a thumb expects it. -->
       <div class="actionrow">
         <button id="callBtn" disabled>Call the DJ</button>
+        <button id="chatBtn" hidden>Text the booth</button>
         <button id="vmBtn" hidden>Leave a message</button>
         <button id="hangBtn" hidden>Hang up</button>
       </div>
