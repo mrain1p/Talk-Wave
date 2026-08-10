@@ -194,18 +194,19 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
             self.assertIn("language you answer in", text)
             self.assertIn("testing the line", text)
 
-    def test_both_mouths_are_told_not_to_invent_a_cover_story(self):
-        # Three real turns where the DJ fabricated instead of acting or
-        # admitting a limit: "Wade's only on in the evening" (dodging a
-        # takeover), "the signal bounces around the valley" (the on-air/on-call
-        # overlap), "it's locked into the rotation" (asked to cancel a request).
+    def test_both_mouths_stay_in_character_but_dont_dodge_an_action(self):
+        # The DJ must NOT break the fourth wall (an in-character deflection for
+        # something like the on-air/on-call overlap is fine — it keeps the
+        # fiction). What it must NOT do is invent an in-world reason to DODGE a
+        # real action ("Wade's only on in the evening" to skip a takeover it can
+        # actually do). Both mouths carry this.
         from brain import conduct, conduct_chat
 
         for text in (conduct.rules({}), conduct_chat.rules({})):
-            self.assertIn("Say the true thing", text)
-            self.assertIn("invent", text.lower())
-        # And the call list now names a show/DJ change as a takeover to DO,
-        # rather than something to refuse by inventing a schedule.
+            self.assertIn("Stay in character", text)
+            self.assertIn("fourth wall", text)
+            self.assertIn("dodge", text.lower())
+        # And the call list names a show/DJ change as a takeover to DO.
         self.assertIn("TAKEOVER", conduct.rules({}))
 
     def test_the_tool_loop_answers_and_runs_tools(self):
