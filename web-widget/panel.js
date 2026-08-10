@@ -1091,10 +1091,26 @@
     stage.classList.toggle('open', !shaped);
     const trig = $('previewTrigger');
     if (trig) trig.hidden = !shaped;
+    // Tell the operator the preview trigger is a real control they can press —
+    // otherwise the mock pill/bar/button reads as a static picture and the
+    // "open the card" half of the shape never gets discovered.
+    const note = $('previewNote');
+    if (note) {
+      note.textContent = shaped
+        ? (stage.classList.contains('open')
+            ? 'Press it again to close'
+            : 'Press the button to see the card open')
+        : 'unsaved changes shown live';
+    }
   }
   if ($('previewTrigger')) {
-    $('previewTrigger').onclick = () =>
-      $('previewStage').classList.toggle('open');
+    $('previewTrigger').onclick = () => {
+      const open = $('previewStage').classList.toggle('open');
+      const note = $('previewNote');
+      if (note) note.textContent = open
+        ? 'Press it again to close'
+        : 'Press the button to see the card open';
+    };
   }
   if ($('embedTheme')) {
     $('embedMode').onchange = () => {
