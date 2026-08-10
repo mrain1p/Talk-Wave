@@ -198,7 +198,12 @@
     border-color: var(--coral);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--coral) 16%, transparent);
   }
-  .dj {
+  /* SCOPED to the header. `.dj` is the DJ NAME here — but `.cap.dj` uses the
+     same class for a DJ caption line, so a bare `.dj` rule (nowrap, and the
+     line-clamp in the mobile block below) also clamped the DJ's chat/call
+     captions to one line, and the caller couldn't read what the DJ said
+     (operator-reported, mobile). The name still ellipsises; the caption wraps. */
+  .who-row .dj {
     font-family: var(--font-body); font-size: 15px; font-weight: 600;
     color: var(--alpenglow); margin: 0 0 2px; letter-spacing: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -659,7 +664,15 @@
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 2px;
     border: 1px solid var(--amber); background: transparent; color: var(--amber);
-    touch-action: manipulation; -webkit-user-select: none; user-select: none;
+    /* touch-action: NONE, not manipulation. `manipulation` still lets the
+       browser claim a held touch for scrolling/panning, which fires
+       pointercancel a second or so in — and the release handler then shut the
+       mic mid-hold (operator: "push to talk only stays engaged ~1s on mobile").
+       `none` gives the element the whole gesture so a hold stays a hold. The
+       callout/select disables stop iOS's long-press menu, which cancels the
+       pointer the same way. */
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
   }
   .card .pttbar:hover:not(:disabled) {
     background: color-mix(in srgb, var(--amber) 10%, transparent); filter: none;
@@ -2377,9 +2390,13 @@
        page moved with it, with nobody touching anything. So each line still
        wraps, and each has a fixed number of lines to wrap into. */
     .who-row { flex-wrap: wrap; }
-    .dj, .who-row .show, .tagline {
+    /* .who-row .dj, NOT bare .dj — a bare .dj also matches .cap.dj and clamped
+       the DJ's captions to one line (the caller couldn't read the reply). The
+       header name/show/tagline still hold to two lines so a track change never
+       resizes an embed; the captions are free to wrap. */
+    .who-row .dj, .who-row .show, .tagline {
       white-space: normal; overflow: hidden; text-overflow: clip;
-      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
     }
     .track {
       flex: 1 0 100%; max-width: 100%; text-align: left; padding-left: 0;
@@ -2631,6 +2648,15 @@
     body:not(.compact) .actionrow #hangBtn,
     body:not(.compact) .actionrow #vmBtn,
     body:not(.compact) .actionrow #chatBtn { height: 52px; font-size: 12px; }
+    /* The meters WRAP here: volume takes its own row, and the two waveforms
+       (You / DJ) sit side by side on the next — otherwise, squeezed onto one
+       narrow row with volume, "YOU — MIC OFF" ran straight over the DJ label
+       (operator-reported). */
+    body:not(.compact) .meters { flex-wrap: wrap; }
+    body:not(.compact) .meters .vol { flex: 1 1 100%; order: 2; }
+    body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
+    body:not(.compact) .meters .meter.you { order: 0; }
+    body:not(.compact) .meters .meter.dj { order: 1; }
   }
 
   /* --- the panel's live preview ------------------------------------------

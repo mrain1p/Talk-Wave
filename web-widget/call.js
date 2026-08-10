@@ -2164,9 +2164,12 @@
   }
   function chatTick() {
     if (chatShown < chatTarget.length) {
-      // Base pace ~3 chars/30ms (~100/s); catch up when far behind so a long
-      // reply still finishes promptly instead of typing for ten seconds.
-      const step = Math.max(3, Math.ceil((chatTarget.length - chatShown) / 12));
+      // ONE character at a time — it should read as someone writing it live,
+      // not a reply that pops in (operator's ask). Only catch up in bigger
+      // steps when the buffer is way ahead, so a long reply still lands in a
+      // reasonable time rather than typing for half a minute.
+      const remaining = chatTarget.length - chatShown;
+      const step = remaining > 200 ? Math.ceil(remaining / 60) : 1;
       chatShown = Math.min(chatTarget.length, chatShown + step);
       if (!chatPend) chatPend = 'chat-' + (++capSeq);
       addCaption(chatPend, 'dj', chatTarget.slice(0, chatShown), false);
@@ -2336,6 +2339,12 @@
     $('chatInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
     });
+    // When the mobile keyboard opens the viewport shrinks (see the viewport
+    // meta) and the transcript flexes down — keep the newest lines in view so
+    // the caller reads the conversation they're replying to, not blank space.
+    $('chatInput').addEventListener('focus', () => {
+      setTimeout(() => { capBox.scrollTop = capBox.scrollHeight; }, 350);
+    });
   }
 
   $('vmBtn').onclick = () => { if (!room && !previewMode) startCall(true); };
@@ -2476,6 +2485,11 @@
     };
     bar.addEventListener('pointerup', release);
     bar.addEventListener('pointercancel', release);
+    // A long press on mobile otherwise raises the OS text-selection / context
+    // menu, which cancels the pointer mid-hold and shuts the mic. Swallow it so
+    // holding the bar stays a hold. (touch-action:none in the CSS is the main
+    // fix; this covers the browsers that still fire it.)
+    bar.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // Space is the hold, not the latch: down opens, up closes. Ignored while
     // typing (the guest-code box is on this page) and without a call to talk
