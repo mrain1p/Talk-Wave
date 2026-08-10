@@ -75,6 +75,14 @@ whichever file is shortest.
 LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar -v
 ```
 
+**Faster: `python run_tests.py`** runs the SAME suite in parallel, one process per test
+module (~2-3x quicker; it sets each worker's own writable-path env, so no env prefix needed).
+The pre-commit hook and CI both use it. `test_sidecar` still works and is what the module
+coverage guard pins against — run_tests just runs those modules concurrently, so the two can
+never cover different tests. Because each module runs isolated, a test that only passed on a
+sibling module's leftover env var fails here loudly (it found two on the first run); write
+tests self-sufficient.
+
 House rules for tests here, and they are firm:
 
 - **Stdlib only** (`unittest`, `tempfile`). The venv needs nothing new to run the suite.

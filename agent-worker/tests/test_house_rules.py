@@ -138,6 +138,26 @@ class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
         self.assertEqual(back, [], f"api/ must not depend on its caller: {back}")
 
 
+class TestTheParallelRunnerRunsTheSameSuite(unittest.TestCase):
+    """run_tests.py runs the suite in parallel, one process per test module —
+    the fast path for the pre-commit hook and CI. Its correctness rests on one
+    claim: it runs EXACTLY the modules the aggregator names, so it can neither
+    miss nor invent a test. This pins that its discovery matches the modules
+    test_sidecar imports (and names run_tests.py for the untested-module
+    guard next door)."""
+
+    def test_it_discovers_every_test_module(self):
+        import run_tests
+
+        discovered = set(run_tests._modules())
+        on_disk = {
+            f"tests.{p.stem}"
+            for p in (AGENT_WORKER / "tests").glob("test_*.py")
+        }
+        self.assertEqual(discovered, on_disk)
+        self.assertIn("tests.test_house_rules", discovered)
+
+
 class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
     """A new module with no tests is the way coverage rots — quietly, one file
     at a time, while the suite stays green and says nothing.
@@ -448,6 +468,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "one subject: the browser half, guarded from here. It is the "
             "substitute for the JS unit tests this repo has no toolchain to "
             "run, so it carries text checks the widget cannot make itself.",
+        "agent-worker/tests/test_settings.py":
+            "one subject: the layered config — file over env over defaults, "
+            "clearing meaning fall-through, and every provider/setting reaching "
+            "the thing it configures. Grows a case per setting, the same "
+            "subject-placement rule as the modules below.",
         "agent-worker/tests/test_voicemail.py":
             "one subject: the answering machine — greeting resolution, the "
             "beep as a cue, the bounded recording, delivery, and now the "
