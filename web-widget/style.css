@@ -208,14 +208,19 @@
      line as a bold uppercase micro-label — seen on a real embed, reported as
      "the transcript font is horrible", and invisible in review because the
      two rules are 1,500 lines apart. */
+  /* The show name and the tagline WRAP rather than truncate — a caller on an
+     embed saw "DONOVAN'S PUB · IRISH F…" clipped with plenty of card beneath
+     it. The header sits above a transcript that flexes, so a second line here
+     costs the transcript a little room, not the card its shape. The DJ name
+     itself still ellipsises (a name is one line). */
   .who-row .show {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; color: var(--sage-dim); font-weight: 700; margin: 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: normal; overflow-wrap: anywhere;
   }
   .tagline {
     font-size: 12.5px; line-height: 1.45; color: var(--sage); margin: 2px 0 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: normal; overflow-wrap: anywhere;
   }
   /* Now-playing sits in the spare space to the right of the DJ block. */
   .track {
@@ -455,19 +460,23 @@
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
   .actionrow .btnemoji { flex: 0 0 auto; }
-  /* Idle, the doors sit on ONE row at EQUAL width — flex-basis 0, not auto.
-     With `auto` the basis is each button's own content, and the browser then
-     handed the widest label almost the whole row while the other two shrank
-     BELOW their content and clipped ("Call the DJ" full width, "Leave a
-     message" cut to "eave a messag" — operator-reported). Basis 0 gives every
-     door an identical third regardless of its label; the tightened padding and
-     tracking above keep the longest default label inside that third. They
-     never wrap to a second row. */
+  /* Idle, the doors sit on ONE row and size to their CONTENT. A WORDED door
+     takes the slack so its label fits ("Call Danny Boy" gets the room it
+     needs); an ICON-ONLY door hugs its glyph and gives that room up, rather
+     than every door sitting at an equal third and clipping the worded one
+     (operator-reported from an embed). The [hidden]-aware guard is still what
+     stops a hidden door from stealing the row. They never wrap to a second
+     row. */
   .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   .actionrow #chatBtn:not([hidden]),
   .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 0; min-width: 0;
+    flex: 1 1 auto; min-width: 0;
   }
+  /* Icon-only: natural width, no growing — two bare icons must not eat the
+     space a worded door needs. */
+  .actionrow #callBtn.icononly,
+  .actionrow #chatBtn.icononly,
+  .actionrow #vmBtn.icononly { flex: 0 1 auto; }
   /* The icon on a button: a line drawing in the button's own ink (it inherits
      currentColor), so it is neutral by construction — no filter can make an
      emoji glyph behave the way this does across OSes. Sized a touch larger
@@ -2448,9 +2457,12 @@
   body.compact .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   body.compact .actionrow #chatBtn:not([hidden]),
   body.compact .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 0; width: auto; min-width: 0; height: 44px;
-    font-size: 11px; padding: 0 8px; letter-spacing: .05em;
+    flex: 1 1 auto; width: auto; min-width: 0; height: 44px;
+    font-size: 11px; padding: 0 10px; letter-spacing: .05em;
   }
+  body.compact .actionrow #callBtn.icononly,
+  body.compact .actionrow #chatBtn.icononly,
+  body.compact .actionrow #vmBtn.icononly { flex: 0 1 auto; }
   body.compact #hangBtn { height: 44px; flex: 1 1 auto; }
   body.compact .ticker .line { -webkit-line-clamp: 2; }
   /* THE HEIGHT BUDGET. A real station page gives its player column 400px and

@@ -687,6 +687,11 @@
     if (st.words) {
       el.appendChild(document.createTextNode((st.emoji ? ' ' : '') + text));
     }
+    // An ICON-ONLY door is just its glyph — it should hug the icon and give
+    // the row's slack to a worded door beside it, not sit at an equal third
+    // (operator: "Call Danny Boy" was clipping while two bare icons took the
+    // same width). The class lets the CSS size the two cases apart.
+    el.classList.toggle('icononly', st.emoji && !st.words);
   }
 
   function callLabel() {
