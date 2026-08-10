@@ -51,12 +51,6 @@ class OnAirGuard:
 
     POLL_SECS = 4.0     # a station read per call every 4s, not per turn
     MAX_HOLD = 45.0     # never leave a caller in silence longer than this
-    # How long a FAILED poll holds the gate shut. A read that timed out can't
-    # prove the air is clear, and congestion (when reads fail) is when the
-    # on-air DJ is most likely talking — so hold across roughly one poll cycle,
-    # reset by the next clean read. Long enough to cover the overlap, short
-    # enough not to gag a quiet-but-slow station.
-    FAIL_HOLD = 6.0
 
     def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
         self.station = station
@@ -82,8 +76,6 @@ class OnAirGuard:
         # poll means "assume busy", not clear — the same congestion that made
         # the confirmation slow was blinding the poll.
         self._pending_until = 0.0
-        # A short hold started by a FAILED poll — see FAIL_HOLD and _assess.
-        self._fail_until = 0.0
         # Whether the caller heard a hand-over line for the current busy spell.
         # Only then is there anything to come back FROM: the gate also closes
         # for a caller who dialled in mid-link, and "I'm back" to them is a
@@ -232,21 +224,19 @@ class OnAirGuard:
                 self._pending_until = 0.0
             # A clean read showing nothing, or a failed read: still waiting,
             # same hold — the deadline below carries both.
-        # A read that DIDN'T come back cannot say "the air is clear" — and under
-        # congestion, a failing poll is exactly when the on-air DJ is most
-        # likely mid-link. Assuming clear here is what put Dawn on the air and
-        # on the call at once (2026-08-10): the caller heard the same voice
-        # doubled. So a failed poll holds the gate for a SHORT window, reset by
-        # the next clean read. Bounded on purpose: wait_until_clear still caps
-        # any single hold at MAX_HOLD, so a genuinely quiet-but-slow station
-        # never gags the call for long — the old "clear on a routine miss" was
-        # trading a real overlap for at most a few seconds of patience.
-        if poll_failed:
-            self._fail_until = max(self._fail_until, now + self.FAIL_HOLD)
-        else:
-            self._fail_until = 0.0
-        return (log_busy or now < self._assumed_until
-                or now < self._pending_until or now < self._fail_until)
+        # A read that DIDN'T come back cannot MOVE the gate — so on a failed
+        # poll, HOLD THE CURRENT STATE rather than compute one. If the air was
+        # busy it stays busy (the on-air DJ is most likely still mid-link — this
+        # is what stops the Dawn/Ash overlap, where "assume clear" doubled the
+        # voice), and if it was clear it stays clear (so a quiet-but-slow
+        # station under congestion does NOT gag every reply — the first version
+        # of this fix assumed busy on any failed read and added seconds to every
+        # answer while the station was struggling, which is the opposite of what
+        # a slow box needs). The next clean read moves the gate normally.
+        assumed_or_pending = now < self._assumed_until or now < self._pending_until
+        if poll_failed and not assumed_or_pending:
+            return self.on_air
+        return log_busy or assumed_or_pending
 
     def _log_says_busy(self, speech: tuple[float, str] | None) -> bool:
         """Whether the station's log says its DJ is still talking.

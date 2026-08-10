@@ -171,7 +171,14 @@
            Everything here is level-shaped, so one band reads as one thing. -->
       <div class="meters">
         <div class="meter you" id="meterYou">
-          <div class="mlabel" id="youLabel">You</div>
+          <!-- The mic state is a chip beside the label, not text glued onto it.
+               "You — mic off" as one string overflowed the meter and collided
+               with the DJ label on a narrow phone; the chip carries the state
+               on its own and simply hides when the mic is live. -->
+          <div class="mtop">
+            <span class="mlabel" id="youLabel">You</span>
+            <span class="micchip" id="micChip" hidden></span>
+          </div>
           <div class="bars" id="barsYou"></div>
         </div>
         <div class="vol">

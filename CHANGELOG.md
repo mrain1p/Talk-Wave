@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.37
+
+More of the same polish, closer to the edges — leaving a message, the narrow phone, and the seconds before the DJ speaks.
+
+### Voicemail
+
+- **You can see the message you're leaving, and it stays put when you hang up.** Your words appear as you speak them and stack up sentence by sentence, so you can read back the whole message rather than catching only the last line — and when the recording ends the transcript stays on the card, with a note that the DJ will review your request shortly.
+
+### On a phone
+
+- **The controls fit and the mic state is clearer.** Push-to-talk is a bigger target under the thumb; whether you're muted, live, or holding a push-to-talk line reads off a small chip beside your meter instead of a label that ran into the one next to it; the call timer keeps its place on one line; and the level meters no longer crowd each other on a narrow screen.
+
+### The call
+
+- **Quicker to answer, and it ends less abruptly.** A congested station no longer makes prompt assembly re-read the same thing twice before the DJ can speak, so first words come sooner. When a caller's request sets a show takeover in motion, the new DJ and palette now catch up within a few seconds of it airing rather than a poll later. And the DJ is nudged to leave a real next step in the air at the end of a call instead of stopping flat the moment it's done something.
+
 ## 0.10.36
 
 Mostly mobile and polish — on a phone, the card now reads like the real thing.

@@ -941,6 +941,24 @@
     }
   }
 
+  // After a call ends the on-air show may have JUST changed: a takeover the
+  // caller asked for lands at the next TRACK BOUNDARY, not the moment the tool
+  // fires, and the station only pushes a cache-bust (track.play) when the new
+  // show actually airs. The ordinary 20s poll can then leave the card on the
+  // old DJ and palette for most of a minute — operator-reported, and worst on a
+  // short voicemail where the whole interaction is over before the record is.
+  // A brief faster poll catches the handover within a few seconds of it airing.
+  // Idle-only and self-cancelling, so it never runs during a call or forever.
+  let burstTimer = null;
+  function burstLive(secs = 40, every = 4000) {
+    if (burstTimer) clearInterval(burstTimer);
+    const until = Date.now() + secs * 1000;
+    burstTimer = setInterval(() => {
+      if (room || Date.now() > until) { clearInterval(burstTimer); burstTimer = null; return; }
+      refreshLive();
+    }, every);
+  }
+
   function paintLive(d, first) {
     try {
       // What is actually on screen, which is `live` plus any preview overlay
@@ -1344,9 +1362,20 @@
       // settles, exactly like a live call's captions.
       if (topic === 'vm-heard') {
         let m; try { m = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
-        if (m && m.text) {
-          capBox.classList.add('on');
-          addCaption('vm-heard', 'you', m.text, m.final !== false);
+        if (!m || !m.text) return;
+        $('lineBox').classList.add('open');
+        capBox.classList.add('on');
+        // The machine publishes each SENTENCE on its own, interim then final.
+        // Rewriting one fixed line (as this did) showed only the caller's last
+        // sentence — so a message read back as a single stray phrase. Instead a
+        // finished sentence retires its line and the next one stacks beneath
+        // it, and the caller sees the whole message they're leaving. `force`
+        // puts it in the box even on a ticker-mode embed: a voicemail has no
+        // other transcript, so this is the only sign it's registering a word.
+        addCaption('vm-interim', 'you', m.text, m.final !== false, true);
+        if (m.final !== false) {
+          capNodes.delete('vm-interim');
+          delete lastByWho.you;
         }
         return;
       }
@@ -1409,9 +1438,12 @@
     tickerTimer = setTimeout(() => t.classList.remove('show'), 6000);
   }
 
-  function addCaption(id, who, text, final) {
+  function addCaption(id, who, text, final, force) {
     if (!text) return;
-    if (captionsMode !== 'full' && !chatOpen) {
+    // `force` overrides the caption mode: a voicemail has no DJ captions and no
+    // audible reply, so the caller's own words must land in the box even when
+    // the card is otherwise in ticker mode — the transcript IS the receipt.
+    if (!force && captionsMode !== 'full' && !chatOpen) {
       if (captionsMode === 'ticker') showTicker(who, text);
       return;
     }
@@ -1456,9 +1488,9 @@
   // reaching the air, a segment starting. It gets its own line in the
   // timeline, styled apart from the conversation, because the caller
   // otherwise has only the DJ's word that anything happened.
-  function addSystemLine(icon, label, detail) {
-    if (captionsMode === 'off') return;
-    if (captionsMode !== 'full') {
+  function addSystemLine(icon, label, detail, force) {
+    if (captionsMode === 'off' && !force) return;
+    if (!force && captionsMode !== 'full') {
       showTicker('sys', label + (detail ? ' — ' + detail : ''));
       return;
     }
@@ -2051,11 +2083,18 @@
     setAgentState('idle');
     const ticker = $('ticker');
     if (ticker) { ticker.classList.remove('show'); ticker.hidden = true; }
-    collapseTranscript();
-    // No verdict buttons after a voicemail — there was no conversation to
-    // rate, and "How was it?" over "Message left" read as the machine
-    // fishing for a compliment. Operator-reported.
-    if (!wasVm) offerFeedback(endedRoom);
+    // A voicemail keeps its transcript OPEN on the ended card — the caller
+    // should still see what they submitted, with a line saying it's now the
+    // DJ's to read (operator-reported: "when it ends you can't see what you
+    // left"). A call folds the transcript into the drawer as before, and only
+    // a call offers the verdict buttons — "How was it?" over "Message left"
+    // read as the machine fishing for a compliment.
+    if (wasVm) {
+      showVmReceipt();
+    } else {
+      collapseTranscript();
+      offerFeedback(endedRoom);
+    }
     setBtn(callBtn, 'call', 'phone', callLabel());
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
@@ -2069,10 +2108,38 @@
     const pttBar = $('pttBtn');
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
     $('meterYou').classList.remove('muted');
-    setStatus(wasVm ? 'Message left — it gets passed on.' : 'Call ended');
+    setMicChip('live');
+    // The captions box, when it has lines, hides this status line — so on a
+    // voicemail with a transcript the review note lives IN the box (see
+    // showVmReceipt) and this is the fallback for a message that left no
+    // transcribable words.
+    setStatus(wasVm ? 'Message received — the DJ will review your request shortly.'
+                    : 'Call ended');
     // The card's idle truth — including the second button — comes back from
-    // the next /live read rather than being reconstructed by hand here.
+    // the next /live read rather than being reconstructed by hand here. The
+    // burst catches a takeover this call may have set in motion, which airs at
+    // the next track boundary and would otherwise show up to a poll late.
     refreshLive();
+    burstLive();
+    notifyHeight();
+  }
+
+  // A voicemail's receipt: keep the caller's own words on screen after the
+  // beep, with a line telling them the message is now the DJ's to read. There
+  // is no reply and no rating, so the transcript is the whole of what a caller
+  // gets to take away — folding it into a collapsed drawer (as a call does)
+  // hid the one thing they wanted to check. If nothing was transcribed there is
+  // nothing to show, so it falls back to the ordinary collapse and the status
+  // line carries the note instead.
+  function showVmReceipt() {
+    const spoken = capBox.querySelectorAll('.cap.you').length;
+    if (!spoken) { collapseTranscript(); return; }
+    $('lineBox').classList.add('open');
+    capBox.classList.add('on');
+    $('endedBar').hidden = true;
+    addSystemLine('✓', 'Message received',
+                  'The DJ will review your request shortly.', true);
+    capBox.scrollTop = capBox.scrollHeight;
     notifyHeight();
   }
 
@@ -2439,6 +2506,23 @@
     return micOp;
   }
 
+  // One place owns the mic-state chip beside the You meter, so the PTT bar and
+  // the Mute button can never leave contradictory text on it. 'live' hides it
+  // (a moving meter already says you're heard); 'off' is the PTT resting state
+  // and reads dim; 'muted' is a deliberate act and stays loud. The label under
+  // it is always just "You" — the state rides on the chip, not the label.
+  function setMicChip(state) {
+    const chip = $('micChip');
+    if (chip) {
+      chip.classList.remove('off', 'muted');
+      if (state === 'off') { chip.textContent = 'Mic off'; chip.classList.add('off'); chip.hidden = false; }
+      else if (state === 'muted') { chip.textContent = 'Muted'; chip.classList.add('muted'); chip.hidden = false; }
+      else { chip.hidden = true; }
+    }
+    const label = $('youLabel');
+    if (label) label.textContent = 'You';
+  }
+
   function paintPtt() {
     const bar = $('pttBtn');
     if (!bar) return;
@@ -2456,7 +2540,7 @@
     // button already taught it.
     if (room && pttOn()) {
       $('meterYou').classList.toggle('muted', !pttOpen);
-      $('youLabel').textContent = pttOpen ? 'You' : 'You — mic off';
+      setMicChip(pttOpen ? 'live' : 'off');
     }
   }
 
@@ -2517,7 +2601,7 @@
     muteBtn.textContent = muted ? 'Unmute' : 'Mute';
     muteBtn.classList.toggle('on', muted);
     $('meterYou').classList.toggle('muted', muted);
-    $('youLabel').textContent = muted ? 'You — muted' : 'You';
+    setMicChip(muted ? 'muted' : 'live');
   };
 
   // ------------------------------------------------------------ installable

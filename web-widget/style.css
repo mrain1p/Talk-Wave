@@ -500,6 +500,10 @@
     background: transparent; border: 1px solid var(--hairline); color: var(--sage-dim);
     font: 700 11px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
     transition: color .2s, border-color .2s;
+    /* A pill's text never wraps inside it. "Reaching the booth" used to break
+       onto a second line and stand the chip up two rows tall, which read as the
+       timer beside it jumping to its own line (operator-reported). */
+    white-space: nowrap;
   }
   /* Same reservation as the rig, for the same reason: these wrap onto a
      second row in a narrow embed, so appearing at pickup would move
@@ -569,6 +573,23 @@
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
     margin-bottom: 4px;
   }
+  /* Label and mic-state chip on one line above the bars. The chip carries
+     "MIC OFF" / "MUTED" so the label never has to grow to hold it. */
+  .meter.you .mtop {
+    display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 4px;
+  }
+  .meter.you .mtop .mlabel { margin-bottom: 0; }
+  .micchip {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700; line-height: 1;
+    padding: 2px 5px; border: 1px solid currentColor; border-radius: 999px;
+    color: var(--coral); white-space: nowrap; flex: 0 0 auto;
+  }
+  .micchip[hidden] { display: none; }
+  /* Mic off on a push-to-talk card is the resting state, not an alarm — dim
+     it. Mute is a deliberate act, so that one stays coral and loud. */
+  .micchip.off { color: var(--sage-dim); }
+  .micchip.muted { color: var(--coral); }
   .bars {
     display: flex; align-items: flex-end; gap: 2px;
     height: 18px; border-radius: 0;
@@ -660,9 +681,12 @@
   /* Open mic is a state like muted, not a second primary — the fill only
      arrives while the bar is genuinely live. */
   .card .pttbar {
-    flex: 1 1 auto; min-width: 0; height: 36px; padding: 0;
+    /* Taller than the buttons beside it — it is the primary control on a call
+       and it is HELD, not tapped, so it wants a thumb-sized target. It was
+       36px and the operator reported it hard to press. */
+    flex: 1 1 auto; min-width: 0; height: 46px; padding: 0;
     display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 2px;
+    justify-content: center; gap: 3px;
     border: 1px solid var(--amber); background: transparent; color: var(--amber);
     /* touch-action: NONE, not manipulation. `manipulation` still lets the
        browser claim a held touch for scrolling/panning, which fires
@@ -682,19 +706,26 @@
     box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 35%, transparent);
   }
   .pttbar .pttmain {
-    font: 700 10.5px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 11.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: uppercase;
   }
   .pttbar .pttsub {
-    font: 700 7.5px/1 var(--font-mono); letter-spacing: .1em;
+    font: 700 8px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: uppercase; opacity: .7;
   }
   /* The bar owns the wire while it is up; Mute would be a second switch on
      the same circuit. */
   .card.ptt .talkrow #muteBtn { display: none; }
 
-  /* The state row sits above the words it describes. */
-  .staterow { display: flex; align-items: center; gap: 9px; padding: 9px 0 0; }
+  /* The state row sits above the words it describes. One line, always: the
+     state chip gives up room first (its text ellipsises) so the elapsed timer
+     beside it keeps its own place instead of being shoved off the row. */
+  .staterow { display: flex; align-items: center; gap: 9px; padding: 9px 0 0; flex-wrap: nowrap; }
+  .staterow .statechip { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .staterow .statechip #stateText {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  .staterow .timechip { flex: 0 0 auto; }
   /* On the STANDALONE page — never an embed — an empty state row is just
      blank space above the words (operator-reported, the gap over "Reaching
      the booth"). The reserved-height trick that keeps it exists to stop an
@@ -2648,12 +2679,22 @@
     body:not(.compact) .actionrow #hangBtn,
     body:not(.compact) .actionrow #vmBtn,
     body:not(.compact) .actionrow #chatBtn { height: 52px; font-size: 12px; }
+    /* Push-to-talk is the control a thumb rests on for a whole sentence, so on
+       a phone it is the tallest thing on the card — bigger than the 52px doors.
+       The operator called the old bar hard to press. */
+    body:not(.compact) .card .pttbar { height: 60px; gap: 4px; }
+    body:not(.compact) .pttbar .pttmain { font-size: 13px; }
+    body:not(.compact) .pttbar .pttsub { font-size: 8.5px; }
     /* The meters WRAP here: volume takes its own row, and the two waveforms
        (You / DJ) sit side by side on the next — otherwise, squeezed onto one
        narrow row with volume, "YOU — MIC OFF" ran straight over the DJ label
-       (operator-reported). */
+       (operator-reported). The `max-width: none` is load-bearing: the desktop
+       rail is capped at 260px, and that cap alone kept volume from ever taking
+       a full row — so it sat on the same line as the meters, collapsing You and
+       DJ to ~10px each and putting the mic chip straight over the DJ label at
+       Fold-width (measured 2026-08-10). Clearing the cap lets the row break. */
     body:not(.compact) .meters { flex-wrap: wrap; }
-    body:not(.compact) .meters .vol { flex: 1 1 100%; order: 2; }
+    body:not(.compact) .meters .vol { flex: 1 1 100%; order: 2; max-width: none; }
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .meters .meter.you { order: 0; }
     body:not(.compact) .meters .meter.dj { order: 1; }

@@ -492,11 +492,18 @@ class TestTheBeepCanBeTheOperators(unittest.TestCase):
 
     def test_no_verdict_buttons_after_a_voicemail(self):
         # "How was it?" over "Message left" read as the machine fishing for
-        # a compliment — there was no conversation to rate.
+        # a compliment — there was no conversation to rate. A voicemail keeps
+        # its transcript open as a receipt instead; the verdict buttons and the
+        # collapse-to-drawer both belong to the call branch only.
         from tests.support import REPO
 
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        self.assertIn("if (!wasVm) offerFeedback", js)
+        self.assertIn("if (wasVm) {", js)
+        self.assertIn("showVmReceipt();", js)
+        # offerFeedback is reached only in the non-voicemail branch.
+        after_branch = js.split("if (wasVm) {", 1)[1]
+        else_half = after_branch.split("} else {", 1)[1]
+        self.assertIn("offerFeedback(endedRoom);", else_half.split("}", 1)[0])
 
     def test_the_beep_dropdown_says_what_the_default_is(self):
         # "Sound set default" answered the wrong question: the operator

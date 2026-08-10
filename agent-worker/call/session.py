@@ -276,7 +276,13 @@ class CallSession:
             transport_type="streamable_http",
             allowed_tools=allowed_tools,
             headers=mcp_headers or None,
-            client_session_timeout_seconds=15,
+            # 7s, down from 15. This connect happens BEFORE the greeting, so on
+            # a slow/overloaded station it sat 15s of silence in front of the
+            # caller before the DJ said hello (measured 2026-08-10, a congested
+            # NAS). The tools resolve fast on a healthy station; when they
+            # don't, greeting late is worse than starting with the local tools
+            # and the MCP catalogue arriving a moment into the call.
+            client_session_timeout_seconds=7,
         )
 
         # MCPToolset rather than the session's mcp_servers argument, which is

@@ -41,7 +41,7 @@ async def build_system_prompt(
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.
     snap = snapshot or await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
-    show = await station.active_show(snap["now_playing"])
+    show = await station.active_show(snap["now_playing"], snap.get("schedule"))
 
     facts = await station_context(station, cfg, snap, show)
 
