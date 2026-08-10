@@ -240,10 +240,17 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "chatEnabled": bool(cfg.get("chat_enabled")),
         "chatBtn": bool(cfg.get("show_chat_button")),
         "embedChatBtn": bool(cfg.get("embed_chat_button")),
-        # How the action buttons read — words, an emoji, or both. The words
-        # themselves are the wording overrides; this only decides whether an
-        # emoji rides in front and whether the words show at all.
-        "buttonStyle": str(cfg.get("button_style") or "text"),
+        # How each door reads — its word, its icon, or both — one answer per
+        # feature. The words themselves are the wording overrides; these only
+        # decide whether an icon rides in front and whether the word shows at
+        # all. The widget shows the word if a door has neither, so it is never
+        # blank.
+        "callShowWords": bool(cfg.get("call_show_words")),
+        "callShowEmoji": bool(cfg.get("call_show_emoji")),
+        "vmShowWords": bool(cfg.get("vm_show_words")),
+        "vmShowEmoji": bool(cfg.get("vm_show_emoji")),
+        "chatShowWords": bool(cfg.get("chat_show_words")),
+        "chatShowEmoji": bool(cfg.get("chat_show_emoji")),
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
         # The card's fixed strings, overrides only — the defaults live in

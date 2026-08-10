@@ -320,6 +320,12 @@
      hidden, because their controls are meaningless off a call.
      Visibility is inherited but a child may declare its own. */
   .rig > .linebox, .rig > .meters, .rig > .actionrow { visibility: visible; }
+  /* The text line's input row lives in the rig too, and it is the ONE control
+     that is meaningful off a call — so it declares its own visibility rather
+     than inheriting the rig's reserved-hidden. Without this the chat input
+     was present but invisible (visibility inherited from .rig), which is
+     exactly the "I still can't see the text area" the operator reported. */
+  .rig > .chatrow { visibility: visible; }
   .rig:not(.on) .meters .vol { visibility: hidden; }
   /* Hang up shares the action row but only exists mid-call; display, not
      visibility, because Call takes its place rather than leaving a gap. */
@@ -340,6 +346,29 @@
   .card.oncall .actionrow #chatBtn,
   .card.oncall .actionrow #vmBtn { display: none; }
 
+  /* ---- Card modes -----------------------------------------------------
+     The card is only ever in ONE mode (data-mode on .card), and shows only
+     that mode's controls. Opening the text line used to leave the call's
+     meters, its push-to-talk bar and the Call/Message buttons all on screen
+     under the input row — the card grew to ~525px and the place to type was
+     buried among controls for a call nobody was on (operator-reported). A
+     band a mode does not own is hidden with DISPLAY, not merely reserved:
+     the whole point is that the card shrinks to the one thing it is doing.
+       idle       the doors (the action row); nothing live — unchanged, so
+                  the embed's idle reservation still holds
+       call       everything the phone needs — unchanged
+       voicemail  no push-to-talk and no mute: the mic is simply open while
+                  the machine records, and TAP TO TALK / MUTE over a
+                  recording read as controls that did nothing
+       chat       the transcript and the input only — no meters, no talk
+                  bar, no state pills, and no Call/Message doors (Close
+                  lives in the input row) */
+  .card[data-mode="chat"] .staterow,
+  .card[data-mode="chat"] .meters,
+  .card[data-mode="chat"] .talkrow,
+  .card[data-mode="chat"] .actionrow { display: none !important; }
+  .card[data-mode="voicemail"] .talkrow { display: none !important; }
+
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
      absent or a bordered block of its own, and a rule that sometimes ends the
@@ -359,6 +388,15 @@
   .actionrow #chatBtn, .actionrow #vmBtn {
     height: var(--action-h);
   }
+  /* Centre the icon and the word as one unit, and never let a long word push
+     the row wider than the card: the label ellipsises rather than wrapping to
+     a second row or clipping the button beside it (operator-reported on a
+     narrow embed). The icon has flex-shrink 0 so only the word gives. */
+  .actionrow #callBtn, .actionrow #chatBtn, .actionrow #vmBtn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .actionrow .btnemoji { flex: 0 0 auto; }
   /* Idle, the doors — Call, and whichever of Text / Message the operator
      offers — sit on ONE row and size to their CONTENT (operator's ask): with
      mixed styles (Call as emoji+word, Text and Message as bare emoji) an
@@ -369,12 +407,15 @@
   .actionrow #vmBtn:not([hidden]) {
     flex: 1 1 auto; min-width: 0;
   }
-  /* The emoji on a button: larger than the word beside it and de-saturated
-     to a quiet, near-neutral mark rather than a loud colour block. */
+  /* The icon on a button: a line drawing in the button's own ink (it inherits
+     currentColor), so it is neutral by construction — no filter can make an
+     emoji glyph behave the way this does across OSes. Sized a touch larger
+     than the cap height of the word beside it and centred on the row. */
   .actionrow .btnemoji, .chatrow .btnemoji {
-    font-size: 1.35em; line-height: 1; vertical-align: -0.08em;
-    filter: grayscale(1); opacity: .8;
+    display: inline-flex; align-items: center; line-height: 0;
+    opacity: .85;
   }
+  .actionrow .btnemoji svg, .chatrow .btnemoji svg { width: 18px; height: 18px; }
   /* Square, transparent, hairline-bordered, control height. Colour carries
      state; fill never does (§4.4) — the only filled thing in any state is the
      one primary button. */

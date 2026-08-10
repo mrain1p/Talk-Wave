@@ -338,7 +338,19 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_chat_button":      (None, False),
     "show_signin":            (None, False),
     "embed_signin":           (None, False),
-    "button_style":           (None, "text"),
+    # How each door reads: its WORD, its ICON, or both — one answer per
+    # feature, not one for the whole row. An operator wanted Call worded and
+    # the two secondary doors as bare icons on a tight embed, which the old
+    # single button_style could not express. Words on by default so an
+    # existing card looks exactly as it did; the operator opts an icon in.
+    # The widget shows the word if a feature ends up with neither ticked, so
+    # a door is never blank.
+    "call_show_words":        (None, True),
+    "call_show_emoji":        (None, False),
+    "vm_show_words":          (None, True),
+    "vm_show_emoji":          (None, False),
+    "chat_show_words":        (None, True),
+    "chat_show_emoji":        (None, False),
     # A colour on the DJ's voice, applied in the caller's browser only — the
     # broadcast never hears it. One answer for both surfaces: the effect is
     # part of the DJ's character, and a DJ who is CB on the page and clean in
@@ -894,12 +906,29 @@ SCHEMA: dict[str, dict] = {
         label="“Text the booth” button (embed)",
         help="The same door on the embedded card. Off by default: three "
              "buttons crowd a 190px frame."),
-    "button_style": dict(group="player", kind="select",
-        label="Button style",
-        help="How the Call / Text / Leave-a-message buttons read: their "
-             "WORDS (edit those under Wording), an EMOJI on its own, or "
-             "both. Emoji suits a tight embed where a phone and a speech "
-             "bubble say it faster than three lines of text."),
+    # Per-feature button display: two ticks each (word, icon) for Call,
+    # Leave-a-message and Text. At least one must be on for a door that is
+    # offered — the widget falls back to the word if both are cleared, so a
+    # blank button is impossible. Words edit under Wording; the icon is a
+    # line drawing in the card's own ink, not an emoji glyph.
+    "call_show_words": dict(group="player", kind="check",
+        label="Call button — word",
+        help="Show the Call button's WORDS (edit them under Wording)."),
+    "call_show_emoji": dict(group="player", kind="check",
+        label="Call button — icon",
+        help="Show a phone icon on the Call button."),
+    "vm_show_words": dict(group="player", kind="check",
+        label="Leave-a-message button — word",
+        help="Show the message button's WORDS (edit them under Wording)."),
+    "vm_show_emoji": dict(group="player", kind="check",
+        label="Leave-a-message button — icon",
+        help="Show an envelope icon on the message button."),
+    "chat_show_words": dict(group="player", kind="check",
+        label="Text button — word",
+        help="Show the Text button's WORDS (edit them under Wording)."),
+    "chat_show_emoji": dict(group="player", kind="check",
+        label="Text button — icon",
+        help="Show a speech-bubble icon on the Text button."),
     "show_signin": dict(group="player", kind="check",
         label="“Sign in” button",
         help="A corner button that lets a caller enter the guest code or the "
@@ -1312,11 +1341,6 @@ RANDOM_PERSONA = "__random__"
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
-    "button_style": [
-        ("text", "Words only — “Call the DJ”"),
-        ("emoji", "Emoji only — 📞"),
-        ("both", "Both — 📞 Call the DJ"),
-    ],
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "tts_dash_style": [
         ("pause", "A breath — spoken as a short pause (default)"),

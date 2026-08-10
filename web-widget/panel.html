@@ -1115,16 +1115,33 @@
             <input type="checkbox" id="show_signin" aria-label="Sign-in button on the page" />
             <input type="checkbox" id="embed_signin" aria-label="Sign-in button in an embed" />
           </div>
+
+          <!-- What each door SHOWS: its word, its icon, or both. One row per
+               feature, two ticks each — the old single "Button style" select
+               could not say "Call worded, the two secondary doors as bare
+               icons", which is what a tight embed wants. The widget shows the
+               word if a door is left with neither, so a button is never blank. -->
+          <div class="phead"><span>Button shows</span><span>Word</span><span>Icon</span></div>
+          <div class="prow" data-help="call_show_words">
+            <span class="plabel">Call</span>
+            <input type="checkbox" id="call_show_words" aria-label="Call button shows its word" />
+            <input type="checkbox" id="call_show_emoji" aria-label="Call button shows an icon" />
+          </div>
+          <div class="prow" data-help="vm_show_words">
+            <span class="plabel">Leave a message</span>
+            <input type="checkbox" id="vm_show_words" aria-label="Message button shows its word" />
+            <input type="checkbox" id="vm_show_emoji" aria-label="Message button shows an icon" />
+          </div>
+          <div class="prow" data-help="chat_show_words">
+            <span class="plabel">Text the booth</span>
+            <input type="checkbox" id="chat_show_words" aria-label="Text button shows its word" />
+            <input type="checkbox" id="chat_show_emoji" aria-label="Text button shows an icon" />
+          </div>
         </div>
 
         <div class="row">
           <label for="avatar_style">DJ photo shape</label>
           <select id="avatar_style"></select>
-        </div>
-
-        <div class="row">
-          <label for="button_style">Button style</label>
-          <select id="button_style"></select>
         </div>
 
         <h4 class="subhead">The Call button</h4>
