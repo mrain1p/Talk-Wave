@@ -857,6 +857,13 @@
   }
   .chatrow input:focus { outline: none; border-color: var(--accent); }
   .chatrow button { height: var(--control-h); padding: 0 16px; }
+  /* End is a quiet exit, never competing with Send: no fill, muted ink,
+     narrow. Send stays the one lit action on the row. */
+  .chatrow .chatend {
+    padding: 0 10px; background: transparent; color: var(--muted);
+    border: 1px solid var(--soft-border); flex: 0 0 auto;
+  }
+  .chatrow .chatend:hover { color: var(--ink); border-color: var(--ink-faint); }
 
   /* --- the corner controls and the ask popup ----------------------------- */
   /* Big enough to see and to hit. These were 26px of --sage-dim at 14px

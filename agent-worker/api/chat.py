@@ -161,6 +161,18 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                                               for w, t in chat.turns[-40:]]})
                 continue
 
+            if kind == "bye" and chat is not None:
+                # The caller ended it deliberately — write the record now and
+                # drop the chat, rather than leaving it for the idle sweep.
+                # The id stops resuming, which is what the widget's End does:
+                # a fresh open after this is a new conversation.
+                chat.write_record("the caller ended the chat")
+                SHELF.chats.pop(chat.id, None)
+                log.info("chat %s ended by the caller (%d msgs)", chat.id,
+                         chat.messages)
+                await ws.send_json({"type": "ended"})
+                break
+
             if kind == "msg" and chat is not None:
                 text = str(body.get("text") or "").strip()[:2000]
                 if not text:

@@ -3,6 +3,19 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.18–0.10.22 (unreleased on main — currently on dev)
+
+### The text line
+
+- **A third way to reach the booth: type to it.** Typed conversation with whoever is on air — the same brain, the same tools, the same receipts as the phone — over a plain WebSocket. No WebRTC, so it works for callers whose networks block call audio, and it keeps working when the media server is down. Turn it on with **Take text chats** on the dashboard, beside Live calls and Voicemail.
+- **Resumable, and it ends cleanly.** A chat picks up where it left off in the same browser; an **End** button closes it (writing the transcript to Recent calls as a text chat), and idle/message/age clocks close forgotten ones.
+- **A busy call now offers the text line** as a fallback, the way it already offers voicemail — even on surfaces where the permanent “Text the booth” button is off.
+- **Its own settings section** holds the clocks and ceilings, including a per-caller reopen wait and a daily cap — a text line is scriptable where a call is not, so it carries the phone's per-IP brakes.
+
+### Every mode
+
+- **A language / instruction guard**, always on: a caller directing the DJ to switch languages, drop its rules, or follow “instructions” quoted at it is testing the line, not making a request — and is treated as such. Mirrors a fix the station itself made after a real raid.
+
 ## 0.10.15
 
 Covers 0.10.9 through 0.10.15 — the changelog had fallen behind main.

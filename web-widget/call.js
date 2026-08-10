@@ -1528,6 +1528,18 @@
         // here forgot the message button, and one refused call left the
         // card without its one working door until a reload.
         paintIdleButtons(live || {});
+        // A busy live line is exactly when the text line earns its keep, so
+        // offer it here even if the operator didn't put the permanent button
+        // on this surface — the same distinction voicemail draws between its
+        // always-on button and its fallback. Not on a 401 (the door code is
+        // the fix there) and not when the whole line is paused (chat is shut
+        // too). The button is hoisted-visible; tapping it opens the chat.
+        if (res.status === 429 && live && live.chatEnabled && !live.callsPaused
+            && $('chatBtn')) {
+          $('chatBtn').hidden = false;
+          setStatus((d.error || 'The booth line is tied up.')
+            + ' You can text the booth instead.', 'error');
+        }
         if (res.status === 401) {
           callBtn.hidden = false;
           callBtn.disabled = true;
@@ -1966,12 +1978,44 @@
                    msg.text || chatText, true);
         chatPend = null; chatText = '';
         setStatus('', 'connected');
+      } else if (msg.type === 'ended') {
+        // The server confirmed the close (record written, chat dropped).
+        // Fold the card back to idle; the transcript stays in the drawer.
+        resetChatUI('Chat ended');
       }
     };
     chatWs.onclose = () => {
-      if (chatOpen) setStatus('Text line closed — send to reopen', 'error');
+      // A socket that drops on its own (network, server restart) is
+      // recoverable — the transcript is server-side and a resume replays it.
+      // A deliberate End cleared chatOpen already, so this says nothing then.
+      if (chatOpen) setStatus('Text line dropped — send to reconnect', 'error');
       chatWs = null;
     };
+  }
+
+  // End a chat deliberately: tell the server (which writes the record and
+  // drops the chat), forget the id so the next open is a fresh conversation,
+  // and fold the card back to idle. Safe to call with no socket — the reset
+  // is the part that always has to happen.
+  function endChat() {
+    if (chatWs && chatWs.readyState === 1) {
+      try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
+    }
+    localStorage.removeItem('callinChat');
+    resetChatUI('Chat ended');
+  }
+
+  function resetChatUI(note) {
+    chatOpen = false;
+    if (chatWs) { try { chatWs.close(); } catch (e) { /* already gone */ } chatWs = null; }
+    chatPend = null; chatText = '';
+    $('chatRow').hidden = true;
+    collapseTranscript();
+    if (note) setStatus(note);
+    // The idle card's doors — Call, and whichever of chat/voicemail the
+    // operator offers — come back from the live truth, not by hand.
+    paintIdleButtons(live || {});
+    notifyHeight();
   }
 
   function sendChat() {
@@ -1994,6 +2038,7 @@
 
   if ($('chatBtn')) $('chatBtn').onclick = () => { if (!room) openChat(); };
   if ($('chatSendBtn')) $('chatSendBtn').onclick = sendChat;
+  if ($('chatEndBtn')) $('chatEndBtn').onclick = endChat;
   if ($('chatInput')) {
     $('chatInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
