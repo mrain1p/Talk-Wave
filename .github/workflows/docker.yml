@@ -56,12 +56,17 @@ jobs:
         env:
           LOG_TO_FILE: "0"
           # Point every writable path away from the checkout, so a test can
-          # never scribble on real settings, secrets or auth files.
+          # never scribble on real settings, secrets or auth files. run_tests
+          # gives each parallel worker its OWN temp dir on top of these, so
+          # the modules cannot collide.
           SETTINGS_PATH: /tmp/ci-settings.json
           SECRETS_PATH: /tmp/ci-secrets.json
           ADMIN_AUTH_PATH: /tmp/ci-auth.json
           CALLS_PATH: /tmp/ci-calls
-        run: python -m unittest test_sidecar -v
+        # The same suite, one process per module in parallel — the aggregator
+        # (python -m unittest test_sidecar) still works and is what the module
+        # coverage guard pins against, but this is 2-3x faster on CI's cores.
+        run: python run_tests.py
 
   build-and-push:
     needs: test

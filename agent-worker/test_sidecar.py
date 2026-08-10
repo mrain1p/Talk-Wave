@@ -221,6 +221,7 @@ from tests.test_house_rules import (  # noqa: F401
     TestEverySkillWouldActuallyLoad,
     TestEveryTestClassIsAggregated,
     TestNewCodeDoesNotArriveUntested,
+    TestTheParallelRunnerRunsTheSameSuite,
     TestNoFileGrowsWithoutSomebodyDeciding,
     TestTheCallHarnessOnlyDialsLocal,
     TestTheCommitGateIsStillWiredUp,

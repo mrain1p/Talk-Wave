@@ -540,10 +540,25 @@ class TestTheProviderTablesAgreeWithEachOther(unittest.TestCase):
     def test_a_protocol_provider_dials_its_own_host(self):
         # The whole branch is one base_url away from posting a DeepSeek key
         # to api.openai.com.
+        import os
+
         from call.providers import build_llm
 
-        model = build_llm({"llm_provider": "deepseek", "llm_model": ""})
-        self.assertIn("api.deepseek.com", str(model._client.base_url))
+        # The openai-compatible client wants SOME key to construct. This test
+        # is about the base_url, not the key, so give it a throwaway — without
+        # it the test only passed because an earlier MODULE happened to set
+        # OPENAI_API_KEY, which the parallel runner exposed (each module runs
+        # in its own process, so cross-module env leakage is gone).
+        old = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        try:
+            model = build_llm({"llm_provider": "deepseek", "llm_model": ""})
+            self.assertIn("api.deepseek.com", str(model._client.base_url))
+        finally:
+            if old is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = old
 
 
 class TestEverySecretRendersSomewhere(unittest.TestCase):
