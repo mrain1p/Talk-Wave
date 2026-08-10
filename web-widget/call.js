@@ -131,6 +131,32 @@
     };
   })();
 
+  // "The station's own colours" follow the PROGRAMME — the server resolves
+  // the on-air show's palette on every /live — but the theme used to be
+  // applied only on the first read, so a show change mid-page left the card
+  // wearing the previous show's colours until a reload (operator-reported,
+  // 2026-08-09). Repaint on a poll ONLY when a genuinely new palette arrives
+  // AND the station look currently governs: the operator default with no
+  // viewer override, or the viewer's own explicit 'station' pick. A viewer
+  // pinned to light or dark is never repainted — that guard is why the
+  // first-read-only rule existed, and it survives here. A palette that goes
+  // NULL is a station read failing, not a show losing its colours (the
+  // station's default theme backstops `effective`), so nothing is stripped.
+  let lastPalette = '';
+  function followStationPalette(d) {
+    const tokens = d.stationTheme && d.stationTheme.tokens;
+    const key = tokens ? JSON.stringify(tokens) : '';
+    if (!tokens || key === lastPalette) { if (key) lastPalette = key; return; }
+    lastPalette = key;
+    const stored = localStorage.getItem('callinTheme') || '';
+    if (stored === 'station') {
+      applyThemeChoice('station');           // reads the fresh `live`
+    } else if (!stored && d.theme === 'station' && !themeForcedByHost) {
+      applyConfiguredTheme(d.theme, d.stationTheme);
+      paintThemeGlyph();
+    }
+  }
+
   function applyConfiguredTheme(choice, palette) {
     if (themeForcedByHost) return;              // the host page has decided
     const root = document.documentElement;
@@ -820,6 +846,12 @@
         setupAskPopup(d.canAsk);
         applyControls(d);
         paintThemeGlyph();
+        // Seeds the palette change-detector so the second poll does not
+        // read the load-time palette as a show change. Any tokens it re-sets
+        // are the ones the line above just applied.
+        followStationPalette(d);
+      } else {
+        followStationPalette(d);
       }
       // The sound engine lives in shared.js and is fed rather than read from,
       // so the panel can preview a sound without borrowing the call's state.
