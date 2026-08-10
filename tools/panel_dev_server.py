@@ -121,6 +121,48 @@ HOOK_TEST = {
     "detail": "the station's push reached http://192.168.1.40:8100/hooks/station",
 }
 
+# Enough spread — kinds, tiers, tools, ratings, verdicts — that every one of
+# the calls toolbar's filters has at least two answers to offer, and stacking
+# them (thumbs down AND text chats) leaves a non-empty, checkable remainder.
+CALLS = [
+    {"id": "c1", "room": "r1", "kind": "call", "startedAt": "2026-08-10T12:40:52-04:00",
+     "durationSecs": 125, "callerTurns": 3, "rating": "down",
+     "persona": {"name": "Francesca"}, "config": {"llm": "x", "callerTier": "open"},
+     "tools": [{"t": "2026-08-10T12:41:00-04:00", "name": "subwave_search_library",
+                "result": "3 result(s)"}],
+     "turns": [{"t": "2026-08-10T12:40:55-04:00", "who": "caller", "text": "hi"}],
+     "problems": [{"what": "station read timed out"}]},
+    {"id": "c2", "room": "r2", "kind": "call", "startedAt": "2026-08-10T12:35:34-04:00",
+     "durationSecs": 41, "callerTurns": 0, "persona": {"name": "Francesca"},
+     "config": {"callerTier": "open"}, "tools": [], "turns": [],
+     "problems": [{"what": "no caller audio"}]},
+    {"id": "c3", "room": "r3", "kind": "chat", "startedAt": "2026-08-10T11:22:27-04:00",
+     "durationSecs": 1133, "callerTurns": 3, "persona": {"name": "Rosie"},
+     "config": {"callerTier": "admin"},
+     "tools": [{"t": "2026-08-10T11:30:00-04:00", "name": "subwave_takeover_show",
+                "result": "pinned"}],
+     "turns": [{"t": "2026-08-10T11:22:30-04:00", "who": "caller", "text": "take over"}],
+     "problems": []},
+    {"id": "c4", "room": "r4", "kind": "voicemail", "startedAt": "2026-08-10T10:31:49-04:00",
+     "durationSecs": 36, "callerTurns": 1, "persona": {"name": "Danny Boy"},
+     "config": {"callerTier": "guest"}, "tools": [],
+     "turns": [{"t": "2026-08-10T10:31:55-04:00", "who": "caller", "text": "play bowie"}],
+     "problems": []},
+    {"id": "c5", "room": "r5", "kind": "call", "startedAt": "2026-08-10T09:45:19-04:00",
+     "durationSecs": 78, "callerTurns": 2, "rating": "up",
+     "persona": {"name": "Wade"}, "config": {"callerTier": "guest"},
+     "tools": [{"t": "2026-08-10T09:46:00-04:00", "name": "subwave_request_song",
+                "result": "queued"}],
+     "turns": [{"t": "2026-08-10T09:45:25-04:00", "who": "caller", "text": "request"}],
+     "problems": []},
+    {"id": "c6", "room": "r6", "kind": "chat", "startedAt": "2026-08-10T09:44:25-04:00",
+     "durationSecs": 58, "callerTurns": 3, "rating": "down",
+     "persona": {"name": "Wade"}, "config": {"callerTier": "open"},
+     "tools": [], "turns": [
+        {"t": "2026-08-10T09:44:30-04:00", "who": "caller", "text": "hello"}],
+     "problems": []},
+]
+
 LOG_RECORDS = [
     {"t": "11:20:01", "level": "INFO", "logger": "callin.token",
      "msg": "call-in widget + token server on http://localhost:8100"},
@@ -306,6 +348,8 @@ class Handler(BaseHTTPRequestHandler):
                 {"id": "classic", "label": "Exchange", "assets": {}},
                 {"id": "phone", "label": "Handset", "assets": {}},
             ]})
+        if path == "/calls":
+            return self._json({"calls": CALLS})
         if path == "/logs":
             return self._json({
                 "records": LOG_RECORDS,

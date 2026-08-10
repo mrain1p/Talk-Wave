@@ -6,6 +6,7 @@ Split out of test_sidecar.py; see tests/__init__.py.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import types
@@ -96,6 +97,26 @@ class TestAssetVersioning(unittest.TestCase):
         html = api_widget._versioned_page("index.html")
         self.assertIn("<html", html.lower())
         self.assertGreater(len(html), 2000)
+
+
+class TestDiagnosticsResultsKeepTheirScrollSkin(unittest.TestCase):
+    """The viewers' result boxes must keep the 'scrolly' class on rewrite.
+
+    className assignment is a full replacement, and a rewrite in
+    panel-viewers.js once dropped 'scrolly' from the class the markup ships:
+    max-height still applied (a later `.result.logs` rule carries its own),
+    overflow did not, and fifty wrapped log lines poured straight through the
+    box's border and over the page footer. The operator sent the screenshot.
+    """
+
+    def test_every_result_class_rewrite_keeps_scrolly(self):
+        js = (REPO / "web-widget" / "panel-viewers.js").read_text(encoding="utf-8")
+        rewrites = re.findall(r"className\s*=\s*'([^']*\bresult\b[^']*)'", js)
+        self.assertTrue(rewrites, "expected className rewrites in panel-viewers.js")
+        missing = [c for c in rewrites if "scrolly" not in c]
+        self.assertEqual(
+            missing, [],
+            "a viewer result box loses its scroll skin on rewrite: %r" % missing)
 
 
 class TestPanelMarkup(unittest.TestCase):

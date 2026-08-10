@@ -371,6 +371,16 @@
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
     setTag('tagPlayer', (resolved.call_button_uses_name ? "DJ's name" : 'generic label')
       + ' · ' + (resolved.widget_theme || 'auto'));
+    // Counted, not listed: eleven element names would not fit a tag. The
+    // embed column simply has no gear (an embed never loads this panel), so
+    // the missing embed_settings_gear reads as false and the counts stay
+    // honest without a special case.
+    const surfEls = ['caller_help', 'theme_toggle', 'settings_gear',
+      'push_to_talk', 'dj_avatar', 'dj_show', 'dj_tagline', 'now_playing',
+      'voicemail_button', 'chat_button', 'signin'];
+    setTag('tagSurface',
+      surfEls.filter((k) => resolved['show_' + k]).length + ' on page · '
+      + surfEls.filter((k) => resolved['embed_' + k]).length + ' in embed');
     paintDash();
   }
 
@@ -1691,7 +1701,9 @@
   //
   // Which fields matter is read from the SCHEMA rather than listed, so a look
   // setting added later is previewed without anyone remembering to come here.
-  const LOOK_GROUPS = new Set(['player']);
+  // Both halves of the old Player settings section (split in 0.10.47) — a
+  // change in either is a change the preview frame must repaint for.
+  const LOOK_GROUPS = new Set(['surface', 'player']);
   function isLookField(f) {
     return !!(SCHEMA.fields[f] && LOOK_GROUPS.has(SCHEMA.fields[f].group));
   }

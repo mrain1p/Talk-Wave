@@ -200,6 +200,14 @@
     if (c.rating === 'up' || c.rating === 'down') {
       el.dataset.rating = c.rating;
     }
+    // What the toolbar's dropdowns filter on. Tools are stored as the badge
+    // WORDS, not the raw names — the dropdown offers what the chips say, and
+    // 8 stable words filter better than every raw tool spelling.
+    el.dataset.kind = c.kind === 'voicemail' ? 'voicemail'
+      : c.kind === 'chat' ? 'chat' : 'call';
+    el.dataset.tier = String((c.config && c.config.callerTier) || '').toLowerCase();
+    el.dataset.tools = [...new Set((c.tools || []).map((t) =>
+      toolBadge(t.name).word))].join(' ');
     const sum = document.createElement('summary');
     sum.innerHTML = '<span class="icon"></span><span class="when"></span>'
       + '<span class="dj"></span><span class="len"></span>'
@@ -261,12 +269,17 @@
   $('viewCallsBtn').onclick = async () => {
     const btn = $('viewCallsBtn'), out = $('callsResult');
     btn.disabled = true;
-    out.className = 'result on'; out.textContent = 'Fetching…';
+    // 'scrolly' must survive every one of these assignments. The markup
+    // carries it, but className is a full replacement, and a rewrite here
+    // once dropped it — the box kept its max-height and lost its overflow,
+    // so the content poured straight through the border and over the page
+    // footer (operator screenshot, 0.10.46). Same trap in the log viewer.
+    out.className = 'result scrolly on'; out.textContent = 'Fetching…';
     try {
       const d = await afetch('/calls').then((r) => r.json());
       if (d.error) { showResult(out, false, d.error); return; }
       const calls = d.calls || [];
-      out.className = 'result on';
+      out.className = 'result scrolly on';
       out.innerHTML = '';
       if (!calls.length) {
         $('callBar').hidden = true;
@@ -281,38 +294,92 @@
       out.appendChild(list);
 
       // The toolbar is markup rather than built here, so it shares one shape
-      // with the log viewer's. The common case is reading the last call, not
-      // hunting failures, so the filter is a checkbox and not a remembered mode.
+      // with the log viewer's. Every control narrows the SAME list through
+      // one filter pass — the old one-CSS-class-per-filter scheme could not
+      // say "thumbs down AND text chats only", and each dropdown it gained
+      // would have needed a class per possible value.
+      const filters = { bad: false, rating: '', kind: '', tier: '', tool: '' };
+      const rows = [...list.children];
+      const apply = () => {
+        let shown = 0;
+        rows.forEach((row) => {
+          const ok = (!filters.bad || row.dataset.verdict !== 'pass')
+            && (!filters.rating || row.dataset.rating === filters.rating)
+            && (!filters.kind || row.dataset.kind === filters.kind)
+            && (!filters.tier || row.dataset.tier === filters.tier)
+            && (!filters.tool || (' ' + (row.dataset.tools || '') + ' ')
+                  .indexOf(' ' + filters.tool + ' ') !== -1);
+          row.hidden = !ok;
+          if (ok) shown += 1;
+        });
+        $('callCount').textContent = shown === calls.length
+          ? `${calls.length} call${calls.length === 1 ? '' : 's'}`
+          : `${shown} of ${calls.length}`;
+      };
+
       const rough = calls.filter((c) => callVerdict(c).cls !== 'pass').length;
       const box = $('callsOnlyBad');
       $('callsOnlyBadLabel').textContent = rough || '';
       box.disabled = !rough;
       box.classList.remove('on');
       box.onclick = () => {
-        const on = !list.classList.contains('onlybad');
-        list.classList.toggle('onlybad', on);
-        box.classList.toggle('on', on);
+        filters.bad = !filters.bad;
+        box.classList.toggle('on', filters.bad);
+        apply();
       };
       // The caller's own verdicts, as filters. One at a time — a call can't
-      // be rated both ways — and they stack with the problems checkbox.
+      // be rated both ways — and they stack with everything else on the bar.
       const down = calls.filter((c) => c.rating === 'down').length;
       const up = calls.filter((c) => c.rating === 'up').length;
-      [['callsOnlyDown', 'onlydown', down], ['callsOnlyUp', 'onlyup', up]]
-        .forEach(([id, cls, n]) => {
+      [['callsOnlyDown', 'down', down], ['callsOnlyUp', 'up', up]]
+        .forEach(([id, val, n]) => {
           const btn = $(id);
           if (!btn) return;
           btn.querySelector('span').textContent = n || '';
           btn.disabled = !n;
           btn.classList.remove('on');
           btn.onclick = () => {
-            const now = !list.classList.contains(cls);
-            list.classList.remove('onlydown', 'onlyup');
-            $('callsOnlyDown').classList.remove('on');
-            $('callsOnlyUp').classList.remove('on');
-            if (now) { list.classList.add(cls); btn.classList.add('on'); }
+            filters.rating = filters.rating === val ? '' : val;
+            $('callsOnlyDown').classList.toggle('on', filters.rating === 'down');
+            $('callsOnlyUp').classList.toggle('on', filters.rating === 'up');
+            apply();
           };
         });
-      $('callCount').textContent = `${calls.length} call${calls.length === 1 ? '' : 's'}`;
+
+      // The three dropdowns: how they came in, who they were, what the DJ
+      // reached for. Each hides entirely when the loaded calls give it only
+      // one answer — a dropdown that can't change the list is noise on a bar
+      // this small. Options are drawn from the records, so a door that was
+      // never used isn't offered as a filter that finds nothing.
+      const KIND_WORDS = { call: 'Calls', chat: 'Text chats', voicemail: 'Voicemails' };
+      const fillSelect = (id, key, allLabel, values, wordFor) => {
+        const sel = $(id);
+        if (!sel) return;
+        sel.innerHTML = '';
+        const all = document.createElement('option');
+        all.value = ''; all.textContent = allLabel;
+        sel.appendChild(all);
+        values.forEach((v) => {
+          const o = document.createElement('option');
+          o.value = v; o.textContent = wordFor ? wordFor(v) : v;
+          sel.appendChild(o);
+        });
+        sel.hidden = values.length < (key === 'tool' ? 1 : 2);
+        sel.onchange = () => { filters[key] = sel.value; apply(); };
+      };
+      const distinct = (fn) => [...new Set(calls.map(fn).filter(Boolean))].sort();
+      fillSelect('callKind', 'kind', 'All types',
+        ['call', 'chat', 'voicemail'].filter((k) =>
+          calls.some((c) => (c.kind === 'voicemail' ? 'voicemail'
+            : c.kind === 'chat' ? 'chat' : 'call') === k)),
+        (v) => KIND_WORDS[v]);
+      fillSelect('callTier', 'tier', 'All tiers',
+        distinct((c) => String((c.config && c.config.callerTier) || '').toLowerCase()));
+      fillSelect('callTool', 'tool', 'All tools',
+        [...new Set(calls.flatMap((c) => (c.tools || []).map((t) =>
+          toolBadge(t.name).word)))].sort());
+
+      apply();
       $('callBar').hidden = false;
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
@@ -328,7 +395,7 @@
       const d = await afetch('/calls', { method: 'DELETE' }).then((r) => r.json());
       if (d.error) { showResult(out, false, d.error); return; }
       $('callBar').hidden = true;
-      out.className = 'result on';
+      out.className = 'result scrolly on';
       out.textContent = d.removed
         ? `Cleared ${d.removed} call record${d.removed === 1 ? '' : 's'}.`
         : 'There was nothing stored to clear.';
@@ -409,7 +476,9 @@
   $('viewLogsBtn').onclick = async () => {
     const btn = $('viewLogsBtn'), out = $('logsResult');
     btn.disabled = true;
-    out.className = 'result on logs'; out.textContent = 'Fetching…';
+    // 'scrolly' kept for the same reason as the call viewer's assignments:
+    // without it the lines overflow the border instead of scrolling.
+    out.className = 'result scrolly on logs'; out.textContent = 'Fetching…';
     try {
       const d = await afetch('/logs').then((r) => r.json());
       if (d.error) { showResult(out, false, d.error); return; }
@@ -434,7 +503,7 @@
       $('logLevels').value =
         [...$('logLevels').options].some((o) => o.value === keep) ? keep : '';
       $('logFilters').hidden = false;
-      out.className = 'result on logs';
+      out.className = 'result scrolly on logs';
       logShown = LOG_PAGE;
       paintLogs();
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }

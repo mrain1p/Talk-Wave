@@ -53,6 +53,7 @@ from tests.test_http import (  # noqa: F401
 from tests.test_widget import (  # noqa: F401
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
+    TestDiagnosticsResultsKeepTheirScrollSkin,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
@@ -138,7 +139,9 @@ from tests.test_tools_logic import (  # noqa: F401
 from tests.test_music_tools import (  # noqa: F401
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
+    TestCurrentLyricsAreARead,
     TestLikingTheTrackOnAir,
+    TestSearchPagesLikeTheStation,
     TestSearchingForWhatTheCallerActuallySaid,
 )
 from tests.test_takeover import (  # noqa: F401

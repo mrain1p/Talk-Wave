@@ -339,8 +339,15 @@ class StationClient:
             log.warning("on-air handoff failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
-    async def search_library(self, q: str) -> list[dict]:
-        """Term search over the library. Admin-gated; empty list on failure."""
+    async def search_library(self, q: str, offset: int = 0,
+                             limit: int = 30) -> list[dict]:
+        """Term search over the library. Admin-gated; empty list on failure.
+
+        offset/limit ride /dj/search's own paging (what the station's admin
+        Search tab pages with). Mirrored after the station unfenced its wide
+        sources (its #1339): without an offset, anything past the first page
+        of a result set was unreachable from the call line at all.
+        """
         from station_config import admin_credentials
 
         user, password = admin_credentials()
@@ -348,7 +355,10 @@ class StationClient:
             return []
         try:
             r = await self._client.get(
-                "/dj/search", params={"q": q}, auth=httpx.BasicAuth(user, password)
+                "/dj/search",
+                params={"q": q, "offset": max(0, int(offset)),
+                        "limit": max(1, int(limit))},
+                auth=httpx.BasicAuth(user, password),
             )
             r.raise_for_status()
             d = r.json()
@@ -357,6 +367,25 @@ class StationClient:
         except Exception as e:
             log.warning("library search failed: %s", describe(e))
             return []
+
+    async def current_lyrics(self) -> dict:
+        """The station's public read for the airing track's lyrics.
+
+        Feature-detected on purpose: /lyrics/current ships with the station's
+        current-track lyrics work (its #1316), and a station without it
+        answers 404 — which lands here as an empty dict and reaches the DJ as
+        "no lyrics on file", not as an error. `lines` is [] for instrumentals
+        and unindexed tracks; `songId` is null when the on-air item is not a
+        library track. No auth: the same read every listener player gets.
+        """
+        try:
+            r = await self._client.get("/lyrics/current")
+            r.raise_for_status()
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.info("lyrics unavailable (%s)", describe(e))
+            return {}
 
     async def queue_track(self, track: dict) -> dict:
         """Push an exact track from a search result onto the queue.

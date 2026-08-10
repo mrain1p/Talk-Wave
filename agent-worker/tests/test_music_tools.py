@@ -73,6 +73,95 @@ class TestAMoodIsNotASearch(unittest.TestCase):
         self.assertFalse(looks_like_a_vibe(None))
 
 
+class TestSearchPagesLikeTheStation(unittest.TestCase):
+    """/dj/search pages — the station's own admin Search tab rides the same
+    offset — and after the station unfenced its wide sources (its #1339) the
+    deep half of a big result set is only reachable through it. The tool's
+    page argument is that reach: without one, the ninth match for a common
+    word did not exist as far as any caller was concerned."""
+
+    def _tool(self, answers):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            def __init__(self):
+                self.asked = []
+
+            async def search_library(self, q, offset=0, limit=30):
+                self.asked.append((q, offset, limit))
+                return answers.get(offset, [])
+
+        st = _Station()
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False   # as if creds were set
+        try:
+            tools = build_library_tools(
+                {"allow_library_search": True}, st, CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        tool = next(t for t in tools if t.info.name == "subwave_search_library")
+        return st, tool
+
+    def test_a_full_page_offers_the_next_and_page_two_asks_deeper(self):
+        rows = [{"title": f"T{i}", "artist": "A"} for i in range(9)]
+        st, tool = self._tool({0: rows, 8: rows[:1]})
+        out = asyncio.run(tool(q="love"))
+        # Nine fetched, eight shown: the extra row is only the "more exists"
+        # signal, never a ninth line.
+        self.assertIn("8 result(s)", out)
+        self.assertIn("page=2", out)
+        self.assertEqual(st.asked[0], ("love", 0, 9))
+        out2 = asyncio.run(tool(q="love", page=2))
+        self.assertIn("page 2", out2)
+        self.assertEqual(st.asked[-1], ("love", 8, 9))
+
+    def test_an_empty_deeper_page_says_the_results_ran_out(self):
+        # Not the wrong-tool hint: the DJ has already read real results to the
+        # caller, so an exhausted page must not send it off to file a request.
+        st, tool = self._tool({0: [{"title": "T", "artist": "A"}]})
+        out = asyncio.run(tool(q="love", page=3))
+        self.assertIn("earlier pages", out)
+        self.assertNotIn("subwave_request_song", out)
+
+
+class TestCurrentLyricsAreARead(unittest.TestCase):
+    """The lyrics tool is a read like now-playing: always built, no switch,
+    and honest when the station has nothing. A station older than the lyrics
+    feature answers 404, which must reach the DJ as 'no lyrics on file' —
+    never as an error it apologises to the caller for."""
+
+    def _tool(self, payload):
+        from call.actions import CallActions
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def current_lyrics(self):
+                return payload
+
+        tools = build_library_tools({}, _Station(), CallActions(5))
+        return next(t for t in tools if t.info.name == "subwave_current_lyrics")
+
+    def test_it_is_built_with_nothing_switched_on(self):
+        tool = self._tool({})
+        self.assertEqual(tool.info.name, "subwave_current_lyrics")
+
+    def test_no_payload_reads_as_no_lyrics_not_an_error(self):
+        out = asyncio.run(self._tool({})())
+        self.assertIn("No lyrics", out)
+        self.assertIn("do not guess", out)
+
+    def test_lines_come_back_and_a_full_sheet_is_capped(self):
+        # Prompt budget: the sheet is paid for on every later turn, so a long
+        # one is cut at ~2000 characters with an honest count of the rest.
+        sheet = {"lines": [{"text": f"line {i} " + "x" * 60} for i in range(80)]}
+        out = asyncio.run(self._tool(sheet)())
+        self.assertIn("line 0", out)
+        self.assertIn("more lines not shown", out)
+        self.assertLess(len(out), 2600)
+
+
 class TestLikingTheTrackOnAir(unittest.TestCase):
     """A caller liking the record on air is the same heart any listener taps —
     public at the station, low-harm, off by default. Added on the operator's

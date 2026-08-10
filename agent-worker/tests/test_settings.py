@@ -537,6 +537,22 @@ class TestTheProviderTablesAgreeWithEachOther(unittest.TestCase):
                        "llm_base_url": ""})
         self.assertIn("Endpoint", str(caught.exception))
 
+    def test_locca_with_a_blank_endpoint_dials_the_host_default(self):
+        # The one provider where a blank Endpoint still names a server —
+        # mirrored from the station's DEFAULT_LOCCA_BASE_URL, so an operator
+        # whose station thinks on locca picks the name here and is done.
+        import settings as settings_store
+        from call.providers import build_llm
+
+        model = build_llm({"llm_provider": "locca", "llm_model": "x",
+                           "llm_base_url": ""})
+        self.assertIn(settings_store.LOCCA_BASE_URL_DEFAULT,
+                      str(model._client.base_url))
+        # An explicit endpoint always wins over the well-known address.
+        model = build_llm({"llm_provider": "locca", "llm_model": "x",
+                           "llm_base_url": "http://10.0.0.5:9999/v1"})
+        self.assertIn("10.0.0.5:9999", str(model._client.base_url))
+
     def test_a_protocol_provider_dials_its_own_host(self):
         # The whole branch is one base_url away from posting a DeepSeek key
         # to api.openai.com.

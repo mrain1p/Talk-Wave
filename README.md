@@ -255,7 +255,7 @@ absence is the classic silent embed failure). The panel never ships in an
 embed.
 
 **What the card shows in an embed is answered separately** from what it shows
-on the standalone page — see **Player settings** in the panel. The host page
+on the standalone page — see **What the card shows** in the panel. The host page
 usually has its own show heading and now-playing line, and a second copy of
 both inside the frame is noise. The settings gear is the one thing that is
 never offered here at any setting: an embed does not load the panel's code, so

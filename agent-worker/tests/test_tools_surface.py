@@ -120,6 +120,9 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_station_state": "read",
         "subwave_schedule": "read",
         "subwave_session": "read",
+        # A read like the five above it, but served by our wrapper: the
+        # station publishes lyrics over public REST, not MCP. Added 0.10.47.
+        "subwave_current_lyrics": "read",
         "subwave_request_song": "allow_requests",
         "subwave_request_status": "allow_requests",
         "subwave_search_library": "allow_library_search",

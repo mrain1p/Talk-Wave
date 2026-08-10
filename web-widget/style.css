@@ -1489,10 +1489,6 @@
   label.check .hint.inlabel {
     display: inline; margin: 0 0 0 8px; font-weight: 400;
   }
-  /* Rating filters on the call list: one at a time, stacking with the
-     problems checkbox. */
-  .calllist.onlydown .callrow:not([data-rating="down"]),
-  .calllist.onlyup .callrow:not([data-rating="up"]) { display: none; }
   .runbtn.on { border-color: var(--accent); color: var(--accent); }
   /* set / not set beside a credential heading */
   .settingsearch {
@@ -2101,7 +2097,9 @@
   .diagbar[hidden] { display: none; }
   .diagbar label { font-size: 11.5px; color: var(--dimmer); }
   .diagbar .grow { flex: 1 1 auto; }
-  .diagbar select[multiple] {
+  /* All of a diagbar's selects, not just multi-selects — the calls bar's
+     three dropdowns and the logs' level floor wear one skin. */
+  .diagbar select {
     font-size: 11.5px; padding: 3px 6px; border-radius: 7px;
     background: var(--bg); color: var(--text); border: 1px solid var(--line2);
     min-width: 104px;
@@ -2315,7 +2313,11 @@
      a layout to fix. */
   .callrow > summary {
     display: grid; width: 100%;
-    grid-template-columns: 16px 144px minmax(0, 1fr) 46px 116px minmax(0, 1.3fr);
+    /* The tools column is flexible, not 116px: with the tool chips beside the
+       turn count, a fixed track cut chips off mid-word ("search…" and a bare
+       clipped border, operator screenshot) while the note column beside it
+       sat empty on every passing call. */
+    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr);
     gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
   }
@@ -2415,7 +2417,10 @@
   /* A tool that came back with a refusal is the line you are looking for. */
   .cbline.tool.bad .w, .cbline.tool.bad .x { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
 
-  .calllist.onlybad .callrow.pass { display: none; }
+  /* Every toolbar filter hides rows through the one JS pass in
+     panel-viewers.js — the one-class-per-filter CSS this replaced could not
+     combine a dropdown's value with the thumbs and problems toggles. */
+  .callrow[hidden] { display: none; }
 
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;

@@ -180,7 +180,7 @@ Three layers, in increasing order of "actually happens":
 
 1. **This file** is loaded into context every session. Advice — read and generally followed.
 2. **`.claude/skills/`** — `wavetalk-verify`, `-deploy`, `-release`, `-test`, `-diagnose`,
-   `-llm-bench`, `-standards-review`. Invoked when the model judges them relevant.
+   `-llm-bench`, `-standards-review`, `-upstream`. Invoked when the model judges them relevant.
 3. **`.claude/settings.json`** — two `PreToolUse` hooks on `git commit`, both executed by the
    harness so they hold whether or not anyone remembered, and both failing open (no python, no
    repo, no test file, or a non-commit command and they exit silently):

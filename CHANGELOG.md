@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.47
+
+- **Server logs stay inside their box.** The log viewer lost its scroll skin in a rewrite — lines poured straight through the border and over the page footer. Both diagnostics viewers scroll again, and a test now pins the class so it can't silently drop a second time.
+- **The calls list can be filtered by type, tier and tool.** Three dropdowns on the toolbar — Calls / Text chats / Voicemails, the caller's tier, and which tool the DJ reached for — stacking with the problems and thumbs filters. The tool chips also stop clipping mid-word: their column now flexes instead of cutting off at 116px.
+- **Player settings is now three dropdowns.** The live preview, the what-shows-where matrix ("What the card shows"), and the look-and-behaviour rows each get their own section, per the operator's ask. Nothing moved server-side — every field keeps its id and its meaning.
+- **The DJ can read the current track's lyrics.** A new always-on read over the station's public `/lyrics/current` (shipping with SUB/WAVE's current-track lyrics feature). A station without the endpoint answers 404 and the DJ says there are no lyrics on file, so nothing breaks on older stations. Long sheets are capped before they reach the prompt.
+- **Library search pages like the station's own admin search.** The search tool takes a page number and rides `/dj/search`'s offset, so the ninth match for a common word is finally reachable from a call.
+- **locca joins the provider list.** SUB/WAVE's bundled local runner, mirrored here: no key, and a blank Endpoint falls back to locca's usual host address (`LOCCA_BASE_URL` overrides).
+
 ## 0.10.46
 
 - **The settings panel has a new look — a newspaper.** A "WAVE TALK" masthead over a red rule, flat cream-and-ink sheets (near-black in dark mode), ruled rows instead of boxed-in cards, square red toggles, section headings with a rule filling the line, and a proper footer. It's the panel only — the call card stays deliberately neutral — and light, dark, the station's own colours and match-the-page all keep working. Pure restyle: every control and setting is exactly where it was.

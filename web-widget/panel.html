@@ -1068,20 +1068,15 @@
          ticker, where a second copy of both is noise. The gear's embed cell
          is a dash rather than a checkbox — an embed never loads this panel's
          code, so the switch would do nothing whichever way it was set. -->
-    <details data-group="player" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
+    <details data-group="preview" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Player preview</span><em class="secblurb"></em><span class="tag">live</span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">What the call card shows. The
-          two columns are the two places it appears: <strong>this page</strong>
-          (the phone at <code>/</code>) and an <strong>embed</strong> in a frame
-          on somebody else’s site.</p>
-
-        <!-- The real call card, in a frame, driven by the form above it
-             before anything is saved. It is the actual widget rather than a
-             drawing of one, and what it shows is resolved by /live/preview —
-             the same code that answers a real caller — so it cannot drift
-             from the thing it is previewing. Call and the gear are inert
-             inside it; see previewMode in call.js. -->
+        <!-- The real call card, in a frame, driven by the form in the two
+             sections below before anything is saved. It is the actual widget
+             rather than a drawing of one, and what it shows is resolved by
+             /live/preview — the same code that answers a real caller — so it
+             cannot drift from the thing it is previewing. Call and the gear
+             are inert inside it; see previewMode in call.js. -->
         <div class="preview" id="previewWrap">
           <div class="previewbar">
             <span class="plabel">Preview</span>
@@ -1104,11 +1099,21 @@
           </div>
         </div>
         <!-- Filled by applyVisibility() whenever the line status overrides
-             what this section configures — paused, closed, voicemail-only.
+             what the sections below configure — paused, closed, voicemail-only.
              The preview above is a REAL card, so it already shows the
              override; this line says why, so the operator doesn't read
              their own kill switch as the preview being broken. -->
         <p class="hint wide" id="previewLineNote" hidden></p>
+      </div>
+    </details>
+
+    <details data-group="surface" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">What the card shows</span><em class="secblurb"></em><span class="tag" id="tagSurface"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The two columns are the two
+          places the card appears: <strong>this page</strong> (the phone at
+          <code>/</code>) and an <strong>embed</strong> in a frame on somebody
+          else’s site.</p>
 
         <div class="pmatrix">
           <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
@@ -1171,12 +1176,19 @@
             <input type="checkbox" id="show_signin" aria-label="Sign-in button on the page" />
             <input type="checkbox" id="embed_signin" aria-label="Sign-in button in an embed" />
           </div>
+        </div>
+      </div>
+    </details>
 
-          <!-- What each door SHOWS: its word, its icon, or both. One row per
-               feature, two ticks each — the old single "Button style" select
-               could not say "Call worded, the two secondary doors as bare
-               icons", which is what a tight embed wants. The widget shows the
-               word if a door is left with neither, so a button is never blank. -->
+    <details data-group="player" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
+      <div class="body">
+        <!-- What each door SHOWS: its word, its icon, or both. One row per
+             feature, two ticks each — the old single "Button style" select
+             could not say "Call worded, the two secondary doors as bare
+             icons", which is what a tight embed wants. The widget shows the
+             word if a door is left with neither, so a button is never blank. -->
+        <div class="pmatrix">
           <div class="phead"><span>Button shows</span><span>Word</span><span>Icon</span></div>
           <div class="prow" data-help="call_show_words">
             <span class="plabel">Call</span>
@@ -1400,6 +1412,11 @@
                   title="Only calls the caller rated thumbs down"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg> <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"
                   title="Only calls the caller rated thumbs up"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg> <span></span></button>
+          <!-- Filled from the loaded records; each hides itself when the
+               records only hold one answer for it. -->
+          <select id="callKind" aria-label="Only one way in" hidden></select>
+          <select id="callTier" aria-label="Only one caller tier" hidden></select>
+          <select id="callTool" aria-label="Only calls that used a tool" hidden></select>
           <span class="grow"></span>
           <span class="tag" id="callCount"></span>
           <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>
