@@ -54,14 +54,24 @@
          header when the panel was a section of it; on its own page it needs
          its own, or the operator is stranded here in whichever theme the
          phone was last left in. -->
-    <div class="panelbar">
-      <a class="gear" href="/" title="Back to the call page"
-         aria-label="Back to the call page">&#8592;</a>
-      <button class="gear" id="themeBtn" title="Light / dark"
-              aria-label="Toggle light or dark">&#9681;</button>
-      <button class="gear signout" id="dashLogoutBtn" hidden
-              title="Sign this browser out of the panel and the phone">Sign out</button>
-    </div>
+    <!-- Newspaper masthead (panel redesign 3a): a nameplate on the left, the
+         back / theme / sign-out controls on the right, over a coral double
+         rule. The .panelbar keeps its id-bearing buttons so panel.js is
+         unchanged; only the styling and its home moved. -->
+    <header class="masthead">
+      <div class="mastname">
+        <div class="masttitle">WAVE TALK</div>
+        <div class="mastsub" id="mastSub">Dashboard</div>
+      </div>
+      <div class="panelbar">
+        <a class="gear" href="/" title="Back to the call page"
+           aria-label="Back to the call page">&#8592;</a>
+        <button class="gear" id="themeBtn" title="Light / dark"
+                aria-label="Toggle light or dark">&#9681;</button>
+        <button class="gear signout" id="dashLogoutBtn" hidden
+                title="Sign this browser out of the panel and the phone">Sign out</button>
+      </div>
+    </header>
 
     <!-- First run. Shown until an admin password exists, and it ASKS rather
          than pointing: this used to be one sentence saying to go and set a
@@ -1419,7 +1429,7 @@
       </div>
     </details>
 
-    <p class="versionline" id="versionLine"></p>
+    <footer class="panelfoot"><span id="versionLine"></span><span id="footHost"></span></footer>
 
     <!-- The floating verdict on unsaved work. Appears the moment anything
          differs from what is stored and stays until Saved or Discarded — the
