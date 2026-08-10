@@ -3,6 +3,11 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.45
+
+- **Caller permissions are grouped by what they need.** The ones that run on the station's own controls (queue an exact track, un-like, put a message on air, run a segment) now sit in their own **"needs station admin credentials"** block, apart from the ones that need nothing (requests, search, like, voicemail, text) and the station-wide switches. All still off by default and never reach a guest unless you point the row there.
+- **The embed preview tells you it's interactive.** Pick a launcher / dock / button shape and the note under the preview now says to press the mock button to see the card open — the shape's "opens on a press" half is no longer a static-looking picture.
+
 ## 0.10.44
 
 - **The quiet-caller nudge waits for the caller to speak first.** It no longer fires right after the opening greeting — nudging someone 15 seconds after "you're through to the booth" read as pushy. It only kicks in once a real conversation is underway.
