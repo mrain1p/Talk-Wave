@@ -39,6 +39,37 @@ log = logging.getLogger("callin.station_config")
 
 FALLBACK_VOICES_PATH = Path(__file__).parent / "persona-voices.json"
 
+# The last persona->voice map that mirrored from the station, on disk so it
+# survives across the per-call job processes and covers a station that times
+# out mid-mirror. Sibling of station.py's last-persona cache, same reason.
+import json as _json
+import os as _os
+import time as _time
+
+_VOICE_CACHE = Path(
+    _os.environ.get("LAST_VOICES_PATH",
+                    Path(__file__).parent.parent / "data" / "last-voices.json")
+)
+_VOICE_TTL = 1800.0     # half an hour — voices change far less often than shows
+
+
+def _remember_voices(mapped: dict) -> None:
+    try:
+        _VOICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _VOICE_CACHE.write_text(_json.dumps({"voices": mapped, "at": _time.time()}))
+    except Exception as e:                                    # noqa: BLE001
+        log.debug("could not remember mirrored voices (harmless): %s", e)
+
+
+def _recall_voices() -> dict | None:
+    try:
+        d = _json.loads(_VOICE_CACHE.read_text())
+        if _time.time() - float(d.get("at") or 0) < _VOICE_TTL:
+            return d.get("voices") or None
+    except Exception:                                         # noqa: BLE001
+        pass
+    return None
+
 # Key names the station might use for a persona's voice. Checked in order.
 _VOICE_KEYS = ("voice", "voiceId", "voice_id", "voiceSample", "ttsVoice", "tts_voice")
 
@@ -235,11 +266,23 @@ class StationConfig:
             mapped = _extract_persona_voices(station)
             if mapped:
                 log.info("mirroring %d persona voices from station settings", len(mapped))
+                _remember_voices(mapped)
                 return mapped
             log.info(
                 "station settings readable but no persona->voice mapping recognised; "
                 "using local persona-voices.json"
             )
+        else:
+            # The station read timed out (observed 2026-08-10: /settings
+            # ReadTimeout under load). Reuse the voices last mirrored to disk
+            # before falling to the generic first voice — a caller heard the
+            # wrong DJ's voice (-Brock1 for Cliff) on exactly this path, and a
+            # slightly stale voice map beats the wrong voice entirely.
+            recalled = _recall_voices()
+            if recalled:
+                log.warning("station settings unavailable — reusing the last "
+                            "mirrored voices (%d)", len(recalled))
+                return recalled
 
         fallback = _fallback_voices()
         import settings as settings_store

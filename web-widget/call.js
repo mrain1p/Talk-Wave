@@ -635,19 +635,38 @@
     return fillWords(w[key] || fallback);
   }
 
-  // The operator's Button style choice: words, an emoji, or both. The words
-  // are still the wording overrides — this only decides whether an emoji
-  // rides in front and whether the words show at all. Applied to the idle
-  // action labels only (Call / Text / Message), never the in-call states.
-  function styleBtn(emoji, text) {
-    const st = (shown && shown.buttonStyle) || (live && live.buttonStyle) || 'text';
-    if (st === 'emoji') return emoji;
-    if (st === 'both') return emoji + ' ' + text;
-    return text;
+  // The button style: words, an emoji, or both. PER DEVICE — a localStorage
+  // choice wins over the operator's default from /live, so one phone can run
+  // emoji while the standalone page keeps words. The words themselves are
+  // still the wording overrides; this only decides whether an emoji rides in
+  // front and whether the words show at all.
+  function buttonStyle() {
+    return localStorage.getItem('callinButtonStyle')
+      || (shown && shown.buttonStyle) || (live && live.buttonStyle) || 'text';
+  }
+
+  // Paint an idle action button, isolating the emoji in its own span so it
+  // can be sized up and de-saturated (larger, more neutral — operator's ask)
+  // without touching the word. Built from DOM nodes, not an innerHTML string,
+  // so operator wording never becomes markup. In-call states (Ringing, Hang
+  // up) never call this — they stay plain text.
+  function setBtn(el, emoji, text) {
+    if (!el) return;
+    const st = buttonStyle();
+    el.textContent = '';
+    if (st !== 'text') {
+      const e = document.createElement('span');
+      e.className = 'btnemoji';
+      e.textContent = emoji;
+      el.appendChild(e);
+    }
+    if (st !== 'emoji') {
+      el.appendChild(document.createTextNode((st === 'both' ? ' ' : '') + text));
+    }
   }
 
   function callLabel() {
-    return styleBtn('📞', fillWords((shown && shown.callLabel) || 'Call the DJ'));
+    return fillWords((shown && shown.callLabel) || 'Call the DJ');
   }
 
   // ------------------------------------------------------- embed height
@@ -813,7 +832,7 @@
     const vmButton = machineOn && !lineClosedNow
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
-    if (vmButton) $('vmBtn').textContent = styleBtn('✉', word('vm_button', 'Leave a message'));
+    if (vmButton) setBtn($('vmBtn'), '✉', word('vm_button', 'Leave a message'));
     // The text line's door, same rules as the machine's: the kill switch
     // outranks it, the door code gates it, and it is per-surface. Never
     // hidden mid-chat — the input row is the conversation.
@@ -821,7 +840,7 @@
       && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode;
     if ($('chatBtn')) {
       $('chatBtn').hidden = !chatButton || chatOpen;
-      if (chatButton) $('chatBtn').textContent = styleBtn('💬', word('chat_button', 'Text the booth'));
+      if (chatButton) setBtn($('chatBtn'), '💬', word('chat_button', 'Text the booth'));
     }
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
@@ -842,10 +861,10 @@
     } else if (vmHere && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
-      callBtn.textContent = styleBtn('✉', word('vm_button', 'Leave a message'));
+      setBtn(callBtn, '✉', word('vm_button', 'Leave a message'));
     } else {
       callBtn.disabled = false;
-      callBtn.textContent = callLabel();
+      setBtn(callBtn, '📞', callLabel());
     }
   }
 
@@ -1565,6 +1584,13 @@
     vmCall = !!asVoicemail;
     vmBeepHeard = false;
 
+    // A call or a voicemail is a different mode from the text line — you are
+    // on the phone now, not typing. If a chat was open, close it and clear
+    // its input row, or the card shows a text box AND a call at once (the
+    // "END / hi there / SEND" row over a live voicemail, operator-reported).
+    if (chatOpen) endChat();
+    if ($('chatRow')) $('chatRow').hidden = true;
+
     // Browsers only allow microphone capture on HTTPS or localhost. On a
     // plain http:// LAN address the call would connect and then immediately
     // hang up when mic capture fails — say why up front instead.
@@ -1834,7 +1860,7 @@
       stopTimer();
       capBox.classList.remove('on');
       callBtn.classList.remove('ringing', 'answering');
-      callBtn.textContent = callLabel();
+      setBtn(callBtn, '📞', callLabel());
       callBtn.disabled = false;
       callBtn.hidden = false;
       hangBtn.hidden = true;
@@ -1947,7 +1973,7 @@
     // rate, and "How was it?" over "Message left" read as the machine
     // fishing for a compliment. Operator-reported.
     if (!wasVm) offerFeedback(endedRoom);
-    callBtn.textContent = callLabel();
+    setBtn(callBtn, '📞', callLabel());
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
     callBtn.hidden = false;

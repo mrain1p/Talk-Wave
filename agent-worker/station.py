@@ -110,7 +110,14 @@ def _recall_persona() -> dict | None:
 
 
 class StationClient:
-    def __init__(self, base_url: str | None = None, timeout: float = 8.0) -> None:
+    def __init__(self, base_url: str | None = None, timeout: float = 4.5) -> None:
+        # 4.5s, down from 8s (2026-08-10). A warm station answers a read in
+        # ~15ms; the only slow read is a cold or overloaded one, and waiting
+        # 8s for it put ~12s of ringing in front of a caller (it used to be
+        # 4-5s). The persona and voice both have last-known-good DISK caches
+        # now, so a read that misses this window falls to the RIGHT DJ and the
+        # RIGHT voice — stale by minutes at worst — instead of making the
+        # caller wait. Action writes keep their own long ACTION_TIMEOUT.
         # Which station this points at is a setting, so it can be re-homed
         # from the settings page without a restart.
         self._client = httpx.AsyncClient(

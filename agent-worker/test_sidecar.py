@@ -158,6 +158,7 @@ from tests.test_speech_filter import (  # noqa: F401
 )
 from tests.test_station import (  # noqa: F401
     TestATimingOutStationKeepsTheRightDJ,
+    TestATimingOutStationKeepsTheRightVoice,
     TestABadPlaylistStaysSmall,
     TestAFailedReadSaysWhyItFailed,
     TestStationConfig,
