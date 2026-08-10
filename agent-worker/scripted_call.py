@@ -138,6 +138,11 @@ async def fake_clear_pin(self):
     return {"ok": True}
 
 
+async def fake_like(self, song_id):
+    STATION_CALLS.append(("like_track", {"songId": song_id}))
+    return {"ok": True, "count": 1, "title": "the current track"}
+
+
 def muzzle_the_station() -> None:
     StationClient.search_library = fake_search
     StationClient.submit_request = fake_submit
@@ -149,6 +154,7 @@ def muzzle_the_station() -> None:
     StationClient.dj_segment = fake_segment
     StationClient.pin_show = fake_pin
     StationClient.clear_pinned_show = fake_clear_pin
+    StationClient.like_track = fake_like
 
 
 # ------------------------------------------------------------------- scenarios

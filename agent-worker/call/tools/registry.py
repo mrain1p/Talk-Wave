@@ -91,6 +91,13 @@ TOOLS: tuple[Tool, ...] = (
          "request endpoint's rate limit, so Actions per call is the only thing "
          "pacing a caller.",
          needs_station_admin=True),
+    Tool("subwave_like_track", "allow_favorite", LOCAL,
+         "Adds a like to the track playing now — the same heart a listener taps.",
+         "No station credentials needed, and the lowest-harm action here: a "
+         "like changes no one's audio, and it is exactly what a listener does "
+         "from the app. The station gates it on its own Likes toggle and rate-"
+         "limits it per caller. Off by default like every action, and it counts "
+         "against Actions per call."),
 
     # --- the broadcast ----------------------------------------------------
     Tool("subwave_dj_announce", "allow_announcements", LOCAL,

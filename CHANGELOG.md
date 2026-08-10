@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.41
+
+A new caller action, and two ways the DJ handles a music request better.
+
+- **Callers can like the track on air.** "I love this one" adds a like to the record playing now — the same heart a listener taps in the app, so it needs no station credentials and changes no one's audio. Off by default like every action; turn it on under **Caller permissions → Like the track on air**. It likes the current track only (there's no un-like from a call), and the like lands in the transcript with its own ❤️ receipt.
+- **"Songs from the movie X" is read as the soundtrack, not the title.** Asked for music from a film, show or game, the DJ now reaches for the actual tracks that were in it rather than queueing a record that merely has the word in its name — and if the only match is a title-word one, it says so instead of passing it off as the soundtrack.
+- **On the text line, the DJ says what it's doing before a slow lookup.** A search or a request takes a few seconds; the DJ now types a quick line in its own voice first ("hold on, let me dig through the racks") so a caller isn't left watching the typing dots wondering if anything is happening.
+
 ## 0.10.40
 
 Embedding, and the text line.

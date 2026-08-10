@@ -29,6 +29,7 @@ class CallActions:
     # so a new action type can't ship with no label.
     LABELS = {
         "request": ("🎵", "Song request scheduled"),
+        "like": ("❤️", "Liked the track on air"),
         "announcement": ("📢", "Message sent to air"),
         "skill": ("🎙", "Station segment running"),
         # Both reach every listener rather than the caller, so the receipt

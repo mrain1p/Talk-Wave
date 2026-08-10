@@ -124,6 +124,9 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_request_status": "allow_requests",
         "subwave_search_library": "allow_library_search",
         "subwave_queue_track": "allow_exact_queue",
+        # The lowest-harm action: a like on the current record, the same heart
+        # any listener taps. Public station endpoint, so no admin credentials.
+        "subwave_like_track": "allow_favorite",
         "subwave_dj_announce": "allow_announcements",
         "subwave_list_skills": "allow_skills",
         "subwave_run_skill": "allow_skills",

@@ -137,6 +137,7 @@ from tests.test_tools_logic import (  # noqa: F401
 from tests.test_music_tools import (  # noqa: F401
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
+    TestLikingTheTrackOnAir,
     TestSearchingForWhatTheCallerActuallySaid,
 )
 from tests.test_takeover import (  # noqa: F401
