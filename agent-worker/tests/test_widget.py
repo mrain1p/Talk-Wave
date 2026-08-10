@@ -1365,29 +1365,31 @@ class TestEveryDoorReadsForItself(unittest.TestCase):
 
 
 class TestTheDoorsShareTheRowEvenly(unittest.TestCase):
-    """The three idle doors have to sit on ONE row, at EQUAL width, with every
-    default label fully visible. Two separate CSS bugs broke that and both were
-    operator-reported from the live card:
-
-      1. flex-basis `auto` sized each door to its own label, and the browser
-         handed the widest almost the whole row while the others shrank BELOW
-         their content and clipped ("Leave a message" -> "eave a messag").
-         Fixed with flex-basis 0 — identical thirds regardless of label.
-      2. an id-specificity display rule (`.actionrow #callBtn { display:flex }`)
-         out-specified `[hidden] { display:none }`, so a HIDDEN door still
-         rendered at full width and stole the row. Fixed with :not([hidden]). """
+    """The idle doors size to their CONTENT: a WORDED door takes the slack so
+    its label fits, an ICON-ONLY door hugs its glyph and gives that room up.
+    Equal thirds was wrong when the doors differ — "Call Danny Boy" clipped
+    while two bare icons sat at the same width (operator-reported from an
+    embed). A hidden door still gives up its width entirely (the :not([hidden])
+    guard), which is what kept the row honest in the first place."""
 
     @classmethod
     def setUpClass(cls):
         cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
 
-    def test_doors_share_the_row_at_equal_width(self):
-        # flex-basis 0 (not auto) is what makes them equal — auto is the bug.
+    def test_worded_doors_take_the_slack(self):
+        # flex-basis auto + grow: a worded door widens to fit its label.
         self.assertRegex(
             self.css,
-            r'\.actionrow #callBtn:not\(\.ringing\)[^{]*\{[^}]*flex:\s*1 1 0',
-            "the idle doors must use flex-basis 0 for equal thirds; `auto` let "
-            "the widest label take the row and clipped the others")
+            r'\.actionrow #callBtn:not\(\.ringing\)[^{]*\{[^}]*flex:\s*1 1 auto',
+            "a worded door must grow to fit its label")
+
+    def test_an_icon_only_door_hugs_its_icon(self):
+        # An icon-only door does not grow — it must not eat the space a worded
+        # door beside it needs.
+        self.assertRegex(
+            self.css,
+            r'\.actionrow #callBtn\.icononly[^{]*\{[^}]*flex:\s*0 1 auto',
+            "an icon-only door must hug its icon (flex-grow 0)")
 
     def test_a_hidden_door_gives_up_its_width(self):
         # The display rule must be guarded so a hidden door is display:none,
