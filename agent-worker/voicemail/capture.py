@@ -13,6 +13,7 @@ for the operator rather than losing it.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import struct
@@ -24,6 +25,7 @@ from livekit import rtc
 from livekit.agents import JobContext, stt as lk_stt
 
 import settings as settings_store
+from call.background import spawn
 from call.providers import build_stt
 from station import StationClient
 from voicemail import deliver as vm_deliver
@@ -289,14 +291,32 @@ async def answer(ctx: JobContext) -> None:
         base_stt = lk_stt.StreamAdapter(stt=base_stt, vad=vad)
     stt_stream = base_stt.stream()
 
+    def _show(text: str, final: bool) -> None:
+        """Let the caller SEE the machine hearing them. Without this the
+        voicemail card sat silent while someone spoke, with no sign it was
+        registering a word — reported 2026-08-10. Published on its own topic
+        so the widget renders it as the caller's own transcript line; an old
+        widget simply ignores the topic."""
+        if not text:
+            return
+        try:
+            spawn(ctx.room.local_participant.publish_data(
+                json.dumps({"text": text, "final": final}).encode(),
+                reliable=True, topic="vm-heard"))
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not publish the voicemail transcript (harmless): %s", e)
+
     async def _pump_events() -> None:
         async for ev in stt_stream:
             if ev.type == lk_stt.SpeechEventType.FINAL_TRANSCRIPT:
                 text = (ev.alternatives[0].text or "").strip() if ev.alternatives else ""
                 if text:
                     heard.append(text)
+                    _show(text, True)
                 last_event.update(at=time.monotonic(), final=True)
             elif ev.type == lk_stt.SpeechEventType.INTERIM_TRANSCRIPT:
+                interim = (ev.alternatives[0].text or "").strip() if ev.alternatives else ""
+                _show(interim, False)
                 last_event.update(at=time.monotonic())
 
     async def _pump_audio(remote: rtc.RemoteAudioTrack) -> None:
@@ -376,6 +396,17 @@ async def answer(ctx: JobContext) -> None:
             vm_deliver.hold(message, persona.get("name") or "",
                             note=f"delivery crashed: {e}")
             receipt = "held for the operator"
+        # Show the caller what became of their message IN TEXT, on the same
+        # action topic a call uses. The machine does not talk back in the
+        # DJ's voice — the outcome (a request queued, a shoutout passed on,
+        # held for the operator) is written, not spoken.
+        try:
+            await ctx.room.local_participant.publish_data(
+                json.dumps({"type": "action", "icon": "✉",
+                            "label": "Message delivered", "detail": receipt}).encode(),
+                reliable=True, topic="wavetalk.action")
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not publish the voicemail receipt (harmless): %s", e)
         ack = greetings.ack_clip(persona.get("id") or "")
         try:
             if ack and ack.is_file():

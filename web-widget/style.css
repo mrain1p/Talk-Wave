@@ -643,7 +643,7 @@
   .vmrow .vmline {
     flex: 1 1 160px; order: 0; min-width: 0;
     font: 12px var(--font-body); padding: 5px 8px; border-radius: 6px;
-    border: 1px solid var(--line2); background: var(--card); color: var(--text);
+    border: 1px solid var(--line2); background: var(--panel); color: var(--text);
   }
 
   /* Locked panel: the login banner is the only thing shown. */
@@ -1787,7 +1787,7 @@
   }
   .soundlist select {
     font: inherit; font-size: 11.5px; padding: 4px 6px; border-radius: 6px;
-    border: 1px solid var(--line2); background: var(--card); color: var(--dim);
+    border: 1px solid var(--line2); background: var(--panel); color: var(--dim);
   }
   /* The Download control is an <a> so the browser's own save-as behaviour
      does the work, but it sits in a row of buttons and has to dress like

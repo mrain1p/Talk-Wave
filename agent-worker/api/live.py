@@ -240,6 +240,10 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "chatEnabled": bool(cfg.get("chat_enabled")),
         "chatBtn": bool(cfg.get("show_chat_button")),
         "embedChatBtn": bool(cfg.get("embed_chat_button")),
+        # How the action buttons read — words, an emoji, or both. The words
+        # themselves are the wording overrides; this only decides whether an
+        # emoji rides in front and whether the words show at all.
+        "buttonStyle": str(cfg.get("button_style") or "text"),
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
         # The card's fixed strings, overrides only — the defaults live in

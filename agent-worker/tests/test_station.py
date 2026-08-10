@@ -499,3 +499,54 @@ class TestAFailedReadSaysWhyItFailed(unittest.TestCase):
         with self.assertLogs("callin.station", level=logging.WARNING) as caught:
             self.assertEqual(asyncio.run(client._get("/state")), {})
         self.assertIn("ReadTimeout", "\n".join(caught.output))
+
+
+class TestATimingOutStationKeepsTheRightDJ(unittest.TestCase):
+    """Observed on a real call 2026-08-10: every station read ReadTimeout'd,
+    so /dj, /now-playing AND /personas all failed, and a fresh job process
+    (each call is its own) had an empty in-process cache — it answered as the
+    generic "the DJ" on "SUB/WAVE", the wrong DJ and the wrong station name to
+    a real caller. The last-known persona is now remembered on DISK so the
+    next process can fall back to it."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        import station
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old_file = station._PERSONA_FILE
+        station._PERSONA_FILE = Path(self._tmp.name) / "last-persona.json"
+        station._persona_cache.update(value=None, at=0.0)
+
+    def tearDown(self):
+        import station
+        station._PERSONA_FILE = self._old_file
+        station._persona_cache.update(value=None, at=0.0)
+        self._tmp.cleanup()
+
+    def _client(self):
+        from station import StationClient
+        return StationClient()
+
+    def test_a_good_read_is_remembered_and_a_timeout_recalls_it(self):
+        import station
+        c = self._client()
+        good = c.persona_from(
+            {"name": "Cliff", "id": "p_cliff", "soul": "…", "station": "Yosemite FM"},
+            [])
+        self.assertEqual(good["name"], "Cliff")
+        self.assertEqual(good["station"], "Yosemite FM")
+
+        # A fresh process: clear the in-process cache, then a timed-out read
+        # (empty dj) must recall Cliff and the station name from disk, NOT
+        # collapse to the default.
+        station._persona_cache.update(value=None, at=0.0)
+        recalled = c.persona_from({}, [])
+        self.assertEqual(recalled["name"], "Cliff")
+        self.assertEqual(recalled.get("station"), "Yosemite FM")
+
+    def test_with_nothing_on_record_it_still_falls_back_to_the_default(self):
+        c = self._client()
+        out = c.persona_from({}, [])
+        self.assertEqual(out["name"], "the DJ")

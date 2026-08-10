@@ -1175,6 +1175,33 @@ class TestSigningInClimbsTheTier(_TempStores):
         self.assertFalse(out["signinAvailable"])
 
 
+class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
+    """The chat text box shipped invisible because its CSS used tokens that do
+    not exist (--field, --ink, --soft-border): `var(--field)` with no --field
+    defined resolves to nothing, so the input rendered transparent and
+    borderless on a transparent card. A whole feature was unusable and green.
+
+    This reads style.css the way a browser would: every `var(--x)` must name a
+    custom property that is DEFINED somewhere in the sheet. It would have
+    failed the moment that input was written."""
+
+    def test_every_var_reference_is_defined(self):
+        import re
+
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        defined = set(re.findall(r"(--[a-z0-9-]+)\s*:", css, re.IGNORECASE))
+        used = set(re.findall(r"var\(\s*(--[a-z0-9-]+)", css, re.IGNORECASE))
+        # A var() may carry its own fallback — `var(--x, #fff)` — which is
+        # legitimately defined-or-fallback; strip those from the requirement.
+        with_fallback = set(re.findall(
+            r"var\(\s*(--[a-z0-9-]+)\s*,", css, re.IGNORECASE))
+        missing = sorted((used - defined) - with_fallback)
+        self.assertEqual(
+            missing, [],
+            "these CSS custom properties are used via var() but defined "
+            f"nowhere in style.css — they render as nothing: {missing}")
+
+
 class TestTheAskMenuOffersEveryPermission(unittest.TestCase):
     """The "What can I ask?" popup is built from ASKS in shared.js, and a
     caller permission with no example there is a capability the operator

@@ -338,6 +338,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_chat_button":      (None, False),
     "show_signin":            (None, False),
     "embed_signin":           (None, False),
+    "button_style":           (None, "text"),
     # A colour on the DJ's voice, applied in the caller's browser only — the
     # broadcast never hears it. One answer for both surfaces: the effect is
     # part of the DJ's character, and a DJ who is CB on the page and clean in
@@ -893,6 +894,12 @@ SCHEMA: dict[str, dict] = {
         label="“Text the booth” button (embed)",
         help="The same door on the embedded card. Off by default: three "
              "buttons crowd a 190px frame."),
+    "button_style": dict(group="player", kind="select",
+        label="Button style",
+        help="How the Call / Text / Leave-a-message buttons read: their "
+             "WORDS (edit those under Wording), an EMOJI on its own, or "
+             "both. Emoji suits a tight embed where a phone and a speech "
+             "bubble say it faster than three lines of text."),
     "show_signin": dict(group="player", kind="check",
         label="“Sign in” button",
         help="A corner button that lets a caller enter the guest code or the "
@@ -1305,6 +1312,11 @@ RANDOM_PERSONA = "__random__"
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
+    "button_style": [
+        ("text", "Words only — “Call the DJ”"),
+        ("emoji", "Emoji only — 📞"),
+        ("both", "Both — 📞 Call the DJ"),
+    ],
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "tts_dash_style": [
         ("pause", "A breath — spoken as a short pause (default)"),
