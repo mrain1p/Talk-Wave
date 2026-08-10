@@ -42,6 +42,18 @@ MAX_TOOL_ROUNDS = 4
 # the conversation's living end.
 PROMPT_TURNS = 30
 
+# The booth's opening line when nothing is configured — filled with the DJ's
+# name so a fresh chat is greeted by whoever is actually on air.
+DEFAULT_CHAT_GREETING = "You're through to the booth — {dj} here. What's on your mind?"
+
+
+def _fill_greeting(text: str, persona: dict) -> str:
+    """{station} {dj} {show} in the canned greeting, same tokens the card and
+    the voicemail greeting fill."""
+    return (text.replace("{station}", persona.get("station") or "the station")
+                .replace("{dj}", persona.get("name") or "the DJ")
+                .replace("{show}", persona.get("show") or "")).strip()
+
 
 class ChatSession:
     def __init__(self, chat_id: str, tier: str) -> None:
@@ -58,6 +70,73 @@ class ChatSession:
         # One message in flight per chat: two tabs racing the same id would
         # interleave two tool loops through one transcript.
         self.lock = asyncio.Lock()
+
+    async def greet(self, cfg: dict, on_event) -> None:
+        """The booth speaks first when a fresh chat opens — a text line that
+        answers with silence until the caller types reads as broken. "canned"
+        formats the operator's line (no model cost); "fresh" writes one in
+        persona. Either way it lands as the DJ's opening turn, streamed like
+        any reply so the widget renders it identically.
+        """
+        mode = str(cfg.get("chat_greeting_mode") or "off")
+        if mode == "off":
+            return
+
+        import secrets_store
+        secrets_store.apply_to_env()
+
+        station = StationClient()
+        try:
+            persona = await station.resolve_live_persona()
+            self.persona_name = persona.get("name") or self.persona_name
+            if mode == "fresh":
+                text = await self._fresh_greeting(cfg, station, persona)
+            else:
+                text = _fill_greeting(
+                    str(cfg.get("chat_greeting") or "").strip()
+                    or DEFAULT_CHAT_GREETING, persona)
+            text = (text or "").strip()
+            if not text:
+                return
+            on_event({"type": "delta", "text": text})
+            self.turns.append(("dj", text))
+            self.last_active = time.time()
+            on_event({"type": "done", "text": text, "dj": self.persona_name})
+        finally:
+            await station.aclose()
+
+    async def _fresh_greeting(self, cfg, station, persona) -> str:
+        """One short in-persona opener, written at open. The same prompt a
+        reply uses, with no tools and a single instruction — the voicemail
+        fresh greeting, at chat size."""
+        from livekit.agents import llm as lk_llm
+
+        from brain.assemble import build_system_prompt
+        from call.providers import build_llm
+
+        prompt = await build_system_prompt(station, persona, cfg=cfg,
+                                           mode="chat")
+        ctx = lk_llm.ChatContext.empty()
+        ctx.add_message(role="system", content=prompt)
+        ctx.add_message(role="user", content=(
+            "[The caller just opened the text line and has not typed yet. "
+            "Greet them first — one short, warm line in your own voice, no "
+            "question needed, just open the door.]"))
+        model = build_llm(cfg)
+        out = ""
+        try:
+            stream = model.chat(chat_ctx=ctx)
+            async for chunk in stream:
+                delta = getattr(chunk, "delta", None)
+                if delta and delta.content:
+                    out += delta.content
+            await stream.aclose()
+        finally:
+            try:
+                await model.aclose()
+            except Exception:                                  # noqa: BLE001
+                pass
+        return out.strip()
 
     async def ask(self, text: str, on_event) -> None:
         """One caller message -> streamed DJ reply.

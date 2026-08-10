@@ -215,6 +215,7 @@ from tests.test_voicemail import (  # noqa: F401
 from tests.test_chat import (  # noqa: F401
     TestChatsEndInsteadOfAccumulating,
     TestOneAbuserIsSingledOut,
+    TestTheTextLineFeelsLikeAConversation,
     TestTheTextLineHasADoor,
     TestTheTypedBrainIsTheSameBrainInADifferentRegister,
 )
