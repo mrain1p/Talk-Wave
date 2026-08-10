@@ -97,6 +97,9 @@ class TestExposedSurface(unittest.TestCase):
         "GET /prompt": "admin",
         "GET /calls": "admin",
         "GET /logs": "admin",
+        # The listener series behind the ACTIVITY strip — operator telemetry,
+        # gated like the call records and logs it sits beside.
+        "GET /stats/listeners": "admin",
         "DELETE /calls": "admin",
         "DELETE /logs": "admin",
         "GET /hooks/recent": "admin",

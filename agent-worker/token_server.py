@@ -34,6 +34,7 @@ from api.diagnostics import (
     handle_test_tts,
 )
 from api.env import LIVEKIT_PUBLIC_URL, PORT
+from api.stats import handle_stats_listeners, sample_listeners
 from api.hooks import (
     handle_hooks_recent,
     handle_hooks_test,
@@ -100,6 +101,8 @@ def build_app() -> web.Application:
     app.router.add_options("/hooks/test", handle_options)
     app.router.add_get("/logs", handle_logs)
     app.router.add_get("/calls", handle_calls)
+    # The ACTIVITY strip's listener curve — the one series /calls can't carry.
+    app.router.add_get("/stats/listeners", handle_stats_listeners)
     # Operator housekeeping: the transcripts are a caller's words, so removing
     # them must not depend on enough new calls arriving to age them out.
     app.router.add_delete("/calls", handle_clear_calls)
@@ -166,6 +169,7 @@ def build_app() -> web.Application:
     # front of the admin surface that it could never put in front of the phone.
     app.router.add_static("/", WIDGET_DIR, show_index=False, name="widget")
     app.cleanup_ctx.append(keep_station_warm)
+    app.cleanup_ctx.append(sample_listeners)
     return app
 
 

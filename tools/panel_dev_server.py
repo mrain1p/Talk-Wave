@@ -121,47 +121,80 @@ HOOK_TEST = {
     "detail": "the station's push reached http://192.168.1.40:8100/hooks/station",
 }
 
-# Enough spread — kinds, tiers, tools, ratings, verdicts — that every one of
-# the calls toolbar's filters has at least two answers to offer, and stacking
-# them (thumbs down AND text chats) leaves a non-empty, checkable remainder.
-CALLS = [
-    {"id": "c1", "room": "r1", "kind": "call", "startedAt": "2026-08-10T12:40:52-04:00",
-     "durationSecs": 125, "callerTurns": 3, "rating": "down",
-     "persona": {"name": "Francesca"}, "config": {"llm": "x", "callerTier": "open"},
-     "tools": [{"t": "2026-08-10T12:41:00-04:00", "name": "subwave_search_library",
-                "result": "3 result(s)"}],
-     "turns": [{"t": "2026-08-10T12:40:55-04:00", "who": "caller", "text": "hi"}],
-     "problems": [{"what": "station read timed out"}]},
-    {"id": "c2", "room": "r2", "kind": "call", "startedAt": "2026-08-10T12:35:34-04:00",
-     "durationSecs": 41, "callerTurns": 0, "persona": {"name": "Francesca"},
-     "config": {"callerTier": "open"}, "tools": [], "turns": [],
-     "problems": [{"what": "no caller audio"}]},
-    {"id": "c3", "room": "r3", "kind": "chat", "startedAt": "2026-08-10T11:22:27-04:00",
-     "durationSecs": 1133, "callerTurns": 3, "persona": {"name": "Rosie"},
-     "config": {"callerTier": "admin"},
-     "tools": [{"t": "2026-08-10T11:30:00-04:00", "name": "subwave_takeover_show",
-                "result": "pinned"}],
-     "turns": [{"t": "2026-08-10T11:22:30-04:00", "who": "caller", "text": "take over"}],
-     "problems": []},
-    {"id": "c4", "room": "r4", "kind": "voicemail", "startedAt": "2026-08-10T10:31:49-04:00",
-     "durationSecs": 36, "callerTurns": 1, "persona": {"name": "Danny Boy"},
-     "config": {"callerTier": "guest"}, "tools": [],
-     "turns": [{"t": "2026-08-10T10:31:55-04:00", "who": "caller", "text": "play bowie"}],
-     "problems": []},
-    {"id": "c5", "room": "r5", "kind": "call", "startedAt": "2026-08-10T09:45:19-04:00",
-     "durationSecs": 78, "callerTurns": 2, "rating": "up",
-     "persona": {"name": "Wade"}, "config": {"callerTier": "guest"},
-     "tools": [{"t": "2026-08-10T09:46:00-04:00", "name": "subwave_request_song",
-                "result": "queued"}],
-     "turns": [{"t": "2026-08-10T09:45:25-04:00", "who": "caller", "text": "request"}],
-     "problems": []},
-    {"id": "c6", "room": "r6", "kind": "chat", "startedAt": "2026-08-10T09:44:25-04:00",
-     "durationSecs": 58, "callerTurns": 3, "rating": "down",
-     "persona": {"name": "Wade"}, "config": {"callerTier": "open"},
-     "tools": [], "turns": [
-        {"t": "2026-08-10T09:44:30-04:00", "who": "caller", "text": "hello"}],
-     "problems": []},
-]
+# Enough spread — kinds, tiers, tools, ratings, verdicts, DAYS — that every
+# calls-toolbar filter has at least two answers, stacked filters leave a
+# checkable remainder, and the ACTIVITY charts get a week of buckets with a
+# DJ first-word on the live calls (time-to-first-word needs a dj turn).
+# Timestamps are minted relative to now so the strip never renders empty
+# just because the fixture aged.
+def _make_calls():
+    import datetime as _dt
+
+    now = _dt.datetime.now(_dt.timezone.utc).astimezone()
+    iso = lambda d, secs=0: (d + _dt.timedelta(seconds=secs)).isoformat(timespec="seconds")
+    ago = lambda days, hours=0: now - _dt.timedelta(days=days, hours=hours)
+    rows = [
+        ("c1", "call", 0, 2, dict(rating="down", tier="open", ttfw=2,
+         tools=[("subwave_search_library", "3 result(s)")],
+         problems=["station read timed out"])),
+        ("c2", "call", 0, 3, dict(tier="open", silent=True,
+         problems=["no caller audio"])),
+        ("c3", "chat", 1, 2, dict(tier="admin",
+         tools=[("subwave_takeover_show", "pinned")])),
+        ("c4", "voicemail", 2, 4, dict(tier="guest")),
+        ("c5", "call", 3, 1, dict(rating="up", tier="guest", ttfw=6,
+         tools=[("subwave_request_song", "queued")])),
+        ("c6", "chat", 4, 5, dict(rating="down", tier="open")),
+        ("c7", "call", 5, 2, dict(tier="open", ttfw=3)),
+        ("c8", "call", 6, 6, dict(tier="guest", ttfw=2)),
+    ]
+    out = []
+    for cid, kind, days, hours, d in rows:
+        start = ago(days, hours)
+        silent = d.get("silent")
+        turns = [] if silent else [
+            {"t": iso(start, 1), "who": "caller", "text": "hi there"}]
+        if not silent and kind == "call":
+            turns.append({"t": iso(start, d.get("ttfw", 3)),
+                          "who": "dj", "text": "you're on the air"})
+        rec = {"id": cid, "room": "r-" + cid, "kind": kind,
+               "startedAt": iso(start), "durationSecs": 60,
+               "callerTurns": 0 if silent else 2,
+               "persona": {"name": "Francesca"},
+               "config": {"llm": "x", "callerTier": d.get("tier", "open")},
+               "tools": [{"t": iso(start, 9), "name": n, "result": r}
+                         for n, r in d.get("tools", [])],
+               "turns": turns,
+               "problems": [{"what": p} for p in d.get("problems", [])]}
+        if d.get("rating"):
+            rec["rating"] = d["rating"]
+        out.append(rec)
+    return out
+
+
+CALLS = _make_calls()
+
+
+# Three days of listener samples at 10-minute steps, with a deliberate
+# gap yesterday afternoon — the chart must show a broken line there, and
+# a stub that never exercises the gap path would hide a regression in it.
+def _make_listeners():
+    import math
+    import time as _time
+
+    now = int(_time.time())
+    out = []
+    for i in range(3 * 144):                 # 3 days × 144 ten-minute steps
+        t = now - (3 * 144 - i) * 600
+        hours_ago = (now - t) / 3600
+        if 20 <= hours_ago <= 26:            # the gap: sampler saw no answer
+            continue
+        day_phase = ((t % 86400) / 86400) * 2 * math.pi
+        out.append({"t": t, "n": max(0, round(7 + 6 * math.sin(day_phase)))})
+    return out
+
+
+LISTENERS = _make_listeners()
 
 LOG_RECORDS = [
     {"t": "11:20:01", "level": "INFO", "logger": "callin.token",
@@ -350,6 +383,8 @@ class Handler(BaseHTTPRequestHandler):
             ]})
         if path == "/calls":
             return self._json({"calls": CALLS})
+        if path == "/stats/listeners":
+            return self._json({"samples": LISTENERS, "intervalSecs": 600})
         if path == "/logs":
             return self._json({
                 "records": LOG_RECORDS,

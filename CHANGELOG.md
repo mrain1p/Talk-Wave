@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.49
+
+- **The dashboard gains an ACTIVITY strip — four charts between the lines and the settings.** DOORS (traffic per day or hour, failure buckets in red), DOOR MIX (a flat 100% band with a clickable legend — click a swatch to isolate that series, click again for all), CONCURRENT LISTENERS (sampled from the station every 5 minutes; an outage shows as a gap in the line, never as a flattering zero), and TIME TO FIRST WORD for calls with the median in the caption. A DAY / WEEK / MONTH toggle re-buckets everything, SHOW N picks how many days (1–30), and BY TYPE / BY RATING switches what the charts split by — all remembered between visits. Everything draws from the call records you already keep plus one new admin read (`/stats/listeners`); a series with no data shows an em-dash, never invented bars.
+
 ## 0.10.48
 
 - **The dashboard reads like the front page.** The four read-backs (on air, station, brains·voice·ears, who can call) lead as one ruled strip under the masthead; TRANSMISSION shows THE LINE with its three LINES indented beneath it — each door's switch beside the traffic it produces, permissions worn as square chips, failure counts in red on the row's right edge. The jump bar now sticks to the top as you scroll, with an ↑ DASHBOARD chip to get back up. Every switch and tile works exactly as before — same ids, same immediate posting.

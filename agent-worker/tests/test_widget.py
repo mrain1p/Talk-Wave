@@ -284,9 +284,11 @@ class TestWidgetServerContract(unittest.TestCase):
     # page -> the scripts that page loads, in load order.
     PAGES = {
         "index.html": ("shared.js", "call.js"),
-        # panel-viewers.js reads window.Panel, which panel.js publishes, so the
-        # order is load-bearing rather than cosmetic.
-        "panel.html": ("shared.js", "panel.js", "panel-viewers.js"),
+        # panel-viewers.js and panel-charts.js read window.Panel, which
+        # panel.js publishes, so the order is load-bearing rather than
+        # cosmetic.
+        "panel.html": ("shared.js", "panel.js", "panel-viewers.js",
+                       "panel-charts.js"),
     }
 
     @classmethod
@@ -319,7 +321,8 @@ class TestWidgetServerContract(unittest.TestCase):
         self.assertGreater(len(self.fetched), 10)
         self.assertEqual(
             set(self.sources),
-            {"shared.js", "call.js", "panel.js", "panel-viewers.js"})
+            {"shared.js", "call.js", "panel.js", "panel-viewers.js",
+             "panel-charts.js"})
 
     def test_every_script_belongs_to_a_page_and_every_page_loads_its_own(self):
         # A file that exists but nothing loads is the split's own failure mode:

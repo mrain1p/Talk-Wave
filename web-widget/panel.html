@@ -214,6 +214,44 @@
       </div>
     </div>
 
+    <!-- ACTIVITY (spec §7): four charts over the same records the calls
+         viewer reads, plus the sampled listener series from /stats/listeners.
+         Rendered by panel-charts.js; a series that isn't available shows an
+         em-dash over an empty frame — never invented data. -->
+    <div class="activity" id="activityStrip">
+      <div class="actcaption">
+        <p class="tlabel">Activity</p>
+        <span class="actspacer" aria-hidden="true"></span>
+        <label class="actshow">Show <input id="actShow" inputmode="numeric"
+               aria-label="How many days of buckets" /></label>
+        <span class="segs" role="group" aria-label="Bucket the charts by">
+          <button type="button" class="seg" id="actDay">Day</button>
+          <button type="button" class="seg" id="actWeek">Week</button>
+          <button type="button" class="seg" id="actMonth">Month</button>
+        </span>
+        <select id="actDim" aria-label="What the charts split by"></select>
+        <select id="actFilter" aria-label="Isolate one series"></select>
+      </div>
+      <div class="actgrid">
+        <figure class="actchart">
+          <figcaption><span>Doors</span><em id="doorsCap">—</em></figcaption>
+          <div class="actbody" id="doorsChart"></div>
+        </figure>
+        <figure class="actchart">
+          <figcaption><span>Door mix</span><em id="mixCap">—</em></figcaption>
+          <div class="actbody" id="mixChart"></div>
+        </figure>
+        <figure class="actchart">
+          <figcaption><span>Concurrent listeners</span><em id="lisCap">—</em></figcaption>
+          <div class="actbody" id="lisChart"></div>
+        </figure>
+        <figure class="actchart">
+          <figcaption><span>Time to first word · calls</span><em id="ttfwCap">—</em></figcaption>
+          <div class="actbody" id="ttfwChart"></div>
+        </figure>
+      </div>
+    </div>
+
     <!-- One header row: the heading and its promise on the left, the search
          on the right — the box sat alone on its own line and read as a
          stray form field rather than this half of the page's own finder. -->
@@ -1458,5 +1496,6 @@
 <script src="/shared.js"></script>
 <script src="/panel.js"></script>
 <script src="/panel-viewers.js"></script>
+<script src="/panel-charts.js"></script>
 </body>
 </html>

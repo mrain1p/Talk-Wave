@@ -3112,6 +3112,129 @@
     }
   }
 
+  /* --- spec §7: the ACTIVITY strip ------------------------------------------ */
+  body.panelpage .activity { margin: 0 0 20px; }
+  body.panelpage .actcaption {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding-bottom: 7px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  body.panelpage .actcaption .tlabel {
+    margin: 0; font: 700 11px/1 var(--font-mono); letter-spacing: .28em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  /* The hairline that fills the caption's middle. */
+  body.panelpage .actspacer { flex: 1 1 30px; height: 1px; background: var(--hairline); }
+  body.panelpage .actshow {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--sage);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  body.panelpage .actshow input {
+    width: 40px; text-align: center; padding: 5px 0;
+    font: 700 10px var(--font-mono);
+  }
+  /* Square segments, -1px overlap so the shared borders read as one rule;
+     the active segment is the coral one. */
+  body.panelpage .actcaption .segs { display: inline-flex; }
+  body.panelpage .actcaption .seg {
+    margin-left: -1px; border: 1px solid var(--edge); border-radius: 0;
+    background: transparent; color: var(--dim); cursor: pointer;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; padding: 6px 11px;
+  }
+  body.panelpage .actcaption .seg:first-child { margin-left: 0; }
+  body.panelpage .actcaption .seg.on {
+    position: relative; z-index: 1; border-color: var(--coral);
+    color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 10%, transparent);
+  }
+  body.panelpage .actcaption select {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; padding: 6px 8px; color: var(--dim);
+  }
+  /* 2×2, generous column gap — four across was too cramped (spec's words). */
+  body.panelpage .actgrid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 44px;
+  }
+  @media (max-width: 760px) {
+    body.panelpage .actgrid { grid-template-columns: 1fr; }
+  }
+  body.panelpage .actchart { margin: 0; }
+  body.panelpage .actchart figcaption {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-bottom: 7px;
+  }
+  body.panelpage .actchart figcaption span {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .18em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  body.panelpage .actchart figcaption em {
+    font-style: normal; font-size: 11px; color: var(--sage);
+    text-align: right;
+  }
+  body.panelpage .actbody { min-height: 64px; }
+  body.panelpage .actempty { margin: 0; color: var(--sage-dim); }
+  /* Bars: flat rects over a 1px baseline; clean buckets neutral ink,
+     buckets holding a failure coral. */
+  body.panelpage .actbars {
+    display: flex; align-items: flex-end; gap: 2px; height: 74px;
+    border-bottom: 1px solid var(--edge);
+  }
+  body.panelpage .actbar {
+    flex: 1 1 0; min-width: 2px;
+    background: color-mix(in srgb, var(--alpenglow) 18%, transparent);
+  }
+  body.panelpage .actbar.bad { background: var(--coral); }
+  body.panelpage .actaxis { display: flex; margin-top: 4px; }
+  body.panelpage .actaxis span {
+    flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center;
+    font: 700 8px/1.2 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim); white-space: nowrap;
+  }
+  body.panelpage .actaxis span:first-child { text-align: left; }
+  body.panelpage .actaxis span:last-child { text-align: right; }
+  /* The mix: a flat 100% band — the ruled-newspaper answer to a donut. */
+  body.panelpage .mixband {
+    display: flex; height: 18px; border: 1px solid var(--edge);
+  }
+  body.panelpage .mixseg.calls, body.panelpage .mixkey .sw.calls { background: var(--coral); }
+  body.panelpage .mixseg.texts, body.panelpage .mixkey .sw.texts { background: var(--alpenglow); }
+  body.panelpage .mixseg.vm, body.panelpage .mixkey .sw.vm {
+    background: color-mix(in srgb, var(--alpenglow) 18%, transparent);
+  }
+  body.panelpage .mixlegend {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;
+  }
+  body.panelpage .mixkey {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    border: 0; background: transparent; padding: 0;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  body.panelpage .mixkey:hover { color: var(--alpenglow); }
+  body.panelpage .mixkey .sw {
+    width: 10px; height: 10px; border: 1px solid var(--edge); display: inline-block;
+  }
+  body.panelpage .mixfoot {
+    margin: 7px 0 0; font: 700 8.5px/1 var(--font-mono);
+    letter-spacing: .1em; text-transform: uppercase; color: var(--sage-dim);
+  }
+  /* The listener curve: one polyline, area at 8% — gaps in the sampled
+     series break the line rather than drawing zeros. */
+  body.panelpage .lissvg {
+    width: 100%; height: 74px; display: block;
+    border-bottom: 1px solid var(--edge);
+  }
+  body.panelpage .lissvg polyline {
+    fill: none; stroke: var(--coral); stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
+  body.panelpage .lissvg polygon {
+    fill: color-mix(in srgb, var(--coral) 8%, transparent); stroke: none;
+  }
+
   /* --- spec §8: the jump bar sticks ----------------------------------------- */
   /* One row always: chips slide horizontally on a narrow panel instead of
      wrapping into a block that pushes the settings below the fold. */
