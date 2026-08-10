@@ -222,6 +222,12 @@
       const v = String(tokens[k]);
       if (v.length < 120 && !/[;{}<>]/.test(v)) root.style.setProperty(k, v);
     });
+    // Remember the last palette so the NEXT load can paint in the station's
+    // colours on its first frame, instead of flashing the default accent until
+    // /live or the host's swtv:theme lands (radio.drearburh.uk, embedded on a
+    // SUB/WAVE page that posts its palette after the frame paints — the coral →
+    // purple flash reported 2026-08-10). shared.js reads this at boot.
+    try { localStorage.setItem('callinPalette', JSON.stringify(tokens)); } catch (e) { /* private mode */ }
   }
 
   // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
@@ -966,6 +972,15 @@
     }, every);
   }
 
+  // A DJ's initials for the no-image ring: first and last word, or the first
+  // two letters of a single-word name. "Sergeant Fred Colon" -> "SC".
+  function monogram(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  }
+
   function paintLive(d, first) {
     try {
       // What is actually on screen, which is `live` plus any preview overlay
@@ -1049,17 +1064,37 @@
       // later has no business overruling them.
       if (!room) { onSpeaker = d.speakerDefault !== false; paintSpeakerBtn(); }
 
-      const img = $('djAvatar');
-      if (parts.avatar === false) { img.classList.add('hidden'); }
-      else if (d.avatar) {
+      const img = $('djAvatar'), mono = $('djMono');
+      // Initials in the ring when there's no usable image. showMono is also the
+      // fallback for the station's 1x1 placeholder: it is a valid PNG, so it
+      // LOADS rather than erroring, and without the size check below it stretched
+      // one pixel across the whole avatar and read as an empty circle
+      // (radio.drearburh.uk, a persona with no image — diagnosed 2026-08-10).
+      const showMono = () => {
+        img.classList.add('hidden');
+        if (mono) {
+          const ini = monogram(d.name);
+          mono.textContent = ini;
+          mono.classList.toggle('hidden', !ini);
+        }
+      };
+      const showImg = () => { if (mono) mono.classList.add('hidden'); img.classList.remove('hidden'); };
+      if (parts.avatar === false) {
+        // Avatar turned off for this surface — no image AND no initials.
+        img.classList.add('hidden');
+        if (mono) mono.classList.add('hidden');
+      } else if (d.avatar) {
+        img.alt = d.name || 'DJ';
+        img.onerror = showMono;
+        img.onload = () =>
+          (img.naturalWidth <= 2 || img.naturalHeight <= 2) ? showMono() : showImg();
         if (img.dataset.pid !== d.personaId) {
           img.dataset.pid = d.personaId || '';
-          img.src = d.avatar + '?v=' + (d.personaId || '');
+          img.src = d.avatar + '?v=' + (d.personaId || '');  // fires onload/onerror
+        } else if (img.complete && img.src) {
+          img.onload();   // src unchanged on a poll repaint — re-judge in place
         }
-        img.alt = d.name || 'DJ';
-        img.classList.remove('hidden');
-        img.onerror = () => img.classList.add('hidden');
-      } else { img.classList.add('hidden'); }
+      } else { showMono(); }
 
       // One place decides what the Call button says and whether it works.
       // Split across two blocks, the later one silently undid the earlier.

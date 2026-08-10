@@ -83,6 +83,11 @@
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
+      <!-- Shown in place of the image when a persona has no picture — or when
+           the station serves a 1x1 placeholder for one, which loads without
+           error and would otherwise stretch a single pixel across the ring.
+           The DJ's initials read better than an empty circle. -->
+      <span class="avatar avatar-mono hidden" id="djMono" aria-hidden="true"></span>
       <div class="meta">
         <h1 class="dj" id="djName">…</h1>
         <p class="show" id="djShow"></p>

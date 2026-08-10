@@ -192,6 +192,19 @@
   }
   .card[data-avatar="square"] .avatar { border-radius: 0; }
   .avatar.hidden { display: none; }
+  /* The initials shown when there is no usable image. Shares .avatar's size
+     and shape (both classes on the element); only the fill differs. Single
+     class on the display rule so .avatar.hidden still wins and hides it. */
+  .avatar-mono {
+    display: flex; align-items: center; justify-content: center;
+    object-fit: initial; overflow: hidden; user-select: none;
+    color: var(--coral); background: var(--granite-hi);
+    font: 700 22px/1 var(--font-mono); letter-spacing: .04em; text-transform: uppercase;
+  }
+  /* The display:flex above would outrank the UA [hidden] rule, so re-hide it
+     explicitly — the element carries aria-hidden and must stay hideable both
+     ways (the class .avatar.hidden path and the attribute). */
+  .avatar-mono[hidden] { display: none; }
   /* The one permitted glow: the DJ is speaking. Derived, not literal — the
      hardcoded rgba() here stayed the old coral through two palette changes. */
   .avatar.talking {
@@ -2541,6 +2554,7 @@
      the meta block and hand the card 22px it then owed the host page. */
   body.compact .who-row { padding: 6px 0; row-gap: 3px; }
   body.compact .who-row .avatar { width: 30px; height: 30px; }
+  body.compact .who-row .avatar-mono { font-size: 12px; }
   /* The tagline is the host page's own line on most embeds — the station
      page already introduces the show in its own type one column over. */
   body.compact .tagline { display: none; }
@@ -2663,6 +2677,7 @@
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar {
       width: 124px; height: 124px;
     }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar-mono { font-size: 46px; }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .meta { flex: 0 0 auto; }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj { font-size: 22px; }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .show { text-align: center; }

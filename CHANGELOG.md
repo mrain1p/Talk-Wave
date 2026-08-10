@@ -3,9 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.38
+## 0.10.39
 
-More of the same polish, closer to the edges — leaving a message, the narrow phone, signing in, and the seconds before the DJ speaks.
+More of the same polish, closer to the edges — leaving a message, the narrow phone, signing in, embedding on a station page, and the seconds before the DJ speaks.
+
+### On a station page
+
+- **No colour flash when the widget opens on an embed.** It remembers the station's palette and paints in those colours on the first frame, instead of showing the default accent for a beat until the host page's colours arrive.
+- **A DJ with no photo shows their initials, not an empty circle** — including when the station serves a 1×1 placeholder image for a persona that has none.
 
 ### Signing in
 
