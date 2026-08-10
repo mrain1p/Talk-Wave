@@ -382,6 +382,11 @@
   .card[data-mode="chat"] .meters,
   .card[data-mode="chat"] .talkrow,
   .card[data-mode="chat"] .actionrow { display: none !important; }
+  /* The post-call drawer ("Transcript · N lines") and the how-was-it strip
+     belong to a FINISHED call, never a live chat — a caller reported seeing a
+     previous call's transcript widget inside their chat. They live in .after;
+     the text line hides the whole band. */
+  .card[data-mode="chat"] .after { display: none !important; }
   /* Voicemail IS push-to-talk (operator's ask), so the talk bar stays — but
      Speaker and Mute do not belong on a recording: there is no DJ audio to
      route and the bar is already the mic control. The DJ meter and the volume

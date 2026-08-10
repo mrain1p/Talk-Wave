@@ -2147,6 +2147,32 @@
   // id in localStorage is what makes it resumable per browser; the server
   // holds the transcript and replays it on hello.
   let chatWs = null, chatPend = null, chatText = '', capSeq = 0;
+  // The DJ's reply is REVEALED at a human typing pace rather than dumped whole
+  // — a caller said an instant wall of text "doesn't feel like a conversation;
+  // it'd be better if you were typing while writing". The model streams fast
+  // (flash-lite); this buffers the target text and reveals it a few characters
+  // at a time, catching up on a long reply so it never lags far behind.
+  let chatTarget = '', chatShown = 0, chatDone = false, chatTimer = null;
+  function chatStopReveal() {
+    if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
+    chatTarget = ''; chatShown = 0; chatDone = false;
+  }
+  function chatTick() {
+    if (chatShown < chatTarget.length) {
+      // Base pace ~3 chars/30ms (~100/s); catch up when far behind so a long
+      // reply still finishes promptly instead of typing for ten seconds.
+      const step = Math.max(3, Math.ceil((chatTarget.length - chatShown) / 12));
+      chatShown = Math.min(chatTarget.length, chatShown + step);
+      if (!chatPend) chatPend = 'chat-' + (++capSeq);
+      addCaption(chatPend, 'dj', chatTarget.slice(0, chatShown), false);
+    }
+    if (chatDone && chatShown >= chatTarget.length) {
+      addCaption(chatPend || ('chat-' + (++capSeq)), 'dj', chatTarget, true);
+      chatPend = null;
+      chatStopReveal();
+      setStatus('', 'connected');
+    }
+  }
 
   function chatSay(who, text, final) {
     addCaption('chat-' + (++capSeq), who, text, final !== false);
@@ -2226,15 +2252,17 @@
         addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
       } else if (msg.type === 'delta') {
         hideTyping();
-        chatText += msg.text || '';
-        if (!chatPend) chatPend = 'chat-' + (++capSeq);
-        addCaption(chatPend, 'dj', chatText, false);
+        // Feed the reveal buffer, don't render straight — the ticker types it
+        // out at a human pace.
+        chatTarget += msg.text || '';
+        if (!chatTimer) chatTimer = setInterval(chatTick, 30);
       } else if (msg.type === 'done') {
         hideTyping();
-        addCaption(chatPend || ('chat-' + (++capSeq)), 'dj',
-                   msg.text || chatText, true);
-        chatPend = null; chatText = '';
-        setStatus('', 'connected');
+        // The final text wins (it's the authoritative wording); let the ticker
+        // finish revealing it, then finalise.
+        chatTarget = msg.text || chatTarget;
+        chatDone = true;
+        if (!chatTimer) chatTimer = setInterval(chatTick, 30);
       } else if (msg.type === 'ended') {
         hideTyping();
         // The server confirmed the close (record written, chat dropped).
@@ -2267,6 +2295,7 @@
     chatOpen = false;
     if (chatWs) { try { chatWs.close(); } catch (e) { /* already gone */ } chatWs = null; }
     chatPend = null; chatText = '';
+    chatStopReveal();   // kill any in-flight typewriter so it can't paint after close
     $('chatRow').hidden = true;
     setCardMode('idle');
     collapseTranscript();

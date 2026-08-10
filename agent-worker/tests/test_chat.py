@@ -194,6 +194,20 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
             self.assertIn("language you answer in", text)
             self.assertIn("testing the line", text)
 
+    def test_both_mouths_are_told_not_to_invent_a_cover_story(self):
+        # Three real turns where the DJ fabricated instead of acting or
+        # admitting a limit: "Wade's only on in the evening" (dodging a
+        # takeover), "the signal bounces around the valley" (the on-air/on-call
+        # overlap), "it's locked into the rotation" (asked to cancel a request).
+        from brain import conduct, conduct_chat
+
+        for text in (conduct.rules({}), conduct_chat.rules({})):
+            self.assertIn("Say the true thing", text)
+            self.assertIn("invent", text.lower())
+        # And the call list now names a show/DJ change as a takeover to DO,
+        # rather than something to refuse by inventing a schedule.
+        self.assertIn("TAKEOVER", conduct.rules({}))
+
     def test_the_tool_loop_answers_and_runs_tools(self):
         from livekit.agents import llm as lk_llm
 
@@ -334,3 +348,25 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertIn("hideTyping()", js)
         css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
         self.assertIn("typedots", css)
+
+    def test_the_reply_reveals_at_a_typing_pace(self):
+        # A caller said an instant wall of text doesn't read as a conversation.
+        # The reply is buffered and revealed a few characters at a time.
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("chatTick", js)
+        self.assertIn("chatTarget", js)
+        self.assertIn("setInterval(chatTick", js)
+
+    def test_the_post_call_drawer_is_hidden_during_a_chat(self):
+        # A caller saw a PREVIOUS call's "Transcript · N lines" widget inside
+        # their live chat — the post-call band (.after) belongs to a finished
+        # call, never a chat.
+        from tests.support import REPO
+
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertRegex(
+            css,
+            r'\.card\[data-mode="chat"\]\s+\.after\s*\{[^}]*display:\s*none',
+            "the post-call transcript drawer must be hidden in chat mode")
