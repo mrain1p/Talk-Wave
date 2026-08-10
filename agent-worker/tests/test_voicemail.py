@@ -598,13 +598,19 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
 
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         self.assertIn("'vm-beep'", js)          # still announced, still heard
-        # The mic-close after connect must be guarded on !vmCall: voicemail is
-        # OPEN-mic, never push-to-talk. Applying PTT here shut the mic (it
-        # defaults closed), so the machine heard nothing — empty message, no
-        # transcript, a "hold the bar" prompt on a card that isn't a
-        # conversation. Fixed 2026-08-10.
-        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:600]
-        self.assertIn("!vmCall && pttOn()", after_mic)
+        # Voicemail is push-to-talk now (operator's ask): the mic-close after
+        # connect applies to it too, so the !vmCall guard is gone. The
+        # regression this STILL defends is the one that made voicemail open-mic
+        # in the first place — a closed mic with NO visible control ("MIC OFF,
+        # nothing to hold", empty message). The close is safe now only because
+        # the bar is present and a TAP latches the mic open, leaving a message
+        # exactly like an open mic. See the pickup branch and the CSS below.
+        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:700]
+        self.assertIn("pttOn() && !pttOpen", after_mic)
+        self.assertNotIn("!vmCall && pttOn()", after_mic)
+        # The voicemail pickup keeps the bar when PTT is on (only an open-mic
+        # card, PTT switched off, drops it) — so the closed mic has a control.
+        self.assertIn("if (pttOn()) {", js)
         # And the beep handler never forces the mic open (that would un-mute a
         # caller who pressed Mute during the greeting).
         self.assertNotIn("setMicOpen(true)",

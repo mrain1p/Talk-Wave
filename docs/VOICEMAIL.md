@@ -165,14 +165,19 @@ Two later decisions, both from operating it:
   correctly, as the 30-second limit not being honored. The leg deletes the room the way a live
   call ends, and the card's timer counts against `voicemail_max_seconds` rather than the live
   call's limit.
-- **The machine listens from pickup.** STT is wired before the greeting plays, so talking over
-  the machine works the way it does on every answering machine — the caller's first words are
-  kept, not lost to the recording. The worker still announces the beep over the data channel
-  (`vm-beep` topic), but the widget uses it only to flip the status line to "recording"; it
-  held the mic closed until the beep once, and real messages arrived as their last two words.
-  Push-to-talk applies to voicemail like any call. The quiet clock restarts at the beep: it
-  used to run from before the greeting, so the nobody-spoke window was spent before the caller
-  could start, and the machine hung up almost the moment it beeped.
+- **The machine records what the caller sends, and push-to-talk applies to voicemail like any
+  call** (the default — it follows the same per-surface switch). The card shows the talk bar the
+  instant "Leave a message" is pressed, so there is always a mic control: a **tap latches** the
+  mic open and the caller leaves a message exactly like an open mic, **holding** is momentary,
+  and STT is wired before the greeting so their first words over the beep are kept. Only a card
+  with push-to-talk switched off keeps the historic open mic from pickup. This is the reconciled
+  answer to two opposite reports on the same day — "hold the bar" on a card that had *no visible
+  bar* (mic shut, empty message), then "there is no way to talk, MIC OFF" once the bar was
+  removed entirely. The bar is present AND the mic is push-to-talk; the tap-latch is what keeps a
+  confused caller from leaving silence. The worker still announces the beep over the data channel
+  (`vm-beep` topic); the widget uses it to flip the status line to "recording". The quiet clock
+  restarts at the beep: it used to run from before the greeting, so the nobody-spoke window was
+  spent before the caller could start, and the machine hung up almost the moment it beeped.
 - **`sound_vm_beep`** replaces the synthesized beep with an uploaded WAV (Call sounds section).
   Server-played, so uploads only; wrong rate or shape falls back to the tone, never silence.
 

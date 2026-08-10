@@ -167,8 +167,19 @@ class CallSession:
         # local voices are not interchangeable — but station_config asks
         # settings.tts_mode(), which reads the settings file, and the adapter
         # is told its mode directly now. Nothing reads the variable any more.
-        snap = await self.station.snapshot(
-            with_skills=bool(self.cfg.get("allow_skills"))
+        # The voices map does NOT depend on which persona answers — it is the
+        # whole station's persona->voice mirror — so it rides in the SAME
+        # concurrent wait as the snapshot instead of a serial read after it.
+        # Serially it added a second station timeout's worth of ringing behind
+        # the first; on the slow station a caller reported (12s+ to pick up),
+        # that was most of the regression. voice_for() below then reuses the
+        # /settings response this warmed (StationConfig caches per path), so it
+        # costs no further network.
+        import asyncio
+
+        snap, _voice_map = await asyncio.gather(
+            self.station.snapshot(with_skills=bool(self.cfg.get("allow_skills"))),
+            self.station_cfg.persona_voices(),
         )
         self.persona = self._resolve_persona(snap)
 
