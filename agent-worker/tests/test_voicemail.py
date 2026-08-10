@@ -598,15 +598,17 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
 
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         self.assertIn("'vm-beep'", js)          # still announced, still heard
-        # No voicemail branch closing the mic after connect, and the beep
-        # handler never forces it open (that would un-mute a caller who
-        # pressed Mute during the greeting).
-        self.assertNotIn("if (vmCall)",
-                         js.split("setMicrophoneEnabled(true);", 1)[1][:900])
+        # The mic-close after connect must be guarded on !vmCall: voicemail is
+        # OPEN-mic, never push-to-talk. Applying PTT here shut the mic (it
+        # defaults closed), so the machine heard nothing — empty message, no
+        # transcript, a "hold the bar" prompt on a card that isn't a
+        # conversation. Fixed 2026-08-10.
+        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:600]
+        self.assertIn("!vmCall && pttOn()", after_mic)
+        # And the beep handler never forces the mic open (that would un-mute a
+        # caller who pressed Mute during the greeting).
         self.assertNotIn("setMicOpen(true)",
                          js.split("topic !== 'vm-beep'", 1)[1][:900])
-        # A worker too old to send the topic still gets the fallback timer.
-        self.assertIn("15000", js)
 
     def test_a_thinking_pause_does_not_end_the_message(self):
         # 3.5s cut real messages off at the first pause for thought.

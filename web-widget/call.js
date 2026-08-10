@@ -635,8 +635,19 @@
     return fillWords(w[key] || fallback);
   }
 
+  // The operator's Button style choice: words, an emoji, or both. The words
+  // are still the wording overrides — this only decides whether an emoji
+  // rides in front and whether the words show at all. Applied to the idle
+  // action labels only (Call / Text / Message), never the in-call states.
+  function styleBtn(emoji, text) {
+    const st = (shown && shown.buttonStyle) || (live && live.buttonStyle) || 'text';
+    if (st === 'emoji') return emoji;
+    if (st === 'both') return emoji + ' ' + text;
+    return text;
+  }
+
   function callLabel() {
-    return fillWords((shown && shown.callLabel) || 'Call the DJ');
+    return styleBtn('📞', fillWords((shown && shown.callLabel) || 'Call the DJ'));
   }
 
   // ------------------------------------------------------- embed height
@@ -802,13 +813,16 @@
     const vmButton = machineOn && !lineClosedNow
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
-    if (vmButton) $('vmBtn').textContent = word('vm_button', 'Leave a message');
+    if (vmButton) $('vmBtn').textContent = styleBtn('✉', word('vm_button', 'Leave a message'));
     // The text line's door, same rules as the machine's: the kill switch
     // outranks it, the door code gates it, and it is per-surface. Never
     // hidden mid-chat — the input row is the conversation.
     const chatButton = !!d.chatEnabled && !lineClosedNow
       && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode;
-    if ($('chatBtn')) $('chatBtn').hidden = !chatButton || chatOpen;
+    if ($('chatBtn')) {
+      $('chatBtn').hidden = !chatButton || chatOpen;
+      if (chatButton) $('chatBtn').textContent = styleBtn('💬', word('chat_button', 'Text the booth'));
+    }
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
     if (lineClosedNow) {
@@ -828,7 +842,7 @@
     } else if (vmHere && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
-      callBtn.textContent = word('vm_button', 'Leave a message');
+      callBtn.textContent = styleBtn('✉', word('vm_button', 'Leave a message'));
     } else {
       callBtn.disabled = false;
       callBtn.textContent = callLabel();
@@ -1672,18 +1686,12 @@
           callBtn.classList.remove('ringing');
           callBtn.classList.add('live');
           callBtn.textContent = word('recording', 'Recording…');
-          setStatus('The machine is listening — transcript only, no audio is kept',
+          // Voicemail is not a conversation and not push-to-talk: drop the
+          // PTT bar so the card doesn't tell a caller to "hold the bar" while
+          // the machine is already listening on an open mic.
+          document.querySelector('.card').classList.remove('ptt');
+          setStatus('The machine is listening — speak after the beep, transcript only',
                     'connected');
-          // A worker from before the vm-beep topic never sends it; after
-          // the longest plausible greeting, treat it as beeped so the
-          // status stops waiting on a beep that already sounded. The mic
-          // is live either way — the beep stopped being a gate.
-          setTimeout(() => {
-            if (vmCall && !vmBeepHeard && room) {
-              vmBeepHeard = true;
-              paintPtt();
-            }
-          }, 15000);
         } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
@@ -1746,12 +1754,9 @@
         // never a forced mic-open, which would un-mute a caller who
         // pressed Mute during the greeting.
         vmBeepHeard = true;
-        if (pttOn()) {
-          paintPtt();
-          setStatus('Recording — hold the bar and speak', 'connected');
-        } else {
-          setStatus('Recording — go ahead, transcript only', 'connected');
-        }
+        // Voicemail is open-mic, never PTT (see the pickup handler): the beep
+        // just moves the status to "recording".
+        setStatus('Recording — go ahead, transcript only', 'connected');
       });
 
       await room.connect(url, token);
@@ -1760,16 +1765,17 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
-      // A voicemail mic is live from PICKUP, exactly like a call: the worker
-      // wires STT before the greeting on purpose, because talking over an
-      // answering machine is how people use answering machines. The widget
-      // holding the mic shut until the beep threw all of that away — real
-      // messages arrived as their last two words. The beep is a cue now.
-      if (pttOn() && !pttOpen) {
+      // Voicemail is NEVER push-to-talk: the machine records whatever it
+      // hears from pickup, so the mic must stay OPEN. Applying PTT here shut
+      // the mic (it defaults closed) so the machine heard nothing — an empty
+      // message, no transcript, and a "hold the bar" prompt on a card that
+      // isn't a conversation. Operator-reported 2026-08-10. PTT is a call
+      // thing only; the guards below and the card class both check vmCall.
+      if (!vmCall && pttOn() && !pttOpen) {
         // Closed only if the caller has not already pressed the bar during
         // the ring — a latch made early is a decision, not a race to lose.
         await setMicOpen(false);
-      } else if (pttOn()) {
+      } else if (!vmCall && pttOn()) {
         paintPtt();
       }
 

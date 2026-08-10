@@ -396,6 +396,17 @@ async def answer(ctx: JobContext) -> None:
             vm_deliver.hold(message, persona.get("name") or "",
                             note=f"delivery crashed: {e}")
             receipt = "held for the operator"
+        # Show the caller what became of their message IN TEXT, on the same
+        # action topic a call uses. The machine does not talk back in the
+        # DJ's voice — the outcome (a request queued, a shoutout passed on,
+        # held for the operator) is written, not spoken.
+        try:
+            await ctx.room.local_participant.publish_data(
+                json.dumps({"type": "action", "icon": "✉",
+                            "label": "Message delivered", "detail": receipt}).encode(),
+                reliable=True, topic="wavetalk.action")
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not publish the voicemail receipt (harmless): %s", e)
         ack = greetings.ack_clip(persona.get("id") or "")
         try:
             if ack and ack.is_file():
