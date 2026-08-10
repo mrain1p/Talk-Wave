@@ -81,6 +81,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheUrlRowsOnlyExistInUrlMode,
 )
 from tests.test_caller_tiers import (  # noqa: F401
+    TestTheLadderLivesInOnePlace,
     TestATierIncludesTheOnesBelowIt,
     TestAnUnknownTierFailsClosed,
     TestTheDoorDecidesTheTier,

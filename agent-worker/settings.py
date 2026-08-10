@@ -475,6 +475,19 @@ def voicemail_policy(cfg: dict) -> str:
     return str(cfg.get("voicemail_when") or "closed")
 
 
+def tier_reaches(need: Any, have: str) -> bool:
+    """Whether a caller at tier `have` clears a permission set to `need`.
+
+    The one ladder. It was spelled out as a dict literal in tokens.py (the
+    voicemail gate) and again in api/chat.py — the duplicate that drifts —
+    and an unknown `need` fails CLOSED for the same reason normalise_tier
+    does: a permission that grants itself on a typo cannot be walked back.
+    """
+    ladder = {"open": 0, "guest": 1, "admin": 2}
+    need_s = str(need or "open")
+    return need_s in ladder and ladder.get(have, 0) >= ladder[need_s]
+
+
 def normalise_tier(value: Any) -> str:
     """Whatever is stored, as one of off/open/guest/admin.
 

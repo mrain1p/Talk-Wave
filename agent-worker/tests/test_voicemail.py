@@ -283,9 +283,9 @@ class TestTheMachineHasATierDoor(unittest.TestCase):
 
         source = inspect.getsource(tokens.handle_token)
         self.assertIn("allow_voicemail", source)
-        self.assertIn('"open": 0', source)
-        # An unknown value must land on the refusing branch.
-        self.assertIn("need not in ladder", source)
+        # The ladder moved to settings.tier_reaches (0.10.20); fail-closed
+        # is TestTheLadderLivesInOnePlace's claim now.
+        self.assertIn("tier_reaches", source)
 
     def test_the_defaults_leave_upgrades_unchanged(self):
         import settings as settings_store

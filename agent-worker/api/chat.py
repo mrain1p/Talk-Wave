@@ -45,10 +45,7 @@ def _refusal(cfg: dict, request: web.Request, key: str) -> str | None:
     reason = _guest_check(key, _caller_key(request))
     if reason:
         return reason
-    need = str(cfg.get("allow_chat") or "open")
-    ladder = {"open": 0, "guest": 1, "admin": 2}
-    have = ladder.get(_tier_for(key), 0)
-    if need not in ladder or have < ladder[need]:
+    if not settings_store.tier_reaches(cfg.get("allow_chat"), _tier_for(key)):
         return "The booth doesn't take texts on this line."
     return None
 
