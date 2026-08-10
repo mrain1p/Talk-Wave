@@ -59,7 +59,7 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="card">
+  <div class="card" data-mode="idle">
     <!-- The corner controls sit IN this row rather than being absolutely
          positioned over it. Absolute meant each one owned a hardcoded `right`
          offset, a second set of offsets for the embed, and a padding reserve
@@ -195,7 +195,7 @@
 
       <div class="chatrow" id="chatRow" hidden>
         <button id="chatEndBtn" type="button" class="chatend"
-                title="End this chat" aria-label="End this chat">End</button>
+                title="Close the text line" aria-label="Close the text line">Close</button>
         <input type="text" id="chatInput" maxlength="2000"
                placeholder="Type to the booth…" autocomplete="off" />
         <button id="chatSendBtn" type="button">Send</button>

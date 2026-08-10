@@ -1202,6 +1202,121 @@ class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
             f"nowhere in style.css — they render as nothing: {missing}")
 
 
+class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
+    """Opening the text line used to leave the call's meters, its push-to-talk
+    bar and the Call/Message doors all on screen under the input row: the card
+    grew to ~525px and the place to type was buried among controls for a call
+    nobody was on, with the input itself invisible (it inherited .rig's
+    reserved-hidden visibility). All operator-reported. The card now carries a
+    data-mode and the stylesheet shows only that mode's controls. These pin the
+    pieces that made the regression possible."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        cls.index = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+
+    def test_chat_mode_hides_every_call_control(self):
+        import re
+
+        # The four bands that made the card huge in chat: if any stops being
+        # hidden in chat mode, the input is back among controls for a call.
+        for band in (".staterow", ".meters", ".talkrow", ".actionrow"):
+            self.assertRegex(
+                self.css,
+                r'\.card\[data-mode="chat"\][^{]*' + re.escape(band),
+                f"chat mode no longer hides {band} — the text line will show "
+                "the call's controls again")
+
+    def test_voicemail_mode_hides_the_talk_bar(self):
+        # TAP TO TALK and MUTE over a recording read as controls that did
+        # nothing (operator-reported): the machine's mic is simply open.
+        self.assertRegex(
+            self.css,
+            r'\.card\[data-mode="voicemail"\][^{]*\.talkrow[^{]*\{[^}]*display:\s*none',
+            "voicemail no longer hides the push-to-talk row")
+
+    def test_the_chat_input_declares_its_own_visibility(self):
+        # The input lives in .rig, which is reserved-hidden between calls; the
+        # text line is the ONE control meaningful off a call, so its row must
+        # override that or it ships present-but-invisible — the exact bug.
+        self.assertRegex(
+            self.css,
+            r'\.rig\s*>\s*\.chatrow\s*\{[^}]*visibility:\s*visible',
+            "the chat input row no longer overrides .rig's hidden visibility — "
+            "the text box will be invisible again")
+
+    def test_each_state_switches_the_mode(self):
+        # One switch drives the CSS: openChat -> chat, startCall -> call or
+        # voicemail, and the idle paths back to idle. Miss one and that state
+        # keeps the previous mode's controls.
+        self.assertIn("setCardMode('chat')", self.call_js)
+        self.assertIn("setCardMode(asVoicemail ? 'voicemail' : 'call')", self.call_js)
+        self.assertIn("setCardMode('idle')", self.call_js)
+
+    def test_the_card_starts_in_idle_mode(self):
+        # First paint has no JS-set mode yet; the markup declares idle so the
+        # chat/voicemail hide-rules have something to key against from load.
+        self.assertRegex(self.index, r'class="card"\s+data-mode="idle"')
+
+
+class TestEveryDoorReadsForItself(unittest.TestCase):
+    """The single button_style (words / emoji / both for the whole row) could
+    not say "Call worded, the two secondary doors as bare icons", which is what
+    a tight embed wants. It is six switches now — a word tick and an icon tick
+    per feature — carried on /live, with the widget falling back to the word if
+    a door is left with neither so a button is never blank. The icon is a line
+    drawing in the button's own ink, not an emoji glyph the theme cannot
+    touch."""
+
+    def test_live_carries_each_doors_two_switches(self):
+        from api import live as api_live
+
+        payload = api_live.look_payload({
+            "call_show_words": True, "call_show_emoji": False,
+            "vm_show_words": False, "vm_show_emoji": True,
+            "chat_show_words": True, "chat_show_emoji": True,
+        })
+        self.assertTrue(payload["callShowWords"])
+        self.assertFalse(payload["callShowEmoji"])
+        self.assertFalse(payload["vmShowWords"])
+        self.assertTrue(payload["vmShowEmoji"])
+        self.assertTrue(payload["chatShowWords"])
+        self.assertTrue(payload["chatShowEmoji"])
+
+    def test_words_are_on_by_default_for_every_door(self):
+        # The default is the card exactly as it read before — words, no icon —
+        # so an existing deployment sees no surprise until the operator opts in.
+        for f in ("call_show_words", "vm_show_words", "chat_show_words"):
+            self.assertTrue(settings_store.FIELDS[f][1], f"{f} should default on")
+        for f in ("call_show_emoji", "vm_show_emoji", "chat_show_emoji"):
+            self.assertFalse(settings_store.FIELDS[f][1], f"{f} should default off")
+
+    def test_a_door_left_with_neither_falls_back_to_its_word(self):
+        # showParts is the widget's guard: both switches off must not blank the
+        # button. An embed that turned both off should still be usable.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("if (!words && !emoji) words = true", call_js)
+
+    def test_the_icon_is_a_currentColor_line_drawing(self):
+        # An emoji glyph is a colour block the theme cannot touch (a yellow
+        # phone on a slate card); the icon inherits the button's ink instead.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn('stroke="currentColor"', call_js)
+        self.assertIn("BTN_ICONS", call_js)
+
+    def test_the_old_single_button_style_is_fully_gone(self):
+        # A half-migration — the select removed but the field or the /live key
+        # left behind — is how a setting ends up reachable from nowhere. None
+        # of the three may mention it.
+        self.assertNotIn("button_style", settings_store.FIELDS)
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertNotIn("buttonStyle", call_js)
+        panel_html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        self.assertNotIn('id="button_style"', panel_html)
+
+
 class TestTheAskMenuOffersEveryPermission(unittest.TestCase):
     """The "What can I ask?" popup is built from ASKS in shared.js, and a
     caller permission with no example there is a capability the operator

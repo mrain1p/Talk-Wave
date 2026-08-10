@@ -635,38 +635,78 @@
     return fillWords(w[key] || fallback);
   }
 
-  // The button style: words, an emoji, or both. PER DEVICE — a localStorage
-  // choice wins over the operator's default from /live, so one phone can run
-  // emoji while the standalone page keeps words. The words themselves are
-  // still the wording overrides; this only decides whether an emoji rides in
-  // front and whether the words show at all.
-  function buttonStyle() {
-    return localStorage.getItem('callinButtonStyle')
-      || (shown && shown.buttonStyle) || (live && live.buttonStyle) || 'text';
+  // What a door shows — its word, its icon, or both — read per feature from
+  // /live (callShowWords / callShowEmoji, and the vm/chat pairs). The words
+  // themselves are still the wording overrides; this only decides whether an
+  // icon rides in front and whether the word shows at all. A door left with
+  // NEITHER falls back to its word: a blank button is never the right answer,
+  // and an embed that turned both off should still be usable.
+  function showParts(feature) {
+    const src = shown || live || {};
+    let words = src[feature + 'ShowWords'];
+    let emoji = src[feature + 'ShowEmoji'];
+    if (words === undefined) words = true;      // first paint, before /live
+    if (emoji === undefined) emoji = false;
+    if (!words && !emoji) words = true;         // never blank
+    return { words: !!words, emoji: !!emoji };
   }
 
-  // Paint an idle action button, isolating the emoji in its own span so it
-  // can be sized up and de-saturated (larger, more neutral — operator's ask)
-  // without touching the word. Built from DOM nodes, not an innerHTML string,
-  // so operator wording never becomes markup. In-call states (Ringing, Hang
-  // up) never call this — they stay plain text.
-  function setBtn(el, emoji, text) {
+  // Line icons in the card's own ink — the same choice the rate buttons and
+  // the corner controls already made, and for the same reason the operator
+  // gave: an emoji glyph is a colour block the theme cannot touch (a yellow
+  // phone on a slate card) and it renders differently on every OS. These
+  // inherit currentColor, scale cleanly, and read identically everywhere.
+  const BTN_ICONS = {
+    phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
+    mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+    chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  };
+  function iconSvg(name) {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" '
+      + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+      + 'stroke-linejoin="round" aria-hidden="true">'
+      + (BTN_ICONS[name] || '') + '</svg>';
+  }
+
+  // Paint an idle action button for a feature (call | vm | chat), isolating
+  // the icon in its own span so it can be sized independently of the word.
+  // The icon markup is a constant from BTN_ICONS, never operator input, so
+  // innerHTML on that span is safe; the operator's WORD is a text node and
+  // can never become markup. In-call states (Ringing, Hang up) never call
+  // this — they stay plain text.
+  function setBtn(el, feature, icon, text) {
     if (!el) return;
-    const st = buttonStyle();
+    const st = showParts(feature);
     el.textContent = '';
-    if (st !== 'text') {
+    if (st.emoji) {
       const e = document.createElement('span');
       e.className = 'btnemoji';
-      e.textContent = emoji;
+      e.innerHTML = iconSvg(icon);
       el.appendChild(e);
     }
-    if (st !== 'emoji') {
-      el.appendChild(document.createTextNode((st === 'both' ? ' ' : '') + text));
+    if (st.words) {
+      el.appendChild(document.createTextNode((st.emoji ? ' ' : '') + text));
     }
   }
 
   function callLabel() {
     return fillWords((shown && shown.callLabel) || 'Call the DJ');
+  }
+
+  // The card is only ever in ONE mode, and it shows only that mode's
+  // controls — the CSS keys every band off `data-mode`. Before this, opening
+  // the text line left the call's meters, its push-to-talk bar and the
+  // Call/Message buttons all on screen under the input row: the card grew to
+  // ~525px and the place to type was buried in the middle of controls for a
+  // call nobody was on (operator-reported). Setting the mode here is the one
+  // switch; the stylesheet does the hiding.
+  //   idle       the doors (the action row); nothing live
+  //   call       state · captions · meters · push-to-talk · Hang up
+  //   voicemail  state · captions · a level to watch · Hang up — no talk bar
+  //   chat       the transcript and the input, and Close — no call controls
+  function setCardMode(m) {
+    const card = document.querySelector('.card');
+    if (card) card.dataset.mode = m;
   }
 
   // ------------------------------------------------------- embed height
@@ -832,7 +872,7 @@
     const vmButton = machineOn && !lineClosedNow
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
-    if (vmButton) setBtn($('vmBtn'), '✉', word('vm_button', 'Leave a message'));
+    if (vmButton) setBtn($('vmBtn'), 'vm', 'mail', word('vm_button', 'Leave a message'));
     // The text line's door, same rules as the machine's: the kill switch
     // outranks it, the door code gates it, and it is per-surface. Never
     // hidden mid-chat — the input row is the conversation.
@@ -840,7 +880,7 @@
       && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode;
     if ($('chatBtn')) {
       $('chatBtn').hidden = !chatButton || chatOpen;
-      if (chatButton) setBtn($('chatBtn'), '💬', word('chat_button', 'Text the booth'));
+      if (chatButton) setBtn($('chatBtn'), 'chat', 'chat', word('chat_button', 'Text the booth'));
     }
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
@@ -861,10 +901,10 @@
     } else if (vmHere && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
-      setBtn(callBtn, '✉', word('vm_button', 'Leave a message'));
+      setBtn(callBtn, 'vm', 'mail', word('vm_button', 'Leave a message'));
     } else {
       callBtn.disabled = false;
-      setBtn(callBtn, '📞', callLabel());
+      setBtn(callBtn, 'call', 'phone', callLabel());
     }
   }
 
@@ -1591,6 +1631,12 @@
     if (chatOpen) endChat();
     if ($('chatRow')) $('chatRow').hidden = true;
 
+    // AFTER any chat teardown (endChat resets the mode to idle) — this is the
+    // mode the call runs in. The card switches to the call's own controls,
+    // or the recorder's, which hides the push-to-talk bar and mute a
+    // voicemail caller has no use for.
+    setCardMode(asVoicemail ? 'voicemail' : 'call');
+
     // Browsers only allow microphone capture on HTTPS or localhost. On a
     // plain http:// LAN address the call would connect and then immediately
     // hang up when mic capture fails — say why up front instead.
@@ -1860,10 +1906,11 @@
       stopTimer();
       capBox.classList.remove('on');
       callBtn.classList.remove('ringing', 'answering');
-      setBtn(callBtn, '📞', callLabel());
+      setBtn(callBtn, 'call', 'phone', callLabel());
       callBtn.disabled = false;
       callBtn.hidden = false;
       hangBtn.hidden = true;
+      setCardMode('idle');
       room = null;
     }
   }
@@ -1973,7 +2020,7 @@
     // rate, and "How was it?" over "Message left" read as the machine
     // fishing for a compliment. Operator-reported.
     if (!wasVm) offerFeedback(endedRoom);
-    setBtn(callBtn, '📞', callLabel());
+    setBtn(callBtn, 'call', 'phone', callLabel());
     callBtn.classList.remove('live', 'ringing', 'answering');
     callBtn.disabled = false;
     callBtn.hidden = false;
@@ -1981,6 +2028,7 @@
     document.querySelector('.card').classList.remove('oncall');
     muteBtn.textContent = 'Mute';
     muteBtn.classList.remove('on');
+    setCardMode('idle');
     pttOpen = false;
     const pttBar = $('pttBtn');
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
@@ -2076,11 +2124,19 @@
   function openChat() {
     if (chatOpen || previewMode) return;
     chatOpen = true;
+    // The text line owns the card now: only the transcript, the input and
+    // Close. The mode hides the meters, the talk bar and the Call/Message
+    // doors that used to stack under the input and make the card huge.
+    setCardMode('chat');
     $('chatRow').hidden = false;
     $('chatBtn').hidden = true;
     document.querySelector('.linebox').classList.add('open');
     capBox.classList.add('on');
     setStatus('Opening the text line…', 'connected');
+    // The card just changed shape — the mode dropped the call's bands and the
+    // transcript opened — so an embedded frame has to be told, or it clips the
+    // text line it can no longer see the bottom of.
+    notifyHeight();
     const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
     chatWs = new WebSocket(scheme + location.host + '/chat/ws');
     chatWs.onopen = () => chatWs.send(JSON.stringify({
@@ -2144,6 +2200,7 @@
     if (chatWs) { try { chatWs.close(); } catch (e) { /* already gone */ } chatWs = null; }
     chatPend = null; chatText = '';
     $('chatRow').hidden = true;
+    setCardMode('idle');
     collapseTranscript();
     if (note) setStatus(note);
     // The idle card's doors — Call, and whichever of chat/voicemail the
