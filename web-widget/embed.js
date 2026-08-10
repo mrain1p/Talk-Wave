@@ -7,11 +7,15 @@
  * Renders an <iframe> pointing at the call page. Whoever is live on air
  * answers — the host page doesn't choose a persona.
  *
- * data-mode="launcher" renders a floating pill in the page corner instead
- * (data-position="left" for the other side); pressing it opens the widget
- * in a fixed panel, support-chat style. The pill reads the line's state, so
- * it says who answers — or that the line is closed — before it is pressed.
- * Collapsing the panel does NOT hang up a call in progress.
+ * data-mode picks an off-the-shelf shape that opens on a press instead of
+ * sitting inline:
+ *   "launcher"  a floating pill in a page corner (data-position="left" flips
+ *               it) that opens the widget in a fixed panel, support-chat style
+ *   "dock"      a slim bar pinned across the bottom that expands upward
+ *   "button"    an inline button in the page flow that opens a centred modal
+ * All three read the line's state, so they say who answers — or that the line
+ * is closed — before they are pressed, and collapsing one does NOT hang up a
+ * call in progress.
  *
  * Origin is derived from this script's own src, so the same file works in
  * local dev and behind a real domain with no edit. Override per-element with
@@ -74,132 +78,189 @@
   }
 
   /**
-   * data-mode="launcher": a floating pill in the page corner — the shape a
-   * support-chat bubble taught everyone — that opens the widget in a fixed
-   * panel above it. The frame is created on FIRST open (a host page should
-   * not pay for a widget nobody pressed) and never torn down after:
-   * collapsing hides the panel and the call, if one is up, carries on.
-   * The pill reads /live so it can say who answers before anyone commits —
-   * or say the line is closed instead of opening a dead door.
+   * The three "opens on a press" shapes, one function because they differ only
+   * in the TRIGGER and where the panel sits — the frame, the height/overlay
+   * handshake and the state-reading trigger label are identical:
+   *
+   *   "launcher"  a floating pill in a page corner (support-chat bubble)
+   *   "dock"      a slim bar pinned across the bottom, expands upward
+   *   "button"    an inline button in the page flow, opens a centred modal
+   *
+   * The frame is created on FIRST open (a host page shouldn't pay for a widget
+   * nobody pressed) and never torn down after: collapsing hides the panel and a
+   * call in progress carries on — a phone in the pocket, not one on the hook.
+   * The trigger reads /live so it says who answers, or that the line is closed,
+   * before it is pressed.
    */
-  function mountLauncher(el, origin, compact, theme, lockTheme, captions) {
+  function mountPanel(el, origin, compact, theme, lockTheme, captions, shape) {
     var left = el.getAttribute("data-position") === "left";
+    var isModal = shape === "button";
+    var isDock = shape === "dock";
     var Z = "2147483000";
 
-    var pill = document.createElement("button");
-    pill.type = "button";
-    pill.setAttribute("aria-haspopup", "dialog");
-    pill.setAttribute("aria-expanded", "false");
-    var s = pill.style;
-    s.position = "fixed"; s.bottom = "18px"; s[left ? "left" : "right"] = "18px";
-    s.zIndex = Z; s.cursor = "pointer";
-    s.padding = "11px 18px"; s.borderRadius = "999px";
+    var trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.setAttribute("aria-haspopup", "dialog");
+    trigger.setAttribute("aria-expanded", "false");
+    var s = trigger.style;
+    s.cursor = "pointer"; s.color = "#f2efe9"; s.background = "#191b1f";
     s.border = "1px solid rgba(255,255,255,.18)";
-    s.background = "#191b1f"; s.color = "#f2efe9";
     s.font = "600 13.5px/1.2 system-ui, sans-serif";
-    s.boxShadow = "0 8px 28px rgba(0,0,0,.35)";
-    pill.textContent = "📞 Call the DJ";
+    if (isModal) {
+      // In the page flow, where the div was dropped — not fixed to a corner.
+      s.display = "inline-flex"; s.alignItems = "center"; s.gap = "7px";
+      s.padding = "11px 18px"; s.borderRadius = "12px";
+      s.boxShadow = "0 2px 10px rgba(0,0,0,.18)";
+    } else if (isDock) {
+      s.position = "fixed"; s.left = "0"; s.bottom = "0"; s.width = "100%";
+      s.zIndex = Z; s.padding = "13px 18px"; s.borderRadius = "0";
+      s.borderWidth = "1px 0 0 0"; s.boxShadow = "0 -6px 24px rgba(0,0,0,.28)";
+    } else {
+      s.position = "fixed"; s.bottom = "18px"; s[left ? "left" : "right"] = "18px";
+      s.zIndex = Z; s.padding = "11px 18px"; s.borderRadius = "999px";
+      s.boxShadow = "0 8px 28px rgba(0,0,0,.35)";
+    }
+    trigger.textContent = "📞 Call the DJ";
+
+    // The modal's backdrop dims the page and centres the panel; the other two
+    // shapes float the panel next to their trigger with no backdrop.
+    var backdrop = isModal ? document.createElement("div") : null;
+    if (backdrop) {
+      var bd = backdrop.style;
+      bd.position = "fixed"; bd.inset = "0"; bd.zIndex = Z; bd.display = "none";
+      bd.background = "rgba(0,0,0,.5)";
+      bd.alignItems = "center"; bd.justifyContent = "center"; bd.padding = "12px";
+    }
 
     var panel = document.createElement("div");
     var p = panel.style;
-    p.position = "fixed"; p.bottom = "70px"; p[left ? "left" : "right"] = "16px";
     p.zIndex = Z; p.display = "none";
-    p.width = "min(380px, calc(100vw - 24px))";
     p.borderRadius = "16px"; p.overflow = "hidden";
-    p.boxShadow = "0 18px 48px rgba(0,0,0,.45)";
+    p.width = "min(380px, calc(100vw - 24px))";
+    if (isModal) {
+      p.position = "relative"; p.width = "min(400px, calc(100vw - 24px))";
+      p.boxShadow = "0 24px 64px rgba(0,0,0,.5)";
+    } else if (isDock) {
+      p.position = "fixed"; p.left = "50%"; p.bottom = "56px";
+      p.transform = "translateX(-50%)"; p.width = "min(400px, calc(100vw - 24px))";
+      p.boxShadow = "0 18px 48px rgba(0,0,0,.45)";
+    } else {
+      p.position = "fixed"; p.bottom = "70px"; p[left ? "left" : "right"] = "16px";
+      p.boxShadow = "0 18px 48px rgba(0,0,0,.45)";
+    }
 
     var iframe = null, frameHeight = 480, overlaid = false;
-    var maxHeight = function () { return Math.max(240, window.innerHeight - 110); };
+    var maxHeight = function () { return Math.max(240, window.innerHeight - (isModal ? 120 : 110)); };
 
     function applyHeight() {
       if (!iframe) return;
       iframe.style.height = Math.min(frameHeight, maxHeight()) + "px";
     }
 
-    function open() {
-      if (!iframe) {
-        iframe = makeIframe(origin, compact, theme, lockTheme, captions);
-        applyHeight();
-        panel.appendChild(iframe);
-        window.addEventListener("message", function (e) {
-          if (!iframe || e.source !== iframe.contentWindow) return;
-          var msg = e.data;
-          if (!msg) return;
-          // The panel is anchored to the bottom, so granting the ask list
-          // its room is just growing upward — no direction to negotiate.
-          if (msg.type === "subwave-callin:overlay") {
-            var wanted = Number(msg.px) || 0;
-            overlaid = wanted > 0;
-            if (overlaid) {
-              var granted = Math.max(
-                120, Math.min(wanted, maxHeight() - frameHeight));
-              iframe.style.height =
-                Math.min(frameHeight + granted, maxHeight()) + "px";
-              iframe.contentWindow.postMessage(
-                { type: "swtv:overlay", px: granted, up: false }, origin);
-            } else {
-              applyHeight();
-              iframe.contentWindow.postMessage(
-                { type: "swtv:overlay", px: 0, up: false }, origin);
-            }
-            return;
-          }
-          if (msg.type === "subwave-callin:height" && !overlaid) {
-            var px = Number(msg.px);
-            if (px > 80 && px < 2000) { frameHeight = px; applyHeight(); }
-          }
-        });
-        // The host's station-theming hook works in this mode too.
-        el.setCallinTheme = function (tokens) {
-          if (!tokens || !iframe || !iframe.contentWindow) return;
-          iframe.contentWindow.postMessage(
-            { type: "swtv:theme", tokens: tokens }, origin);
-        };
+    function makeAndWire() {
+      iframe = makeIframe(origin, compact, theme, lockTheme, captions);
+      applyHeight();
+      panel.appendChild(iframe);
+      // A modal has a backdrop but no visible trigger behind it, so it carries
+      // its own close control; the floating shapes toggle from their trigger.
+      if (isModal) {
+        var x = document.createElement("button");
+        x.type = "button"; x.setAttribute("aria-label", "Close");
+        x.textContent = "×";
+        var xs = x.style;
+        xs.position = "absolute"; xs.top = "6px"; xs.right = "8px"; xs.zIndex = "1";
+        xs.width = "28px"; xs.height = "28px"; xs.lineHeight = "26px";
+        xs.padding = "0"; xs.borderRadius = "999px"; xs.cursor = "pointer";
+        xs.border = "1px solid rgba(255,255,255,.22)"; xs.background = "rgba(0,0,0,.35)";
+        xs.color = "#fff"; xs.font = "600 17px/1 system-ui, sans-serif";
+        x.onclick = close;
+        panel.appendChild(x);
       }
+      window.addEventListener("message", function (e) {
+        if (!iframe || e.source !== iframe.contentWindow) return;
+        var msg = e.data;
+        if (!msg) return;
+        // The panel is anchored (bottom, or centred), so granting the ask list
+        // its room is just growing in place — no direction to negotiate.
+        if (msg.type === "subwave-callin:overlay") {
+          var wanted = Number(msg.px) || 0;
+          overlaid = wanted > 0;
+          if (overlaid) {
+            var granted = Math.max(120, Math.min(wanted, maxHeight() - frameHeight));
+            iframe.style.height = Math.min(frameHeight + granted, maxHeight()) + "px";
+            iframe.contentWindow.postMessage(
+              { type: "swtv:overlay", px: granted, up: false }, origin);
+          } else {
+            applyHeight();
+            iframe.contentWindow.postMessage(
+              { type: "swtv:overlay", px: 0, up: false }, origin);
+          }
+          return;
+        }
+        if (msg.type === "subwave-callin:height" && !overlaid) {
+          var px = Number(msg.px);
+          if (px > 80 && px < 2000) { frameHeight = px; applyHeight(); }
+        }
+      });
+      // The host's station-theming hook works in every panel shape too.
+      el.setCallinTheme = function (tokens) {
+        if (!tokens || !iframe || !iframe.contentWindow) return;
+        iframe.contentWindow.postMessage({ type: "swtv:theme", tokens: tokens }, origin);
+      };
+    }
+
+    function open() {
+      if (!iframe) makeAndWire();
+      if (backdrop) backdrop.style.display = "flex";
       panel.style.display = "block";
-      pill.setAttribute("aria-expanded", "true");
+      trigger.setAttribute("aria-expanded", "true");
     }
 
     function close() {
-      // Hide, never unmount: tearing the frame down would hang up a live
-      // call. Collapsed mid-call, the audio keeps going — a phone in the
-      // pocket, not a phone on the hook.
+      // Hide, never unmount: tearing the frame down would hang up a live call.
       panel.style.display = "none";
-      pill.setAttribute("aria-expanded", "false");
+      if (backdrop) backdrop.style.display = "none";
+      trigger.setAttribute("aria-expanded", "false");
     }
 
-    pill.onclick = function () {
+    trigger.onclick = function () {
       if (panel.style.display === "none") open(); else close();
     };
+    if (backdrop) {
+      // A click on the dimmed area (not the panel) closes; so does Escape.
+      backdrop.onclick = function (e) { if (e.target === backdrop) close(); };
+      window.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && backdrop.style.display !== "none") close();
+      });
+    }
 
-    // What the pill promises follows the line's real state, so a closed
-    // booth never dangles a button that can only refuse. Same resolution
-    // order the card itself uses, reduced to the three words a pill has
-    // room for.
-    function paintPill() {
+    // What the trigger promises follows the line's real state, so a closed
+    // booth never dangles a button that can only refuse. Same resolution order
+    // the card uses, reduced to the few words a pill has room for.
+    function paintTrigger() {
       fetch(origin + "/live").then(function (r) { return r.json(); })
         .then(function (d) {
           var machineOn = (d.voicemailWhen || "never") !== "never";
-          var closed = !!d.callsPaused
-            || (d.liveCalls === false && !machineOn);
-          var vmOnly = machineOn
-            && (d.voicemailWhen === "always" || d.liveCalls === false);
-          pill.disabled = closed;
+          var closed = !!d.callsPaused || (d.liveCalls === false && !machineOn);
+          var vmOnly = machineOn && (d.voicemailWhen === "always" || d.liveCalls === false);
+          trigger.disabled = closed;
           s.opacity = closed ? ".6" : "";
-          pill.textContent = closed
+          trigger.textContent = closed
             ? ((d.wording && d.wording.closed) || "Line closed")
             : vmOnly
-            ? "📞 " + ((d.wording && d.wording.vm_button)
-                                 || "Leave a message")
+            ? "📞 " + ((d.wording && d.wording.vm_button) || "Leave a message")
             : "📞 " + (d.callLabel || "Call the DJ");
         }).catch(function () { /* keep the last label */ });
     }
-    paintPill();
-    setInterval(paintPill, 60000);
+    paintTrigger();
+    setInterval(paintTrigger, 60000);
     window.addEventListener("resize", applyHeight);
 
-    el.appendChild(pill);
-    el.appendChild(panel);
+    el.appendChild(trigger);
+    // Fixed shapes ignore their parent, but a modal backdrop must escape any
+    // clipping/overflow the host wrapped the mount div in — park it on <body>.
+    if (backdrop) { backdrop.appendChild(panel); document.body.appendChild(backdrop); }
+    else { el.appendChild(panel); }
   }
 
   document.querySelectorAll("[id^='subwave-callin']").forEach(function (el) {
@@ -231,10 +292,12 @@
     // data-height="260px" overrides the frame height for tight layouts.
     var height = el.getAttribute("data-height") || "";
 
-    // data-mode="launcher": the floating pill + panel instead of an inline
-    // frame. Everything below this line is the inline card.
-    if (el.getAttribute("data-mode") === "launcher") {
-      mountLauncher(el, origin, compact, theme, lockTheme, captions);
+    // data-mode picks a shape that OPENS on a press — launcher (corner pill),
+    // dock (bottom bar) or button (inline button + centred modal) — instead of
+    // the inline card. Everything below this line is the inline card.
+    var mode = el.getAttribute("data-mode") || "";
+    if (mode === "launcher" || mode === "dock" || mode === "button") {
+      mountPanel(el, origin, compact, theme, lockTheme, captions, mode);
       return;
     }
 

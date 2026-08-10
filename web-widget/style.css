@@ -1057,6 +1057,34 @@
   .cap.sys .detail {
     display: block; color: var(--sage); font-size: 12.5px; margin-top: 3px;
   }
+  /* A schedule the DJ laid out as a Markdown table on the text line, rendered
+     as a real table inside a card — the same receipt look as a tool result, so
+     a roster reads at a glance instead of as a run-on sentence. It scrolls
+     sideways rather than widening the card (a schedule has more columns than a
+     narrow embed has room for). The DJ still talks around it in prose. */
+  /* The speech labels made .said inline; a schedule table needs it to flow as
+     a block so the table gets the line's width and can scroll instead of
+     collapsing. JS flags the line rather than CSS :has(), for older engines. */
+  .cap .said.has-table { display: block; }
+  .tablewrap {
+    margin: 9px 0; overflow-x: auto; max-width: 100%;
+    border: 1px solid color-mix(in srgb, var(--coral) 30%, var(--hairline));
+    border-radius: 8px; background: color-mix(in srgb, var(--coral) 7%, transparent);
+  }
+  .chattable { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .chattable th, .chattable td {
+    text-align: left; padding: 6px 10px; white-space: nowrap;
+    border-bottom: 1px solid color-mix(in srgb, var(--coral) 14%, transparent);
+  }
+  .chattable thead th {
+    color: var(--coral); font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
+  }
+  .chattable tbody td { color: var(--alpenglow); }
+  .chattable tbody tr:last-child td { border-bottom: 0; }
+  /* The first column of a schedule is the time/slot — number-aligned and quiet,
+     the way the meters' labels are, so the show names carry the weight. */
+  .chattable tbody td:first-child { color: var(--sage); font-variant-numeric: tabular-nums; }
   .cap.sys .detail:empty { display: none; }
   .ticker.sys .who { color: var(--amber); }
 
@@ -2750,6 +2778,60 @@
   /* Tall enough to read, short enough that the SECTION never grows a
      scrollbar of its own — the operator reported exactly that. */
   #previewFrame { display: block; width: 100%; height: 300px; border: 0; }
+
+  /* --- the preview stage: the frame dressed as the chosen embed shape ------
+     Inline is the bare frame (no stage chrome). The other three turn the stage
+     into a little mock "host page": a trigger the operator can press, and the
+     real frame appearing where that shape would put it. A representation, not
+     a running embed — enough to SEE the shape before copying its snippet. */
+  .previewstage[data-shape="inline"] { display: block; }
+  .previewstage.shaped {
+    position: relative; height: 340px; overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 22px,
+        color-mix(in srgb, var(--line) 55%, transparent) 22px 23px),
+      var(--bg2, var(--bg));
+    border-radius: 0 0 10px 10px;
+  }
+  /* The frame is hidden at rest (the shape is "closed"); pressing the trigger
+     reveals it as that shape's pop-up. */
+  .previewstage.shaped #previewFrame {
+    position: absolute; display: none; height: 260px; width: min(300px, 86%);
+    border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.4); background: var(--bg);
+  }
+  .previewstage.shaped.open #previewFrame { display: block; }
+  /* The mock trigger, styled like embed.js's dark pill/bar/button. */
+  .previewtrigger {
+    position: absolute; cursor: pointer; z-index: 2;
+    background: #191b1f; color: #f2efe9; border: 1px solid rgba(255,255,255,.18);
+    font: 600 12.5px/1.2 system-ui, sans-serif;
+  }
+  .previewtrigger[hidden] { display: none; }
+  /* launcher — corner pill, frame opens above it */
+  .previewstage[data-shape="launcher"] .previewtrigger {
+    right: 14px; bottom: 14px; padding: 9px 15px; border-radius: 999px;
+    box-shadow: 0 8px 22px rgba(0,0,0,.35);
+  }
+  .previewstage[data-shape="launcher"].open #previewFrame { right: 12px; bottom: 58px; }
+  /* dock — bar across the bottom, frame opens centred above it */
+  .previewstage[data-shape="dock"] .previewtrigger {
+    left: 0; right: 0; bottom: 0; width: 100%; padding: 11px 15px;
+    border-width: 1px 0 0 0; text-align: center;
+  }
+  .previewstage[data-shape="dock"].open #previewFrame {
+    left: 50%; transform: translateX(-50%); bottom: 50px;
+  }
+  /* button — inline button near the top, frame opens as a centred modal */
+  .previewstage[data-shape="button"] .previewtrigger {
+    top: 16px; left: 16px; padding: 9px 15px; border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  }
+  .previewstage[data-shape="button"].open::after {
+    content: ""; position: absolute; inset: 0; z-index: 1; background: rgba(0,0,0,.45);
+  }
+  .previewstage[data-shape="button"].open #previewFrame {
+    z-index: 2; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  }
 
   /* --- installed as an app -----------------------------------------------
      No browser chrome, so the widget is the whole window and owns the edges

@@ -1060,8 +1060,17 @@
             </span>
             <span class="pnote" id="previewNote">unsaved changes shown live</span>
           </div>
-          <iframe id="previewFrame" title="Live preview of the call card"
-                  src="/?preview=1" loading="lazy"></iframe>
+          <!-- The frame is the real card. In Embed view it sits inside a STAGE
+               that dresses it as the chosen shape (a corner pill, a docked bar,
+               an inline button + pop-up), so the operator sees the shape they
+               picked, not just the card that lands inside it. The mock trigger
+               is a drawing; pressing it reveals the frame the way the shape
+               would on a real page. -->
+          <div class="previewstage" id="previewStage" data-shape="inline">
+            <button type="button" class="previewtrigger" id="previewTrigger" hidden>📞 Call the DJ</button>
+            <iframe id="previewFrame" title="Live preview of the call card"
+                    src="/?preview=1" loading="lazy"></iframe>
+          </div>
         </div>
         <!-- Filled by applyVisibility() whenever the line status overrides
              what this section configures — paused, closed, voicemail-only.
@@ -1243,6 +1252,8 @@
           <select id="embedMode">
             <option value="">Inline card — sits in the page where pasted</option>
             <option value="launcher">Floating launcher — a call pill in the corner that opens the card</option>
+            <option value="dock">Docked bar — a slim bar across the bottom that opens the card</option>
+            <option value="button">Button — an inline button that opens the card in a centred pop-up</option>
           </select>
         </div>
         <div class="row">

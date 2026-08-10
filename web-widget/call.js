@@ -1484,6 +1484,79 @@
     tickerTimer = setTimeout(() => t.classList.remove('show'), 6000);
   }
 
+  // A transcript line is plain text — EXCEPT a Markdown table, which the DJ
+  // uses on the text line for a schedule ("what's on?"). A run-on sentence of
+  // eleven shows is unreadable; a table is exactly what a schedule is. Built
+  // by hand from text nodes only (never innerHTML) — one of the two speakers
+  // here is an LLM and its output is never trusted into the DOM as markup.
+  const TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/;
+  function splitRow(line) {
+    return line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  }
+  function isRow(line) { return line != null && line.indexOf('|') !== -1 && line.trim() !== ''; }
+
+  function renderSaid(el, text) {
+    // Fast path: no pipe means no table, so nothing to parse — the overwhelming
+    // majority of lines, spoken captions included.
+    if (text.indexOf('|') === -1) { el.textContent = text; el.classList.remove('has-table'); return; }
+    const lines = String(text).split('\n');
+    el.textContent = '';
+    let tabled = false;
+    let prose = [];
+    const flush = () => {
+      if (!prose.length) return;
+      const span = document.createElement('span');
+      prose.forEach((ln, i) => {
+        if (i) span.appendChild(document.createElement('br'));
+        span.appendChild(document.createTextNode(ln));
+      });
+      el.appendChild(span);
+      prose = [];
+    };
+    for (let i = 0; i < lines.length; i++) {
+      // A table is a header row, a |---|---| separator, then body rows.
+      if (isRow(lines[i]) && i + 1 < lines.length && TABLE_SEP.test(lines[i + 1])) {
+        flush();
+        const head = splitRow(lines[i]);
+        i += 2;
+        const body = [];
+        for (; i < lines.length && isRow(lines[i]) && !TABLE_SEP.test(lines[i]); i++) {
+          body.push(splitRow(lines[i]));
+        }
+        i--;   // the for-loop's own i++ will step past the last consumed row
+        const wrap = document.createElement('div');
+        wrap.className = 'tablewrap';
+        const table = document.createElement('table');
+        table.className = 'chattable';
+        const thead = document.createElement('thead');
+        const htr = document.createElement('tr');
+        head.forEach((c) => { const th = document.createElement('th'); th.textContent = c; htr.appendChild(th); });
+        thead.appendChild(htr);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        body.forEach((cells) => {
+          const tr = document.createElement('tr');
+          for (let c = 0; c < head.length; c++) {
+            const td = document.createElement('td');
+            td.textContent = cells[c] != null ? cells[c] : '';
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        el.appendChild(wrap);
+        tabled = true;
+      } else {
+        prose.push(lines[i]);
+      }
+    }
+    flush();
+    // The .said span is inline; a block table inside it can't lay out until the
+    // span becomes a block, so flag it for the stylesheet to switch.
+    el.classList.toggle('has-table', tabled);
+  }
+
   function addCaption(id, who, text, final, force) {
     if (!text) return;
     // `force` overrides the caption mode: a voicemail has no DJ captions and no
@@ -1523,7 +1596,7 @@
       // those would shake the line while someone is still speaking.
       rollIn(node);
     }
-    node.querySelector('.said').textContent = text;
+    renderSaid(node.querySelector('.said'), text);
     node.classList.toggle('interim', !final);
     lastByWho[who] = { node, text, at: Date.now() };
     capBox.scrollTop = capBox.scrollHeight;
@@ -1536,7 +1609,12 @@
   // otherwise has only the DJ's word that anything happened.
   function addSystemLine(icon, label, detail, force) {
     if (captionsMode === 'off' && !force) return;
-    if (!force && captionsMode !== 'full') {
+    // In a chat, an action receipt belongs IN the transcript, styled apart —
+    // never in the fading ticker. On a ticker-mode embed it used to flash up
+    // over the page and vanish a few seconds later ("scheduled…" popping up
+    // OUTSIDE the text box and disappearing, operator-reported on a live chat),
+    // because this lacked the `chatOpen` guard addCaption already has.
+    if (!force && captionsMode !== 'full' && !chatOpen) {
       showTicker('sys', label + (detail ? ' — ' + detail : ''));
       return;
     }
@@ -2289,12 +2367,15 @@
   function chatTick() {
     if (chatShown < chatTarget.length) {
       // ONE character at a time — it should read as someone writing it live,
-      // not a reply that pops in (operator's ask). Only catch up in bigger
-      // steps when the buffer is way ahead, so a long reply still lands in a
-      // reasonable time rather than typing for half a minute.
-      const remaining = chatTarget.length - chatShown;
-      const step = remaining > 200 ? Math.ceil(remaining / 60) : 1;
-      chatShown = Math.min(chatTarget.length, chatShown + step);
+      // not a reply that pops in (operator's ask). A long reply reveals in a
+      // FIXED number of steps rather than a fixed catch-up, so a whole
+      // paragraph streams over a few readable seconds no matter its length —
+      // the old "remaining / 60" landed any long reply in under two seconds,
+      // which flew past too fast to read ("no one could keep up", operator on
+      // a live chat, 2026-08-10). Short replies still go character by character.
+      const total = chatTarget.length;
+      const step = total > 220 ? Math.ceil(total / 170) : 1;
+      chatShown = Math.min(total, chatShown + step);
       if (!chatPend) chatPend = 'chat-' + (++capSeq);
       addCaption(chatPend, 'dj', chatTarget.slice(0, chatShown), false);
     }

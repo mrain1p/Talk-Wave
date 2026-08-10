@@ -269,7 +269,7 @@ it would open nothing.
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |
 | `data-origin` | Widget origin when the script is served from elsewhere |
-| `data-mode="launcher"` | A floating call pill in the page corner instead of an inline card — it names who answers (or says the line is closed) before it is pressed, and opens the card in a panel above it, support-chat style. Collapsing the panel never hangs up a call in progress |
+| `data-mode="launcher\|dock\|button"` | An off-the-shelf shape that *opens on a press* instead of sitting inline: `launcher` is a floating call pill in a page corner, `dock` a slim bar pinned across the bottom, `button` an inline button in the page flow that opens the card in a centred pop-up. All three name who answers (or say the line is closed) before they are pressed, and collapsing one never hangs up a call in progress. Pick one — and preview it — in the panel's **Embed** section |
 | `data-position="left"` | Puts the launcher pill in the left corner (right is the default) |
 
 **The station's own colours** are not an embed attribute — set **Player

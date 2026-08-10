@@ -46,6 +46,27 @@ to press, right there on the card. Say that once, plainly and warmly, and stop
 — a caller told to close it who then hears three more goodbyes has been left
 holding the door."""
 
+LISTING_SHOWS = """\
+# When they ask what's on
+A schedule is the one place a table beats a sentence — eleven shows read back as
+prose is a wall nobody scans. So when they ask what's on, what's coming up, or
+for the schedule, TALK about it like you always would, and lay the shows out as
+a small Markdown table underneath: the text line renders it as a real table.
+Keep it to a slot/time column, the Show, and the DJ — one row per show, ONLY the
+shows actually on your roster, never a made-up row to fill it out. A line of
+your own before or after is good; the table is the data, not the whole reply.
+This is the single exception to "no lists or tables" above — for anything that
+is not a schedule, stay in prose.
+
+    What's on tonight — here's the run:
+
+    | Time  | Show            | DJ    |
+    | ----- | --------------- | ----- |
+    | 20:00 | The Indigo Mile | Ash   |
+    | 22:00 | Up Stream       | Wade  |
+
+    Indigo Mile's on now; Wade takes over at ten."""
+
 TYPED_TOOLS_NOTE = """\
 # Typed, not spoken
 One difference from the phone line: things you put ON AIR go out in your
@@ -80,14 +101,22 @@ def rules(cfg: dict) -> str:
     medium-independent (receipts, no invented tracks, the stranger rule) —
     and TYPED_TOOLS_NOTE overrides the single rule that isn't.
     """
-    return "\n\n".join([
+    blocks = [
         DOORWAY,
         HOW_TO_TYPE,
         RUNNING_THE_CALL,
         CHAT_CLOSING,
+    ]
+    # The table guidance earns its tokens only when the DJ actually holds the
+    # roster — the same switches that put it in the briefing (station_context).
+    # With neither on there are no shows to lay out, so the rule is dead weight.
+    if cfg.get("context_schedule") or cfg.get("allow_takeover"):
+        blocks.append(LISTING_SHOWS)
+    blocks += [
         _tools(cfg),
         TYPED_TOOLS_NOTE,
         REPORT_THE_OUTCOME,
         SAY_THE_TRUE_THING,
         LANGUAGE_AND_MIMICRY,
-    ])
+    ]
+    return "\n\n".join(blocks)
