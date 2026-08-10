@@ -1726,6 +1726,13 @@
         callBtn.classList.remove('ringing', 'answering');
         room = null;
         vmCall = false;
+        // Back to idle in full: since the card flips to .oncall + Hang up the
+        // INSTANT the button is pressed (no ringing phase), a refusal has to
+        // undo that here, or .oncall keeps the doors hidden and the card sits
+        // on "Hang up" over an engaged-tone message (tester-caught).
+        document.querySelector('.card').classList.remove('oncall');
+        hangBtn.hidden = true;
+        setCardMode('idle');
         // Repaint BOTH buttons from the live state — restoring Call by hand
         // here forgot the message button, and one refused call left the
         // card without its one working door until a reload.

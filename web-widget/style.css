@@ -322,7 +322,9 @@
      and it moved a real station page. The problem it was trying to solve was
      never the reservation, it was the SIZE of what was being reserved: the
      bands below have been cut to what they actually need instead. */
-  .rig { visibility: hidden; }
+  /* A flex column so the transcript can flex to fill the working area and hold
+     the card to one footprint across every mode — see the mode block above. */
+  .rig { visibility: hidden; display: flex; flex-direction: column; }
   .rig.on { visibility: visible; }
   /* The rows that hold their place AND stay visible between calls: the line
      area (it carries the card's own messages), the meters band (idle the
@@ -390,6 +392,21 @@
   .card[data-mode="voicemail"] .talkrow #muteBtn,
   .card[data-mode="voicemail"] .meters .dj,
   .card[data-mode="voicemail"] .meters .vol { display: none !important; }
+  /* ONE FOOTPRINT, whatever the entrance. A caller who calls, leaves a message
+     or texts should meet the same object at the same size — an embed must not
+     jar or resize when the mode changes (operator's design ask). The working
+     area (.rig, everything below the identity header) holds a consistent
+     height in every mode; the transcript flexes to fill whatever the mode's
+     controls leave, so chat's fewer bands become MORE transcript rather than a
+     shorter card, and it never grows or shrinks as messages arrive — it scrolls
+     inside a fixed box. Standalone only; a compact embed keeps its own tighter
+     budget. The header sits outside the rig, so this holds regardless of how
+     long the station name or now-playing line is. */
+  body:not(.compact) .rig { min-height: 272px; }
+  /* Chat opens the transcript drawer (.open) the call reading-back uses, but
+     here the flex fill owns the height — so drop .open's fixed 44vh back to the
+     normal basis and let the rig's spare room size it, same as every mode. */
+  .card[data-mode="chat"] .linebox { height: var(--lines-h); max-height: none; }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -749,10 +766,15 @@
     border: 1px solid var(--line2); background: var(--panel); color: var(--text);
   }
 
-  /* Locked panel: the login banner is the only thing shown. */
-  #panel.locked details.sec, #panel.locked .supergroup,
-  #panel.locked .actions, #panel.locked details.diag,
-  #panel.locked .versionline { display: none; }
+  /* Locked panel: the login gate is the ONLY thing shown (plus the bar that
+     gets you back to the phone). The old rule hid the settings sections but
+     left the DASHBOARD standing — so anyone who could reach /settings read the
+     station's live state (The Line on/off, the call / voicemail / text
+     switches, what's on air) before logging in. This hides every direct child
+     of the panel except the way-back bar and the gate, so nothing at all leaks
+     until the password is right. Robust to new sections: they are hidden by
+     default rather than needing to be added to a list. */
+  #panel.locked > *:not(.panelbar):not(#loginGate) { display: none !important; }
   #loginGate .loginrow { display: inline-flex; gap: 8px; margin: 0 8px; }
   #loginGate input { width: 180px; }
   #loginMsg { font-size: 11.5px; color: var(--accent); }
@@ -849,7 +871,11 @@
   .linebox {
     position: relative; margin: 10px 0 0; padding: 9px 12px; text-align: left;
     background: var(--pine); border: 1px solid var(--hairline); border-radius: 0;
-    height: var(--lines-h);
+    /* height is the FLEX-BASIS/floor; flex-grow lets the box absorb the working
+       area's spare room so the card stays one size across modes. Because the
+       rig height is fixed, the box does not resize mid-call — the invariant the
+       reserved height always protected, now kept by a stable parent instead. */
+    height: var(--lines-h); flex: 1 1 auto;
   }
   /* Reading back a finished call is a deliberate click by somebody who wants
      the room, and by then there is no call for the resize to interrupt. This

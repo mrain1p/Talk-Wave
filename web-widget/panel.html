@@ -46,7 +46,10 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="panelpage">
-  <section class="panel open" id="panel">
+  <!-- Starts LOCKED so a password-protected panel never flashes its dashboard
+       before the 401 comes back. loadSettings() removes .locked the moment a
+       real settings payload lands (authed, or no password set at all). -->
+  <section class="panel open locked" id="panel">
     <!-- The way back, and the theme toggle. Both were on the call page's
          header when the panel was a section of it; on its own page it needs
          its own, or the operator is stranded here in whichever theme the

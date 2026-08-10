@@ -62,6 +62,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheCardIsOnlyEverInOneMode,
     TestEveryDoorReadsForItself,
     TestTheDoorsShareTheRowEvenly,
+    TestTheLockedPanelShowsNothingButTheGate,
     TestTheTextLineIsShapedForTyping,
     TestTheAskMenuOffersEveryPermission,
     TestSoundPacks,

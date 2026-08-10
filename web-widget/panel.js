@@ -1526,6 +1526,11 @@
     guestConfigured = !!s.guestConfigured;
     adoptSchema(s.schema);
     paint(); paintSecrets(); loadSounds();
+    // A real payload landed, so this browser is in: drop the starts-locked
+    // curtain and hide the gate. (The panel is .locked from load so a
+    // password-protected page never flashes its dashboard first.)
+    $('panel').classList.remove('locked');
+    $('loginGate').hidden = true;
     // Loaded as of here: the panel is filled and usable. The provider lists
     // below only add choices to dropdowns, and a failure there must not leave
     // the gear trying to fetch everything again on every open.
