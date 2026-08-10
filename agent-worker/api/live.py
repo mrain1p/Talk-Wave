@@ -92,6 +92,12 @@ def corner_controls(cfg: dict, embed: bool = False) -> dict:
         # the panel's code, so the gear would open nothing whichever way an
         # operator set it.
         "settings": False if embed else bool(cfg.get("show_settings_gear")),
+        # The operator's per-surface switch for the sign-in chip. Whether it
+        # actually SHOWS is decided per request (a code must exist and the
+        # caller must have a tier to climb to) — see _for_this_caller,
+        # `signinAvailable`, because that answer depends on the X-Call-Key and
+        # cannot ride the cached payload.
+        "signin": bool(cfg.get("embed_signin" if embed else "show_signin")),
     }
 
 
@@ -228,6 +234,12 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "liveCalls": bool(cfg.get("live_calls_enabled", True)),
         "vmBtn": bool(cfg.get("show_voicemail_button")),
         "embedVmBtn": bool(cfg.get("embed_voicemail_button")),
+        # The text line: enabled is the door's state (The Line's pause is
+        # applied widget-side like the other modes), the buttons are per
+        # surface like the voicemail pair.
+        "chatEnabled": bool(cfg.get("chat_enabled")),
+        "chatBtn": bool(cfg.get("show_chat_button")),
+        "embedChatBtn": bool(cfg.get("embed_chat_button")),
         "ptt": bool(cfg.get("show_push_to_talk")),
         "embedPtt": bool(cfg.get("embed_push_to_talk")),
         # The card's fixed strings, overrides only — the defaults live in
@@ -307,6 +319,17 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
         for k, v in (payload.get("askTiers") or {}).items()
     }
     out["callerTier"] = tier
+    # Is there a tier ABOVE this caller that a code could actually reach? The
+    # sign-in chip is pointless otherwise, so it only shows when signing in
+    # would change something: a guest code exists and the caller is a
+    # stranger, or an admin password exists and the caller is not yet admin.
+    import admin_auth
+    admin_set = admin_auth.is_set()
+    guest_set = admin_auth.guest_is_set()
+    out["signinAvailable"] = (
+        (tier == "open" and (guest_set or admin_set))
+        or (tier == "guest" and admin_set)
+    )
     return out
 
 

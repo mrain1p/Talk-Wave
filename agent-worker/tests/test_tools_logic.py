@@ -518,3 +518,59 @@ class TestMainToolLogic(_TempStores):
         )
         self.assertEqual(provider, "local")
         self.assertEqual(model, "base.en")  # nova-3 is not a local model
+
+
+class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):
+    """broadcast.py's wiring for the Ash overlap (2026-08-09): a confirmed
+    announce gets the hold sized from its words, a slow-to-confirm one gets
+    the PENDING hold — the station accepted it but had not aired it, so a
+    countdown from the tool's return measures the wrong thing, and the DJ
+    read the wrong number out loud ("about twelve seconds") before talking
+    over the delivery."""
+
+    class _Guard:
+        def __init__(self):
+            self.on_air_calls = []
+            self.pending_calls = []
+
+        def mark_on_air(self, secs=None, spoken=""):
+            self.on_air_calls.append(spoken)
+
+        def mark_pending_air(self, spoken=""):
+            self.pending_calls.append(spoken)
+
+        async def wait_until_clear(self, timeout=None):
+            return 0.0
+
+    class _Station:
+        def __init__(self, result):
+            self.result = result
+
+        async def dj_say(self, message, mode="styled", kind="callin"):
+            return dict(self.result)
+
+    def _announce(self, result):
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        guard = self._Guard()
+        built = build_on_air_tools(
+            {"allow_announcements": True}, self._Station(result),
+            CallActions(5), guard, guarded=True)
+        tools = {t.info.name: t for t in built}
+        out = asyncio.run(tools["subwave_dj_announce"](message="hello there"))
+        return guard, out
+
+    def test_a_confirmed_announce_gets_the_sized_hold(self):
+        guard, out = self._announce({"ok": True, "spoken": "hello there folks"})
+        self.assertEqual(guard.on_air_calls, ["hello there folks"])
+        self.assertEqual(guard.pending_calls, [])
+        self.assertIn("seconds", out)
+
+    def test_a_slow_confirmation_gets_the_pending_hold_and_no_number(self):
+        guard, out = self._announce({"ok": True, "unconfirmed": True})
+        self.assertEqual(guard.on_air_calls, [])
+        self.assertEqual(guard.pending_calls, ["hello there"])
+        # The DJ must not be handed a duration it would read out loud.
+        self.assertNotIn("seconds", out)
+        self.assertIn("slow to confirm", out)

@@ -658,6 +658,42 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         self.assertLess(waited, 1.0)
         self.assertTrue(guard._clear.is_set(), "the caller was left in silence")
 
+    def test_an_unconfirmed_action_holds_until_the_log_shows_it(self):
+        # The Ash call, 2026-08-09 (room 6d2fa6e55de3): an announce came back
+        # "slow to confirm", the sized hold ran from the tool's RETURN, and
+        # the station aired the delivery after it expired — over the DJ's
+        # next line. Sent-but-unconfirmed now waits for the log, not a guess.
+        guard = self._guard()
+        guard.mark_pending_air("hello out there")
+        self.assertFalse(guard._clear.is_set())
+        # A clean poll that shows nothing yet: still waiting.
+        self.assertTrue(guard._assess(None, poll_failed=False))
+        # The delivery reaching the log resolves the pending state, and from
+        # there the words size the hold like any other busy spell.
+        self.assertTrue(guard._assess((2.0, " ".join(["word"] * 60)), False))
+        self.assertEqual(guard._pending_until, 0.0)
+        self.assertFalse(guard._assess((999.0, "Quick station ID."), False))
+
+    def test_a_failing_poll_assumes_busy_only_while_pending(self):
+        # The congestion that made the confirmation slow was the same
+        # congestion failing the poll — "assume clear" on error was the
+        # second half of the Ash overlap. But without a pending delivery,
+        # a failed read still assumes clear: dead air over a routine miss
+        # is the older bug, and it stays fixed.
+        guard = self._guard()
+        self.assertFalse(guard._assess(None, poll_failed=True))
+        guard.mark_pending_air("hello")
+        self.assertTrue(guard._assess(None, poll_failed=True))
+
+    def test_the_pending_hold_expires_rather_than_gagging_the_call(self):
+        import time as _time
+
+        guard = self._guard()
+        guard.mark_pending_air("hello")
+        guard._pending_until = _time.time() - 0.1
+        self.assertFalse(guard._assess(None, poll_failed=True))
+        self.assertEqual(guard._pending_until, 0.0)
+
     def _watch(self, answers, stop_when):
         import asyncio
 

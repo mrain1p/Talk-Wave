@@ -79,8 +79,12 @@ async def send_on_air_callback(
 
     turns = transcript(session)
     caller_turns = sum(1 for role, _ in turns if role == "user")
-    if caller_turns < int(cfg.get("callback_min_turns", 2)):
-        log.info("skipping on-air handoff — only %d caller turn(s)", caller_turns)
+    need = int(cfg.get("callback_min_turns", 2))
+    if caller_turns < need:
+        # The threshold in the line, or the log reads as a bug on any box
+        # where the setting isn't the default — it did, on a 6-turn box.
+        log.info("skipping on-air handoff — only %d caller turn(s), needs %d",
+                 caller_turns, need)
         return
 
     max_words = int(cfg.get("callback_max_words", 30))

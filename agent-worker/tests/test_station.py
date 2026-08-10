@@ -355,6 +355,12 @@ class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
                 self.holds.append(secs)
                 self.spokens.append(spoken)
 
+            def mark_pending_air(self, spoken=""):
+                # The unconfirmed path: no countdown to record, only the fact
+                # that the gate closed until the log shows the delivery.
+                self.holds.append("pending")
+                self.spokens.append(spoken)
+
             async def wait_until_clear(self, timeout=None):
                 return 0.0
 
@@ -417,11 +423,15 @@ class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
         # hadn't gone out while it was audibly going out.
         import asyncio
 
-        tools, _, actions = self._tools(
+        tools, guard, actions = self._tools(
             self._station(ok=True, unconfirmed=True, spoken="On air now."))
         out = asyncio.run(tools["subwave_dj_announce"]("hello"))
         self.assertIn("gone through", out.lower())
         self.assertEqual(actions.count, 1)
+        # And since 0.10.17 the hold is PENDING, not a countdown from the
+        # tool's return — the delivery lands after that clock on a slow
+        # station, which is the Ash overlap of 2026-08-09.
+        self.assertEqual(guard.holds, ["pending"])
 
 
 class TestTheCardCacheHasOneHome(unittest.TestCase):

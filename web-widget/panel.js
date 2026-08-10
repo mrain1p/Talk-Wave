@@ -8,7 +8,7 @@
    Shared foundation comes from shared.js via the Callin global. */
 (function () {
   const {
-    $, ASKS, NEVER, CALL_KEY,
+    $, ASKS, ASK_GROUPS, NEVER, CALL_KEY,
     ctx, playSound, pack, setSounds, getVolume,
   } = window.Callin;
 
@@ -402,6 +402,8 @@
       ? $('live_calls_enabled').checked : !!resolved.live_calls_enabled;
     const vmOn2 = $('voicemail_enabled')
       ? $('voicemail_enabled').checked : !!resolved.voicemail_enabled;
+    const chatOn = $('chat_enabled')
+      ? $('chat_enabled').checked : !!resolved.chat_enabled;
     const mb = (id, on) => {
       const el = $(id);
       if (el) {
@@ -413,10 +415,11 @@
     };
     mb('modeLiveBtn', liveOn);
     mb('modeVmBtn', vmOn2);
+    mb('modeChatBtn', chatOn);
     // The two doors hang off the line itself: while it is paused nothing
     // answers whichever way they point — the server refuses the mint — so
     // they grey out and stop taking presses until the line reopens.
-    ['modeLiveBtn', 'modeVmBtn'].forEach((id) => {
+    ['modeLiveBtn', 'modeVmBtn', 'modeChatBtn'].forEach((id) => {
       if ($(id)) $(id).disabled = paused;
     });
 
@@ -444,12 +447,31 @@
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
-        liveNote.textContent = 'permissions — ' + canDo;
+        const vmFallback = vmOn2 && ((($('voicemail_when')
+          && $('voicemail_when').value) || resolved.voicemail_when) !== 'always');
+        const fallback = vmFallback && chatOn ? 'voicemail + text'
+          : vmFallback ? 'voicemail' : chatOn ? 'text line' : 'none';
+        liveNote.textContent = 'permissions — ' + canDo
+          + ' · fallback: ' + fallback;
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
-          + 'use, counted from the switches under Permissions & safety.';
+          + 'use, counted from the switches under Permissions & safety. '
+          + 'Fallback is what answers when a live call cannot start.';
       } else {
         liveNote.textContent = 'the booth picks up';
         $('modeLiveBtn').title = '';
+      }
+    }
+    const chatNote = cnOf('modeChatBtn');
+    if (chatNote) {
+      if (chatOn) {
+        const WHO2 = { open: 'open to anyone', guest: 'guest code needed',
+                       admin: 'admin only', off: 'no caller may use it' };
+        chatNote.textContent = (WHO2[permTier('allow_chat')] || 'open to anyone')
+          + ' · closes after '
+          + (($('chat_idle_minutes') && $('chat_idle_minutes').value)
+             || resolved.chat_idle_minutes || 30) + 'm quiet';
+      } else {
+        chatNote.textContent = 'typed chat with the booth';
       }
     }
     const vmNote = cnOf('modeVmBtn');
@@ -647,6 +669,7 @@
     };
     wire('modeLiveBtn', 'live_calls_enabled');
     wire('modeVmBtn', 'voicemail_enabled');
+    wire('modeChatBtn', 'chat_enabled');
   }
   bindModeButtons();
 
@@ -765,9 +788,9 @@
     if (!host) return;
     host.innerHTML = '';
     let on = 0;
-    ASKS.forEach((a) => {
+
+    const renderAsk = (a) => {
       const enabled = !a.need || permOn(a.need);
-      if (enabled) on++;
       // A tier view hides what that caller would never be offered — the
       // point is the caller's own menu, not the operator's inventory.
       if (askView !== 'all') {
@@ -806,6 +829,26 @@
         li.querySelector('.why').appendChild(chip);
       }
       host.appendChild(li);
+    };
+
+    // Count enabled over EVERY ask (the tag reads "N of M available"),
+    // separate from what the tier view chooses to draw.
+    ASKS.forEach((a) => { if (!a.need || permOn(a.need)) on++; });
+
+    // Grouped, with a heading per group that renders any row in the current
+    // view — the reads, the requests and the on-air actions are three
+    // different kinds of thing, and the flat list hid that.
+    ASK_GROUPS.forEach(([key, label, blurb]) => {
+      const before = host.children.length;
+      const head = document.createElement('li');
+      head.className = 'askhead';
+      head.innerHTML = '<span class="askheadname"></span><span class="askheadwhy"></span>';
+      head.querySelector('.askheadname').textContent = label;
+      head.querySelector('.askheadwhy').textContent = blurb || '';
+      host.appendChild(head);
+      ASKS.filter((a) => a.group === key).forEach(renderAsk);
+      // Nothing rendered under it in this view — drop the empty heading.
+      if (host.children.length === before + 1) host.removeChild(head);
     });
 
     // Always-off actions, listed once at the end so the boundary is visible

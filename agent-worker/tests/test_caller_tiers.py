@@ -205,3 +205,26 @@ class TestTheDoorDecidesTheTier(_TempStores):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheLadderLivesInOnePlace(unittest.TestCase):
+    """tier_reaches is the one spelling of open<guest<admin. It was a dict
+    literal in the voicemail gate and again in the chat gate — the duplicate
+    that drifts — and an unknown need fails CLOSED like normalise_tier."""
+
+    def test_the_ladder_answers_both_ways(self):
+        import settings as settings_store
+
+        self.assertTrue(settings_store.tier_reaches("open", "open"))
+        self.assertTrue(settings_store.tier_reaches("guest", "admin"))
+        self.assertFalse(settings_store.tier_reaches("admin", "guest"))
+        self.assertFalse(settings_store.tier_reaches("banana", "admin"))
+        self.assertTrue(settings_store.tier_reaches(None, "open"))
+
+    def test_no_gate_spells_the_ladder_out_again(self):
+        from pathlib import Path
+        here = Path(__file__).resolve().parent.parent
+        for name in ("api/tokens.py", "api/chat.py"):
+            src = (here / name).read_text(encoding="utf-8")
+            self.assertNotIn('"open": 0', src,
+                             f"{name} regrew its own copy of the ladder")

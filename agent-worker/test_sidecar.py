@@ -57,6 +57,8 @@ from tests.test_widget import (  # noqa: F401
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
     TestPushToTalkIsPerSurfaceAndOnByDefault,
+    TestSigningInClimbsTheTier,
+    TestTheAskMenuOffersEveryPermission,
     TestSoundPacks,
     TestTheCallButtonSaysWhatTheOperatorChose,
     TestTheCallButtonSurvivesTheUpgrade,
@@ -81,6 +83,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheUrlRowsOnlyExistInUrlMode,
 )
 from tests.test_caller_tiers import (  # noqa: F401
+    TestTheLadderLivesInOnePlace,
     TestATierIncludesTheOnesBelowIt,
     TestAnUnknownTierFailsClosed,
     TestTheDoorDecidesTheTier,
@@ -122,6 +125,7 @@ from tests.test_tools_surface import (  # noqa: F401
     TestTheDJDescribesRecordsItHasInformationAbout,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
 )
 from tests.test_music_tools import (  # noqa: F401
@@ -137,6 +141,7 @@ from tests.test_takeover import (  # noqa: F401
     TestTheStationEndpointsAreTheOnesUpstreamServes,
 )
 from tests.test_brain import (  # noqa: F401
+    TestTheDJKnowsTheStationsShows,
     TestACallerCanBeToldNothingIsKept,
     TestBrainSplit,
     TestCallerContext,
@@ -199,6 +204,12 @@ from tests.test_voicemail import (  # noqa: F401
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,
+)
+from tests.test_chat import (  # noqa: F401
+    TestChatsEndInsteadOfAccumulating,
+    TestOneAbuserIsSingledOut,
+    TestTheTextLineHasADoor,
+    TestTheTypedBrainIsTheSameBrainInADifferentRegister,
 )
 from tests.test_docs import (  # noqa: F401
     TestTheDocsKeepUpWithTheCode,

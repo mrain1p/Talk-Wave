@@ -251,10 +251,8 @@ async def handle_token(request: web.Request) -> web.Response:
                     {"error": "The booth doesn't take messages."}, status=403))
             # Who may use the machine, as a tier. The order is the caller
             # ladder; "off" grants nobody, and an unknown value fails closed.
-            need = str(cfg.get("allow_voicemail") or "open")
-            ladder = {"open": 0, "guest": 1, "admin": 2}
-            have = ladder.get(caller_tier(request), 0)
-            if need not in ladder or have < ladder[need]:
+            if not settings_store.tier_reaches(
+                    cfg.get("allow_voicemail"), caller_tier(request)):
                 return _cors(request, web.json_response(
                     {"error": "The booth doesn't take messages on this "
                               "line."}, status=403))

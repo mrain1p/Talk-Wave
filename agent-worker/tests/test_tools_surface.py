@@ -56,6 +56,13 @@ class TestExposedSurface(unittest.TestCase):
         # a record that already exists, keyed by a per-call room id the writer
         # had to have been handed.
         "POST /call-feedback": "public",
+        # The text line. "public" is this column's coarseness again: the
+        # route upgrades to a WebSocket and the FIRST FRAME carries the
+        # credentials a browser cannot put in WS headers — chat_enabled must
+        # be on, The Line unpaused, the guest ladder passed (allow_chat),
+        # and the ceilings held, all checked in api/chat before any LLM is
+        # touched. The gate is the same one /token holds, one frame later.
+        "GET /chat/ws": "public",
         # The station does not sign its webhooks, so this cannot be
         # authenticated. It is safe only because it treats the payload as
         # untrusted data: store it, bust caches, never act on its contents.

@@ -12,7 +12,9 @@ are re-read at the start of every call, so one boot serves them all.
     .venv\Scripts\python.exe tools\call_scenarios.py --list
 
 Scenarios: no-answer, flow, ptt, tools, idle, max-length, call-only,
-vm-only, vm-fallback.
+vm-only, vm-fallback, and the text line — chat-door, chat-flow,
+chat-resume, chat-brakes. The chat ones are WebSocket, no LiveKit, and
+finish in seconds where the voice scenarios take minutes.
 
 Safety: the stack is built here and only here — there is no way to point this
 at a deployment, and the runner aborts if LiveKit's port is already taken
@@ -534,6 +536,203 @@ async def s_vm_fallback(stack: Stack, wavs: dict) -> list[str]:
     return problems
 
 
+# --------------------------------------------------------------------------
+# The text line. No LiveKit, no audio — a WebSocket — so these run in seconds
+# where the voice scenarios take minutes, and prove the mode the browser
+# check only exercised by hand.
+
+class Chatter:
+    """A scripted text caller on /chat/ws."""
+
+    def __init__(self) -> None:
+        self.session = None
+        self.ws = None
+        self.chat_id = ""
+
+    async def open(self, chat_id: str = "", key: str = "") -> dict:
+        """Connect and say hello; returns the first frame (ready or refused)."""
+        import aiohttp
+
+        self.session = aiohttp.ClientSession()
+        self.ws = await self.session.ws_connect(
+            f"ws://localhost:{PORT}/chat/ws")
+        await self.ws.send_json({"type": "hello", "chat": chat_id, "key": key})
+        frame = await self._recv()
+        if frame.get("type") == "ready":
+            self.chat_id = frame.get("chat", "")
+        return frame
+
+    async def _recv(self) -> dict:
+        msg = await asyncio.wait_for(self.ws.receive(), 60)
+        try:
+            return json.loads(msg.data)
+        except Exception:
+            return {"type": "closed"}
+
+    async def say(self, text: str) -> dict:
+        """Send a message; drain deltas/actions and return the final frame
+        plus the collected action cards."""
+        await self.ws.send_json({"type": "msg", "text": text})
+        actions, reply = [], ""
+        while True:
+            frame = await self._recv()
+            t = frame.get("type")
+            if t == "action":
+                actions.append(frame)
+            elif t == "delta":
+                reply += frame.get("text", "")
+            elif t in ("done", "refused", "closed"):
+                frame["actions"] = actions
+                frame.setdefault("text", reply)
+                return frame
+
+    async def bye(self) -> None:
+        try:
+            await self.ws.send_json({"type": "bye"})
+            await self._recv()
+        except Exception:
+            pass
+
+    async def close(self) -> None:
+        try:
+            if self.ws:
+                await self.ws.close()
+            if self.session:
+                await self.session.close()
+        except Exception:
+            pass
+
+
+async def s_chat_door(stack: Stack, wavs: dict) -> list[str]:
+    """The gate, fast and LLM-free: off refuses, on with an open tier lets a
+    stranger in."""
+    problems = []
+    # The per-IP cooldown is real and shared across every scenario (one
+    # localhost), so anything not testing it turns it off, or the previous
+    # scenario's open brakes this one. chat-brakes owns that behaviour.
+    stack.write_settings({"chat_enabled": False, "chat_caller_cooldown_secs": 0})
+    off = Chatter()
+    try:
+        frame = await off.open()
+        if frame.get("type") != "refused":
+            problems.append(f"disabled line did not refuse: {frame}")
+    finally:
+        await off.close()
+
+    stack.write_settings({"chat_enabled": True, "allow_chat": "open",
+                          "chat_caller_cooldown_secs": 0})
+    on = Chatter()
+    try:
+        frame = await on.open()
+        if frame.get("type") != "ready":
+            problems.append(f"open line did not admit: {frame}")
+    finally:
+        await on.close()
+    return problems
+
+
+async def s_chat_flow(stack: Stack, wavs: dict) -> list[str]:
+    """A real typed exchange: a library question runs the search tool, the
+    reply is words, and ending the chat writes a kind:chat record with the
+    tool in it."""
+    stack.write_settings({"chat_enabled": True, "allow_chat": "open",
+                          "allow_library_search": True,
+                          "chat_caller_cooldown_secs": 0})
+    c = Chatter()
+    problems = []
+    try:
+        ready = await c.open()
+        if ready.get("type") != "ready":
+            return [f"chat did not open: {ready}"]
+        frame = await c.say("do you have anything by the Beatles in the library?")
+        if frame.get("type") != "done" or not frame.get("text", "").strip():
+            problems.append(f"no typed reply: {frame}")
+        cid = c.chat_id
+        await c.bye()
+    finally:
+        await c.close()
+    await asyncio.sleep(2)
+    rec = next((r for r in stack.records()
+                if str(r.get("room", "")).endswith(cid[-12:])), None)
+    if not rec:
+        problems.append("no chat record after bye")
+    elif rec.get("kind") != "chat":
+        problems.append(f"record kind={rec.get('kind')!r}, wanted chat")
+    elif not any(t["who"] == "caller" for t in rec.get("turns", [])):
+        problems.append("the caller's message never reached the record")
+    else:
+        # Whether the model chose to SEARCH is its discretion (Danny Boy may
+        # answer the Beatles from memory; Cliff may look). The tool->record
+        # path is pinned deterministically by test_chat's tool loop and the
+        # voice `tools` scenario — here we just report what ran.
+        tools = ", ".join(t["name"] for t in rec.get("tools", [])) or "none"
+        print(f"    reply landed, kind=chat, tools: {tools}")
+    return problems
+
+
+async def s_chat_resume(stack: Stack, wavs: dict) -> list[str]:
+    """A chat id resumes its transcript — the resumable-per-browser promise."""
+    stack.write_settings({"chat_enabled": True, "allow_chat": "open",
+                          "chat_caller_cooldown_secs": 0})
+    first = Chatter()
+    try:
+        await first.open()
+        await first.say("remember this word: pinecone")
+        cid = first.chat_id
+    finally:
+        await first.close()
+
+    second = Chatter()
+    try:
+        frame = await second.open(chat_id=cid)
+        turns = frame.get("turns", [])
+        if frame.get("type") != "ready" or cid != frame.get("chat"):
+            return [f"resume did not return the same chat: {frame.get('chat')}"]
+        if not any("pinecone" in t.get("text", "") for t in turns):
+            return ["the resumed chat did not replay its transcript"]
+    finally:
+        await second.bye()
+        await second.close()
+    print(f"    resumed {len(turns)} turns")
+    return []
+
+
+async def s_chat_brakes(stack: Stack, wavs: dict) -> list[str]:
+    """The per-IP cooldown singles out one caller: a second fresh open inside
+    the window is refused, and a resume of the FIRST chat still is not."""
+    stack.write_settings({"chat_enabled": True, "allow_chat": "open",
+                          "chat_caller_cooldown_secs": 0})
+    a = Chatter()
+    problems = []
+    try:
+        first = await a.open()          # cooldown off: this open always lands
+        cid = a.chat_id
+    finally:
+        await a.close()
+    if first.get("type") != "ready":
+        return [f"first open refused: {first}"]
+
+    stack.write_settings({"chat_enabled": True, "allow_chat": "open",
+                          "chat_caller_cooldown_secs": 60})
+    b = Chatter()
+    try:
+        second = await b.open()             # fresh open, same IP, within 60s
+        if second.get("type") != "refused":
+            problems.append("the per-IP cooldown did not brake a second open")
+    finally:
+        await b.close()
+
+    r = Chatter()
+    try:
+        resumed = await r.open(chat_id=cid)  # resuming is never braked
+        if resumed.get("type") != "ready":
+            problems.append(f"resume was wrongly braked: {resumed}")
+    finally:
+        await r.bye()
+        await r.close()
+    return problems
+
+
 SCENARIOS = {
     "no-answer": s_no_answer,
     "flow": s_flow,
@@ -544,6 +743,10 @@ SCENARIOS = {
     "call-only": s_call_only,
     "vm-only": s_vm_only,
     "vm-fallback": s_vm_fallback,
+    "chat-door": s_chat_door,
+    "chat-flow": s_chat_flow,
+    "chat-resume": s_chat_resume,
+    "chat-brakes": s_chat_brakes,
 }
 
 

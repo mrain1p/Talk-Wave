@@ -311,15 +311,30 @@ def _fmt_skills(skills: list) -> str:
     )
 
 
-def _fmt_schedule(schedule: dict, active_id: str) -> str:
-    """The rest of today's line-up, for "what's on after this?"."""
+def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str:
+    """The station's other shows, for "what's on after this?" — and, when the
+    caller may switch the station, for recognising a show by name at all.
+
+    Twelve, not the four it was: this station has eleven shows and The
+    Overlook was fifth, so a caller asking Wade for it by name got told, in
+    character, that no such show existed — two calls in a row (2026-08-09,
+    rooms ee3ef9616834 and 7046da2b9289). A roster the DJ can't see is a
+    takeover the caller has to fight for.
+    """
     shows = schedule.get("shows") or []
     names = [
         demojibake(s.get("name", ""))
         for s in shows
         if s.get("id") != active_id and s.get("name")
-    ][:4]
-    return "Other shows on this station: " + ", ".join(names) + "." if names else ""
+    ][:12]
+    if not names:
+        return ""
+    line = "Other shows on this station: " + ", ".join(names) + "."
+    if takeover:
+        line += (" A caller may ask to put one of these on the air for a "
+                 "while — that is what subwave_takeover_show is for, and "
+                 "these names are real.")
+    return line
 
 
 async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
@@ -340,8 +355,15 @@ async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
         _fmt_booth(snap["session"], int(cfg.get("context_booth_lines", 4)),
                    demojibake(show.get("name", "")), show.get("topic", "")),
     ]
-    if cfg.get("context_schedule"):
-        parts.append(_fmt_schedule(await station.schedule(), show.get("id", "")))
+    # The roster also rides in whenever takeover is allowed, whatever the
+    # context_schedule setting says: a caller who may switch the station to
+    # another show is talking to a DJ who must recognise that show's name.
+    # Wade refused The Overlook as caller nonsense because the permission was
+    # on and this line was off (2026-08-09). One schedule read per call, and
+    # the takeover tool reads it again anyway when used.
+    if cfg.get("context_schedule") or cfg.get("allow_takeover"):
+        parts.append(_fmt_schedule(await station.schedule(), show.get("id", ""),
+                                   takeover=bool(cfg.get("allow_takeover"))))
     # Only when segments are actually enabled — otherwise it's a list of things
     # the DJ is about to be told it can't do.
     if cfg.get("allow_skills"):

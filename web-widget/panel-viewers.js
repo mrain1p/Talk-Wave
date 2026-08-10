@@ -210,7 +210,8 @@
     // holds the last forty calls.
     sum.querySelector('.when').textContent = callTime(c.startedAt, 'short');
     sum.querySelector('.dj').textContent =
-      (c.kind === 'voicemail' ? '✉ Voicemail · ' : '')
+      (c.kind === 'voicemail' ? '✉ Voicemail · '
+        : c.kind === 'chat' ? '💬 Text chat · ' : '')
       + (c.persona?.name || 'DJ');
     sum.querySelector('.len').textContent = `${Math.round(c.durationSecs || 0)}s`;
     sum.querySelector('.did').textContent =

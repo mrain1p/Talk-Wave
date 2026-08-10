@@ -8,7 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    ASKS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
+    ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   } = window.Callin;
@@ -43,14 +43,24 @@
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
     set('gearBtn', c.settings !== false && !compact);
-    // Not the operator's switch: the lock exists exactly when this DEVICE
-    // holds a door code a passer-by could use. Kiosks are why.
-    set('lockBtn', !!(d && d.guestRequired) && !!callKey());
+    // Forget-the-code, shown whenever THIS device holds a stored code and
+    // there was a reason to enter one — the line demanded it (kiosks), or
+    // sign-in is on offer and the caller climbed a tier. Without the second
+    // case a caller who signed in on an open line had no way to sign back
+    // out. Forgetting drops them to the tier below on the next /live read.
+    set('lockBtn', !!callKey() && (!!(d && d.guestRequired) || c.signin !== false));
+    // Sign in for more: the operator's per-surface switch (c.signin), but
+    // only when a code exists AND there is a tier to climb to
+    // (d.signinAvailable, resolved per-request server-side). A caller already
+    // at the top, or a line with nothing gated, never sees it. The
+    // `!== false` form matches the other corner controls — show_signin
+    // defaults off, so the server always sends an explicit true/false here.
+    set('signinBtn', c.signin !== false && !!(d && d.signinAvailable));
   }
 
   $('lockBtn').onclick = () => {
     rememberCallKey('');
-    setStatus('Door code forgotten on this device');
+    setStatus('Signed out — the code is forgotten on this device');
     applyControls(shown || live);
     paintGuestGate();
     if (!room) refreshLive();
@@ -130,6 +140,32 @@
       applyThemeChoice(next);
     };
   })();
+
+  // "The station's own colours" follow the PROGRAMME — the server resolves
+  // the on-air show's palette on every /live — but the theme used to be
+  // applied only on the first read, so a show change mid-page left the card
+  // wearing the previous show's colours until a reload (operator-reported,
+  // 2026-08-09). Repaint on a poll ONLY when a genuinely new palette arrives
+  // AND the station look currently governs: the operator default with no
+  // viewer override, or the viewer's own explicit 'station' pick. A viewer
+  // pinned to light or dark is never repainted — that guard is why the
+  // first-read-only rule existed, and it survives here. A palette that goes
+  // NULL is a station read failing, not a show losing its colours (the
+  // station's default theme backstops `effective`), so nothing is stripped.
+  let lastPalette = '';
+  function followStationPalette(d) {
+    const tokens = d.stationTheme && d.stationTheme.tokens;
+    const key = tokens ? JSON.stringify(tokens) : '';
+    if (!tokens || key === lastPalette) { if (key) lastPalette = key; return; }
+    lastPalette = key;
+    const stored = localStorage.getItem('callinTheme') || '';
+    if (stored === 'station') {
+      applyThemeChoice('station');           // reads the fresh `live`
+    } else if (!stored && d.theme === 'station' && !themeForcedByHost) {
+      applyConfiguredTheme(d.theme, d.stationTheme);
+      paintThemeGlyph();
+    }
+  }
 
   function applyConfiguredTheme(choice, palette) {
     if (themeForcedByHost) return;              // the host page has decided
@@ -268,12 +304,23 @@
       }
     }
     host.innerHTML = '';
-    ASKS.filter((a) => !a.need || canAsk[a.need]).forEach((a) => {
-      const li = document.createElement('li');
-      li.innerHTML = '<span class="say"></span><span class="why"></span>';
-      li.querySelector('.say').textContent = a.say;
-      li.querySelector('.why').textContent = a.why;
-      host.appendChild(li);
+    // Grouped: a heading per group that has any offered item, so the reads,
+    // the requests and the on-air actions read as three different kinds of
+    // thing instead of one long menu.
+    ASK_GROUPS.forEach(([key, label]) => {
+      const items = ASKS.filter((a) => a.group === key && (!a.need || canAsk[a.need]));
+      if (!items.length) return;
+      const head = document.createElement('li');
+      head.className = 'askhead';
+      head.textContent = label;
+      host.appendChild(head);
+      items.forEach((a) => {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="say"></span><span class="why"></span>';
+        li.querySelector('.say').textContent = a.say;
+        li.querySelector('.why').textContent = a.why;
+        host.appendChild(li);
+      });
     });
   }
 
@@ -379,6 +426,9 @@
   const statusText = $('statusText'), dot = $('dot'), capBox = $('captions');
 
   let room = null, muted = false, live = null;
+  let chatOpen = false;                       // the text line, not a call
+  let signinMode = false;                     // the gate opened to climb a tier
+  let lastCanAsk = null;                       // rebuild the menu only on a tier change
   let djEl = null, rafId = null, streamEl = null;
 
   // `live` is what the server last said. `shown` is what is on the card,
@@ -753,6 +803,12 @@
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
     if (vmButton) $('vmBtn').textContent = word('vm_button', 'Leave a message');
+    // The text line's door, same rules as the machine's: the kill switch
+    // outranks it, the door code gates it, and it is per-surface. Never
+    // hidden mid-chat — the input row is the conversation.
+    const chatButton = !!d.chatEnabled && !lineClosedNow
+      && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode;
+    if ($('chatBtn')) $('chatBtn').hidden = !chatButton || chatOpen;
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
     if (lineClosedNow) {
@@ -781,7 +837,12 @@
 
   async function refreshLive() {
     try {
-      const r = await fetch('/live');
+      // Send the stored code so /live resolves canAsk, callerTier and the
+      // sign-in chip for THIS caller's tier — without it a caller holding a
+      // guest code still saw only the open-tier menu, because the server
+      // resolves tiers from this header and the widget never sent it.
+      const r = await fetch('/live', callKey()
+        ? { headers: { 'X-Call-Key': callKey() } } : undefined);
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
       const first = !live;
@@ -820,6 +881,24 @@
         setupAskPopup(d.canAsk);
         applyControls(d);
         paintThemeGlyph();
+        // Seeds the palette change-detector so the second poll does not
+        // read the load-time palette as a show change. Any tokens it re-sets
+        // are the ones the line above just applied.
+        followStationPalette(d);
+        lastCanAsk = JSON.stringify(d.canAsk || null);
+      } else {
+        followStationPalette(d);
+        // A tier change (signing in or out) changes what this caller may ask
+        // and which corner controls apply — rebuild those, but ONLY when the
+        // menu actually changed, so an ordinary poll never rebuilds the popup
+        // under the caller's finger. This is what makes sign-out drop the
+        // on-air group the same way sign-in added it.
+        const nowCanAsk = JSON.stringify(d.canAsk || null);
+        if (nowCanAsk !== lastCanAsk) {
+          lastCanAsk = nowCanAsk;
+          setupAskPopup(d.canAsk);
+          applyControls(d);
+        }
       }
       // The sound engine lives in shared.js and is fed rather than read from,
       // so the panel can preview a sound without borrowing the call's state.
@@ -919,7 +998,9 @@
   // fight over it.
   function paintGuestGate() {
     const box = $('guestGate');
-    if (box) box.hidden = !(live && live.guestRequired && !callKey());
+    // signinMode keeps the gate open when the caller opened it themselves to
+    // climb a tier — otherwise a poll's repaint would snap it shut mid-type.
+    if (box) box.hidden = !signinMode && !(live && live.guestRequired && !callKey());
     notifyHeight();
   }
 
@@ -945,10 +1026,57 @@
     } catch (e) { msg.textContent = 'Could not check that just now.'; }
   }
 
+  // The same code entry, opened deliberately to CLIMB a tier rather than
+  // because the line demanded a code to call. Any code the caller has —
+  // guest or the admin password — is tried the same way: store it, re-read
+  // /live (which resolves the tier from it), and keep it only if the tier
+  // actually rose. That accepts both without the widget needing to know
+  // which is which. (signinMode is declared with the other call state above.)
+  function openSignin() {
+    signinMode = true;
+    const box = $('guestGate'), input = $('guestPw'), msg = $('guestMsg');
+    if (box) box.hidden = false;
+    if (msg) msg.textContent = 'Enter the guest code or admin password to '
+      + 'unlock more of what you can ask for.';
+    if (input) { input.placeholder = 'Guest code or admin password'; input.focus(); }
+    notifyHeight();
+  }
+
+  async function submitSignin() {
+    const input = $('guestPw'), msg = $('guestMsg');
+    const pw = input.value.trim();
+    if (!pw) return;
+    const rank = { open: 0, guest: 1, admin: 2 };
+    const before = rank[(live && live.callerTier) || 'open'] || 0;
+    msg.textContent = 'Checking…';
+    rememberCallKey(pw);                 // store, then let /live judge the tier
+    await refreshLive();
+    const after = rank[(live && live.callerTier) || 'open'] || 0;
+    if (after > before) {
+      input.value = ''; msg.textContent = '';
+      $('guestGate').hidden = true;
+      signinMode = false;
+      const tier = (live && live.callerTier) || 'guest';
+      setStatus(tier === 'admin'
+        ? 'Signed in as admin — more options unlocked'
+        : 'Signed in — more options unlocked', 'connected');
+      // The ask menu and corner controls were already rebuilt by the
+      // refreshLive above (paintLive rebuilds on a canAsk change).
+    } else {
+      rememberCallKey('');               // a wrong code leaves nothing behind
+      await refreshLive();
+      msg.textContent = 'That code did not unlock anything — check it and try again.';
+    }
+  }
+
+  function gateSubmit() { return signinMode ? submitSignin() : submitGuestCode(); }
+
+  if ($('signinBtn')) $('signinBtn').onclick = openSignin;
+
   if ($('guestBtn')) {
-    $('guestBtn').onclick = submitGuestCode;
+    $('guestBtn').onclick = gateSubmit;
     $('guestPw').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') submitGuestCode();
+      if (e.key === 'Enter') gateSubmit();
     });
   }
 
@@ -1192,7 +1320,7 @@
 
   function addCaption(id, who, text, final) {
     if (!text) return;
-    if (captionsMode !== 'full') {
+    if (captionsMode !== 'full' && !chatOpen) {
       if (captionsMode === 'ticker') showTicker(who, text);
       return;
     }
@@ -1489,6 +1617,18 @@
         // here forgot the message button, and one refused call left the
         // card without its one working door until a reload.
         paintIdleButtons(live || {});
+        // A busy live line is exactly when the text line earns its keep, so
+        // offer it here even if the operator didn't put the permanent button
+        // on this surface — the same distinction voicemail draws between its
+        // always-on button and its fallback. Not on a 401 (the door code is
+        // the fix there) and not when the whole line is paused (chat is shut
+        // too). The button is hoisted-visible; tapping it opens the chat.
+        if (res.status === 429 && live && live.chatEnabled && !live.callsPaused
+            && $('chatBtn')) {
+          $('chatBtn').hidden = false;
+          setStatus((d.error || 'The booth line is tied up.')
+            + ' You can text the booth instead.', 'error');
+        }
         if (res.status === 401) {
           callBtn.hidden = false;
           callBtn.disabled = true;
@@ -1876,6 +2016,124 @@
   callBtn.onclick = () => {
     if (!room && !previewMode) startCall(callBtn.dataset.vm === '1');
   };
+  // ------------------------------------------------- the text line
+  // A chat is a WebSocket to /chat/ws and the same caption box the call
+  // writes — no LiveKit, no room, no microphone, which is exactly the point:
+  // it works where WebRTC cannot, and while the media server is down. The
+  // id in localStorage is what makes it resumable per browser; the server
+  // holds the transcript and replays it on hello.
+  let chatWs = null, chatPend = null, chatText = '', capSeq = 0;
+
+  function chatSay(who, text, final) {
+    addCaption('chat-' + (++capSeq), who, text, final !== false);
+  }
+
+  function openChat() {
+    if (chatOpen || previewMode) return;
+    chatOpen = true;
+    $('chatRow').hidden = false;
+    $('chatBtn').hidden = true;
+    document.querySelector('.linebox').classList.add('open');
+    capBox.classList.add('on');
+    setStatus('Opening the text line…', 'connected');
+    const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    chatWs = new WebSocket(scheme + location.host + '/chat/ws');
+    chatWs.onopen = () => chatWs.send(JSON.stringify({
+      type: 'hello',
+      chat: localStorage.getItem('callinChat') || '',
+      key: callKey() || '',
+    }));
+    chatWs.onmessage = (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (msg.type === 'ready') {
+        localStorage.setItem('callinChat', msg.chat || '');
+        (msg.turns || []).forEach((t) => chatSay(t.who === 'dj' ? 'dj' : 'you', t.text));
+        setStatus(msg.turns && msg.turns.length
+          ? 'Back on the text line' : 'Texting the booth — go ahead', 'connected');
+        $('chatInput').focus();
+      } else if (msg.type === 'refused') {
+        // A refused RESUME usually means the old chat aged out server-side:
+        // drop the id and let the next attempt start fresh.
+        setStatus(msg.error || 'The text line is closed', 'error');
+        if (localStorage.getItem('callinChat')) localStorage.removeItem('callinChat');
+      } else if (msg.type === 'action') {
+        addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
+      } else if (msg.type === 'delta') {
+        chatText += msg.text || '';
+        if (!chatPend) chatPend = 'chat-' + (++capSeq);
+        addCaption(chatPend, 'dj', chatText, false);
+      } else if (msg.type === 'done') {
+        addCaption(chatPend || ('chat-' + (++capSeq)), 'dj',
+                   msg.text || chatText, true);
+        chatPend = null; chatText = '';
+        setStatus('', 'connected');
+      } else if (msg.type === 'ended') {
+        // The server confirmed the close (record written, chat dropped).
+        // Fold the card back to idle; the transcript stays in the drawer.
+        resetChatUI('Chat ended');
+      }
+    };
+    chatWs.onclose = () => {
+      // A socket that drops on its own (network, server restart) is
+      // recoverable — the transcript is server-side and a resume replays it.
+      // A deliberate End cleared chatOpen already, so this says nothing then.
+      if (chatOpen) setStatus('Text line dropped — send to reconnect', 'error');
+      chatWs = null;
+    };
+  }
+
+  // End a chat deliberately: tell the server (which writes the record and
+  // drops the chat), forget the id so the next open is a fresh conversation,
+  // and fold the card back to idle. Safe to call with no socket — the reset
+  // is the part that always has to happen.
+  function endChat() {
+    if (chatWs && chatWs.readyState === 1) {
+      try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
+    }
+    localStorage.removeItem('callinChat');
+    resetChatUI('Chat ended');
+  }
+
+  function resetChatUI(note) {
+    chatOpen = false;
+    if (chatWs) { try { chatWs.close(); } catch (e) { /* already gone */ } chatWs = null; }
+    chatPend = null; chatText = '';
+    $('chatRow').hidden = true;
+    collapseTranscript();
+    if (note) setStatus(note);
+    // The idle card's doors — Call, and whichever of chat/voicemail the
+    // operator offers — come back from the live truth, not by hand.
+    paintIdleButtons(live || {});
+    notifyHeight();
+  }
+
+  function sendChat() {
+    const input = $('chatInput');
+    const text = (input.value || '').trim();
+    if (!text) return;
+    if (!chatWs || chatWs.readyState !== 1) { openChatSocket(); return; }
+    input.value = '';
+    chatSay('you', text);
+    setStatus('…', 'connected');
+    chatWs.send(JSON.stringify({ type: 'msg', text }));
+  }
+
+  // Reopen after a drop without losing what was typed — the hello replays
+  // the transcript, then the pending message goes on the next press.
+  function openChatSocket() {
+    chatOpen = false;
+    openChat();
+  }
+
+  if ($('chatBtn')) $('chatBtn').onclick = () => { if (!room) openChat(); };
+  if ($('chatSendBtn')) $('chatSendBtn').onclick = sendChat;
+  if ($('chatEndBtn')) $('chatEndBtn').onclick = endChat;
+  if ($('chatInput')) {
+    $('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+    });
+  }
+
   $('vmBtn').onclick = () => { if (!room && !previewMode) startCall(true); };
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };

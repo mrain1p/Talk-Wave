@@ -252,55 +252,77 @@ window.Callin = (function () {
   // Shared by the caller's card and the operator's panel, so the two can
   // never describe the phone differently. Defined above the compact
   // cut-off below because an embed needs it as much as the full page.
+  // Grouped by what the DJ actually DOES with the ask, because "reads the
+  // station and answers you" and "puts a show on air for every listener" are
+  // different kinds of thing and the flat list read as one undifferentiated
+  // menu (operator-reported). `group` keys into ASK_GROUPS below; entries are
+  // kept CONTIGUOUS by group so both renderers can emit a heading when the
+  // group changes without sorting. Order within a group is unchanged.
+  const ASK_GROUPS = [
+    ['talk', 'Just talk, or ask about the station',
+      'The DJ answers you — reading live station state or speaking from character. Nothing is changed and nothing goes to air.'],
+    ['request', 'Request music',
+      'A track, or a mood, era or likeness the station resolves into one. The main thing a caller does.'],
+    ['air', 'Put something on the air',
+      'Reaches everyone listening, not just the caller — so these are the permissions to hand out most carefully.'],
+    ['message', 'Leave a message',
+      'The answering machine, for when a live call is not what they want.'],
+  ];
   const ASKS = [
-    { need: 'allow_voicemail', say: '“Can I leave a message for the DJ?”',
-      why: 'The answering machine — available wherever the voicemail switches allow it.' },
-    { need: null, say: '“What’s playing right now?”',
+    // --- talk / ask about the station (reads + narrative) ---
+    { group: 'talk', need: null, say: '“What’s playing right now?”',
       why: 'Reads live station state — always available.' },
-    { need: null, say: '“What have you been playing tonight?”',
+    { group: 'talk', need: null, say: '“What have you been playing tonight?”',
       why: 'Recent history and what’s queued next.' },
-    { need: null, say: '“What’s on after this show?”',
+    { group: 'talk', need: null, say: '“What’s on after this show?”',
       why: 'The current show always; the rest of the line-up if “Know the rest of the line-up” is on.' },
-    { need: 'allow_requests', say: '“Can you play something slower?”',
+    { group: 'talk', need: null, say: '“Who is this? What’s the story behind this record?”',
+      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
+    { group: 'talk', need: null, say: '“How long have you been doing the night shift?”',
+      why: 'Answered in character from the DJ Card — no tool needed.' },
+    // --- request music ---
+    { group: 'request', need: 'allow_requests', say: '“Can you play something slower?”',
       why: 'Vague requests work — the station resolves them.' },
     // Deliberately the station's own request-slip vocabulary, so the phone and
     // the request drawer teach callers the same things.
-    { need: 'allow_requests', say: '“Something for late-night driving.”',
+    { group: 'request', need: 'allow_requests', say: '“Something for late-night driving.”',
       why: 'A mood, an occasion or an era goes to the station’s picker, not a name search.' },
-    { need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
+    { group: 'request', need: 'allow_requests', say: '“More like this one.” / “Surprise me.”',
       why: 'Follow-ons and open picks are valid requests on their own.' },
-    { need: 'allow_requests', say: '“Something from the late seventies?”',
+    { group: 'request', need: 'allow_requests', say: '“Something from the late seventies?”',
       why: 'An era is a request like any other — no track name needed.' },
-    { need: 'allow_requests', say: '“More like this one.” / “Anything similar to Fleetwood Mac?”',
+    { group: 'request', need: 'allow_requests', say: '“Anything similar to Fleetwood Mac?”',
       why: 'The station matches on feel, not just on title.' },
-    { need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
+    { group: 'request', need: 'allow_requests', say: '“Can you keep it mellow for the next few?”',
       why: 'A run of requests in one mood — capped by the per-call action limit.' },
-    { need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
+    { group: 'request', need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
       why: 'Searches the real library before promising anything.' },
-    { need: 'allow_exact_queue', say: '“The second one — the live version.”',
+    { group: 'request', need: 'allow_exact_queue', say: '“The second one — the live version.”',
       why: 'Queues that exact recording from the search results, not a re-match.' },
-    { need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
+    { group: 'request', need: 'allow_requests', say: '“Where’s my song in the running order?”',
+      why: 'Reads its real position — “third up, about ten minutes” rather than a guess.' },
+    // --- on the air (reaches every listener) ---
+    { group: 'air', need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
       why: 'Hands a line to the on-air DJ to read in persona.' },
-    { need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
+    { group: 'air', need: 'allow_announcements', say: '“Tell everyone what we just talked about.”',
       why: 'Puts the gist of the call on air.' },
-    { need: 'allow_skills', say: '“What’s the weather doing?” / “Any news?”',
+    { group: 'air', need: 'allow_skills', say: '“What’s the weather doing?” / “Any news?”',
       why: 'Runs the station’s own weather or news segment.' },
-    { need: 'allow_skills', say: '“Give my mate a dedication.”',
+    { group: 'air', need: 'allow_skills', say: '“Give my mate a dedication.”',
       why: 'Runs the dedication or shoutout segment.' },
-    { need: 'allow_skills', say: '“Tell us a story about the old days.”',
+    { group: 'air', need: 'allow_skills', say: '“Tell us a story about the old days.”',
       why: 'Story time / remembrance segments, in the DJ’s own voice.' },
-    // The three station-wide ones. Each says who it lands on, because that is
-    // the whole difference between this group and everything above it.
-    { need: 'allow_skip_track', say: '“Can you skip this one?”',
+    { group: 'air', need: 'allow_skip_track', say: '“Can you skip this one?”',
       why: 'Ends the record for EVERYONE listening, not just the caller.' },
-    { need: 'allow_dj_segment', say: '“Do the station ident.” / “Read the time.”',
+    { group: 'air', need: 'allow_dj_segment', say: '“Do the station ident.” / “Read the time.”',
       why: 'Fires a programme beat on air — a station ID, the hour, a link.' },
-    { need: 'allow_takeover', say: '“Any chance of putting the late show on?”',
+    { group: 'air', need: 'allow_takeover', say: '“Any chance of putting the late show on?”',
       why: 'Puts a different DJ on air for everyone, for an hour, from the end of this record.' },
-    { need: null, say: '“Who is this? What’s the story behind this record?”',
-      why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
-    { need: null, say: '“How long have you been doing the night shift?”',
-      why: 'Answered in character from the DJ Card — no tool needed.' },
+    { group: 'air', need: 'allow_takeover', say: '“Actually, put it back to normal.”',
+      why: 'Cancels a show takeover early and hands the schedule back — same permission as setting one.' },
+    // --- leave a message ---
+    { group: 'message', need: 'allow_voicemail', say: '“Can I leave a message for the DJ?”',
+      why: 'The answering machine — available wherever the voicemail switches allow it.' },
   ];
 
   // The other half of the truth: what a caller CANNOT do, and why. Without
@@ -325,7 +347,7 @@ window.Callin = (function () {
 
   return {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    ASKS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
+    ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   };

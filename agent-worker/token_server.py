@@ -74,6 +74,7 @@ from api.sounds import (
     handle_sound_lib,
     handle_sound_meta,
 )
+from api.chat import handle_chat_ws
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
 from api.widget import WIDGET_DIR, _assets, handle_index
 from api.wire import handle_options
@@ -89,6 +90,7 @@ def build_app() -> web.Application:
     app.router.add_post("/token", handle_token)
     app.router.add_post("/call-ended", handle_call_ended)
     app.router.add_post("/call-feedback", handle_call_feedback)
+    app.router.add_get("/chat/ws", handle_chat_ws)
     app.router.add_post("/hooks/station", handle_station_hook)
     app.router.add_get("/hooks/recent", handle_hooks_recent)
     # Asks the station to push at us and waits for it to arrive — the only

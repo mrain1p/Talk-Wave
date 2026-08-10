@@ -21,7 +21,7 @@ from brain.briefing import (
 
 async def build_system_prompt(
     station: StationClient, persona: dict, snapshot: dict | None = None,
-    cfg: dict | None = None,
+    cfg: dict | None = None, mode: str = "call",
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -102,8 +102,23 @@ async def build_system_prompt(
         if style_bits else ""
     )
 
-    return f"""You are {name}, a DJ on {station_name}, and a listener has \
-just called in to the booth. You are live, on a phone call, talking with them out loud.
+    # Two media, one brain: the facts and identity are shared; the opening
+    # line and the conduct are the medium's. `mode="chat"` is the typed line
+    # (brain/conduct_chat) — same facts, different physics.
+    if mode == "chat":
+        from brain import conduct_chat
+
+        opening = (f"You are {name}, a DJ on {station_name}, and a listener "
+                   "has opened the station's text line to the booth. You are "
+                   "live on air; this conversation is typed.")
+        the_rules = conduct_chat.rules(cfg)
+    else:
+        opening = (f"You are {name}, a DJ on {station_name}, and a listener has "
+                   "just called in to the booth. You are live, on a phone call, "
+                   "talking with them out loud.")
+        the_rules = conduct.rules(cfg)
+
+    return f"""{opening}
 
 # Who you are
 {dj_card}
@@ -111,4 +126,4 @@ just called in to the booth. You are live, on a phone call, talking with them ou
 # What's happening on the station right now
 {facts}
 
-{conduct.rules(cfg)}"""
+{the_rules}"""

@@ -66,6 +66,16 @@ class OnAirGuard:
         # announcement — observed on a real call, right after it had said it
         # was going off to air something.
         self._assumed_until = 0.0
+        # An action the station accepted but had not CONFIRMED when the tool
+        # returned. The fixed window above is anchored to the tool's return,
+        # and on a slow station the delivery lands after it — the Ash call of
+        # 2026-08-09: a 12s hold from an unconfirmed announce expired, the DJ
+        # spoke, and the announcement aired over it. While this deadline is
+        # live the gate stays shut until the station's log actually SHOWS the
+        # delivery (then the words size the hold as normal), and a failing
+        # poll means "assume busy", not clear — the same congestion that made
+        # the confirmation slow was blinding the poll.
+        self._pending_until = 0.0
         # Whether the caller heard a hand-over line for the current busy spell.
         # Only then is there anything to come back FROM: the gate also closes
         # for a caller who dialled in mid-link, and "I'm back" to them is a
@@ -96,6 +106,25 @@ class OnAirGuard:
             self.on_air = True
             self._publish(True)
             log.info("our own action is going out on air — holding the call DJ back")
+
+    PENDING_CEILING = 90.0   # an unconfirmed delivery is given this long to appear
+
+    def mark_pending_air(self, spoken: str = "") -> None:
+        """The station took our action but was too slow to confirm it, so
+        nothing says when it will air. No countdown — the gate stays shut
+        until the poll sees the delivery in the station's log, or the
+        ceiling decides it is never coming."""
+        self._pending_until = max(self._pending_until,
+                                  time.time() + self.PENDING_CEILING)
+        if spoken:
+            self.aired_text = str(spoken)
+        self.stepped_away = True
+        if self._clear.is_set():
+            self._clear.clear()
+            self.on_air = True
+            self._publish(True)
+        log.info("our action was sent but not confirmed — holding until the "
+                 "station's log shows it (up to %.0fs)", self.PENDING_CEILING)
 
     def _publish(self, on_air: bool) -> None:
         """Tell the widget, so the caller sees "DJ is on air" rather than a
@@ -172,6 +201,32 @@ class OnAirGuard:
             except Exception:
                 pass
 
+    def _assess(self, speech: tuple[float, str] | None,
+                poll_failed: bool = False) -> bool:
+        """One call's answer to "is the air busy right now", from everything
+        the guard knows. Split from the watch loop so the pending-delivery
+        rules are testable without running the loop.
+
+        The pending deadline resolves the moment the log shows speech — from
+        then on the words size the hold like any other busy spell — and
+        expires with a warning if the delivery never appears: dead air is
+        still worse than an overlap, it just gets a real chance first.
+        """
+        now = time.time()
+        log_busy = self._log_says_busy(speech)
+        if self._pending_until:
+            if log_busy:
+                # The delivery reached the log; the normal machinery owns it.
+                self._pending_until = 0.0
+            elif now >= self._pending_until:
+                log.warning("a sent-but-unconfirmed action never appeared in "
+                            "the station log — releasing the hold")
+                self._pending_until = 0.0
+            # A clean read showing nothing, or a failed read: still waiting,
+            # same hold — the deadline below carries both.
+        return (log_busy or now < self._assumed_until
+                or now < self._pending_until)
+
     def _log_says_busy(self, speech: tuple[float, str] | None) -> bool:
         """Whether the station's log says its DJ is still talking.
 
@@ -199,15 +254,25 @@ class OnAirGuard:
         # broadcast that was already running when they picked up the phone.
         first = True
         while True:
+            poll_failed = False
             try:
                 speech = await self.station.on_air_speech()
             except asyncio.CancelledError:
                 return
             except Exception as e:
-                log.debug("on-air check failed (assuming clear): %s", e)
+                # Clear is the right default for a routine miss — but not
+                # while a delivery is pending: the congestion that made the
+                # confirmation slow is the same congestion failing this read,
+                # and "assume clear" here is how the Ash call talked over its
+                # own announcement.
+                log.debug("on-air check failed%s: %s",
+                          " (holding — a delivery is pending)"
+                          if time.time() < self._pending_until
+                          else " (assuming clear)", e)
                 speech = None
+                poll_failed = True
 
-            busy = self._log_says_busy(speech) or time.time() < self._assumed_until
+            busy = self._assess(speech, poll_failed)
             if busy != self.on_air:
                 self.on_air = busy
                 self._publish(busy)
