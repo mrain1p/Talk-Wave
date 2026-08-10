@@ -550,3 +550,36 @@ class TestATimingOutStationKeepsTheRightDJ(unittest.TestCase):
         c = self._client()
         out = c.persona_from({}, [])
         self.assertEqual(out["name"], "the DJ")
+
+
+class TestATimingOutStationKeepsTheRightVoice(unittest.TestCase):
+    """Same shape as the persona cache, one layer down: when the station's
+    /settings ReadTimeout'd, the voice mirror came back empty and a caller
+    heard the WRONG DJ's voice (-Brock1 for Cliff), because the fallback was
+    the TTS server's first voice. The last mirrored map is remembered on disk
+    and reused on a timeout instead."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        import station_config
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = station_config._VOICE_CACHE
+        station_config._VOICE_CACHE = Path(self._tmp.name) / "last-voices.json"
+
+    def tearDown(self):
+        import station_config
+        station_config._VOICE_CACHE = self._old
+        self._tmp.cleanup()
+
+    def test_a_good_mirror_is_remembered_and_a_timeout_recalls_it(self):
+        import station_config
+
+        station_config._remember_voices({"p_cliff": "-Cliff1"})
+        self.assertEqual(station_config._recall_voices(), {"p_cliff": "-Cliff1"})
+
+    def test_nothing_on_record_recalls_nothing(self):
+        import station_config
+
+        self.assertIsNone(station_config._recall_voices())

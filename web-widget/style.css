@@ -330,7 +330,14 @@
      sharing the row with Hang up mid-call — some path had raced the hidden
      attribute — and a class the connect/end pair owns cannot be raced by a
      poll repaint. */
+  /* On a call or a voicemail, the action row is just Hang up, full width.
+     Call and Leave-a-message have nothing to do mid-call; the text line does
+     not either — you are already on the line — and leaving its button up put
+     a second, differently-sized button on the row (operator-reported). The
+     text-instead fallback still appears when a call FAILS, which is not a
+     call in progress. */
   .card.oncall .actionrow #callBtn,
+  .card.oncall .actionrow #chatBtn,
   .card.oncall .actionrow #vmBtn { display: none; }
 
   /* Button, state pill and timer share one row — every status lives beside
@@ -338,27 +345,35 @@
      absent or a bordered block of its own, and a rule that sometimes ends the
      card and sometimes doesn't is worse than no rule. */
   .actionrow {
-    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 9px; flex-wrap: nowrap;
     padding: 9px 0 0;
   }
   /* Slimmer than every other control, on purpose — see --action-h. The id
      selectors are here to out-specify #callBtn's own state rules, which pin
      the control height while a call is being placed; a bare .actionrow
      button would lose to them and the row would change height at pickup. */
-  .actionrow #callBtn, .actionrow #callBtn:disabled, .actionrow .pill {
+  /* All three idle doors share ONE height — Call was --action-h (slim) while
+     Text and Message stayed the default 31px, so they sat at different
+     heights on the same row (operator-reported). --action-h for all three. */
+  .actionrow #callBtn, .actionrow #callBtn:disabled, .actionrow .pill,
+  .actionrow #chatBtn, .actionrow #vmBtn {
     height: var(--action-h);
   }
-  /* Idle, the doors share the row EVENLY — Call, and whichever of Text /
-     Message the operator offers. They used to size to their labels, so two
-     or three doors came out three unrelated widths ("Call the DJ" 121px,
-     "Leave a message" 152px) and read as a mistake. flex:1 with min-width:0
-     makes 1, 2 or 3 fill the row at equal width. The state guard on Call
-     keeps ringing/answering/live at their own widths. Hang up (in-call) is
-     handled separately below. */
+  /* Idle, the doors — Call, and whichever of Text / Message the operator
+     offers — sit on ONE row and size to their CONTENT (operator's ask): with
+     mixed styles (Call as emoji+word, Text and Message as bare emoji) an
+     emoji button is naturally narrow and a worded one wider, which reads
+     right. They may grow to share slack but never wrap to a second row. */
   .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   .actionrow #chatBtn:not([hidden]),
   .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 0; min-width: 0;
+    flex: 1 1 auto; min-width: 0;
+  }
+  /* The emoji on a button: larger than the word beside it and de-saturated
+     to a quiet, near-neutral mark rather than a loud colour block. */
+  .actionrow .btnemoji, .chatrow .btnemoji {
+    font-size: 1.35em; line-height: 1; vertical-align: -0.08em;
+    filter: grayscale(1); opacity: .8;
   }
   /* Square, transparent, hairline-bordered, control height. Colour carries
      state; fill never does (§4.4) — the only filled thing in any state is the
@@ -549,6 +564,14 @@
 
   /* The state row sits above the words it describes. */
   .staterow { display: flex; align-items: center; gap: 9px; padding: 9px 0 0; }
+  /* On the STANDALONE page — never an embed — an empty state row is just
+     blank space above the words (operator-reported, the gap over "Reaching
+     the booth"). The reserved-height trick that keeps it exists to stop an
+     EMBED jumping inside a host layout; the full page has no host to protect,
+     so collapse the row when idle. The small shift when a call starts is
+     invisible on a page that is only this card. Embeds keep the reservation. */
+  body:not(.compact) .staterow .pill[hidden] { display: none; }
+  body:not(.compact) .staterow:not(:has(.pill:not([hidden]))) { padding: 0; }
 
   /* Same reasoning as the volume slider above: these rows' heights are
      paid for on every idle embed, whether or not anybody is on a call. */
@@ -1175,12 +1198,18 @@
     border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
     display: grid; gap: 10px;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
-    grid-template-areas: "trans live" "trans vm" "station station";
+    /* Transmission spans the left; the three MODES — live calls, voicemail,
+       the text line — stack on the right as parallel switch+traffic cards;
+       Station's read-only tiles run full width underneath. The text line
+       used to have no grid-area at all, so it fell out of the grid and sat
+       orphaned below everything (operator-reported "ugly"). */
+    grid-template-areas: "trans live" "trans vm" "trans chat" "station station";
     align-items: stretch;
   }
   .dash > .transmission { grid-area: trans; }
   .dash > .livegroup { grid-area: live; }
   .dash > .vmgroup { grid-area: vm; }
+  .dash > .chatgroup { grid-area: chat; }
   .dash > .stationgroup { grid-area: station; }
   .dashgroup {
     border: 1px solid var(--line2); border-radius: 10px;
@@ -1195,7 +1224,7 @@
   @media (max-width: 940px) {
     .dash {
       grid-template-columns: 1fr;
-      grid-template-areas: "trans" "live" "vm" "station";
+      grid-template-areas: "trans" "live" "vm" "chat" "station";
     }
   }
   @media (max-width: 700px) {
@@ -2275,25 +2304,18 @@
      and a 31px chip beside them read as belonging to a different page. With
      the machine's second door up, the two share the row instead. */
   /* Idle in an embed, the doors are ~44px to match the host page's own
-     bottom-row buttons (Send, Listen Live), and they WRAP rather than
-     overflow: two per row, a third dropping to its own full-width row. The
-     old rules special-cased exactly call+voicemail and broke the moment a
-     third door (Text) appeared — three buttons ran off the edge at three
-     different widths. flex-basis 42% is what makes two share a row and the
-     third wrap cleanly. */
-  body.compact .actionrow { flex-wrap: wrap; gap: 8px; }
+     bottom-row buttons (Send, Listen Live), and they stay on ONE row,
+     content-sized — an emoji door is narrow, a worded one wider — shrinking
+     to share the width rather than wrapping to a second row (operator's ask:
+     these three actions on one line). */
+  body.compact .actionrow { flex-wrap: nowrap; gap: 8px; }
   body.compact .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   body.compact .actionrow #chatBtn:not([hidden]),
   body.compact .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 42%; width: auto; min-width: 0; height: 44px;
+    flex: 1 1 auto; width: auto; min-width: 0; height: 44px;
     font-size: 11px; padding: 0 10px;
   }
-  /* Alone, Call is the frame's one action and takes the whole row. */
-  body.compact .actionrow:not(:has(#chatBtn:not([hidden]))):not(:has(#vmBtn:not([hidden])))
-    #callBtn:not(.ringing):not(.answering):not(.live) {
-    flex-basis: 100%; font-size: 12px;
-  }
-  body.compact #hangBtn { height: 44px; flex-basis: 100%; }
+  body.compact #hangBtn { height: 44px; flex: 1 1 auto; }
   body.compact .ticker .line { -webkit-line-clamp: 2; }
   /* THE HEIGHT BUDGET. A real station page gives its player column 400px and
      stretches its own marquee to match whatever this frame reports — every
