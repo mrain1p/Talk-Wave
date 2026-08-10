@@ -250,3 +250,87 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
                    if getattr(i, "type", "") == "function_call_output"]
         self.assertEqual(len(outputs), 1)
         self.assertIn("probe saw hello", outputs[0].output)
+
+
+class TestTheTextLineFeelsLikeAConversation(_TempStores):
+    """The text line was answering with silence until the caller typed, never
+    confirming what an action actually did, and giving no sign it was
+    composing — all reported as "requests go nowhere and it doesn't feel like
+    a conversation". The booth greets first, reports outcomes, and shows a
+    typing cue."""
+
+    def test_report_the_outcome_rule_is_in_the_typed_prompt(self):
+        from brain import conduct_chat
+
+        text = conduct_chat.rules({})
+        self.assertIn("Close the loop", text)
+        # The concrete instruction that fixes "it never confirmed what
+        # happened": wait for the tool result, and say plainly if it failed.
+        self.assertIn("Wait for the tool's result", text)
+
+    def test_the_defaults_greet_and_time_out(self):
+        # A silent line reads as broken, so greeting is ON by default; and a
+        # stalled model must not spin a typing dot forever, so a reply timeout
+        # exists by default.
+        self.assertEqual(settings_store.FIELDS["chat_greeting_mode"][1], "canned")
+        self.assertGreater(int(settings_store.FIELDS["chat_reply_timeout_secs"][1]), 0)
+
+    def test_a_canned_greeting_speaks_first_in_the_djs_name(self):
+        from chat import session as chat_session
+
+        persona = {"name": "Dalia", "station": "SUB/WAVE"}
+
+        class _FakeStation:
+            async def resolve_live_persona(self):
+                return persona
+
+            async def aclose(self):
+                pass
+
+        orig = chat_session.StationClient
+        chat_session.StationClient = lambda *a, **k: _FakeStation()
+        try:
+            chat = chat_session.ChatSession("g1", "open")
+            events = []
+            asyncio.run(chat.greet(
+                {"chat_greeting_mode": "canned", "chat_greeting": "Hey, {dj} here."},
+                events.append))
+        finally:
+            chat_session.StationClient = orig
+
+        self.assertTrue(any("Dalia" in (e.get("text") or "") for e in events),
+                        "the canned greeting should fill the on-air DJ's name")
+        self.assertEqual(events[-1]["type"], "done")
+        self.assertEqual(chat.turns[-1], ("dj", "Hey, Dalia here."))
+
+    def test_greeting_off_stays_silent(self):
+        from chat import session as chat_session
+
+        chat = chat_session.ChatSession("g2", "open")
+        events = []
+        asyncio.run(chat.greet({"chat_greeting_mode": "off"}, events.append))
+        self.assertEqual(events, [])
+        self.assertEqual(chat.turns, [])
+
+    def test_the_handler_wraps_a_turn_with_a_typing_cue_and_a_timeout(self):
+        import inspect
+
+        from api import chat as chat_api
+
+        src = inspect.getsource(chat_api)
+        self.assertIn('"type": "typing"', src)      # the cue is emitted
+        self.assertIn("chat_reply_timeout_secs", src)  # the hang-guard is applied
+        self.assertIn("wait_for", src)
+
+    def test_the_widget_shows_and_clears_the_typing_cue(self):
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("function showTyping", js)
+        self.assertIn("function hideTyping", js)
+        self.assertIn("msg.type === 'typing'", js)
+        # Cleared the moment real words or an action card arrive, so it never
+        # overlaps the text it stood in for.
+        self.assertIn("hideTyping()", js)
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertIn("typedots", css)

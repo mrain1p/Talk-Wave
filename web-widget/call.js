@@ -2145,9 +2145,36 @@
     addCaption('chat-' + (++capSeq), who, text, final !== false);
   }
 
+  // The typing cue: a DJ line whose text is three pulsing dots, appended to
+  // the transcript while the booth composes and removed the instant real
+  // words or an action card land. One at a time — hidden before shown.
+  function showTyping() {
+    hideTyping();
+    capBox.classList.add('on');
+    const node = document.createElement('p');
+    node.className = 'cap dj typing';
+    node.id = 'chatTyping';
+    node.innerHTML = '<span class="who">DJ</span>'
+      + '<span class="said"><span class="typedots" aria-label="typing">'
+      + '<i></i><i></i><i></i></span></span>';
+    capBox.appendChild(node);
+    capBox.scrollTop = capBox.scrollHeight;
+    notifyHeight();
+  }
+  function hideTyping() {
+    const n = document.getElementById('chatTyping');
+    if (n) n.remove();
+  }
+
   function openChat() {
     if (chatOpen || previewMode) return;
     chatOpen = true;
+    // Start the transcript clean: a chat opened after a previous one closed
+    // would otherwise show the old conversation's lines under the new
+    // greeting. A resumed chat repaints its own turns from the server's
+    // `ready` a moment later, so clearing here loses nothing.
+    capBox.innerHTML = '';
+    capNodes.clear();
     // The text line owns the card now: only the transcript, the input and
     // Close. The mode hides the meters, the talk bar and the Call/Message
     // doors that used to stack under the input and make the card huge.
@@ -2181,18 +2208,28 @@
         // drop the id and let the next attempt start fresh.
         setStatus(msg.error || 'The text line is closed', 'error');
         if (localStorage.getItem('callinChat')) localStorage.removeItem('callinChat');
+      } else if (msg.type === 'typing') {
+        // The booth is composing: a moving dot by the DJ's name, so a typed
+        // reply that takes a second doesn't read as nothing happening (the
+        // "requests go nowhere" feeling). Cleared the moment real words or an
+        // action card arrive.
+        showTyping();
       } else if (msg.type === 'action') {
+        hideTyping();
         addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
       } else if (msg.type === 'delta') {
+        hideTyping();
         chatText += msg.text || '';
         if (!chatPend) chatPend = 'chat-' + (++capSeq);
         addCaption(chatPend, 'dj', chatText, false);
       } else if (msg.type === 'done') {
+        hideTyping();
         addCaption(chatPend || ('chat-' + (++capSeq)), 'dj',
                    msg.text || chatText, true);
         chatPend = null; chatText = '';
         setStatus('', 'connected');
       } else if (msg.type === 'ended') {
+        hideTyping();
         // The server confirmed the close (record written, chat dropped).
         // Fold the card back to idle; the transcript stays in the drawer.
         resetChatUI('Chat ended');

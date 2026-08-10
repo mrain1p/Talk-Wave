@@ -194,6 +194,16 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "chats_per_day":         (None, 0),
     "chat_caller_cooldown_secs": (None, 30),
     "chat_msgs_per_minute":  (None, 10),
+    # The booth opens the conversation when a fresh chat connects, the way the
+    # machine greets a voicemail — a text line that answers with silence until
+    # the caller types first reads as broken. "canned" formats the line below
+    # (fast, no model cost); "fresh" writes one in persona at open; "off" waits
+    # for the caller. The response ceiling in seconds is the hang-guard: a model
+    # that never answers should not leave the caller watching a typing dot
+    # forever.
+    "chat_greeting_mode":    (None, "canned"),
+    "chat_greeting":         (None, ""),
+    "chat_reply_timeout_secs": (None, 45),
     "voicemail_greeting":    (None, ""),
     "voicemail_greeting_mode": (None, "staged"),
     "voicemail_max_seconds": (None, 30),
@@ -884,6 +894,22 @@ SCHEMA: dict[str, dict] = {
         label="Messages per minute",
         help="Per chat. A human types a handful; a script does not. The "
              "excess is refused in-world, not queued."),
+    "chat_greeting_mode": dict(group="chat", kind="select",
+        label="Open with a greeting",
+        help="Whether the booth speaks first when a caller opens a fresh text "
+             "line — a silent line reads as broken. “Canned” sends the line "
+             "below (instant, no model cost); “Written each time” has the DJ "
+             "write one in persona at open; “Off” waits for the caller."),
+    "chat_greeting": dict(group="chat", kind="text",
+        label="Canned greeting",
+        placeholder="You're through to the booth — what's on your mind?",
+        help="The opening line for “Canned”. Blank uses a sensible default in "
+             "the DJ's name. Takes {station}, {dj} and {show}, filled live."),
+    "chat_reply_timeout_secs": dict(group="chat", kind="number",
+        label="Reply timeout (s)",
+        help="How long the DJ may take to answer one message before the line "
+             "gives up and says so, so a stalled model never leaves the caller "
+             "watching a typing dot forever. 0 = wait indefinitely."),
     "show_theme_toggle": dict(group="player", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "
@@ -1341,6 +1367,11 @@ RANDOM_PERSONA = "__random__"
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
+    "chat_greeting_mode": [
+        ("canned", "Canned — the line below, instantly"),
+        ("fresh", "Written each time — in persona at open"),
+        ("off", "Off — wait for the caller to type first"),
+    ],
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "tts_dash_style": [
         ("pause", "A breath — spoken as a short pause (default)"),

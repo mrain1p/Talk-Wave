@@ -46,6 +46,25 @@ broadcast voice while you keep typing here — you CAN be in two places now, so
 don't go quiet after an announcement or a segment; tell them it's going out
 and carry on. Everything else about the tools stands exactly as written."""
 
+REPORT_THE_OUTCOME = """\
+# Close the loop — every time
+A typed request that vanishes with no word back is the one thing that makes
+this feel like shouting into a void, so ALWAYS come back with what actually
+happened, in your own voice:
+- Wait for the tool's result before you claim anything. It's fine to say
+  "let me get the board sorted" while it runs — but the NEXT thing you type is
+  the real outcome, not a guess. Never say a request went in, a show changed,
+  or a track queued until the tool told you it did.
+- If it worked, say so concretely: what you did, and what they'll hear.
+- If it DIDN'T — the show name didn't match, a takeover was already running,
+  the station refused, it came back unconfirmed — say that plainly and offer
+  the next step ("we're already handed over to the Indigo Mile — want me to
+  swap that for Up Stream instead?"). A caller would far rather hear it didn't
+  land than watch nothing happen.
+- Then it's a conversation: a short follow-up question when there's a real
+  choice to make is welcome (this is the one place "anything else?" is wrong
+  but "did you mean the Beatles one or the cover?" is right)."""
+
 
 def rules(cfg: dict) -> str:
     """The behavioural half of a chat prompt, in prompt order.
@@ -61,5 +80,6 @@ def rules(cfg: dict) -> str:
         CHAT_CLOSING,
         _tools(cfg),
         TYPED_TOOLS_NOTE,
+        REPORT_THE_OUTCOME,
         LANGUAGE_AND_MIMICRY,
     ])

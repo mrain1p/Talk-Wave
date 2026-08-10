@@ -997,6 +997,19 @@
           <label for="chat_msgs_per_minute">Messages per minute</label>
           <input type="number" id="chat_msgs_per_minute" min="1" max="60" step="1" />
         </div>
+        <div class="row narrow">
+          <label for="chat_reply_timeout_secs">Reply timeout (s)</label>
+          <input type="number" id="chat_reply_timeout_secs" min="0" max="180" step="5" />
+        </div>
+        <h4 class="subhead">Opening the line</h4>
+        <div class="row">
+          <label for="chat_greeting_mode">Open with a greeting</label>
+          <select id="chat_greeting_mode"></select>
+        </div>
+        <div class="row">
+          <label for="chat_greeting">Canned greeting</label>
+          <input type="text" id="chat_greeting" />
+        </div>
       </div>
     </details>
 

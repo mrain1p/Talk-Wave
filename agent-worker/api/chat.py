@@ -105,6 +105,63 @@ def _tier_for(key: str) -> str:
     return "open"
 
 
+async def _relay(ws: web.WebSocketResponse, chat, make_coro) -> None:
+    """Run one DJ turn under the chat's lock, relaying its streamed events to
+    the socket. `make_coro(put)` is the coroutine that produces the turn
+    (a reply or the opening greeting); it pushes {"type": ...} dicts through
+    `put`, and finishing with the queue drained is the end of the turn.
+
+    The turn's task is cancelled on any exit — including a wait_for timeout one
+    level up — so a stalled model does not keep typing into a transcript after
+    the caller has been told the line gave up.
+    """
+    events: asyncio.Queue = asyncio.Queue()
+    async with chat.lock:
+        task = asyncio.create_task(make_coro(events.put_nowait))
+        try:
+            while True:
+                getter = asyncio.create_task(events.get())
+                await asyncio.wait({task, getter},
+                                   return_when=asyncio.FIRST_COMPLETED)
+                if getter.done():
+                    await ws.send_json(getter.result())
+                else:
+                    getter.cancel()
+                if task.done() and events.empty():
+                    err = task.exception()
+                    if err:
+                        # The same promise the phone makes: a model outage is
+                        # never silence.
+                        log.warning("chat %s turn failed: %s", chat.id, err)
+                        await ws.send_json(
+                            {"type": "done",
+                             "text": "Line dropped a beat there — say that "
+                                     "again for me?"})
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+
+async def _run_turn(ws: web.WebSocketResponse, chat, make_coro, cfg: dict) -> None:
+    """One DJ turn with the caller-facing dressing: a typing cue first so the
+    booth is visibly composing, and a hard reply timeout so a model that never
+    answers cannot leave the caller watching a dot spin forever."""
+    await ws.send_json({"type": "typing"})
+    timeout = float(cfg.get("chat_reply_timeout_secs") or 0)
+    try:
+        if timeout > 0:
+            await asyncio.wait_for(_relay(ws, chat, make_coro), timeout)
+        else:
+            await _relay(ws, chat, make_coro)
+    except asyncio.TimeoutError:
+        log.warning("chat %s turn timed out after %ss", chat.id, timeout)
+        await ws.send_json(
+            {"type": "done",
+             "text": "Still digging for that one — give me another go in a "
+                     "moment?"})
+
+
 async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
@@ -159,6 +216,13 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                                     "dj": chat.persona_name,
                                     "turns": [{"who": w, "text": t}
                                               for w, t in chat.turns[-40:]]})
+                # A FRESH chat gets the booth's opening line — the text line
+                # answering with silence until the caller types reads as
+                # broken. A resumed chat does not: its opener is already in the
+                # replayed transcript above.
+                if is_fresh and str(cfg.get("chat_greeting_mode") or "off") != "off":
+                    await _run_turn(ws, chat,
+                                    lambda put: chat.greet(cfg, put), cfg)
                 continue
 
             if kind == "bye" and chat is not None:
@@ -192,34 +256,10 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                                         "One at a time — the DJ is still "
                                         "answering the last one."})
                     continue
-                # Stream the reply as it happens: `ask` pushes events into
-                # the queue from inside its own coroutine, this loop relays
-                # them, and the task finishing (with everything drained) is
-                # the end of the turn.
-                events: asyncio.Queue = asyncio.Queue()
-                async with chat.lock:
-                    task = asyncio.create_task(
-                        chat.ask(text, events.put_nowait))
-                    while True:
-                        getter = asyncio.create_task(events.get())
-                        await asyncio.wait({task, getter},
-                                           return_when=asyncio.FIRST_COMPLETED)
-                        if getter.done():
-                            await ws.send_json(getter.result())
-                        else:
-                            getter.cancel()
-                        if task.done() and events.empty():
-                            err = task.exception()
-                            if err:
-                                # The same promise the phone makes: a model
-                                # outage is never silence.
-                                log.warning("chat %s message failed: %s",
-                                            chat.id, err)
-                                await ws.send_json(
-                                    {"type": "done",
-                                     "text": "Line dropped a beat there — "
-                                             "say that again for me?"})
-                            break
+                # Stream the reply as it happens, wrapped in the typing cue and
+                # the reply timeout — see _run_turn.
+                await _run_turn(ws, chat,
+                                lambda put: chat.ask(text, put), cfg)
     finally:
         SHELF.sweep(settings_store.load())
     return ws
