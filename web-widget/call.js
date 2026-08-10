@@ -8,7 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    ASKS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
+    ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume,
   } = window.Callin;
@@ -294,12 +294,23 @@
       }
     }
     host.innerHTML = '';
-    ASKS.filter((a) => !a.need || canAsk[a.need]).forEach((a) => {
-      const li = document.createElement('li');
-      li.innerHTML = '<span class="say"></span><span class="why"></span>';
-      li.querySelector('.say').textContent = a.say;
-      li.querySelector('.why').textContent = a.why;
-      host.appendChild(li);
+    // Grouped: a heading per group that has any offered item, so the reads,
+    // the requests and the on-air actions read as three different kinds of
+    // thing instead of one long menu.
+    ASK_GROUPS.forEach(([key, label]) => {
+      const items = ASKS.filter((a) => a.group === key && (!a.need || canAsk[a.need]));
+      if (!items.length) return;
+      const head = document.createElement('li');
+      head.className = 'askhead';
+      head.textContent = label;
+      host.appendChild(head);
+      items.forEach((a) => {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="say"></span><span class="why"></span>';
+        li.querySelector('.say').textContent = a.say;
+        li.querySelector('.why').textContent = a.why;
+        host.appendChild(li);
+      });
     });
   }
 

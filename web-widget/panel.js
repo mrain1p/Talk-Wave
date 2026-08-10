@@ -8,7 +8,7 @@
    Shared foundation comes from shared.js via the Callin global. */
 (function () {
   const {
-    $, ASKS, NEVER, CALL_KEY,
+    $, ASKS, ASK_GROUPS, NEVER, CALL_KEY,
     ctx, playSound, pack, setSounds, getVolume,
   } = window.Callin;
 
@@ -788,9 +788,9 @@
     if (!host) return;
     host.innerHTML = '';
     let on = 0;
-    ASKS.forEach((a) => {
+
+    const renderAsk = (a) => {
       const enabled = !a.need || permOn(a.need);
-      if (enabled) on++;
       // A tier view hides what that caller would never be offered — the
       // point is the caller's own menu, not the operator's inventory.
       if (askView !== 'all') {
@@ -829,6 +829,26 @@
         li.querySelector('.why').appendChild(chip);
       }
       host.appendChild(li);
+    };
+
+    // Count enabled over EVERY ask (the tag reads "N of M available"),
+    // separate from what the tier view chooses to draw.
+    ASKS.forEach((a) => { if (!a.need || permOn(a.need)) on++; });
+
+    // Grouped, with a heading per group that renders any row in the current
+    // view — the reads, the requests and the on-air actions are three
+    // different kinds of thing, and the flat list hid that.
+    ASK_GROUPS.forEach(([key, label, blurb]) => {
+      const before = host.children.length;
+      const head = document.createElement('li');
+      head.className = 'askhead';
+      head.innerHTML = '<span class="askheadname"></span><span class="askheadwhy"></span>';
+      head.querySelector('.askheadname').textContent = label;
+      head.querySelector('.askheadwhy').textContent = blurb || '';
+      host.appendChild(head);
+      ASKS.filter((a) => a.group === key).forEach(renderAsk);
+      // Nothing rendered under it in this view — drop the empty heading.
+      if (host.children.length === before + 1) host.removeChild(head);
     });
 
     // Always-off actions, listed once at the end so the boundary is visible

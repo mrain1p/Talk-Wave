@@ -348,6 +348,18 @@
   .actionrow #callBtn, .actionrow #callBtn:disabled, .actionrow .pill {
     height: var(--action-h);
   }
+  /* Idle, the doors share the row EVENLY — Call, and whichever of Text /
+     Message the operator offers. They used to size to their labels, so two
+     or three doors came out three unrelated widths ("Call the DJ" 121px,
+     "Leave a message" 152px) and read as a mistake. flex:1 with min-width:0
+     makes 1, 2 or 3 fill the row at equal width. The state guard on Call
+     keeps ringing/answering/live at their own widths. Hang up (in-call) is
+     handled separately below. */
+  .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
+  .actionrow #chatBtn:not([hidden]),
+  .actionrow #vmBtn:not([hidden]) {
+    flex: 1 1 0; min-width: 0;
+  }
   /* Square, transparent, hairline-bordered, control height. Colour carries
      state; fill never does (§4.4) — the only filled thing in any state is the
      one primary button. */
@@ -849,21 +861,27 @@
      chat opens — the row is only offered once there is a line to type on. */
   .chatrow { display: flex; gap: 8px; margin-top: 8px; }
   .chatrow[hidden] { display: none; }
+  /* A real, unmistakable text box — the earlier version used undefined
+     tokens (--field/--ink/--soft-border) and rendered transparent on a
+     transparent card, so the operator quite reasonably could not see it.
+     These are the same tokens the door-code input uses, at a taller 44px so
+     it reads as the thing you type into. */
   .chatrow input {
-    flex: 1 1 auto; min-width: 0; height: var(--control-h);
-    background: var(--field); color: var(--ink);
-    border: 1px solid var(--soft-border); border-radius: 0;
-    padding: 0 10px; font-family: var(--font-body); font-size: 13px;
+    flex: 1 1 auto; min-width: 0; height: 44px;
+    background: var(--granite-hi); color: var(--alpenglow);
+    border: 1px solid var(--hairline); border-radius: 0;
+    padding: 0 12px; font-family: var(--font-body); font-size: 14px;
   }
-  .chatrow input:focus { outline: none; border-color: var(--accent); }
-  .chatrow button { height: var(--control-h); padding: 0 16px; }
+  .chatrow input::placeholder { color: var(--sage-dim); }
+  .chatrow input:focus { outline: none; border-color: var(--coral); }
+  .chatrow button { height: 44px; padding: 0 16px; flex: 0 0 auto; }
   /* End is a quiet exit, never competing with Send: no fill, muted ink,
      narrow. Send stays the one lit action on the row. */
   .chatrow .chatend {
-    padding: 0 10px; background: transparent; color: var(--muted);
-    border: 1px solid var(--soft-border); flex: 0 0 auto;
+    padding: 0 12px; background: transparent; color: var(--sage);
+    border: 1px solid var(--hairline);
   }
-  .chatrow .chatend:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .chatrow .chatend:hover { color: var(--alpenglow); border-color: var(--sage-dim); }
 
   /* --- the corner controls and the ask popup ----------------------------- */
   /* Big enough to see and to hit. These were 26px of --sage-dim at 14px
@@ -921,6 +939,15 @@
     padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
   }
   .askpop-list li:last-child { border-bottom: none; }
+  /* Group heading: the label that turns the flat menu into "talk / request /
+     on air / message". Mono and spaced like the card's other section labels,
+     with room above it so the groups read apart. */
+  .askpop-list li.askhead {
+    color: var(--accent); font: 700 10px/1.3 var(--font-mono);
+    letter-spacing: .16em; text-transform: uppercase;
+    padding: 12px 0 5px; border-bottom: 1px solid var(--line);
+  }
+  .askpop-list li.askhead:first-child { padding-top: 2px; }
   .askpop-list .say { display: block; color: var(--text); line-height: 1.4; }
   .askpop-list .why {
     display: block; color: var(--dimmer); font-size: 11px; margin-top: 2px;
@@ -1900,6 +1927,20 @@
     gap: 10px; align-items: baseline;
   }
   .asklist li:last-child { border-bottom: none; }
+  /* Group heading in the panel: a full-width band (it opts out of the three
+     grid columns) with the label and a one-line note on what the group is. */
+  .asklist li.askhead {
+    display: block; padding: 14px 0 5px; border-bottom: 1px solid var(--line);
+  }
+  .asklist li.askhead:first-child { padding-top: 2px; }
+  .asklist li.askhead .askheadname {
+    color: var(--accent); font: 700 10px/1.3 var(--font-mono);
+    letter-spacing: .16em; text-transform: uppercase;
+  }
+  .asklist li.askhead .askheadwhy {
+    display: block; color: var(--dimmer); font-size: 11px; margin-top: 3px;
+    line-height: 1.4;
+  }
   .asklist .mark { color: var(--ok); font-size: 11px; }
   .asklist li.off { opacity: .45; }
   .asklist li.off .mark { color: var(--dimmer); }
@@ -2233,18 +2274,26 @@
      including in HEIGHT: the station page's Send and Listen Live are ~44px,
      and a 31px chip beside them read as belonging to a different page. With
      the machine's second door up, the two share the row instead. */
-  body.compact #callBtn:not(.ringing):not(.answering):not(.live) {
-    width: 100%; height: 44px; font-size: 12px;
+  /* Idle in an embed, the doors are ~44px to match the host page's own
+     bottom-row buttons (Send, Listen Live), and they WRAP rather than
+     overflow: two per row, a third dropping to its own full-width row. The
+     old rules special-cased exactly call+voicemail and broke the moment a
+     third door (Text) appeared — three buttons ran off the edge at three
+     different widths. flex-basis 42% is what makes two share a row and the
+     third wrap cleanly. */
+  body.compact .actionrow { flex-wrap: wrap; gap: 8px; }
+  body.compact .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
+  body.compact .actionrow #chatBtn:not([hidden]),
+  body.compact .actionrow #vmBtn:not([hidden]) {
+    flex: 1 1 42%; width: auto; min-width: 0; height: 44px;
+    font-size: 11px; padding: 0 10px;
   }
-  body.compact .actionrow { flex-wrap: nowrap; }
-  body.compact .actionrow:has(#vmBtn:not([hidden]))
+  /* Alone, Call is the frame's one action and takes the whole row. */
+  body.compact .actionrow:not(:has(#chatBtn:not([hidden]))):not(:has(#vmBtn:not([hidden])))
     #callBtn:not(.ringing):not(.answering):not(.live) {
-    width: auto; flex: 1 1 auto; min-width: 0; font-size: 10.5px; padding: 0 10px;
+    flex-basis: 100%; font-size: 12px;
   }
-  body.compact #vmBtn:not([hidden]) {
-    height: 44px; font-size: 10.5px; flex: 1 1 auto; min-width: 0; padding: 0 10px;
-  }
-  body.compact #hangBtn { height: 44px; }
+  body.compact #hangBtn { height: 44px; flex-basis: 100%; }
   body.compact .ticker .line { -webkit-line-clamp: 2; }
   /* THE HEIGHT BUDGET. A real station page gives its player column 400px and
      stretches its own marquee to match whatever this frame reports — every
