@@ -95,6 +95,19 @@ def build_on_air_tools(
                 f"{note}{what} is going out on air now, in your own voice. Tell "
                 "the caller it's done, in your own words."
             )
+        if unconfirmed:
+            # No honest number exists: the station accepted it but had not
+            # aired it when it answered. The Ash call read the sized guess out
+            # loud ("about twelve seconds") and the delivery landed after the
+            # guess expired — over the DJ's next line.
+            return (
+                f"{note}{what} is about to go out on air, in your own voice — the "
+                "station is lining it up now, so it may be a short moment. Tell "
+                "the caller briefly that you're on air for a moment, then stay "
+                "quiet until it's done — do not talk over yourself, and do not "
+                "promise how long it takes. When it finishes, come back to them "
+                "and pick the conversation up where you left it."
+            )
         return (
             f"{note}{what} is going out on air now, in your own voice, and it runs "
             f"about {secs} seconds. You cannot be in two places at once: tell the "
@@ -126,7 +139,14 @@ def build_on_air_tools(
             # The spoken words ride along so the come-back line can nod at them.
             spoken = result.get("spoken") or message
             secs = speaking_secs(spoken, 25)
-            guard.mark_on_air(secs, spoken=spoken)
+            if result.get("unconfirmed"):
+                # The station accepted it but had not aired it when it
+                # answered, so a countdown from HERE measures the wrong thing
+                # — the Ash call's hold expired before the delivery started.
+                # Hold until the station's log shows it instead.
+                guard.mark_pending_air(spoken)
+            else:
+                guard.mark_on_air(secs, spoken=spoken)
             return after_action(
                 "Your announcement", waited, result.get("unconfirmed"), secs)
 
@@ -153,7 +173,13 @@ def build_on_air_tools(
             # voice on the broadcast. 60s is the fallback when the station
             # doesn't tell us what it said.
             secs = speaking_secs(result.get("spoken"), 60)
-            guard.mark_on_air(secs, spoken=result.get("spoken") or "")
+            if result.get("unconfirmed"):
+                # Same shape as the announcement: unconfirmed means the clock
+                # cannot start here. Segments are the case that made the
+                # station slow in the first place.
+                guard.mark_pending_air(result.get("spoken") or "")
+            else:
+                guard.mark_on_air(secs, spoken=result.get("spoken") or "")
             return after_action(
                 f"The {name} segment", waited, result.get("unconfirmed"), secs)
 

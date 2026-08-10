@@ -429,3 +429,43 @@ class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
         # rather than the caller, so they are the ones that must never regress.
         self.assertIn("skip_track", self.muzzled)
         self.assertIn("dj_segment", self.muzzled)
+
+
+class TestTheDJKnowsTheStationsShows(unittest.TestCase):
+    """Two real calls (2026-08-09, rooms ee3ef9616834 and 7046da2b9289):
+    Wade refused a takeover of The Overlook as caller nonsense, because the
+    roster line was off by default and, even on, capped at four names on an
+    eleven-show station. A DJ who can be asked to switch shows has to
+    recognise their names."""
+
+    SHOWS = {"shows": [{"id": f"s{i}", "name": f"Show Number {i}"}
+                       for i in range(14)]}
+
+    class _Station:
+        def __init__(self, payload):
+            self.payload = payload
+            self.reads = 0
+
+        async def schedule(self):
+            self.reads += 1
+            return self.payload
+
+    def _context(self, cfg):
+        snap = {"now_playing": {}, "state": {}, "session": {}, "skills": []}
+        return asyncio.run(briefing.station_context(
+            self._Station(self.SHOWS), cfg, snap, {"id": "s0"}))
+
+    def test_the_roster_names_twelve_shows_not_four(self):
+        line = briefing._fmt_schedule(self.SHOWS, "s0")
+        for i in range(1, 13):
+            self.assertIn(f"Show Number {i}", line)
+
+    def test_takeover_brings_the_roster_whatever_context_schedule_says(self):
+        text = self._context({"allow_takeover": True, "context_schedule": False})
+        self.assertIn("Other shows on this station", text)
+        # And the DJ is told the names are real things it can put on air.
+        self.assertIn("subwave_takeover_show", text)
+
+    def test_without_either_setting_the_prompt_stays_lean(self):
+        text = self._context({"allow_takeover": False, "context_schedule": False})
+        self.assertNotIn("Other shows on this station", text)

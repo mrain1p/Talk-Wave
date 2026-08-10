@@ -1149,7 +1149,9 @@ SCHEMA: dict[str, dict] = {
     "context_schedule": dict(group="context", kind="check", label="Know the rest of the line-up",
         help="The names of the station's OTHER shows, so \"what's on after this?\" "
              "gets an answer. The current show is always known. Off by default: "
-             "prompt weight on every turn for a question most callers never ask."),
+             "prompt weight on every turn for a question most callers never ask. "
+             "Rides along regardless while show takeovers are allowed — a DJ who "
+             "can be asked to switch shows has to recognise their names."),
 
     # --- sounds ---
     "call_sounds": dict(group="sounds", kind="check", label="Play call sounds",
