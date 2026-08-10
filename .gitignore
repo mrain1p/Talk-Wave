@@ -20,6 +20,7 @@ AUDIT.md
 REVIEW.md
 RELEASE-REVIEW-1.0.md
 BUILD-INSTRUCTIONS.md
+wavetalk-panel-spec.md
 subwave-openapi.json
 
 *.log
