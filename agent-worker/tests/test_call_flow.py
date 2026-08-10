@@ -289,6 +289,61 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestTheIdleClockDoesNotRunWhileTheDJIsWorking(unittest.TestCase):
+    """"Still there?" must not be asked while the DJ is the one working.
+
+    The Zeppelin call (2026-08-10): a request took a while to resolve in the
+    background, the caller waited, and the idle watcher asked whether THEY were
+    still there — while they were waiting on US. CallActions carries a working
+    flag the late-match poller holds across the resolve, and the idle watcher
+    must reset its clock while it is set, the same way it does during an on-air
+    hold.
+    """
+
+    def _run(self, working: bool, seconds: float = 3.5):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        replies = []
+
+        class _Session:
+            agent_state = "listening"
+
+            def on(self, *a, **k):
+                pass
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+        actions = types.SimpleNamespace(is_working=lambda: working)
+
+        async def go():
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": 2}, actions=actions,
+            )
+            await asyncio.sleep(seconds)
+
+        asyncio.run(go())
+        return replies
+
+    def test_no_check_in_while_a_request_is_still_resolving(self):
+        self.assertEqual(
+            self._run(working=True), [],
+            "the DJ asked the caller why it was quiet while IT was working")
+
+    def test_the_check_in_still_fires_when_the_dj_is_idle(self):
+        self.assertTrue(
+            self._run(working=False),
+            "the idle check-in stopped firing entirely")
+
+
 class TestACallerWhoWasNeverHeardIsToldSo(unittest.TestCase):
     """A caller nothing has ever arrived from is a different problem from a
     caller who has gone quiet, and until 0.9.111 they got the same treatment.
