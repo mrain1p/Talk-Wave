@@ -1551,6 +1551,22 @@ class TestPushToTalkIsPerSurfaceAndOnByDefault(unittest.TestCase):
         self.assertIn("push to talk", source)
         self.assertIn("show_push_to_talk", source)
 
+    def test_the_hold_bar_owns_its_touch_on_mobile(self):
+        # A held touch on mobile only stayed engaged ~1s: `touch-action:
+        # manipulation` let the browser claim the gesture for scrolling and
+        # fire pointercancel mid-hold, and the release handler shut the mic.
+        # The bar must take the WHOLE gesture (touch-action:none) and block the
+        # long-press callout that cancels the pointer the same way.
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        pttbar = css.split(".card .pttbar {", 1)[1].split("}")[0]
+        self.assertIn("touch-action: none", pttbar)
+        self.assertNotIn("touch-action: manipulation", pttbar)
+        self.assertIn("-webkit-touch-callout: none", pttbar)
+        # And the context menu (the other way a long press cancels the hold) is
+        # swallowed on the bar.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("'contextmenu'", js)
+
 
 class TestAHostThemeIsADefaultNotADecree(unittest.TestCase):
     """The operator embedded the widget on their own station page with

@@ -71,6 +71,11 @@ The README is the short version. The detail lives here:
   the panel can answer.
 - Every call is written down — see
   [Diagnosing a call](docs/troubleshooting.md#diagnosing-a-call).
+- **Installs to a phone like an app, and feels like one.** Add it to the home
+  screen and it opens full-screen as a progressive web app — the DJ's portrait
+  leading the top, the words and state in the middle, the actions under your
+  thumb. Whether you call, text, or leave a message, it reads like the real
+  thing on a phone rather than a card on a page.
 
 **Station integration**
 - Tools come from the station's MCP server through an allowlist: requests

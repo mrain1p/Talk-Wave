@@ -5,7 +5,11 @@
 <!-- viewport-fit=cover so the card can reach under a notch; style.css pays
      that back with safe-area padding, or the Hang up row sits under the home
      indicator on an installed iPhone. -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<!-- interactive-widget=resizes-content: when the on-screen keyboard opens, the
+     viewport (and 100dvh) shrink to the space ABOVE it, so the chat input and
+     the conversation stay laid out on screen instead of the keyboard covering
+     the interface (operator-reported on mobile). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Wave Talk</title>
 
 <!-- Installable. The point is not offline — a phone-in is useless offline —

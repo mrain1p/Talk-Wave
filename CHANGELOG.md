@@ -3,6 +3,26 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.36
+
+Mostly mobile and polish — on a phone, the card now reads like the real thing.
+
+### On a phone
+
+- **Installs and behaves like an app.** Add Wave Talk to a home screen and it opens full-screen as a progressive web app — a call, a text line, or a voicemail, with the DJ's portrait up top, the conversation in the middle, and the actions under your thumb. The keyboard no longer covers the chat, push-to-talk stays held while your finger is down, and a long reply or a long show name wraps to read cleanly instead of trailing off.
+
+### The text line
+
+- **It greets first, types like a person, and tells the truth.** The booth opens the conversation on a fresh chat; the DJ's reply is written out a character at a time rather than appearing whole; and a request or a show change reports what actually happened rather than an invented reason. Pick the opening line — canned, written each time, or off — under **Text line**.
+
+### The call
+
+- **Faster to answer, and it stops talking over itself.** A slow station no longer stacks timeouts onto the ring, and when the broadcast and the call carry the same DJ they no longer double up. “Change the DJ to Wade” is now understood as a takeover to perform, not a request to refuse.
+
+### The card
+
+- One consistent footprint whether you call, text, or leave a message, so an embed never jars between modes. Each door sizes to fit — a worded button takes the room it needs, a bare icon hugs its glyph — and the level meters pair the You and DJ waveforms with volume set aside.
+
 ## 0.10.24
 
 Everything since 0.10.15: the text line, callers signing in for more, the
