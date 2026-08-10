@@ -490,9 +490,13 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
 
     def test_the_in_call_chrome_holds_its_space(self):
         # `visibility`, never `display` — the second one collapses the box and
-        # the card changes height the moment a call starts.
-        for rule in (".rig { visibility: hidden; }",
-                     ".pill[hidden] { visibility: hidden; }",
+        # the card changes height the moment a call starts. (The rig also
+        # carries display:flex now, to flex the transcript to one footprint —
+        # but the space-reserving visibility:hidden is the part under test.)
+        self.assertRegex(
+            self.css, r'\.rig \{ visibility: hidden;[^}]*\}',
+            "the rig must reserve its space with visibility:hidden")
+        for rule in (".pill[hidden] { visibility: hidden; }",
                      ".ticker[hidden] { display: grid; visibility: hidden; }"):
             with self.subTest(rule=rule):
                 self.assertIn(rule, self.css)
@@ -504,7 +508,11 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # the standalone card (was three; the operator asked for more of the
         # conversation on screen, 2026-08-09); the embed keeps two, because
         # its height is a promise to the host page's layout.
-        block = self.css.split(".linebox {")[1].split("}")[0]
+        # Anchor on the BASE rule (2-space indent, its own line), not a
+        # descendant selector that merely ends in ".linebox {" — the chat mode
+        # legitimately overrides this to grow with the conversation, and that
+        # override must not be mistaken for the base reservation.
+        block = self.css.split("\n  .linebox {")[1].split("}")[0]
         self.assertIn("height: var(--lines-h)", block)
         self.assertNotIn("height: auto", block)
         self.assertIn("--lines-h: 93px", self.css)
@@ -1270,7 +1278,34 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
     def test_the_card_starts_in_idle_mode(self):
         # First paint has no JS-set mode yet; the markup declares idle so the
         # chat/voicemail hide-rules have something to key against from load.
-        self.assertRegex(self.index, r'class="card"\s+data-mode="idle"')
+        self.assertRegex(self.index, r'data-mode="idle"')
+
+    def test_one_footprint_whatever_the_entrance(self):
+        # A caller who calls, leaves a message or texts meets the SAME object at
+        # the same size — an embed must not jar or resize between modes. The
+        # working area (.rig) is a flex column with a consistent min-height, and
+        # the transcript flexes to fill it, so chat's fewer control bands become
+        # more transcript rather than a shorter card.
+        self.assertRegex(
+            self.css,
+            r'\.rig \{[^}]*display:\s*flex[^}]*flex-direction:\s*column',
+            "the rig must be a flex column so the transcript can flex to fill")
+        self.assertRegex(
+            self.css, r'body:not\(\.compact\) \.rig \{[^}]*min-height:',
+            "the working area needs a consistent min-height for one footprint")
+        self.assertRegex(
+            self.css, r'\n  \.linebox \{[^}]*flex:\s*1 1 auto',
+            "the transcript must flex to absorb the working area's spare room")
+
+    def test_a_refused_call_returns_the_card_to_idle(self):
+        # The card flips to .oncall + Hang up the instant Call/Voicemail is
+        # pressed (no ringing phase), so a 429/401 refusal MUST undo that or the
+        # card sits on Hang up over an engaged-tone message (tester-caught).
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        refusal = js.split("res.status === 429 || res.status === 401", 1)[1][:1400]
+        self.assertIn("classList.remove('oncall')", refusal)
+        self.assertIn("setCardMode('idle')", refusal)
+        self.assertIn("hangBtn.hidden = true", refusal)
 
 
 class TestEveryDoorReadsForItself(unittest.TestCase):
@@ -1359,6 +1394,40 @@ class TestTheDoorsShareTheRowEvenly(unittest.TestCase):
         # not a full-width invisible box stealing the row.
         self.assertIn("#callBtn:not([hidden])", self.css)
         self.assertIn("#vmBtn:not([hidden])", self.css)
+
+
+class TestTheLockedPanelShowsNothingButTheGate(unittest.TestCase):
+    """A password-protected /settings used to render the whole DASHBOARD — The
+    Line on/off, the call / voicemail / text switches, what's on air — to anyone
+    who could reach the URL, before they logged in. That is station state a
+    stranger has no business reading. The panel starts LOCKED and, while locked,
+    shows nothing but the way-back bar and the login gate."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+
+    def test_the_panel_starts_locked(self):
+        # Locked from load so a protected panel never flashes its dashboard
+        # before the 401 lands.
+        self.assertRegex(self.html, r'id="panel"[^>]*class="[^"]*\blocked\b'
+                                    r'|class="[^"]*\blocked\b[^"]*"[^>]*id="panel"')
+
+    def test_locked_hides_everything_but_the_bar_and_the_gate(self):
+        # The comprehensive rule — hides every direct child except the panelbar
+        # and the gate — so a new section can't leak by being forgotten.
+        self.assertRegex(
+            self.css,
+            r'#panel\.locked\s*>\s*\*:not\(\.panelbar\):not\(#loginGate\)'
+            r'\s*\{[^}]*display:\s*none',
+            "the locked panel must hide all children but the bar and the gate")
+
+    def test_a_real_payload_drops_the_curtain(self):
+        # loadSettings success removes .locked — otherwise an already-authed
+        # operator's panel would stay behind the starts-locked curtain forever.
+        self.assertIn("classList.remove('locked')", self.js)
 
 
 class TestTheTextLineIsShapedForTyping(unittest.TestCase):
