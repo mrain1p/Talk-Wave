@@ -336,6 +336,8 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_voicemail_button": (None, False),
     "show_chat_button":       (None, True),
     "embed_chat_button":      (None, False),
+    "show_signin":            (None, False),
+    "embed_signin":           (None, False),
     # A colour on the DJ's voice, applied in the caller's browser only — the
     # broadcast never hears it. One answer for both surfaces: the effect is
     # part of the DJ's character, and a DJ who is CB on the page and clean in
@@ -891,6 +893,17 @@ SCHEMA: dict[str, dict] = {
         label="“Text the booth” button (embed)",
         help="The same door on the embedded card. Off by default: three "
              "buttons crowd a 190px frame."),
+    "show_signin": dict(group="player", kind="check",
+        label="“Sign in” button",
+        help="A corner button that lets a caller enter the guest code or the "
+             "admin password to UNLOCK more of what they can ask for — the "
+             "way to use per-tier permissions on a line anyone can reach. It "
+             "shows only when a code is set and there is a higher tier to "
+             "reach; it does nothing on a line where every permission is open "
+             "to anyone. See Caller permissions to set the tiers."),
+    "embed_signin": dict(group="player", kind="check",
+        label="“Sign in” button (embed)",
+        help="The same corner button on the embedded card."),
     "show_voicemail_button": dict(group="player", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "

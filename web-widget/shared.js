@@ -299,6 +299,8 @@ window.Callin = (function () {
       why: 'Searches the real library before promising anything.' },
     { group: 'request', need: 'allow_exact_queue', say: '“The second one — the live version.”',
       why: 'Queues that exact recording from the search results, not a re-match.' },
+    { group: 'request', need: 'allow_requests', say: '“Where’s my song in the running order?”',
+      why: 'Reads its real position — “third up, about ten minutes” rather than a guess.' },
     // --- on the air (reaches every listener) ---
     { group: 'air', need: 'allow_announcements', say: '“Can you say hi to my brother on air?”',
       why: 'Hands a line to the on-air DJ to read in persona.' },
@@ -316,6 +318,8 @@ window.Callin = (function () {
       why: 'Fires a programme beat on air — a station ID, the hour, a link.' },
     { group: 'air', need: 'allow_takeover', say: '“Any chance of putting the late show on?”',
       why: 'Puts a different DJ on air for everyone, for an hour, from the end of this record.' },
+    { group: 'air', need: 'allow_takeover', say: '“Actually, put it back to normal.”',
+      why: 'Cancels a show takeover early and hands the schedule back — same permission as setting one.' },
     // --- leave a message ---
     { group: 'message', need: 'allow_voicemail', say: '“Can I leave a message for the DJ?”',
       why: 'The answering machine — available wherever the voicemail switches allow it.' },

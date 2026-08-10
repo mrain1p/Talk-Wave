@@ -12,6 +12,11 @@ commit-by-commit detail is in git history.
 - **A busy call now offers the text line** as a fallback, the way it already offers voicemail — even on surfaces where the permanent “Text the booth” button is off.
 - **Its own settings section** holds the clocks and ceilings, including a per-caller reopen wait and a daily cap — a text line is scriptable where a call is not, so it carries the phone's per-IP brakes.
 
+### Callers can sign in for more
+
+- **A “Sign in” corner button** (per surface, off by default) lets a caller enter the guest code or admin password to **unlock the commands you gated above “anyone”** — the way to run per-tier permissions on a line anyone can reach. Give strangers requests and reads; keep announcements or a show takeover for callers who sign in. The button only appears when a code is set and there is a tier left to climb, and the lock icon signs them back out.
+- **The “What can I ask?” menu now reflects the caller’s actual tier** — signing in adds the groups it unlocks, signing out removes them — and the menu is **grouped**: just talk / request music / put something on the air / leave a message. Cancelling a takeover and checking a request’s queue position are listed now too; a test pins that every caller permission has an example, so a gated tool can’t ship invisible.
+
 ### Every mode
 
 - **A language / instruction guard**, always on: a caller directing the DJ to switch languages, drop its rules, or follow “instructions” quoted at it is testing the line, not making a request — and is treated as such. Mirrors a fix the station itself made after a real raid.

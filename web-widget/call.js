@@ -43,14 +43,24 @@
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
     set('gearBtn', c.settings !== false && !compact);
-    // Not the operator's switch: the lock exists exactly when this DEVICE
-    // holds a door code a passer-by could use. Kiosks are why.
-    set('lockBtn', !!(d && d.guestRequired) && !!callKey());
+    // Forget-the-code, shown whenever THIS device holds a stored code and
+    // there was a reason to enter one — the line demanded it (kiosks), or
+    // sign-in is on offer and the caller climbed a tier. Without the second
+    // case a caller who signed in on an open line had no way to sign back
+    // out. Forgetting drops them to the tier below on the next /live read.
+    set('lockBtn', !!callKey() && (!!(d && d.guestRequired) || c.signin !== false));
+    // Sign in for more: the operator's per-surface switch (c.signin), but
+    // only when a code exists AND there is a tier to climb to
+    // (d.signinAvailable, resolved per-request server-side). A caller already
+    // at the top, or a line with nothing gated, never sees it. The
+    // `!== false` form matches the other corner controls — show_signin
+    // defaults off, so the server always sends an explicit true/false here.
+    set('signinBtn', c.signin !== false && !!(d && d.signinAvailable));
   }
 
   $('lockBtn').onclick = () => {
     rememberCallKey('');
-    setStatus('Door code forgotten on this device');
+    setStatus('Signed out — the code is forgotten on this device');
     applyControls(shown || live);
     paintGuestGate();
     if (!room) refreshLive();
@@ -417,6 +427,8 @@
 
   let room = null, muted = false, live = null;
   let chatOpen = false;                       // the text line, not a call
+  let signinMode = false;                     // the gate opened to climb a tier
+  let lastCanAsk = null;                       // rebuild the menu only on a tier change
   let djEl = null, rafId = null, streamEl = null;
 
   // `live` is what the server last said. `shown` is what is on the card,
@@ -825,7 +837,12 @@
 
   async function refreshLive() {
     try {
-      const r = await fetch('/live');
+      // Send the stored code so /live resolves canAsk, callerTier and the
+      // sign-in chip for THIS caller's tier — without it a caller holding a
+      // guest code still saw only the open-tier menu, because the server
+      // resolves tiers from this header and the widget never sent it.
+      const r = await fetch('/live', callKey()
+        ? { headers: { 'X-Call-Key': callKey() } } : undefined);
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
       const first = !live;
@@ -868,8 +885,20 @@
         // read the load-time palette as a show change. Any tokens it re-sets
         // are the ones the line above just applied.
         followStationPalette(d);
+        lastCanAsk = JSON.stringify(d.canAsk || null);
       } else {
         followStationPalette(d);
+        // A tier change (signing in or out) changes what this caller may ask
+        // and which corner controls apply — rebuild those, but ONLY when the
+        // menu actually changed, so an ordinary poll never rebuilds the popup
+        // under the caller's finger. This is what makes sign-out drop the
+        // on-air group the same way sign-in added it.
+        const nowCanAsk = JSON.stringify(d.canAsk || null);
+        if (nowCanAsk !== lastCanAsk) {
+          lastCanAsk = nowCanAsk;
+          setupAskPopup(d.canAsk);
+          applyControls(d);
+        }
       }
       // The sound engine lives in shared.js and is fed rather than read from,
       // so the panel can preview a sound without borrowing the call's state.
@@ -969,7 +998,9 @@
   // fight over it.
   function paintGuestGate() {
     const box = $('guestGate');
-    if (box) box.hidden = !(live && live.guestRequired && !callKey());
+    // signinMode keeps the gate open when the caller opened it themselves to
+    // climb a tier — otherwise a poll's repaint would snap it shut mid-type.
+    if (box) box.hidden = !signinMode && !(live && live.guestRequired && !callKey());
     notifyHeight();
   }
 
@@ -995,10 +1026,57 @@
     } catch (e) { msg.textContent = 'Could not check that just now.'; }
   }
 
+  // The same code entry, opened deliberately to CLIMB a tier rather than
+  // because the line demanded a code to call. Any code the caller has —
+  // guest or the admin password — is tried the same way: store it, re-read
+  // /live (which resolves the tier from it), and keep it only if the tier
+  // actually rose. That accepts both without the widget needing to know
+  // which is which. (signinMode is declared with the other call state above.)
+  function openSignin() {
+    signinMode = true;
+    const box = $('guestGate'), input = $('guestPw'), msg = $('guestMsg');
+    if (box) box.hidden = false;
+    if (msg) msg.textContent = 'Enter the guest code or admin password to '
+      + 'unlock more of what you can ask for.';
+    if (input) { input.placeholder = 'Guest code or admin password'; input.focus(); }
+    notifyHeight();
+  }
+
+  async function submitSignin() {
+    const input = $('guestPw'), msg = $('guestMsg');
+    const pw = input.value.trim();
+    if (!pw) return;
+    const rank = { open: 0, guest: 1, admin: 2 };
+    const before = rank[(live && live.callerTier) || 'open'] || 0;
+    msg.textContent = 'Checking…';
+    rememberCallKey(pw);                 // store, then let /live judge the tier
+    await refreshLive();
+    const after = rank[(live && live.callerTier) || 'open'] || 0;
+    if (after > before) {
+      input.value = ''; msg.textContent = '';
+      $('guestGate').hidden = true;
+      signinMode = false;
+      const tier = (live && live.callerTier) || 'guest';
+      setStatus(tier === 'admin'
+        ? 'Signed in as admin — more options unlocked'
+        : 'Signed in — more options unlocked', 'connected');
+      // The ask menu and corner controls were already rebuilt by the
+      // refreshLive above (paintLive rebuilds on a canAsk change).
+    } else {
+      rememberCallKey('');               // a wrong code leaves nothing behind
+      await refreshLive();
+      msg.textContent = 'That code did not unlock anything — check it and try again.';
+    }
+  }
+
+  function gateSubmit() { return signinMode ? submitSignin() : submitGuestCode(); }
+
+  if ($('signinBtn')) $('signinBtn').onclick = openSignin;
+
   if ($('guestBtn')) {
-    $('guestBtn').onclick = submitGuestCode;
+    $('guestBtn').onclick = gateSubmit;
     $('guestPw').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') submitGuestCode();
+      if (e.key === 'Enter') gateSubmit();
     });
   }
 

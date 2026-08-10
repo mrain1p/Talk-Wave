@@ -8,10 +8,11 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import types
 import unittest
 from pathlib import Path
 import settings as settings_store
-from tests.support import AGENT_WORKER, REPO, widget_js
+from tests.support import AGENT_WORKER, REPO, _TempStores, widget_js
 
 
 class TestAssetVersioning(unittest.TestCase):
@@ -1108,6 +1109,95 @@ class TestSoundPacks(unittest.TestCase):
         self._pack("vintage", ["ring.mp3"])
         choices = settings_store.schema_payload()["fields"]["sound_pack"]["choices"]
         self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
+
+
+class TestSigningInClimbsTheTier(_TempStores):
+    """A caller on an open line can hold a guest code or the admin password to
+    unlock the commands the operator gated above `anyone`. The server resolves
+    the tier from X-Call-Key on /live and says whether there is a tier left to
+    climb to (`signinAvailable`) — the chip only appears when signing in would
+    actually change something."""
+
+    def setUp(self):
+        super().setUp()
+        # admin_auth keeps its store path in a module global read once from the
+        # env — point it at THIS test's temp dir so the guest/admin codes one
+        # test sets can't leak into the next (the store is otherwise shared for
+        # the whole run, and "no codes set" then reads whatever ran before).
+        import admin_auth
+        from pathlib import Path
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+
+    def tearDown(self):
+        import admin_auth
+        admin_auth.AUTH_PATH = self._old_auth
+        super().tearDown()
+
+    def _live_for(self, key=""):
+        from api.live import _for_this_caller
+
+        headers = {"X-Call-Key": key} if key else {}
+        req = types.SimpleNamespace(headers=headers, remote="9.9.9.9")
+        payload = {
+            "canAsk": {"allow_announcements": False},
+            "askTiers": {"allow_announcements": "guest", "allow_requests": "open"},
+        }
+        return _for_this_caller(req, payload)
+
+    def test_no_higher_tier_no_offer(self):
+        # No codes set: signing in could reach nothing, so it is never offered.
+        out = self._live_for()
+        self.assertFalse(out["signinAvailable"])
+        self.assertEqual(out["callerTier"], "open")
+
+    def test_a_stranger_is_offered_the_climb_and_a_code_makes_it(self):
+        import admin_auth
+
+        admin_auth.set_guest_password("guest99")
+        # A stranger sees the offer and cannot announce...
+        stranger = self._live_for()
+        self.assertTrue(stranger["signinAvailable"])
+        self.assertFalse(stranger["canAsk"]["allow_announcements"])
+        # ...the guest code climbs them and unlocks it.
+        guest = self._live_for("guest99")
+        self.assertEqual(guest["callerTier"], "guest")
+        self.assertTrue(guest["canAsk"]["allow_announcements"])
+
+    def test_the_top_tier_is_never_offered_the_climb(self):
+        import admin_auth
+
+        from api import auth as api_auth
+        admin_auth.set_password("adminpass123")
+        # caller_tier reads the admin key; an admin has nowhere to climb.
+        out = self._live_for("adminpass123")
+        self.assertEqual(out["callerTier"], "admin")
+        self.assertFalse(out["signinAvailable"])
+
+
+class TestTheAskMenuOffersEveryPermission(unittest.TestCase):
+    """The "What can I ask?" popup is built from ASKS in shared.js, and a
+    caller permission with no example there is a capability the operator
+    switched on that no caller is ever told about — takeover and skip both
+    shipped that way once (the NEVER list even claimed a caller could never
+    skip, three sections below the switch that lets them). This pins the menu
+    to the permission set: every TIERED permission a caller can hold must
+    have at least one ASKS entry, so a new gated tool cannot ship invisible."""
+
+    def test_every_tiered_permission_has_an_ask(self):
+        import re
+
+        src = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+        needs = set(re.findall(r"need:\s*'([a-z_]+)'", src))
+        for perm in settings_store.TIERED_PERMISSIONS:
+            # allow_chat is the MODE (the surface itself), not something a
+            # caller asks the DJ to do — it has no ask, by design.
+            if perm == "allow_chat":
+                continue
+            self.assertIn(
+                perm, needs,
+                f"{perm} is a caller permission with no example in the "
+                '"What can I ask?" menu — a capability nobody is told about')
 
 
 class TestPushToTalkIsPerSurfaceAndOnByDefault(unittest.TestCase):

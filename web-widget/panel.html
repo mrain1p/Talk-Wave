@@ -482,6 +482,16 @@
           caller who gets it, and the columns cascade — granting to
           <strong>Anyone</strong> grants it to everyone. A column you have no
           password for cannot be ticked.</p>
+        <p class="hint wide" style="margin-top:0">There are three tiers of
+          caller. <strong>Anyone</strong> is a stranger on an open line.
+          <strong>Guest</strong> is a caller who has entered the guest code,
+          and <strong>Admin</strong> one who has entered the admin password —
+          both set under <em>Access</em>. To let a caller move up a tier on a
+          line anyone can reach, turn on the <strong>“Sign in” button</strong>
+          in Player settings: it puts a corner button on the card that takes
+          either code and unlocks whatever that tier is granted here. So you
+          can give strangers requests and reads, and keep announcements or a
+          show takeover for callers who sign in.</p>
 
         <div class="permgrid" id="permGridCall">
           <div class="phead"><span>On this call</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
@@ -1099,6 +1109,11 @@
             <span class="plabel">“Text the booth” button</span>
             <input type="checkbox" id="show_chat_button" aria-label="Chat button on the page" />
             <input type="checkbox" id="embed_chat_button" aria-label="Chat button in an embed" />
+          </div>
+          <div class="prow" data-help="show_signin">
+            <span class="plabel">“Sign in” button</span>
+            <input type="checkbox" id="show_signin" aria-label="Sign-in button on the page" />
+            <input type="checkbox" id="embed_signin" aria-label="Sign-in button in an embed" />
           </div>
         </div>
 
