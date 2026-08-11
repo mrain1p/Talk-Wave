@@ -57,6 +57,7 @@ from tests.test_http import (  # noqa: F401
 from tests.test_widget import (  # noqa: F401
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
+    TestTheFinderIsNotAUsernameField,
     TestDiagnosticsResultsKeepTheirScrollSkin,
     TestTheEmbedSitsFlushByDefault,
     TestThumbsArePerDoor,

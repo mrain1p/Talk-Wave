@@ -1296,6 +1296,30 @@ class TestSigningInClimbsTheTier(_TempStores):
         self.assertTrue(self._live_for()["signinAvailable"])
 
 
+class TestTheFinderIsNotAUsernameField(unittest.TestCase):
+    """A password manager paired the panel's password box with the masthead
+    finder as its "username" and autofilled it — which engaged the search
+    results view and read as the page chips being broken (operator-reported,
+    0.10.68). Two defences, both pinned: the vendor opt-out attributes in the
+    markup, and the discard of any fill that arrives without focus."""
+
+    def test_the_markup_asks_every_manager_to_skip_it(self):
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        i = html.index('id="settingsSearch"')
+        tag = html[html.rindex("<input", 0, i):html.index("/>", i) + 2]
+        for attr in ("data-1p-ignore", "data-bwignore",
+                     'data-lpignore="true"', 'data-form-type="other"',
+                     'autocomplete="off"'):
+            self.assertIn(attr, tag, f"the finder lost {attr}")
+
+    def test_an_unfocused_fill_is_discarded(self):
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        start = js.index("bindSettingsSearch")
+        self.assertIn("document.activeElement !== box", js[start:start + 4500],
+                      "the finder must discard a fill that arrives without "
+                      "focus — autofill does not listen to attributes alone")
+
+
 class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
     """The chat text box shipped invisible because its CSS used tokens that do
     not exist (--field, --ink, --soft-border): `var(--field)` with no --field
