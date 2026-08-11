@@ -39,6 +39,13 @@
 
   function applyControls(d) {
     const c = surfaceControls(d);
+    // Flush by default in an embed (operator's call, 0.10.51): the card
+    // displays in whatever area its host gives it — no border, no sheet —
+    // unless the outline is ticked back on. Gated on `compact`, not
+    // `framed`: every real embed renders compact, while the panel's Page-tab
+    // preview is framed too and must keep showing the real page's card.
+    document.querySelector('.card').classList.toggle('bare',
+      compact && !(d && d.embedOutline));
     const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);

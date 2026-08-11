@@ -55,6 +55,7 @@ from tests.test_widget import (  # noqa: F401
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestDiagnosticsResultsKeepTheirScrollSkin,
+    TestTheEmbedSitsFlushByDefault,
     TestThumbsArePerDoor,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,

@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.51
+
+- **The embed sits flush by default.** An embedded card no longer draws its own outline or sheet — it displays in whatever area the host page gives it, the page showing through. A new **Draw the card outline** tick under Embed on another page brings the old look back; the main call page always keeps its card, and the panel's Page/Embed preview shows each surface correctly.
+- **Call-in access is three cascade ticks, not a dropdown.** Admin is always a door (locked on); tick **Guest code** to open the code door, tick **Anyone** to open the page to everybody — the same tick-implies-everything-above grammar the permission rows already speak. Each tier's own powers stay per-feature under Caller permissions.
+- **Unreachable tiers grey out properly.** With the line set to admin only, the Guest column in Caller permissions now greys like the Anyone column — a tier nobody can be no longer reads as one that could still ring.
+- **The jump bar gains Collapse all** — one press closes every section you've opened.
+- **The sound board groups the unfiled.** The category and type filters gain **No category yet** and **Unassigned** entries, so sounds nobody has filed are still findable as a group.
+- **Smaller fixes from the settings read-through:** the "How the doors work" card is restructured (bold lead-ins, bulleted layers, the lockout line unemphasised), the station-credentials help stops bolding one unlock mid-list, the ducking wait is labelled as the fallback it is, and the TTS server key says it's optional and usually for a self-hosted speech server.
+
 ## 0.10.50
 
 - **The whole settings header sticks now** — the Call-in settings heading, its promise line, the Find-a-setting box and the jump bar travel with you as one band, so search and navigation are never a scroll away. The jump chips also show **where you are**: the chip for the section currently on screen wears coral as you scroll, and jumps land cleanly below the band instead of hiding under it.

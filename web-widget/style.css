@@ -140,6 +140,13 @@
     border: 1px solid var(--edge); border-radius: 16px;
     background: var(--granite); box-shadow: var(--shadow);
   }
+  /* Flush mode, embeds only (call.js applyControls): the host page shows
+     through where the card's own sheet was. The inner surfaces — transcript
+     box, buttons, meters — keep their skins; it is the outer shell that
+     disappears into the host's area. */
+  .card.bare {
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  }
   /* Avatar beside the text rather than stacked above it — the stacked version
      wasted vertical space and pushed the captions off screen. */
   .who-row {
@@ -3294,6 +3301,20 @@
   body.panelpage details.diag {
     scroll-margin-top: calc(var(--stickybar, 96px) + 10px);
   }
+
+  /* Call-in access as a cascade row: three ticks in the permission matrix's
+     own voice, Admin locked on. The hidden select behind them is the stored
+     field (the kill-switch pattern). */
+  body.panelpage .accesscells {
+    display: inline-flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  }
+  body.panelpage .acell {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  body.panelpage .acell input { margin: 0; }
+  body.panelpage .acell input:disabled + span { color: var(--sage-dim); }
 
   /* Legibility (operator: the section rows ran too small to read down the
      page): the name a step up, the sentence at body size in body ink. The

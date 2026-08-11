@@ -279,6 +279,8 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # their own switch rather than inheriting the call's.
         "askChatFeedback": bool(cfg.get("ask_chat_feedback")),
         "askVmFeedback": bool(cfg.get("ask_vm_feedback")),
+        # An embed sits flush by default; this is the opt-back-in outline.
+        "embedOutline": bool(cfg.get("embed_card_outline")),
     }
 
 

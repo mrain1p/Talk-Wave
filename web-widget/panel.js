@@ -149,6 +149,20 @@
       link('sup-' + sup.id, sup.title);
     });
     link('supDiag', 'Diagnostics');
+    // An action chip, not a jump: after a long session the page is a stack
+    // of opened drawers, and closing them one by one is the only thing the
+    // bar couldn't do (operator's ask).
+    const fold = document.createElement('a');
+    fold.href = '#';
+    fold.className = 'navfold';
+    fold.textContent = 'Collapse all';
+    fold.title = 'Close every open section';
+    fold.onclick = (e) => {
+      e.preventDefault();
+      document.querySelectorAll('details.sec[open]')
+        .forEach((d) => { d.open = false; });
+    };
+    nav.appendChild(fold);
     watchNav();
   }
 
@@ -211,6 +225,7 @@
     ALL_FIELDS = SELECT_FIELDS.concat(TEXT_FIELDS, NUM_FIELDS, CHECK_FIELDS);
     layoutPanel();
     decoratePermissions();
+    decorateAccess();
     bindFieldEvents();
     decorateFields();
     buildSlotCards();
@@ -1340,6 +1355,7 @@
     };
     chip('adminSetChip', authConfigured);
     chip('guestSetChip', !!guestConfigured);
+    paintAccess();
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
     $('logoutBtn').hidden = !authConfigured;
     $('setGuestBtn').textContent = guestConfigured ? 'Change guest code' : 'Set guest code';
@@ -1768,9 +1784,10 @@
   //
   // Which fields matter is read from the SCHEMA rather than listed, so a look
   // setting added later is previewed without anyone remembering to come here.
-  // Both halves of the old Player settings section (split in 0.10.47) — a
-  // change in either is a change the preview frame must repaint for.
-  const LOOK_GROUPS = new Set(['surface', 'player']);
+  // Both halves of the old Player settings section (split in 0.10.47), and
+  // the embed section since its outline tick (0.10.51) — a change in any is
+  // a change the preview frame must repaint for.
+  const LOOK_GROUPS = new Set(['surface', 'player', 'embed']);
   function isLookField(f) {
     return !!(SCHEMA.fields[f] && LOOK_GROUPS.has(SCHEMA.fields[f].group));
   }
@@ -2087,7 +2104,10 @@
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access || 'auto';
     if (tier === 'admin') return true;      // always a door
-    if (tier === 'guest') return guestConfigured;
+    // Admin-only closes the phone below admin, so the guest column has no
+    // caller behind it either — it used to stay live whenever a code
+    // existed, and read as a tier that could still ring (operator-reported).
+    if (tier === 'guest') return access !== 'admin' && guestConfigured;
     // `open` callers only exist while the line lets somebody in without a
     // code. On auto that is "until a guest code is set".
     if (access === 'open') return true;
@@ -2096,9 +2116,62 @@
   }
 
   function tierWhyNot(tier) {
-    if (tier === 'guest') return 'No guest code set — nobody can be this caller yet.';
-    return 'The line is closed to callers without a code, so there are no '
-      + 'callers at this level. Change Call-in access under Access.';
+    const access = ($('front_access') && $('front_access').value)
+      || resolved.front_access || 'auto';
+    if (tier === 'guest' && access !== 'admin' && !guestConfigured) {
+      return 'No guest code set — nobody can be this caller yet.';
+    }
+    return 'The line is closed to callers at this level, so nobody can be '
+      + 'this caller. Change Call-in access under Access.';
+  }
+
+  // Call-in access as the cascade the permission rows already speak
+  // (operator's ask): Admin is always a door, ticking Guest opens the code
+  // door, ticking Anyone opens the page to everybody. The hidden select
+  // stays the stored field — these cells drive it the way the kill switch
+  // drives calls_paused — so Save and the schema never learn a new shape.
+  const ACCESS_CELLS = [
+    ['open', 'Anyone', 'No code — whoever loads the page can ring.'],
+    ['guest', 'Guest code', 'Callers who type the code you share.'],
+    ['admin', 'Admin', 'Always a door — the admin password opens the phone and this panel.'],
+  ];
+  function decorateAccess() {
+    const wrap = $('accessCells');
+    if (!wrap || wrap.dataset.built) return;
+    wrap.dataset.built = '1';
+    ACCESS_CELLS.forEach(([mode, word, why]) => {
+      const cell = document.createElement('label');
+      cell.className = 'acell';
+      cell.title = why;
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.mode = mode;
+      if (mode === 'admin') box.disabled = true;   // always on, never a choice
+      box.onchange = () => {
+        const sel = $('front_access');
+        // Same rule as a permission row: ticking a level opens it and every
+        // level above; unticking raises the floor to the next level up.
+        if (box.checked) sel.value = mode;
+        else sel.value = mode === 'open' ? 'guest' : 'admin';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        paintSecurity();
+      };
+      cell.appendChild(box);
+      const w = document.createElement('span');
+      w.textContent = word;
+      cell.appendChild(w);
+      wrap.appendChild(cell);
+    });
+  }
+  function paintAccess() {
+    const wrap = $('accessCells');
+    const sel = $('front_access');
+    if (!wrap || !sel) return;
+    const RANKS = { open: 0, guest: 1, admin: 2 };
+    const at = RANKS[sel.value] != null ? RANKS[sel.value] : 2;
+    wrap.querySelectorAll('input').forEach((box) => {
+      box.checked = RANKS[box.dataset.mode] >= at;
+    });
   }
 
   // Build the label and the three cells once, then keep them in step with the
@@ -2936,13 +3009,17 @@
     if (catSel) {
       const cats = [...new Set(rows.map((e) => e.category).filter(Boolean))].sort();
       const keep = catSel.value;
-      catSel.innerHTML = '<option value="">All categories</option>';
+      // "(no category)" is a grouping too (operator's ask): a sound nobody
+      // has filed yet must still be findable as a group, or the uncategorised
+      // half of the shelf can only be found by knowing names.
+      catSel.innerHTML = '<option value="">All categories</option>'
+        + '<option value="~none">No category yet</option>';
       cats.forEach((c) => {
         const o = document.createElement('option');
         o.value = c; o.textContent = c;
         catSel.appendChild(o);
       });
-      catSel.value = cats.includes(keep) ? keep : '';
+      catSel.value = (cats.includes(keep) || keep === '~none') ? keep : '';
     }
     const needle = (($('shelfSearch') && $('shelfSearch').value) || '')
       .trim().toLowerCase();
@@ -2952,12 +3029,19 @@
         [e.label, e.name, e.category, e.pack].join(' ')
           .toLowerCase().includes(needle));
     }
-    if (wantCat) rows = rows.filter((e) => e.category === wantCat);
+    if (wantCat) {
+      rows = rows.filter((e) => (wantCat === '~none'
+        ? !e.category : e.category === wantCat));
+    }
     const wantType = ($('shelfType') && $('shelfType').value) || '';
     if (wantType) {
-      rows = rows.filter((e) => e.used.indexOf(wantType) !== -1
-        || e.suggests === wantType
-        || (e.isDefault && e.kind === wantType));
+      // "~none" groups the sounds serving no slot at all — no assignment, no
+      // declared type, not a set's own default.
+      rows = rows.filter((e) => (wantType === '~none'
+        ? !(e.used.length || e.suggests || (e.isDefault && e.kind))
+        : (e.used.indexOf(wantType) !== -1
+           || e.suggests === wantType
+           || (e.isDefault && e.kind === wantType))));
     }
     if (shelfSort.key) {
       // The type column sorts by the TYPE — assignment, else declared type,

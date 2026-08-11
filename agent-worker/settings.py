@@ -364,6 +364,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_chat_button":      (None, False),
     "show_signin":            (None, False),
     "embed_signin":           (None, False),
+    # An embed sits flush in whatever area its host gives it — no border, no
+    # sheet of its own — unless the operator ticks the outline back on. The
+    # main page always keeps its card; only the frame is asked.
+    "embed_card_outline":     (None, False),
     # How each door reads: its WORD, its ICON, or both — one answer per
     # feature, not one for the whole row. An operator wanted Call worded and
     # the two secondary doors as bare icons on a tight embed, which the old
@@ -1019,6 +1023,11 @@ SCHEMA: dict[str, dict] = {
     "embed_signin": dict(group="surface", kind="check",
         label="“Sign in” button (embed)",
         help="The same corner button on the embedded card."),
+    "embed_card_outline": dict(group="embed", kind="check",
+        label="Draw the card outline",
+        help="Off, the embed sits flush in whatever area the host page gives "
+             "it — no border or sheet of its own, the page shows through. On, "
+             "it carries the same outlined card as the main page."),
     "show_voicemail_button": dict(group="surface", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "
@@ -1171,10 +1180,11 @@ SCHEMA: dict[str, dict] = {
         help="Anything sent to air waits for the broadcast to go quiet, and the DJ "
              "steps back from the call while it plays — telling the caller either "
              "side rather than talking over itself."),
-    "on_air_quiet_secs": dict(group="onair", kind="number", label="Air is busy for (s)",
+    "on_air_quiet_secs": dict(group="onair", kind="number",
+        label="Fallback: air is busy for (s)",
         needs=("avoid_on_air_overlap", True),
-        help="Fallback for when the station's log doesn't say what was spoken — "
-             "when it does, the hold is sized to the words themselves. "
+        help="Only a fallback, for when the station's log doesn't say what was "
+             "spoken — when it does, the hold is sized to the words themselves. "
              "A typical link runs 20–30 seconds."),
 
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",

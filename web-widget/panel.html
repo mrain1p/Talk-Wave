@@ -308,8 +308,8 @@
     <details data-group="secinfo" class="sec">
       <summary><span class="chev">▶</span><span class="secname">How the doors work</span><em class="secblurb"></em><span class="tag">reference</span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Three tiers, each including
-          the ones below it:</p>
+        <p class="hint wide" style="margin-top:0"><strong>Three tiers, each
+          including the ones below it:</strong></p>
         <ul class="hint wide" style="margin-top:0">
           <li><strong>Admin</strong> — always exists. Opens this panel, the
             keys and the test buttons; also opens the phone. Set under Access
@@ -320,18 +320,24 @@
           <li><strong>Open</strong> — no code: anyone who can load the page
             can call, inside the usage caps.</li>
         </ul>
-        <p class="hint wide">What stands behind them: passwords are stored as
-          PBKDF2 hashes, never plaintext; wrong guesses are rate-limited
-          fail2ban-style — <strong>5 wrong tries puts the address in a
-          5-minute cooldown, and a second round of 5 bans it until the app
-          restarts</strong> (a restart clears bans, and
-          <code>CALLIN_ADMIN_KEY</code> in the environment is the recovery
-          override); API keys are write-only — the panel shows last-four,
-          never the key; join tokens are signed and short-lived, minted per
-          call; each caller's tier rides inside the signed token, so a caller
-          cannot raise their own; and the station tools a caller can reach go
-          through a hard allowlist — the destructive ones are never on the
-          line at any setting.</p>
+        <p class="hint wide"><strong>What stands behind them:</strong></p>
+        <ul class="hint wide" style="margin-top:0">
+          <li><strong>Passwords</strong> — stored as PBKDF2 hashes, never
+            plaintext.</li>
+          <li><strong>Lockouts</strong> — wrong guesses are rate-limited
+            fail2ban-style: 5 wrong tries puts the address in a 5-minute
+            cooldown, and a second round of 5 bans it until the app restarts.
+            A restart clears bans, and <code>CALLIN_ADMIN_KEY</code> in the
+            environment is the recovery override.</li>
+          <li><strong>API keys</strong> — write-only: the panel shows
+            last-four, never the key.</li>
+          <li><strong>Join tokens</strong> — signed and short-lived, minted
+            per call.</li>
+          <li><strong>Caller tier</strong> — rides inside the signed token,
+            so a caller cannot raise their own.</li>
+          <li><strong>Station tools</strong> — a hard allowlist; the
+            destructive ones are never on the line at any setting.</li>
+        </ul>
       </div>
     </details>
 
@@ -339,9 +345,17 @@
       <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
         <h4 class="subhead">Who can call</h4>
-        <div class="row">
-          <label for="front_access">Call-in access</label>
-          <select id="front_access"></select>
+        <!-- The same cascade the permission rows speak (operator's ask):
+             Admin is always a door, ticking Guest opens the code door,
+             ticking Anyone opens the page to everybody — each tier's own
+             powers stay per-feature under Caller permissions. The hidden
+             select is still the stored field, exactly the kill switch's
+             pattern: Save diffs it, the cells drive it. -->
+        <div class="row accessrow">
+          <label>Call-in access</label>
+          <span class="accesscells" id="accessCells"></span>
+          <select id="front_access" class="fieldonly" tabindex="-1"
+                  aria-hidden="true"></select>
         </div>
         <div class="row narrow">
           <label for="guest_session_hours">Guest code expires (hours)</label>
@@ -403,7 +417,7 @@
         <h4 class="subhead">Station admin credentials</h4>
         <p class="hint wide" style="margin-top:0">The station's own login.
           Unlocks putting messages on air, running segments, firing a programme
-          beat, skipping a track, <strong>putting a different show on air</strong>,
+          beat, skipping a track, putting a different show on air,
           the back-to-air mention, exact-track queueing, and mirroring each
           persona's voice from the station. Stored server-side, never shown back.</p>
         <!-- Filled by paintSecrets() from secrets_store.SECRET_GROUPS. Every
@@ -924,6 +938,7 @@
               <option value="hangup">Hang ups</option>
               <option value="failed">Can't connects</option>
               <option value="vm_beep">Voicemail beeps</option>
+              <option value="~none">Unassigned — no type yet</option>
             </select>
           </div>
           <table class="soundboard" id="soundBoard" hidden>
@@ -1347,6 +1362,7 @@
         <p class="hint wide" style="margin-top:0">Paste the snippet where the
           card should appear. <strong>Nothing else to add</strong>: the script
           builds the iframe itself, microphone permission included.</p>
+        <label class="check"><input type="checkbox" id="embed_card_outline" /> Draw the card outline</label>
         <div class="row">
           <label for="embedMode">Shape</label>
           <select id="embedMode">

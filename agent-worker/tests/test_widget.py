@@ -123,6 +123,32 @@ class TestThumbsArePerDoor(_TempStores):
                                  f"{field} lit {other}")
 
 
+class TestTheEmbedSitsFlushByDefault(_TempStores):
+    """An embed displays in whatever area its host gives it — no border, no
+    sheet — unless the operator ticks the outline back on (0.10.51). The
+    main page always keeps its card; only the frame reads the flag."""
+
+    def test_the_flag_defaults_off_and_reads_its_setting(self):
+        import settings as settings_store
+        from api.live import look_payload
+
+        base = settings_store.load()
+        self.assertFalse(look_payload(dict(base), "Rosie")["embedOutline"])
+        self.assertTrue(look_payload(
+            {**base, "embed_card_outline": True}, "Rosie")["embedOutline"])
+
+    def test_the_widget_gates_bare_on_framed(self):
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("classList.toggle('bare'", js)
+        bare_at = js.index("classList.toggle('bare'")
+        # `compact`, deliberately not `framed`: the panel's Page-tab preview
+        # is framed too, and gating on framed stripped the card there.
+        self.assertIn("compact &&", js[bare_at:bare_at + 160],
+                      "bare must never strip the main page's card")
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".card.bare", css)
+
+
 class TestDiagnosticsResultsKeepTheirScrollSkin(unittest.TestCase):
     """The viewers' result boxes must keep the 'scrolly' class on rewrite.
 
