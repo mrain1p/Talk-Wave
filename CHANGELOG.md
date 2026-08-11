@@ -3,6 +3,20 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.63 – 0.10.69
+
+One entry for the whole run — these shipped to `main` without notes at the time; recorded here so the log stays whole.
+
+- **The embed allowlist became a setting** (0.10.63). *Players → Embed on another page → Allowed origins*, beside the snippet it exists for: the comma-separated https origins that may embed the card and place calls on your keys. `CALLIN_ALLOWED_ORIGINS` stays as the env baseline; a save applies on the next request with no container recreate, and `*` remains dev-only.
+- **The panel reshuffled** (0.10.64). The "Call-in settings" heading retired; the finder moved into the masthead above the coral rule; *The call card* is now **Players** and the shared-brain page is **The booth** (which also took Call transcripts — the records cover calls, chats and voicemails alike); sections arrive open, with the old hover wash promoted to the section headers' resting tint.
+- **Chat action receipts follow the DJ's line** (0.10.65). Ask for a song on the text line and the ✅ card lands after the words, not before — with a Texts-page choice: after the line (default), as it happens, or off (the action still runs and the transcript still records it).
+- **The guest door and the open door became one choice apiece** (0.10.66). An open line no longer implies the guest door: the code stops elevating there, so you can run Anyone with the guest pathway off. Admin is always a door, and the permission matrix greys the guest column on an open line with a title saying why.
+- **The corner icons are drawn, and the sign-in offer is honest** (0.10.67). The theme cycle wears real SVGs — a sun, a crescent, a transmitter mast for the station's colours, a monitor for match-the-device — from one table both surfaces share. And on an open line the sign-in chip no longer offers a guest climb the door model made pointless; the admin password remains the offer in every mode.
+- **The finder stopped being mistaken for a username box** (0.10.68). Password managers paired the panel's password with the masthead search and kept autofilling it, which silently put the panel into the search results view. The box now carries every vendor's opt-out flag, and any fill that arrives without focus is discarded — a human typing always has focus.
+- **The on-air hold matches what is actually audible** (0.10.69). Every station signal is stamped at handoff, seconds before the audio reaches the stream, so the hold engaged and released early. The guard now anchors on the station's own verified webhook push the moment it arrives, and a new **Handoff-to-air lag** (default 2s) rides the hold's tail so the DJ stops coming back over a link's last words.
+
+Also in this span, deployment-side: off-LAN reach proven with a cellular call (`use_external_ip` + the single forwarded UDP port), and the **TLS front door** recipe — one public name for the page and the signalling — written up in [networking](docs/networking.md).
+
 ## 0.10.62
 
 - **The settings panel is pages now, not one long scroll.** The dashboard is the landing page, and Configuration, Permissions & safety, The DJ, Calls, Voicemail, Texts, The call card, Reference and Diagnostics are each their own page behind the same `/settings` address (`#calls`, `#voicemail`, `#texts`, …) — so a page survives a refresh, the back button works, and a link to one page can be sent to someone. The jump bar is the page picker, sitting with the search in one sticky band at the very top.

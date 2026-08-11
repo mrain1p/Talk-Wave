@@ -57,10 +57,16 @@ is not the truth. Models that list fine have 404'd through the plugin. Measured,
 `gemini-3.1-flash-lite` (~0.55s, best tool routing), `gemini-2.5-flash-lite` (~0.44s),
 `gemini-3.6-flash` (~1.25s).
 
-## Known open issue: off-LAN calls fail for about half of callers
+## Off-LAN reach: SOLVED with config (2026-08-11) — verify the config before diagnosing
 
-The only publicly routable address LiveKit advertises is IPv6 — `rtc.node_ip` pins IPv4 to the
-LAN address and overrides the STUN-discovered public IP. So IPv6 callers connect with no port
-forwarding at all, and IPv4-only callers cannot connect. The fix is single-UDP-port plus
-dropping `node_ip`, honest docs and a pipeline stage — or LiveKit Cloud for the media leg.
-Do not diagnose this as a firewall problem on the caller's side.
+This was a known open issue ("off-LAN calls fail for about half of callers"): `rtc.node_ip`
+pinned the advertised IPv4 to the LAN address, so only IPv6 callers connected. Fixed by
+config, and proven by a cellular-with-wifi-off call on the live deployment: `livekit.yaml`
+carries `use_external_ip: true` with `node_ip` UNSET, and the router forwards UDP 7882 to the
+LiveKit host (docs/networking.md option 3; the TLS front-door section covers signalling).
+
+If an off-LAN caller fails NOW, check the config regressed before anything else:
+`docker logs <livekit> | grep "using external IPs"` must show the real public IPv4, not the
+LAN address — a re-pinned `node_ip`, a moved DHCP lease under the router rule, or newly
+appeared CGNAT are the three ways it comes back. Only then look elsewhere, and still do not
+diagnose it as a firewall problem on the caller's side.
