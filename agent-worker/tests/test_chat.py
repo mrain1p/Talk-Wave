@@ -17,6 +17,49 @@ import settings as settings_store
 from tests.support import _TempStores
 
 
+class TestTheTextLineIsOriginGated(unittest.TestCase):
+    """A WebSocket handshake is not subject to CORS, so the chat line — which
+    spends model budget per turn — was reachable from any origin /token
+    refuses (0.10.57 review). origin_allowed is the same policy applied where
+    the handshake can see it."""
+
+    def _req(self, origin=None, host="caller.example:8100"):
+        headers = {"Host": host}
+        if origin is not None:
+            headers["Origin"] = origin
+        return types.SimpleNamespace(headers=headers)
+
+    def test_same_origin_and_no_origin_are_allowed(self):
+        from api.wire import ALLOWED_ORIGINS, origin_allowed
+
+        old = list(ALLOWED_ORIGINS)
+        ALLOWED_ORIGINS[:] = []                       # same-origin-only default
+        try:
+            self.assertTrue(origin_allowed(self._req(origin=None)))
+            self.assertTrue(origin_allowed(
+                self._req(origin="https://caller.example:8100")))
+            self.assertFalse(origin_allowed(
+                self._req(origin="https://evil.example")))
+        finally:
+            ALLOWED_ORIGINS[:] = old
+
+    def test_a_named_origin_is_allowed_and_star_opens_it(self):
+        from api.wire import ALLOWED_ORIGINS, origin_allowed
+
+        old = list(ALLOWED_ORIGINS)
+        try:
+            ALLOWED_ORIGINS[:] = ["https://radio.example"]
+            self.assertTrue(origin_allowed(
+                self._req(origin="https://radio.example")))
+            self.assertFalse(origin_allowed(
+                self._req(origin="https://evil.example")))
+            ALLOWED_ORIGINS[:] = ["*"]
+            self.assertTrue(origin_allowed(
+                self._req(origin="https://evil.example")))
+        finally:
+            ALLOWED_ORIGINS[:] = old
+
+
 class TestTheTextLineHasADoor(_TempStores):
     """The gate mirrors /token deliberately: The Line outranks the mode, the
     ladder decides who, and a curl loop meets a ceiling — the station's own
@@ -56,6 +99,36 @@ class TestTheTextLineHasADoor(_TempStores):
     def test_an_open_line_lets_a_stranger_in(self):
         self.assertIsNone(self._refusal({"chat_enabled": True,
                                          "allow_chat": "open"}))
+
+
+class TestTheFloodBrakeSurvivesAReconnect(unittest.TestCase):
+    """The per-minute message brake used to live on the WebSocket, so a caller
+    could burst, drop the socket, resume the same chat id for a fresh empty
+    list, and burst again (0.10.57 review). It lives on the ChatSession now, so
+    reconnecting is no cheaper — and the handler reads chat.msg_times, not a
+    per-socket list."""
+
+    def test_the_brake_state_is_on_the_chat_not_the_socket(self):
+        from chat.session import ChatSession
+
+        chat = ChatSession("abc123def456", "open")
+        self.assertEqual(chat.msg_times, [])
+        chat.msg_times.append(123.0)
+        # A "reconnect" is the SAME object fetched again from the shelf, so
+        # the recorded times are still there.
+        self.assertEqual(chat.msg_times, [123.0])
+
+    def test_the_handler_reads_the_chat_field(self):
+        import inspect
+
+        from api import chat as api_chat
+
+        src = inspect.getsource(api_chat.handle_chat_ws)
+        self.assertIn("chat.msg_times", src)
+        # The old per-socket local is gone — no bare `msg_times` that isn't
+        # `chat.msg_times`.
+        self.assertNotIn("msg_times: list", src)
+        self.assertNotIn(" msg_times[", src)   # bare local index; chat. has a dot
 
 
 class TestOneAbuserIsSingledOut(_TempStores):

@@ -743,8 +743,15 @@
       resolved[field] = next;
       overrides[field] = next;
     } catch (e) {
+      // Say it, like savePaused does. This branch used to mutate a throwaway
+      // object literal and pass empty text, so a failed door toggle reverted
+      // in total silence — the operator thought a door had closed when a
+      // transient 401 meant it hadn't (0.10.58 review).
       box.checked = before;
-      showResult($('saveMsg') ? { className: '', textContent: '' } : null, false, '');
+      if ($('saveMsg')) {
+        $('saveMsg').textContent = 'Could not change that — ' + e.message;
+        setTimeout(() => { $('saveMsg').textContent = ''; }, 4000);
+      }
     } finally {
       if (btn) btn.disabled = false;
       paintDash();
@@ -4014,7 +4021,13 @@
         return row('oneoff', '·', st.ms + 'ms', st.name, st.note);
       }
       const choke = slowTurn && worst && st === worst;
-      row(choke ? 'choke' : '', choke ? '!' : '✓', st.ms + 'ms', st.name, st.note);
+      // An estimated stage (cloud STT, whose network round trip we don't
+      // measure) wears ≈ and an "est." tag so it never reads as a measured
+      // number beside the real ones (0.10.58 review).
+      const mark = choke ? '!' : st.estimate ? '≈' : '✓';
+      const label = st.estimate ? st.name + ' · est.' : st.name;
+      row(choke ? 'choke' : (st.estimate ? 'oneoff' : ''),
+          mark, st.ms + 'ms', label, st.note);
     });
 
     // The number the caller actually experiences, judged against the same

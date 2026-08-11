@@ -70,6 +70,11 @@ class ChatSession:
         # One message in flight per chat: two tabs racing the same id would
         # interleave two tool loops through one transcript.
         self.lock = asyncio.Lock()
+        # The flood brake lives on the CHAT, not the socket: it used to be a
+        # per-connection list, so a caller could send a burst, drop the
+        # socket, resume the same id for a fresh empty list, and burst again
+        # (0.10.57 review). Persisting it here makes reconnecting no cheaper.
+        self.msg_times: list[float] = []
 
     async def greet(self, cfg: dict, on_event) -> None:
         """The booth speaks first when a fresh chat opens — a text line that

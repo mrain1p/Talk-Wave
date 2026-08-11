@@ -51,6 +51,23 @@ PANEL_ORIGINS = [
 ]
 
 
+def origin_allowed(request: web.Request) -> bool:
+    """Whether this request's Origin may drive a budget-spending surface.
+
+    Same policy as _cors, but usable where CORS can't reach: a WebSocket
+    handshake is NOT subject to CORS, so the chat line — which spends LLM
+    money per turn — was reachable cross-origin even though /token refuses
+    the same foreign page (0.10.57 review). A same-origin request carries no
+    Origin header (or one equal to the host), so empty stays same-origin-only.
+    """
+    origin = request.headers.get("Origin", "")
+    if not origin or "*" in ALLOWED_ORIGINS or origin in ALLOWED_ORIGINS:
+        return True
+    # Same-origin: the Origin's host:port matches the request's own.
+    host = request.headers.get("Host", "")
+    return origin.split("://", 1)[-1] == host
+
+
 def _cors(request: web.Request, resp: web.StreamResponse) -> web.StreamResponse:
     origin = request.headers.get("Origin", "")
     if "*" in ALLOWED_ORIGINS:
@@ -136,3 +153,27 @@ def _caller_key(request: web.Request) -> str:
         if hops:
             return hops[0]
     return request.remote or "unknown"
+
+
+def _auth_key(request: web.Request) -> str:
+    """The bucket a wrong password or guest code counts against, and the one a
+    lockout applies to. Deliberately NOT _caller_key.
+
+    _caller_key trusts X-Forwarded-For from any private/loopback peer by
+    default (the bundled proxy reaches this container over the docker bridge).
+    That is fine for the redial cooldown, a pacing knob — but it means a client
+    on the LAN, connecting straight to :8100, is treated as a trusted proxy and
+    can set its own X-Forwarded-For: rotate the header to sit at "tries left"
+    forever, defeating the throttle in front of the 6-char guest code and the
+    admin password, or drop a victim's address (the operator's own) into
+    cooldown (0.10.58 review). A security control cannot ride a spoofable key.
+
+    So the forwarded caller is believed here ONLY when an explicit
+    CALLIN_TRUSTED_PROXIES list vouches for the immediate peer; otherwise the
+    socket's own address — which the client cannot choose — is the answer.
+    Behind the bundled reverse proxy, set CALLIN_TRUSTED_PROXIES to it to
+    restore per-caller precision without reopening the spoof.
+    """
+    if _TRUSTED_PROXIES_RAW and _peer_is_a_trusted_proxy(request.remote):
+        return _caller_key(request)
+    return (request.remote or "unknown")

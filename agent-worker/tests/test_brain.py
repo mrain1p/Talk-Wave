@@ -343,6 +343,28 @@ class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
                         "album": "Dummy", "year": 1994}),
             '"Roads" by Portishead (Dummy, 1994)')
 
+    def test_the_briefing_path_caps_its_fields_too(self):
+        # The search path always capped its fields; the now-playing / recent
+        # briefing path was missed until the 0.10.58 review — a huge or
+        # prompt-like title lands in the SYSTEM PROMPT and re-costs every turn.
+        from brain.briefing import _fmt_now_playing, _tracks
+
+        np = {"nowPlaying": {"title": "x" * 5000, "artist": "y" * 5000,
+                             "album": "z" * 5000, "genre": "g" * 5000,
+                             "moods": ["m" * 900] * 5}}
+        line = _fmt_now_playing(np)
+        self.assertLess(len(line), 700, f"now-playing rendered {len(line)}")
+        rows = _tracks([{"title": "t" * 5000, "artist": "a" * 5000}], 4)
+        self.assertTrue(all(len(r) < 300 for r in rows), rows)
+
+    def test_an_ordinary_now_playing_still_reads_naturally(self):
+        from brain.briefing import _fmt_now_playing
+
+        line = _fmt_now_playing({"nowPlaying": {
+            "title": "Roads", "artist": "Portishead", "album": "Dummy"}})
+        self.assertIn('"Roads" by Portishead', line)
+        self.assertIn("Dummy", line)
+
 
 class TestACallerCanBeToldNothingIsKept(_TempStores):
     """A transcript is both sides of a stranger's conversation, kept on the

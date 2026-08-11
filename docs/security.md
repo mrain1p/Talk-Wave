@@ -151,12 +151,22 @@ can name. `X-Forwarded-For` is a list the client starts, so it is only read
 when the connection arrived from a reverse proxy you trust, and then only the
 entry that proxy appended — see `CALLIN_TRUSTED_PROXIES` in `.env.example`. It
 defaults to any loopback or private peer, which covers the normal deployment: a
-reverse proxy reaching the container over the docker bridge. Set it explicitly
-if this port is reachable directly from an untrusted network as well as through
-the proxy; otherwise the lockout is a header away from meaning nothing, in
-either direction. This reads one hop — the entry your proxy appended. With a
-CDN in front as well, that entry is the CDN's address rather than the caller's,
-so per-caller limits collapse into one shared bucket.
+reverse proxy reaching the container over the docker bridge. This reads one hop
+— the entry your proxy appended. With a CDN in front as well, that entry is the
+CDN's address rather than the caller's, so per-caller limits collapse into one
+shared bucket.
+
+The **brute-force lockout** (wrong passwords and guest codes) is stricter than
+the redial cooldown, and deliberately so: it keys on the immediate socket peer
+— which a client cannot choose — and believes the forwarded caller **only when
+`CALLIN_TRUSTED_PROXIES` explicitly names the proxy**. The redial cooldown is a
+pacing knob and can afford the lenient forwarded key; a security throttle
+cannot. The consequence for a LAN deployment: if `:8100` is reachable directly
+(not only through the proxy), a local client that could otherwise spoof its
+`X-Forwarded-For` still cannot rotate its lockout bucket or drop your admin
+address into cooldown — but per-caller precision for the lockout returns only
+once you set `CALLIN_TRUSTED_PROXIES` to your proxy. Set it whenever a proxy is
+in front; leave it unset and the lockout simply falls back to the socket peer.
 
 **Stored keys only travel to the host they're saved for.** The panel can test a
 URL before saving it, and a test builds the real provider — so a URL supplied

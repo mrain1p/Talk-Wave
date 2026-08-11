@@ -193,6 +193,23 @@ class TestATypedToolCallNeverReachesTheSpeaker(unittest.TestCase):
             self.LEAK, strip_directions=False, profanity_mode="off")
         self.assertEqual(out, "")
 
+    def test_other_vendors_tool_shapes_go_too(self):
+        # The stripper was anchored to Gemini's namespaces; broadened in the
+        # 0.10.58 review so a model that regresses under a different family's
+        # syntax still can't speak code down the line.
+        cases = [
+            "Sure.\n<tool_call>{\"name\": \"skip\"}</tool_call>",
+            "One sec.\ntools.subwave_search_library(query='rain')",
+            "Okay.\nmulti_tool_use.parallel(tool_uses=[])",
+            "Right.\n<function_call>foo(1)</function_call>",
+        ]
+        for c in cases:
+            with self.subTest(c=c):
+                out = speech_filter.clean_for_speech(c)
+                self.assertNotIn("(", out)
+                self.assertNotIn("<", out)
+                self.assertTrue(speech_filter.looks_like_tool_code(c))
+
     def test_ordinary_speech_with_brackets_survives(self):
         # The rule is anchored on the providers' namespace precisely so that a
         # DJ talking about anything parenthetical is untouched.

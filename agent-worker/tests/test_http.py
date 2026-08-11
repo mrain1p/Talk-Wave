@@ -366,6 +366,44 @@ class TestCallerIdentityCannotBeChosen(unittest.TestCase):
                          "8.8.4.4")
 
 
+class TestTheAuthLockoutKeyIsUnspoofable(unittest.TestCase):
+    """The redial cooldown can afford the walkable caller_key; the brute-force
+    lockout cannot. A LAN client hitting :8100 directly is a private peer, so
+    the default trusts its X-Forwarded-For — which let it rotate its lockout
+    bucket forever (defeating the throttle in front of the guest code and admin
+    password) or drop a victim into cooldown. _auth_key believes the forwarded
+    caller ONLY behind an explicit trusted proxy; otherwise the socket peer,
+    which the client cannot choose (0.10.58 review)."""
+
+    def _key(self, peer, xff=None, trusted=""):
+        from api import wire as api_wire
+
+        old = api_wire._TRUSTED_PROXIES_RAW
+        api_wire._TRUSTED_PROXIES_RAW = trusted
+        try:
+            headers = {"X-Forwarded-For": xff} if xff else {}
+            return api_wire._auth_key(
+                types.SimpleNamespace(headers=headers, remote=peer))
+        finally:
+            api_wire._TRUSTED_PROXIES_RAW = old
+
+    def test_a_lan_client_cannot_spoof_its_lockout_bucket(self):
+        # Private peer, default (no explicit proxy list): the forwarded header
+        # is IGNORED for auth — the socket peer is the key.
+        self.assertEqual(self._key("172.18.0.9", xff="8.8.8.8"), "172.18.0.9")
+        # And it cannot pin the bucket to a victim's address either.
+        self.assertEqual(self._key("172.18.0.9", xff="9.9.9.9"), "172.18.0.9")
+
+    def test_an_explicit_trusted_proxy_restores_per_caller_precision(self):
+        # With the proxy named, the caller it OBSERVED (rightmost) is trusted.
+        self.assertEqual(
+            self._key("10.0.0.2", xff="1.2.3.4, 8.8.4.4", trusted="10.0.0.2"),
+            "8.8.4.4")
+
+    def test_a_public_peer_is_always_its_own_key(self):
+        self.assertEqual(self._key("8.8.8.8", xff="10.0.0.1"), "8.8.8.8")
+
+
 class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
     """Taking the rightmost X-Forwarded-For entry is right for one proxy and
     wrong for two. With a CDN in front of the reverse proxy, the entry the
@@ -403,6 +441,50 @@ class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
         # itself unattributable — the walk stops at the first untrusted entry.
         self.assertEqual(
             self._key("172.19.0.1", "10.0.0.5, 8.8.4.4"), "8.8.4.4")
+
+
+class TestCallFeedbackRejectsGarbageRoomsCheaply(unittest.TestCase):
+    """/call-feedback is unauthenticated by design (a stranger rating their own
+    call, keyed by a random room). A malformed room was never a real call, so
+    it is refused before the 10s / 20-scan retry loop, and a semaphore caps how
+    many waiters can be parked at once — otherwise a flood of well-formed but
+    nonexistent rooms holds a pile of requests open (0.10.57 review)."""
+
+    def _feedback(self, room, rating="up", rate=None):
+        import asyncio
+        import json as _json
+        import types
+
+        from api import tokens as api_tokens
+        from call import record as call_record
+
+        async def _json_body():
+            return {"room": room, "rating": rating}
+
+        req = types.SimpleNamespace(headers={}, json=_json_body)
+        old = call_record.rate
+        if rate is not None:
+            call_record.rate = rate
+        try:
+            resp = asyncio.run(api_tokens.handle_call_feedback(req))
+        finally:
+            call_record.rate = old
+        return resp.status, _json.loads(resp.body.decode())
+
+    def test_a_malformed_room_is_a_400_before_any_scan(self):
+        # rate() would raise if reached — proving the shape gate short-circuits.
+        def _boom(*a):
+            raise AssertionError("rate() must not be called for a bad room")
+
+        for bad in ("", "../etc", "callin-XYZ", "callin-a-zzz", "not-a-room"):
+            status, _ = self._feedback(bad, rate=_boom)
+            self.assertEqual(status, 400, bad)
+
+    def test_a_well_shaped_room_reaches_the_store(self):
+        status, body = self._feedback(
+            "callin-o-0123456789ab", rate=lambda *a: True)
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("ok"))
 
 
 class TestJoinTokensExpire(unittest.TestCase):

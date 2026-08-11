@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import re
 import uuid
 
 from aiohttp import web
@@ -30,6 +31,14 @@ log = logging.getLogger("callin.token")
 # point is to stop runaway use, not to ration callers.
 _recent_mints: list[float] = []          # timestamps, global
 _caller_last: dict[str, float] = {}      # caller key -> last mint
+
+# A minted room is `<prefix>-<tier?>-<12 hex>`; feedback for anything else was
+# never a real call, so it is rejected before the 10s / 20-scan retry loop
+# rather than tying a request open on a random string (0.10.57 review).
+_ROOM_SHAPE = re.compile(r"^(callin|vm|probe)-([a-z]-)?[0-9a-f]{12}$")
+# And a ceiling on how many feedback waiters may be parked at once, so a flood
+# of well-formed-but-nonexistent rooms can't hold a pile of requests open.
+_feedback_waiters = asyncio.Semaphore(16)
 
 # room -> what we knew about the caller when the token was minted. The worker
 # writes the call record and never sees any of this, so it is merged in when
@@ -184,17 +193,22 @@ async def handle_call_feedback(request: web.Request) -> web.Response:
         body = {}
     room = str((body or {}).get("room") or "")
     rating = str((body or {}).get("rating") or "")
-    if rating not in ("up", "down") or not room:
+    if rating not in ("up", "down") or not _ROOM_SHAPE.match(room):
         return _cors(request, web.json_response(
             {"error": "room and rating (up|down) are required"}, status=400))
 
     from call import record as call_record
 
-    for attempt in range(20):            # ~10s, then give up quietly
-        if call_record.rate(room, rating):
-            return _cors(request, web.json_response({"ok": True}))
-        if attempt < 19:
-            await asyncio.sleep(0.5)
+    if _feedback_waiters.locked():
+        # Every slot is parked; rather than open a 21st 10-second wait, tell
+        # the caller to try once more. A real caller's record lands in seconds.
+        return _cors(request, web.json_response({"ok": False, "busy": True}))
+    async with _feedback_waiters:
+        for attempt in range(20):        # ~10s, then give up quietly
+            if call_record.rate(room, rating):
+                return _cors(request, web.json_response({"ok": True}))
+            if attempt < 19:
+                await asyncio.sleep(0.5)
     # Recording may simply be switched off, which is not an error worth
     # showing a caller who has just been thanked for answering.
     log.info("no call record to attach a rating to (room=%s)", room)

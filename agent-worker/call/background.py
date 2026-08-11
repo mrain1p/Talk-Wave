@@ -20,3 +20,21 @@ def spawn(coro) -> asyncio.Task:
     _background.add(task)
     task.add_done_callback(_background.discard)
     return task
+
+
+async def cancel_all() -> None:
+    """Cancel every outstanding background task and wait for them to unwind.
+
+    Called from call shutdown: the late-match announcer polls the station for
+    ~50s after a request, and if the caller hangs up mid-poll it would go on
+    writing receipts to a record that was already finalised and never rewritten
+    (0.10.57 review) — the receipts were silently lost and the polling was
+    wasted. The worker process is one call, so this cancels only this call's
+    tasks; the record write in _on_shutdown runs concurrently and captures the
+    committed transcript regardless.
+    """
+    tasks = list(_background)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)

@@ -22,7 +22,7 @@ from aiohttp import web
 import admin_auth
 from api import wire
 from api.live_cache import _live_cache
-from api.wire import _caller_key, _cors
+from api.wire import _auth_key, _caller_key, _cors  # noqa: F401
 
 log = logging.getLogger("callin.token")
 
@@ -94,7 +94,9 @@ def _key_valid(key: str) -> bool:
 def _check_admin(request: web.Request) -> bool:
     """Password check with lockout, once a password is configured. Stores a
     caller-facing reason on the request for the shared 401 payload."""
-    ip = _caller_key(request)
+    # The lockout bucket must be unspoofable — see _auth_key. _caller_key
+    # (walkable X-Forwarded-For) is fine for pacing, not for a throttle.
+    ip = _auth_key(request)
     gate = _auth_gate(ip)
     if gate:
         request["auth_error"] = gate
@@ -174,7 +176,7 @@ def _guest_check(key: str, ip: str) -> str | None:
 
 def _guest_ok(request: web.Request) -> bool:
     reason = _guest_check(
-        request.headers.get("X-Call-Key", ""), _caller_key(request)
+        request.headers.get("X-Call-Key", ""), _auth_key(request)
     )
     if reason:
         request["auth_error"] = reason
