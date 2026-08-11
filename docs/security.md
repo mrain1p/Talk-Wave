@@ -133,9 +133,13 @@ inferred from whether a guest code happens to exist:
 | | |
 |---|---|
 | **Automatic** (default) | open until you set a guest code, then required |
-| **Open** | anyone who loads the page can call |
+| **Open** | anyone who loads the page can call — the guest door is off, and the code does not elevate (since 0.10.66); the admin password still opens everything |
 | **Guest code** | the code you hand out, or the admin password |
 | **Admin only** | the phone is closed to callers — useful while setting up |
+
+*Open* and *Guest code* are one choice apiece, not a cascade: the line is
+code-gated or open, never both, so turning the guest pathway off does not
+require closing the line or deleting the stored code.
 
 Choosing *Guest code* or *Admin only* without having set that password refuses
 every call, and the panel says so, rather than falling open. The panel itself

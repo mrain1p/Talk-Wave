@@ -196,13 +196,22 @@ def caller_tier(request: web.Request) -> str:
     a different name, and an operator ringing their own booth from the panel's
     preview should not come through as a stranger.
     """
+    import settings as settings_store
+
+    # Whether a GUEST caller can exist is the door's answer, not the code's.
+    # Since 0.10.66 Guest code and Anyone are one choice apiece (the
+    # operator's ask): on an open line the code no longer elevates, so
+    # turning the guest pathway off does not require closing the line or
+    # deleting the stored code. The admin password is a door in every mode.
+    mode = str(settings_store.load().get("front_access") or "auto").lower()
+    guest_door = mode == "guest" or (mode == "auto" and admin_auth.guest_is_set())
     for header in ("X-Call-Key", "X-Admin-Key"):
         key = request.headers.get(header, "")
         if not key:
             continue
         if _key_valid(key):
             return "admin"
-        if admin_auth.verify_guest(key):
+        if guest_door and admin_auth.verify_guest(key):
             return "guest"
     return "open"
 

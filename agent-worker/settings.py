@@ -914,8 +914,10 @@ SCHEMA: dict[str, dict] = {
         label="Call-in access",
         help="This is the PHONE — who may ring at all. What a caller may DO "
              "once through is separate and per-tier, feature by feature, "
-             "under Caller permissions. The panel always needs the admin "
-             "password, whichever of these you pick."),
+             "under Caller permissions. Open and Guest code are one choice "
+             "apiece: an open line has no code door (the code stops "
+             "elevating), a code-gated line is closed to strangers. The "
+             "admin password opens the phone and the panel in every mode."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels

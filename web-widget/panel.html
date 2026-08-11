@@ -318,7 +318,9 @@
             opens the phone. No username; expires per device if you set a
             clock; the card offers a lock button to forget it early.</li>
           <li><strong>Open</strong> — no code: anyone who can load the page
-            can call, inside the usage caps.</li>
+            can call, inside the usage caps. On an open line the guest door
+            is off — the code does not elevate — while the admin password
+            still opens everything.</li>
         </ul>
         <p class="hint wide"><strong>What stands behind them:</strong></p>
         <ul class="hint wide" style="margin-top:0">
@@ -345,12 +347,12 @@
       <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
         <h4 class="subhead">Who can call</h4>
-        <!-- The same cascade the permission rows speak (operator's ask):
-             Admin is always a door, ticking Guest opens the code door,
-             ticking Anyone opens the page to everybody — each tier's own
-             powers stay per-feature under Caller permissions. The hidden
-             select is still the stored field, exactly the kill switch's
-             pattern: Save diffs it, the cells drive it. -->
+        <!-- Three ticks, one choice apiece (operator's ask, 0.10.66): the
+             door is code-gated OR open, never both, and Admin is always a
+             door — each tier's own powers stay per-feature under Caller
+             permissions. The hidden select is still the stored field,
+             exactly the kill switch's pattern: Save diffs it, the cells
+             drive it. -->
         <div class="row accessrow">
           <label>Call-in access</label>
           <span class="accesscells" id="accessCells"></span>
