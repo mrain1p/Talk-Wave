@@ -149,6 +149,55 @@
       link('sup-' + sup.id, sup.title);
     });
     link('supDiag', 'Diagnostics');
+    watchNav();
+  }
+
+  // The you-are-here mark (spec §8's optional half, operator-approved): the
+  // chip for the super-group currently under the sticky band lights up as
+  // the page scrolls. An IntersectionObserver on the group headers means the
+  // work happens when a header crosses the viewport's upper band, not on
+  // every scroll tick — and each firing re-derives the answer from geometry,
+  // so a coarse event can't leave the mark on the wrong chip. Re-armed by
+  // buildNav because layoutPanel re-mints the headers it watches.
+  let navIO = null;
+  function watchNav() {
+    const bar = $('settingsBar'), nav = $('panelNav');
+    if (!bar || !nav || !('IntersectionObserver' in window)) return;
+    const heads = [...document.querySelectorAll('.supergroup')];
+    if (!heads.length) return;
+    // The band's real height feeds the sections' scroll-margin, so a jump
+    // lands below it whatever the viewport made of the header row. Zero is
+    // "not laid out yet" (buildNav can run behind the login gate), so it
+    // never overwrites the CSS fallback — pick() re-measures once visible.
+    const sizeBar = () => {
+      if (bar.offsetHeight > 0) {
+        document.documentElement.style.setProperty(
+          '--stickybar', bar.offsetHeight + 'px');
+      }
+    };
+    sizeBar();
+    if (!watchNav.sized) {
+      addEventListener('resize', sizeBar);
+      watchNav.sized = true;
+    }
+    const pick = () => {
+      sizeBar();
+      const edge = bar.offsetHeight + 24;
+      let current = null;
+      heads.forEach((h) => {
+        if (h.getBoundingClientRect().top <= edge) current = h;
+      });
+      const want = current
+        ? nav.querySelector('a[href="#' + current.id + '"]')
+        : nav.querySelector('a.navtop');
+      nav.querySelectorAll('a.here').forEach((a) => a.classList.remove('here'));
+      if (want) want.classList.add('here');
+    };
+    if (navIO) navIO.disconnect();
+    navIO = new IntersectionObserver(pick,
+      { rootMargin: '-96px 0px -55% 0px' });
+    heads.forEach((h) => navIO.observe(h));
+    pick();
   }
 
   function adoptSchema(schema) {

@@ -229,8 +229,25 @@
           <button type="button" class="seg" id="actWeek">Week</button>
           <button type="button" class="seg" id="actMonth">Month</button>
         </span>
-        <select id="actDim" aria-label="What the charts split by"></select>
-        <select id="actFilter" aria-label="Isolate one series"></select>
+        <!-- Two independent multi-selects (operator's ask): tick which doors
+             and which ratings the whole strip counts. Both default to
+             everything; the summaries say what is ticked. -->
+        <details class="actpick" id="doorPick">
+          <summary id="doorPickSum">All doors</summary>
+          <div class="actmenu">
+            <label><input type="checkbox" data-v="call" checked /> Calls</label>
+            <label><input type="checkbox" data-v="chat" checked /> Texts</label>
+            <label><input type="checkbox" data-v="voicemail" checked /> Voicemail</label>
+          </div>
+        </details>
+        <details class="actpick" id="ratePick">
+          <summary id="ratePickSum">All ratings</summary>
+          <div class="actmenu">
+            <label><input type="checkbox" data-v="up" checked /> ▲ Rated up</label>
+            <label><input type="checkbox" data-v="down" checked /> ▼ Rated down</label>
+            <label><input type="checkbox" data-v="none" checked /> Unrated</label>
+          </div>
+        </details>
       </div>
       <div class="actgrid">
         <figure class="actchart">
@@ -252,28 +269,34 @@
       </div>
     </div>
 
-    <!-- One header row: the heading and its promise on the left, the search
-         on the right — the box sat alone on its own line and read as a
-         stray form field rather than this half of the page's own finder. -->
-    <div class="settingshead">
-      <div>
-        <h2>Call-in settings</h2>
-        <p class="sub">Applies to the next caller — no restart. Clearing a field
-          falls back to the environment config.</p>
+    <!-- The whole settings header travels with the reader (operator's ask):
+         heading + promise, the finder, and the jump bar are ONE sticky band,
+         so search and navigation are never a scroll away. scroll-margin on
+         the sections keeps jump targets from hiding under it. -->
+    <div class="settingsbar" id="settingsBar">
+      <!-- One header row: the heading and its promise on the left, the search
+           on the right — the box sat alone on its own line and read as a
+           stray form field rather than this half of the page's own finder. -->
+      <div class="settingshead">
+        <div>
+          <h2>Call-in settings</h2>
+          <p class="sub">Applies to the next caller — no restart. Clearing a field
+            falls back to the environment config.</p>
+        </div>
+        <!-- Sixty settings deserve a faster answer than category archaeology:
+             type, and only the rows whose label or help mention it remain. -->
+        <input type="search" id="settingsSearch" class="settingsearch"
+               placeholder="Find a setting…" autocomplete="off" />
       </div>
-      <!-- Sixty settings deserve a faster answer than category archaeology:
-           type, and only the rows whose label or help mention it remain. -->
-      <input type="search" id="settingsSearch" class="settingsearch"
-             placeholder="Find a setting…" autocomplete="off" />
+      <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
+        reads every label, help line and section name. Try the thing's own noun
+        (“beep”, “password”, “skip”), or clear it and use Jump to.</p>
+      <!-- Jump links, one per super-group, built from the schema. The panel is
+           six screens long and every way of reaching the bottom of it was
+           scrolling past everything in between. Full width and labelled, so it
+           reads as the sections' menu rather than a stray row of chips. -->
+      <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
     </div>
-    <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
-      reads every label, help line and section name. Try the thing's own noun
-      (“beep”, “password”, “skip”), or clear it and use Jump to.</p>
-    <!-- Jump links, one per super-group, built from the schema. The panel is
-         six screens long and every way of reaching the bottom of it was
-         scrolling past everything in between. Full width and labelled, so it
-         reads as the sections' menu rather than a stray row of chips. -->
-    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
 
     <!-- Every section's name and one-line subtitle are written here AND set
          from the schema by layoutPanel(), which is not belt-and-braces for its

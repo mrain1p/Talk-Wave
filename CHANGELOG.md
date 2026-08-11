@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.50
+
+- **The whole settings header sticks now** — the Call-in settings heading, its promise line, the Find-a-setting box and the jump bar travel with you as one band, so search and navigation are never a scroll away. The jump chips also show **where you are**: the chip for the section currently on screen wears coral as you scroll, and jumps land cleanly below the band instead of hiding under it.
+- **The chart pickers are multi-selects.** All doors and All ratings fold open into tick-lists — choose any mix of Calls / Texts / Voicemail and ▲ / ▼ / Unrated, both defaulting to everything and applying to every chart. Clicking a DOOR MIX legend swatch still solos that door (click again for all).
+- **Section rows are easier to read** — the section names and their one-line descriptions get a size up and darker ink.
+
 ## 0.10.49
 
 - **The dashboard gains an ACTIVITY strip — four charts between the lines and the settings.** DOORS (traffic per day or hour, failure buckets in red), DOOR MIX (a flat 100% band with a clickable legend — click a swatch to isolate that series, click again for all), CONCURRENT LISTENERS (sampled from the station every 5 minutes; an outage shows as a gap in the line, never as a flattering zero), and TIME TO FIRST WORD for calls with the median in the caption. A DAY / WEEK / MONTH toggle re-buckets everything, SHOW N picks how many days (1–30), and BY TYPE / BY RATING switches what the charts split by — all remembered between visits. Everything draws from the call records you already keep plus one new admin read (`/stats/listeners`); a series with no data shows an em-dash, never invented bars.

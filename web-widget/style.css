@@ -3149,10 +3149,35 @@
     color: var(--coral);
     background: color-mix(in srgb, var(--coral) 10%, transparent);
   }
-  body.panelpage .actcaption select {
+  /* The two multi-select pickers: a square chip that folds open into a
+     checkbox list. Same voice as the segments beside them; the ▾ marks the
+     chip as openable and the summary always names what is ticked. */
+  body.panelpage .actpick { position: relative; }
+  body.panelpage .actpick > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    border: 1px solid var(--edge); padding: 6px 9px; color: var(--dim);
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
-    text-transform: uppercase; padding: 6px 8px; color: var(--dim);
+    text-transform: uppercase; white-space: nowrap;
   }
+  body.panelpage .actpick > summary::-webkit-details-marker { display: none; }
+  body.panelpage .actpick > summary::after { content: " ▾"; color: var(--sage-dim); }
+  body.panelpage .actpick[open] > summary,
+  body.panelpage .actpick > summary:hover { background: var(--granite-hi); }
+  body.panelpage .actmenu {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 45;
+    display: flex; flex-direction: column; gap: 2px; min-width: 150px;
+    background: var(--pine); border: 1px solid var(--edge); padding: 8px 10px;
+  }
+  body.panelpage .actmenu label {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font: 700 9.5px/1.6 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim); white-space: nowrap;
+  }
+  body.panelpage .actmenu label:hover { color: var(--alpenglow); }
+  /* Native checkboxes, like every other checkbox on the panel — and no
+     accent-color: TestTheVolumeSliderIsNotTheBrowsersOwn bans that property
+     from this file so the call card's drawn slider can't regress to it. */
+  body.panelpage .actmenu input { margin: 0; }
   /* 2×2, generous column gap — four across was too cramped (spec's words). */
   body.panelpage .actgrid {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3235,12 +3260,20 @@
     fill: color-mix(in srgb, var(--coral) 8%, transparent); stroke: none;
   }
 
-  /* --- spec §8: the jump bar sticks ----------------------------------------- */
-  /* One row always: chips slide horizontally on a narrow panel instead of
-     wrapping into a block that pushes the settings below the fold. */
-  body.panelpage .panelnav {
+  /* --- spec §8: the settings header sticks, jump bar and all ---------------- */
+  /* The whole band — heading, promise, finder, jump chips — travels with the
+     reader (operator's ask, extending the spec's sticky bar): search and
+     navigation are never a scroll away on a six-screen page. */
+  body.panelpage .settingsbar {
     position: sticky; top: 0; z-index: 40; background: var(--pine);
-    border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--edge);
+    border-bottom: 1px solid var(--edge);
+    margin: 0 -2px; padding: 4px 2px 0;
+  }
+  body.panelpage .settingsbar .settingshead { margin: 6px 0 8px; }
+  /* One row always: chips slide horizontally on a narrow panel instead of
+     wrapping into a block that eats the viewport the band now rides in. */
+  body.panelpage .panelnav {
+    border-top: 1px solid var(--hairline); border-bottom: 0; margin-bottom: 0;
     flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
   }
   body.panelpage .panelnav::-webkit-scrollbar { display: none; }
@@ -3249,6 +3282,27 @@
     color: var(--coral); border-color: var(--coral);
     background: color-mix(in srgb, var(--coral) 10%, transparent);
   }
+  /* The you-are-here chip: coral ink, no fill — the filled tint stays the
+     dashboard chip's, so the two marks read as different claims. */
+  body.panelpage .panelnav a.here {
+    color: var(--coral); border-color: var(--coral);
+  }
+  /* Jump targets clear the sticky band instead of vanishing under it — the
+     band measures itself into --stickybar (see watchNav in panel.js). */
+  body.panelpage .supergroup,
+  body.panelpage details.sec,
+  body.panelpage details.diag {
+    scroll-margin-top: calc(var(--stickybar, 96px) + 10px);
+  }
+
+  /* Legibility (operator: the section rows ran too small to read down the
+     page): the name a step up, the sentence at body size in body ink. The
+     quiet right-hand value keeps its whisper but gains a point too. */
+  body.panelpage details.sec > summary { font-size: 11.5px; }
+  body.panelpage details.sec > summary .secblurb {
+    font-size: 12.5px; color: var(--dim);
+  }
+  body.panelpage details.sec > summary .tag { font-size: 11px; }
 
   /* --- footer -------------------------------------------------------------- */
   body.panelpage .panelfoot {

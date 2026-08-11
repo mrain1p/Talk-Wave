@@ -18,10 +18,21 @@
 
   // ------------------------------------------------------------- state
   const LS = 'callinActivity';
+  const DOORS = ['call', 'chat', 'voicemail'];
+  const RATES = ['up', 'down', 'none'];
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem(LS) || '{}'); } catch (e) { /* fresh */ }
+  // Two independent multi-selects, both defaulting to everything — which
+  // doors count, and which ratings count — applied to every chart at once.
+  // (Replaced the single dimension+filter pair on the operator's ask.)
   const state = Object.assign(
-    { range: 'week', show: 7, dim: 'type', filter: '' }, stored);
+    { range: 'week', show: 7, doors: DOORS.slice(), rates: RATES.slice() },
+    stored);
+  state.doors = (Array.isArray(state.doors) ? state.doors : DOORS)
+    .filter((d) => DOORS.indexOf(d) !== -1);
+  state.rates = (Array.isArray(state.rates) ? state.rates : RATES)
+    .filter((r) => RATES.indexOf(r) !== -1);
+  delete state.dim; delete state.filter;      // pre-0.10.50 vocabulary
   const save = () => localStorage.setItem(LS, JSON.stringify(state));
   const clampShow = (n) => Math.max(1, Math.min(30, n | 0 || 7));
   state.show = clampShow(state.show);
@@ -45,9 +56,10 @@
     const secs = (new Date(dj.t).getTime() - when(c)) / 1000;
     return isFinite(secs) && secs >= 0 && secs < 600 ? secs : null;
   };
-  const matches = (c) => (state.dim === 'type'
-    ? (!state.filter || kindOf(c) === state.filter)
-    : (!state.filter || c.rating === state.filter));
+  const rateOf = (c) => (c.rating === 'up' ? 'up'
+    : c.rating === 'down' ? 'down' : 'none');
+  const matches = (c) => state.doors.indexOf(kindOf(c)) !== -1
+    && state.rates.indexOf(rateOf(c)) !== -1;
 
   // ------------------------------------------------------------- buckets
   const DAY_MS = 24 * 3600 * 1000;
@@ -92,12 +104,18 @@
     : state.range === 'week' ? 'this week'
     : clampShow(state.show) === 30 ? 'this month'
     : 'last ' + clampShow(state.show) + ' days');
+  const DOOR_WORDS = { call: 'calls', chat: 'texts', voicemail: 'voicemails' };
   const filterWord = () => {
-    if (!state.filter) return null;
-    if (state.dim === 'type') {
-      return { call: 'calls', chat: 'texts', voicemail: 'voicemails' }[state.filter];
-    }
-    return state.filter === 'up' ? 'rated ▲' : 'rated ▼';
+    // "doors" until the door set narrows; a narrowed rating set is an
+    // appended clause either way.
+    const doors = state.doors.length === DOORS.length ? 'doors'
+      : state.doors.length ? state.doors.map((d) => DOOR_WORDS[d]).join(' + ')
+      : 'nothing';
+    const rated = state.rates.length === RATES.length ? ''
+      : !state.rates.length ? ' (no ratings ticked)'
+      : ' rated ' + state.rates.map((r) =>
+          r === 'up' ? '▲' : r === 'down' ? '▼' : 'none').join('/');
+    return doors + rated;
   };
 
   // ------------------------------------------------------------- renderers
@@ -123,20 +141,19 @@
         '<span>' + p.tick + '</span>').join('') + '</div>';
     const total = rows.filter((c) => when(c) >= bs[0].start).length;
     const bad = rows.filter((c) => when(c) >= bs[0].start && failedC(c)).length;
-    $('doorsCap').textContent = total + ' ' + (filterWord() || 'doors') + ' '
+    $('doorsCap').textContent = total + ' ' + filterWord() + ' '
       + periodWord() + (bad ? ' · ' + bad + ' failed' : '');
   }
 
   function renderMix(bs) {
     if (!calls) return empty('mixChart', 'mixCap');
     const inP = calls.filter((c) => when(c) >= bs[0].start).filter(matches);
-    const segs = state.dim === 'type'
-      ? [['call', 'calls', 'CALLS'], ['chat', 'texts', 'TEXTS'],
-         ['voicemail', 'vm', 'VOICEMAIL']]
-      : [['up', 'calls', '▲ UP'], ['down', 'vm', '▼ DOWN']];
-    const of = (v) => inP.filter((c) => (state.dim === 'type'
-      ? kindOf(c) === v : c.rating === v)).length;
-    const counts = segs.map(([v, cls, label]) => ({ v, cls, label, n: of(v) }));
+    const segs = [['call', 'calls', 'CALLS'], ['chat', 'texts', 'TEXTS'],
+                  ['voicemail', 'vm', 'VOICEMAIL']];
+    const counts = segs.map(([v, cls, label]) => ({
+      v, cls, label,
+      n: inP.filter((c) => kindOf(c) === v).length,
+    }));
     const total = counts.reduce((a, s) => a + s.n, 0);
     if (!total) return empty('mixChart', 'mixCap');
     $('mixChart').innerHTML =
@@ -149,16 +166,16 @@
         + ' · ' + Math.round((s.n / total) * 100) + '%</button>'
       ).join('') + '</div>'
       + '<p class="mixfoot">' + total + ' doors total · ' + periodWord() + '</p>';
-    // A legend swatch is the filter's shortcut: click isolates, click again
-    // returns to all (spec §7).
+    // A legend swatch is the doors multi-select's shortcut: click solos that
+    // door, click it again to bring every door back (spec §7's isolate).
     $('mixChart').querySelectorAll('.mixkey').forEach((k) => {
       k.onclick = () => {
-        state.filter = state.filter === k.dataset.v ? '' : k.dataset.v;
-        $('actFilter').value = state.filter;
-        save(); render();
+        const solo = state.doors.length === 1 && state.doors[0] === k.dataset.v;
+        state.doors = solo ? DOORS.slice() : [k.dataset.v];
+        save(); paintControls(); render();
       };
     });
-    $('mixCap').textContent = 'by ' + (state.dim === 'type' ? 'type' : 'rating');
+    $('mixCap').textContent = 'by type';
   }
 
   function renderListeners(bs) {
@@ -200,14 +217,14 @@
 
   function renderTtfw(bs) {
     if (!calls) return empty('ttfwChart', 'ttfwCap');
-    // Calls only, by definition — and only when the filter doesn't exclude
-    // calls (a voicemail/text filter leaves this frame honestly empty).
-    if (state.dim === 'type' && state.filter && state.filter !== 'call') {
+    // Calls only, by definition — a door set with calls unticked leaves this
+    // frame honestly empty rather than charting doors that never speak first.
+    if (state.doors.indexOf('call') === -1) {
       return empty('ttfwChart', 'ttfwCap');
     }
     const rows = calls
       .filter((c) => kindOf(c) === 'call' && when(c) >= bs[0].start)
-      .filter((c) => state.dim === 'rating' ? matches(c) : true)
+      .filter((c) => state.rates.indexOf(rateOf(c)) !== -1)
       .map((c) => ({ t: when(c), secs: ttfwOf(c) }))
       .filter((r) => r.secs !== null)
       .sort((a, b) => a.t - b.t);
@@ -239,18 +256,22 @@
       .forEach(([id, r]) => $(id).classList.toggle('on', state.range === r));
     $('actShow').value = state.range === 'day' ? '' : clampShow(state.show);
     $('actShow').disabled = state.range === 'day';
-    const dim = $('actDim');
-    dim.innerHTML = '<option value="type">By type</option>'
-      + '<option value="rating">By rating</option>';
-    dim.value = state.dim;
-    const fil = $('actFilter');
-    fil.innerHTML = state.dim === 'type'
-      ? '<option value="">All doors</option><option value="call">Calls</option>'
-        + '<option value="chat">Texts</option>'
-        + '<option value="voicemail">Voicemail</option>'
-      : '<option value="">All</option><option value="up">▲ Up</option>'
-        + '<option value="down">▼ Down</option>';
-    fil.value = state.filter;
+    // The pickers' summaries say what is ticked without opening them.
+    $('doorPick').querySelectorAll('input').forEach((box) => {
+      box.checked = state.doors.indexOf(box.dataset.v) !== -1;
+    });
+    $('ratePick').querySelectorAll('input').forEach((box) => {
+      box.checked = state.rates.indexOf(box.dataset.v) !== -1;
+    });
+    $('doorPickSum').textContent =
+      state.doors.length === DOORS.length ? 'All doors'
+        : !state.doors.length ? 'No doors'
+        : state.doors.map((d) => DOOR_WORDS[d]).join(' · ');
+    $('ratePickSum').textContent =
+      state.rates.length === RATES.length ? 'All ratings'
+        : !state.rates.length ? 'No ratings'
+        : state.rates.map((r) =>
+            r === 'up' ? '▲' : r === 'down' ? '▼' : 'unrated').join(' · ');
   }
   [['actDay', 'day', 7], ['actWeek', 'week', 7], ['actMonth', 'month', 30]]
     .forEach(([id, r, n]) => {
@@ -265,15 +286,22 @@
     $('actShow').value = state.show;
     save(); render();
   };
-  $('actDim').onchange = () => {
-    state.dim = $('actDim').value;
-    state.filter = '';               // the old filter's vocabulary is gone
-    save(); paintControls(); render();
-  };
-  $('actFilter').onchange = () => {
-    state.filter = $('actFilter').value;
-    save(); render();
-  };
+  [['doorPick', 'doors'], ['ratePick', 'rates']].forEach(([id, key]) => {
+    $(id).querySelectorAll('input').forEach((box) => {
+      box.onchange = () => {
+        state[key] = [...$(id).querySelectorAll('input')]
+          .filter((b) => b.checked).map((b) => b.dataset.v);
+        save(); paintControls(); render();
+      };
+    });
+  });
+  // An open picker folds when the pointer commits anywhere else — the
+  // checkboxes inside keep it open across several ticks.
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('.actpick[open]').forEach((p) => {
+      if (!p.contains(e.target)) p.open = false;
+    });
+  });
 
   // ------------------------------------------------------------- data
   paintControls();
