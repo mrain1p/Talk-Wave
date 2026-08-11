@@ -37,7 +37,7 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
-from . import handoff, lifecycle
+from . import background, handoff, lifecycle
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .record import CallRecord
@@ -156,6 +156,21 @@ class CallSession:
 
         ctx.add_shutdown_callback(self.station.aclose)
         ctx.add_shutdown_callback(self.station_cfg.aclose)
+        # Release the concurrency slot from __init__, NOT from _on_shutdown at
+        # the tail of start(). A call that raises in prepare() or early start()
+        # — a provider misconfig fails every call at build_llm — never reached
+        # that registration, so the slot it minted sat held for the full
+        # 30-minute age-out, and two such failures jammed the line for everyone
+        # (0.10.57 review). Registered before anything can raise, so it always
+        # fires. The SDK runs shutdown callbacks concurrently, but slot release
+        # (a POST) and the record write (local disk) are independent, so order
+        # doesn't matter; _on_shutdown no longer releases the slot itself.
+        ctx.add_shutdown_callback(
+            lambda: lifecycle.release_call_slot(ctx.room.name))
+        # Cancel outstanding background tasks (the ~50s late-match poller) so
+        # they can't write to the record after it is finalised. Registered
+        # here so it fires even on an early-call failure.
+        ctx.add_shutdown_callback(lambda: background.cancel_all())
 
     # -- ringing ----------------------------------------------------------
     async def prepare(self) -> None:
@@ -271,10 +286,19 @@ class CallSession:
                 "subwave_search_library will be refused during the call"
             )
 
+        # Fail CLOSED on an empty allowlist. The SDK reads an empty list as
+        # "no filter — expose every tool the station's MCP server offers",
+        # including the destructive ones (skip_track, play_sfx, …). Today the
+        # list is never empty (five READ tools are always MCP-served), so this
+        # is defence in depth — but the failure direction is unsafe, and a
+        # sentinel that matches no real tool keeps the surface shut if those
+        # reads ever move (0.10.57 review).
+        gated_tools = allowed_tools or ["__none__"]
+
         station_tools = mcp.MCPServerHTTP(
             url=settings_store.station_mcp_url(),
             transport_type="streamable_http",
-            allowed_tools=allowed_tools,
+            allowed_tools=gated_tools,
             headers=mcp_headers or None,
             # 7s, down from 15. This connect happens BEFORE the greeting, so on
             # a slow/overloaded station it sat 15s of silence in front of the
@@ -438,7 +462,8 @@ class CallSession:
                 log.info("call transcripts are off — nothing written for %s",
                          self.ctx.room.name)
 
-        await lifecycle.release_call_slot(self.ctx.room.name)
+        # Slot release is its own shutdown callback now (registered in
+        # __init__ so an early-call failure can't skip it) — not done here.
         await handoff.send_on_air_callback(
             self.session, self.station, self.persona, self.cfg
         )

@@ -21,7 +21,7 @@ from aiohttp import WSMsgType, web
 
 import settings as settings_store
 from api.auth import _guest_check, caller_tier
-from api.wire import _caller_key
+from api.wire import _caller_key, origin_allowed
 from chat.session import SHELF
 
 log = logging.getLogger("callin.chat")
@@ -162,7 +162,21 @@ async def _run_turn(ws: web.WebSocketResponse, chat, make_coro, cfg: dict) -> No
                      "moment?"})
 
 
+# How long an un-authenticated socket may sit before its first `hello`.
+# A WS handshake is accepted before any auth, and the reprompt timer only
+# arms once a chat exists — so a peer that connects and never says hello held
+# a socket and task indefinitely, and nothing capped how many (0.10.57
+# review). This bounds the pre-auth window; a real client sends hello at once.
+_PREAUTH_SECS = 20.0
+
+
 async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
+    # A WebSocket handshake is not subject to CORS, so without this the chat
+    # line — which spends model budget per turn — was drivable from any
+    # origin that /token would refuse. Reject before upgrading.
+    if not origin_allowed(request):
+        return web.Response(status=403, text="origin not allowed")
+
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
 
@@ -170,11 +184,14 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
     SHELF.sweep(cfg)
 
     chat = None
-    msg_times: list[float] = []
     nudged = False
     caller_spoke = False
     try:
         while True:
+            # Until a chat exists (the caller has said hello and passed the
+            # gate), the socket lives on a short leash — no authenticated
+            # conversation to keep it open.
+            preauth = _PREAUTH_SECS if chat is None else 0
             # When the ball is in the CALLER's court, wait only so long before
             # the DJ nudges once — a text line that sits silent after its own
             # last message feels dead and turn-based (operator's ask). On by
@@ -190,12 +207,17 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 and caller_spoke and not nudged and not chat.lock.locked()
                 else 0
             )
+            # The pre-auth leash wins when there's no chat yet; otherwise the
+            # reprompt timer (or an untimed wait) governs.
+            wait = preauth if chat is None else reprompt
             try:
-                msg = (await ws.receive(timeout=reprompt) if reprompt > 0
+                msg = (await ws.receive(timeout=wait) if wait > 0
                        else await ws.receive())
             except asyncio.TimeoutError:
+                if chat is None:
+                    break               # never authenticated — drop the socket
                 nudged = True
-                if chat is not None and not chat.lock.locked():
+                if not chat.lock.locked():
                     await _run_turn(ws, chat, lambda put: chat.nudge(cfg, put), cfg)
                 continue
             if msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING,
@@ -274,16 +296,17 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 # (it never fires before the caller's first message).
                 nudged = False
                 caller_spoke = True
-                # The flood brake, per chat: a human types a handful of
-                # messages a minute; a script does not.
+                # The flood brake, per chat (on chat.msg_times, so it survives
+                # a reconnect): a human types a handful of messages a minute;
+                # a script does not.
                 now = time.time()
-                msg_times[:] = [t for t in msg_times if t > now - 60]
-                if len(msg_times) >= int(cfg.get("chat_msgs_per_minute") or 10):
+                chat.msg_times[:] = [t for t in chat.msg_times if t > now - 60]
+                if len(chat.msg_times) >= int(cfg.get("chat_msgs_per_minute") or 10):
                     await ws.send_json({"type": "refused", "error":
                                         "Easy on the keys — give it a "
                                         "breath and try again."})
                     continue
-                msg_times.append(now)
+                chat.msg_times.append(now)
                 if chat.lock.locked():
                     await ws.send_json({"type": "refused", "error":
                                         "One at a time — the DJ is still "

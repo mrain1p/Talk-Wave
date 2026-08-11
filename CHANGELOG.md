@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.57
+
+- **Hanging up while the line is still connecting can no longer leave a call running behind an idle card.** Pressing Hang up during the token handshake now cancels cleanly instead of connecting a moment later with the mic open — a privacy fix from the code review.
+- **A call that fails to start can no longer jam the line.** A misconfiguration that made every call fail used to hold its concurrency slot for 30 minutes; the slot is released the instant the call ends, however it ends.
+- **The text line is now origin-checked like the call button.** A third-party page could previously open the chat WebSocket cross-origin and spend your model budget (browser CORS doesn't cover WebSockets); it's refused now, and an un-authenticated socket that never identifies itself is dropped after 20 seconds.
+- Smaller robustness from the review: the message flood-brake survives a reconnect, the tool allowlist fails safely-closed if it's ever empty, a slow request-match no longer writes to a finished call's transcript, thumbs-feedback rejects malformed room ids before scanning and caps how many requests can wait at once, and a confirmed chat end forgets its id so the next chat starts fresh.
+
 ## 0.10.56
 
 - **The rename can no longer strand a webhook.** 0.10.52 changed the app's webhook id, and an upgraded deployment could leave its old `wave_talk` row behind on the station — burning one of the sixteen webhook slots for good. Registration now adopts the legacy row where it finds one and deletes stray duplicates, even when its own row is already settled.

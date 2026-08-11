@@ -54,6 +54,37 @@ class TestCallStructure(unittest.TestCase):
                      "attach_idle_watch", "attach_time_limit", "_on_shutdown"):
             self.assertIn(hook, src, hook)
 
+    def test_the_mcp_allowlist_fails_closed_on_empty(self):
+        # The SDK reads an empty allowed_tools list as "no filter — expose
+        # everything the station's MCP server offers", including destructive
+        # tools. start() substitutes a sentinel that matches no real tool, so
+        # an empty allowlist keeps the surface shut rather than opening it
+        # (0.10.57 review).
+        import inspect
+
+        src = inspect.getsource(self.CallSession)
+        self.assertIn("allowed_tools or [", src,
+                      "an empty allowlist must fall back to a no-match sentinel")
+
+    def test_the_slot_release_is_registered_before_anything_can_raise(self):
+        # A call that raised in prepare() or early start() — a provider
+        # misconfig fails EVERY call at build_llm — never reached the release
+        # registration at the tail of start(), so the slot it minted sat held
+        # for the 30-minute age-out and two such failures jammed the line
+        # (0.10.57 review). Release and background-cancel are registered in
+        # __init__ now, so they fire whatever raises later.
+        import inspect
+
+        src = inspect.getsource(self.CallSession)
+        init = src[src.index("def __init__"):src.index("def prepare")]
+        self.assertIn("release_call_slot", init,
+                      "slot release must register in __init__, not start()")
+        self.assertIn("background.cancel_all", init,
+                      "background cancel must register in __init__ too")
+        # And it is NOT still done a second time inside _on_shutdown.
+        shut = src[src.index("_on_shutdown"):]
+        self.assertNotIn("await lifecycle.release_call_slot", shut)
+
     def test_the_hangup_tool_reads_the_session_late(self):
         # Tools are built before the AgentSession exists. Handing the tool a
         # callable rather than the session is what makes that safe; passing

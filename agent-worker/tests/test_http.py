@@ -405,6 +405,50 @@ class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
             self._key("172.19.0.1", "10.0.0.5, 8.8.4.4"), "8.8.4.4")
 
 
+class TestCallFeedbackRejectsGarbageRoomsCheaply(unittest.TestCase):
+    """/call-feedback is unauthenticated by design (a stranger rating their own
+    call, keyed by a random room). A malformed room was never a real call, so
+    it is refused before the 10s / 20-scan retry loop, and a semaphore caps how
+    many waiters can be parked at once — otherwise a flood of well-formed but
+    nonexistent rooms holds a pile of requests open (0.10.57 review)."""
+
+    def _feedback(self, room, rating="up", rate=None):
+        import asyncio
+        import json as _json
+        import types
+
+        from api import tokens as api_tokens
+        from call import record as call_record
+
+        async def _json_body():
+            return {"room": room, "rating": rating}
+
+        req = types.SimpleNamespace(headers={}, json=_json_body)
+        old = call_record.rate
+        if rate is not None:
+            call_record.rate = rate
+        try:
+            resp = asyncio.run(api_tokens.handle_call_feedback(req))
+        finally:
+            call_record.rate = old
+        return resp.status, _json.loads(resp.body.decode())
+
+    def test_a_malformed_room_is_a_400_before_any_scan(self):
+        # rate() would raise if reached — proving the shape gate short-circuits.
+        def _boom(*a):
+            raise AssertionError("rate() must not be called for a bad room")
+
+        for bad in ("", "../etc", "callin-XYZ", "callin-a-zzz", "not-a-room"):
+            status, _ = self._feedback(bad, rate=_boom)
+            self.assertEqual(status, 400, bad)
+
+    def test_a_well_shaped_room_reaches_the_store(self):
+        status, body = self._feedback(
+            "callin-o-0123456789ab", rate=lambda *a: True)
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("ok"))
+
+
 class TestJoinTokensExpire(unittest.TestCase):
     def test_a_minted_token_is_short_lived(self):
         """A join token is the only thing between a stranger and an agent job.

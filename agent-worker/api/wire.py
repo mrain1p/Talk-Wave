@@ -51,6 +51,23 @@ PANEL_ORIGINS = [
 ]
 
 
+def origin_allowed(request: web.Request) -> bool:
+    """Whether this request's Origin may drive a budget-spending surface.
+
+    Same policy as _cors, but usable where CORS can't reach: a WebSocket
+    handshake is NOT subject to CORS, so the chat line — which spends LLM
+    money per turn — was reachable cross-origin even though /token refuses
+    the same foreign page (0.10.57 review). A same-origin request carries no
+    Origin header (or one equal to the host), so empty stays same-origin-only.
+    """
+    origin = request.headers.get("Origin", "")
+    if not origin or "*" in ALLOWED_ORIGINS or origin in ALLOWED_ORIGINS:
+        return True
+    # Same-origin: the Origin's host:port matches the request's own.
+    host = request.headers.get("Host", "")
+    return origin.split("://", 1)[-1] == host
+
+
 def _cors(request: web.Request, resp: web.StreamResponse) -> web.StreamResponse:
     origin = request.headers.get("Origin", "")
     if "*" in ALLOWED_ORIGINS:

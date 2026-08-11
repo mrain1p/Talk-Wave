@@ -1788,7 +1788,16 @@
   $('volSlider').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
   applyVolume();      // paint the fill at whatever volume we start on
 
+  // Bumped on every startCall AND every endCall, so an async step that
+  // resumes after the caller hung up can tell it is stale. The token mint is
+  // an await with the Hang up button already live (the card flips to .oncall
+  // on the press, no ringing phase) — pressing it there ran endCall to idle
+  // and then this function RESUMED, connected the room and opened the mic
+  // against a card that said idle: the DJ heard a caller who thought they had
+  // hung up. Reviewed 0.10.57.
+  let callGen = 0;
   async function startCall(asVoicemail) {
+    const myGen = ++callGen;
     vmCall = !!asVoicemail;
     vmBeepHeard = false;
 
@@ -1926,6 +1935,17 @@
       }
       if (!res.ok) throw new Error('token mint failed');
       const { token, url, room: roomName } = await res.json();
+      // The caller pressed Hang up while the mint was in flight: endCall
+      // already reset the card to idle, so connecting now would be a live
+      // call behind an idle face. Release the slot the server just minted
+      // and stop here.
+      if (myGen !== callGen) {
+        fetch('/call-ended', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room: roomName }), keepalive: true,
+        }).catch(() => {});
+        return;
+      }
       currentRoom = roomName;
 
       // Echo cancellation, noise suppression and auto-gain set EXPLICITLY, not
@@ -2200,6 +2220,9 @@
   }
 
   function endCall(remote) {
+    // Any in-flight startCall (e.g. awaiting the token mint) is now stale —
+    // its post-await resume checks this and bails. See callGen at startCall.
+    callGen += 1;
     const wasVm = vmCall;
     vmCall = false;
     stopRinging();
@@ -2492,7 +2515,10 @@
         if (!chatTimer) chatTimer = setInterval(chatTick, 30);
       } else if (msg.type === 'ended') {
         hideTyping();
-        // The server confirmed the close (record written, chat dropped).
+        // The server confirmed the close (record written, chat dropped) — so
+        // the id is dead. Forget it, exactly as a deliberate End does, or the
+        // next open sends a stale id the server can only refuse (0.10.57).
+        localStorage.removeItem('callinChat');
         // Fold the card back to idle; the transcript stays in the drawer.
         resetChatUI('Chat ended');
       }
