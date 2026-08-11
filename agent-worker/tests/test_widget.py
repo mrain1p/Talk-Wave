@@ -283,6 +283,29 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         )
         self.assertFalse(strays, f"groups under an unknown supergroup: {strays}")
 
+    def test_the_channel_pages_own_their_doors(self):
+        # 0.10.62 cut the panel into pages by door (the operator's ask): the
+        # sections that ARE a door live on that door's page, and the shared
+        # brain stays on The DJ — filed under Calls it would be a lie the
+        # moment a text chat used it. A new section drifting onto the wrong
+        # page ships a panel whose page names stop meaning anything.
+        supers = {g: sup for g, sup, *_ in settings_store.GROUPS}
+        self.assertEqual(supers["voicemail"], "voicemail")
+        self.assertEqual(supers["chat"], "texts")
+        for g in ("call", "turns", "closing", "onair", "tunein",
+                  "callback", "sounds", "effects", "record"):
+            self.assertEqual(supers[g], "calls", f"{g} left the Calls page")
+        for g in ("context", "style"):
+            self.assertEqual(supers[g], "dj", f"{g} is shared by every door")
+
+    def test_the_page_ids_the_picker_reserves_stay_reserved(self):
+        # panel.js gives the dashboard and Diagnostics the page ids "dash"
+        # and "diag". A super-group minted with either id would collide with
+        # them in the picker and the hash router, silently.
+        taken = {s for s, *_ in settings_store.SUPERGROUPS}
+        self.assertFalse(taken & {"dash", "diag"},
+                         "supergroup ids 'dash' and 'diag' belong to panel.js")
+
     def test_every_declared_field_is_storable(self):
         # A SCHEMA entry with no FIELDS entry renders a control that silently
         # discards whatever you type into it (save() drops unknown keys).

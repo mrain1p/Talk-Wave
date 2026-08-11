@@ -109,49 +109,42 @@
     });
 
     buildNav(supers);
+    paintPage();
   }
 
-  // Jump links across the top. The panel is six super-groups long and the only
-  // way to reach the bottom of it was scrolling past everything above — which
-  // is also how a setting gets changed on the way past. Built from the schema
-  // rather than written in the markup, so a new super-group appears here on
-  // its own; Diagnostics is appended because it is the one header the schema
-  // does not own.
+  // The page picker. One chip per page — Dashboard, one per super-group, and
+  // Diagnostics, the one header the schema does not own. Built from the
+  // schema rather than written in the markup, so a new super-group becomes a
+  // page on its own. A chip is a plain hash link: navigation is the
+  // browser's own (back works, a page survives a refresh, /settings#calls
+  // can be handed to someone), and the hashchange listener below does the
+  // turning.
   function buildNav(supers) {
     const nav = $('panelNav');
     if (!nav) return;
     nav.innerHTML = '';
-    // The bar is sticky (spec §8), so once it has followed the reader down
-    // the page the dashboard is the one place its links can't reach — the
-    // first chip is the way back up.
-    const top = document.createElement('a');
-    top.href = '#';
-    top.className = 'navtop';
-    top.textContent = '↑ Dashboard';
-    top.onclick = (e) => {
-      e.preventDefault();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-    nav.appendChild(top);
+    PAGE_IDS = ['dash'];
+    PAGE_TITLES = { dash: 'Dashboard', diag: 'Diagnostics' };
     const link = (id, title) => {
       const a = document.createElement('a');
       a.href = '#' + id;
+      a.dataset.page = id;
       a.textContent = title;
-      a.onclick = (e) => {
-        e.preventDefault();
-        const target = document.getElementById(id);
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
       nav.appendChild(a);
     };
+    link('dash', 'Dashboard');
     supers.forEach((sup) => {
       if (!SCHEMA.groups.some((g) => g.super === sup.id)) return;
-      link('sup-' + sup.id, sup.title);
+      PAGE_IDS.push(sup.id);
+      PAGE_TITLES[sup.id] = sup.title;
+      link(sup.id, sup.title);
     });
-    link('supDiag', 'Diagnostics');
-    // An action chip, not a jump: after a long session the page is a stack
-    // of opened drawers, and closing them one by one is the only thing the
-    // bar couldn't do (operator's ask).
+    PAGE_IDS.push('diag');
+    link('diag', 'Diagnostics');
+    // An action chip, not a page: after a long session a page is a stack of
+    // opened drawers, and closing them one by one is the only thing the bar
+    // couldn't do (operator's ask). It reaches every page's drawers, so a
+    // page you left untidy is tidy when you turn back to it.
     const fold = document.createElement('a');
     fold.href = '#';
     fold.className = 'navfold';
@@ -163,56 +156,109 @@
         .forEach((d) => { d.open = false; });
     };
     nav.appendChild(fold);
-    watchNav();
+    sizeStickyBar();
   }
 
-  // The you-are-here mark (spec §8's optional half, operator-approved): the
-  // chip for the super-group currently under the sticky band lights up as
-  // the page scrolls. An IntersectionObserver on the group headers means the
-  // work happens when a header crosses the viewport's upper band, not on
-  // every scroll tick — and each firing re-derives the answer from geometry,
-  // so a coarse event can't leave the mark on the wrong chip. Re-armed by
-  // buildNav because layoutPanel re-mints the headers it watches.
-  let navIO = null;
-  function watchNav() {
-    const bar = $('settingsBar'), nav = $('panelNav');
-    if (!bar || !nav || !('IntersectionObserver' in window)) return;
-    const heads = [...document.querySelectorAll('.supergroup')];
-    if (!heads.length) return;
-    // The band's real height feeds the sections' scroll-margin, so a jump
-    // lands below it whatever the viewport made of the header row. Zero is
-    // "not laid out yet" (buildNav can run behind the login gate), so it
-    // never overwrites the CSS fallback — pick() re-measures once visible.
-    const sizeBar = () => {
-      if (bar.offsetHeight > 0) {
-        document.documentElement.style.setProperty(
-          '--stickybar', bar.offsetHeight + 'px');
-      }
-    };
-    sizeBar();
-    if (!watchNav.sized) {
-      addEventListener('resize', sizeBar);
-      watchNav.sized = true;
+  // The band's real height feeds the sections' scroll-margin, so an in-page
+  // jump (a tile, a key-row link) lands below it whatever the viewport made
+  // of the header row. Zero is "not laid out yet" (buildNav can run behind
+  // the login gate), so it never overwrites the CSS fallback — paintPage
+  // re-measures once visible.
+  function sizeStickyBar() {
+    const bar = $('settingsBar');
+    if (!bar) return;
+    if (bar.offsetHeight > 0) {
+      document.documentElement.style.setProperty(
+        '--stickybar', bar.offsetHeight + 'px');
     }
-    const pick = () => {
-      sizeBar();
-      const edge = bar.offsetHeight + 24;
-      let current = null;
-      heads.forEach((h) => {
-        if (h.getBoundingClientRect().top <= edge) current = h;
-      });
-      const want = current
-        ? nav.querySelector('a[href="#' + current.id + '"]')
-        : nav.querySelector('a.navtop');
-      nav.querySelectorAll('a.here').forEach((a) => a.classList.remove('here'));
-      if (want) want.classList.add('here');
-    };
-    if (navIO) navIO.disconnect();
-    navIO = new IntersectionObserver(pick,
-      { rootMargin: '-96px 0px -55% 0px' });
-    heads.forEach((h) => navIO.observe(h));
-    pick();
+    if (!sizeStickyBar.armed) {
+      addEventListener('resize', sizeStickyBar);
+      sizeStickyBar.armed = true;
+    }
   }
+
+  // --- pages ---------------------------------------------------------------
+  // The panel turned into pages at 0.10.62 (the operator's ask): one
+  // super-group at a time behind /settings#<id>, the dashboard as the
+  // landing page. Everything stays in ONE document shown a slice at a time —
+  // the dashboard's live repaints read fields on other pages, and a
+  // half-edited field keeps its state while the operator reads another page,
+  // neither of which survives real navigation.
+  let PAGE_IDS = ['dash', 'diag'];
+  let PAGE_TITLES = { dash: 'Dashboard', diag: 'Diagnostics' };
+
+  function currentPage() {
+    const id = (location.hash || '').replace(/^#/, '');
+    return PAGE_IDS.indexOf(id) !== -1 ? id : 'dash';
+  }
+
+  function pageOfSection(sec) {
+    if (sec.classList.contains('diag')) return 'diag';
+    const g = SCHEMA.groups.find((x) => x.id === sec.dataset.group);
+    return g ? g.super : null;
+  }
+
+  // One writer for page membership, and it is a CLASS, not style.display —
+  // applyVisibility and the search both own inline display on these same
+  // elements, and a third hand on one property is how things end up visible
+  // that should not be. The class wins via !important; removing it hands the
+  // element straight back to whatever the other two decided.
+  function paintPage() {
+    const page = currentPage();
+    const searching =
+      !!((($('settingsSearch') || {}).value || '').trim());
+    const on = (el, yes) => { if (el) el.classList.toggle('offpage', !yes); };
+    document.querySelectorAll('.dashband, .dash, .activity').forEach((el) =>
+      on(el, page === 'dash' && !searching));
+    // Search results carry their section's own name, so the bands stay out
+    // of a results view rather than headlining pages with no matches.
+    document.querySelectorAll('.supergroup').forEach((hdr) => {
+      const id = hdr.dataset.super || (hdr.id === 'supDiag' ? 'diag' : '');
+      on(hdr, id === page && !searching);
+    });
+    document.querySelectorAll('details.sec').forEach((sec) => {
+      const id = pageOfSection(sec);
+      // A section the schema doesn't place stays visible on every page —
+      // loud, to match layoutPanel's console warning about the mismatch.
+      on(sec, searching || !id || id === page);
+    });
+    // Save/Reset belong under the pages that hold form fields.
+    on(document.querySelector('#panel .actions'),
+       searching || (page !== 'dash' && page !== 'diag'));
+    const nav = $('panelNav');
+    if (nav) {
+      nav.querySelectorAll('a.here').forEach((a) => a.classList.remove('here'));
+      const chip = nav.querySelector('a[data-page="' + page + '"]');
+      if (chip) chip.classList.add('here');
+    }
+    if ($('mastSub')) {
+      $('mastSub').textContent =
+        (PAGE_TITLES[page] || page).toUpperCase() + ' · ' + location.host;
+    }
+    sizeStickyBar();
+  }
+
+  // Reaching a section can mean turning to its page first. The hash is
+  // written with pushState, which does not fire hashchange — so the smooth
+  // scroll below is the only movement, not a fight with the listener's
+  // jump-to-top.
+  function showSection(sec) {
+    if (!sec) return;
+    const id = pageOfSection(sec);
+    if (id && PAGE_IDS.indexOf(id) !== -1 && currentPage() !== id) {
+      history.pushState(null, '', '#' + id);
+      paintPage();
+    }
+    sec.open = true;
+    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  addEventListener('hashchange', () => {
+    paintPage();
+    // Turning to a page starts at its top — the scroll position of the page
+    // you left means nothing on the one you arrived at.
+    window.scrollTo({ top: 0 });
+  });
 
   function adoptSchema(schema) {
     SCHEMA = schema || { groups: [], fields: {} };
@@ -352,8 +398,9 @@
     link.className = 'btnaccent';
     link.style.cssText = 'display:block;margin-top:9px;font-size:12.5px;padding:8px 14px';
     link.onclick = () => {
-      const sec = row.closest('details');
-      if (sec) sec.open = true;
+      // The offer can sit in a diagnostics result while the key's row lives
+      // on the Configuration page — showSection turns the page first.
+      showSection(row.closest('details'));
       row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       row.focus();
       row.style.borderColor = 'var(--accent)';
@@ -657,17 +704,12 @@
     const jumpToRecords = () => {
       const sec = document.querySelector('details.diag[data-diag="calls"]');
       if (sec) {
-        sec.open = true;
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showSection(sec);
         $('viewCallsBtn').click();
       }
     };
     const jumpToVoicemail = () => {
-      const sec = document.querySelector('details.sec[data-group="voicemail"]');
-      if (sec) {
-        sec.open = true;
-        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      showSection(document.querySelector('details.sec[data-group="voicemail"]'));
     };
     try {
       const d = await afetch('/calls').then((r) => r.json());
@@ -805,16 +847,13 @@
   $('pauseBtn').onclick = () => savePaused(!$('calls_paused').checked);
 
   // A tile is a jump link with an answer written on it. data-jump names a
-  // section's group id, and it OPENS the section as well as scrolling to it:
-  // everything here is folded by default, so a scroll alone lands on a
-  // one-line heading with the answer still hidden behind it.
+  // section's group id, and showSection turns to the page that owns it and
+  // OPENS it as well as scrolling: everything is folded by default, so a
+  // scroll alone lands on a one-line heading with the answer still hidden.
   document.querySelectorAll('.dash .tile').forEach((el) => {
     el.onclick = () => {
-      const sec = document.querySelector(
-        'details.sec[data-group="' + el.dataset.jump + '"]');
-      if (!sec) return;
-      sec.open = true;
-      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showSection(document.querySelector(
+        'details.sec[data-group="' + el.dataset.jump + '"]'));
     };
   });
 
@@ -1069,8 +1108,9 @@
           + 'here, and the preview shows what callers see. It all applies '
           + 'again when the line reopens.'
         : (!liveOn && !vmOn)
-        ? 'Live calls and voicemail are both off (Running the line) — the '
-          + 'line is closed, and the card says so instead of offering these.'
+        ? 'Live calls and voicemail are both off (the dashboard’s Lines) '
+          + '— the line is closed, and the card says so instead of '
+          + 'offering these.'
         : liveOff
         ? 'The line is voicemail-only — the card offers the machine, so the '
           + 'live-call options are parked until live calls come back.'
@@ -1101,8 +1141,9 @@
       if (MOOT_WITHOUT_VM.indexOf(f) !== -1) {
         anchor.classList.toggle('moot', !vmOn);
         anchor.title = !vmOn
-          ? 'Voicemail is off (Running the line) — the card never offers '
-            + 'the machine, whichever way this points.' : '';
+          ? 'Voicemail is off (its own page, or the dashboard’s Lines) '
+            + '— the card never offers the machine, whichever way this '
+            + 'points.' : '';
       }
 
       let visible = true;
@@ -1246,8 +1287,7 @@
     jump.href = '#';
     jump.onclick = (e) => {
       e.preventDefault();
-      const sec = document.querySelector('details.sec[data-group="brains"]');
-      if (sec) { sec.open = true; sec.scrollIntoView({ behavior: 'smooth' }); }
+      showSection(document.querySelector('details.sec[data-group="brains"]'));
     };
     banner.append(jump,
       ' · 2) run the full pipeline check at the bottom · 3) press Call.');
@@ -1697,7 +1737,7 @@
     }
     // The masthead nameplate sub-line and the footer both carry the host; the
     // footer also carries the build, which anchors every bug report over time.
-    if ($('mastSub')) $('mastSub').textContent = 'DASHBOARD · ' + location.host;
+    paintPage();
     if ($('footHost')) $('footHost').textContent = location.host;
     fetch('/health').then((r) => r.json()).then((h) => {
       $('versionLine').textContent = 'Talk Wave v' + (h.version || '?');
@@ -1966,6 +2006,11 @@
     let timer = null;
     const apply = () => {
       const needle = (box.value || '').trim().toLowerCase();
+      // Search is a RESULTS VIEW over every page: while a needle is typed,
+      // paintPage lifts the page filter (and parks the dashboard), and the
+      // row filtering below decides what shows. Clearing the box hands the
+      // panel back to whichever page the operator was on.
+      paintPage();
       let anywhere = false;
       document.querySelectorAll('details.sec').forEach((sec) => {
         const rows = sec.querySelectorAll('.row, label.check, .prow, .permrow');

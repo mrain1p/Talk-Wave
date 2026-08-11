@@ -629,23 +629,27 @@ def mcp_tools_payload() -> list[dict]:
 #             and an empty box that doesn't explain itself reads as unfinished.
 # ---------------------------------------------------------------------------
 
-# Super-groups, in display order. The page renders these headers and orders
-# every section beneath them from this table — it does not keep its own copy.
+# Super-groups, in display order. Since 0.10.62 each one is a PAGE of the
+# panel — the widget shows one at a time behind /settings#<id> — and the page
+# picker, the ordering and the wording all come from this table; the markup
+# does not keep its own copy.
 #
-# Six headings, and each one answers a different question an operator arrives
-# with. The shape before this had "Call settings" holding seven sections that
-# ranged from what the DJ's voice does to how loud the ring tone is, and
-# finding a sub-setting meant opening sections to see what was in them. The
-# split that fixed it is speaking (The conversation) against everything that
-# runs the call around the speaking (Running the line) — the two are looked
-# for at different times and by different people.
+# The cut is by door where a door owns the answer, and universal where every
+# door shares it (the operator's ask: "one for calls, one for voicemails, one
+# for texts"). Calls, Voicemail and Texts each get their own page; the DJ's
+# knowledge and house style stay on one shared page because the same brain
+# answers all three doors — filing them under Calls would be a lie the moment
+# a text chat used them, and a field cannot appear on two pages (one id, and
+# byKind fills the first match it finds).
 SUPERGROUPS = [
-    ("config",  "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
-    ("safety",  "Permissions & safety", "What a caller may set in motion, and the limits around it."),
-    ("talk",    "The conversation",     "Who answers, how they speak, and what they know."),
-    ("line",    "Running the line",     "How a call starts, how it ends, and what happens after."),
-    ("card",    "The call card",        "What a caller sees — here, and on somebody else's page."),
-    ("ref",     "Reference",            "What a caller may ask for, and what the station publishes."),
+    ("config",    "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
+    ("safety",    "Permissions & safety", "What a caller may set in motion, and the limits around it."),
+    ("dj",        "The DJ",               "What the DJ knows and how they speak — one brain behind every door."),
+    ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
+    ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
+    ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
+    ("card",      "The call card",        "What a caller sees — here, and on somebody else's page."),
+    ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
 
 # (id, supergroup, title, blurb). Order within a supergroup is the order here.
@@ -678,44 +682,47 @@ GROUPS = [
     ("security", "safety", "Access",        "Who opens this panel, and who can call."),
     ("perms",    "safety", "Caller permissions", "The station actions a caller can trigger."),
     ("usage",    "safety", "Usage controls",     "Generous limits that stop runaway use."),
-    # Beside the usage caps rather than under Running the line — the hard
+    # Beside the usage caps rather than on the Calls page — the hard
     # per-call ceiling is one more spend limit, and the operator went looking
     # for it here. The rest of what "Call length" used to hold (sign-off,
     # check-ins, the earliest hang-up) is conversation behaviour and lives in
     # Closing the call below.
     ("speech",   "safety", "Speech hygiene", "What never reaches the speaker."),
 
-    # Knowledge first, voice second, then the call's shape in the order a
-    # call has one: open, close, turn-take. The operator's ordering.
-    ("context",  "talk",   "Station awareness",  "What the DJ knows before picking up."),
-    ("style",    "talk",   "House style",        "Light steers on top of the persona."),
-    ("call",     "talk",   "Greeting",           "Which DJ picks up, and how the call opens."),
+    # The DJ page holds what every door shares. The same brain answers a live
+    # call, writes the machine's fresh greetings and runs the text line, so
+    # its knowledge and house style filed under any one door would go stale
+    # the moment another door used them.
+    ("context",  "dj",     "Station awareness",  "What the DJ knows before picking up."),
+    ("style",    "dj",     "House style",        "Light steers on top of the persona."),
+
+    # Calls: the live line's own page, in the order a call has a shape —
+    # open, turn-take, close — then everything that runs around the speaking.
+    ("call",     "calls",  "Greeting",           "Which DJ picks up, and how the call opens."),
     # Greeting's mirror: how a call ends, in character — the sign-off steer,
     # the idle check-ins, and how early the DJ may hang up were scattered
     # across House style and Call length, and the operator asked where the
     # closing settings were. A fair question deserves a section.
-    ("turns",    "talk",   "Turn-taking",        "When the DJ decides you've finished."),
-    ("closing",  "talk",   "Closing the call",   "How a call ends, in character."),
-
-
+    ("turns",    "calls",  "Turn-taking",        "When the DJ decides you've finished."),
+    ("closing",  "calls",  "Closing the call",   "How a call ends, in character."),
     # Was inside Caller permissions, where it read as a fourth station-wide
     # permission. It is not a permission at all: it decides what happens when
     # the call DJ and the on-air DJ are the same voice.
-    # Its own switch, not a row inside Voicemail: whether the booth takes
-    # live callers and whether the machine answers are two decisions, and
-    # nesting one under the other implied a dependency neither has.
-    ("onair",    "line",   "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
-    ("tunein",   "line",   "Tune the caller into the station",
+    ("onair",    "calls",  "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
+    ("tunein",   "calls",  "Tune the caller into the station",
      "Whether the caller counts as a listener, and whether they hear the broadcast."),
-    ("callback", "line",   "Back-to-air commentary", "One line after the call — nothing more."),
-    ("sounds",   "line",   "Call sounds",         "Ring, pickup and hang-up."),
+    ("callback", "calls",  "Back-to-air commentary", "One line after the call — nothing more."),
+    ("sounds",   "calls",  "Call sounds",         "Ring, pickup and hang-up."),
     # Moved out of Voice: the effect shapes the CALL's sound, not the TTS
     # backend, and the operator kept looking for it here.
-    ("effects",  "line",   "Voice effects",       "A radio colour on the DJ's voice."),
-    ("record",   "line",   "Call transcripts",    "What is written to disk, and for how long."),
-    # Its own section, not rows inside another — the operator's explicit call.
-    ("voicemail", "line",  "Voicemail",           "When the booth can't pick up, the machine does."),
-    ("chat",      "line",  "Text line",           "Typed chat with whoever is on air — same brain, no microphone."),
+    ("effects",  "calls",  "Voice effects",       "A radio colour on the DJ's voice."),
+    ("record",   "calls",  "Call transcripts",    "What is written to disk, and for how long."),
+
+    # Each door the booth doesn't answer live gets its own page, named for
+    # the door — the operator's cut. "The machine" rather than a section
+    # called Voicemail under a page called Voicemail, which read as a stutter.
+    ("voicemail", "voicemail", "The machine",     "When the booth can't pick up, the machine does."),
+    ("chat",      "texts",  "Text line",          "Typed chat with whoever is on air — same brain, no microphone."),
 
     # One "Player settings" section until 0.10.47: the live preview, the
     # what-shows-where matrix and the look-and-feel rows all shared a single
@@ -1032,7 +1039,7 @@ SCHEMA: dict[str, dict] = {
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "
              "while the booth could pick up live. Voicemail itself has to be "
-             "switched on under Running the line."),
+             "switched on on its own page."),
     "embed_voicemail_button": dict(group="surface", kind="check",
         label="\u201cLeave a message\u201d button (embed)",
         help="The same second button, on the embedded card."),

@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.62
+
+- **The settings panel is pages now, not one long scroll.** The dashboard is the landing page, and Configuration, Permissions & safety, The DJ, Calls, Voicemail, Texts, The call card, Reference and Diagnostics are each their own page behind the same `/settings` address (`#calls`, `#voicemail`, `#texts`, …) — so a page survives a refresh, the back button works, and a link to one page can be sent to someone. The jump bar is the page picker, sitting with the search in one sticky band at the very top.
+- **Calls, voicemail and texts each get their own page.** The live line's sections (greeting, turn-taking, closing, ducking, tune-in, back-to-air, sounds, effects, transcripts) sit under **Calls**; **Voicemail** holds the machine; **Texts** holds the text line. What every door shares — the DJ's station awareness and house style — lives on **The DJ**, because the same brain answers all three and filing it under one of them would be a lie.
+- **Search reads every page.** Typing in the finder shows the matching rows from everywhere at once; clearing it returns you to the page you were on. Dashboard tiles still jump straight to the section that owns an answer, turning to its page on the way.
+- **The station's pushes carry a key.** Webhook registration hands the station a key its pushes must present, and a push without it is refused. The webhook diagnostics also name any stale hook rows old deployments left behind on the station, so its sixteen-slot budget stops leaking invisibly.
+- **The DJ can see the new-arrivals shelf.** A read of the station's recently-added tracks joins the tool surface — listed under Station tools like the rest — and the caller's "What can I ask?" menu mentions it.
+- **Station-data caps get obvious headroom.** The 0.10.58 per-field prompt caps sat close enough to real values that "capped" read as "loses context"; they now sit well clear of any real title, artist or schedule name, while still collapsing a corrupt or hostile multi-kilobyte field before it reaches the prompt.
+
 ## 0.10.58
 
 - **The brute-force lockout can no longer be spoofed on a LAN.** Wrong-password and guest-code lockouts now key on the connection's own address, not a header a local client could set — so a machine on your network can't rotate its way around the throttle or drop your admin address into cooldown. Behind a reverse proxy, set `CALLIN_TRUSTED_PROXIES` to restore exact per-caller precision (see [security](docs/security.md)).
