@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.54
+
+- **The three LINES toggles move to the right edge of their rows**, mirroring THE LINE's switch above them.
+
 ## 0.10.53
 
 - **The deploy files are easier to read.** `docker-compose.yaml`, `.env.example` and `livekit.example.yaml` say the same things in about half the comment lines — per-variable notes sit inline on the variable, every hard-won warning kept. `livekit.example.yaml` also gains a note from the field: restrict `rtc.interfaces` to your real interface, because a VM bridge holding a tentative IPv6 can crash-loop the media port. The README gains **Upgrading from Wave Talk**: the one required change is the image name — GHCR does not redirect renamed packages, so a compose still pulling `wave-talk` is silently frozen at its last build. No code change.
