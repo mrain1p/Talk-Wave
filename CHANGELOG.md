@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.53
+
+- **The deploy files are easier to read.** `docker-compose.yaml`, `.env.example` and `livekit.example.yaml` say the same things in about half the comment lines — per-variable notes sit inline on the variable, every hard-won warning kept. `livekit.example.yaml` also gains a note from the field: restrict `rtc.interfaces` to your real interface, because a VM bridge holding a tentative IPv6 can crash-loop the media port. No code change.
+
 ## 0.10.52
 
 - **Wave Talk is now Talk Wave.** The rename runs everywhere: the masthead and page titles, the PWA manifest and service-worker cache, the compose file (image `ghcr.io/mrainone7p/talk-wave`, containers `talkwave-*`), the CI workflow, the docs, and the GitHub repository itself. Nothing behaves differently — same settings, same data files, same endpoints. **Deployed stacks: update the image name and container names in your compose when you next pull.**
