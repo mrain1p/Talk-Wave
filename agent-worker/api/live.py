@@ -338,13 +338,17 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     out["callerTier"] = tier
     # Is there a tier ABOVE this caller that a code could actually reach? The
     # sign-in chip is pointless otherwise, so it only shows when signing in
-    # would change something: a guest code exists and the caller is a
-    # stranger, or an admin password exists and the caller is not yet admin.
+    # would change something. The guest half of the offer exists only while
+    # the line is code-gated: since 0.10.66 Guest code and Anyone are one
+    # choice apiece, so on an open line the code does not elevate and
+    # offering it would be a lie. The admin password is a door in every mode.
     import admin_auth
     admin_set = admin_auth.is_set()
     guest_set = admin_auth.guest_is_set()
+    mode = str(settings_store.load().get("front_access") or "auto").lower()
+    guest_door = guest_set and mode in ("guest", "auto")
     out["signinAvailable"] = (
-        (tier == "open" and (guest_set or admin_set))
+        (tier == "open" and (guest_door or admin_set))
         or (tier == "guest" and admin_set)
     )
     return out

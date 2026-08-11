@@ -9,7 +9,7 @@
 (function () {
   const {
     $, ASKS, ASK_GROUPS, NEVER, CALL_KEY,
-    ctx, playSound, pack, setSounds, getVolume,
+    ctx, playSound, pack, setSounds, getVolume, THEME_ICONS,
   } = window.Callin;
 
   // The panel's own copy of /live. It used to read the call page's, which is
@@ -1982,8 +1982,11 @@
     const stored = localStorage.getItem('callinTheme') || '';
     const idx = opts.indexOf(opts.includes(stored) ? stored : '');
     const next = opts[(idx + 1) % opts.length];
-    btn.textContent = { light: '\u2600', dark: '\u263e',
-                        station: '\u2733', '': '\u25a6' }[next];
+    // Drawn, not typed \u2014 the same table the card's cycle uses (shared.js
+    // THEME_ICONS), so the two surfaces' controls cannot drift.
+    btn.innerHTML = { light: THEME_ICONS.light, dark: THEME_ICONS.dark,
+                      station: THEME_ICONS.station,
+                      '': THEME_ICONS.device }[next];
     btn.title = { light: 'Switch to light', dark: 'Switch to dark',
                   station: "The station's show colours",
                   '': 'Match the device' }[next];

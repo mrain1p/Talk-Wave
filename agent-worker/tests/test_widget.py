@@ -1281,6 +1281,20 @@ class TestSigningInClimbsTheTier(_TempStores):
         self.assertEqual(out["callerTier"], "admin")
         self.assertFalse(out["signinAvailable"])
 
+    def test_an_open_line_offers_no_guest_climb(self):
+        # 0.10.66 made the doors one choice apiece: on an open line the code
+        # does not elevate, so the chip must not offer that climb — while the
+        # admin password stays a door in every mode, so setting one restores
+        # the offer.
+        import admin_auth
+
+        admin_auth.set_guest_password("guest99")
+        settings_store.save({"front_access": "open"})
+        self.assertFalse(self._live_for()["signinAvailable"])
+        self.assertEqual(self._live_for("guest99")["callerTier"], "open")
+        admin_auth.set_password("adminpass123")
+        self.assertTrue(self._live_for()["signinAvailable"])
+
 
 class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
     """The chat text box shipped invisible because its CSS used tokens that do
@@ -1920,11 +1934,18 @@ class TestThePanelReadsAtAGlance(unittest.TestCase):
         self.assertIn('.tag[data-state="off"]', self.css)
 
     def test_the_panel_cycle_matches_the_cards(self):
-        # Same four stops, same glyphs, same stored key — two surfaces, one
-        # mental model.
-        for glyph in ("\\u2600", "\\u263e", "\\u2733", "\\u25a6"):
-            self.assertIn(glyph, self.js)
-        self.assertIn("localStorage.getItem('callinTheme')", self.js)
+        # Same four stops, same DRAWN icons, same stored key — two surfaces,
+        # one mental model. 0.10.67 replaced the typed glyphs (the ☀ read as
+        # a star, the station's ✳ as nothing at all) with one THEME_ICONS
+        # table published by shared.js, so both cycles draw from it and
+        # cannot drift.
+        shared = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+        for key in ("light:", "dark:", "station:", "device:"):
+            self.assertIn(key, shared.split("const THEME_ICONS")[1][:2000])
+        for surface in (self.js,
+                        (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")):
+            self.assertIn("THEME_ICONS.station", surface)
+            self.assertIn("localStorage.getItem('callinTheme')", surface)
         self.assertIn("panelThemeOptions", self.js)
 
 
