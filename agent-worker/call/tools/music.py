@@ -388,6 +388,30 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
         tools.append(search_library)
 
+        # Same switch and same credentials as the search above: both answer
+        # "what have you got", so there is no separate toggle to forget.
+        @lk_llm.function_tool(name="subwave_recent_tracks")
+        async def recent_tracks() -> str:
+            """What's NEW in the library — the most recently added tracks,
+            newest first. Use when a caller asks what's new, what just came
+            in, or what's worth a first spin. A read only: if they want one
+            played, put it through as a request (or queue the exact pick if
+            they choose from this list)."""
+            items = await station.recent_tracks()
+            if not items:
+                return (
+                    "The station didn't say what's new — the recently-added "
+                    "shelf may be empty or unreachable right now. Tell the "
+                    "caller you can't see the new arrivals; don't invent any."
+                )
+            # 8 lines, like a search page: enough to browse down a phone
+            # line, small enough not to weigh on every later turn.
+            lines = [_fmt_track(t, with_id=exact_queue) for t in items[:8]]
+            return ("The newest arrivals in the library, newest first:\n"
+                    + "\n".join(lines))
+
+        tools.append(recent_tracks)
+
     if exact_queue:
         @lk_llm.function_tool(name="subwave_queue_track")
         async def queue_track(id: str, title: str, artist: str = "") -> str:

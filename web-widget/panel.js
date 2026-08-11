@@ -3751,15 +3751,25 @@
       // fails — so ask the station to fire one and wait for it to land.
       run: async (env) => {
         const polling = ' · the card falls back to 20s polling';
+        // Earlier deployments of this box leave dead rows behind at the
+        // station (a Docker-internal address, a previous host IP): each one
+        // burns one of the station's 16 hook slots and takes a failed POST
+        // on every event. The server can only flag them — a second Talk Wave
+        // on the same station is legitimate, so deleting is the operator's
+        // call, in the station's own Webhooks tab.
+        const strays = ((env.webhook && env.webhook.lookalikes) || []).length;
+        const strayNote = strays
+          ? ' · ' + strays + ' other hook(s) at the station point at a /hooks/station address — likely stale rows from earlier deployments; remove them in the station Webhooks tab'
+          : '';
         if (!env.webhook?.registered) {
-          return { status: 'warn', detail: (env.webhook?.detail || 'not registered') + polling };
+          return { status: 'warn', detail: (env.webhook?.detail || 'not registered') + polling + strayNote };
         }
         const d = await afetch('/hooks/test', { method: 'POST' })
           .then((r) => r.json()).catch(() => null);
-        if (!d) return { status: 'warn', detail: 'registered, delivery untested' };
+        if (!d) return { status: 'warn', detail: 'registered, delivery untested' + strayNote };
         return d.ok
-          ? { status: 'pass', detail: d.detail }
-          : { status: 'warn', detail: d.detail + polling };
+          ? { status: strays ? 'warn' : 'pass', detail: d.detail + strayNote }
+          : { status: 'warn', detail: d.detail + polling + strayNote };
       },
     },
     {

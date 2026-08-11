@@ -162,6 +162,63 @@ class TestCurrentLyricsAreARead(unittest.TestCase):
         self.assertLess(len(out), 2600)
 
 
+class TestWhatsNewInTheLibrary(unittest.TestCase):
+    """/dj/recent has no MCP tool, so the wrapper is the only way a caller can
+    ask what's new. It rides the library-search switch — both answer "what
+    have you got", and an operator happy to expose one has no reason to hide
+    the other — and it is honest when the shelf is empty or unreachable."""
+
+    def _tools(self, cfg, items, creds=True):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def recent_tracks(self, limit=12):
+                return items
+
+            async def search_library(self, q, offset=0, limit=30):
+                return []
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: not creds
+        try:
+            return build_library_tools(cfg, _Station(), CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+
+    def test_it_rides_the_library_search_switch(self):
+        names = [t.info.name
+                 for t in self._tools({"allow_library_search": True}, [])]
+        self.assertIn("subwave_recent_tracks", names)
+        names = [t.info.name for t in self._tools({}, [])]
+        self.assertNotIn("subwave_recent_tracks", names)
+
+    def test_without_credentials_it_is_not_built_at_all(self):
+        # MCP can stand in for the search, but there is no MCP tool for the
+        # recently-added read — so without credentials the tool must simply
+        # not exist, rather than exist and always answer empty.
+        names = [t.info.name for t in self._tools(
+            {"allow_library_search": True}, [], creds=False)]
+        self.assertNotIn("subwave_recent_tracks", names)
+
+    def test_arrivals_are_capped_like_a_search_page(self):
+        items = [{"title": f"Track{i}", "artist": "A"} for i in range(12)]
+        tools = self._tools({"allow_library_search": True}, items)
+        tool = next(t for t in tools if t.info.name == "subwave_recent_tracks")
+        out = asyncio.run(tool())
+        self.assertIn("newest first", out)
+        self.assertIn("Track0", out)
+        self.assertIn("Track7", out)
+        self.assertNotIn("Track8", out)
+
+    def test_an_empty_shelf_is_honest(self):
+        tools = self._tools({"allow_library_search": True}, [])
+        tool = next(t for t in tools if t.info.name == "subwave_recent_tracks")
+        out = asyncio.run(tool())
+        self.assertIn("don't invent", out)
+
+
 class TestLikingTheTrackOnAir(unittest.TestCase):
     """A caller liking the record on air is the same heart any listener taps —
     public at the station, low-harm, off by default. Added on the operator's

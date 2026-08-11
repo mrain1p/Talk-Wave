@@ -47,6 +47,11 @@ class _TempStores(unittest.TestCase):
         # an effect must land in this temp dir, never in real data/.
         self._old_vfx = os.environ.get("VOICE_FX_PATH")
         os.environ["VOICE_FX_PATH"] = str(tmp / "voice-effects.json")
+        # The webhook secret reads its path per call, like the effects store.
+        # Redirected for every inheriting test so a receiver test can never
+        # load — or worse, rotate — the real deployment's secret in data/.
+        self._old_hook_secret = os.environ.get("CALLIN_HOOK_SECRET_PATH")
+        os.environ["CALLIN_HOOK_SECRET_PATH"] = str(tmp / "hook-secret.json")
         # The listener buffer is the newest writable path; redirected here so
         # no inheriting test can touch real data/listeners.json (the sprint
         # review caught it unprotected).
@@ -69,6 +74,10 @@ class _TempStores(unittest.TestCase):
             os.environ.pop("VOICE_FX_PATH", None)
         else:
             os.environ["VOICE_FX_PATH"] = self._old_vfx
+        if self._old_hook_secret is None:
+            os.environ.pop("CALLIN_HOOK_SECRET_PATH", None)
+        else:
+            os.environ["CALLIN_HOOK_SECRET_PATH"] = self._old_hook_secret
         for k, v in self._old_env.items():
             if v is None:
                 os.environ.pop(k, None)
