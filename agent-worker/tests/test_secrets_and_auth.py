@@ -341,16 +341,19 @@ class TestFirstRunIsNotOpenToTheWeb(_TempStores):
         as a side effect of another one is the exact shape 0.9.61 removed."""
         from api import wire as api_wire
 
-        old_embed = api_wire.ALLOWED_ORIGINS
+        old_embed = os.environ.get("CALLIN_ALLOWED_ORIGINS")
         old_panel = api_wire.PANEL_ORIGINS
-        api_wire.ALLOWED_ORIGINS = ["https://someone-elses-blog.example"]
+        os.environ["CALLIN_ALLOWED_ORIGINS"] = "https://someone-elses-blog.example"
         api_wire.PANEL_ORIGINS = []
         try:
             self.assertFalse(
                 self._allowed("https://someone-elses-blog.example",
                               "someone-elses-blog.example"))
         finally:
-            api_wire.ALLOWED_ORIGINS = old_embed
+            if old_embed is None:
+                os.environ.pop("CALLIN_ALLOWED_ORIGINS", None)
+            else:
+                os.environ["CALLIN_ALLOWED_ORIGINS"] = old_embed
             api_wire.PANEL_ORIGINS = old_panel
 
 

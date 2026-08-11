@@ -66,6 +66,13 @@
         <div class="masttitle">TALK WAVE</div>
         <div class="mastsub" id="mastSub">Dashboard</div>
       </div>
+      <!-- The finder lives in the masthead, above the coral rule (operator's
+           ask, 0.10.64) — sixty settings across nine pages deserve a faster
+           answer than page archaeology: type, and every matching row from
+           every page remains; clearing the box returns to the page you were
+           on. Hidden while .locked along with the rest of the masthead. -->
+      <input type="search" id="settingsSearch" class="settingsearch"
+             placeholder="Find a setting…" autocomplete="off" />
       <div class="panelbar">
         <a class="gear" href="/" title="Back to the call page"
            aria-label="Back to the call page">&#8592;</a>
@@ -105,28 +112,13 @@
       <span id="loginMsg"></span>
     </div>
 
-    <!-- The settings header leads the page (operator's ask: the picker sits
-         at the top): heading + promise, the finder, and the page picker are
-         ONE sticky band. Below it exactly one page shows at a time — the
-         dashboard by default, or the super-group named in the URL's #hash
-         (paintPage in panel.js). scroll-margin on the sections keeps in-page
-         jumps from hiding under the band. -->
+    <!-- The page picker is the sticky band (the heading and its promise
+         retired at 0.10.64, operator's ask — the finder moved up into the
+         masthead). Below it exactly one page shows at a time — the dashboard
+         by default, or the super-group named in the URL's #hash (paintPage
+         in panel.js). scroll-margin on the sections keeps in-page jumps from
+         hiding under the band. -->
     <div class="settingsbar" id="settingsBar">
-      <!-- One header row: the heading and its promise on the left, the search
-           on the right — the box sat alone on its own line and read as a
-           stray form field rather than this half of the page's own finder. -->
-      <div class="settingshead">
-        <div>
-          <h2>Call-in settings</h2>
-          <p class="sub">Applies to the next caller — no restart. Clearing a field
-            falls back to the environment config.</p>
-        </div>
-        <!-- Sixty settings deserve a faster answer than page archaeology:
-             type, and every matching row from every page remains — clearing
-             the box returns to the page you were on. -->
-        <input type="search" id="settingsSearch" class="settingsearch"
-               placeholder="Find a setting…" autocomplete="off" />
-      </div>
       <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
         reads every label, help line and section name, on every page. Try the
         thing's own noun (“beep”, “password”, “skip”), or clear it and pick a
@@ -326,7 +318,9 @@
             opens the phone. No username; expires per device if you set a
             clock; the card offers a lock button to forget it early.</li>
           <li><strong>Open</strong> — no code: anyone who can load the page
-            can call, inside the usage caps.</li>
+            can call, inside the usage caps. On an open line the guest door
+            is off — the code does not elevate — while the admin password
+            still opens everything.</li>
         </ul>
         <p class="hint wide"><strong>What stands behind them:</strong></p>
         <ul class="hint wide" style="margin-top:0">
@@ -353,12 +347,12 @@
       <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
         <h4 class="subhead">Who can call</h4>
-        <!-- The same cascade the permission rows speak (operator's ask):
-             Admin is always a door, ticking Guest opens the code door,
-             ticking Anyone opens the page to everybody — each tier's own
-             powers stay per-feature under Caller permissions. The hidden
-             select is still the stored field, exactly the kill switch's
-             pattern: Save diffs it, the cells drive it. -->
+        <!-- Three ticks, one choice apiece (operator's ask, 0.10.66): the
+             door is code-gated OR open, never both, and Admin is always a
+             door — each tier's own powers stay per-feature under Caller
+             permissions. The hidden select is still the stored field,
+             exactly the kill switch's pattern: Save diffs it, the cells
+             drive it. -->
         <div class="row accessrow">
           <label>Call-in access</label>
           <span class="accesscells" id="accessCells"></span>
@@ -1119,6 +1113,10 @@
           <select id="chat_greeting_mode"></select>
         </div>
         <div class="row">
+          <label for="chat_action_cards">Action receipts</label>
+          <select id="chat_action_cards"></select>
+        </div>
+        <div class="row">
           <label for="chat_greeting">Canned greeting</label>
           <input type="text" id="chat_greeting" />
         </div>
@@ -1371,6 +1369,10 @@
           card should appear. <strong>Nothing else to add</strong>: the script
           builds the iframe itself, microphone permission included.</p>
         <label class="check"><input type="checkbox" id="embed_card_outline" /> Draw the card outline</label>
+        <div class="row">
+          <label for="allowed_origins">Allowed origins</label>
+          <input type="text" id="allowed_origins" />
+        </div>
         <div class="row">
           <label for="embedMode">Shape</label>
           <select id="embedMode">

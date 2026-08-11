@@ -212,6 +212,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # that never answers should not leave the caller watching a typing dot
     # forever.
     "chat_greeting_mode":    (None, "canned"),
+    # Where a tool run's receipt card lands in the chat. "after" is the
+    # default and a deliberate behaviour change at 0.10.65 (the operator's
+    # ask): the cards used to lead the reply, and a receipt before the DJ has
+    # said a word reads as the paperwork interrupting the person.
+    "chat_action_cards":     (None, "after"),
     "chat_greeting":         (None, ""),
     "chat_reply_timeout_secs": (None, 45),
     # Keep a chat feeling like a conversation, not a turn-based move: when the
@@ -368,6 +373,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # sheet of its own — unless the operator ticks the outline back on. The
     # main page always keeps its card; only the frame is asked.
     "embed_card_outline":     (None, False),
+    # Which FOREIGN pages may frame the widget and spend the operator's budget
+    # — mint call tokens, open the text line. Empty is same-origin only, the
+    # right answer until the first embed. A panel setting since 0.10.63: the
+    # allowlist lives beside the snippet it exists for, so allowing the site
+    # you just built a snippet for is a save, not a container recreate.
+    "allowed_origins":        ("CALLIN_ALLOWED_ORIGINS", ""),
     # How each door reads: its WORD, its ICON, or both — one answer per
     # feature, not one for the whole row. An operator wanted Call worded and
     # the two secondary doors as bare icons on a tight embed, which the old
@@ -644,11 +655,16 @@ def mcp_tools_payload() -> list[dict]:
 SUPERGROUPS = [
     ("config",    "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
     ("safety",    "Permissions & safety", "What a caller may set in motion, and the limits around it."),
-    ("dj",        "The DJ",               "What the DJ knows and how they speak — one brain behind every door."),
+    # "The booth" rather than the operator's first suggestion (Transmission):
+    # the dashboard's switch cluster already answers to TRANSMISSION, and one
+    # word meaning two things on one panel is the kind of confusion the rename
+    # was meant to remove. The id stays "dj" — it is a hash address now
+    # (/settings#dj), and renaming it would break bookmarks for a title change.
+    ("dj",        "The booth",            "What the booth knows, how it speaks, and what it writes down."),
     ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
     ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
     ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
-    ("card",      "The call card",        "What a caller sees — here, and on somebody else's page."),
+    ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
     ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
 
@@ -689,12 +705,15 @@ GROUPS = [
     # Closing the call below.
     ("speech",   "safety", "Speech hygiene", "What never reaches the speaker."),
 
-    # The DJ page holds what every door shares. The same brain answers a live
-    # call, writes the machine's fresh greetings and runs the text line, so
-    # its knowledge and house style filed under any one door would go stale
-    # the moment another door used them.
+    # The booth page holds what every door shares. The same brain answers a
+    # live call, writes the machine's fresh greetings and runs the text line,
+    # so its knowledge and house style filed under any one door would go
+    # stale the moment another door used them. Transcripts sit here too
+    # (operator's call, 0.10.64): the records cover calls, chats and
+    # voicemails alike, so "what the booth writes down" is the honest home.
     ("context",  "dj",     "Station awareness",  "What the DJ knows before picking up."),
     ("style",    "dj",     "House style",        "Light steers on top of the persona."),
+    ("record",   "dj",     "Call transcripts",   "What is written to disk, and for how long."),
 
     # Calls: the live line's own page, in the order a call has a shape —
     # open, turn-take, close — then everything that runs around the speaking.
@@ -716,7 +735,6 @@ GROUPS = [
     # Moved out of Voice: the effect shapes the CALL's sound, not the TTS
     # backend, and the operator kept looking for it here.
     ("effects",  "calls",  "Voice effects",       "A radio colour on the DJ's voice."),
-    ("record",   "calls",  "Call transcripts",    "What is written to disk, and for how long."),
 
     # Each door the booth doesn't answer live gets its own page, named for
     # the door — the operator's cut. "The machine" rather than a section
@@ -896,8 +914,10 @@ SCHEMA: dict[str, dict] = {
         label="Call-in access",
         help="This is the PHONE — who may ring at all. What a caller may DO "
              "once through is separate and per-tier, feature by feature, "
-             "under Caller permissions. The panel always needs the admin "
-             "password, whichever of these you pick."),
+             "under Caller permissions. Open and Guest code are one choice "
+             "apiece: an open line has no code door (the code stops "
+             "elevating), a code-gated line is closed to strangers. The "
+             "admin password opens the phone and the panel in every mode."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels
@@ -952,6 +972,14 @@ SCHEMA: dict[str, dict] = {
              "line — a silent line reads as broken. “Canned” sends the line "
              "below (instant, no model cost); “Written each time” has the DJ "
              "write one in persona at open; “Off” waits for the caller."),
+    "chat_action_cards": dict(group="chat", kind="select",
+        label="Action receipts",
+        help="The ✅ card a station action leaves in the chat — a queued "
+             "request, a takeover, a beat. After the DJ's line, the words "
+             "land first and the card reads as the paperwork; as-it-happens "
+             "is how the phone's cards behave; off leaves the DJ's word as "
+             "the only trace (the action still runs, and the transcript "
+             "still records it)."),
     "chat_greeting": dict(group="chat", kind="text",
         label="Canned greeting",
         placeholder="You're through to the booth — what's on your mind?",
@@ -1035,6 +1063,13 @@ SCHEMA: dict[str, dict] = {
         help="Off, the embed sits flush in whatever area the host page gives "
              "it — no border or sheet of its own, the page shows through. On, "
              "it carries the same outlined card as the main page."),
+    "allowed_origins": dict(group="embed", kind="text", label="Allowed origins",
+        placeholder="default: no other site — the card works on this page only",
+        help="Comma-separated https origins that may embed this card and place "
+             "calls on your API keys (https://radio.example.com). The page you "
+             "are reading this on needs no entry — add the site the snippet is "
+             "pasted into. Applies to the next request, no restart. “*” lets "
+             "every page on the internet spend your budget — dev only."),
     "show_voicemail_button": dict(group="surface", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "
@@ -1450,6 +1485,11 @@ STATIC_CHOICES = {
         ("canned", "Canned — the line below, instantly"),
         ("fresh", "Written each time — in persona at open"),
         ("off", "Off — wait for the caller to type first"),
+    ],
+    "chat_action_cards": [
+        ("after", "After the DJ's line — words first, then the receipt (default)"),
+        ("before", "As it happens — the receipt leads the line"),
+        ("off", "Off — no cards; the DJ's word is the only trace"),
     ],
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "tts_dash_style": [

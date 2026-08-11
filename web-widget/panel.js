@@ -108,6 +108,21 @@
       }
     });
 
+    // Settings sections ship OPEN (operator's ask, 0.10.64): a page holds
+    // one group now, so the wall-of-forty-drawers the folding existed for is
+    // gone, and a page that arrives shut just adds a click before every
+    // read. Opened via JS, not markup, so each section's toggle listener —
+    // the lazy painters — fires exactly as if the operator opened it; once,
+    // so Collapse all and the operator's own folding survive later repaints.
+    // The diagnostics rows stay folded: they are viewers with run buttons in
+    // their headers, and four empty result panes stacked open is the exact
+    // shape their comment says was reported.
+    if (!layoutPanel.openedOnce) {
+      layoutPanel.openedOnce = true;
+      panel.querySelectorAll('details.sec[data-group]:not([open])')
+        .forEach((d) => { d.open = true; });
+    }
+
     buildNav(supers);
     paintPage();
   }
@@ -2156,10 +2171,13 @@
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access || 'auto';
     if (tier === 'admin') return true;      // always a door
-    // Admin-only closes the phone below admin, so the guest column has no
-    // caller behind it either — it used to stay live whenever a code
-    // existed, and read as a tier that could still ring (operator-reported).
-    if (tier === 'guest') return access !== 'admin' && guestConfigured;
+    // Guest code and Anyone are one choice apiece (operator's ask,
+    // 0.10.66): a guest caller exists only while the line is code-gated —
+    // on an open line the code no longer elevates, and admin-only closes
+    // the phone below admin. Auto is code-gated once a code exists.
+    if (tier === 'guest') {
+      return guestConfigured && (access === 'guest' || access === 'auto');
+    }
     // `open` callers only exist while the line lets somebody in without a
     // code. On auto that is "until a guest code is set".
     if (access === 'open') return true;
@@ -2170,6 +2188,10 @@
   function tierWhyNot(tier) {
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access || 'auto';
+    if (tier === 'guest' && access === 'open') {
+      return 'The line is open to anyone — the guest door is off, and the '
+        + 'code does not elevate. Pick Guest code under Access to gate it.';
+    }
     if (tier === 'guest' && access !== 'admin' && !guestConfigured) {
       return 'No guest code set — nobody can be this caller yet.';
     }
@@ -2177,14 +2199,16 @@
       + 'this caller. Change Call-in access under Access.';
   }
 
-  // Call-in access as the cascade the permission rows already speak
-  // (operator's ask): Admin is always a door, ticking Guest opens the code
-  // door, ticking Anyone opens the page to everybody. The hidden select
-  // stays the stored field — these cells drive it the way the kill switch
-  // drives calls_paused — so Save and the schema never learn a new shape.
+  // Call-in access as three ticks, but NOT the permission rows' cascade any
+  // more (operator's ask, 0.10.66): Guest code and Anyone are one choice
+  // apiece — the door is code-gated or open, never both, so the guest
+  // pathway can be off while the line stays open — and Admin is always a
+  // door. The hidden select stays the stored field — these cells drive it
+  // the way the kill switch drives calls_paused — so Save and the schema
+  // never learn a new shape.
   const ACCESS_CELLS = [
-    ['open', 'Anyone', 'No code — whoever loads the page can ring.'],
-    ['guest', 'Guest code', 'Callers who type the code you share.'],
+    ['open', 'Anyone', 'No code — whoever loads the page can ring. The guest door is off.'],
+    ['guest', 'Guest code', 'Only callers who type the code you share.'],
     ['admin', 'Admin', 'Always a door — the admin password opens the phone and this panel.'],
   ];
   function decorateAccess() {
@@ -2201,10 +2225,9 @@
       if (mode === 'admin') box.disabled = true;   // always on, never a choice
       box.onchange = () => {
         const sel = $('front_access');
-        // Same rule as a permission row: ticking a level opens it and every
-        // level above; unticking raises the floor to the next level up.
-        if (box.checked) sel.value = mode;
-        else sel.value = mode === 'open' ? 'guest' : 'admin';
+        // Mutually exclusive, not a cascade: ticking one door unticks the
+        // other, and unticking the open door closes the line to admin only.
+        sel.value = box.checked ? mode : 'admin';
         sel.dispatchEvent(new Event('change', { bubbles: true }));
         paintSecurity();
       };
@@ -2219,10 +2242,11 @@
     const wrap = $('accessCells');
     const sel = $('front_access');
     if (!wrap || !sel) return;
-    const RANKS = { open: 0, guest: 1, admin: 2 };
-    const at = RANKS[sel.value] != null ? RANKS[sel.value] : 2;
+    // One tick per door: Admin always, and whichever of Anyone / Guest code
+    // the stored mode names — never both (see ACCESS_CELLS).
     wrap.querySelectorAll('input').forEach((box) => {
-      box.checked = RANKS[box.dataset.mode] >= at;
+      box.checked = box.dataset.mode === 'admin'
+        || box.dataset.mode === sel.value;
     });
   }
 

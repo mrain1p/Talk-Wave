@@ -23,6 +23,7 @@ from tests.test_settings import (  # noqa: F401
     TestSettings,
     TestEverySecretRendersSomewhere,
     TestSettingsThatAreOnlyWrongTogether,
+    TestTheEmbedAllowlistIsASetting,
     TestTheDataDirCheckCannotStopTheWorker,
     TestTheProviderTablesAgreeWithEachOther,
     TestTheModelWarmedIsTheModelUsed,
@@ -229,6 +230,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestTheMachineAnswersThroughTheRightRefusals,
 )
 from tests.test_chat import (  # noqa: F401
+    TestChatActionCardsFollowTheLine,
     TestChatsEndInsteadOfAccumulating,
     TestTheFloodBrakeSurvivesAReconnect,
     TestOneAbuserIsSingledOut,

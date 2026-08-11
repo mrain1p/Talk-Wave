@@ -202,6 +202,25 @@ class TestTheDoorDecidesTheTier(_TempStores):
     def test_a_wrong_password_is_not_a_higher_tier(self):
         self.assertEqual(self._tier(**{"X-Call-Key": "not-the-password"}), "open")
 
+    def test_an_open_line_has_no_guest_door(self):
+        # 0.10.66, the operator's ask: Guest code and Anyone are one choice
+        # apiece. On an open line the stored code no longer elevates — so
+        # turning the guest pathway off does not require deleting the code —
+        # while the admin password stays a door in every mode.
+        settings_store.save({"front_access": "open"})
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "open")
+        self.assertEqual(self._tier(**{"X-Call-Key": "hunter2hunter2"}), "admin")
+
+    def test_a_code_gated_line_still_elevates(self):
+        settings_store.save({"front_access": "guest"})
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "guest")
+
+    def test_admin_only_offers_no_guest_door_either(self):
+        # The code never elevates on a line the code cannot open — a guest
+        # tier nobody can arrive at must not exist by side door.
+        settings_store.save({"front_access": "admin"})
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "open")
+
 
 if __name__ == "__main__":
     unittest.main()
