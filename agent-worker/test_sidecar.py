@@ -105,6 +105,7 @@ from tests.test_call_record import (  # noqa: F401
     TestCallRecord,
     TestOneUtteranceIsOneLineInTheRecord,
     TestStaleRecordsCanBeThrownAway,
+    TestTheFirstWordIsStampedOnce,
     TestTheCallerGetsAVerdict,
     TestTheCallRecordHearsBothSides,
     TestTheCallRecordSaysWhoRang,

@@ -17,6 +17,24 @@ from brain import briefing, conduct
 from tests.support import _FakeRequest, _TempStores
 
 
+class TestTheFirstWordIsStampedOnce(unittest.TestCase):
+    """firstWordAt is when the DJ's audio STARTS — the first speaking
+    transition — because a dj turn commits only after the utterance ends,
+    and 'time to first word' measured off turns silently included the whole
+    greeting (a 12.5s median on calls whose first audio landed in ~4)."""
+
+    def test_first_word_writes_once_and_reads_as_an_instant(self):
+        from call.record import CallRecord
+
+        rec = CallRecord("room-abc123def456", {"name": "Rosie"}, {})
+        self.assertNotIn("firstWordAt", rec.data)
+        rec.first_word()
+        stamped = rec.data["firstWordAt"]
+        self.assertIn("+00:00", stamped)     # an instant, with its offset
+        rec.first_word()                      # a later utterance is not the first
+        self.assertEqual(rec.data["firstWordAt"], stamped)
+
+
 class TestCallRecord(unittest.TestCase):
     """Diagnosing a bad call meant reading the CALLER's half and inferring the
     rest from tracebacks. The record is both halves plus the tools, so a call

@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- Same keyboard behaviour as the call page: without resizes-content an
+     Android keyboard OVERLAYS the layout viewport and whatever the operator
+     is typing into can sit hidden behind it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
 <title>Talk Wave settings</title>
 <!--
   The operator's surface, served at /settings — the one and only address.

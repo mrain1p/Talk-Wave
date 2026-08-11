@@ -51,13 +51,23 @@ def attach_error_recovery(session: AgentSession, record=None) -> None:
     directly, no model involved."""
     last_sorry = {"t": 0.0}
 
+    recoverable_at: list[float] = []
+
     def _on_session_error(ev) -> None:
         err = getattr(ev, "error", None)
         log.warning("session error (source=%s): %s", getattr(ev, "source", "?"), err)
         if record:
             record.problem(f"{type(err).__name__ if err else 'error'}: {err}")
         if getattr(err, "recoverable", False):
-            return
+            # One recoverable error is the SDK's to absorb. A SECOND inside
+            # the window means "recoverable" is not recovering — three
+            # recoverable Gemini 504s in a row once left a caller in 43s of
+            # dead air with no apology, because this returned every time.
+            now = time.time()
+            recoverable_at.append(now)
+            del recoverable_at[: max(0, len(recoverable_at) - 5)]
+            if len([t for t in recoverable_at if now - t < 45]) < 2:
+                return
         if time.time() - last_sorry["t"] < 20:
             return
         last_sorry["t"] = time.time()
@@ -79,6 +89,22 @@ def attach_error_recovery(session: AgentSession, record=None) -> None:
         spawn(_apologise())
 
     session.on("error", _on_session_error)
+
+
+def attach_first_word(session: AgentSession, record=None) -> None:
+    """Stamp the record the first time the DJ's audio STARTS.
+
+    The chart's "time to first word" used to be derived from the first dj
+    turn, which commits only after the utterance finishes — so it silently
+    measured ring + pickup + the whole greeting (12.5s median on calls whose
+    first audio landed in ~4). The speaking transition is when a caller
+    actually stops hearing silence."""
+
+    def _on_state(ev) -> None:
+        if record is not None and getattr(ev, "new_state", None) == "speaking":
+            record.first_word()
+
+    session.on("agent_state_changed", _on_state)
 
 
 def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> None:
@@ -464,7 +490,7 @@ def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict) -> None
     ctx.add_shutdown_callback(lambda: cancel(task))
 
 
-async def greet(session: AgentSession, cfg: dict) -> None:
+async def greet(session: AgentSession, cfg: dict, record=None) -> None:
     """Pick up. Both styles stay in persona and carry the show; the toggle is
     only whether the DJ opens with an invitation or lets the caller lead."""
     if str(cfg.get("greeting_style") or "inviting").lower() == "in-world":
@@ -505,6 +531,24 @@ async def greet(session: AgentSession, cfg: dict) -> None:
         # they gave up. A canned line through the TTS keeps the call alive —
         # later turns may succeed once the provider recovers.
         log.warning("greeting failed (%s) — using a canned pickup", e)
+        try:
+            await session.say(
+                "Hey — you're through to the booth. Bear with me a second, "
+                "the line's a bit rough tonight. What can I do for you?"
+            )
+        except Exception:
+            pass
+        return
+    # The exception branch above is only HALF the failure surface: the SDK
+    # swallows LLM errors it marks `recoverable` — generate_reply returns
+    # with no exception and no reply. Observed live (2026-08-11): three
+    # recoverable Gemini 504s in a row, 43 seconds of dead air, and the
+    # caller said "Hello" into silence. The record is the ground truth of
+    # whether the DJ actually spoke; if it says no, the canned line goes out.
+    if record is not None and not record.data.get("firstWordAt") and not any(
+        t.get("who") == "dj" for t in record.data.get("turns", ())
+    ):
+        log.warning("greeting produced no DJ audio — using a canned pickup")
         try:
             await session.say(
                 "Hey — you're through to the booth. Bear with me a second, "

@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.55
+
+- **A dead provider can no longer greet you with silence.** The SDK swallows LLM errors it calls "recoverable" — a run of Gemini 504s once left a caller in 43 seconds of dead air with no apology. The canned pickup now also fires when the greeting produced no audio at all, and a second "recoverable" error inside a minute is treated like the outage it is.
+- **The DJ closes when you're done.** "Alright, thanks" after your request is in is now the goodbye turn — one wrap line and the hang-up in the same breath, instead of answering a thank-you with the programme schedule while you wait.
+- **Time-to-first-word measures what it says.** The record stamps when the DJ's audio *starts*; the chart prefers it. Old records keep the old turn-based number, which overstated by the length of the greeting.
+- **Phone polish:** the installed panel no longer lays out taller than the visible screen after a refresh (dvh), the keyboard resizes the page instead of covering it, and a phone-width panel drops most of its side padding so the matrix stops wrapping into ribbons.
+
 ## 0.10.54
 
 - **The three LINES toggles move to the right edge of their rows**, mirroring THE LINE's switch above them.

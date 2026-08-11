@@ -120,6 +120,15 @@
   body {
     margin: 0; min-height: 100vh; padding: 24px 16px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  /* dvh, where the browser has it: in a standalone PWA 100vh is the LARGEST
+     viewport — after a refresh the page lays out taller than what's visible
+     and the operator scrolls to reach their own top and bottom (reported on
+     the installed panel). dvh follows the visible viewport instead. */
+  @supports (min-height: 100dvh) {
+    body { min-height: 100dvh; }
+  }
+  body {
     font-family: var(--font-body);
     background: var(--pine); color: var(--alpenglow);
   }
@@ -3326,6 +3335,20 @@
     font-size: 12.5px; color: var(--dim);
   }
   body.panelpage details.sec > summary .tag { font-size: 11px; }
+
+  /* --- a phone-width panel loses the ceremony ------------------------------- */
+  /* Body + sheet padding cost 46px per side on a ~390px screen — the matrix
+     labels wrapped into twelve-character ribbons (operator screenshot, on the
+     installed PWA). Near edge-to-edge below 640px; the type carries the
+     hierarchy without the margins. */
+  @media (max-width: 640px) {
+    body.panelpage { padding: 10px 6px 20px; }
+    body.panelpage .panel { padding: 12px 10px 28px; }
+    body.panelpage details.sec > .body { padding: 10px 8px; }
+    body.panelpage .dashgroup { padding: 8px 8px 6px; }
+    body.panelpage .lines { margin-left: 4px; padding-left: 8px; }
+    body.panelpage .actgrid { gap: 16px; }
+  }
 
   /* --- footer -------------------------------------------------------------- */
   body.panelpage .panelfoot {

@@ -48,12 +48,19 @@
   const failedC = (c) => !!((c.problems || []).length || !(c.callerTurns || 0));
   const when = (c) => new Date(c.startedAt || 0).getTime();
   const ttfwOf = (c) => {
-    // Seconds from pickup to the DJ's first word, from the record's own
-    // timestamps. No DJ turn = no bar; a call that never spoke is the DOORS
-    // chart's failure, not a zero-second answer here.
-    const dj = (c.turns || []).find((t) => t.who === 'dj');
-    if (!dj || !c.startedAt) return null;
-    const secs = (new Date(dj.t).getTime() - when(c)) / 1000;
+    // Seconds from pickup until the caller stops hearing silence.
+    // firstWordAt (0.10.55) is stamped when the DJ's audio STARTS; older
+    // records fall back to the first dj turn, which commits only after the
+    // utterance finishes and so overstates by the greeting's length. No DJ
+    // audio at all = no bar; that call is the DOORS chart's failure.
+    if (!c.startedAt) return null;
+    let at = c.firstWordAt ? new Date(c.firstWordAt).getTime() : NaN;
+    if (!isFinite(at)) {
+      const dj = (c.turns || []).find((t) => t.who === 'dj');
+      if (!dj) return null;
+      at = new Date(dj.t).getTime();
+    }
+    const secs = (at - when(c)) / 1000;
     return isFinite(secs) && secs >= 0 && secs < 600 ? secs : null;
   };
   const rateOf = (c) => (c.rating === 'up' ? 'up'
