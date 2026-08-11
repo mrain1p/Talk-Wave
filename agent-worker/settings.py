@@ -212,6 +212,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # that never answers should not leave the caller watching a typing dot
     # forever.
     "chat_greeting_mode":    (None, "canned"),
+    # Where a tool run's receipt card lands in the chat. "after" is the
+    # default and a deliberate behaviour change at 0.10.65 (the operator's
+    # ask): the cards used to lead the reply, and a receipt before the DJ has
+    # said a word reads as the paperwork interrupting the person.
+    "chat_action_cards":     (None, "after"),
     "chat_greeting":         (None, ""),
     "chat_reply_timeout_secs": (None, 45),
     # Keep a chat feeling like a conversation, not a turn-based move: when the
@@ -965,6 +970,14 @@ SCHEMA: dict[str, dict] = {
              "line — a silent line reads as broken. “Canned” sends the line "
              "below (instant, no model cost); “Written each time” has the DJ "
              "write one in persona at open; “Off” waits for the caller."),
+    "chat_action_cards": dict(group="chat", kind="select",
+        label="Action receipts",
+        help="The ✅ card a station action leaves in the chat — a queued "
+             "request, a takeover, a beat. After the DJ's line, the words "
+             "land first and the card reads as the paperwork; as-it-happens "
+             "is how the phone's cards behave; off leaves the DJ's word as "
+             "the only trace (the action still runs, and the transcript "
+             "still records it)."),
     "chat_greeting": dict(group="chat", kind="text",
         label="Canned greeting",
         placeholder="You're through to the booth — what's on your mind?",
@@ -1470,6 +1483,11 @@ STATIC_CHOICES = {
         ("canned", "Canned — the line below, instantly"),
         ("fresh", "Written each time — in persona at open"),
         ("off", "Off — wait for the caller to type first"),
+    ],
+    "chat_action_cards": [
+        ("after", "After the DJ's line — words first, then the receipt (default)"),
+        ("before", "As it happens — the receipt leads the line"),
+        ("off", "Off — no cards; the DJ's word is the only trace"),
     ],
     "profanity_mode": [("mask", "Mask them (s—)"), ("drop", "Remove them"), ("off", "Leave them alone")],
     "tts_dash_style": [

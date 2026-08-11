@@ -554,3 +554,117 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
             css,
             r'\.card\[data-mode="chat"\]\s+\.after\s*\{[^}]*display:\s*none',
             "the post-call transcript drawer must be hidden in chat mode")
+
+
+class TestChatActionCardsFollowTheLine(_TempStores):
+    """Where a tool run's receipt card lands is the operator's
+    chat_action_cards setting (0.10.65): after the DJ's line by default — the
+    words land, then the paperwork — before it for the old behaviour, or not
+    at all. Whatever the mode, the action itself runs and the reply arrives;
+    only the chat's furniture moves."""
+
+    def _run_ask(self):
+        from livekit.agents import llm as lk_llm
+
+        from chat import session as chat_session
+        import brain.assemble as assemble_mod
+        import call.providers as providers_mod
+        import call.tools as tools_mod
+
+        class _FakeStation:
+            async def resolve_live_persona(self):
+                return {"name": "Ash"}
+
+            async def aclose(self):
+                pass
+
+        class _Stream:
+            def __init__(self, chunks):
+                self._chunks = list(chunks)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self._chunks:
+                    raise StopAsyncIteration
+                return self._chunks.pop(0)
+
+            async def aclose(self):
+                pass
+
+        class _Model:
+            """First round queues the track, second answers in words."""
+
+            def __init__(self):
+                self.rounds = 0
+
+            def chat(self, chat_ctx=None, tools=None):
+                self.rounds += 1
+                if self.rounds == 1:
+                    call = types.SimpleNamespace(
+                        call_id="c1", name="queue_probe", arguments="{}")
+                    delta = types.SimpleNamespace(content="", tool_calls=[call])
+                else:
+                    delta = types.SimpleNamespace(
+                        content="Queued it up, rider.", tool_calls=[])
+                return _Stream([types.SimpleNamespace(delta=delta)])
+
+            async def aclose(self):
+                pass
+
+        def _fake_library(cfg, station, actions):
+            @lk_llm.function_tool(name="queue_probe")
+            async def queue_probe() -> str:
+                """Test tool that leaves a receipt, like a real request."""
+                actions.on_note({"icon": "🎵", "label": "Queued",
+                                 "detail": "Led Zeppelin"})
+                return "queued"
+
+            return [queue_probe]
+
+        async def _fake_prompt(*a, **k):
+            return "SYS"
+
+        orig = (chat_session.StationClient, assemble_mod.build_system_prompt,
+                providers_mod.build_llm, tools_mod.build_library_tools,
+                tools_mod.build_on_air_tools)
+        chat_session.StationClient = _FakeStation
+        assemble_mod.build_system_prompt = _fake_prompt
+        providers_mod.build_llm = lambda cfg: _Model()
+        tools_mod.build_library_tools = _fake_library
+        tools_mod.build_on_air_tools = lambda *a, **k: []
+        try:
+            chat = chat_session.ChatSession("a1", "open")
+            events = []
+            asyncio.run(chat.ask("play some zeppelin", events.append))
+        finally:
+            (chat_session.StationClient, assemble_mod.build_system_prompt,
+             providers_mod.build_llm, tools_mod.build_library_tools,
+             tools_mod.build_on_air_tools) = orig
+        return events
+
+    def test_after_is_the_default_and_the_card_lands_behind_the_line(self):
+        events = self._run_ask()
+        kinds = [e["type"] for e in events]
+        self.assertIn("action", kinds)
+        self.assertIn("done", kinds)
+        self.assertGreater(kinds.index("action"), kinds.index("done"),
+                           "by default the receipt follows the DJ's line")
+        card = next(e for e in events if e["type"] == "action")
+        self.assertEqual(card["label"], "Queued")
+
+    def test_before_leads_the_line(self):
+        settings_store.save({"chat_action_cards": "before"})
+        events = self._run_ask()
+        kinds = [e["type"] for e in events]
+        self.assertLess(kinds.index("action"), kinds.index("done"),
+                        "'before' is the pre-0.10.65 order, kept selectable")
+
+    def test_off_withholds_the_card_but_not_the_action(self):
+        settings_store.save({"chat_action_cards": "off"})
+        events = self._run_ask()
+        self.assertNotIn("action", [e["type"] for e in events])
+        done = next(e for e in events if e["type"] == "done")
+        self.assertIn("Queued it up", done["text"],
+                      "the action ran and the DJ still reports it")

@@ -47,6 +47,30 @@ PROMPT_TURNS = 30
 DEFAULT_CHAT_GREETING = "You're through to the booth — {dj} here. What's on your mind?"
 
 
+def route_action_cards(mode: str, on_event):
+    """Where a tool run's receipt card goes, by the chat_action_cards setting.
+
+    Returns (on_note, flush). on_note is handed to CallActions and fires the
+    moment a tool acts; flush is called once the DJ's line has gone out.
+    "before" emits immediately — the receipt leads the line that mentions it,
+    which is how the phone's cards behave and how chat behaved through
+    0.10.64. "after" (the default since 0.10.65, the operator's ask) holds
+    the cards and flushes them behind the reply, so "queued it up" reads as
+    the DJ speaking and the card as the paperwork. "off" drops the card —
+    the action still runs and is still in the transcript's tools list; only
+    the chat's furniture is withheld.
+    """
+    mode = (mode or "after").strip().lower()
+    if mode == "before":
+        return (lambda card: on_event({"type": "action", **card}),
+                lambda: None)
+    if mode == "off":
+        return (lambda card: None), (lambda: None)
+    held: list[dict] = []
+    return (held.append,
+            lambda: [on_event({"type": "action", **card}) for card in held])
+
+
 def _fill_greeting(text: str, persona: dict) -> str:
     """{station} {dj} {show} in the canned greeting, same tokens the card and
     the voicemail greeting fill."""
@@ -228,6 +252,8 @@ class ChatSession:
         secrets_store.apply_to_env()
 
         cfg = settings_store.permissions_for(settings_store.load(), self.tier)
+        on_note, flush_cards = route_action_cards(
+            str(cfg.get("chat_action_cards") or "after"), on_event)
         station = StationClient()
         try:
             persona = await station.resolve_live_persona()
@@ -236,7 +262,7 @@ class ChatSession:
                                                mode="chat")
 
             actions = CallActions(int(cfg.get("max_actions_per_call") or 0))
-            actions.on_note = lambda card: on_event({"type": "action", **card})
+            actions.on_note = on_note
             # Disabled guard: a typed DJ never needs holding off the air, but
             # the broadcast wrappers still want the shared clear-air API.
             guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
@@ -267,6 +293,9 @@ class ChatSession:
             on_event({"type": "done", "text": reply,
                       "dj": self.persona_name})
         finally:
+            # In the finally on purpose: a reply that failed AFTER a tool ran
+            # still owes the caller the receipt for what actually happened.
+            flush_cards()
             await station.aclose()
 
     async def _tool_loop(self, model, ctx, tools, on_event) -> str:

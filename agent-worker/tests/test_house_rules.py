@@ -503,6 +503,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "beep as a cue, the bounded recording, delivery, and now the "
             "caller seeing their own words land. Same subject-placement rule "
             "as the test modules below.",
+        "agent-worker/tests/test_chat.py":
+            "one subject: the text line — the door, the flood brakes, the "
+            "typed register of the one brain, and now where a tool run's "
+            "receipt card lands. Crossed the ceiling when 0.10.65 added the "
+            "card-routing cases; same subject-placement rule as the modules "
+            "around it.",
         "agent-worker/tests/test_voice.py":
             "one subject: whether a speech backend can say the thing — "
             "discovery, sample rates, pace, and now the shipped adapter "
