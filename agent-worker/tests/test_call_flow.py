@@ -780,6 +780,48 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         self.assertTrue(guard.on_air)
         self.assertFalse(guard._clear.is_set())
 
+    def test_the_lag_rides_the_holds_tail(self):
+        # Every station signal — log entry, push, even its own player overlay
+        # — is stamped at HANDOFF, and the audible link runs a few seconds
+        # behind it. Without the lag the hold released while the link's last
+        # words were still airing (the operator's "ends early", 0.10.69).
+        guard = self._guard(on_air_lag_secs=6)
+        # A no-words entry holds quiet_secs (30) plus the lag (6).
+        self.assertTrue(guard._log_says_busy((31.0, "")))
+        self.assertFalse(guard._log_says_busy((37.0, "")))
+
+    def test_our_own_action_holds_through_the_lag_too(self):
+        import time
+
+        guard = self._guard(on_air_lag_secs=5)
+        guard.mark_on_air(10)
+        self.assertGreaterEqual(guard._assumed_until, time.time() + 14)
+
+    def test_the_push_file_reads_back_as_log_shaped_evidence(self):
+        # The web process writes the last verified voice push; the guard reads
+        # it as (seconds-since, text), the same shape the station poll
+        # answers with — so one _log_says_busy sizes both. An absent file is
+        # no evidence at all: a push can prove the air busy, never clear.
+        import json
+        import os
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                guard = self._guard()
+                self.assertIsNone(guard._pushed_speech())
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 3,
+                               "text": "Back after this."}, f)
+                since, text = guard._pushed_speech()
+                self.assertAlmostEqual(since, 3, delta=2)
+                self.assertEqual(text, "Back after this.")
+            finally:
+                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+
     def test_the_hold_is_sized_to_what_the_station_is_saying(self):
         # One fixed number either reopened the gate while a minute-long
         # segment was still mid-delivery (the caller heard the DJ talk over

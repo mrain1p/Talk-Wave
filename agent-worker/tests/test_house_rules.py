@@ -539,6 +539,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # helper names back.
         "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
+        # 0.10.69 pushed it over when the receiver learned to write the
+        # on-air push file. The seam is real and one-way: REGISTRATION
+        # (reconcile, lookalikes, the warm ping) talks TO the station and
+        # never reads a push; the RECEIVER (and its /hooks/recent and
+        # /hooks/test surface) listens FROM it and never registers. Cut
+        # there when it next grows.
+        "agent-worker/api/hooks.py": (626, "a receiver module split out from "
+                                           "the registration/reconcile side"),
         # lifecycle.py was here from 0.9.125 until 0.10.9, when the recorded
         # seam was cut for real: the back-to-air mention and the transcript
         # reader moved to call/handoff.py and lifecycle came back under the

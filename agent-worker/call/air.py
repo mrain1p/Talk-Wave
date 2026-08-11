@@ -7,8 +7,11 @@ hears two of the same voice, and so does everyone listening to the station.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import time
+from pathlib import Path
 
 from livekit.agents import Agent, AgentSession
 
@@ -17,6 +20,17 @@ from station import StationClient
 from .background import spawn
 
 log = logging.getLogger("callin.agent")
+
+
+def _air_path() -> Path:
+    """Twin of api/hooks._air_path — the web process writes the last verified
+    dj.say/dj.link push there, this process reads it. Duplicated rather than
+    imported so the worker does not pull the HTTP surface in for one path
+    string; TestThePushFileHasOneAddress pins the two derivations together."""
+    return Path(os.environ.get("CALLIN_HOOK_AIR_PATH")
+                or Path(os.environ.get("CALLIN_HOOK_SECRET_PATH")
+                        or Path(__file__).parent.parent.parent
+                        / "data" / "hook-secret.json").with_name("hook-air.json"))
 
 
 def speaking_secs(spoken: str, fallback: int) -> int:
@@ -57,6 +71,17 @@ class OnAirGuard:
         self.room = room
         self.enabled = bool(cfg.get("avoid_on_air_overlap"))
         self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
+        # Every signal the station gives — log entry, webhook push, even its
+        # own player overlay — is stamped at HANDOFF: the file written for
+        # Liquidsoap, before the ~1s file poll, the queue and the ducking
+        # ramp put it on the stream. The audible link therefore runs a few
+        # seconds BEHIND every timestamp we anchor on, and a hold sized only
+        # by the words released while the tail was still airing (the
+        # operator's "ends early", 0.10.69). This is that gap, added to the
+        # hold's tail. The hold still BEGINS at handoff on purpose: a few
+        # seconds of early quiet is cheap, an overlap is the thing this whole
+        # guard exists to prevent.
+        self.lag_secs = max(0.0, float(cfg.get("on_air_lag_secs") or 0))
         self.on_air = False
         self._clear = asyncio.Event()
         self._clear.set()
@@ -97,7 +122,8 @@ class OnAirGuard:
         the DJ sat silent after its own announcement finished, waiting on a
         caller it had told to hold. Heard on real calls, reported 2026-08-08.
         """
-        self._assumed_until = max(self._assumed_until, time.time() + seconds)
+        self._assumed_until = max(self._assumed_until,
+                                  time.time() + seconds + self.lag_secs)
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
@@ -252,11 +278,35 @@ class OnAirGuard:
         if speech is None:
             return False
         since, text = speech
-        return since < speaking_secs(text, int(self.quiet_secs) or 30)
+        # lag_secs rides the tail: the entry is stamped at handoff, the sound
+        # starts lag_secs later, so the words finish lag_secs later too.
+        return since < self.lag_secs + speaking_secs(text, int(self.quiet_secs) or 30)
+
+    def _pushed_speech(self) -> tuple[float, str] | None:
+        """The last verified dj.say/dj.link push, as (seconds-since, text) —
+        the same shape the station poll answers with.
+
+        The push is the same log entry the poll would find, delivered at the
+        station's handoff instant instead of up to POLL_SECS later — which
+        was most of why the hold used to start late against the audible link.
+        A push can only ever prove the air BUSY, never clear: hooks may not
+        be registered at all, and this file's absence or age says nothing.
+        """
+        try:
+            d = json.loads(_air_path().read_text())
+            at = float(d.get("at") or 0)
+            if at <= 0:
+                return None
+            return (time.time() - at, str(d.get("text") or ""))
+        except Exception:                                     # noqa: BLE001
+            return None
+
+    PUSH_TICK = 1.0     # the push file is local and cheap — read it every second
 
     async def watch(self, session: AgentSession) -> None:
-        """Poll the station and flip the gate. Started as a task for the life
-        of the call."""
+        """Watch the push file every second and poll the station every
+        POLL_SECS, and flip the gate. Started as a task for the life of the
+        call."""
         if not (self.enabled and self.quiet_secs > 0):
             return
         # The first pass runs immediately and silently: someone who dials in
@@ -264,32 +314,53 @@ class OnAirGuard:
         # waits) without the greeting being cut off by a hand-over line for a
         # broadcast that was already running when they picked up the phone.
         first = True
+        tick = 0
+        poll_every = max(1, int(self.POLL_SECS / self.PUSH_TICK))
+        speech: tuple[float, str] | None = None
+        speech_read_at = 0.0
+        poll_failed = False
         while True:
-            poll_failed = False
-            try:
-                speech = await self.station.on_air_speech()
-            except asyncio.CancelledError:
-                return
-            except Exception as e:
-                # A failed read HOLDS the gate for a short window (see _assess
-                # / FAIL_HOLD), reset by the next clean read — a timed-out read
-                # can't prove the air is clear, and congestion is when the
-                # on-air DJ is most likely mid-link. "Assume clear" here was the
-                # Ash overlap AND the Dawn overlap; dead air over a routine miss
-                # is bounded (MAX_HOLD) and is the smaller cost.
-                log.debug("on-air check failed (holding briefly): %s", e)
-                speech = None
-                poll_failed = True
+            if tick % poll_every == 0:
+                try:
+                    speech = await self.station.on_air_speech()
+                    speech_read_at = time.time()
+                    poll_failed = False
+                except asyncio.CancelledError:
+                    return
+                except Exception as e:
+                    # A failed read HOLDS the gate for a short window (see
+                    # _assess / FAIL_HOLD), reset by the next clean read — a
+                    # timed-out read can't prove the air is clear, and
+                    # congestion is when the on-air DJ is most likely
+                    # mid-link. "Assume clear" here was the Ash overlap AND
+                    # the Dawn overlap; dead air over a routine miss is
+                    # bounded (MAX_HOLD) and is the smaller cost.
+                    log.debug("on-air check failed (holding briefly): %s", e)
+                    speech = None
+                    speech_read_at = 0.0
+                    poll_failed = True
 
-            busy = self._assess(speech, poll_failed)
+            # The cached poll answer ages between polls — its "seconds since"
+            # was true when read, so advance it rather than replaying it.
+            aged = speech
+            if speech is not None and speech_read_at:
+                aged = (speech[0] + (time.time() - speech_read_at), speech[1])
+            pushed = self._pushed_speech()
+            if pushed is not None and self._log_says_busy(pushed):
+                # Fresh push evidence outranks the poll: same entry, earlier.
+                evidence = pushed
+                busy = self._assess(pushed, False)
+            else:
+                evidence = aged
+                busy = self._assess(aged, poll_failed)
             if busy != self.on_air:
                 self.on_air = busy
                 self._publish(busy)
                 if busy:
                     self._clear.clear()
                     log.info("on-air DJ is speaking — holding the call DJ back")
-                    if speech and speech[1]:
-                        self.aired_text = speech[1]
+                    if evidence and evidence[1]:
+                        self.aired_text = evidence[1]
                     if not first:
                         # Cut the call DJ off mid-sentence if need be: the whole
                         # point is that the broadcast never hears itself doubled.
@@ -313,7 +384,8 @@ class OnAirGuard:
                         self.stepped_away = False
                         await self._come_back(session)
             first = False
-            await asyncio.sleep(self.POLL_SECS)
+            tick += 1
+            await asyncio.sleep(self.PUSH_TICK)
 
 
 class CallAgent(Agent):
