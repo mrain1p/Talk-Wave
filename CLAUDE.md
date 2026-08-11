@@ -43,7 +43,8 @@ other leaves them version-skewed.** Both log `APP_VERSION` at startup for exactl
 
 Plain browser JS, no build step, no toolchain. Two pages that never load each other's script:
 `token_server` serves `index.html` at `/` (the phone: `shared.js` + `call.js`) and
-`panel.html` at `/settings` (the operator: `shared.js` + `panel.js`). `shared.js` publishes one
+`panel.html` at `/settings` (the operator: `shared.js` + `panel.js` + `panel-viewers.js` +
+`panel-charts.js`, in that order — it is load-bearing). `shared.js` publishes one
 global, `Callin`. Script tags, not modules — the split kept the no-bundler promise rather than
 trading it away. The panel has its own URL so a reverse proxy can put a rule in front of the
 admin surface that it could never put in front of the phone.
@@ -86,7 +87,8 @@ never writes station state except through the allowlisted MCP tools.
 2. **Settings precedence is `data/settings.json` → environment → `DEFAULTS`.** Clearing a field
    in the UI means "fall through to the layer below", not "set empty string".
 3. **Secrets never make the return trip.** `secrets_store.status()` returns whether a key is set
-   plus its last four characters — never the key. Blank on save means *leave unchanged*, not
+   plus a fixed-width mask — never the key, never its length. Blank on save means *leave
+   unchanged*, not
    *clear*; the UI shows masked placeholders, so an untouched field arrives empty.
 4. **Passwords are PBKDF2 hashes, never plaintext.** Two levels: ADMIN (settings, keys, test
    endpoints) and GUEST (the Call button and `/token`). Admin implies guest; the two must differ.
@@ -101,7 +103,7 @@ never writes station state except through the allowlisted MCP tools.
 Run the tests (this is what CI runs, and nothing reaches `:latest` without it passing):
 
 ```bash
-cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar -v
+cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls LISTENERS_PATH=/tmp/l.json LISTENER_SAMPLE_INTERVAL=0 python -m unittest test_sidecar -v
 ```
 
 Those env vars are not optional — they point every writable path away from the checkout so a
@@ -139,7 +141,9 @@ the line beneath them. Wrap comment prose at ~100 columns, not 72 — the operat
 files, and narrow wrapping doubled their length for nothing.
 
 Commit subjects are lowercase prose describing the effect, prefixed with the version:
-`0.9.69 - the call transcript stops disagreeing with the call`.
+`0.9.69 - the call transcript stops disagreeing with the call`. A docs-only commit that ships
+no code may go unprefixed — the version hook doesn't fire for it and minting a number for
+prose devalues the numbers that mark shipped behaviour.
 
 Two rules for committing here, both learned the hard way:
 

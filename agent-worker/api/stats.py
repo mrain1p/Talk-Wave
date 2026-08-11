@@ -113,6 +113,12 @@ async def sample_listeners(app: web.Application) -> None:
     per bucket is plenty, and a month of them is ~8600 rows of two ints.
     """
     interval = float(os.environ.get("LISTENER_SAMPLE_INTERVAL", "300"))
+    # <= 0 disables the sampler outright. The test suite sets 0: the loop
+    # polls the station the moment the app starts, and a test that builds the
+    # real app must not reach for a network the house rules forbid.
+    if interval <= 0:
+        yield
+        return
 
     async def loop() -> None:
         while True:

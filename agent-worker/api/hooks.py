@@ -42,6 +42,14 @@ from collections import deque
 # one of them silently.
 HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "talk_wave"
 
+# The id this app registered under before the 0.10.52 rename, recognised as
+# ours forever. The rename shipped claiming "nothing behaves differently" and
+# this was the exception it missed: an upgraded deployment whose URL had also
+# changed would register a fresh talk_wave row and leave the old wave_talk
+# one behind, burning one of the station's sixteen webhook slots for good.
+# Adopt it where it can be adopted; delete strays where it can't.
+LEGACY_HOOK_IDS = ("wave_talk",)
+
 # The pushes the on-air card reacts to. Intersected with the station's own
 # advertised vocabulary before it is sent rather than assumed: the station
 # validates this list against an enum and refuses the WHOLE registration over
@@ -206,12 +214,16 @@ async def handle_hooks_test(request: web.Request) -> web.Response:
 def _our_row(rows: list[dict], url: str) -> dict | None:
     """Our row in the station's list, if it holds one.
 
-    By id first, then by URL: a registration made before we started sending an
-    id carries a station-minted one, and matching only on id would leave that
-    row in place and add a second pointing at the same address.
+    By id first (current, then the pre-rename legacy id), then by URL: a
+    registration made before we started sending an id carries a station-minted
+    one, and matching only on id would leave that row in place and add a
+    second pointing at the same address.
     """
     for row in rows:
         if row.get("id") == HOOK_ID:
+            return row
+    for row in rows:
+        if row.get("id") in LEGACY_HOOK_IDS:
             return row
     for row in rows:
         if row.get("url") == url:
@@ -324,18 +336,27 @@ async def register_station_webhook() -> None:
                 | set(events)
             )
 
+            # A stray legacy-id row that ISN'T mine is a duplicate the rename
+            # left behind — it must be cleaned even when our own row is
+            # settled, or it burns a station slot until someone notices.
+            strays = [r for r in rows
+                      if r is not mine and r.get("id") in LEGACY_HOOK_IDS]
+
             # Sorted on both sides: the station returns the events in whatever
             # order they were stored, and a write per boot to reorder a list
             # is a write for nothing.
-            if mine is not None and desired == {
+            if not strays and mine is not None and desired == {
                 **mine, "events": sorted(mine.get("events") or [])
             }:
                 _hook_state.update(registered=True, station=station,
                                    events=desired["events"],
                                    detail=_settled_detail(desired))
                 return
+            if strays:
+                log.info("dropping %d stale legacy webhook row(s) left by the "
+                         "rename", len(strays))
 
-            others = [r for r in rows if r is not mine]
+            others = [r for r in rows if r is not mine and r not in strays]
             write = await c.post("/webhooks", json={"webhooks": others + [desired]})
             if write.status_code >= 400:
                 _stand_down(f"the station refused the registration: {_station_said(write)}",

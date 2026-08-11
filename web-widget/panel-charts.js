@@ -162,7 +162,13 @@
       n: inP.filter((c) => kindOf(c) === v).length,
     }));
     const total = counts.reduce((a, s) => a + s.n, 0);
-    if (!total) return empty('mixChart', 'mixCap');
+    if (!total) {
+      // Zero traffic is an ANSWER, not a missing series: say it the way
+      // DOORS does, instead of the em-dash that means "no data source".
+      $('mixChart').innerHTML = '<p class="actempty">—</p>';
+      $('mixCap').textContent = '0 doors ' + periodWord();
+      return;
+    }
     $('mixChart').innerHTML =
       '<div class="mixband">' + counts.filter((s) => s.n).map((s) =>
         '<span class="mixseg ' + s.cls + '" style="flex:' + s.n + '"></span>'
@@ -288,9 +294,14 @@
       };
     });
   $('actShow').onchange = () => {
-    // Snap back on nonsense rather than guessing (spec: clamp 1–30).
-    state.show = clampShow(parseInt($('actShow').value, 10));
-    $('actShow').value = state.show;
+    // Snap back on nonsense rather than guessing (spec: clamp 1–30) — and
+    // snap to what the current view will HONOUR: week renders at most 7
+    // buckets, and the sprint review caught the field reading "14" while
+    // the chart quietly drew 7.
+    let n = clampShow(parseInt($('actShow').value, 10));
+    if (state.range === 'week') n = Math.min(7, n);
+    state.show = n;
+    $('actShow').value = n;
     save(); render();
   };
   [['doorPick', 'doors'], ['ratePick', 'rates']].forEach(([id, key]) => {

@@ -191,6 +191,7 @@ from tests.test_webhooks import (  # noqa: F401
     TestOurWebhookRowKeepsItsIdentity,
     TestPointingAtANewStationRegistersAgain,
     TestTheRegistrationShapeIsTheOneTheStationReads,
+    TestTheRenameDoesNotOrphanTheOldRow,
     TestWeOnlyAskForEventsTheStationKnows,
 )
 from tests.test_voice import (  # noqa: F401

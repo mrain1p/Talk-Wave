@@ -47,6 +47,14 @@ class _TempStores(unittest.TestCase):
         # an effect must land in this temp dir, never in real data/.
         self._old_vfx = os.environ.get("VOICE_FX_PATH")
         os.environ["VOICE_FX_PATH"] = str(tmp / "voice-effects.json")
+        # The listener buffer is the newest writable path; redirected here so
+        # no inheriting test can touch real data/listeners.json (the sprint
+        # review caught it unprotected).
+        from api import stats as _stats
+        self._old_listeners_path = _stats.LISTENERS_PATH
+        self._old_listeners = (_stats._samples, _stats._loaded)
+        _stats.LISTENERS_PATH = tmp / "listeners.json"
+        _stats._samples, _stats._loaded = [], False
         self._old_env = {k: os.environ.get(k) for k in self.ENV_VARS}
         for k in self.ENV_VARS:
             os.environ.pop(k, None)
@@ -54,6 +62,9 @@ class _TempStores(unittest.TestCase):
     def tearDown(self):
         settings_store.SETTINGS_PATH = self._old_settings_path
         secrets_store.SECRETS_PATH = self._old_secrets_path
+        from api import stats as _stats
+        _stats.LISTENERS_PATH = self._old_listeners_path
+        _stats._samples, _stats._loaded = self._old_listeners
         if self._old_vfx is None:
             os.environ.pop("VOICE_FX_PATH", None)
         else:
