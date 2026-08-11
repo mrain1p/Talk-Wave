@@ -66,6 +66,13 @@
         <div class="masttitle">TALK WAVE</div>
         <div class="mastsub" id="mastSub">Dashboard</div>
       </div>
+      <!-- The finder lives in the masthead, above the coral rule (operator's
+           ask, 0.10.64) — sixty settings across nine pages deserve a faster
+           answer than page archaeology: type, and every matching row from
+           every page remains; clearing the box returns to the page you were
+           on. Hidden while .locked along with the rest of the masthead. -->
+      <input type="search" id="settingsSearch" class="settingsearch"
+             placeholder="Find a setting…" autocomplete="off" />
       <div class="panelbar">
         <a class="gear" href="/" title="Back to the call page"
            aria-label="Back to the call page">&#8592;</a>
@@ -105,28 +112,13 @@
       <span id="loginMsg"></span>
     </div>
 
-    <!-- The settings header leads the page (operator's ask: the picker sits
-         at the top): heading + promise, the finder, and the page picker are
-         ONE sticky band. Below it exactly one page shows at a time — the
-         dashboard by default, or the super-group named in the URL's #hash
-         (paintPage in panel.js). scroll-margin on the sections keeps in-page
-         jumps from hiding under the band. -->
+    <!-- The page picker is the sticky band (the heading and its promise
+         retired at 0.10.64, operator's ask — the finder moved up into the
+         masthead). Below it exactly one page shows at a time — the dashboard
+         by default, or the super-group named in the URL's #hash (paintPage
+         in panel.js). scroll-margin on the sections keeps in-page jumps from
+         hiding under the band. -->
     <div class="settingsbar" id="settingsBar">
-      <!-- One header row: the heading and its promise on the left, the search
-           on the right — the box sat alone on its own line and read as a
-           stray form field rather than this half of the page's own finder. -->
-      <div class="settingshead">
-        <div>
-          <h2>Call-in settings</h2>
-          <p class="sub">Applies to the next caller — no restart. Clearing a field
-            falls back to the environment config.</p>
-        </div>
-        <!-- Sixty settings deserve a faster answer than page archaeology:
-             type, and every matching row from every page remains — clearing
-             the box returns to the page you were on. -->
-        <input type="search" id="settingsSearch" class="settingsearch"
-               placeholder="Find a setting…" autocomplete="off" />
-      </div>
       <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
         reads every label, help line and section name, on every page. Try the
         thing's own noun (“beep”, “password”, “skip”), or clear it and pick a

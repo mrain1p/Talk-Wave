@@ -108,6 +108,21 @@
       }
     });
 
+    // Settings sections ship OPEN (operator's ask, 0.10.64): a page holds
+    // one group now, so the wall-of-forty-drawers the folding existed for is
+    // gone, and a page that arrives shut just adds a click before every
+    // read. Opened via JS, not markup, so each section's toggle listener —
+    // the lazy painters — fires exactly as if the operator opened it; once,
+    // so Collapse all and the operator's own folding survive later repaints.
+    // The diagnostics rows stay folded: they are viewers with run buttons in
+    // their headers, and four empty result panes stacked open is the exact
+    // shape their comment says was reported.
+    if (!layoutPanel.openedOnce) {
+      layoutPanel.openedOnce = true;
+      panel.querySelectorAll('details.sec[data-group]:not([open])')
+        .forEach((d) => { d.open = true; });
+    }
+
     buildNav(supers);
     paintPage();
   }

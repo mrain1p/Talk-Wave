@@ -293,9 +293,11 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         self.assertEqual(supers["voicemail"], "voicemail")
         self.assertEqual(supers["chat"], "texts")
         for g in ("call", "turns", "closing", "onair", "tunein",
-                  "callback", "sounds", "effects", "record"):
+                  "callback", "sounds", "effects"):
             self.assertEqual(supers[g], "calls", f"{g} left the Calls page")
-        for g in ("context", "style"):
+        # Transcripts moved to the booth page at 0.10.64 (operator's call):
+        # the records cover calls, chats and voicemails alike.
+        for g in ("context", "style", "record"):
             self.assertEqual(supers[g], "dj", f"{g} is shared by every door")
 
     def test_the_page_ids_the_picker_reserves_stay_reserved(self):

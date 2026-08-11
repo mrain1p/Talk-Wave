@@ -650,11 +650,16 @@ def mcp_tools_payload() -> list[dict]:
 SUPERGROUPS = [
     ("config",    "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
     ("safety",    "Permissions & safety", "What a caller may set in motion, and the limits around it."),
-    ("dj",        "The DJ",               "What the DJ knows and how they speak — one brain behind every door."),
+    # "The booth" rather than the operator's first suggestion (Transmission):
+    # the dashboard's switch cluster already answers to TRANSMISSION, and one
+    # word meaning two things on one panel is the kind of confusion the rename
+    # was meant to remove. The id stays "dj" — it is a hash address now
+    # (/settings#dj), and renaming it would break bookmarks for a title change.
+    ("dj",        "The booth",            "What the booth knows, how it speaks, and what it writes down."),
     ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
     ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
     ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
-    ("card",      "The call card",        "What a caller sees — here, and on somebody else's page."),
+    ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
     ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
 
@@ -695,12 +700,15 @@ GROUPS = [
     # Closing the call below.
     ("speech",   "safety", "Speech hygiene", "What never reaches the speaker."),
 
-    # The DJ page holds what every door shares. The same brain answers a live
-    # call, writes the machine's fresh greetings and runs the text line, so
-    # its knowledge and house style filed under any one door would go stale
-    # the moment another door used them.
+    # The booth page holds what every door shares. The same brain answers a
+    # live call, writes the machine's fresh greetings and runs the text line,
+    # so its knowledge and house style filed under any one door would go
+    # stale the moment another door used them. Transcripts sit here too
+    # (operator's call, 0.10.64): the records cover calls, chats and
+    # voicemails alike, so "what the booth writes down" is the honest home.
     ("context",  "dj",     "Station awareness",  "What the DJ knows before picking up."),
     ("style",    "dj",     "House style",        "Light steers on top of the persona."),
+    ("record",   "dj",     "Call transcripts",   "What is written to disk, and for how long."),
 
     # Calls: the live line's own page, in the order a call has a shape —
     # open, turn-take, close — then everything that runs around the speaking.
@@ -722,7 +730,6 @@ GROUPS = [
     # Moved out of Voice: the effect shapes the CALL's sound, not the TTS
     # backend, and the operator kept looking for it here.
     ("effects",  "calls",  "Voice effects",       "A radio colour on the DJ's voice."),
-    ("record",   "calls",  "Call transcripts",    "What is written to disk, and for how long."),
 
     # Each door the booth doesn't answer live gets its own page, named for
     # the door — the operator's cut. "The machine" rather than a section

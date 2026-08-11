@@ -1319,18 +1319,6 @@
   }
   .panelnav:empty { display: none; }
 
-  /* The settings half's own header row: heading and promise left, the
-     finder right, folding to two lines on a narrow panel. */
-  .settingshead {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 14px; flex-wrap: wrap; margin: 18px 0 10px;
-  }
-  .settingshead h2 { margin: 0; }
-  .settingshead .sub { margin: 3px 0 0; }
-  .settingshead .settingsearch {
-    margin: 0; flex: 0 1 300px; min-width: 220px;
-  }
-
   /* The dashboard's own band — the same voice as a super-group heading, but
      its own class: applyVisibility() hides a .supergroup with no visible
      sections under it, and this one is followed by cards, not sections. */
@@ -2953,6 +2941,13 @@
   body.panelpage .masthead .panelbar {
     display: flex; gap: 8px; align-items: center; margin: 0;
   }
+  /* The finder rides the masthead, above the coral rule (operator's ask,
+     0.10.64) — between the nameplate and the controls, centred on the row.
+     It inherits the panel's input skin; only its place and width are ours. */
+  body.panelpage .masthead .settingsearch {
+    flex: 0 1 320px; min-width: 160px; align-self: center;
+    margin: 0 0 0 auto;
+  }
   /* :not([hidden]) so the sign-out button (hidden until logged in) and the
      call page's corner gears stay hideable — a bare .gear display rule beats
      the UA [hidden] and un-hides them (TestHiddenActuallyHides). */
@@ -2979,12 +2974,17 @@
 
   /* --- section rows (details.sec) ------------------------------------------ */
   body.panelpage details.sec { border: 0; background: transparent; }
+  /* Section headers wear a resting tint — the old hover wash, promoted
+     (operator's ask, 0.10.64): with every section open by default, the
+     header needs to read as a shelf label over its rows, not as one more
+     row. Hover goes a step warmer so it still answers the pointer. */
   body.panelpage details.sec > summary {
-    background: transparent; border: 0; border-bottom: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--alpenglow) 4%, transparent);
+    border: 0; border-bottom: 1px solid var(--hairline);
     padding: 11px 2px;
   }
   body.panelpage details.sec > summary:hover {
-    background: color-mix(in srgb, var(--alpenglow) 4%, transparent);
+    background: color-mix(in srgb, var(--alpenglow) 8%, transparent);
   }
   body.panelpage .chev { color: var(--coral); }
   body.panelpage .secname {
@@ -3291,7 +3291,6 @@
     border-bottom: 1px solid var(--edge);
     margin: 0 -2px; padding: 4px 2px 0;
   }
-  body.panelpage .settingsbar .settingshead { margin: 6px 0 8px; }
   /* One row always: chips slide horizontally on a narrow panel instead of
      wrapping into a block that eats the viewport the band now rides in. */
   body.panelpage .panelnav {
