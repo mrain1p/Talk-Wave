@@ -157,6 +157,8 @@ def _make_calls():
         if not silent and kind == "call":
             turns.append({"t": iso(start, d.get("ttfw", 3)),
                           "who": "dj", "text": "you're on the air"})
+        rec_first_word = (None if silent or kind != "call"
+                          else iso(start, d.get("ttfw", 3)))
         rec = {"id": cid, "room": "r-" + cid, "kind": kind,
                "startedAt": iso(start), "durationSecs": 60,
                "callerTurns": 0 if silent else 2,
@@ -166,6 +168,8 @@ def _make_calls():
                          for n, r in d.get("tools", [])],
                "turns": turns,
                "problems": [{"what": p} for p in d.get("problems", [])]}
+        if rec_first_word:
+            rec["firstWordAt"] = rec_first_word
         if d.get("rating"):
             rec["rating"] = d["rating"]
         out.append(rec)

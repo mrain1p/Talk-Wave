@@ -69,6 +69,15 @@ class TestBrainSplit(_TempStores):
             briefing.station_context(self._FakeStation(), cfg, snap, {"id": "s_now"})
         )
 
+    def test_the_goodbye_turn_is_named_as_a_turn(self):
+        # A real caller said "Alright, thanks." after their request was in;
+        # the DJ answered with programme information and no close, and the
+        # caller sat twenty seconds and hung up (2026-08-11). The conduct
+        # must name that acknowledgment as the goodbye turn itself.
+        text = conduct.rules({})
+        self.assertIn("IS the\n  goodbye turn", text)
+        self.assertIn("end_call in that same turn", text)
+
     def test_conduct_is_a_pure_function_of_settings(self):
         # No station, no network, no settings file — if a rule ever needs a
         # station read, the split has leaked and this stops compiling.

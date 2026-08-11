@@ -277,6 +277,72 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
         asyncio.run(go())
         return replies
 
+    def test_a_swallowed_greeting_still_speaks(self):
+        # The SDK marks some LLM errors `recoverable` and swallows them:
+        # generate_reply returns with no exception AND no reply. Observed
+        # live (2026-08-11): three recoverable Gemini 504s, 43 seconds of
+        # dead air, the caller said "Hello" into silence. The record is the
+        # ground truth of whether the DJ spoke; empty means the canned
+        # pickup goes out.
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        said = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                return None          # "recoverable" swallow: no raise, no reply
+
+            async def say(self, *a, **k):
+                said.append(a[0])
+
+        record = types.SimpleNamespace(data={"turns": [], "tools": []})
+        asyncio.run(lifecycle.greet(_Session(), {}, record=record))
+        self.assertEqual(len(said), 1)
+        self.assertIn("through to the booth", said[0])
+
+        # And when the greeting DID land (a dj turn or a first word stamped),
+        # no second voice barges in on top of it.
+        said.clear()
+        record = types.SimpleNamespace(
+            data={"turns": [{"who": "dj", "text": "hi"}], "tools": []})
+        asyncio.run(lifecycle.greet(_Session(), {}, record=record))
+        self.assertEqual(said, [])
+
+    def test_a_repeated_recoverable_error_apologises(self):
+        # One recoverable error is the SDK's to absorb. A second inside the
+        # window means "recoverable" is not recovering, and the caller must
+        # hear the same apology a fatal error buys.
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        said = []
+        handlers = {}
+
+        class _Session:
+            def on(self, name, fn):
+                handlers[name] = fn
+
+            async def say(self, *a, **k):
+                said.append(a[0])
+
+        async def go():
+            lifecycle.attach_error_recovery(_Session())
+            err = types.SimpleNamespace(recoverable=True)
+            handlers["error"](types.SimpleNamespace(error=err, source="llm"))
+            await asyncio.sleep(0.05)
+            self.assertEqual(said, [], "one recoverable error is not an outage")
+            handlers["error"](types.SimpleNamespace(error=err, source="llm"))
+            await asyncio.sleep(0.05)
+
+        asyncio.run(go())
+        self.assertEqual(len(said), 1)
+        self.assertIn("giving me trouble", said[0])
+
     def test_no_check_in_while_the_broadcast_has_the_microphone(self):
         self.assertEqual(
             self._run(on_air=True), [],

@@ -85,6 +85,17 @@ class CallRecord:
             {"t": _iso(time.time()), "who": who, "text": text[:MAX_TEXT]}
         )
 
+    def first_word(self) -> None:
+        """When the DJ's audio actually STARTS, once per call.
+
+        A dj TURN commits only after the utterance finishes playing, so
+        "time to first word" measured off the first turn silently included
+        the ring, the pickup and the whole greeting — the panel's chart read
+        12.5s on calls whose first audio landed in ~4. This is the honest
+        numerator; the chart prefers it when present."""
+        if "firstWordAt" not in self.data:
+            self.data["firstWordAt"] = _iso(time.time())
+
     def tool(self, name: str, result: str = "") -> None:
         if len(self.data["tools"]) >= MAX_TURNS:
             return
