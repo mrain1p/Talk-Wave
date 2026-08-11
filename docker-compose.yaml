@@ -1,40 +1,24 @@
-# Deploys the whole call-in stack: LiveKit media server, the agent worker, and the token/widget
-# server. For local dev on Windows use run-local.ps1 instead — no Docker needed.
+# The whole call-in stack: LiveKit (media), the agent worker (the DJ), the token/widget server,
+# and a Caddy TLS front door. Local no-docker dev on Windows: run-local.ps1.
 #
-# The two python services share ONE image, published as ghcr.io/mrainone7p/talk-wave:latest. With a
-# source checkout, `docker compose up -d --build` builds it locally instead of pulling.
+# Quick start:
+#   1. cp livekit.example.yaml livekit.yaml   — generate a FRESH keypair; use_external_ip: true
+#   2. cp .env.example .env                   — set HOST_IP (this machine's LAN address; the one
+#                                               deployment variable — everything below derives)
+#   3. chown -R 1000:1000 ./data && chmod -R u+rwX ./data
+#      Both commands — the python services run as uid 1000, and ownership alone is not enough on
+#      filesystems that create mode-000 files (Synology shares). Failure is loud and fails shut;
+#      CALLIN_ADMIN_KEY is the way back in.
+#   4. docker compose up -d                   — with a source checkout, add --build to build locally
 #
-# Before first deploy:
-#   - copy livekit.example.yaml -> livekit.yaml with a FRESH keypair, set
-#     use_external_ip: true, and open the UDP range on the router
-#   - copy .env.example -> .env; LIVEKIT_PUBLIC_URL must be what the BROWSER
-#     reaches (wss://... via your reverse proxy), not the internal name
-#   - make ./data usable by the container's user (see the volume note below)
-#   - the caddy service below is the TLS front door (browsers only grant the microphone on HTTPS
-#     origins). Already running your own reverse proxy? Delete it and terminate TLS there — but
-#     carry over BOTH routes from the Caddyfile: the widget to token-server:8100 AND /rtc to
-#     livekit-server:7880, or calls connect with no audio. Either way, set CALLIN_ALLOWED_ORIGINS
-#     to your real origins and CALLIN_ADMIN_KEY to a secret before this is reachable beyond your LAN
-#   - set SUBWAVE_STREAM_URL to the station's PUBLIC https stream. Serving the
-#     widget over TLS (which the bundled caddy below does, and which browsers
-#     require for the microphone) means the caller's browser will refuse the
-#     station's plain-http LAN stream as mixed content — silently, so the call
-#     runs with no music behind it. See Troubleshooting in the README.
-#
-# UPGRADING FROM 0.9.64 OR EARLIER: from 0.9.65 both python services run as uid 1000 instead of
-# root, so the bind-mounted ./data has to be readable and writable by that user. Run this ONCE on
-# the host before pulling — it is safe against the still-running root container, which ignores
-# permission bits:
-#
-#     chown -R 1000:1000 ./data
-#     chmod -R u+rwX     ./data
-#
-# Both. Ownership alone is not enough: some filesystems (Synology shares among them) create files
-# with mode 000, which root reads straight through and an owner cannot. Skipping this fails SHUT and
-# both services log the exact fix at startup — an unreadable password file counts as "a password is
-# set that nothing can satisfy", never as "no password set", so it cannot leave the panel open.
-# CALLIN_ADMIN_KEY is the way back in.
+# Running your own reverse proxy? Delete the caddy service and carry over BOTH Caddyfile routes —
+# the widget to token-server:8100 AND /rtc to livekit-server:7880 — or calls connect with no audio.
+# HTTPS is required either way (browsers only grant the microphone to HTTPS origins), and a TLS
+# page refuses the station's plain-http LAN stream as mixed content — silently, no music behind
+# the call — so set SUBWAVE_STREAM_URL to the station's PUBLIC https stream.
+# Before exposing beyond your LAN: set CALLIN_ALLOWED_ORIGINS and CALLIN_ADMIN_KEY.
 
+# Cap container logs — docker's default grows unbounded.
 x-logging: &default-logging
   driver: json-file
   options:
@@ -42,21 +26,13 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  # ONE deployment variable: HOST_IP — the LAN address of the machine running this stack. It drives
-  # the LiveKit media address, the URL browsers connect to, and the webhook callback. Set it in .env
-  # or your stack GUI's environment panel; every service below derives from it.
-  #
-  # Every service pins container_name because without it compose derives <project>-<service>-1 and
-  # a stack GUI reads "stack-talkwave-talkwave-worker-1" where a person wants "talkwave-worker".
-  # The cost — no `--scale` on a named service — is nothing here: the ports are fixed anyway.
-  # In-network DNS still uses the SERVICE names (token-server, livekit-server), so the URLs below
-  # are unaffected.
+  # container_name is pinned on every service so a stack GUI shows "talkwave-worker" instead of
+  # "<project>-agent-worker-1". In-network DNS still uses the SERVICE names in the URLs below.
   livekit-server:
     image: livekit/livekit-server:v1.13.5
     container_name: livekit-server
-    # Without --node-ip a containerized LiveKit advertises its CONTAINER IP as the media address —
-    # signalling works, audio never flows, calls hang at "Ringing". The pipeline's "Browser media
-    # path" stage catches this.
+    # --node-ip: without it a containerized LiveKit advertises its CONTAINER IP as the media
+    # address — signalling works, audio never flows, calls hang at "Ringing".
     command: --config /etc/livekit.yaml --node-ip ${HOST_IP:-127.0.0.1}
     restart: unless-stopped
     security_opt:
@@ -65,10 +41,7 @@ services:
     ports:
       - "7880:7880"                     # HTTP/WebSocket signaling
       - "7881:7881"                     # RTC TCP fallback
-      # ONE muxed UDP port for all call audio (rtc.udp_port in livekit.yaml). This is the only port
-      # that has to reach the internet for calls from outside your network — one firewall rule, not
-      # a hundred and one.
-      - "7882:7882/udp"                 # RTC media
+      - "7882:7882/udp"                 # ALL call audio, muxed — the one port outside callers need
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     networks:
@@ -81,43 +54,26 @@ services:
       context: .
       dockerfile: agent-worker/Dockerfile
     restart: unless-stopped
-    # Docker's default is 10 seconds and then SIGKILL — which lands mid-call on redeploy: the
-    # worker's own shutdown budget is 60s (transcript write, slot release, the wrap-up line), and
-    # a kill inside it loses all three. Two minutes covers the budget with room; `compose down`
-    # only actually waits when a call is up.
+    # Docker's default 10s SIGKILL lands mid-call on redeploy; the worker's shutdown budget
+    # (transcript write, slot release, wrap-up line) is 60s. Only actually waits during a call.
     stop_grace_period: 2m
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
     env_file: .env
     environment:
-      - LIVEKIT_URL=ws://livekit-server:7880
-      # The worker releases call slots by calling the token server.
-      - CALLIN_INTERNAL_URL=http://token-server:8100
-      # Container stdout is already captured by docker; file logs would just duplicate it. The
-      # shared data volume below is still needed for settings/secrets.
-      - LOG_TO_FILE=0
+      - LIVEKIT_URL=ws://livekit-server:7880          # in-network name, not the .env dev default
+      - CALLIN_INTERNAL_URL=http://token-server:8100  # the worker releases call slots through it
+      - LOG_TO_FILE=0                                 # docker already captures stdout
     volumes:
-      # Settings and API keys entered in the panel live here. BOTH python services must see the same
-      # directory, or panel changes never reach the worker — and they must survive a rebuild.
-      #
-      # Owned by uid 1000, which is what the container runs as. See the chown/chmod note at the top
-      # of this file if you are upgrading.
+      # Panel settings and API keys. BOTH python services mount the same directory (or panel
+      # changes never reach the worker); owned by uid 1000 — see the chown note at the top.
       - ./data:/data
-      # The local speech-to-text model (~141MB) downloads on first use into the container's writable
-      # layer, so without this every recreate pays for it again before the worker is ready to take a
-      # call. Only the worker loads it; the token server never does.
-      #
-      # A NAMED volume, as here, inherits ownership from the image — which creates /home/app/.cache
-      # as the runtime user precisely so this works.
-      # A BIND MOUNT does not: it keeps whatever the host directory already has, so an unprepared
-      # path arrives root-owned and the download fails rather than being cached. To keep it beside
-      # data/ where you can see and clear it, prepare the directory first and swap the line:
-      #
-      #   mkdir -p ./cache && chown -R 1000:1000 ./cache && chmod -R u+rwX ./cache
-      #   - ./cache:/home/app/.cache
+      # The ~141MB STT model cache — without it every recreate re-downloads before answering.
+      # A named volume inherits the right ownership from the image; a bind mount does not. To use
+      # ./cache instead: mkdir + chown 1000:1000 + chmod u+rwX it first, then swap the line.
       - talkwave-cache:/home/app/.cache
-      # Optional: uncomment to edit TTS adapter configs without a rebuild.
+      # Optional: edit TTS adapter configs without a rebuild.
       # - ./agent-worker/tts-adapters:/app/tts-adapters
     depends_on:
       - livekit-server
@@ -137,31 +93,19 @@ services:
     logging: *default-logging
     env_file: .env
     environment:
-      # Inside a container "localhost" is the container itself — the env file's dev default would
-      # make the LiveKit health check fail.
-      - LIVEKIT_URL=ws://livekit-server:7880
-      # Browsers connect here; station webhooks call back here. Both derive from HOST_IP so one
-      # variable configures the whole deployment. LiveKit signalling goes through the caddy TLS port
-      # — same origin as the page, so the one-time self-signed acceptance covers it.
-      - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443
-      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station
-      # Where the CALLER'S BROWSER pulls the broadcast from while on the line. Only this service
-      # needs it — it builds /live, which is what the widget reads. Blank derives the station's own
-      # address, which is plain http on the LAN: correct for a plain-http deployment, and blocked as
-      # mixed content on any TLS one (including via the caddy service below), where the caller then
-      # hears no station at all. A bare origin works too — the mounts the station publishes are
-      # discovered, mp3 first.
+      - LIVEKIT_URL=ws://livekit-server:7880              # in-container "localhost" is the container
+      - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443   # what the BROWSER connects to (via caddy)
+      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station  # station webhook callback
+      # Where the CALLER'S BROWSER pulls the broadcast. Blank derives the station's plain-http LAN
+      # address — fine on http, blocked as mixed content on TLS. A bare origin also works.
       - SUBWAVE_STREAM_URL=${SUBWAVE_STREAM_URL:-}
       - LOG_TO_FILE=0
     volumes:
-      # Same directory, same uid — see the note on the worker's volume above.
-      - ./data:/data
+      - ./data:/data          # same directory, same uid as the worker's mount
     ports:
-      - "8100:8100"     # widget + token mint; put a reverse proxy in front
-    # /health is the one endpoint that answers without auth and without touching the station, so it
-    # says "this process is up and serving" and nothing more — which is exactly what a healthcheck
-    # should mean. Caddy waits on this rather than on the container merely having been created, so a
-    # restart cannot put the TLS front door in front of nothing.
+      - "8100:8100"           # widget + token mint; put a reverse proxy in front
+    # /health answers without auth or station reads — "this process is up" and nothing more.
+    # Caddy waits on it so a restart can't put the TLS door in front of nothing (was a 502).
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=3)"]
@@ -174,9 +118,8 @@ services:
     networks:
       - callin-net
 
-  # TLS front door. Browsers only allow the microphone on HTTPS origins, so the widget MUST be
-  # opened via https://<HOST_IP>:8443 — the plain :8100 port stays for same-machine dev and the
-  # station webhook callback.
+  # TLS front door: browsers only grant the microphone on HTTPS, so the widget is opened via
+  # https://<HOST_IP>:8443. Plain :8100 stays for same-machine dev and the webhook callback.
   caddy:
     image: caddy:2
     container_name: talkwave-caddy
@@ -191,9 +134,7 @@ services:
       - caddy-data:/data
     depends_on:
       token-server:
-        # Not just "created" — Caddy proxies to it, and coming up first meant the first load after a
-        # restart got a 502 from a front door pointing at a process that had not finished starting.
-        condition: service_healthy
+        condition: service_healthy    # proxies to it — "created" was a 502 on every restart
       livekit-server:
         condition: service_started
     networks:
@@ -201,8 +142,7 @@ services:
 
 volumes:
   caddy-data:
-  # Only the worker loads the STT model, so only the worker mounts this.
-  talkwave-cache:
+  talkwave-cache:     # only the worker loads the STT model, so only the worker mounts it
 
 networks:
   callin-net:
