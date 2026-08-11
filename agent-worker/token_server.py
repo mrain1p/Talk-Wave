@@ -181,11 +181,12 @@ def warn_if_open_to_the_web() -> None:
     deserves saying out loud: someone else's site can put your Call button on
     their page and spend your API budget.
     """
-    if "*" in wire.ALLOWED_ORIGINS:
+    if "*" in wire.allowed_origins():
         log.warning(
-            "CALLIN_ALLOWED_ORIGINS is '*' — any page on the internet may "
-            "embed this widget and mint call tokens against it, which spends "
-            "your LLM and TTS budget. Set it to your own origin(s); leave it "
+            "the embed allowlist is '*' — any page on the internet may embed "
+            "this widget and mint call tokens against it, which spends your "
+            "LLM and TTS budget. Set it to your own origin(s) in the panel "
+            "(Embed on another page) or CALLIN_ALLOWED_ORIGINS; leave it "
             "empty if you do not embed the widget anywhere else."
         )
 

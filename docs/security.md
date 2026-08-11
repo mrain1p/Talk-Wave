@@ -28,8 +28,9 @@ Work down it. Each line says what goes wrong if you skip it.
       request; over plain http they are readable on the wire. Browsers also
       refuse microphone access on non-HTTPS origins, so calls cannot work
       anyway.
-- [ ] **`CALLIN_ALLOWED_ORIGINS`** set to your real origin(s), or empty. `*`
-      lets any page on the internet mint call tokens against you.
+- [ ] **The embed allowlist** (*Embed on another page → Allowed origins*, or
+      `CALLIN_ALLOWED_ORIGINS` as the env baseline) set to your real origin(s),
+      or empty. `*` lets any page on the internet mint call tokens against you.
 - [ ] **Fresh LiveKit secret.** Never the example one.
 - [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable
       without deleting files on the host.
@@ -181,14 +182,16 @@ reopened without passing either again.
 
 **Before exposing beyond your LAN:**
 
-1. `CALLIN_ALLOWED_ORIGINS` — **empty by default since 0.9.77**, which is
+1. The embed allowlist — **empty by default since 0.9.77**, which is
    same-origin only and is what most deployments want: the widget on this
    service's own page needs no entry. Set it only to embed the widget on
-   another site, and then to that site's origin. `*` lets *any* page on the
-   internet embed the widget and mint call tokens against you — it used to be
-   the default, and both processes now warn at startup if you choose it. This
-   is the *embed* permission and nothing more: it does not open the settings
-   panel.
+   another site, and then to that site's origin. Since 0.10.63 it is a panel
+   setting (*The call card → Embed on another page → Allowed origins*) that
+   applies on the next request, with `CALLIN_ALLOWED_ORIGINS` as the env
+   baseline under it. `*` lets *any* page on the internet embed the widget and
+   mint call tokens against you — it used to be the default, and the token
+   server warns at startup if you choose it. This is the *embed* permission
+   and nothing more: it does not open the settings panel.
 2. Set the admin password, and a guest code if the page is public. Do this
    before you reach the panel by hostname — with no password set, the panel
    accepts a same-origin request only from a literal address, because a *name*

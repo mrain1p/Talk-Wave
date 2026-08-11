@@ -9,6 +9,7 @@ brain/conduct_chat.py.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import types
 import unittest
@@ -29,11 +30,13 @@ class TestTheTextLineIsOriginGated(unittest.TestCase):
             headers["Origin"] = origin
         return types.SimpleNamespace(headers=headers)
 
+    # The allowlist became a live-read setting in 0.10.63 (allowed_origins()
+    # reads settings on every check), so these drive it through the env layer
+    # rather than poking a module constant that no longer exists.
     def test_same_origin_and_no_origin_are_allowed(self):
-        from api.wire import ALLOWED_ORIGINS, origin_allowed
+        from api.wire import origin_allowed
 
-        old = list(ALLOWED_ORIGINS)
-        ALLOWED_ORIGINS[:] = []                       # same-origin-only default
+        old = os.environ.pop("CALLIN_ALLOWED_ORIGINS", None)
         try:
             self.assertTrue(origin_allowed(self._req(origin=None)))
             self.assertTrue(origin_allowed(
@@ -41,23 +44,27 @@ class TestTheTextLineIsOriginGated(unittest.TestCase):
             self.assertFalse(origin_allowed(
                 self._req(origin="https://evil.example")))
         finally:
-            ALLOWED_ORIGINS[:] = old
+            if old is not None:
+                os.environ["CALLIN_ALLOWED_ORIGINS"] = old
 
     def test_a_named_origin_is_allowed_and_star_opens_it(self):
-        from api.wire import ALLOWED_ORIGINS, origin_allowed
+        from api.wire import origin_allowed
 
-        old = list(ALLOWED_ORIGINS)
+        old = os.environ.get("CALLIN_ALLOWED_ORIGINS")
         try:
-            ALLOWED_ORIGINS[:] = ["https://radio.example"]
+            os.environ["CALLIN_ALLOWED_ORIGINS"] = "https://radio.example"
             self.assertTrue(origin_allowed(
                 self._req(origin="https://radio.example")))
             self.assertFalse(origin_allowed(
                 self._req(origin="https://evil.example")))
-            ALLOWED_ORIGINS[:] = ["*"]
+            os.environ["CALLIN_ALLOWED_ORIGINS"] = "*"
             self.assertTrue(origin_allowed(
                 self._req(origin="https://evil.example")))
         finally:
-            ALLOWED_ORIGINS[:] = old
+            if old is None:
+                os.environ.pop("CALLIN_ALLOWED_ORIGINS", None)
+            else:
+                os.environ["CALLIN_ALLOWED_ORIGINS"] = old
 
 
 class TestTheTextLineHasADoor(_TempStores):

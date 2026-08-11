@@ -368,6 +368,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # sheet of its own — unless the operator ticks the outline back on. The
     # main page always keeps its card; only the frame is asked.
     "embed_card_outline":     (None, False),
+    # Which FOREIGN pages may frame the widget and spend the operator's budget
+    # — mint call tokens, open the text line. Empty is same-origin only, the
+    # right answer until the first embed. A panel setting since 0.10.63: the
+    # allowlist lives beside the snippet it exists for, so allowing the site
+    # you just built a snippet for is a save, not a container recreate.
+    "allowed_origins":        ("CALLIN_ALLOWED_ORIGINS", ""),
     # How each door reads: its WORD, its ICON, or both — one answer per
     # feature, not one for the whole row. An operator wanted Call worded and
     # the two secondary doors as bare icons on a tight embed, which the old
@@ -1035,6 +1041,13 @@ SCHEMA: dict[str, dict] = {
         help="Off, the embed sits flush in whatever area the host page gives "
              "it — no border or sheet of its own, the page shows through. On, "
              "it carries the same outlined card as the main page."),
+    "allowed_origins": dict(group="embed", kind="text", label="Allowed origins",
+        placeholder="default: no other site — the card works on this page only",
+        help="Comma-separated https origins that may embed this card and place "
+             "calls on your API keys (https://radio.example.com). The page you "
+             "are reading this on needs no entry — add the site the snippet is "
+             "pasted into. Applies to the next request, no restart. “*” lets "
+             "every page on the internet spend your budget — dev only."),
     "show_voicemail_button": dict(group="surface", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "

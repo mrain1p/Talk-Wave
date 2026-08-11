@@ -23,6 +23,7 @@ from tests.test_settings import (  # noqa: F401
     TestSettings,
     TestEverySecretRendersSomewhere,
     TestSettingsThatAreOnlyWrongTogether,
+    TestTheEmbedAllowlistIsASetting,
     TestTheDataDirCheckCannotStopTheWorker,
     TestTheProviderTablesAgreeWithEachOther,
     TestTheModelWarmedIsTheModelUsed,

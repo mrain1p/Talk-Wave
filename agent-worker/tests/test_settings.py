@@ -14,6 +14,42 @@ import settings as settings_store
 from tests.support import AGENT_WORKER, REPO, _TempStores
 
 
+class TestTheEmbedAllowlistIsASetting(_TempStores):
+    """CALLIN_ALLOWED_ORIGINS became the allowed_origins setting in 0.10.63 so
+    allowing a new embed site is a settings save, not a container recreate.
+    That promise has two halves: the layering (stored beats env, blank falls
+    through), and the HTTP edge reading it live — a restart must never be part
+    of the contract, which is why origin_allowed is exercised here rather than
+    just the round-trip."""
+
+    def _req(self, origin, host="callin.example"):
+        import types
+
+        return types.SimpleNamespace(headers={"Host": host, "Origin": origin})
+
+    def test_stored_beats_env_and_blank_falls_through(self):
+        os.environ["CALLIN_ALLOWED_ORIGINS"] = "https://env.example"
+        try:
+            self.assertEqual(settings_store.load()["allowed_origins"],
+                             "https://env.example")
+            settings_store.save({"allowed_origins": "https://stored.example"})
+            self.assertEqual(settings_store.load()["allowed_origins"],
+                             "https://stored.example")
+            settings_store.save({"allowed_origins": ""})
+            self.assertEqual(settings_store.load()["allowed_origins"],
+                             "https://env.example")
+        finally:
+            del os.environ["CALLIN_ALLOWED_ORIGINS"]
+
+    def test_the_edge_honours_a_save_without_a_restart(self):
+        from api.wire import origin_allowed
+
+        self.assertFalse(origin_allowed(self._req("https://radio.example")))
+        settings_store.save({"allowed_origins": "https://radio.example"})
+        self.assertTrue(origin_allowed(self._req("https://radio.example")))
+        self.assertFalse(origin_allowed(self._req("https://evil.example")))
+
+
 class TestSettings(_TempStores):
     def test_defaults_when_nothing_stored(self):
         cfg = settings_store.load()
