@@ -20,7 +20,7 @@ commit-by-commit detail is in git history.
 
 ## 0.10.52
 
-- **Wave Talk is now Talk Wave.** The rename runs everywhere: the masthead and page titles, the PWA manifest and service-worker cache, the compose file (image `ghcr.io/mrainone7p/talk-wave`, containers `talkwave-*`), the CI workflow, the docs, and the GitHub repository itself. Nothing behaves differently — same settings, same data files, same endpoints. **Deployed stacks: update the image name and container names in your compose when you next pull.**
+- **Wave Talk is now Talk Wave.** The rename runs everywhere: the masthead and page titles, the PWA manifest and service-worker cache, the compose file (image `ghcr.io/mrain1p/talk-wave`, containers `talkwave-*`), the CI workflow, the docs, and the GitHub repository itself. Nothing behaves differently — same settings, same data files, same endpoints. **Deployed stacks: update the image name and container names in your compose when you next pull.**
 
 ## 0.10.51
 

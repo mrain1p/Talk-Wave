@@ -1,9 +1,12 @@
 # Builds and publishes the container image to GitHub Container Registry.
+# The owner half of the image name tracks the repository owner automatically,
+# so an account rename never strands publishing on a hardcoded name (that
+# bit us once; GHCR does not redirect old package paths).
 #
-#   ghcr.io/mrainone7p/talk-wave:latest   <- every push to main
-#   ghcr.io/mrainone7p/talk-wave:beta     <- every push to a `beta` branch
-#   ghcr.io/mrainone7p/talk-wave:dev      <- every push to the `dev` branch
-#   ghcr.io/mrainone7p/talk-wave:1.2.3    <- tags like v1.2.3
+#   ghcr.io/<owner>/talk-wave:latest   <- every push to main
+#   ghcr.io/<owner>/talk-wave:beta     <- every push to a `beta` branch
+#   ghcr.io/<owner>/talk-wave:dev      <- every push to the `dev` branch
+#   ghcr.io/<owner>/talk-wave:1.2.3    <- tags like v1.2.3
 #
 # `dev` is where work in progress lands: it builds a real image you can pull
 # on the NAS without moving `:latest`, which stays whatever main last shipped.
@@ -86,7 +89,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/mrainone7p/talk-wave
+          images: ghcr.io/${{ github.repository_owner }}/talk-wave
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch

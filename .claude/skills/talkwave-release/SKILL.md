@@ -5,7 +5,7 @@ description: Cut a Talk Wave release — bump APP_VERSION, commit, push, and con
 
 # Release Talk Wave
 
-Images publish from GitHub Actions to `ghcr.io/mrainone7p/talk-wave`:
+Images publish from GitHub Actions to `ghcr.io/mrain1p/talk-wave`:
 
 | Ref | Tag |
 |---|---|

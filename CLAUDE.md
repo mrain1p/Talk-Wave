@@ -9,7 +9,7 @@ This file is the map. Read it before exploring; it is meant to save you the craw
 
 ## Shape of the system
 
-Two Python processes ship as **one image** (`ghcr.io/mrainone7p/talk-wave`) and run as **two
+Two Python processes ship as **one image** (`ghcr.io/mrain1p/talk-wave`) and run as **two
 containers**, plus LiveKit and Caddy:
 
 | Process | Entry | Job |
