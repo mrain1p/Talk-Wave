@@ -229,3 +229,24 @@ upload. This is a smaller surface than that.
 
 Pair it with a **guest code** and non-zero usage limits. A public media port,
 no guest code and generous limits is an invitation to spend your API budget.
+
+### The TLS front door — one public name for the page and the signalling
+
+Whichever option carries the media, the **signalling** works best as a single public name. Give the widget and LiveKit one hostname behind your reverse proxy (the bundled Caddy already does this; nginx proxy manager, Traefik and a NAS's built-in proxy all can):
+
+| Route on `https://call.example.com` | Goes to | Notes |
+|---|---|---|
+| `/` (everything else) | `token-server:8100` | the widget, the panel, the API |
+| `/rtc` | `livekit-server:7880` | **WebSocket support ON** — this is signalling |
+
+Then set `LIVEKIT_PUBLIC_URL=wss://call.example.com` in the stack environment and redeploy. With a real certificate (Let's Encrypt via your proxy) there is no certificate screen at all, and because the page and the signalling share an origin, the pipeline check's browser-media stage passes by construction.
+
+The `/rtc` half is the one people forget: without it the page loads, the token mints, and the call dies at "could not establish signal connection". **Verify it from outside your LAN** before blaming anything else:
+
+```bash
+curl -s https://call.example.com/rtc/validate
+```
+
+LiveKit answering (`"no permissions to access the room"` — a 401 is correct, you sent no token) proves the route and the WebSocket path; your token server answering with a 404, or a TLS error, means the proxy route is missing or has no certificate. Media never rides the proxy — it flows straight to the forwarded UDP port from option 3 — so this front door adds no media latency.
+
+Two names (page on one, signalling on another) also works but buys nothing and costs a second certificate, a second proxy host, and an origin-mismatch warning in the pipeline check. One name is the shape to pick.
