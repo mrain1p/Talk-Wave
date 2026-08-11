@@ -70,9 +70,20 @@
            ask, 0.10.64) — sixty settings across nine pages deserve a faster
            answer than page archaeology: type, and every matching row from
            every page remains; clearing the box returns to the page you were
-           on. Hidden while .locked along with the rest of the masthead. -->
+           on. Hidden while .locked along with the rest of the masthead.
+
+           The vendor data- attributes are load-bearing: password managers
+           pair the panel's password box with the nearest text-ish input as
+           its "username", picked THIS box, and autofilled it — which put
+           the panel into the search results view and read as the page
+           chips being broken (operator-reported, 0.10.68). autocomplete
+           alone does not stop them; each vendor honours its own flag.
+           panel.js has the second half: a fill that arrives without focus
+           is discarded, whoever sent it. -->
       <input type="search" id="settingsSearch" class="settingsearch"
-             placeholder="Find a setting…" autocomplete="off" />
+             name="find-a-setting" placeholder="Find a setting…"
+             autocomplete="off" data-1p-ignore data-bwignore
+             data-lpignore="true" data-form-type="other" />
       <div class="panelbar">
         <a class="gear" href="/" title="Back to the call page"
            aria-label="Back to the call page">&#8592;</a>

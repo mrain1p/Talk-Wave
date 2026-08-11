@@ -2064,7 +2064,20 @@
       // the panel being broken, not as a miss.
       if ($('searchMiss')) $('searchMiss').hidden = !needle || anywhere;
     };
-    box.oninput = () => { clearTimeout(timer); timer = setTimeout(apply, 120); };
+    box.oninput = () => {
+      // A value that arrives while the box does not hold focus was not
+      // typed: it is a password manager deciding this is the "username"
+      // beside the panel's password box (operator-reported — the autofill
+      // put the panel into the results view and read as the page chips
+      // being broken). The vendor opt-out attributes in the markup ask
+      // nicely; this is for the managers that do not listen. A human
+      // typing always has focus, so nothing real is ever discarded.
+      if (document.activeElement !== box && box.value) {
+        box.value = '';
+        return;
+      }
+      clearTimeout(timer); timer = setTimeout(apply, 120);
+    };
   })();
 
   let eventsBound = false;
