@@ -35,6 +35,19 @@ window.Callin = (function () {
   const themeForcedByHost = !!params.get('theme');
   const themeDefault = params.get('themeDefault') || '';
 
+  // The corner buttons draw their icons (the sign-in and sign-out chips
+  // always have): a font glyph renders differently on every platform, and
+  // the ☀ read as a star while the station's ✳ read as nothing at all
+  // (operator-reported). Same stroke voice as the chips beside them. On
+  // Callin so the call page's four-stop cycle uses this same table and the
+  // two surfaces cannot drift.
+  const THEME_ICONS = {
+    light: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg>',
+    dark: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8z"/></svg>',
+    station: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="9.5" r="2.1"/><path d="M12 12.2V21M6.6 4.6a7.2 7.2 0 0 0 0 9.8M17.4 4.6a7.2 7.2 0 0 1 0 9.8"/></svg>',
+    device: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M9 21h6"/></svg>',
+  };
+
   (function theme() {
     const forced = params.get('theme');
     const saved = forced || localStorage.getItem('callinTheme') || themeDefault;
@@ -66,11 +79,13 @@ window.Callin = (function () {
     const btn = document.getElementById('themeBtn');
     // The glyph is the DESTINATION, not the state: a sun on a dark card
     // ("tap for light"), a moon on a light one. The operator found the old
-    // half-circle unreadable as a control, and they were right.
+    // half-circle unreadable as a control, and they were right \u2014 and later
+    // found the \u2600 glyph reading as a star, which is why these are drawn
+    // (THEME_ICONS above) rather than typed.
     const glyph = () => {
       const now = document.documentElement.getAttribute('data-theme')
         || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-      if (btn) btn.textContent = now === 'dark' ? '\u2600' : '\u263e';
+      if (btn) btn.innerHTML = now === 'dark' ? THEME_ICONS.light : THEME_ICONS.dark;
     };
     glyph();
     if (!btn || forced) return;
@@ -385,7 +400,7 @@ window.Callin = (function () {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
-    setSounds, setVolume, getVolume,
+    setSounds, setVolume, getVolume, THEME_ICONS,
   };
 })();
 

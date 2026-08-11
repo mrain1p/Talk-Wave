@@ -10,7 +10,7 @@
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
-    setSounds, setVolume, getVolume,
+    setSounds, setVolume, getVolume, THEME_ICONS,
   } = window.Callin;
 
 
@@ -128,10 +128,15 @@
     const cur = localStorage.getItem('callinTheme') || '';
     const at = opts.indexOf(opts.includes(cur) ? cur : '');
     const next = opts[(at + 1) % opts.length];
-    const G = { light: '\u2600', dark: '\u263e', station: '\u2733', '': '\u25a6' };
+    // Drawn, not typed (shared.js THEME_ICONS): the sun glyph read as a
+    // star and the station's asterisk read as nothing at all
+    // (operator-reported) \u2014 the station stop wears a transmitter mast,
+    // which is what it stands for.
+    const G = { light: THEME_ICONS.light, dark: THEME_ICONS.dark,
+                station: THEME_ICONS.station, '': THEME_ICONS.device };
     const T = { light: 'light', dark: 'dark', station: "the station's colours",
                 '': framed ? 'match the page' : 'follow the device' };
-    btn.textContent = G[next];
+    btn.innerHTML = G[next];
     btn.title = 'Theme — tap for ' + T[next];
   }
 
