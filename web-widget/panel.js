@@ -1693,7 +1693,7 @@
     if ($('mastSub')) $('mastSub').textContent = 'DASHBOARD · ' + location.host;
     if ($('footHost')) $('footHost').textContent = location.host;
     fetch('/health').then((r) => r.json()).then((h) => {
-      $('versionLine').textContent = 'Wave Talk v' + (h.version || '?');
+      $('versionLine').textContent = 'Talk Wave v' + (h.version || '?');
     }).catch(() => {});
   }
 

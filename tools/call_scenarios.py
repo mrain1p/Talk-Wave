@@ -291,7 +291,7 @@ class Caller:
         if ptt:
             # What releasing the talk bar sends: the explicit "your turn".
             await self.room.local_participant.publish_data(
-                b"end", reliable=True, topic="wavetalk.turn-end")
+                b"end", reliable=True, topic="talkwave.turn-end")
 
     async def hangup(self) -> None:
         req = urllib.request.Request(
@@ -406,7 +406,7 @@ async def s_tools(stack: Stack, wavs: dict) -> list[str]:
     if not await c.wait_loud(45):                # search + LLM + TTS
         return ["no reply to the library question"]
     await c.wait_quiet()
-    cards = [json.loads(d) for t, d in c.data if t == "wavetalk.action"]
+    cards = [json.loads(d) for t, d in c.data if t == "talkwave.action"]
     await c.hangup()
     rec = await _await_record(stack, c)
     problems = []
@@ -794,7 +794,7 @@ async def main() -> int:
     if unknown:
         sys.exit(f"unknown scenario(s): {unknown} — try --list")
 
-    scratch = Path(tempfile.mkdtemp(prefix="wavetalk-scenarios-"))
+    scratch = Path(tempfile.mkdtemp(prefix="talkwave-scenarios-"))
     wavs = {}
     for key, line in LINES.items():
         wavs[key] = scratch / f"{key}.wav"

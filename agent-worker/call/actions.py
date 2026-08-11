@@ -108,7 +108,7 @@ class CallActions:
             # return (and so never worth failing the action over).
             spawn(
                 self._room.local_participant.publish_data(
-                    payload, reliable=True, topic="wavetalk.action"
+                    payload, reliable=True, topic="talkwave.action"
                 )
             )
         except Exception as e:

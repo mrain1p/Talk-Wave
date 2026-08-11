@@ -1,6 +1,6 @@
 ---
-name: wavetalk-diagnose
-description: Work out why a Wave Talk call went badly — no answer, no music, wrong DJ behaviour, invented library results, laggy replies. Starts from the call transcripts rather than from grepping logs. Use for any report of a bad, silent, or strange call.
+name: talkwave-diagnose
+description: Work out why a Talk Wave call went badly — no answer, no music, wrong DJ behaviour, invented library results, laggy replies. Starts from the call transcripts rather than from grepping logs. Use for any report of a bad, silent, or strange call.
 ---
 
 # Diagnose a bad call

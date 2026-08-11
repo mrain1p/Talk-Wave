@@ -28,8 +28,8 @@ COPY assets/ /assets/
 # and will not be readable by this user. Fix them on the HOST first — BOTH the
 # owner and the modes — or the app comes up with no settings, no keys and no
 # password:
-#   chown -R 1000:1000 /path/to/wave-talk/data
-#   chmod -R u+rwX     /path/to/wave-talk/data
+#   chown -R 1000:1000 /path/to/talk-wave/data
+#   chmod -R u+rwX     /path/to/talk-wave/data
 # The chmod matters as much as the chown: a Synology share creates files with
 # mode 000, which root walks straight through and an owner cannot. Safe to run
 # while the old container is still up — root ignores the mode bits either way.

@@ -7,7 +7,7 @@
       "port": 8899
     },
     {
-      "name": "wavetalk",
+      "name": "talkwave",
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": [
         "agent-worker/token_server.py"

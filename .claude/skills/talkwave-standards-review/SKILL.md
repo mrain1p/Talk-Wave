@@ -1,5 +1,5 @@
 ---
-name: wavetalk-standards-review
+name: talkwave-standards-review
 description: Review changes against this repo's documented standards and against what the change was supposed to do — the two axes the built-in bug-hunting review does not cover. Use when asked to review a branch, a PR, or "what changed since X" for conformance rather than for bugs.
 ---
 

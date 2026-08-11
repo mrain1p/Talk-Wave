@@ -1,11 +1,11 @@
 ---
-name: wavetalk-release
-description: Cut a Wave Talk release — bump APP_VERSION, commit, push, and confirm CI built and published the image before telling the operator to pull. Use when asked to release, ship, publish, cut a version, or move :latest.
+name: talkwave-release
+description: Cut a Talk Wave release — bump APP_VERSION, commit, push, and confirm CI built and published the image before telling the operator to pull. Use when asked to release, ship, publish, cut a version, or move :latest.
 ---
 
-# Release Wave Talk
+# Release Talk Wave
 
-Images publish from GitHub Actions to `ghcr.io/mrainone7p/wave-talk`:
+Images publish from GitHub Actions to `ghcr.io/mrainone7p/talk-wave`:
 
 | Ref | Tag |
 |---|---|
@@ -21,7 +21,7 @@ until a change is ready to publish.
 
 1. **Bump `agent-worker/version.py`.** `APP_VERSION` is the only place the number lives; both
    the worker and the token server read it. Keep it in step with the git tag.
-2. **Run the suite first** — see the `wavetalk-test` skill. CI runs tests *then* builds, so a
+2. **Run the suite first** — see the `talkwave-test` skill. CI runs tests *then* builds, so a
    red suite means no image, and finding that out from Actions wastes ten minutes.
 3. **Commit.** Two hard rules:
    - **Use `git commit -F <file>`.** PowerShell here-strings break on embedded double quotes and

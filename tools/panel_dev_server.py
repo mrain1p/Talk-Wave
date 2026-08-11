@@ -19,7 +19,7 @@ few seconds rather than a few minutes.
     python tools/panel_dev_server.py          # then open the printed URL
 
 Under Claude Code, add it to .claude/launch.json with "autoPort": true and use
-preview_start — see the wavetalk-verify skill, which has the traps.
+preview_start — see the talkwave-verify skill, which has the traps.
 
 TWO THINGS THAT COST AN HOUR EACH BEFORE THEY WERE WRITTEN DOWN:
 
@@ -46,7 +46,7 @@ WIDGET = ROOT / "web-widget"
 
 # Point every writable path at a temp dir before importing settings, exactly
 # as the test suite does. Driving the panel must never touch real settings.
-_TMP = Path(tempfile.mkdtemp(prefix="wavetalk-panel-"))
+_TMP = Path(tempfile.mkdtemp(prefix="talkwave-panel-"))
 os.environ.setdefault("SETTINGS_PATH", str(_TMP / "settings.json"))
 os.environ.setdefault("SECRETS_PATH", str(_TMP / "secrets.json"))
 os.environ.setdefault("ADMIN_AUTH_PATH", str(_TMP / "auth.json"))
@@ -102,7 +102,7 @@ PIPELINE_ENV = {
     "livekit": {"ok": True, "url": "ws://stub"},
     "livekitAuth": {"ok": True},
     "admin": {"ok": True, "detail": "station admin credentials accepted"},
-    "webhook": {"registered": True, "id": "wave_talk", "received": 4,
+    "webhook": {"registered": True, "id": "talk_wave", "received": 4,
                 "url": "http://192.168.1.40:8100/hooks/station",
                 "detail": "registered"},
     "listeners": {"requestsOpen": True, "detail": "2 listening"},

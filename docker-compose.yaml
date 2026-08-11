@@ -1,7 +1,7 @@
 # Deploys the whole call-in stack: LiveKit media server, the agent worker, and the token/widget
 # server. For local dev on Windows use run-local.ps1 instead — no Docker needed.
 #
-# The two python services share ONE image, published as ghcr.io/mrainone7p/wave-talk:latest. With a
+# The two python services share ONE image, published as ghcr.io/mrainone7p/talk-wave:latest. With a
 # source checkout, `docker compose up -d --build` builds it locally instead of pulling.
 #
 # Before first deploy:
@@ -47,7 +47,7 @@ services:
   # or your stack GUI's environment panel; every service below derives from it.
   #
   # Every service pins container_name because without it compose derives <project>-<service>-1 and
-  # a stack GUI reads "stack-wavetalk-wavetalk-worker-1" where a person wants "wavetalk-worker".
+  # a stack GUI reads "stack-talkwave-talkwave-worker-1" where a person wants "talkwave-worker".
   # The cost — no `--scale` on a named service — is nothing here: the ports are fixed anyway.
   # In-network DNS still uses the SERVICE names (token-server, livekit-server), so the URLs below
   # are unaffected.
@@ -75,8 +75,8 @@ services:
       - callin-net
 
   agent-worker:
-    image: ghcr.io/mrainone7p/wave-talk:latest
-    container_name: wavetalk-worker
+    image: ghcr.io/mrainone7p/talk-wave:latest
+    container_name: talkwave-worker
     build:
       context: .
       dockerfile: agent-worker/Dockerfile
@@ -116,7 +116,7 @@ services:
       #
       #   mkdir -p ./cache && chown -R 1000:1000 ./cache && chmod -R u+rwX ./cache
       #   - ./cache:/home/app/.cache
-      - wavetalk-cache:/home/app/.cache
+      - talkwave-cache:/home/app/.cache
       # Optional: uncomment to edit TTS adapter configs without a rebuild.
       # - ./agent-worker/tts-adapters:/app/tts-adapters
     depends_on:
@@ -125,8 +125,8 @@ services:
       - callin-net
 
   token-server:
-    image: ghcr.io/mrainone7p/wave-talk:latest
-    container_name: wavetalk-web
+    image: ghcr.io/mrainone7p/talk-wave:latest
+    container_name: talkwave-web
     build:
       context: .
       dockerfile: agent-worker/Dockerfile
@@ -179,7 +179,7 @@ services:
   # station webhook callback.
   caddy:
     image: caddy:2
-    container_name: wavetalk-caddy
+    container_name: talkwave-caddy
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -202,7 +202,7 @@ services:
 volumes:
   caddy-data:
   # Only the worker loads the STT model, so only the worker mounts this.
-  wavetalk-cache:
+  talkwave-cache:
 
 networks:
   callin-net:

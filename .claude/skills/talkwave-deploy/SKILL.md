@@ -1,13 +1,13 @@
 ---
-name: wavetalk-deploy
-description: Deploy or update the Wave Talk stack — first-time setup, pulling a new image, or fixing a deployment that came up wrong. Covers the permissions, HOST_IP and mixed-content traps that break deployments silently. Use when asked to deploy, update the stack, or when a deployed instance misbehaves after an upgrade.
+name: talkwave-deploy
+description: Deploy or update the Talk Wave stack — first-time setup, pulling a new image, or fixing a deployment that came up wrong. Covers the permissions, HOST_IP and mixed-content traps that break deployments silently. Use when asked to deploy, update the stack, or when a deployed instance misbehaves after an upgrade.
 ---
 
-# Deploy Wave Talk
+# Deploy Talk Wave
 
 Four services, defined in `docker-compose.yaml`: `livekit-server`, `agent-worker`,
 `token-server`, `caddy`. The two Python services are **one image in two containers** —
-`ghcr.io/mrainone7p/wave-talk`.
+`ghcr.io/mrainone7p/talk-wave`.
 
 The operator manages stacks through a **GUI (Portainer-style "update the stack")** and prefers
 inline `environment:` entries in compose over `.env` files on the host. Ship fixes as tagged

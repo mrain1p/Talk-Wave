@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.52
+
+- **Wave Talk is now Talk Wave.** The rename runs everywhere: the masthead and page titles, the PWA manifest and service-worker cache, the compose file (image `ghcr.io/mrainone7p/talk-wave`, containers `talkwave-*`), the CI workflow, the docs, and the GitHub repository itself. Nothing behaves differently — same settings, same data files, same endpoints. **Deployed stacks: update the image name and container names in your compose when you next pull.**
+
 ## 0.10.51
 
 - **The embed sits flush by default.** An embedded card no longer draws its own outline or sheet — it displays in whatever area the host page gives it, the page showing through. A new **Draw the card outline** tick under Embed on another page brings the old look back; the main call page always keeps its card, and the panel's Page/Embed preview shows each surface correctly.
@@ -39,7 +43,7 @@ commit-by-commit detail is in git history.
 
 ## 0.10.46
 
-- **The settings panel has a new look — a newspaper.** A "WAVE TALK" masthead over a red rule, flat cream-and-ink sheets (near-black in dark mode), ruled rows instead of boxed-in cards, square red toggles, section headings with a rule filling the line, and a proper footer. It's the panel only — the call card stays deliberately neutral — and light, dark, the station's own colours and match-the-page all keep working. Pure restyle: every control and setting is exactly where it was.
+- **The settings panel has a new look — a newspaper.** A "TALK WAVE" masthead over a red rule, flat cream-and-ink sheets (near-black in dark mode), ruled rows instead of boxed-in cards, square red toggles, section headings with a rule filling the line, and a proper footer. It's the panel only — the call card stays deliberately neutral — and light, dark, the station's own colours and match-the-page all keep working. Pure restyle: every control and setting is exactly where it was.
 
 ## 0.10.45
 
@@ -132,7 +136,7 @@ Mostly mobile and polish — on a phone, the card now reads like the real thing.
 
 ### On a phone
 
-- **Installs and behaves like an app.** Add Wave Talk to a home screen and it opens full-screen as a progressive web app — a call, a text line, or a voicemail, with the DJ's portrait up top, the conversation in the middle, and the actions under your thumb. The keyboard no longer covers the chat, push-to-talk stays held while your finger is down, and a long reply or a long show name wraps to read cleanly instead of trailing off.
+- **Installs and behaves like an app.** Add Talk Wave to a home screen and it opens full-screen as a progressive web app — a call, a text line, or a voicemail, with the DJ's portrait up top, the conversation in the middle, and the actions under your thumb. The keyboard no longer covers the chat, push-to-talk stays held while your finger is down, and a long reply or a long show name wraps to read cleanly instead of trailing off.
 
 ### The text line
 
@@ -201,7 +205,7 @@ Covers 0.10.9 through 0.10.15 — the changelog had fallen behind main.
 
 ### Deploying
 
-- **Containers get names a person can read**: `wavetalk-worker`, `wavetalk-web`, `livekit-server`, `wavetalk-caddy` — no more `stack-wavetalk-wavetalk-worker-1` in your GUI.
+- **Containers get names a person can read**: `talkwave-worker`, `talkwave-web`, `livekit-server`, `talkwave-caddy` — no more `stack-talkwave-talkwave-worker-1` in your GUI.
 - **Redeploys stop killing calls mid-shutdown**: `stop_grace_period: 2m` on the worker, because Docker's 10-second default SIGKILLed the transcript write, the slot release and the wrap-up line.
 - **When you need the bundled Caddy — and when you don't — is written down**: it exists only because browsers grant the microphone to HTTPS origins; bring your own proxy and it can go, provided you carry over both routes (the widget *and* `/rtc`, the one people forget).
 - The README's embed-attribute table renders as a table again, and the docs cover the theme toggle's four looks.

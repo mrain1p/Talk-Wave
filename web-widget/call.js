@@ -483,7 +483,7 @@
       // cause is an http stream on an https page: the browser blocks it as
       // mixed content and the caller hears no station at all.
       console.warn(
-        'Wave Talk: could not tune the caller in. Tried:', urls.join(', '),
+        'Talk Wave: could not tune the caller in. Tried:', urls.join(', '),
         '— if these are http:// and this page is https://, the browser blocked ' +
         'them as mixed content. Set the station stream URL in settings.'
       );
@@ -1132,7 +1132,7 @@
       // A repaint that throws must not take the poll down with it — the next
       // one would never be scheduled and the card would be frozen on
       // whatever it was showing.
-      console.warn('Wave Talk: could not paint the card —', e);
+      console.warn('Talk Wave: could not paint the card —', e);
     }
   }
 
@@ -1395,7 +1395,7 @@
       if (!p || !p.attributes) return;
       const s = p.attributes['lk.agent.state'];
       if (s) setAgentState(s);
-      if ('wavetalk.onair' in p.attributes) setOnAir(!!p.attributes['wavetalk.onair']);
+      if ('talkwave.onair' in p.attributes) setOnAir(!!p.attributes['talkwave.onair']);
     };
     r.on(LivekitClient.RoomEvent.ParticipantAttributesChanged, (_changed, p) => read(p));
     r.on(LivekitClient.RoomEvent.ParticipantConnected, read);
@@ -1432,7 +1432,7 @@
         }
         return;
       }
-      if (topic && topic !== 'wavetalk.action') return;
+      if (topic && topic !== 'talkwave.action') return;
       let msg;
       try { msg = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
       if (!msg || msg.type !== 'action') return;
@@ -1755,7 +1755,7 @@
       fx = { src, gain };
       return true;
     } catch (e) {
-      console.warn('Wave Talk: voice effect unavailable —', e);
+      console.warn('Talk Wave: voice effect unavailable —', e);
       return false;
     }
   }
@@ -2092,7 +2092,7 @@
           (err.message || '') + ' ' + (err.reason || ''));
       if (noMediaPath) {
         console.warn(
-          'Wave Talk: signalling connected but no media path was established. '
+          'Talk Wave: signalling connected but no media path was established. '
           + 'The caller reached the room; audio could not flow. Usually the '
           + 'network cannot reach the media port, or the caller is on an '
           + 'IPv4-only network while the station only publishes IPv6.', err);
@@ -2633,7 +2633,7 @@
       try {
         room.localParticipant.publishData(
           new TextEncoder().encode('end'),
-          { reliable: true, topic: 'wavetalk.turn-end' });
+          { reliable: true, topic: 'talkwave.turn-end' });
       } catch (e) { /* endpointing still ends the turn, just slower */ }
     }
     micOp = micOp.then(async () => {
@@ -2661,7 +2661,7 @@
           }
         }
       } catch (e) {
-        console.warn('Wave Talk: could not switch the mic —', e);
+        console.warn('Talk Wave: could not switch the mic —', e);
       }
     });
     return micOp;
@@ -2775,7 +2775,7 @@
   if ('serviceWorker' in navigator && !framed && window.isSecureContext) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').catch(
-        (e) => console.info('Wave Talk: no service worker —', e.message));
+        (e) => console.info('Talk Wave: no service worker —', e.message));
     });
   }
 

@@ -2,7 +2,7 @@
 
 The tests themselves live in tests/, one module per subject — this file is the
 aggregator so that `python -m unittest test_sidecar` remains the single command
-CI, the pre-commit hook, the wavetalk-test skill and CLAUDE.md all name.
+CI, the pre-commit hook, the talkwave-test skill and CLAUDE.md all name.
 
 Run from agent-worker/:  python -m unittest test_sidecar -v
 

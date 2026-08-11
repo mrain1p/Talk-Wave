@@ -1684,7 +1684,7 @@ class TestTheWidgetActuallyParses(unittest.TestCase):
     reporting, and 582 tests stayed green while it happened — the contract
     test READS these files but nothing ever PARSED one. `node --check` is
     that parse. CI's runner has node, so no broken widget reaches an image;
-    locally the test skips if node is missing, and the wavetalk-verify skill
+    locally the test skips if node is missing, and the talkwave-verify skill
     is the local backstop: load both pages, read the console.
     """
 

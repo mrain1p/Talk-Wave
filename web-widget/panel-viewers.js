@@ -35,7 +35,7 @@
   }
 
   // The same icons the caller sees when an action lands on the card
-  // (call/actions.py LABELS announces them over wavetalk.action) — one
+  // (call/actions.py LABELS announces them over talkwave.action) — one
   // vocabulary on both surfaces. The short word is what the row chips show:
   // full tool names clipped mid-word ("voicemail_del…") in the summary
   // column, and a chip that can't say its word is worse than a shorter word.

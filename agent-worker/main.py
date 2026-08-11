@@ -55,7 +55,7 @@ from version import APP_VERSION
 # so a redeploy that recreates one and not the other leaves them skewed. That
 # has happened, and it was invisible because only the token server ever said
 # what it was.
-log.info("wave-talk worker %s starting", APP_VERSION)
+log.info("talk-wave worker %s starting", APP_VERSION)
 
 # Both processes share the bind-mounted data/, and this is the one that reads
 # the settings on every call — so it has to say so too rather than quietly

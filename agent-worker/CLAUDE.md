@@ -40,7 +40,7 @@ tts_pace.py        whether a backend generates fast enough to be on a phone call
 
 `tests/` is the suite — 400+ tests, one module per subject. `test_sidecar.py` is the aggregator
 that imports every class from it, so **the command has not changed** and neither has anything
-that names it: CI, the pre-commit hook, the `wavetalk-test` skill. It gates CI: no image reaches
+that names it: CI, the pre-commit hook, the `talkwave-test` skill. It gates CI: no image reaches
 `:latest` without it green.
 
 ```

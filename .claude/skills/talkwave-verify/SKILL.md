@@ -1,9 +1,9 @@
 ---
-name: wavetalk-verify
-description: Run the Wave Talk widget locally and actually exercise a change in the browser — boots token_server via the preview launcher, drives the call page or the settings panel, and works around the sandbox traps that make this slow. Use whenever a change touches web-widget/ or a token_server route the widget calls.
+name: talkwave-verify
+description: Run the Talk Wave widget locally and actually exercise a change in the browser — boots token_server via the preview launcher, drives the call page or the settings panel, and works around the sandbox traps that make this slow. Use whenever a change touches web-widget/ or a token_server route the widget calls.
 ---
 
-# Verify a Wave Talk change in a real browser
+# Verify a Talk Wave change in a real browser
 
 A passing unit suite is not verification. Run the thing, drive the flow, report what you
 **observed**. This skill exists because several hours once went into fighting the environment
@@ -11,9 +11,9 @@ rather than the code — everything below is a trap already paid for.
 
 ## The fast path: real token server
 
-`.claude/launch.json` has a `wavetalk` entry that runs `agent-worker/token_server.py` on :8100.
+`.claude/launch.json` has a `talkwave` entry that runs `agent-worker/token_server.py` on :8100.
 
-1. `preview_start` with `{name: "wavetalk"}`.
+1. `preview_start` with `{name: "talkwave"}`.
 2. Navigate, then verify with `read_page` / `read_console_messages`, not screenshots.
 
 This is right when the change is server-side or on the call page. It needs `.env` to exist.

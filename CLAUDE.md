@@ -1,4 +1,4 @@
-# Wave Talk
+# Talk Wave
 
 A call-in phone line for a [SUB/WAVE](https://github.com/perminder-klair/subwave) internet
 radio station. A listener opens a web widget, presses Call, and talks to the DJ persona that
@@ -9,7 +9,7 @@ This file is the map. Read it before exploring; it is meant to save you the craw
 
 ## Shape of the system
 
-Two Python processes ship as **one image** (`ghcr.io/mrainone7p/wave-talk`) and run as **two
+Two Python processes ship as **one image** (`ghcr.io/mrainone7p/talk-wave`) and run as **two
 containers**, plus LiveKit and Caddy:
 
 | Process | Entry | Job |
@@ -53,7 +53,7 @@ can't read the page it sits in.
 
 ## A companion app, on purpose
 
-Wave Talk is a companion to [SUB/WAVE](https://github.com/perminder-klair/subwave), and that
+Talk Wave is a companion to [SUB/WAVE](https://github.com/perminder-klair/subwave), and that
 is a design constraint, not just a description. When there is a choice about how to build
 something the station also has an answer for, **read the station's answer first**
 (`gh` against its repo — see the memory notes; `web/components/admin/*/…Meta.ts` and
@@ -179,7 +179,7 @@ the problem it solves.
 Three layers, in increasing order of "actually happens":
 
 1. **This file** is loaded into context every session. Advice — read and generally followed.
-2. **`.claude/skills/`** — `wavetalk-verify`, `-deploy`, `-release`, `-test`, `-diagnose`,
+2. **`.claude/skills/`** — `talkwave-verify`, `-deploy`, `-release`, `-test`, `-diagnose`,
    `-llm-bench`, `-standards-review`, `-upstream`. Invoked when the model judges them relevant.
 3. **`.claude/settings.json`** — two `PreToolUse` hooks on `git commit`, both executed by the
    harness so they hold whether or not anyone remembered, and both failing open (no python, no

@@ -90,7 +90,7 @@ def build_stt(cfg: dict):
 # Passed as the api_key when a caller has asked us NOT to send the stored one.
 # A blank string makes some SDKs fall back to the environment, which is the
 # thing being prevented, so it has to be a real (worthless) value.
-WITHHELD_KEY = "withheld-by-wave-talk"
+WITHHELD_KEY = "withheld-by-talk-wave"
 
 
 def build_llm(cfg: dict, *, use_stored_key: bool = True):

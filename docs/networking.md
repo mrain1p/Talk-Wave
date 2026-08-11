@@ -144,7 +144,7 @@ remove it, including after you stop caring about this project. Specifically:
 - **It does not gate who can call.** That is `front_access` and your usage
   limits. An open media port with no guest code and generous limits is an
   invitation to spend your LLM and TTS budget. Set a guest code *first*.
-- If you later stop using Wave Talk, **delete the rule.** A forwarded port to
+- If you later stop using Talk Wave, **delete the rule.** A forwarded port to
   a host that no longer runs what you think it runs is how home networks get
   into trouble.
 
@@ -173,7 +173,7 @@ one rule:
 
 | Field | Value | Notes |
 |---|---|---|
-| Name / description | `wavetalk-media` | anything; for your own memory |
+| Name / description | `talkwave-media` | anything; for your own memory |
 | Protocol | **UDP** | not TCP, not "Both" |
 | External / WAN / public port | `7882` | single port, not a range |
 | Internal / LAN / private IP | e.g. `192.168.1.245` | the LiveKit host |

@@ -199,7 +199,7 @@ class ChatSession:
 
         `on_event(dict)` receives, in order: any number of
         {"type": "action", ...} cards (the same shape the call publishes on
-        wavetalk.action), any number of {"type": "delta", "text": ...}
+        talkwave.action), any number of {"type": "delta", "text": ...}
         fragments, then {"type": "done", "text": <full reply>}.
 
         Settings are re-read here — the per-message equivalent of the

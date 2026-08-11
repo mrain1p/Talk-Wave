@@ -134,7 +134,7 @@ class OnAirGuard:
         try:
             spawn(
                 self.room.local_participant.set_attributes(
-                    {"wavetalk.onair": "1" if on_air else ""}
+                    {"talkwave.onair": "1" if on_air else ""}
                 )
             )
         except Exception as e:

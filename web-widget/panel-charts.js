@@ -1,6 +1,6 @@
 /* The ACTIVITY strip: four charts between the dashboard and the settings.
 
-   Spec §7 (wavetalk-panel-spec.md). Two honest sources and nothing else: the
+   Spec §7 (talkwave-panel-spec.md). Two honest sources and nothing else: the
    call records the panel already keeps (/calls) and the sampled listener
    series (/stats/listeners). A series that isn't available — signed out, no
    records yet, a station that never answered the sampler — renders as an

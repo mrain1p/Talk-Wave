@@ -1,4 +1,4 @@
-# Wave Talk
+# Talk Wave
 
 **Live voice call-ins for a [SUB/WAVE](https://github.com/perminder-klair/subwave) AI radio station.** A listener presses
 one button in the browser, talks with whoever is live on air, and the DJ can
@@ -20,7 +20,7 @@ doing.
 </tr>
 </table>
 
-▶ **[Watch a real call (2 min)](docs/wavetalk-call.mp4)** — in-persona pickup,
+▶ **[Watch a real call (2 min)](docs/talkwave-call.mp4)** — in-persona pickup,
 back-and-forth, and a Beatles request resolved against the live library.
 
 ```
@@ -182,11 +182,11 @@ actually said is what you read.
 
 ### Docker (recommended)
 
-Images publish to `ghcr.io/mrainone7p/wave-talk`; `:latest` tracks `main`. The
+Images publish to `ghcr.io/mrainone7p/talk-wave`; `:latest` tracks `main`. The
 image includes the widget. A deploy needs five files:
 
 ```
-wave-talk/
+talk-wave/
 ├── docker-compose.yaml    # from this repo
 ├── Caddyfile              # from this repo — the TLS front door mounts it
 ├── .env                   # from .env.example — REQUIRED

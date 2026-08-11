@@ -103,5 +103,5 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
 
 ## Verifying a change
 
-There is a `/wavetalk-verify` skill that boots the token server and drives the widget in the
+There is a `/talkwave-verify` skill that boots the token server and drives the widget in the
 preview browser. Use it rather than asking the operator to click around.

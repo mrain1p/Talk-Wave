@@ -1,9 +1,9 @@
 ---
-name: wavetalk-test
-description: Run the Wave Talk test suite, or write new tests in this repo's house style. Use after any change to agent-worker/ or web-widget/, before any release, and whenever asked to add test coverage.
+name: talkwave-test
+description: Run the Talk Wave test suite, or write new tests in this repo's house style. Use after any change to agent-worker/ or web-widget/, before any release, and whenever asked to add test coverage.
 ---
 
-# Test Wave Talk
+# Test Talk Wave
 
 `agent-worker/tests/` is the suite — one module per subject. `agent-worker/test_sidecar.py` is
 the aggregator that imports every class from it, so the command below is unchanged and so is

@@ -1,11 +1,11 @@
 ---
-name: wavetalk-upstream
-description: Review SUB/WAVE's merged and open PRs for changes Wave Talk should mirror, adapt to, or take advantage of. Use when asked "what's new upstream", "anything to align with", or on a periodic alignment pass. Produces a ranked report; implementation is a separate decision.
+name: talkwave-upstream
+description: Review SUB/WAVE's merged and open PRs for changes Talk Wave should mirror, adapt to, or take advantage of. Use when asked "what's new upstream", "anything to align with", or on a periodic alignment pass. Produces a ranked report; implementation is a separate decision.
 ---
 
 # Review the station's changes as the companion app
 
-Wave Talk is a companion to SUB/WAVE by design (root CLAUDE.md, "A companion app, on
+Talk Wave is a companion to SUB/WAVE by design (root CLAUDE.md, "A companion app, on
 purpose"), so upstream movement is operationally relevant here in a way it wouldn't be for an
 independent app. This skill is the periodic pass that keeps the two aligned. It reads and
 reports — changing code is a follow-up the operator picks from the report.
@@ -22,7 +22,7 @@ Read bodies only for PRs that touch a surface below (`gh pr view N -R perminder-
 To read station source directly, `gh api repos/perminder-klair/subwave/contents/<path> --jq
 .content | base64 -d` — pipe through Python with utf-8 stdout on Windows, cp1252 will choke.
 
-## 2. Know what Wave Talk actually consumes
+## 2. Know what Talk Wave actually consumes
 
 Judge every PR against these surfaces, in this order:
 
@@ -51,7 +51,7 @@ Judge every PR against these surfaces, in this order:
 ## 4. Report, don't implement
 
 Lead with anything in class 1 (there usually isn't any — the station is disciplined about
-public surfaces). One paragraph per finding, naming the upstream PR number and the Wave Talk
+public surfaces). One paragraph per finding, naming the upstream PR number and the Talk Wave
 file it touches. End with the watch list.
 
 Past decisions live in memory: the parked-items file records what the operator already chose
