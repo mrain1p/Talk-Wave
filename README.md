@@ -182,7 +182,7 @@ actually said is what you read.
 
 ### Docker (recommended)
 
-Images publish to `ghcr.io/mrainone7p/talk-wave`; `:latest` tracks `main`. The
+Images publish to `ghcr.io/mrain1p/talk-wave`; `:latest` tracks `main`. The
 image includes the widget. A deploy needs five files:
 
 ```
@@ -245,7 +245,7 @@ copy livekit.example.yaml livekit.yaml
 
 ### Upgrading from Wave Talk (pre-0.10.52)
 
-The app was renamed to Talk Wave at 0.10.52. One change is required in an existing compose: the image is now `ghcr.io/mrainone7p/talk-wave` — GitHub redirects renamed repositories but **not** GHCR packages, so the old `wave-talk` image is frozen at its last build and a stack still pointing at it silently stops receiving updates. Swap the image name on both python services, then `docker compose pull && docker compose up -d`.
+The app was renamed to Talk Wave at 0.10.52. One change is required in an existing compose: the image is now `ghcr.io/mrain1p/talk-wave` — GitHub redirects renamed repositories but **not** GHCR packages, so the old `wave-talk` image is frozen at its last build and a stack still pointing at it silently stops receiving updates. Swap the image name on both python services, then `docker compose pull && docker compose up -d`.
 
 Nothing else migrates: `data/`, `livekit.yaml` and every environment variable keep their names and formats. Optional, for tidiness: adopt the new service/container names (`talkwave-worker`, `talkwave-web`) and the `talkwave-cache` volume from the current compose — the volume rename costs a one-time re-download of the ~141MB STT model.
 

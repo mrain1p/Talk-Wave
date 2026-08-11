@@ -48,7 +48,7 @@ services:
       - callin-net
 
   agent-worker:
-    image: ghcr.io/mrainone7p/talk-wave:latest
+    image: ghcr.io/mrain1p/talk-wave:latest
     container_name: talkwave-worker
     build:
       context: .
@@ -81,7 +81,7 @@ services:
       - callin-net
 
   token-server:
-    image: ghcr.io/mrainone7p/talk-wave:latest
+    image: ghcr.io/mrain1p/talk-wave:latest
     container_name: talkwave-web
     build:
       context: .
