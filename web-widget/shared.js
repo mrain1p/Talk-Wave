@@ -327,6 +327,8 @@ window.Callin = (function () {
       why: 'A run of requests in one mood — capped by the per-call action limit.' },
     { group: 'request', need: 'allow_library_search', say: '“Have you got any Fleetwood Mac?”',
       why: 'Searches the real library before promising anything.' },
+    { group: 'request', need: 'allow_library_search', say: '“What’s new in the library?”',
+      why: 'Reads the recently-added shelf — the newest arrivals, newest first.' },
     { group: 'request', need: 'allow_exact_queue', say: '“The second one — the live version.”',
       why: 'Queues that exact recording from the search results, not a re-match.' },
     { group: 'request', need: 'allow_favorite', say: '“I love this one — give it a like.”',
