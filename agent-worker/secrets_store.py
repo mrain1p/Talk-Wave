@@ -8,8 +8,8 @@ trip. The rules this module enforces:
   * Stored in their own file (data/secrets.json), chmod 0600 where the OS
     honours it, so settings.json stays safe to copy, diff or paste.
   * Never returned in plaintext. `status()` reports only whether a key is set
-    and its last four characters, which is enough to tell two keys apart
-    without disclosing either.
+    and a fixed-width mask — no real characters and no length, so the display
+    can't disclose either.
   * Blank on save means "leave unchanged", NOT "clear" — the UI shows masked
     placeholders, so an untouched field arrives empty and must not wipe a
     working key. Clearing is an explicit, separate action.
@@ -166,7 +166,7 @@ def _mask(value: str) -> str:
 
 def status() -> dict:
     """What the UI is allowed to know: set-or-not, where it came from, and a
-    masked tail. Never the value itself."""
+    fixed mask. Never the value, never its length."""
     stored = _read()
     out = {}
     for field, env_var in SECRET_FIELDS.items():

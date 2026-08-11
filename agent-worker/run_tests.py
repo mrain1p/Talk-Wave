@@ -55,6 +55,10 @@ def _run_one(module: str) -> tuple[str, int, str]:
             SECRETS_PATH=str(Path(tmp) / "secrets.json"),
             ADMIN_AUTH_PATH=str(Path(tmp) / "auth.json"),
             CALLS_PATH=str(Path(tmp) / "calls"),
+            LISTENERS_PATH=str(Path(tmp) / "listeners.json"),
+            # 0 disables the sampler: a test that builds the real app must
+            # not poll the station over the network.
+            LISTENER_SAMPLE_INTERVAL="0",
         )
         proc = subprocess.run(
             [sys.executable, "-m", "unittest", module],

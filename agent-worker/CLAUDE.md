@@ -20,6 +20,7 @@ api/               the HTTP surface, one module per job
   credentials.py   where a stored secret is allowed to travel
   diagnostics.py   /test/*, /prompt, /logs, /calls
   hooks.py         the station's webhooks, and the warm-ping loop
+  stats.py         the listener sampler, and /stats/listeners for the charts
 call/
   session.py       the call object: prepare() -> start() -> greet()
   lifecycle.py     behaviours attached to a live session (dead air, timeout, quiet caller)
@@ -72,7 +73,7 @@ subject it defends; if none fits, that is a signal the subject is new, not that 
 whichever file is shortest.
 
 ```bash
-LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar -v
+LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls LISTENERS_PATH=/tmp/l.json LISTENER_SAMPLE_INTERVAL=0 python -m unittest test_sidecar -v
 ```
 
 **Faster: `python run_tests.py`** runs the SAME suite in parallel, one process per test

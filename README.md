@@ -178,6 +178,12 @@ backend answers in, every persona's voice is checked against that list rather
 than only the DJ who happens to be on air, and when a backend refuses, what it
 actually said is what you read.
 
+## Credentials & privacy
+
+**Station admin credentials are optional, and never leave your box.** Entering your SUB/WAVE admin login unlocks the advanced on-air features — putting a different show on air, running segments and skills, skipping tracks, mirroring persona voices. Without it, everything else still works. The credentials are entered by the operator into their **own self-hosted instance**, stored server-side and write-only (the panel shows only a fixed mask — never the value, never its length), behind the instance's own admin password — and every caller-facing action they unlock is off by default and individually permission-gated. There is no third party anywhere in the path: the author runs no servers at all.
+
+Two things worth knowing as an operator: caller audio is processed by whichever speech and AI providers **you** configure (it runs fully local with Ollama and the bundled Whisper, or on your own cloud keys), and calls can be transcribed and stored **on your own server** with configurable retention — the card shows a Recording indicator while that's on. Nothing phones home, there is no telemetry, and Talk Wave never touches the broadcast stream.
+
 ## Getting started
 
 ### Docker (recommended)
@@ -288,3 +294,7 @@ which repaints in place without dropping a call.
 
 Any page you embed on can mint call tokens, so treat an embed as publishing the
 phone. Set a guest code if that isn't what you want.
+
+## License
+
+MIT — free to use, tinker with, and build on. See [LICENSE](LICENSE).

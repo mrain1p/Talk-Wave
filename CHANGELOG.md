@@ -3,9 +3,16 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.56
+
+- **The rename can no longer strand a webhook.** 0.10.52 changed the app's webhook id, and an upgraded deployment could leave its old `wave_talk` row behind on the station — burning one of the sixteen webhook slots for good. Registration now adopts the legacy row where it finds one and deletes stray duplicates, even when its own row is already settled.
+- **Charts stop humouring numbers they ignore.** The SHOW field snaps to what the current view will honour (1–7 under WEEK), and DOOR MIX says "0 doors this week" for a genuinely quiet period instead of the em-dash that means "no data".
+- **MIT licensed.** Free to use and tinker with — the LICENSE file makes it official.
+- Housekeeping from the sprint review: the listener sampler is disabled and its file redirected during test runs (the suite can no longer touch the network or real data through it), the code maps in the CLAUDE files catch up with the fourth panel script and the stats module, the docs stop claiming secrets show their last four characters (they show a fixed mask, and always did), and the README gains a **Credentials & privacy** section.
+
 ## 0.10.55
 
-- **A dead provider can no longer greet you with silence.** The SDK swallows LLM errors it calls "recoverable" — a run of Gemini 504s once left a caller in 43 seconds of dead air with no apology. The canned pickup now also fires when the greeting produced no audio at all, and a second "recoverable" error inside a minute is treated like the outage it is.
+- **A dead provider can no longer greet you with silence.** The SDK swallows LLM errors it calls "recoverable" — a run of Gemini 504s once left a caller in 43 seconds of dead air with no apology. The canned pickup now also fires when the greeting produced no audio at all, and a second "recoverable" error inside 45 seconds is treated like the outage it is.
 - **The DJ closes when you're done.** "Alright, thanks" after your request is in is now the goodbye turn — one wrap line and the hang-up in the same breath, instead of answering a thank-you with the programme schedule while you wait.
 - **Time-to-first-word measures what it says.** The record stamps when the DJ's audio *starts*; the chart prefers it. Old records keep the old turn-based number, which overstated by the length of the greeting.
 - **Phone polish:** the installed panel no longer lays out taller than the visible screen after a refresh (dvh), the keyboard resizes the page instead of covering it, and a phone-width panel drops most of its side padding so the matrix stops wrapping into ribbons.
@@ -34,7 +41,7 @@ commit-by-commit detail is in git history.
 ## 0.10.50
 
 - **The whole settings header sticks now** — the Call-in settings heading, its promise line, the Find-a-setting box and the jump bar travel with you as one band, so search and navigation are never a scroll away. The jump chips also show **where you are**: the chip for the section currently on screen wears coral as you scroll, and jumps land cleanly below the band instead of hiding under it.
-- **The chart pickers are multi-selects.** All doors and All ratings fold open into tick-lists — choose any mix of Calls / Texts / Voicemail and ▲ / ▼ / Unrated, both defaulting to everything and applying to every chart. Clicking a DOOR MIX legend swatch still solos that door (click again for all).
+- **The chart pickers are multi-selects.** All doors and All ratings fold open into tick-lists — choose any mix of Calls / Texts / Voicemail and ▲ / ▼ / Unrated, both defaulting to everything and applying to every call-derived chart (the listener curve is not call data and stays unfiltered). Clicking a DOOR MIX legend swatch still solos that door (click again for all).
 - **Section rows are easier to read** — the section names and their one-line descriptions get a size up and darker ink.
 
 ## 0.10.49

@@ -113,6 +113,48 @@ class _StationWebhooks(_TempStores):
         return station
 
 
+class TestTheRenameDoesNotOrphanTheOldRow(_StationWebhooks):
+    """The 0.10.52 rename changed HOOK_ID from wave_talk to talk_wave and
+    shipped saying "nothing behaves differently" — the sprint review caught
+    the exception: a deployment whose URL had also moved would register a
+    fresh talk_wave row and leave the wave_talk one behind, burning one of
+    the station's sixteen webhook slots for good. The legacy id is ours to
+    adopt, and a stray legacy duplicate is ours to delete."""
+
+    def test_a_wave_talk_row_at_an_old_address_is_adopted_not_duplicated(self):
+        station = _FakeStation(rows=[{
+            "id": "wave_talk",
+            "url": "http://10.0.0.5:8100/hooks/station",   # the OLD address
+            "events": ["track.play"], "enabled": True,
+        }])
+        self.register(station)
+        self.assertEqual(len(station.rows), 1, station.rows)
+        self.assertEqual(station.rows[0]["id"], self.hooks.HOOK_ID)
+        self.assertEqual(station.rows[0]["url"],
+                         "http://192.0.2.7:8100/hooks/station")
+
+    def test_a_stray_legacy_duplicate_is_deleted_even_when_settled(self):
+        # Both rows exist: ours (settled, current) and the rename's orphan.
+        # The settled early-return must not spare the stray.
+        station = self.register(_FakeStation())
+        station.rows.append({"id": "wave_talk",
+                             "url": "http://10.0.0.5:8100/hooks/station",
+                             "events": ["track.play"], "enabled": True})
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        self.assertEqual([r["id"] for r in station.rows],
+                         [self.hooks.HOOK_ID], station.rows)
+
+    def test_someone_elses_rows_are_never_touched(self):
+        station = _FakeStation(rows=[{
+            "id": "their_bot", "url": "http://elsewhere:9/hook",
+            "events": ["track.play"], "enabled": True,
+        }])
+        self.register(station)
+        self.assertEqual(len(station.rows), 2, station.rows)
+        self.assertIn("their_bot", [r["id"] for r in station.rows])
+
+
 class TestOurWebhookRowKeepsItsIdentity(_StationWebhooks):
     """Registering sends a stable id, and that is the whole point of it.
 
