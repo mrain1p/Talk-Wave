@@ -105,6 +105,39 @@
       <span id="loginMsg"></span>
     </div>
 
+    <!-- The settings header leads the page (operator's ask: the picker sits
+         at the top): heading + promise, the finder, and the page picker are
+         ONE sticky band. Below it exactly one page shows at a time — the
+         dashboard by default, or the super-group named in the URL's #hash
+         (paintPage in panel.js). scroll-margin on the sections keeps in-page
+         jumps from hiding under the band. -->
+    <div class="settingsbar" id="settingsBar">
+      <!-- One header row: the heading and its promise on the left, the search
+           on the right — the box sat alone on its own line and read as a
+           stray form field rather than this half of the page's own finder. -->
+      <div class="settingshead">
+        <div>
+          <h2>Call-in settings</h2>
+          <p class="sub">Applies to the next caller — no restart. Clearing a field
+            falls back to the environment config.</p>
+        </div>
+        <!-- Sixty settings deserve a faster answer than page archaeology:
+             type, and every matching row from every page remains — clearing
+             the box returns to the page you were on. -->
+        <input type="search" id="settingsSearch" class="settingsearch"
+               placeholder="Find a setting…" autocomplete="off" />
+      </div>
+      <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
+        reads every label, help line and section name, on every page. Try the
+        thing's own noun (“beep”, “password”, “skip”), or clear it and pick a
+        page below.</p>
+      <!-- The page picker: one chip per page, built from the schema. It was a
+           jump bar over one six-screen scroll; the chips now TURN to a page
+           rather than scrolling to a band, and the current page's chip wears
+           the you-are-here mark. -->
+      <nav class="panelnav" id="panelNav" aria-label="Settings pages"></nav>
+    </div>
+
     <!-- The dashboard. The kill switch lives here — out of Usage controls and
          into the one place it can be reached without opening anything, because
          three sections and one disclosure down is the wrong depth for the
@@ -128,10 +161,11 @@
          answering, who is allowed to call, and whether the three legs of a
          call are configured. Each one jumps to the section that owns it.
 
-         The dashboard leads the page (operator-requested): act and read
-         first, configure below. NOT a .supergroup — applyVisibility hides
-         any band with no visible <details> before the next band, and this
-         one is followed by the dash, the heading and the search. -->
+         The dashboard is the LANDING PAGE (operator-requested): act and
+         read first, configure on the pages behind the picker. NOT a
+         .supergroup — applyVisibility hides any band with no visible
+         <details> before the next band, and this one is followed by the
+         dash and the activity strip. -->
     <h3 class="dashband">Dashboard</h3>
     <div class="dash">
       <!-- The newspaper order (spec §2b): the four read-backs lead the page
@@ -270,35 +304,6 @@
           <div class="actbody" id="ttfwChart"></div>
         </figure>
       </div>
-    </div>
-
-    <!-- The whole settings header travels with the reader (operator's ask):
-         heading + promise, the finder, and the jump bar are ONE sticky band,
-         so search and navigation are never a scroll away. scroll-margin on
-         the sections keeps jump targets from hiding under it. -->
-    <div class="settingsbar" id="settingsBar">
-      <!-- One header row: the heading and its promise on the left, the search
-           on the right — the box sat alone on its own line and read as a
-           stray form field rather than this half of the page's own finder. -->
-      <div class="settingshead">
-        <div>
-          <h2>Call-in settings</h2>
-          <p class="sub">Applies to the next caller — no restart. Clearing a field
-            falls back to the environment config.</p>
-        </div>
-        <!-- Sixty settings deserve a faster answer than category archaeology:
-             type, and only the rows whose label or help mention it remain. -->
-        <input type="search" id="settingsSearch" class="settingsearch"
-               placeholder="Find a setting…" autocomplete="off" />
-      </div>
-      <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
-        reads every label, help line and section name. Try the thing's own noun
-        (“beep”, “password”, “skip”), or clear it and use Jump to.</p>
-      <!-- Jump links, one per super-group, built from the schema. The panel is
-           six screens long and every way of reaching the bottom of it was
-           scrolling past everything in between. Full width and labelled, so it
-           reads as the sections' menu rather than a stray row of chips. -->
-      <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
     </div>
 
     <!-- Every section's name and one-line subtitle are written here AND set
@@ -1010,7 +1015,7 @@
          and reports each result, because a persona whose voice the backend
          does not have fails and the operator has to know which one. -->
     <details data-group="voicemail" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Voicemail</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">The machine</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
       <div class="body">
         <div class="row">
           <label for="voicemail_when">Answer with voicemail</label>

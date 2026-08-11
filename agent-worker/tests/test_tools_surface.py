@@ -129,6 +129,10 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_request_song": "allow_requests",
         "subwave_request_status": "allow_requests",
         "subwave_search_library": "allow_library_search",
+        # REST-only at the station (/dj/recent, no MCP tool), served by our
+        # wrapper. Same switch as search on purpose: both answer "what have
+        # you got". Added 0.10.59.
+        "subwave_recent_tracks": "allow_library_search",
         "subwave_queue_track": "allow_exact_queue",
         # The lowest-harm action: a like on the current record, the same heart
         # any listener taps. Public station endpoint, so no admin credentials.

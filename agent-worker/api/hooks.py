@@ -12,9 +12,13 @@ wholesale, so every other row has to be carried through untouched.
 from __future__ import annotations
 
 import asyncio
+import hmac
+import json
 import logging
 import os
+import secrets
 import time
+from pathlib import Path
 
 import httpx
 from aiohttp import web
@@ -49,6 +53,43 @@ HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "talk_wave"
 # one behind, burning one of the station's sixteen webhook slots for good.
 # Adopt it where it can be adopted; delete strays where it can't.
 LEGACY_HOOK_IDS = ("wave_talk",)
+
+# The Authorization header our row registers with. The station does not SIGN
+# its hooks, but it does echo a per-hook header verbatim on every push — which
+# turns a receiver that anyone on the LAN could otherwise drive into one only
+# the station can. Minted once and kept on disk, because the station redacts
+# the stored header on read: after registration, our copy is the only copy
+# there is to compare an arriving push against.
+def _secret_path() -> Path:
+    return Path(os.environ.get("CALLIN_HOOK_SECRET_PATH")
+                or Path(__file__).parent.parent.parent / "data" / "hook-secret.json")
+
+
+def _load_hook_secret() -> str:
+    try:
+        d = json.loads(_secret_path().read_text())
+        return str(d.get("authHeader") or "")
+    except Exception:                                         # noqa: BLE001
+        return ""
+
+
+def _store_hook_secret(value: str) -> None:
+    try:
+        path = _secret_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"authHeader": value}))
+    except Exception as e:                                    # noqa: BLE001
+        # The receiver checks against this file, so an unwritable file means
+        # verification quietly stays OFF — the old, open behaviour — while the
+        # station dutifully sends a header nothing looks at. Loud for that
+        # reason: nothing else would ever mention it.
+        log.warning("could not persist the webhook secret (%s) — push "
+                    "verification stays off until it can be written", e)
+
+
+def _mint_hook_secret() -> str:
+    return "Bearer " + secrets.token_urlsafe(24)
+
 
 # The pushes the on-air card reacts to. Intersected with the station's own
 # advertised vocabulary before it is sent rather than assumed: the station
@@ -149,9 +190,24 @@ def _station_said(r: httpx.Response) -> str:
 
 
 async def handle_station_hook(request: web.Request) -> web.Response:
-    """Receiver for the station's pushes. No auth — the station doesn't sign
-    hooks — so treat payloads as untrusted data: store, bust caches, never act
+    """Receiver for the station's pushes.
+
+    Once registration has stored a secret, a push must carry it back in the
+    Authorization header or it is turned away — the station echoes a per-hook
+    header verbatim, and ours is minted at registration. Until then (no
+    credentials, an old station, a first boot) the endpoint is open, so
+    payloads stay untrusted data either way: store, bust caches, never act
     directly on their contents."""
+    expected = _load_hook_secret()
+    if expected:
+        got = str(request.headers.get("Authorization") or "")
+        if not hmac.compare_digest(got, expected):
+            # Counted separately from `received`, so the test fire can tell
+            # "nothing arrived" apart from "arrived and was turned away".
+            _hook_state["rejected"] = _hook_state.get("rejected", 0) + 1
+            log.warning("station webhook rejected — Authorization header "
+                        "missing or wrong")
+            return web.json_response({"error": "bad authorization"}, status=401)
     try:
         body = await request.json()
     except Exception:
@@ -315,6 +371,21 @@ async def register_station_webhook() -> None:
             events = [e for e in WANTED_EVENTS if e in known] or list(WANTED_EVENTS)
 
             mine = _our_row(rows, url)
+            # Rows that are not ours but also point at a /hooks/station path
+            # are almost always earlier deployments of this box: a
+            # Docker-internal address computed before CALLIN_HOOK_URL existed,
+            # a previous host IP, a pre-id duplicate. Observed live
+            # (2026-08-11): four rows on one station, three of them stale,
+            # every event costing three failed POSTs and the strays burning
+            # station slots for good. Not ours to delete — a second Talk Wave
+            # against the same station is legitimate — but surfaced so the
+            # panel can say so instead of nobody ever noticing.
+            _hook_state["lookalikes"] = sorted(
+                str(r.get("url") or "") for r in rows
+                if r is not mine
+                and r.get("id") not in LEGACY_HOOK_IDS
+                and str(r.get("url") or "").rstrip("/").endswith("/hooks/station")
+            )
             # Everything we did not put there stays exactly as it was read,
             # including the sentinel the station substitutes for a stored auth
             # header — it resolves that back by row id, so an unchanged row
@@ -329,6 +400,23 @@ async def register_station_webhook() -> None:
             desired["id"] = (mine.get("id") or HOOK_ID) if (
                 mine and mine.get("authHeader")) else HOOK_ID
             desired.setdefault("enabled", True)
+            # Give our row an Authorization header the receiver can check. A
+            # row that already holds one keeps it: ours round-trips as the
+            # station's redaction sentinel (resolved back by row id), and one
+            # the operator set by hand at the station is not ours to overwrite
+            # — the receiver just can't verify that one, which is the open
+            # behaviour it always had.
+            minted = ""
+            if not desired.get("authHeader"):
+                minted = _load_hook_secret() or _mint_hook_secret()
+                desired["authHeader"] = minted
+            elif desired["id"] == HOOK_ID and not _load_hook_secret():
+                # The row carries a header we no longer hold the secret for —
+                # a data/ recreated without its volume. The row is ours (we
+                # minted that header, under our id), so rotate it rather than
+                # leave verification silently off for good.
+                minted = _mint_hook_secret()
+                desired["authHeader"] = minted
             # Union rather than replace: an operator who subscribed our row to
             # something extra in the station's own UI keeps it.
             desired["events"] = sorted(
@@ -363,6 +451,10 @@ async def register_station_webhook() -> None:
                             permanent=write.status_code not in (401, 403))
                 return
 
+            # Persisted only now: a refused write must not leave the receiver
+            # demanding a header the station never agreed to send.
+            if minted:
+                _store_hook_secret(minted)
             _hook_state.update(registered=True, station=station,
                                events=desired["events"],
                                detail=_settled_detail(desired))
@@ -406,6 +498,7 @@ async def fire_test_hook() -> dict:
     hook_id = _hook_state.get("id") or HOOK_ID
     url = _hook_state.get("url") or _receiver_url()
     before = _hook_state.get("received", 0)
+    rejected_before = _hook_state.get("rejected", 0)
 
     try:
         async with _admin_client(user, password) as c:
@@ -438,6 +531,20 @@ async def fire_test_hook() -> dict:
         if _hook_state.get("received", 0) > before:
             return {"ok": True, "fired": True, "url": url,
                     "detail": f"the station's push reached {url}"}
+        # A push that arrived and was turned away is a different failure from
+        # one that never arrived: the network is fine, the header is not —
+        # a hand-edited header on our row, or a secret that drifted. Both
+        # sides of it are ours to fix: drop the local secret and re-arm, and
+        # the next reconcile sees our row holding a header we no longer
+        # recognise and rotates it (the id == HOOK_ID branch).
+        if _hook_state.get("rejected", 0) > rejected_before:
+            _store_hook_secret("")
+            _hook_state.update(registered=False)
+            return {"ok": False, "fired": True, "url": url,
+                    "detail": "the push arrived but its Authorization header "
+                              "didn't match — rotating it; this will "
+                              "re-register with a fresh header on the next "
+                              "warm tick"}
         await asyncio.sleep(0.05)
 
     return {"ok": False, "fired": True, "url": url,

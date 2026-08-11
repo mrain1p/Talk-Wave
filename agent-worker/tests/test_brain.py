@@ -349,13 +349,17 @@ class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
         # prompt-like title lands in the SYSTEM PROMPT and re-costs every turn.
         from brain.briefing import _fmt_now_playing, _tracks
 
+        # 0.10.61 raised the per-field caps for obvious headroom (title/album
+        # 200), so a maxed line is longer — but still BOUNDED. The point is
+        # that a multi-KB junk field can't reach the prompt, not the exact
+        # ceiling: five 5000-char fields collapse from 25KB to ~1KB.
         np = {"nowPlaying": {"title": "x" * 5000, "artist": "y" * 5000,
                              "album": "z" * 5000, "genre": "g" * 5000,
                              "moods": ["m" * 900] * 5}}
         line = _fmt_now_playing(np)
-        self.assertLess(len(line), 700, f"now-playing rendered {len(line)}")
+        self.assertLess(len(line), 1300, f"now-playing rendered {len(line)}")
         rows = _tracks([{"title": "t" * 5000, "artist": "a" * 5000}], 4)
-        self.assertTrue(all(len(r) < 300 for r in rows), rows)
+        self.assertTrue(all(len(r) < 500 for r in rows), rows)
 
     def test_an_ordinary_now_playing_still_reads_naturally(self):
         from brain.briefing import _fmt_now_playing

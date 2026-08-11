@@ -501,6 +501,32 @@ class StationClient:
             log.info("skill catalogue unavailable: %s", describe(e))
             return []
 
+    async def recent_tracks(self, limit: int = 12) -> list[dict]:
+        """The library's newest arrivals — /dj/recent, flattened by the
+        station into the same queue-ready shape /dj/search returns.
+
+        Admin-gated like the search it feeds; empty list when unavailable,
+        which the tool reports honestly rather than inventing arrivals.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get(
+                "/dj/recent",
+                params={"limit": max(1, int(limit))},
+                auth=httpx.BasicAuth(user, password),
+            )
+            r.raise_for_status()
+            d = _body(r)
+            items = d.get("results") or d.get("result") or []
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            log.info("recent tracks unavailable: %s", describe(e))
+            return []
+
     async def run_skill(self, name: str) -> dict:
         """Fire one of the station's own segments. Admin-only."""
         from station_config import admin_credentials

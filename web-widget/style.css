@@ -1279,21 +1279,25 @@
   .panel h2 { margin: 0 0 2px; font-size: 15px; font-weight: 700; }
   .panel .sub { margin: 0 0 16px; font-size: 12px; color: var(--dimmer); line-height: 1.5; }
 
-  /* --- getting around: the jump bar and the line's own state ------------- */
-  /* Six super-groups and roughly forty disclosures below them. Without this
-     the only way to the bottom is scrolling past every section in between,
-     which is also how a switch gets flipped on the way past. */
-  /* The sections' menu, not a stray row of chips: full width, every entry an
+  /* --- getting around: the page picker and the line's own state ---------- */
+  /* The panel is PAGES since 0.10.62: one super-group at a time behind
+     /settings#<id>, picked here. Membership is a class, not style.display —
+     applyVisibility and the search own inline display on the same elements,
+     and a third writer on one property is how hidden things end up shown.
+     !important on purpose: the class must beat those inline writes while it
+     is on, and hand straight back to them when paintPage takes it off. */
+  .offpage { display: none !important; }
+  /* The pages' menu, not a stray row of chips: full width, every entry an
      equal share of the row, hairlines above and below like a nav strip, and
      a micro-label saying what it is. Chips (999px pills, content-sized) read
-     as filters; a jump-to reads as a menu. Operator-requested. */
+     as filters; a picker reads as a menu. Operator-requested. */
   .panelnav {
     display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch;
     width: 100%; margin: 0 0 14px; padding: 7px 0;
     border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   }
   .panelnav::before {
-    content: "Jump to"; align-self: center; white-space: nowrap;
+    content: "Pages"; align-self: center; white-space: nowrap;
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
     padding: 0 10px 0 2px;
@@ -3278,10 +3282,10 @@
     fill: color-mix(in srgb, var(--coral) 8%, transparent); stroke: none;
   }
 
-  /* --- spec §8: the settings header sticks, jump bar and all ---------------- */
-  /* The whole band — heading, promise, finder, jump chips — travels with the
-     reader (operator's ask, extending the spec's sticky bar): search and
-     navigation are never a scroll away on a six-screen page. */
+  /* --- spec §8: the settings header sticks, page picker and all ------------- */
+  /* The whole band — heading, promise, finder, page chips — leads the page
+     and travels with the reader (operator's ask): search and the picker are
+     never a scroll away, on the dashboard or any page behind it. */
   body.panelpage .settingsbar {
     position: sticky; top: 0; z-index: 40; background: var(--pine);
     border-bottom: 1px solid var(--edge);
@@ -3296,17 +3300,15 @@
   }
   body.panelpage .panelnav::-webkit-scrollbar { display: none; }
   body.panelpage .panelnav a { flex: 1 0 auto; white-space: nowrap; }
-  body.panelpage .panelnav a.navtop {
+  /* The current page's chip: coral ink and a light coral fill — one mark,
+     because there is exactly one page open at a time. */
+  body.panelpage .panelnav a.here {
     color: var(--coral); border-color: var(--coral);
     background: color-mix(in srgb, var(--coral) 10%, transparent);
   }
-  /* The you-are-here chip: coral ink, no fill — the filled tint stays the
-     dashboard chip's, so the two marks read as different claims. */
-  body.panelpage .panelnav a.here {
-    color: var(--coral); border-color: var(--coral);
-  }
-  /* Jump targets clear the sticky band instead of vanishing under it — the
-     band measures itself into --stickybar (see watchNav in panel.js). */
+  /* In-page jump targets (tiles, key-row links) clear the sticky band
+     instead of vanishing under it — the band measures itself into
+     --stickybar (see sizeStickyBar in panel.js). */
   body.panelpage .supergroup,
   body.panelpage details.sec,
   body.panelpage details.diag {

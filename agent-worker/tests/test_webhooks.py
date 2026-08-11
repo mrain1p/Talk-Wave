@@ -70,10 +70,11 @@ class _FakeStation:
 
 
 class _FakeHookRequest:
-    """Enough of an aiohttp request for the receiver, which only reads a body."""
+    """Enough of an aiohttp request for the receiver: a body and headers."""
 
-    def __init__(self, body):
+    def __init__(self, body, headers=None):
         self._body = body
+        self.headers = dict(headers or {})
 
     async def json(self):
         return self._body
@@ -350,6 +351,126 @@ class TestPointingAtANewStationRegistersAgain(_StationWebhooks):
         self.assertNotIn("gave_up", self.hooks._hook_state)
 
 
+class TestOurPushesCarryAnAuthHeader(_StationWebhooks):
+    """The station echoes a per-hook Authorization header verbatim on every
+    push — the only authentication an unsigned webhook can have. Registration
+    mints one and the receiver turns away pushes that don't carry it back.
+    Before this, anyone who could reach the port could drive the card's
+    cache-bust loop; the station supported the header all along and we simply
+    never asked for it."""
+
+    def test_registration_writes_a_header_and_keeps_it_stable(self):
+        station = self.register(_FakeStation())
+        header = station.rows[0].get("authHeader")
+        self.assertTrue(header, station.rows[0])
+        self.assertTrue(header.startswith("Bearer "))
+        self.assertEqual(self.hooks._load_hook_secret(), header)
+        # Re-registering must not rotate it: the station would then hold a
+        # header this receiver no longer recognises until the next write.
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        self.assertEqual(station.rows[0].get("authHeader"), header)
+
+    def test_a_push_with_the_right_header_is_counted(self):
+        self.register(_FakeStation())
+        before = self.hooks._hook_state["received"]
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "track.play"},
+            headers={"Authorization": self.hooks._load_hook_secret()})))
+        self.assertEqual(self.hooks._hook_state["received"], before + 1)
+
+    def test_a_push_without_the_header_is_turned_away(self):
+        self.register(_FakeStation())
+        before = self.hooks._hook_state["received"]
+        resp = asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))
+        self.assertEqual(resp.status, 401)
+        self.assertEqual(self.hooks._hook_state["received"], before,
+                         "a rejected push must not count as received")
+        self.assertEqual(self.hooks._hook_state.get("rejected"), 1)
+
+    def test_before_any_registration_the_receiver_stays_open(self):
+        # No credentials, or an old station: no secret has ever been minted,
+        # so pushes keep working exactly the way they always did.
+        before = self.hooks._hook_state["received"]
+        resp = asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(self.hooks._hook_state["received"], before + 1)
+
+    def test_an_operator_set_header_on_an_adopted_row_is_not_replaced(self):
+        # A row we adopt by URL keeps its foreign id, and a header on it is
+        # the operator's — not ours to overwrite with a minted one.
+        station = _FakeStation(rows=[{
+            "id": "wh_8f21", "url": "http://192.0.2.7:8100/hooks/station",
+            "events": ["track.play"], "enabled": True, "authHeader": "set",
+        }])
+        self.register(station)
+        self.assertEqual(station.rows[0]["authHeader"], "set")
+        self.assertEqual(self.hooks._load_hook_secret(), "",
+                         "no secret may be minted for a header we don't hold")
+
+    def test_a_lost_secret_rotates_our_own_rows_header(self):
+        # data/ recreated without its volume: the station still holds our row
+        # with the old header and nothing local can verify it. The row is
+        # ours — our id, so we minted that header — and rotating beats a
+        # verification that is silently off forever.
+        station = self.register(_FakeStation())
+        old = station.rows[0]["authHeader"]
+        self.hooks._store_hook_secret("")
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        new = station.rows[0]["authHeader"]
+        self.assertNotEqual(new, old)
+        self.assertEqual(self.hooks._load_hook_secret(), new)
+
+    def test_a_rejected_test_fire_rotates_and_says_why(self):
+        # The push ARRIVING with the wrong header is a different failure from
+        # never arriving — the network is fine — and it is self-healing:
+        # drop the secret, re-arm, and the next reconcile rotates the header.
+        async def fire():
+            await self.hooks.handle_station_hook(_FakeHookRequest(
+                {"event": "test"}, headers={"Authorization": "Bearer wrong"}))
+            return _FakeResponse(200, {"ok": True})
+
+        station = self.register(_FakeStation(on_test=fire))
+        self.hooks._admin_client = station
+        result = asyncio.run(self.hooks.fire_test_hook())
+        self.assertFalse(result["ok"], result)
+        self.assertIn("Authorization", result["detail"])
+        self.assertFalse(self.hooks._hook_state["registered"])
+        self.assertEqual(self.hooks._load_hook_secret(), "")
+
+
+class TestStaleLookalikeRowsAreSurfacedNotDeleted(_StationWebhooks):
+    """Observed live (2026-08-11): four rows on one station all pointing at a
+    /hooks/station path — a Docker-internal address minted before
+    CALLIN_HOOK_URL existed, a previous host, one duplicated outright — and
+    only one of them real. Every event cost three failed POSTs and the strays
+    burn station slots for good. They are not ours to delete (a second Talk
+    Wave against the same station is legitimate), but the panel gets to say
+    they exist."""
+
+    def test_other_receivers_at_our_path_are_flagged_and_kept(self):
+        station = _FakeStation(rows=[
+            {"id": "wh_old1", "url": "http://172.20.0.13:8100/hooks/station",
+             "events": ["track.play"], "enabled": True},
+            {"id": "their_bot", "url": "https://example.invalid/hook",
+             "events": ["dj.say"], "enabled": True},
+        ])
+        self.register(station)
+        self.assertEqual(self.hooks._hook_state["lookalikes"],
+                         ["http://172.20.0.13:8100/hooks/station"])
+        # Flagged is ALL they are — both foreign rows are still there.
+        self.assertEqual(len(station.rows), 3, station.rows)
+
+    def test_our_own_settled_row_is_not_flagged(self):
+        station = self.register(_FakeStation())
+        self.hooks._hook_state.update(registered=False, station="")
+        self.register(station)
+        self.assertEqual(self.hooks._hook_state["lookalikes"], [])
+
+
 class TestADeliveredPushIsProvedRatherThanAssumed(_StationWebhooks):
     """"Registered" only ever meant the station accepted a row.
 
@@ -360,10 +481,12 @@ class TestADeliveredPushIsProvedRatherThanAssumed(_StationWebhooks):
     """
 
     def _delivering(self):
-        """A station that pushes at us before answering, as the real one does."""
+        """A station that pushes at us before answering, as the real one does —
+        including echoing back the Authorization header registration stored."""
         async def fire():
-            await self.hooks.handle_station_hook(
-                _FakeHookRequest({"event": "test", "t": "now"}))
+            await self.hooks.handle_station_hook(_FakeHookRequest(
+                {"event": "test", "t": "now"},
+                headers={"Authorization": self.hooks._load_hook_secret()}))
             return _FakeResponse(200, {"ok": True})
 
         return _FakeStation(on_test=fire)

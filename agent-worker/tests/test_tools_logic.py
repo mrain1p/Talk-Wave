@@ -280,10 +280,13 @@ class TestMainToolLogic(_TempStores):
             station_config.admin_credentials = lambda: ("dj", "secret")
             self.assertFalse(self.registry.library_search_needs_mcp())
             self.assertNotIn("subwave_search_library", self.registry.mcp_allowlist(cfg))
+            # With credentials the recently-added read rides along — same
+            # switch, same credentials, and no MCP tool to stand in for it.
             self.assertEqual(
                 [t.info.name for t in self.music.build_library_tools(
                     cfg, None, self.actions.CallActions(0))],
-                ["subwave_current_lyrics", "subwave_search_library"])
+                ["subwave_current_lyrics", "subwave_search_library",
+                 "subwave_recent_tracks"])
         finally:
             station_config.admin_credentials = original
 

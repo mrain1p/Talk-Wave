@@ -93,6 +93,15 @@ TOOLS: tuple[Tool, ...] = (
          "served by a local wrapper that also retries with the 'by' connector "
          "stripped.",
          mcp_fallback=True),
+    # REST-only at the station (/dj/recent) — there is no MCP tool for it, so
+    # like the lyrics read our wrapper is the only way to serve it at all.
+    Tool("subwave_recent_tracks", "allow_library_search", LOCAL,
+         "What's newly arrived in the library, newest first.",
+         "Station admin credentials required — the station's recently-added "
+         "read. Shares the library-search switch deliberately: both answer "
+         "'what have you got', and an operator happy to expose one has no "
+         "reason to hide the other.",
+         needs_station_admin=True),
     Tool("subwave_queue_track", "allow_exact_queue", LOCAL,
          "Queues the exact track from a search result, by id — no re-matching, "
          "no DJ intro.",

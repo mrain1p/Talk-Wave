@@ -149,6 +149,7 @@ from tests.test_music_tools import (  # noqa: F401
     TestLikingTheTrackOnAir,
     TestSearchPagesLikeTheStation,
     TestSearchingForWhatTheCallerActuallySaid,
+    TestWhatsNewInTheLibrary,
 )
 from tests.test_takeover import (  # noqa: F401
     TestCancellingATakeover,
@@ -190,8 +191,10 @@ from tests.test_webhooks import (  # noqa: F401
     TestADeliveredPushIsProvedRatherThanAssumed,
     TestARefusedRegistrationSaysWhichFieldWasWrong,
     TestOtherWebhookRowsSurviveOurRegistration,
+    TestOurPushesCarryAnAuthHeader,
     TestOurWebhookRowKeepsItsIdentity,
     TestPointingAtANewStationRegistersAgain,
+    TestStaleLookalikeRowsAreSurfacedNotDeleted,
     TestTheRegistrationShapeIsTheOneTheStationReads,
     TestTheRenameDoesNotOrphanTheOldRow,
     TestWeOnlyAskForEventsTheStationKnows,
