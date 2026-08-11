@@ -536,3 +536,47 @@ class TestADeliveredPushIsProvedRatherThanAssumed(_StationWebhooks):
             asyncio.run(self.hooks.handle_station_hook(
                 _FakeHookRequest({"event": "track.play"})))
         self.assertEqual(self.hooks._hook_state["received"], before + 3)
+
+
+class TestAVoicePushAnchorsTheAirGuard(_StationWebhooks):
+    """The on-air guard anchors its hold on the push file (0.10.69): a
+    verified dj.say/dj.link push lands at the station's handoff instant,
+    seconds before the guard's 4s log poll would notice — which was most of
+    why the hold ran early against the audible link. Only VERIFIED pushes may
+    write the file: an open receiver steering the gate would let anyone on
+    the LAN gag the call DJ at will."""
+
+    def test_a_verified_voice_push_writes_the_air_file(self):
+        import time
+
+        self.register(_FakeStation())
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "dj.say", "text": "That was Riverside, by America."},
+            headers={"Authorization": self.hooks._load_hook_secret()})))
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertEqual(d["event"], "dj.say")
+        self.assertIn("Riverside", d["text"])
+        self.assertLess(abs(time.time() - d["at"]), 5)
+
+    def test_an_unverified_push_never_steers_the_gate(self):
+        # No secret minted: the receiver stays open for compatibility, but a
+        # push nothing vouched for must not move the call DJ's gate.
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "dj.say", "text": "gag the DJ"})))
+        self.assertFalse(self.hooks._air_path().exists())
+
+    def test_a_track_push_is_not_a_voice_event(self):
+        self.register(_FakeStation())
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "track.play", "text": "x"},
+            headers={"Authorization": self.hooks._load_hook_secret()})))
+        self.assertFalse(self.hooks._air_path().exists())
+
+    def test_the_two_processes_agree_on_the_file_address(self):
+        # call/air.py duplicates the path derivation rather than importing the
+        # HTTP surface; if the two drift, the worker reads a file nobody
+        # writes and the anchor silently stops working.
+        from call import air as call_air
+
+        self.assertEqual(str(self.hooks._air_path()),
+                         str(call_air._air_path()))

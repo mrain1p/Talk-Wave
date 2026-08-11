@@ -65,6 +65,17 @@ def _secret_path() -> Path:
                 or Path(__file__).parent.parent.parent / "data" / "hook-secret.json")
 
 
+def _air_path() -> Path:
+    """Where the last VERIFIED voice push is written for the worker's on-air
+    guard. Derived from the secret path's directory so a deployment (or a
+    test) that redirects one redirects the other. call/air.py carries a twin
+    of this derivation — duplicated so the worker does not import the HTTP
+    surface for one path string; TestThePushFileHasOneAddress pins them
+    together."""
+    return Path(os.environ.get("CALLIN_HOOK_AIR_PATH")
+                or _secret_path().with_name("hook-air.json"))
+
+
 def _load_hook_secret() -> str:
     try:
         d = json.loads(_secret_path().read_text())
@@ -228,6 +239,24 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     # Saturates at the deque's length, so it cannot be counted from the list.
     _hook_state["received"] = _hook_state.get("received", 0) + 1
     log.info("station webhook: %s", event)
+
+    # The worker's on-air guard anchors its hold on this file: a dj.say or
+    # dj.link push lands at the station's HANDOFF instant, seconds before the
+    # guard's 4s log poll would notice — which was most of why the hold ran
+    # early against the audible link (0.10.69). VERIFIED pushes only: an open
+    # receiver writing this would let anyone on the LAN gag the call DJ at
+    # will, which is exactly the "never act on their contents" rule above.
+    if expected and event in ("dj.say", "dj.link") and isinstance(body, dict):
+        try:
+            path = _air_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({
+                "at": time.time(),
+                "event": event,
+                "text": str(body.get("text") or "")[:2000],
+            }))
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not write the on-air push file: %s", e)
 
     # Anything that changes what the card shows invalidates the cache — but not
     # more often than the cache would have expired anyway.

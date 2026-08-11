@@ -275,6 +275,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # clear.
     "avoid_on_air_overlap": (None, True),
     "on_air_quiet_secs":    (None, 30),
+    # Every station signal (log entry, push, its own overlay) is stamped at
+    # HANDOFF; the audible link runs this many seconds behind it. Added to
+    # the hold's tail so the call DJ stops coming back over the link's last
+    # words. Default 2 changes behaviour on purpose (0.10.69): the tail
+    # ending early was the reported bug.
+    "on_air_lag_secs":      (None, 2),
 
     # The station refuses song requests when nobody is tuned in. A caller on
     # the line is engaged with the station but isn't pulling the stream, so
@@ -1228,6 +1234,14 @@ SCHEMA: dict[str, dict] = {
         help="Only a fallback, for when the station's log doesn't say what was "
              "spoken — when it does, the hold is sized to the words themselves. "
              "A typical link runs 20–30 seconds."),
+    "on_air_lag_secs": dict(group="onair", kind="number",
+        label="Handoff-to-air lag (s)",
+        needs=("avoid_on_air_overlap", True),
+        help="The station stamps a link when it HANDS the audio over, a few "
+             "seconds before it is audible on the stream — even its own "
+             "player overlay runs early. This gap is added to the hold's "
+             "tail so the DJ stops coming back over the link's last words. "
+             "Raise it if the DJ still returns early; 0 turns it off."),
 
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "

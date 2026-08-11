@@ -191,6 +191,7 @@ from tests.test_station import (  # noqa: F401
 )
 from tests.test_webhooks import (  # noqa: F401
     TestADeliveredPushIsProvedRatherThanAssumed,
+    TestAVoicePushAnchorsTheAirGuard,
     TestARefusedRegistrationSaysWhichFieldWasWrong,
     TestOtherWebhookRowsSurviveOurRegistration,
     TestOurPushesCarryAnAuthHeader,
