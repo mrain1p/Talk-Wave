@@ -275,6 +275,12 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "voicemailWhen": settings_store.voicemail_policy(cfg),
         "callLabel": call_button_label(cfg, persona_name),
         "askFeedback": bool(cfg.get("ask_call_feedback")),
+        # Per-door (operator's ask): the text line and the machine each read
+        # their own switch rather than inheriting the call's.
+        "askChatFeedback": bool(cfg.get("ask_chat_feedback")),
+        "askVmFeedback": bool(cfg.get("ask_vm_feedback")),
+        # An embed sits flush by default; this is the opt-back-in outline.
+        "embedOutline": bool(cfg.get("embed_card_outline")),
     }
 
 

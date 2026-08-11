@@ -140,6 +140,13 @@
     border: 1px solid var(--edge); border-radius: 16px;
     background: var(--granite); box-shadow: var(--shadow);
   }
+  /* Flush mode, embeds only (call.js applyControls): the host page shows
+     through where the card's own sheet was. The inner surfaces — transcript
+     box, buttons, meters — keep their skins; it is the outer shell that
+     disappears into the host's area. */
+  .card.bare {
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  }
   /* Avatar beside the text rather than stacked above it — the stacked version
      wasted vertical space and pushed the captions off screen. */
   .who-row {
@@ -694,10 +701,11 @@
   /* Open mic is a state like muted, not a second primary — the fill only
      arrives while the bar is genuinely live. */
   .card .pttbar {
-    /* Taller than the buttons beside it — it is the primary control on a call
-       and it is HELD, not tapped, so it wants a thumb-sized target. It was
-       36px and the operator reported it hard to press. */
-    flex: 1 1 auto; min-width: 0; height: 46px; padding: 0;
+    /* 36px here, 60px on phones (media block below). The "hard to press"
+       report that grew this bar was about THUMBS — the operator later
+       clarified desktop was never the problem — so the tall target is a
+       phone-only treatment and regular screens keep the ordinary height. */
+    flex: 1 1 auto; min-width: 0; height: 36px; padding: 0;
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 3px;
     border: 1px solid var(--amber); background: transparent; color: var(--amber);
@@ -1425,50 +1433,52 @@
      you change anything below. Bordered and above the fold because none of it
      is one of the settings — the button acts immediately, and the tiles are
      read-back rather than input. */
-  /* Four labelled groups (operator's sketch, round four): the ACTING side
-     fills the top — Transmission on the left, the two doors it feeds
-     stacked beside it — and the read-only Station strip runs full width
-     underneath. Each door still sits with the traffic it produces.
-     Stacks to one column when narrow. */
+  /* The newspaper order (spec §2b): the read-only station strip leads —
+     four columns directly under the masthead — then TRANSMISSION with its
+     LINES indented beneath THE LINE, each door beside the traffic it
+     produces. Stacks to one column when narrow. */
   .dash {
     margin: 0 0 16px; padding: 12px 13px;
     border: 1px solid var(--line2); border-radius: 12px; background: var(--bg);
-    display: grid; gap: 10px;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
-    /* Transmission spans the left; the three MODES — live calls, voicemail,
-       the text line — stack on the right as parallel switch+traffic cards;
-       Station's read-only tiles run full width underneath. The text line
-       used to have no grid-area at all, so it fell out of the grid and sat
-       orphaned below everything (operator-reported "ugly"). */
-    grid-template-areas: "trans live" "trans vm" "trans chat" "station station";
-    align-items: stretch;
+    display: flex; flex-direction: column; gap: 10px;
   }
-  .dash > .transmission { grid-area: trans; }
-  .dash > .livegroup { grid-area: live; }
-  .dash > .vmgroup { grid-area: vm; }
-  .dash > .chatgroup { grid-area: chat; }
-  .dash > .stationgroup { grid-area: station; }
+  .stationstrip {
+    display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
   .dashgroup {
     border: 1px solid var(--line2); border-radius: 10px;
     padding: 9px 10px 8px; display: flex; flex-direction: column;
   }
-  .grouprow {
-    display: grid; gap: 8px; grid-auto-rows: 1fr; flex: 1;
-    grid-template-columns: repeat(2, 1fr);
+  /* Caption row: the group's micro-label left, the what-it-amounts-to
+     sentence right, sharing one rule. */
+  .dashcaption {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
   }
-  .stationgroup .grouprow { grid-template-columns: repeat(3, 1fr); }
-  .transmission .dashctrl { flex: 1; grid-template-columns: 1fr; }
+  .dashcaption .dashmodesay { margin: 0; text-align: right; }
+  .lines { margin-top: 8px; }
+  .lineslabel {
+    margin: 0 0 2px; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+    color: var(--sage-dim);
+  }
+  .lineslabel em {
+    font-style: normal; font-weight: 400; letter-spacing: .04em;
+    color: var(--sage-dim); margin-left: 8px; text-transform: none;
+  }
+  /* One row per line: the switch card takes the width, the stat pair keeps
+     a fixed right column so numbers line up down the block. */
+  .linerow {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+    gap: 8px; align-items: stretch;
+  }
   @media (max-width: 940px) {
-    .dash {
-      grid-template-columns: 1fr;
-      grid-template-areas: "trans" "live" "vm" "chat" "station";
-    }
+    .stationstrip { grid-template-columns: repeat(2, 1fr); }
   }
   @media (max-width: 700px) {
-    .grouprow, .stationgroup .grouprow { grid-template-columns: 1fr; }
+    .stationstrip { grid-template-columns: 1fr; }
+    .linerow { grid-template-columns: 1fr; }
   }
-  @media (max-width: 940px) { .dash { grid-template-columns: 1fr; } }
-  .dashmain { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
   /* The real field behind the button. Not `hidden` and not display:none —
      both remove it from the form in ways that have surprised people before —
      but it must not be clickable, focusable or visible, because clicking it
@@ -1489,10 +1499,6 @@
   label.check .hint.inlabel {
     display: inline; margin: 0 0 0 8px; font-weight: 400;
   }
-  /* Rating filters on the call list: one at a time, stacking with the
-     problems checkbox. */
-  .calllist.onlydown .callrow:not([data-rating="down"]),
-  .calllist.onlyup .callrow:not([data-rating="up"]) { display: none; }
   .runbtn.on { border-color: var(--accent); color: var(--accent); }
   /* set / not set beside a credential heading */
   .settingsearch {
@@ -1565,17 +1571,6 @@
     position: absolute; width: 1px; height: 1px; overflow: hidden;
     clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
   }
-  /* Sized and coloured like the thing it is. Every other button on this page
-     is a test or a save; this one closes the line for everybody. */
-  /* The dashboard's controls are CARDS in the tiles' own grid — same
-     columns, same height, same radius — because a chip row floating above
-     a card grid read as two pages sharing a corner. Operator-reported.
-     Structure per card: micro label / state word / one-line note. All
-     three post the moment they're pressed. */
-  .dashctrl {
-    display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 1fr;
-  }
   /* Every dashboard group carries the same micro-label voice. The box
      itself is .dashgroup, defined with the dash grid above. */
   .dashgroup .tlabel {
@@ -1583,8 +1578,7 @@
     letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
     color: var(--sage-dim);
   }
-  .transmission .dashmodesay { margin: 8px 2px 0; }
-  .ctrlcard.kill { grid-column: 1 / -1; position: relative; padding-right: 66px; }
+  .ctrlcard.kill { position: relative; padding-right: 66px; }
   .ctrlcard { position: relative; }
   /* Drawn switches, so every card READS as the toggle it is — the whole
      card is still the button; the switch is its state, not a second
@@ -1606,19 +1600,19 @@
   .ctrlcard.on .switch::after,
   .ctrlcard.kill:not(.paused) .switch::after { left: 20px; }
   .ctrlcard.kill.paused .switch { background: var(--accent); }
-  /* The two doors wear smaller switches than the master — same vocabulary,
+  /* The three lines wear smaller switches than the master — same vocabulary,
      lower rank. Their cards make room on the right. */
-  .dashctrl .ctrlcard:not(.kill) { padding-right: 48px; }
+  .linerow .ctrlcard:not(.kill) { padding-right: 48px; }
   .ctrlcard .switch.small { width: 30px; height: 17px; right: 11px; }
   .ctrlcard .switch.small::after { width: 13px; height: 13px; }
   .ctrlcard.on .switch.small::after { left: 15px; }
-  /* Held, not broken: while the line is paused the two doors keep saying
+  /* Held, not broken: while the line is paused the three lines keep saying
      which way they point, dimmed and warmed amber — waiting, in the state
      vocabulary, rather than off or at fault. */
-  .dashctrl .ctrlcard:disabled {
+  .linerow .ctrlcard:disabled {
     border-color: color-mix(in srgb, var(--warn) 55%, var(--line2));
   }
-  .dashctrl .ctrlcard:disabled .cv { color: var(--warn); }
+  .linerow .ctrlcard:disabled .cv { color: var(--warn); }
   .ctrlcard {
     display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
     padding: 9px 11px; min-height: 64px; border-radius: 10px;
@@ -2101,7 +2095,9 @@
   .diagbar[hidden] { display: none; }
   .diagbar label { font-size: 11.5px; color: var(--dimmer); }
   .diagbar .grow { flex: 1 1 auto; }
-  .diagbar select[multiple] {
+  /* All of a diagbar's selects, not just multi-selects — the calls bar's
+     three dropdowns and the logs' level floor wear one skin. */
+  .diagbar select {
     font-size: 11.5px; padding: 3px 6px; border-radius: 7px;
     background: var(--bg); color: var(--text); border: 1px solid var(--line2);
     min-width: 104px;
@@ -2315,7 +2311,11 @@
      a layout to fix. */
   .callrow > summary {
     display: grid; width: 100%;
-    grid-template-columns: 16px 144px minmax(0, 1fr) 46px 116px minmax(0, 1.3fr);
+    /* The tools column is flexible, not 116px: with the tool chips beside the
+       turn count, a fixed track cut chips off mid-word ("search…" and a bare
+       clipped border, operator screenshot) while the note column beside it
+       sat empty on every passing call. */
+    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr);
     gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
   }
@@ -2415,7 +2415,10 @@
   /* A tool that came back with a refusal is the line you are looking for. */
   .cbline.tool.bad .w, .cbline.tool.bad .x { color: color-mix(in srgb, var(--accent) 78%, var(--text)); }
 
-  .calllist.onlybad .callrow.pass { display: none; }
+  /* Every toolbar filter hides rows through the one JS pass in
+     panel-viewers.js — the one-class-per-filter CSS this replaced could not
+     combine a dropdown's value with the thumbs and problems toggles. */
+  .callrow[hidden] { display: none; }
 
   .snippet {
     width: 100%; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px;
@@ -3029,6 +3032,298 @@
   body.panelpage .ctrlcard .switch.small { width: 30px; height: 17px; }
   body.panelpage .ctrlcard .switch.small::after { width: 13px; height: 13px; top: 2px; left: 2px; }
   body.panelpage .ctrlcard.on .switch.small::after { left: 15px; }
+
+  /* --- spec §2b/§6: the station strip and the LINES hierarchy -------------- */
+  /* The four read-backs as one ruled strip under the masthead: columns, not
+     cards — each tile keeps only its own ink and the strip carries the rule. */
+  body.panelpage .stationstrip {
+    border-bottom: 1px solid var(--hairline); padding-bottom: 6px;
+  }
+  body.panelpage .stationstrip .tile { border-bottom: 0; }
+  /* Square avatar, per the spec's data-avatar note — circles are the one
+     rounded shape left on a page that zeroed every other radius. */
+  body.panelpage .stationstrip .tavatar { border-radius: 0; }
+  body.panelpage .dashcaption {
+    border-bottom: 1px solid var(--hairline); padding-bottom: 6px;
+    margin-bottom: 8px;
+  }
+  body.panelpage .dashcaption .tlabel {
+    border-bottom: 0; padding-bottom: 0; margin-bottom: 0;
+  }
+  body.panelpage .dashcaption .dashmodesay {
+    font-style: italic; color: var(--sage);
+  }
+  /* THE LINE speaks a size up — it is the master, and "Open" in 19px coral
+     is the one glance the whole band exists for. */
+  body.panelpage .ctrlcard.kill .cv { font-size: 19px; }
+  /* LINES indent under the door they hang off: a 1px --edge left rule, the
+     sub-caption, and one hairline-ruled row per line. */
+  body.panelpage .lines {
+    margin: 10px 0 0 10px; padding-left: 14px;
+    border-left: 1px solid var(--edge);
+  }
+  body.panelpage .linerow { border-bottom: 1px solid var(--hairline); }
+  body.panelpage .linerow:last-child { border-bottom: 0; }
+  body.panelpage .linerow .ctrlcard,
+  body.panelpage .linerow .tile { border-bottom: 0; }
+  /* A line row reads left to right: switch, "Live calls · On", then the
+     chips and detail underneath — the switch spans both text rows. */
+  body.panelpage .linerow .ctrlcard {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-areas: "sw name state" "sw note note";
+    column-gap: 10px; row-gap: 4px; align-items: center;
+    padding: 9px 2px; min-height: 0;
+  }
+  /* relative, not static: the knob is an absolute ::after and must keep
+     anchoring to its own track — static re-anchored it to the card and the
+     knob sat loose above the outline. */
+  body.panelpage .linerow .ctrlcard .switch {
+    position: relative; right: auto; top: auto; transform: none;
+    grid-area: sw; justify-self: start;
+  }
+  body.panelpage .linerow .ctrlcard .ck {
+    grid-area: name; font-size: 13px; letter-spacing: .02em;
+    color: var(--alpenglow); text-transform: none;
+  }
+  body.panelpage .linerow .ctrlcard .cv {
+    grid-area: state; font-size: 13px; justify-self: start;
+  }
+  body.panelpage .linerow .ctrlcard .cv::before { content: "· "; }
+  body.panelpage .linerow .ctrlcard .cn {
+    grid-area: note; display: flex; flex-wrap: wrap; align-items: center;
+    gap: 4px 6px; font-size: 11px; color: var(--sage);
+  }
+  /* Permission chips (spec §6): what each tier gets, worn on the row rather
+     than buried in a muted sentence. paintDash builds them. */
+  body.panelpage .permchip {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--sage);
+    border: 1px solid var(--edge); padding: 3px 6px; white-space: nowrap;
+  }
+  /* The stat pair rides the row's right edge: value over note, failures in
+     coral — the spec is explicit that a failure count is never amber. */
+  body.panelpage .linerow .tile {
+    display: flex; flex-direction: column; align-items: flex-end;
+    justify-content: center; gap: 2px; text-align: right;
+    padding: 6px 2px; min-height: 0;
+  }
+  body.panelpage .linerow .tile .tk { display: none; }
+  body.panelpage .linerow .tile .tv {
+    font-size: 15px; font-weight: 700; color: var(--alpenglow);
+  }
+  body.panelpage .linerow .tile .tn { font-size: 11px; color: var(--sage); }
+  body.panelpage .linerow .tile.warn .tn { color: var(--coral); }
+  @media (max-width: 700px) {
+    body.panelpage .linerow .tile {
+      align-items: flex-start; text-align: left; padding-top: 0;
+    }
+  }
+
+  /* --- spec §7: the ACTIVITY strip ------------------------------------------ */
+  body.panelpage .activity { margin: 0 0 20px; }
+  body.panelpage .actcaption {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding-bottom: 7px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  body.panelpage .actcaption .tlabel {
+    margin: 0; font: 700 11px/1 var(--font-mono); letter-spacing: .28em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  /* The hairline that fills the caption's middle. */
+  body.panelpage .actspacer { flex: 1 1 30px; height: 1px; background: var(--hairline); }
+  body.panelpage .actshow {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--sage);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  body.panelpage .actshow input {
+    width: 40px; text-align: center; padding: 5px 0;
+    font: 700 10px var(--font-mono);
+  }
+  /* Square segments, -1px overlap so the shared borders read as one rule;
+     the active segment is the coral one. */
+  body.panelpage .actcaption .segs { display: inline-flex; }
+  body.panelpage .actcaption .seg {
+    margin-left: -1px; border: 1px solid var(--edge); border-radius: 0;
+    background: transparent; color: var(--dim); cursor: pointer;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; padding: 6px 11px;
+  }
+  body.panelpage .actcaption .seg:first-child { margin-left: 0; }
+  body.panelpage .actcaption .seg.on {
+    position: relative; z-index: 1; border-color: var(--coral);
+    color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 10%, transparent);
+  }
+  /* The two multi-select pickers: a square chip that folds open into a
+     checkbox list. Same voice as the segments beside them; the ▾ marks the
+     chip as openable and the summary always names what is ticked. */
+  body.panelpage .actpick { position: relative; }
+  body.panelpage .actpick > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    border: 1px solid var(--edge); padding: 6px 9px; color: var(--dim);
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  body.panelpage .actpick > summary::-webkit-details-marker { display: none; }
+  body.panelpage .actpick > summary::after { content: " ▾"; color: var(--sage-dim); }
+  body.panelpage .actpick[open] > summary,
+  body.panelpage .actpick > summary:hover { background: var(--granite-hi); }
+  body.panelpage .actmenu {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 45;
+    display: flex; flex-direction: column; gap: 2px; min-width: 150px;
+    background: var(--pine); border: 1px solid var(--edge); padding: 8px 10px;
+  }
+  body.panelpage .actmenu label {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font: 700 9.5px/1.6 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim); white-space: nowrap;
+  }
+  body.panelpage .actmenu label:hover { color: var(--alpenglow); }
+  /* Native checkboxes, like every other checkbox on the panel — and no
+     accent-color: TestTheVolumeSliderIsNotTheBrowsersOwn bans that property
+     from this file so the call card's drawn slider can't regress to it. */
+  body.panelpage .actmenu input { margin: 0; }
+  /* 2×2, generous column gap — four across was too cramped (spec's words). */
+  body.panelpage .actgrid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 44px;
+  }
+  @media (max-width: 760px) {
+    body.panelpage .actgrid { grid-template-columns: 1fr; }
+  }
+  body.panelpage .actchart { margin: 0; }
+  body.panelpage .actchart figcaption {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-bottom: 7px;
+  }
+  body.panelpage .actchart figcaption span {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .18em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  body.panelpage .actchart figcaption em {
+    font-style: normal; font-size: 11px; color: var(--sage);
+    text-align: right;
+  }
+  body.panelpage .actbody { min-height: 64px; }
+  body.panelpage .actempty { margin: 0; color: var(--sage-dim); }
+  /* Bars: flat rects over a 1px baseline; clean buckets neutral ink,
+     buckets holding a failure coral. */
+  body.panelpage .actbars {
+    display: flex; align-items: flex-end; gap: 2px; height: 74px;
+    border-bottom: 1px solid var(--edge);
+  }
+  body.panelpage .actbar {
+    flex: 1 1 0; min-width: 2px;
+    background: color-mix(in srgb, var(--alpenglow) 18%, transparent);
+  }
+  body.panelpage .actbar.bad { background: var(--coral); }
+  body.panelpage .actaxis { display: flex; margin-top: 4px; }
+  body.panelpage .actaxis span {
+    flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center;
+    font: 700 8px/1.2 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim); white-space: nowrap;
+  }
+  body.panelpage .actaxis span:first-child { text-align: left; }
+  body.panelpage .actaxis span:last-child { text-align: right; }
+  /* The mix: a flat 100% band — the ruled-newspaper answer to a donut. */
+  body.panelpage .mixband {
+    display: flex; height: 18px; border: 1px solid var(--edge);
+  }
+  body.panelpage .mixseg.calls, body.panelpage .mixkey .sw.calls { background: var(--coral); }
+  body.panelpage .mixseg.texts, body.panelpage .mixkey .sw.texts { background: var(--alpenglow); }
+  body.panelpage .mixseg.vm, body.panelpage .mixkey .sw.vm {
+    background: color-mix(in srgb, var(--alpenglow) 18%, transparent);
+  }
+  body.panelpage .mixlegend {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;
+  }
+  body.panelpage .mixkey {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    border: 0; background: transparent; padding: 0;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  body.panelpage .mixkey:hover { color: var(--alpenglow); }
+  body.panelpage .mixkey .sw {
+    width: 10px; height: 10px; border: 1px solid var(--edge); display: inline-block;
+  }
+  body.panelpage .mixfoot {
+    margin: 7px 0 0; font: 700 8.5px/1 var(--font-mono);
+    letter-spacing: .1em; text-transform: uppercase; color: var(--sage-dim);
+  }
+  /* The listener curve: one polyline, area at 8% — gaps in the sampled
+     series break the line rather than drawing zeros. */
+  body.panelpage .lissvg {
+    width: 100%; height: 74px; display: block;
+    border-bottom: 1px solid var(--edge);
+  }
+  body.panelpage .lissvg polyline {
+    fill: none; stroke: var(--coral); stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
+  body.panelpage .lissvg polygon {
+    fill: color-mix(in srgb, var(--coral) 8%, transparent); stroke: none;
+  }
+
+  /* --- spec §8: the settings header sticks, jump bar and all ---------------- */
+  /* The whole band — heading, promise, finder, jump chips — travels with the
+     reader (operator's ask, extending the spec's sticky bar): search and
+     navigation are never a scroll away on a six-screen page. */
+  body.panelpage .settingsbar {
+    position: sticky; top: 0; z-index: 40; background: var(--pine);
+    border-bottom: 1px solid var(--edge);
+    margin: 0 -2px; padding: 4px 2px 0;
+  }
+  body.panelpage .settingsbar .settingshead { margin: 6px 0 8px; }
+  /* One row always: chips slide horizontally on a narrow panel instead of
+     wrapping into a block that eats the viewport the band now rides in. */
+  body.panelpage .panelnav {
+    border-top: 1px solid var(--hairline); border-bottom: 0; margin-bottom: 0;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  }
+  body.panelpage .panelnav::-webkit-scrollbar { display: none; }
+  body.panelpage .panelnav a { flex: 1 0 auto; white-space: nowrap; }
+  body.panelpage .panelnav a.navtop {
+    color: var(--coral); border-color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 10%, transparent);
+  }
+  /* The you-are-here chip: coral ink, no fill — the filled tint stays the
+     dashboard chip's, so the two marks read as different claims. */
+  body.panelpage .panelnav a.here {
+    color: var(--coral); border-color: var(--coral);
+  }
+  /* Jump targets clear the sticky band instead of vanishing under it — the
+     band measures itself into --stickybar (see watchNav in panel.js). */
+  body.panelpage .supergroup,
+  body.panelpage details.sec,
+  body.panelpage details.diag {
+    scroll-margin-top: calc(var(--stickybar, 96px) + 10px);
+  }
+
+  /* Call-in access as a cascade row: three ticks in the permission matrix's
+     own voice, Admin locked on. The hidden select behind them is the stored
+     field (the kill-switch pattern). */
+  body.panelpage .accesscells {
+    display: inline-flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  }
+  body.panelpage .acell {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  body.panelpage .acell input { margin: 0; }
+  body.panelpage .acell input:disabled + span { color: var(--sage-dim); }
+
+  /* Legibility (operator: the section rows ran too small to read down the
+     page): the name a step up, the sentence at body size in body ink. The
+     quiet right-hand value keeps its whisper but gains a point too. */
+  body.panelpage details.sec > summary { font-size: 11.5px; }
+  body.panelpage details.sec > summary .secblurb {
+    font-size: 12.5px; color: var(--dim);
+  }
+  body.panelpage details.sec > summary .tag { font-size: 11px; }
 
   /* --- footer -------------------------------------------------------------- */
   body.panelpage .panelfoot {

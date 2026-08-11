@@ -121,6 +121,18 @@
     const nav = $('panelNav');
     if (!nav) return;
     nav.innerHTML = '';
+    // The bar is sticky (spec §8), so once it has followed the reader down
+    // the page the dashboard is the one place its links can't reach — the
+    // first chip is the way back up.
+    const top = document.createElement('a');
+    top.href = '#';
+    top.className = 'navtop';
+    top.textContent = '↑ Dashboard';
+    top.onclick = (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    nav.appendChild(top);
     const link = (id, title) => {
       const a = document.createElement('a');
       a.href = '#' + id;
@@ -137,6 +149,69 @@
       link('sup-' + sup.id, sup.title);
     });
     link('supDiag', 'Diagnostics');
+    // An action chip, not a jump: after a long session the page is a stack
+    // of opened drawers, and closing them one by one is the only thing the
+    // bar couldn't do (operator's ask).
+    const fold = document.createElement('a');
+    fold.href = '#';
+    fold.className = 'navfold';
+    fold.textContent = 'Collapse all';
+    fold.title = 'Close every open section';
+    fold.onclick = (e) => {
+      e.preventDefault();
+      document.querySelectorAll('details.sec[open]')
+        .forEach((d) => { d.open = false; });
+    };
+    nav.appendChild(fold);
+    watchNav();
+  }
+
+  // The you-are-here mark (spec §8's optional half, operator-approved): the
+  // chip for the super-group currently under the sticky band lights up as
+  // the page scrolls. An IntersectionObserver on the group headers means the
+  // work happens when a header crosses the viewport's upper band, not on
+  // every scroll tick — and each firing re-derives the answer from geometry,
+  // so a coarse event can't leave the mark on the wrong chip. Re-armed by
+  // buildNav because layoutPanel re-mints the headers it watches.
+  let navIO = null;
+  function watchNav() {
+    const bar = $('settingsBar'), nav = $('panelNav');
+    if (!bar || !nav || !('IntersectionObserver' in window)) return;
+    const heads = [...document.querySelectorAll('.supergroup')];
+    if (!heads.length) return;
+    // The band's real height feeds the sections' scroll-margin, so a jump
+    // lands below it whatever the viewport made of the header row. Zero is
+    // "not laid out yet" (buildNav can run behind the login gate), so it
+    // never overwrites the CSS fallback — pick() re-measures once visible.
+    const sizeBar = () => {
+      if (bar.offsetHeight > 0) {
+        document.documentElement.style.setProperty(
+          '--stickybar', bar.offsetHeight + 'px');
+      }
+    };
+    sizeBar();
+    if (!watchNav.sized) {
+      addEventListener('resize', sizeBar);
+      watchNav.sized = true;
+    }
+    const pick = () => {
+      sizeBar();
+      const edge = bar.offsetHeight + 24;
+      let current = null;
+      heads.forEach((h) => {
+        if (h.getBoundingClientRect().top <= edge) current = h;
+      });
+      const want = current
+        ? nav.querySelector('a[href="#' + current.id + '"]')
+        : nav.querySelector('a.navtop');
+      nav.querySelectorAll('a.here').forEach((a) => a.classList.remove('here'));
+      if (want) want.classList.add('here');
+    };
+    if (navIO) navIO.disconnect();
+    navIO = new IntersectionObserver(pick,
+      { rootMargin: '-96px 0px -55% 0px' });
+    heads.forEach((h) => navIO.observe(h));
+    pick();
   }
 
   function adoptSchema(schema) {
@@ -150,6 +225,7 @@
     ALL_FIELDS = SELECT_FIELDS.concat(TEXT_FIELDS, NUM_FIELDS, CHECK_FIELDS);
     layoutPanel();
     decoratePermissions();
+    decorateAccess();
     bindFieldEvents();
     decorateFields();
     buildSlotCards();
@@ -371,6 +447,16 @@
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
     setTag('tagPlayer', (resolved.call_button_uses_name ? "DJ's name" : 'generic label')
       + ' · ' + (resolved.widget_theme || 'auto'));
+    // Counted, not listed: eleven element names would not fit a tag. The
+    // embed column simply has no gear (an embed never loads this panel), so
+    // the missing embed_settings_gear reads as false and the counts stay
+    // honest without a special case.
+    const surfEls = ['caller_help', 'theme_toggle', 'settings_gear',
+      'push_to_talk', 'dj_avatar', 'dj_show', 'dj_tagline', 'now_playing',
+      'voicemail_button', 'chat_button', 'signin'];
+    setTag('tagSurface',
+      surfEls.filter((k) => resolved['show_' + k]).length + ' on page · '
+      + surfEls.filter((k) => resolved['embed_' + k]).length + ' in embed');
     paintDash();
   }
 
@@ -444,6 +530,12 @@
     });
     const canDo = 'anyone ' + usable.open + ' · guest ' + usable.guest
       + ' · admin ' + usable.admin;
+    // Chips, not a muted sentence (spec §6): each line row wears its
+    // permissions as square chips, with the remaining detail as plain text
+    // after them. Every word here is this file's own vocabulary — nothing
+    // caller-supplied reaches the innerHTML.
+    const chip = (t) => '<span class="permchip">' + t + '</span>';
+    const said = (t) => '<span>' + t + '</span>';
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
@@ -451,8 +543,9 @@
           && $('voicemail_when').value) || resolved.voicemail_when) !== 'always');
         const fallback = vmFallback && chatOn ? 'voicemail + text'
           : vmFallback ? 'voicemail' : chatOn ? 'text line' : 'none';
-        liveNote.textContent = 'permissions — ' + canDo
-          + ' · fallback: ' + fallback;
+        liveNote.innerHTML = chip('anyone ' + usable.open)
+          + chip('guest ' + usable.guest) + chip('admin ' + usable.admin)
+          + said('fallback: ' + fallback);
         $('modeLiveBtn').title = 'How many caller permissions each tier can '
           + 'use, counted from the switches under Permissions & safety. '
           + 'Fallback is what answers when a live call cannot start.';
@@ -466,10 +559,10 @@
       if (chatOn) {
         const WHO2 = { open: 'open to anyone', guest: 'guest code needed',
                        admin: 'admin only', off: 'no caller may use it' };
-        chatNote.textContent = (WHO2[permTier('allow_chat')] || 'open to anyone')
-          + ' · closes after '
-          + (($('chat_idle_minutes') && $('chat_idle_minutes').value)
-             || resolved.chat_idle_minutes || 30) + 'm quiet';
+        chatNote.innerHTML = chip(WHO2[permTier('allow_chat')] || 'open to anyone')
+          + said('closes after '
+            + (($('chat_idle_minutes') && $('chat_idle_minutes').value)
+               || resolved.chat_idle_minutes || 30) + 'm quiet');
       } else {
         chatNote.textContent = 'typed chat with the booth';
       }
@@ -493,9 +586,8 @@
                        triage: 'triaged by the model' };
         const dest = ($('voicemail_destination')
           && $('voicemail_destination').value) || resolved.voicemail_destination;
-        vmNote.textContent = when
-          + ' · ' + (WHO[permTier('allow_voicemail')] || WHO.open)
-          + ' · ' + (DEST[dest] || DEST.hold);
+        vmNote.innerHTML = chip(WHO[permTier('allow_voicemail')] || WHO.open)
+          + said(when + ' · ' + (DEST[dest] || DEST.hold));
       } else {
         vmNote.textContent = 'the machine answers';
       }
@@ -1263,6 +1355,7 @@
     };
     chip('adminSetChip', authConfigured);
     chip('guestSetChip', !!guestConfigured);
+    paintAccess();
     $('setPwBtn').textContent = authConfigured ? 'Change password' : 'Set password';
     $('logoutBtn').hidden = !authConfigured;
     $('setGuestBtn').textContent = guestConfigured ? 'Change guest code' : 'Set guest code';
@@ -1600,7 +1693,7 @@
     if ($('mastSub')) $('mastSub').textContent = 'DASHBOARD · ' + location.host;
     if ($('footHost')) $('footHost').textContent = location.host;
     fetch('/health').then((r) => r.json()).then((h) => {
-      $('versionLine').textContent = 'Wave Talk v' + (h.version || '?');
+      $('versionLine').textContent = 'Talk Wave v' + (h.version || '?');
     }).catch(() => {});
   }
 
@@ -1691,7 +1784,10 @@
   //
   // Which fields matter is read from the SCHEMA rather than listed, so a look
   // setting added later is previewed without anyone remembering to come here.
-  const LOOK_GROUPS = new Set(['player']);
+  // Both halves of the old Player settings section (split in 0.10.47), and
+  // the embed section since its outline tick (0.10.51) — a change in any is
+  // a change the preview frame must repaint for.
+  const LOOK_GROUPS = new Set(['surface', 'player', 'embed']);
   function isLookField(f) {
     return !!(SCHEMA.fields[f] && LOOK_GROUPS.has(SCHEMA.fields[f].group));
   }
@@ -2008,7 +2104,10 @@
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access || 'auto';
     if (tier === 'admin') return true;      // always a door
-    if (tier === 'guest') return guestConfigured;
+    // Admin-only closes the phone below admin, so the guest column has no
+    // caller behind it either — it used to stay live whenever a code
+    // existed, and read as a tier that could still ring (operator-reported).
+    if (tier === 'guest') return access !== 'admin' && guestConfigured;
     // `open` callers only exist while the line lets somebody in without a
     // code. On auto that is "until a guest code is set".
     if (access === 'open') return true;
@@ -2017,9 +2116,62 @@
   }
 
   function tierWhyNot(tier) {
-    if (tier === 'guest') return 'No guest code set — nobody can be this caller yet.';
-    return 'The line is closed to callers without a code, so there are no '
-      + 'callers at this level. Change Call-in access under Access.';
+    const access = ($('front_access') && $('front_access').value)
+      || resolved.front_access || 'auto';
+    if (tier === 'guest' && access !== 'admin' && !guestConfigured) {
+      return 'No guest code set — nobody can be this caller yet.';
+    }
+    return 'The line is closed to callers at this level, so nobody can be '
+      + 'this caller. Change Call-in access under Access.';
+  }
+
+  // Call-in access as the cascade the permission rows already speak
+  // (operator's ask): Admin is always a door, ticking Guest opens the code
+  // door, ticking Anyone opens the page to everybody. The hidden select
+  // stays the stored field — these cells drive it the way the kill switch
+  // drives calls_paused — so Save and the schema never learn a new shape.
+  const ACCESS_CELLS = [
+    ['open', 'Anyone', 'No code — whoever loads the page can ring.'],
+    ['guest', 'Guest code', 'Callers who type the code you share.'],
+    ['admin', 'Admin', 'Always a door — the admin password opens the phone and this panel.'],
+  ];
+  function decorateAccess() {
+    const wrap = $('accessCells');
+    if (!wrap || wrap.dataset.built) return;
+    wrap.dataset.built = '1';
+    ACCESS_CELLS.forEach(([mode, word, why]) => {
+      const cell = document.createElement('label');
+      cell.className = 'acell';
+      cell.title = why;
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.mode = mode;
+      if (mode === 'admin') box.disabled = true;   // always on, never a choice
+      box.onchange = () => {
+        const sel = $('front_access');
+        // Same rule as a permission row: ticking a level opens it and every
+        // level above; unticking raises the floor to the next level up.
+        if (box.checked) sel.value = mode;
+        else sel.value = mode === 'open' ? 'guest' : 'admin';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        paintSecurity();
+      };
+      cell.appendChild(box);
+      const w = document.createElement('span');
+      w.textContent = word;
+      cell.appendChild(w);
+      wrap.appendChild(cell);
+    });
+  }
+  function paintAccess() {
+    const wrap = $('accessCells');
+    const sel = $('front_access');
+    if (!wrap || !sel) return;
+    const RANKS = { open: 0, guest: 1, admin: 2 };
+    const at = RANKS[sel.value] != null ? RANKS[sel.value] : 2;
+    wrap.querySelectorAll('input').forEach((box) => {
+      box.checked = RANKS[box.dataset.mode] >= at;
+    });
   }
 
   // Build the label and the three cells once, then keep them in step with the
@@ -2857,13 +3009,17 @@
     if (catSel) {
       const cats = [...new Set(rows.map((e) => e.category).filter(Boolean))].sort();
       const keep = catSel.value;
-      catSel.innerHTML = '<option value="">All categories</option>';
+      // "(no category)" is a grouping too (operator's ask): a sound nobody
+      // has filed yet must still be findable as a group, or the uncategorised
+      // half of the shelf can only be found by knowing names.
+      catSel.innerHTML = '<option value="">All categories</option>'
+        + '<option value="~none">No category yet</option>';
       cats.forEach((c) => {
         const o = document.createElement('option');
         o.value = c; o.textContent = c;
         catSel.appendChild(o);
       });
-      catSel.value = cats.includes(keep) ? keep : '';
+      catSel.value = (cats.includes(keep) || keep === '~none') ? keep : '';
     }
     const needle = (($('shelfSearch') && $('shelfSearch').value) || '')
       .trim().toLowerCase();
@@ -2873,12 +3029,19 @@
         [e.label, e.name, e.category, e.pack].join(' ')
           .toLowerCase().includes(needle));
     }
-    if (wantCat) rows = rows.filter((e) => e.category === wantCat);
+    if (wantCat) {
+      rows = rows.filter((e) => (wantCat === '~none'
+        ? !e.category : e.category === wantCat));
+    }
     const wantType = ($('shelfType') && $('shelfType').value) || '';
     if (wantType) {
-      rows = rows.filter((e) => e.used.indexOf(wantType) !== -1
-        || e.suggests === wantType
-        || (e.isDefault && e.kind === wantType));
+      // "~none" groups the sounds serving no slot at all — no assignment, no
+      // declared type, not a set's own default.
+      rows = rows.filter((e) => (wantType === '~none'
+        ? !(e.used.length || e.suggests || (e.isDefault && e.kind))
+        : (e.used.indexOf(wantType) !== -1
+           || e.suggests === wantType
+           || (e.isDefault && e.kind === wantType))));
     }
     if (shelfSort.key) {
       // The type column sorts by the TYPE — assignment, else declared type,

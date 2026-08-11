@@ -34,13 +34,13 @@ from collections import deque
 
 # Our row's identity on the station, and the only thing that makes
 # registration idempotent. Sending no id means the station mints a fresh one
-# every time, so the same Wave Talk moving to a new LAN address left its old
+# every time, so the same Talk Wave moving to a new LAN address left its old
 # row behind and added a second — and the station caps the list (16 in
 # SUB/WAVE 1.6.0), after which registration fails for good with nothing
 # obvious to point at. An env var because one station can serve two of these,
 # and two rows claiming one id is a collision the station resolves by dropping
 # one of them silently.
-HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "wave_talk"
+HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "talk_wave"
 
 # The pushes the on-air card reacts to. Intersected with the station's own
 # advertised vocabulary before it is sent rather than assumed: the station

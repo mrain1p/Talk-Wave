@@ -237,10 +237,17 @@ class TestMainToolLogic(_TempStores):
             self.assertIn(tool.gate, settings_store.FIELDS, tool.name)
 
     def test_reads_need_no_permission_and_locals_are_never_raw(self):
-        reads = [t.name for t in self.registry.TOOLS
-                 if t.gate == self.registry.READ]
+        # Reads split by who serves them: the MCP reads make up the whole
+        # allowlist with nothing switched on, and the locally-served read
+        # (lyrics — the station publishes it over REST, not MCP) is offered
+        # by the wrapper side under the same no-permission rule.
+        reads_over_mcp = [t.name for t in self.registry.TOOLS
+                          if t.gate == self.registry.READ
+                          and t.served == self.registry.MCP]
         allowed = self.registry.mcp_allowlist({})     # nothing switched on
-        self.assertEqual(sorted(allowed), sorted(reads))
+        self.assertEqual(sorted(allowed), sorted(reads_over_mcp))
+        self.assertIn("subwave_current_lyrics",
+                      self.registry.local_tool_names({}))
 
         # A locally-wrapped tool must not also be offered over MCP, or the
         # model could reach the version without our guards and retries.
@@ -263,14 +270,20 @@ class TestMainToolLogic(_TempStores):
             station_config.admin_credentials = lambda: ("", "")
             self.assertTrue(self.registry.library_search_needs_mcp())
             self.assertIn("subwave_search_library", self.registry.mcp_allowlist(cfg))
-            self.assertEqual(self.music.build_library_tools(
-                cfg, None, self.actions.CallActions(0)), [])
+            # The lyrics read is the one local tool credentials don't gate —
+            # the station serves it public — so it is all that's left here.
+            self.assertEqual(
+                [t.info.name for t in self.music.build_library_tools(
+                    cfg, None, self.actions.CallActions(0))],
+                ["subwave_current_lyrics"])
 
             station_config.admin_credentials = lambda: ("dj", "secret")
             self.assertFalse(self.registry.library_search_needs_mcp())
             self.assertNotIn("subwave_search_library", self.registry.mcp_allowlist(cfg))
-            self.assertEqual(len(self.music.build_library_tools(
-                cfg, None, self.actions.CallActions(0))), 1)
+            self.assertEqual(
+                [t.info.name for t in self.music.build_library_tools(
+                    cfg, None, self.actions.CallActions(0))],
+                ["subwave_current_lyrics", "subwave_search_library"])
         finally:
             station_config.admin_credentials = original
 

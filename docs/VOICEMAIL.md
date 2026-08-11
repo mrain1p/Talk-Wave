@@ -1,6 +1,6 @@
 # Voicemail
 
-Part of the [Wave Talk](../README.md) documentation.
+Part of the [Talk Wave](../README.md) documentation.
 
 **Status: built as of 0.9.127**, to this design plus the operator's additions: its own
 settings section, greeting clips cached against exactly what they were rendered from

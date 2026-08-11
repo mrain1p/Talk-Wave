@@ -2,7 +2,7 @@
 
 The tests themselves live in tests/, one module per subject — this file is the
 aggregator so that `python -m unittest test_sidecar` remains the single command
-CI, the pre-commit hook, the wavetalk-test skill and CLAUDE.md all name.
+CI, the pre-commit hook, the talkwave-test skill and CLAUDE.md all name.
 
 Run from agent-worker/:  python -m unittest test_sidecar -v
 
@@ -42,6 +42,7 @@ from tests.test_secrets_and_auth import (  # noqa: F401
 )
 from tests.test_http import (  # noqa: F401
     TestAMissingModelNamesTheOnesTheServerHas,
+    TestListenerSamplesAreHonest,
     TestAnUnsignedWebhookCannotFillMemory,
     TestCallerIdentityCannotBeChosen,
     TestCallerIdentitySurvivesTwoProxies,
@@ -53,6 +54,9 @@ from tests.test_http import (  # noqa: F401
 from tests.test_widget import (  # noqa: F401
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
+    TestDiagnosticsResultsKeepTheirScrollSkin,
+    TestTheEmbedSitsFlushByDefault,
+    TestThumbsArePerDoor,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
     TestPanelMarkup,
@@ -138,7 +142,9 @@ from tests.test_tools_logic import (  # noqa: F401
 from tests.test_music_tools import (  # noqa: F401
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
+    TestCurrentLyricsAreARead,
     TestLikingTheTrackOnAir,
+    TestSearchPagesLikeTheStation,
     TestSearchingForWhatTheCallerActuallySaid,
 )
 from tests.test_takeover import (  # noqa: F401

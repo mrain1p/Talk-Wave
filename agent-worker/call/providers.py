@@ -90,7 +90,7 @@ def build_stt(cfg: dict):
 # Passed as the api_key when a caller has asked us NOT to send the stored one.
 # A blank string makes some SDKs fall back to the environment, which is the
 # thing being prevented, so it has to be a real (worthless) value.
-WITHHELD_KEY = "withheld-by-wave-talk"
+WITHHELD_KEY = "withheld-by-talk-wave"
 
 
 def build_llm(cfg: dict, *, use_stored_key: bool = True):
@@ -169,6 +169,21 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
             temperature=temperature,
             api_key=key(env_var),
             base_url=base_url or host,
+        )
+
+    if provider == "locca":
+        # The station's own local runner — llama.cpp behind locca, speaking
+        # the OpenAI protocol with no key. Unlike openai-compatible, a blank
+        # Endpoint is not an error: locca has a well-known address on the
+        # host, mirrored from the station's DEFAULT_LOCCA_BASE_URL, so the
+        # operator who runs the station on locca picks the name and is done.
+        return openai.LLM(
+            model=model or NOT_GIVEN,
+            temperature=temperature,
+            api_key="not-needed",
+            base_url=base_url
+            or os.environ.get("LOCCA_BASE_URL")
+            or settings_store.LOCCA_BASE_URL_DEFAULT,
         )
 
     if provider == "openai-compatible":

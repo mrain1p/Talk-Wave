@@ -68,6 +68,15 @@ TOOLS: tuple[Tool, ...] = (
          "How much of this reaches the prompt is set under Station awareness."),
     Tool("subwave_session", READ, MCP,
          "The DJ's live session and its recent on-air transcript."),
+    # The one locally-served read: the station publishes lyrics over public
+    # REST (its current-track lyrics feature), not over MCP, so our wrapper
+    # is the only way to serve it at all — not a guarded duplicate of an MCP
+    # tool, which is what LOCAL otherwise means here.
+    Tool("subwave_current_lyrics", READ, LOCAL,
+         "The words the current track is singing, when the station holds them.",
+         "Served by this sidecar over the station's public lyrics read. A "
+         "station without that feature answers 404, which the DJ hears as "
+         "'no lyrics on file' rather than as an error."),
 
     # --- music ------------------------------------------------------------
     Tool("subwave_request_song", "allow_requests", LOCAL,

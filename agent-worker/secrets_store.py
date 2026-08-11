@@ -105,7 +105,9 @@ SECRET_HELP: dict[str, str] = {
     "requesty_api_key": "Aggregator — many vendors behind one key. Models are read live from your account.",
     "gateway_api_key": "Vercel's aggregator. Models are read live from your account.",
     "deepgram_api_key": "The fastest speech-to-text on a call, and the only one that gives word-by-word captions.",
-    "tts_api_key": "Only if your speech endpoint wants a bearer token of its own. Blank falls back to the OpenAI key on an OpenAI host.",
+    "tts_api_key": "Optional, and usually for a self-hosted or local speech server: only if that "
+                   "endpoint wants a bearer token of its own. Blank falls back to the OpenAI key "
+                   "on an OpenAI host. Test with voice below — the sample plays through this key.",
     "elevenlabs_api_key": "Sent as xi-api-key by the ElevenLabs adapter. Pick that adapter under Backend below.",
     "fish_api_key": "Used by the Fish Audio adapter — the station's third cloud voice, shared here.",
     "subwave_admin_user": "The station's own login — see what it unlocks above.",

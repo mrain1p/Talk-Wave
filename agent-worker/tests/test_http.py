@@ -12,6 +12,55 @@ import unittest
 from tests.support import REPO, _FakeRequest, _TempStores
 
 
+class TestListenerSamplesAreHonest(unittest.TestCase):
+    """The ACTIVITY strip's listener curve must never flatter an outage: an
+    unreachable station is a GAP in the series, not a zero, and the buffer
+    prunes itself to the 30 days the month view can show."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        from api import stats
+
+        self.stats = stats
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self._old_path = stats.LISTENERS_PATH
+        stats.LISTENERS_PATH = Path(self.tmp.name) / "listeners.json"
+        stats._samples = []
+        stats._loaded = True
+        self.addCleanup(setattr, stats, "LISTENERS_PATH", self._old_path)
+        self.addCleanup(setattr, stats, "_samples", [])
+        self.addCleanup(setattr, stats, "_loaded", False)
+
+    def test_a_missing_answer_is_a_gap_not_a_zero(self):
+        self.stats.record_sample(3, now=1000.0)
+        self.stats.record_sample(None, now=1300.0)
+        self.stats.record_sample(5, now=1600.0)
+        self.assertEqual([s["n"] for s in self.stats._samples], [3, 5])
+
+    def test_the_buffer_prunes_to_the_month_view(self):
+        old = 1000.0
+        self.stats.record_sample(2, now=old)
+        self.stats.record_sample(4, now=old + self.stats.KEEP_SECS + 60)
+        self.assertEqual([s["n"] for s in self.stats._samples], [4])
+
+    def test_both_station_shapes_parse_and_junk_does_not(self):
+        c = self.stats._listener_count
+        self.assertEqual(c({"listeners": {"current": 7}}), 7)
+        self.assertEqual(c({"context": {"listeners": {"count": 2}}}), 2)
+        self.assertIsNone(c({}))
+        self.assertIsNone(c({"listeners": "seven"}))
+
+    def test_the_buffer_survives_a_restart(self):
+        self.stats.record_sample(6, now=2000.0)
+        self.stats._samples = []
+        self.stats._loaded = False
+        self.stats._load()
+        self.assertEqual([s["n"] for s in self.stats._samples], [6])
+
+
 class TestHttpSurface(_TempStores):
     """The routes, exercised the way a browser reaches them.
 

@@ -1,9 +1,9 @@
 # Builds and publishes the container image to GitHub Container Registry.
 #
-#   ghcr.io/mrainone7p/wave-talk:latest   <- every push to main
-#   ghcr.io/mrainone7p/wave-talk:beta     <- every push to a `beta` branch
-#   ghcr.io/mrainone7p/wave-talk:dev      <- every push to the `dev` branch
-#   ghcr.io/mrainone7p/wave-talk:1.2.3    <- tags like v1.2.3
+#   ghcr.io/mrainone7p/talk-wave:latest   <- every push to main
+#   ghcr.io/mrainone7p/talk-wave:beta     <- every push to a `beta` branch
+#   ghcr.io/mrainone7p/talk-wave:dev      <- every push to the `dev` branch
+#   ghcr.io/mrainone7p/talk-wave:1.2.3    <- tags like v1.2.3
 #
 # `dev` is where work in progress lands: it builds a real image you can pull
 # on the NAS without moving `:latest`, which stays whatever main last shipped.
@@ -12,7 +12,7 @@
 # token server overrides the command in compose.
 #
 # NOTE: the first published package is PRIVATE by default. Make it public
-# once (GitHub -> your profile -> Packages -> wave-talk -> settings) or
+# once (GitHub -> your profile -> Packages -> talk-wave -> settings) or
 # `docker login ghcr.io` on the machine that pulls.
 name: docker
 
@@ -86,7 +86,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/mrainone7p/wave-talk
+          images: ghcr.io/mrainone7p/talk-wave
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch

@@ -1,5 +1,5 @@
 ---
-name: wavetalk-panel-design
+name: talkwave-panel-design
 description: The settings panel's design system — section anatomy, row shapes, where help text sits, button families, state colour, and the dashboard's grammar. Read BEFORE adding or moving anything in panel.html, and use as the checklist when the operator says a section "doesn't look clean or consistent". Every rule here is one the operator has already corrected once.
 ---
 
@@ -123,7 +123,7 @@ reason — the diagnostics viewers were re-cut once because the call list ran it
 ## Hard-won mechanics (violations ship silently)
 
 - A field is FIVE places: FIELDS, SCHEMA, panel markup control, a reader, tests. The panel
-  silently skips a field with no matching id — `/wavetalk-setting` has the walk.
+  silently skips a field with no matching id — `/talkwave-setting` has the walk.
 - `needs=` lists must name **every** qualifying value — the intensity dial vanished for the
   newer effects because its list still named the first three.
 - Duplicate ids: `byKind` fills the FIRST match; the second sits empty-looking (the twin
@@ -132,5 +132,5 @@ reason — the diagnostics viewers were re-cut once because the call list ran it
   (there's a test now, but don't rely on it to think for you).
 - The save overlay appears only after a **trusted** user edit; dash controls post immediately
   and never touch it.
-- Verify in the stub (`/wavetalk-verify`) — the pane hides, screenshots fail, and the per-DJ
+- Verify in the stub (`/talkwave-verify`) — the pane hides, screenshots fail, and the per-DJ
   list paints only when its section opens. Structure-probe with javascript_tool, not eyes.

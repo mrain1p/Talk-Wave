@@ -3,9 +3,47 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.52
+
+- **Wave Talk is now Talk Wave.** The rename runs everywhere: the masthead and page titles, the PWA manifest and service-worker cache, the compose file (image `ghcr.io/mrainone7p/talk-wave`, containers `talkwave-*`), the CI workflow, the docs, and the GitHub repository itself. Nothing behaves differently — same settings, same data files, same endpoints. **Deployed stacks: update the image name and container names in your compose when you next pull.**
+
+## 0.10.51
+
+- **The embed sits flush by default.** An embedded card no longer draws its own outline or sheet — it displays in whatever area the host page gives it, the page showing through. A new **Draw the card outline** tick under Embed on another page brings the old look back; the main call page always keeps its card, and the panel's Page/Embed preview shows each surface correctly.
+- **Call-in access is three cascade ticks, not a dropdown.** Admin is always a door (locked on); tick **Guest code** to open the code door, tick **Anyone** to open the page to everybody — the same tick-implies-everything-above grammar the permission rows already speak. Each tier's own powers stay per-feature under Caller permissions.
+- **Unreachable tiers grey out properly.** With the line set to admin only, the Guest column in Caller permissions now greys like the Anyone column — a tier nobody can be no longer reads as one that could still ring.
+- **The jump bar gains Collapse all** — one press closes every section you've opened.
+- **The sound board groups the unfiled.** The category and type filters gain **No category yet** and **Unassigned** entries, so sounds nobody has filed are still findable as a group.
+- **Smaller fixes from the settings read-through:** the "How the doors work" card is restructured (bold lead-ins, bulleted layers, the lockout line unemphasised), the station-credentials help stops bolding one unlock mid-list, the ducking wait is labelled as the fallback it is, and the TTS server key says it's optional and usually for a self-hosted speech server.
+
+## 0.10.50
+
+- **The whole settings header sticks now** — the Call-in settings heading, its promise line, the Find-a-setting box and the jump bar travel with you as one band, so search and navigation are never a scroll away. The jump chips also show **where you are**: the chip for the section currently on screen wears coral as you scroll, and jumps land cleanly below the band instead of hiding under it.
+- **The chart pickers are multi-selects.** All doors and All ratings fold open into tick-lists — choose any mix of Calls / Texts / Voicemail and ▲ / ▼ / Unrated, both defaulting to everything and applying to every chart. Clicking a DOOR MIX legend swatch still solos that door (click again for all).
+- **Section rows are easier to read** — the section names and their one-line descriptions get a size up and darker ink.
+
+## 0.10.49
+
+- **The dashboard gains an ACTIVITY strip — four charts between the lines and the settings.** DOORS (traffic per day or hour, failure buckets in red), DOOR MIX (a flat 100% band with a clickable legend — click a swatch to isolate that series, click again for all), CONCURRENT LISTENERS (sampled from the station every 5 minutes; an outage shows as a gap in the line, never as a flattering zero), and TIME TO FIRST WORD for calls with the median in the caption. A DAY / WEEK / MONTH toggle re-buckets everything, SHOW N picks how many days (1–30), and BY TYPE / BY RATING switches what the charts split by — all remembered between visits. Everything draws from the call records you already keep plus one new admin read (`/stats/listeners`); a series with no data shows an em-dash, never invented bars.
+
+## 0.10.48
+
+- **The dashboard reads like the front page.** The four read-backs (on air, station, brains·voice·ears, who can call) lead as one ruled strip under the masthead; TRANSMISSION shows THE LINE with its three LINES indented beneath it — each door's switch beside the traffic it produces, permissions worn as square chips, failure counts in red on the row's right edge. The jump bar now sticks to the top as you scroll, with an ↑ DASHBOARD chip to get back up. Every switch and tile works exactly as before — same ids, same immediate posting.
+- **Thumbs up/down is now per door.** Ask-how-it-went after a live call, after a text chat, and after a voicemail are three separate switches under Player settings → After the conversation. Chat and voicemail are off by default and only ask when the caller actually said something; a rating lands on that conversation's own transcript either way.
+- **Push to talk is back to normal height on desktop.** The thumb-size bar was a fix for phones and stays 60px there; on a regular screen it matches the controls beside it again.
+
+## 0.10.47
+
+- **Server logs stay inside their box.** The log viewer lost its scroll skin in a rewrite — lines poured straight through the border and over the page footer. Both diagnostics viewers scroll again, and a test now pins the class so it can't silently drop a second time.
+- **The calls list can be filtered by type, tier and tool.** Three dropdowns on the toolbar — Calls / Text chats / Voicemails, the caller's tier, and which tool the DJ reached for — stacking with the problems and thumbs filters. The tool chips also stop clipping mid-word: their column now flexes instead of cutting off at 116px.
+- **Player settings is now three dropdowns.** The live preview, the what-shows-where matrix ("What the card shows"), and the look-and-behaviour rows each get their own section, per the operator's ask. Nothing moved server-side — every field keeps its id and its meaning.
+- **The DJ can read the current track's lyrics.** A new always-on read over the station's public `/lyrics/current` (shipping with SUB/WAVE's current-track lyrics feature). A station without the endpoint answers 404 and the DJ says there are no lyrics on file, so nothing breaks on older stations. Long sheets are capped before they reach the prompt.
+- **Library search pages like the station's own admin search.** The search tool takes a page number and rides `/dj/search`'s offset, so the ninth match for a common word is finally reachable from a call.
+- **locca joins the provider list.** SUB/WAVE's bundled local runner, mirrored here: no key, and a blank Endpoint falls back to locca's usual host address (`LOCCA_BASE_URL` overrides).
+
 ## 0.10.46
 
-- **The settings panel has a new look — a newspaper.** A "WAVE TALK" masthead over a red rule, flat cream-and-ink sheets (near-black in dark mode), ruled rows instead of boxed-in cards, square red toggles, section headings with a rule filling the line, and a proper footer. It's the panel only — the call card stays deliberately neutral — and light, dark, the station's own colours and match-the-page all keep working. Pure restyle: every control and setting is exactly where it was.
+- **The settings panel has a new look — a newspaper.** A "TALK WAVE" masthead over a red rule, flat cream-and-ink sheets (near-black in dark mode), ruled rows instead of boxed-in cards, square red toggles, section headings with a rule filling the line, and a proper footer. It's the panel only — the call card stays deliberately neutral — and light, dark, the station's own colours and match-the-page all keep working. Pure restyle: every control and setting is exactly where it was.
 
 ## 0.10.45
 
@@ -98,7 +136,7 @@ Mostly mobile and polish — on a phone, the card now reads like the real thing.
 
 ### On a phone
 
-- **Installs and behaves like an app.** Add Wave Talk to a home screen and it opens full-screen as a progressive web app — a call, a text line, or a voicemail, with the DJ's portrait up top, the conversation in the middle, and the actions under your thumb. The keyboard no longer covers the chat, push-to-talk stays held while your finger is down, and a long reply or a long show name wraps to read cleanly instead of trailing off.
+- **Installs and behaves like an app.** Add Talk Wave to a home screen and it opens full-screen as a progressive web app — a call, a text line, or a voicemail, with the DJ's portrait up top, the conversation in the middle, and the actions under your thumb. The keyboard no longer covers the chat, push-to-talk stays held while your finger is down, and a long reply or a long show name wraps to read cleanly instead of trailing off.
 
 ### The text line
 
@@ -167,7 +205,7 @@ Covers 0.10.9 through 0.10.15 — the changelog had fallen behind main.
 
 ### Deploying
 
-- **Containers get names a person can read**: `wavetalk-worker`, `wavetalk-web`, `livekit-server`, `wavetalk-caddy` — no more `stack-wavetalk-wavetalk-worker-1` in your GUI.
+- **Containers get names a person can read**: `talkwave-worker`, `talkwave-web`, `livekit-server`, `talkwave-caddy` — no more `stack-talkwave-talkwave-worker-1` in your GUI.
 - **Redeploys stop killing calls mid-shutdown**: `stop_grace_period: 2m` on the worker, because Docker's 10-second default SIGKILLed the transcript write, the slot release and the wrap-up line.
 - **When you need the bundled Caddy — and when you don't — is written down**: it exists only because browsers grant the microphone to HTTPS origins; bring your own proxy and it can go, provided you carry over both routes (the widget *and* `/rtc`, the one people forget).
 - The README's embed-attribute table renders as a table again, and the docs cover the theme toggle's four looks.

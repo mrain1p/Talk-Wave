@@ -157,7 +157,7 @@ def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
     a line that was already silent, which a beta tester's side-by-side read
     correctly called out: mute and unmute, no commit. The bar release is
     the one moment a caller explicitly says "your turn", so the widget now
-    announces it (`wavetalk.turn-end`) and this hands it to the session.
+    announces it (`talkwave.turn-end`) and this hands it to the session.
 
     Guarded on the user actually being mid-turn: a release with nothing
     said must not commit an empty turn and make the DJ answer silence —
@@ -165,7 +165,7 @@ def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
     """
 
     def _on_data(packet) -> None:
-        if getattr(packet, "topic", "") != "wavetalk.turn-end":
+        if getattr(packet, "topic", "") != "talkwave.turn-end":
             return
         try:
             if str(getattr(session, "user_state", "")) != "speaking":

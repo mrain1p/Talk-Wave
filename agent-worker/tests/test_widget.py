@@ -6,6 +6,7 @@ Split out of test_sidecar.py; see tests/__init__.py.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import types
@@ -96,6 +97,76 @@ class TestAssetVersioning(unittest.TestCase):
         html = api_widget._versioned_page("index.html")
         self.assertIn("<html", html.lower())
         self.assertGreater(len(html), 2000)
+
+
+class TestThumbsArePerDoor(_TempStores):
+    """Feedback is offered per door (operator's ask, 0.10.48): the call, the
+    text line and the machine each read their own switch, so switching one on
+    must not light the other two."""
+
+    DOORS = (("ask_call_feedback", "askFeedback"),
+             ("ask_chat_feedback", "askChatFeedback"),
+             ("ask_vm_feedback", "askVmFeedback"))
+
+    def test_each_door_reads_its_own_switch(self):
+        import settings as settings_store
+        from api.live import look_payload
+
+        base = settings_store.load()
+        off = look_payload(dict(base), "Rosie")
+        for _, flag in self.DOORS:
+            self.assertFalse(off[flag], flag)
+        for field, flag in self.DOORS:
+            on = look_payload({**base, field: True}, "Rosie")
+            for _, other in self.DOORS:
+                self.assertEqual(on[other], other == flag,
+                                 f"{field} lit {other}")
+
+
+class TestTheEmbedSitsFlushByDefault(_TempStores):
+    """An embed displays in whatever area its host gives it — no border, no
+    sheet — unless the operator ticks the outline back on (0.10.51). The
+    main page always keeps its card; only the frame reads the flag."""
+
+    def test_the_flag_defaults_off_and_reads_its_setting(self):
+        import settings as settings_store
+        from api.live import look_payload
+
+        base = settings_store.load()
+        self.assertFalse(look_payload(dict(base), "Rosie")["embedOutline"])
+        self.assertTrue(look_payload(
+            {**base, "embed_card_outline": True}, "Rosie")["embedOutline"])
+
+    def test_the_widget_gates_bare_on_framed(self):
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("classList.toggle('bare'", js)
+        bare_at = js.index("classList.toggle('bare'")
+        # `compact`, deliberately not `framed`: the panel's Page-tab preview
+        # is framed too, and gating on framed stripped the card there.
+        self.assertIn("compact &&", js[bare_at:bare_at + 160],
+                      "bare must never strip the main page's card")
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".card.bare", css)
+
+
+class TestDiagnosticsResultsKeepTheirScrollSkin(unittest.TestCase):
+    """The viewers' result boxes must keep the 'scrolly' class on rewrite.
+
+    className assignment is a full replacement, and a rewrite in
+    panel-viewers.js once dropped 'scrolly' from the class the markup ships:
+    max-height still applied (a later `.result.logs` rule carries its own),
+    overflow did not, and fifty wrapped log lines poured straight through the
+    box's border and over the page footer. The operator sent the screenshot.
+    """
+
+    def test_every_result_class_rewrite_keeps_scrolly(self):
+        js = (REPO / "web-widget" / "panel-viewers.js").read_text(encoding="utf-8")
+        rewrites = re.findall(r"className\s*=\s*'([^']*\bresult\b[^']*)'", js)
+        self.assertTrue(rewrites, "expected className rewrites in panel-viewers.js")
+        missing = [c for c in rewrites if "scrolly" not in c]
+        self.assertEqual(
+            missing, [],
+            "a viewer result box loses its scroll skin on rewrite: %r" % missing)
 
 
 class TestPanelMarkup(unittest.TestCase):
@@ -239,9 +310,11 @@ class TestWidgetServerContract(unittest.TestCase):
     # page -> the scripts that page loads, in load order.
     PAGES = {
         "index.html": ("shared.js", "call.js"),
-        # panel-viewers.js reads window.Panel, which panel.js publishes, so the
-        # order is load-bearing rather than cosmetic.
-        "panel.html": ("shared.js", "panel.js", "panel-viewers.js"),
+        # panel-viewers.js and panel-charts.js read window.Panel, which
+        # panel.js publishes, so the order is load-bearing rather than
+        # cosmetic.
+        "panel.html": ("shared.js", "panel.js", "panel-viewers.js",
+                       "panel-charts.js"),
     }
 
     @classmethod
@@ -274,7 +347,8 @@ class TestWidgetServerContract(unittest.TestCase):
         self.assertGreater(len(self.fetched), 10)
         self.assertEqual(
             set(self.sources),
-            {"shared.js", "call.js", "panel.js", "panel-viewers.js"})
+            {"shared.js", "call.js", "panel.js", "panel-viewers.js",
+             "panel-charts.js"})
 
     def test_every_script_belongs_to_a_page_and_every_page_loads_its_own(self):
         # A file that exists but nothing loads is the split's own failure mode:
@@ -1610,7 +1684,7 @@ class TestTheWidgetActuallyParses(unittest.TestCase):
     reporting, and 582 tests stayed green while it happened — the contract
     test READS these files but nothing ever PARSED one. `node --check` is
     that parse. CI's runner has node, so no broken widget reaches an image;
-    locally the test skips if node is missing, and the wavetalk-verify skill
+    locally the test skips if node is missing, and the talkwave-verify skill
     is the local backstop: load both pages, read the console.
     """
 

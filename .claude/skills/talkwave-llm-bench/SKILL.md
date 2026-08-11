@@ -1,5 +1,5 @@
 ---
-name: wavetalk-llm-bench
+name: talkwave-llm-bench
 description: Measure whether an LLM can actually run the call-in DJ before switching to it — tool-calling reliability, per-leg latency, and conduct. Use for "which model should I use", "is <model> fast enough", "compare these models", "why is the DJ slow", or any diagnosis where the model choice is suspect. Measures and recommends only; never changes the live setting.
 ---
 
@@ -55,7 +55,7 @@ a candidate without touching what the station is running. Both need admin auth.
 
 Latency and tool-calling are necessary, not sufficient. Conduct — whether the DJ pushes to end
 the call, repeats its goodbye, invents library results — only shows up with a caller in front of
-it. That is what `agent-worker/scripted_call.py` is for; see the `wavetalk-diagnose` skill and
+it. That is what `agent-worker/scripted_call.py` is for; see the `talkwave-diagnose` skill and
 the harness's own docstring. It drives the real brain with typed caller turns and records what
 the DJ tried to do, with every station write swapped for a recorder.
 

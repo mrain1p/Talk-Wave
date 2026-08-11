@@ -29,7 +29,7 @@ if (-not (Test-Path (Join-Path $root ".env"))) { throw ".env missing - copy .env
 $logDir = Join-Path $root "data\logs"
 New-Item -ItemType Directory -Force $logDir | Out-Null
 # The config path MUST be quoted by hand: Start-Process joins -ArgumentList
-# with spaces and does not quote, so "...\Wave Talk\livekit.yaml" otherwise
+# with spaces and does not quote, so "...\Talk Wave\livekit.yaml" otherwise
 # arrives as two broken arguments and the server exits at startup.
 Start-Process -FilePath (Join-Path $root "bin\livekit-server.exe") `
     -ArgumentList "--config", ('"{0}"' -f (Join-Path $root "livekit.yaml")) `

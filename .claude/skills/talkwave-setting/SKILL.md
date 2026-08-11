@@ -1,6 +1,6 @@
 ---
-name: wavetalk-setting
-description: Add, change or remove a Wave Talk setting. A setting lives in five places and the panel silently skips one that is missing a piece, so it can ship completely unreachable. Use for "add a setting for X", "make X configurable", "expose X in the panel", or when a setting exists but does nothing.
+name: talkwave-setting
+description: Add, change or remove a Talk Wave setting. A setting lives in five places and the panel silently skips one that is missing a piece, so it can ship completely unreachable. Use for "add a setting for X", "make X configurable", "expose X in the panel", or when a setting exists but does nothing.
 ---
 
 # Add a setting
@@ -61,7 +61,7 @@ field with no matching DOM id — no error, no warning, the row just is not ther
 - Its partner, if it has one: turning a limit on must not be one edit away from disabling the
   feature. Test both directions.
 
-Run the suite (see the `wavetalk-test` skill). `TestPanelMarkup` will fail if you missed
+Run the suite (see the `talkwave-test` skill). `TestPanelMarkup` will fail if you missed
 step 3; nothing will fail if you missed step 4, so check it yourself.
 
 ## API keys are not settings

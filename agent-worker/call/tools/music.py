@@ -273,6 +273,38 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
     tools = []
 
+    # Always built — a read with no side effects, like the MCP reads, so the
+    # gate vocabulary has no row for it. Registry: subwave_current_lyrics.
+    @lk_llm.function_tool(name="subwave_current_lyrics")
+    async def current_lyrics() -> str:
+        """The words of the track playing right now. Use when a caller asks
+        what the song says, what it means, or which line just played. Comes
+        back empty for instrumentals and for stations that keep no lyrics —
+        say so plainly, never invent lines."""
+        d = await station.current_lyrics()
+        lines = [str(l.get("text") or "").strip()
+                 for l in (d.get("lines") or []) if isinstance(l, dict)]
+        lines = [l for l in lines if l]
+        if not lines:
+            return ("No lyrics on file for the current track — an "
+                    "instrumental, or the station has none indexed. Tell the "
+                    "caller that; do not guess at words.")
+        # Prompt budget: a full lyric sheet can outweigh the rest of the
+        # briefing, and it is paid for on every later turn of the call.
+        kept: list[str] = []
+        spent = 0
+        for line in lines:
+            line = line[:160]
+            if spent + len(line) > 2000:
+                break
+            kept.append(line)
+            spent += len(line) + 1
+        tail = "" if len(kept) == len(lines) else (
+            f"\n…and {len(lines) - len(kept)} more lines not shown")
+        return "The current track's lyrics:\n" + "\n".join(kept) + tail
+
+    tools.append(current_lyrics)
+
     # Exact queueing needs the ids that only the local search wrapper surfaces.
     exact_queue = bool(cfg.get("allow_exact_queue")) and not library_search_needs_mcp()
 
@@ -280,14 +312,16 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
     # the raw MCP tool takes its place (see library_search_needs_mcp).
     if cfg.get("allow_library_search") and not library_search_needs_mcp():
         @lk_llm.function_tool(name="subwave_search_library")
-        async def search_library(q: str) -> str:
+        async def search_library(q: str, page: int = 1) -> str:
             """Look up a track BY NAME. This is a literal word match against
             titles and artists — nothing else. It cannot find a mood, a vibe,
             a genre or an era: searching "fun" returns songs with the word
             "fun" in the title, which is not what a caller asking for
             "something fun" wants. For anything descriptive use
             subwave_request_song, which resolves it properly. Use this only
-            when the caller has named a track or an artist."""
+            when the caller has named a track or an artist. Results come a
+            page at a time; if the caller says none of these are the one,
+            call again with the next page number."""
             # Backstop for the prompt rule above: a mood word searched by name
             # returns titles containing that word, which reads to the caller
             # like the DJ is flipping through an index. Refuse and redirect
@@ -302,16 +336,35 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     "caller a search failed — nothing failed, you just used the wrong "
                     "tool. Put the request in."
                 )
+            # 8 to a page: enough for "was it one of these", small enough to
+            # read down a phone line. One extra row is fetched purely to know
+            # whether a next page exists — the station's own answer, not a
+            # guess from a full page.
+            PAGE = 8
+            page = max(1, int(page or 1))
             for attempt in _query_variants(q):
-                items = await station.search_library(attempt)
+                items = await station.search_library(
+                    attempt, offset=(page - 1) * PAGE, limit=PAGE + 1)
                 if items:
                     note = "" if attempt == q else (
                         f" (matched on '{attempt}' — the library needs every word to match)"
                     )
-                    lines = [_fmt_track(t, with_id=exact_queue) for t in items[:8]]
-                    more = f" …and {len(items) - 8} more" if len(items) > 8 else ""
+                    lines = [_fmt_track(t, with_id=exact_queue)
+                             for t in items[:PAGE]]
+                    more = (f"\n…more beyond this page — call again with "
+                            f"page={page + 1} if none of these are it"
+                            ) if len(items) > PAGE else ""
                     joined = "\n".join(lines)
-                    return f"{len(items)} result(s){note}:\n" + joined + more
+                    head = f"{len(lines)} result(s){note}"
+                    if page > 1:
+                        head += f", page {page}"
+                    return head + ":\n" + joined + more
+            if page > 1:
+                # An empty deeper page means the results ran out, not that the
+                # phrasing needs loosening — don't send the DJ to the request
+                # tool over a list it has already read to the caller.
+                return (f"Nothing on page {page} — the earlier pages held "
+                        "everything that matches.")
             # The catch-all for everything the vibe word list above misses —
             # and it misses plenty, because no list covers "sustained energy
             # vibes" or "something for late-night driving". A description

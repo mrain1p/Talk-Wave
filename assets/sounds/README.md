@@ -8,7 +8,7 @@ operator upload / URL   →   bundled asset (here)   →   synthesized in the br
 ```
 
 Nothing here has to exist. With this folder empty the widget synthesizes every
-sound, which is how Wave Talk has always worked and is worth keeping — a
+sound, which is how Talk Wave has always worked and is worth keeping — a
 deployment with no audio files still rings, picks up and hangs up.
 
 ## Adding a pack

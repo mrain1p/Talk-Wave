@@ -364,6 +364,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_chat_button":      (None, False),
     "show_signin":            (None, False),
     "embed_signin":           (None, False),
+    # An embed sits flush in whatever area its host gives it — no border, no
+    # sheet of its own — unless the operator ticks the outline back on. The
+    # main page always keeps its card; only the frame is asked.
+    "embed_card_outline":     (None, False),
     # How each door reads: its WORD, its ICON, or both — one answer per
     # feature, not one for the whole row. An operator wanted Call worded and
     # the two secondary doors as bare icons on a tight embed, which the old
@@ -436,6 +440,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # every caller sees, and an operator who is not going to read the answers
     # should not be collecting them.
     "ask_call_feedback": (None, False),
+    # Per-door, not one switch: the operator asked to decide separately for
+    # the text line and the machine — a thumbs prompt that reads fine after a
+    # live call can read as fishing after a voicemail, and that is their call
+    # to make, not ours.
+    "ask_chat_feedback": (None, False),
+    "ask_vm_feedback": (None, False),
 
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
@@ -707,7 +717,12 @@ GROUPS = [
     ("voicemail", "line",  "Voicemail",           "When the booth can't pick up, the machine does."),
     ("chat",      "line",  "Text line",           "Typed chat with whoever is on air — same brain, no microphone."),
 
-    ("player",   "card",   "Player settings",     "What the card shows, here and in an embed."),
+    # One "Player settings" section until 0.10.47: the live preview, the
+    # what-shows-where matrix and the look-and-feel rows all shared a single
+    # drawer, and the operator asked for them as separate dropdowns.
+    ("preview",  "card",   "Player preview",      "The real card, following unsaved changes live."),
+    ("surface",  "card",   "What the card shows", "Each element, on this page and in an embed."),
+    ("player",   "card",   "Player settings",     "The card's look and behaviour."),
     # Every fixed string on the card, overridable — so a station whose whole
     # page speaks in its own voice doesn't get "Ringing…" in ours. The
     # operator asked for it as a group.
@@ -738,10 +753,11 @@ SCHEMA: dict[str, dict] = {
     "llm_base_url": dict(group="brains", kind="text", label="Endpoint",
         needs=("llm_provider", ("ollama", "openai", "openrouter",
                                 "deepseek", "requesty", "gateway",
-                                "openai-compatible")),
+                                "openai-compatible", "locca")),
         placeholder="default: the provider's own address",
         help="Only for a self-hosted or gateway endpoint. Required for "
              "'OpenAI-compatible' — it is the address of your own server. "
+             "locca falls back to its usual host address when left blank. "
              "With one set, the Model list is read from it (hit “Reload "
              "model lists”) — servers like llama-swap only route model "
              "names they declare."),
@@ -879,12 +895,12 @@ SCHEMA: dict[str, dict] = {
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels
     # are short: the column heading carries the surface, not the label.
-    "show_caller_help": dict(group="player", kind="check",
+    "show_caller_help": dict(group="surface", kind="check",
         label="“What can I ask?” button",
         help="Opens the same live reference this panel shows you, filtered to "
              "what is actually switched on. Most callers assume a phone-in only "
              "takes requests."),
-    "embed_caller_help": dict(group="player", kind="check",
+    "embed_caller_help": dict(group="surface", kind="check",
         label="“What can I ask?” button (embed)",
         help="The same button, in a frame on somebody else's page."),
     "chat_idle_minutes": dict(group="chat", kind="number",
@@ -951,25 +967,25 @@ SCHEMA: dict[str, dict] = {
         needs=("chat_reprompt", True),
         help="How long a caller may be quiet, the ball in their court, before "
              "that one nudge. 15 is a natural pause; too short reads as pushy."),
-    "show_theme_toggle": dict(group="player", kind="check",
+    "show_theme_toggle": dict(group="surface", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "
              "to toggle between."),
-    "embed_theme_toggle": dict(group="player", kind="check",
+    "embed_theme_toggle": dict(group="surface", kind="check",
         label="Light / dark toggle (embed)",
         help="Usually worth off: a caller flipping the card to light on a dark "
              "host page gets a bright rectangle in the middle of it."),
-    "show_settings_gear": dict(group="player", kind="check",
+    "show_settings_gear": dict(group="surface", kind="check",
         label="Settings gear",
         help="The way into this panel from the card. Off secures nothing — "
              "/settings still answers by URL and still asks for the password — "
              "just stops advertising it."),
-    "show_chat_button": dict(group="player", kind="check",
+    "show_chat_button": dict(group="surface", kind="check",
         label="“Text the booth” button",
         help="A third way in, beside Call: typed conversation with the "
              "on-air DJ. Needs the text line switched on under Running "
              "the line."),
-    "embed_chat_button": dict(group="player", kind="check",
+    "embed_chat_button": dict(group="surface", kind="check",
         label="“Text the booth” button (embed)",
         help="The same door on the embedded card. Off by default: three "
              "buttons crowd a 190px frame."),
@@ -996,7 +1012,7 @@ SCHEMA: dict[str, dict] = {
     "chat_show_emoji": dict(group="player", kind="check",
         label="Text button — icon",
         help="Show a speech-bubble icon on the Text button."),
-    "show_signin": dict(group="player", kind="check",
+    "show_signin": dict(group="surface", kind="check",
         label="“Sign in” button",
         help="A corner button that lets a caller enter the guest code or the "
              "admin password to UNLOCK more of what they can ask for — the "
@@ -1004,25 +1020,30 @@ SCHEMA: dict[str, dict] = {
              "shows only when a code is set and there is a higher tier to "
              "reach; it does nothing on a line where every permission is open "
              "to anyone. See Caller permissions to set the tiers."),
-    "embed_signin": dict(group="player", kind="check",
+    "embed_signin": dict(group="surface", kind="check",
         label="“Sign in” button (embed)",
         help="The same corner button on the embedded card."),
-    "show_voicemail_button": dict(group="player", kind="check",
+    "embed_card_outline": dict(group="embed", kind="check",
+        label="Draw the card outline",
+        help="Off, the embed sits flush in whatever area the host page gives "
+             "it — no border or sheet of its own, the page shows through. On, "
+             "it carries the same outlined card as the main page."),
+    "show_voicemail_button": dict(group="surface", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "
              "while the booth could pick up live. Voicemail itself has to be "
              "switched on under Running the line."),
-    "embed_voicemail_button": dict(group="player", kind="check",
+    "embed_voicemail_button": dict(group="surface", kind="check",
         label="\u201cLeave a message\u201d button (embed)",
         help="The same second button, on the embedded card."),
-    "show_push_to_talk": dict(group="player", kind="check",
+    "show_push_to_talk": dict(group="surface", kind="check",
         label="Push to talk",
         help="The caller's mic stays closed except while they hold (or tap to "
              "latch) a talk bar — space works on a keyboard. Better control in "
              "a noisy room, and the DJ never hears a TV in the background. The "
              "mic permission is still asked once, at pickup. On by default; "
              "switch off for an open mic from pickup."),
-    "embed_push_to_talk": dict(group="player", kind="check",
+    "embed_push_to_talk": dict(group="surface", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),
     "voice_effect": dict(group="effects", kind="select", label="Voice effect",
@@ -1040,10 +1061,10 @@ SCHEMA: dict[str, dict] = {
         help="0–100. 100 is the effect at full character; lower settles it "
              "toward the clean voice — 40 is a hint of radio rather than a "
              "costume. Test with effect uses this number."),
-    "show_dj_avatar": dict(group="player", kind="check", label="DJ photo",
+    "show_dj_avatar": dict(group="surface", kind="check", label="DJ photo",
         help="Served through this origin, so it still loads from an https page "
              "off your network."),
-    "embed_dj_avatar": dict(group="player", kind="check", label="DJ photo (embed)",
+    "embed_dj_avatar": dict(group="surface", kind="check", label="DJ photo (embed)",
         help="Off if the host page already shows the same photo."),
     "default_to_speaker": dict(group="player", kind="check",
         label="Start calls on loudspeaker",
@@ -1058,18 +1079,18 @@ SCHEMA: dict[str, dict] = {
         help="Applies wherever the photo is shown. Round suits a portrait and "
              "is what the card was built around; square matches a host page "
              "whose own artwork has corners."),
-    "show_dj_show": dict(group="player", kind="check", label="Show name",
+    "show_dj_show": dict(group="surface", kind="check", label="Show name",
         help="The programme currently on air."),
-    "embed_dj_show": dict(group="player", kind="check", label="Show name (embed)",
+    "embed_dj_show": dict(group="surface", kind="check", label="Show name (embed)",
         help="Off if the host page already says what show is on."),
-    "show_dj_tagline": dict(group="player", kind="check", label="DJ tagline",
+    "show_dj_tagline": dict(group="surface", kind="check", label="DJ tagline",
         help="The persona's one-line blurb, as the station publishes it."),
-    "embed_dj_tagline": dict(group="player", kind="check", label="DJ tagline (embed)",
+    "embed_dj_tagline": dict(group="surface", kind="check", label="DJ tagline (embed)",
         help="Off if the host page already carries it."),
-    "show_now_playing": dict(group="player", kind="check", label="Now playing",
+    "show_now_playing": dict(group="surface", kind="check", label="Now playing",
         help="Updates on the card's own 20-second poll, so it will briefly "
              "disagree with a host page's faster ticker."),
-    "embed_now_playing": dict(group="player", kind="check", label="Now playing (embed)",
+    "embed_now_playing": dict(group="surface", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
     "word_ringing": dict(group="wording", kind="text", label="Ringing",
         placeholder="default: Ringing…"),
@@ -1103,6 +1124,15 @@ SCHEMA: dict[str, dict] = {
         help="A thumbs up or down under the card once the line drops, stored "
              "against that call's own transcript so a bad one can be found and "
              "read back. Nothing else is collected."),
+    "ask_chat_feedback": dict(group="player", kind="check",
+        label="Ask after a text chat",
+        help="The same thumbs, offered when the caller ends a chat they "
+             "actually typed in. Stored against the chat's transcript."),
+    "ask_vm_feedback": dict(group="player", kind="check",
+        label="Ask after a voicemail",
+        help="The same thumbs after a message is left. Off keeps the "
+             "machine's receipt as the last word — asking “how was "
+             "it?” over “message left” can read as fishing."),
     "widget_theme": dict(group="player", kind="select", label="Colours",
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
@@ -1150,10 +1180,11 @@ SCHEMA: dict[str, dict] = {
         help="Anything sent to air waits for the broadcast to go quiet, and the DJ "
              "steps back from the call while it plays — telling the caller either "
              "side rather than talking over itself."),
-    "on_air_quiet_secs": dict(group="onair", kind="number", label="Air is busy for (s)",
+    "on_air_quiet_secs": dict(group="onair", kind="number",
+        label="Fallback: air is busy for (s)",
         needs=("avoid_on_air_overlap", True),
-        help="Fallback for when the station's log doesn't say what was spoken — "
-             "when it does, the hold is sized to the words themselves. "
+        help="Only a fallback, for when the station's log doesn't say what was "
+             "spoken — when it does, the hold is sized to the words themselves. "
              "A typical link runs 20–30 seconds."),
 
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
@@ -1560,8 +1591,19 @@ MODEL_CHOICES = {
     # Studio). Discovered live from its /v1/models; there is nothing sensible
     # to curate for a server we have never seen.
     "openai-compatible": [],
+    # The station's locca (a llama.cpp it runs on the host). Same live
+    # /v1/models discovery as openai-compatible — the difference is only that
+    # a blank Endpoint falls back to locca's well-known address instead of
+    # being an error.
+    "locca": [],
     "ollama": [],
 }
+
+# Where the station's locca answers when the Endpoint field is left blank —
+# mirrored from SUB/WAVE's DEFAULT_LOCCA_BASE_URL, which points at the host
+# from inside a container. An explicit Endpoint always wins, and LOCCA_BASE_URL
+# in the environment sits between the two, like OLLAMA_BASE_URL does.
+LOCCA_BASE_URL_DEFAULT = "http://host.docker.internal:8080/v1"
 
 # Which stored key each provider needs before it can answer a call at all.
 # None means "needs no key of ours": Ollama runs on the operator's own network,
@@ -1586,6 +1628,10 @@ LLM_PROVIDER_KEY: dict[str, str | None] = {
     # openai-compatible provider: no managed key. If the server wants one
     # anyway, set OPENAI_COMPAT_API_KEY in the environment.
     "openai-compatible": None,
+    # The station's own local runner — no key, like Ollama. Mirrored so an
+    # operator whose station thinks on locca can point the call line at the
+    # same box by picking the same name.
+    "locca": None,
     "ollama": None,
 }
 
@@ -1600,6 +1646,7 @@ LLM_PROVIDER_LABELS: dict[str, str] = {
     "requesty": "Requesty (aggregator)",
     "gateway": "Vercel AI Gateway (aggregator)",
     "openai-compatible": "OpenAI-compatible (llama.cpp · vLLM · LM Studio)",
+    "locca": "locca (the station's local runner, no key)",
     "ollama": "Ollama (your own box, no key)",
 }
 

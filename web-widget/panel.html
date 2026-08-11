@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Wave Talk settings</title>
+<title>Talk Wave settings</title>
 <!--
   The operator's surface, served at /settings — the one and only address.
 
@@ -60,7 +60,7 @@
          unchanged; only the styling and its home moved. -->
     <header class="masthead">
       <div class="mastname">
-        <div class="masttitle">WAVE TALK</div>
+        <div class="masttitle">TALK WAVE</div>
         <div class="mastsub" id="mastSub">Dashboard</div>
       </div>
       <div class="panelbar">
@@ -131,117 +131,172 @@
          one is followed by the dash, the heading and the search. -->
     <h3 class="dashband">Dashboard</h3>
     <div class="dash">
-      <!-- Four labelled groups (operator's sketch, round three): each door
-           lives WITH the traffic it produces — the Live calls toggle beside
-           the call records, the Voicemail toggle beside the messages — the
-           line and its access stand together as TRANSMISSION, and the three
-           who/what/how-it-thinks read-backs make one STATION group. Press =
-           act on every switch card; tiles jump. Paused still ambers the two
-           doors, wherever they sit. -->
+      <!-- The newspaper order (spec §2b): the four read-backs lead the page
+           as one strip directly under the masthead's double rule — who is on
+           air, whether the station answers, the three legs of a call, who
+           may call. Same tiles, same ids, same paintDash contract as the old
+           Station group; only the shelf they sit on moved. -->
+      <div class="stationstrip">
+        <button type="button" class="tile" id="tileOnAir" data-jump="call">
+          <img class="tavatar" id="tileOnAirImg" alt="" hidden />
+          <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileStation" data-jump="station">
+          <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileChain" data-jump="brains">
+          <span class="tk">Brains · Voice · Ears</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+        <button type="button" class="tile" id="tileAccess" data-jump="security">
+          <span class="tk">Who can call</span><span class="tv">—</span><span class="tn"></span>
+        </button>
+      </div>
+      <!-- TRANSMISSION reads as a hierarchy (spec §2): the caption, THE LINE,
+           and its LINES indented beneath a left rule — the three ways through
+           the door above, each door beside the traffic it produces. The
+           switch cards and stat tiles keep their ids and inner spans, so
+           paintDash and paintNightTile fill the new shape unchanged. -->
       <div class="dashgroup transmission">
-        <p class="tlabel">Transmission</p>
-        <div class="dashctrl">
-          <button type="button" id="pauseBtn" class="ctrlcard kill">
-            <span class="ck">The line</span>
-            <span class="cv" id="pausedNote"></span>
-            <span class="cn" id="pausedSub"></span>
-            <span class="switch" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="tile" id="tileAccess" data-jump="security">
-            <span class="tk">Who can call</span><span class="tv">—</span><span class="tn"></span>
-          </button>
-          <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
-                 aria-hidden="true" />
-          <input type="checkbox" id="live_calls_enabled" class="fieldonly"
-                 tabindex="-1" aria-hidden="true" />
-          <input type="checkbox" id="voicemail_enabled" class="fieldonly"
-                 tabindex="-1" aria-hidden="true" />
-          <input type="checkbox" id="chat_enabled" class="fieldonly"
-                 tabindex="-1" aria-hidden="true" />
+        <div class="dashcaption">
+          <p class="tlabel">Transmission</p>
+          <p class="dashmodesay" id="modeSay"></p>
         </div>
-        <p class="dashmodesay" id="modeSay"></p>
-      </div>
-      <div class="dashgroup livegroup">
-        <p class="tlabel">Live calls</p>
-        <div class="grouprow">
-          <button type="button" id="modeLiveBtn" class="ctrlcard">
-            <span class="ck">Live calls</span>
-            <span class="cv"></span>
-            <span class="cn">the booth picks up</span>
-            <span class="switch small" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="tile" id="tileCalls">
-            <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
-          </button>
-        </div>
-      </div>
-      <div class="dashgroup vmgroup">
-        <p class="tlabel">Voicemail</p>
-        <div class="grouprow">
-          <button type="button" id="modeVmBtn" class="ctrlcard">
-            <span class="ck">Voicemail</span>
-            <span class="cv"></span>
-            <span class="cn">the machine answers</span>
-            <span class="switch small" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="tile" id="tileVm">
-            <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
-          </button>
-        </div>
-      </div>
-      <div class="dashgroup chatgroup">
-        <p class="tlabel">Text line</p>
-        <div class="grouprow">
-          <button type="button" id="modeChatBtn" class="ctrlcard">
-            <span class="ck">Text line</span>
-            <span class="cv"></span>
-            <span class="cn">typed chat with the booth</span>
-            <span class="switch small" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="tile" id="tileChat">
-            <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
-          </button>
-        </div>
-      </div>
-      <div class="dashgroup stationgroup">
-        <p class="tlabel">Station</p>
-        <div class="grouprow">
-          <button type="button" class="tile" id="tileOnAir" data-jump="call">
-            <img class="tavatar" id="tileOnAirImg" alt="" hidden />
-            <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
-          </button>
-          <button type="button" class="tile" id="tileStation" data-jump="station">
-            <span class="tk">Station</span><span class="tv">—</span><span class="tn"></span>
-          </button>
-          <button type="button" class="tile" id="tileChain" data-jump="brains">
-            <span class="tk">Brains · Voice · Ears</span><span class="tv">—</span><span class="tn"></span>
-          </button>
+        <button type="button" id="pauseBtn" class="ctrlcard kill">
+          <span class="ck">The line</span>
+          <span class="cv" id="pausedNote"></span>
+          <span class="cn" id="pausedSub"></span>
+          <span class="switch" aria-hidden="true"></span>
+        </button>
+        <input type="checkbox" id="calls_paused" class="fieldonly" tabindex="-1"
+               aria-hidden="true" />
+        <input type="checkbox" id="live_calls_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
+        <input type="checkbox" id="voicemail_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
+        <input type="checkbox" id="chat_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
+        <div class="lines">
+          <p class="lineslabel">Lines <em>the three ways through the door above</em></p>
+          <div class="linerow">
+            <button type="button" id="modeLiveBtn" class="ctrlcard">
+              <span class="switch small" aria-hidden="true"></span>
+              <span class="ck">Live calls</span>
+              <span class="cv"></span>
+              <span class="cn">the booth picks up</span>
+            </button>
+            <button type="button" class="tile" id="tileCalls">
+              <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
+            </button>
+          </div>
+          <div class="linerow">
+            <button type="button" id="modeVmBtn" class="ctrlcard">
+              <span class="switch small" aria-hidden="true"></span>
+              <span class="ck">Voicemail</span>
+              <span class="cv"></span>
+              <span class="cn">the machine answers</span>
+            </button>
+            <button type="button" class="tile" id="tileVm">
+              <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
+            </button>
+          </div>
+          <div class="linerow">
+            <button type="button" id="modeChatBtn" class="ctrlcard">
+              <span class="switch small" aria-hidden="true"></span>
+              <span class="ck">Text line</span>
+              <span class="cv"></span>
+              <span class="cn">typed chat with the booth</span>
+            </button>
+            <button type="button" class="tile" id="tileChat">
+              <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- One header row: the heading and its promise on the left, the search
-         on the right — the box sat alone on its own line and read as a
-         stray form field rather than this half of the page's own finder. -->
-    <div class="settingshead">
-      <div>
-        <h2>Call-in settings</h2>
-        <p class="sub">Applies to the next caller — no restart. Clearing a field
-          falls back to the environment config.</p>
+    <!-- ACTIVITY (spec §7): four charts over the same records the calls
+         viewer reads, plus the sampled listener series from /stats/listeners.
+         Rendered by panel-charts.js; a series that isn't available shows an
+         em-dash over an empty frame — never invented data. -->
+    <div class="activity" id="activityStrip">
+      <div class="actcaption">
+        <p class="tlabel">Activity</p>
+        <span class="actspacer" aria-hidden="true"></span>
+        <label class="actshow">Show <input id="actShow" inputmode="numeric"
+               aria-label="How many days of buckets" /></label>
+        <span class="segs" role="group" aria-label="Bucket the charts by">
+          <button type="button" class="seg" id="actDay">Day</button>
+          <button type="button" class="seg" id="actWeek">Week</button>
+          <button type="button" class="seg" id="actMonth">Month</button>
+        </span>
+        <!-- Two independent multi-selects (operator's ask): tick which doors
+             and which ratings the whole strip counts. Both default to
+             everything; the summaries say what is ticked. -->
+        <details class="actpick" id="doorPick">
+          <summary id="doorPickSum">All doors</summary>
+          <div class="actmenu">
+            <label><input type="checkbox" data-v="call" checked /> Calls</label>
+            <label><input type="checkbox" data-v="chat" checked /> Texts</label>
+            <label><input type="checkbox" data-v="voicemail" checked /> Voicemail</label>
+          </div>
+        </details>
+        <details class="actpick" id="ratePick">
+          <summary id="ratePickSum">All ratings</summary>
+          <div class="actmenu">
+            <label><input type="checkbox" data-v="up" checked /> ▲ Rated up</label>
+            <label><input type="checkbox" data-v="down" checked /> ▼ Rated down</label>
+            <label><input type="checkbox" data-v="none" checked /> Unrated</label>
+          </div>
+        </details>
       </div>
-      <!-- Sixty settings deserve a faster answer than category archaeology:
-           type, and only the rows whose label or help mention it remain. -->
-      <input type="search" id="settingsSearch" class="settingsearch"
-             placeholder="Find a setting…" autocomplete="off" />
+      <div class="actgrid">
+        <figure class="actchart">
+          <figcaption><span>Doors</span><em id="doorsCap">—</em></figcaption>
+          <div class="actbody" id="doorsChart"></div>
+        </figure>
+        <figure class="actchart">
+          <figcaption><span>Door mix</span><em id="mixCap">—</em></figcaption>
+          <div class="actbody" id="mixChart"></div>
+        </figure>
+        <figure class="actchart">
+          <figcaption><span>Concurrent listeners</span><em id="lisCap">—</em></figcaption>
+          <div class="actbody" id="lisChart"></div>
+        </figure>
+        <figure class="actchart">
+          <figcaption><span>Time to first word · calls</span><em id="ttfwCap">—</em></figcaption>
+          <div class="actbody" id="ttfwChart"></div>
+        </figure>
+      </div>
     </div>
-    <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
-      reads every label, help line and section name. Try the thing's own noun
-      (“beep”, “password”, “skip”), or clear it and use Jump to.</p>
-    <!-- Jump links, one per super-group, built from the schema. The panel is
-         six screens long and every way of reaching the bottom of it was
-         scrolling past everything in between. Full width and labelled, so it
-         reads as the sections' menu rather than a stray row of chips. -->
-    <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
+
+    <!-- The whole settings header travels with the reader (operator's ask):
+         heading + promise, the finder, and the jump bar are ONE sticky band,
+         so search and navigation are never a scroll away. scroll-margin on
+         the sections keeps jump targets from hiding under it. -->
+    <div class="settingsbar" id="settingsBar">
+      <!-- One header row: the heading and its promise on the left, the search
+           on the right — the box sat alone on its own line and read as a
+           stray form field rather than this half of the page's own finder. -->
+      <div class="settingshead">
+        <div>
+          <h2>Call-in settings</h2>
+          <p class="sub">Applies to the next caller — no restart. Clearing a field
+            falls back to the environment config.</p>
+        </div>
+        <!-- Sixty settings deserve a faster answer than category archaeology:
+             type, and only the rows whose label or help mention it remain. -->
+        <input type="search" id="settingsSearch" class="settingsearch"
+               placeholder="Find a setting…" autocomplete="off" />
+      </div>
+      <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
+        reads every label, help line and section name. Try the thing's own noun
+        (“beep”, “password”, “skip”), or clear it and use Jump to.</p>
+      <!-- Jump links, one per super-group, built from the schema. The panel is
+           six screens long and every way of reaching the bottom of it was
+           scrolling past everything in between. Full width and labelled, so it
+           reads as the sections' menu rather than a stray row of chips. -->
+      <nav class="panelnav" id="panelNav" aria-label="Jump to a section"></nav>
+    </div>
 
     <!-- Every section's name and one-line subtitle are written here AND set
          from the schema by layoutPanel(), which is not belt-and-braces for its
@@ -253,8 +308,8 @@
     <details data-group="secinfo" class="sec">
       <summary><span class="chev">▶</span><span class="secname">How the doors work</span><em class="secblurb"></em><span class="tag">reference</span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Three tiers, each including
-          the ones below it:</p>
+        <p class="hint wide" style="margin-top:0"><strong>Three tiers, each
+          including the ones below it:</strong></p>
         <ul class="hint wide" style="margin-top:0">
           <li><strong>Admin</strong> — always exists. Opens this panel, the
             keys and the test buttons; also opens the phone. Set under Access
@@ -265,18 +320,24 @@
           <li><strong>Open</strong> — no code: anyone who can load the page
             can call, inside the usage caps.</li>
         </ul>
-        <p class="hint wide">What stands behind them: passwords are stored as
-          PBKDF2 hashes, never plaintext; wrong guesses are rate-limited
-          fail2ban-style — <strong>5 wrong tries puts the address in a
-          5-minute cooldown, and a second round of 5 bans it until the app
-          restarts</strong> (a restart clears bans, and
-          <code>CALLIN_ADMIN_KEY</code> in the environment is the recovery
-          override); API keys are write-only — the panel shows last-four,
-          never the key; join tokens are signed and short-lived, minted per
-          call; each caller's tier rides inside the signed token, so a caller
-          cannot raise their own; and the station tools a caller can reach go
-          through a hard allowlist — the destructive ones are never on the
-          line at any setting.</p>
+        <p class="hint wide"><strong>What stands behind them:</strong></p>
+        <ul class="hint wide" style="margin-top:0">
+          <li><strong>Passwords</strong> — stored as PBKDF2 hashes, never
+            plaintext.</li>
+          <li><strong>Lockouts</strong> — wrong guesses are rate-limited
+            fail2ban-style: 5 wrong tries puts the address in a 5-minute
+            cooldown, and a second round of 5 bans it until the app restarts.
+            A restart clears bans, and <code>CALLIN_ADMIN_KEY</code> in the
+            environment is the recovery override.</li>
+          <li><strong>API keys</strong> — write-only: the panel shows
+            last-four, never the key.</li>
+          <li><strong>Join tokens</strong> — signed and short-lived, minted
+            per call.</li>
+          <li><strong>Caller tier</strong> — rides inside the signed token,
+            so a caller cannot raise their own.</li>
+          <li><strong>Station tools</strong> — a hard allowlist; the
+            destructive ones are never on the line at any setting.</li>
+        </ul>
       </div>
     </details>
 
@@ -284,9 +345,17 @@
       <summary><span class="chev">▶</span><span class="secname">Access</span><em class="secblurb"></em><span class="tag" id="tagSecurity"></span></summary>
       <div class="body">
         <h4 class="subhead">Who can call</h4>
-        <div class="row">
-          <label for="front_access">Call-in access</label>
-          <select id="front_access"></select>
+        <!-- The same cascade the permission rows speak (operator's ask):
+             Admin is always a door, ticking Guest opens the code door,
+             ticking Anyone opens the page to everybody — each tier's own
+             powers stay per-feature under Caller permissions. The hidden
+             select is still the stored field, exactly the kill switch's
+             pattern: Save diffs it, the cells drive it. -->
+        <div class="row accessrow">
+          <label>Call-in access</label>
+          <span class="accesscells" id="accessCells"></span>
+          <select id="front_access" class="fieldonly" tabindex="-1"
+                  aria-hidden="true"></select>
         </div>
         <div class="row narrow">
           <label for="guest_session_hours">Guest code expires (hours)</label>
@@ -348,7 +417,7 @@
         <h4 class="subhead">Station admin credentials</h4>
         <p class="hint wide" style="margin-top:0">The station's own login.
           Unlocks putting messages on air, running segments, firing a programme
-          beat, skipping a track, <strong>putting a different show on air</strong>,
+          beat, skipping a track, putting a different show on air,
           the back-to-air mention, exact-track queueing, and mirroring each
           persona's voice from the station. Stored server-side, never shown back.</p>
         <!-- Filled by paintSecrets() from secrets_store.SECRET_GROUPS. Every
@@ -869,6 +938,7 @@
               <option value="hangup">Hang ups</option>
               <option value="failed">Can't connects</option>
               <option value="vm_beep">Voicemail beeps</option>
+              <option value="~none">Unassigned — no type yet</option>
             </select>
           </div>
           <table class="soundboard" id="soundBoard" hidden>
@@ -1068,20 +1138,15 @@
          ticker, where a second copy of both is noise. The gear's embed cell
          is a dash rather than a checkbox — an embed never loads this panel's
          code, so the switch would do nothing whichever way it was set. -->
-    <details data-group="player" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
+    <details data-group="preview" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Player preview</span><em class="secblurb"></em><span class="tag">live</span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">What the call card shows. The
-          two columns are the two places it appears: <strong>this page</strong>
-          (the phone at <code>/</code>) and an <strong>embed</strong> in a frame
-          on somebody else’s site.</p>
-
-        <!-- The real call card, in a frame, driven by the form above it
-             before anything is saved. It is the actual widget rather than a
-             drawing of one, and what it shows is resolved by /live/preview —
-             the same code that answers a real caller — so it cannot drift
-             from the thing it is previewing. Call and the gear are inert
-             inside it; see previewMode in call.js. -->
+        <!-- The real call card, in a frame, driven by the form in the two
+             sections below before anything is saved. It is the actual widget
+             rather than a drawing of one, and what it shows is resolved by
+             /live/preview — the same code that answers a real caller — so it
+             cannot drift from the thing it is previewing. Call and the gear
+             are inert inside it; see previewMode in call.js. -->
         <div class="preview" id="previewWrap">
           <div class="previewbar">
             <span class="plabel">Preview</span>
@@ -1104,11 +1169,21 @@
           </div>
         </div>
         <!-- Filled by applyVisibility() whenever the line status overrides
-             what this section configures — paused, closed, voicemail-only.
+             what the sections below configure — paused, closed, voicemail-only.
              The preview above is a REAL card, so it already shows the
              override; this line says why, so the operator doesn't read
              their own kill switch as the preview being broken. -->
         <p class="hint wide" id="previewLineNote" hidden></p>
+      </div>
+    </details>
+
+    <details data-group="surface" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">What the card shows</span><em class="secblurb"></em><span class="tag" id="tagSurface"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The two columns are the two
+          places the card appears: <strong>this page</strong> (the phone at
+          <code>/</code>) and an <strong>embed</strong> in a frame on somebody
+          else’s site.</p>
 
         <div class="pmatrix">
           <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
@@ -1171,12 +1246,19 @@
             <input type="checkbox" id="show_signin" aria-label="Sign-in button on the page" />
             <input type="checkbox" id="embed_signin" aria-label="Sign-in button in an embed" />
           </div>
+        </div>
+      </div>
+    </details>
 
-          <!-- What each door SHOWS: its word, its icon, or both. One row per
-               feature, two ticks each — the old single "Button style" select
-               could not say "Call worded, the two secondary doors as bare
-               icons", which is what a tight embed wants. The widget shows the
-               word if a door is left with neither, so a button is never blank. -->
+    <details data-group="player" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
+      <div class="body">
+        <!-- What each door SHOWS: its word, its icon, or both. One row per
+             feature, two ticks each — the old single "Button style" select
+             could not say "Call worded, the two secondary doors as bare
+             icons", which is what a tight embed wants. The widget shows the
+             word if a door is left with neither, so a button is never blank. -->
+        <div class="pmatrix">
           <div class="phead"><span>Button shows</span><span>Word</span><span>Icon</span></div>
           <div class="prow" data-help="call_show_words">
             <span class="plabel">Call</span>
@@ -1219,8 +1301,10 @@
         <h4 class="subhead">On the caller's phone</h4>
         <label class="check"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
 
-        <h4 class="subhead">After the call</h4>
+        <h4 class="subhead">After the conversation</h4>
         <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
+        <label class="check"><input type="checkbox" id="ask_chat_feedback" /> Ask after a text chat</label>
+        <label class="check"><input type="checkbox" id="ask_vm_feedback" /> Ask after a voicemail</label>
       </div>
     </details>
 
@@ -1278,6 +1362,7 @@
         <p class="hint wide" style="margin-top:0">Paste the snippet where the
           card should appear. <strong>Nothing else to add</strong>: the script
           builds the iframe itself, microphone permission included.</p>
+        <label class="check"><input type="checkbox" id="embed_card_outline" /> Draw the card outline</label>
         <div class="row">
           <label for="embedMode">Shape</label>
           <select id="embedMode">
@@ -1400,6 +1485,11 @@
                   title="Only calls the caller rated thumbs down"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg> <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"
                   title="Only calls the caller rated thumbs up"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg> <span></span></button>
+          <!-- Filled from the loaded records; each hides itself when the
+               records only hold one answer for it. -->
+          <select id="callKind" aria-label="Only one way in" hidden></select>
+          <select id="callTier" aria-label="Only one caller tier" hidden></select>
+          <select id="callTool" aria-label="Only calls that used a tool" hidden></select>
           <span class="grow"></span>
           <span class="tag" id="callCount"></span>
           <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>
@@ -1415,7 +1505,7 @@
         <p class="hint wide" style="margin-top:0">Recent activity of the web
           service — settings changes, call tokens, station reads, webhooks. The
           call agent's own logs live in its container:
-          <code>docker logs &lt;stack&gt;-wavetalk-worker-1</code>.</p>
+          <code>docker logs &lt;stack&gt;-talkwave-worker-1</code>.</p>
         <div class="diagbar" id="logFilters" hidden>
           <label for="logLevels">Levels</label>
           <select id="logLevels"></select>
@@ -1445,5 +1535,6 @@
 <script src="/shared.js"></script>
 <script src="/panel.js"></script>
 <script src="/panel-viewers.js"></script>
+<script src="/panel-charts.js"></script>
 </body>
 </html>

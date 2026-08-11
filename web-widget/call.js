@@ -39,6 +39,13 @@
 
   function applyControls(d) {
     const c = surfaceControls(d);
+    // Flush by default in an embed (operator's call, 0.10.51): the card
+    // displays in whatever area its host gives it — no border, no sheet —
+    // unless the outline is ticked back on. Gated on `compact`, not
+    // `framed`: every real embed renders compact, while the panel's Page-tab
+    // preview is framed too and must keep showing the real page's card.
+    document.querySelector('.card').classList.toggle('bare',
+      compact && !(d && d.embedOutline));
     const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
@@ -476,7 +483,7 @@
       // cause is an http stream on an https page: the browser blocks it as
       // mixed content and the caller hears no station at all.
       console.warn(
-        'Wave Talk: could not tune the caller in. Tried:', urls.join(', '),
+        'Talk Wave: could not tune the caller in. Tried:', urls.join(', '),
         '— if these are http:// and this page is https://, the browser blocked ' +
         'them as mixed content. Set the station stream URL in settings.'
       );
@@ -1125,7 +1132,7 @@
       // A repaint that throws must not take the poll down with it — the next
       // one would never be scheduled and the card would be frozen on
       // whatever it was showing.
-      console.warn('Wave Talk: could not paint the card —', e);
+      console.warn('Talk Wave: could not paint the card —', e);
     }
   }
 
@@ -1388,7 +1395,7 @@
       if (!p || !p.attributes) return;
       const s = p.attributes['lk.agent.state'];
       if (s) setAgentState(s);
-      if ('wavetalk.onair' in p.attributes) setOnAir(!!p.attributes['wavetalk.onair']);
+      if ('talkwave.onair' in p.attributes) setOnAir(!!p.attributes['talkwave.onair']);
     };
     r.on(LivekitClient.RoomEvent.ParticipantAttributesChanged, (_changed, p) => read(p));
     r.on(LivekitClient.RoomEvent.ParticipantConnected, read);
@@ -1425,7 +1432,7 @@
         }
         return;
       }
-      if (topic && topic !== 'wavetalk.action') return;
+      if (topic && topic !== 'talkwave.action') return;
       let msg;
       try { msg = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
       if (!msg || msg.type !== 'action') return;
@@ -1748,7 +1755,7 @@
       fx = { src, gain };
       return true;
     } catch (e) {
-      console.warn('Wave Talk: voice effect unavailable —', e);
+      console.warn('Talk Wave: voice effect unavailable —', e);
       return false;
     }
   }
@@ -2085,7 +2092,7 @@
           (err.message || '') + ' ' + (err.reason || ''));
       if (noMediaPath) {
         console.warn(
-          'Wave Talk: signalling connected but no media path was established. '
+          'Talk Wave: signalling connected but no media path was established. '
           + 'The caller reached the room; audio could not flow. Usually the '
           + 'network cannot reach the media port, or the caller is on an '
           + 'IPv4-only network while the station only publishes IPv6.', err);
@@ -2226,9 +2233,14 @@
     // read as the machine fishing for a compliment.
     if (wasVm) {
       showVmReceipt();
+      // The machine may ask too — the operator's per-door switch. Only after
+      // a message actually left: a thumbs prompt under an empty receipt is
+      // the machine fishing twice over.
+      offerFeedback(endedRoom, live && live.askVmFeedback
+        && capBox.querySelectorAll('.cap.you').length > 0);
     } else {
       collapseTranscript();
-      offerFeedback(endedRoom);
+      offerFeedback(endedRoom, live && live.askFeedback);
     }
     setBtn(callBtn, 'call', 'phone', callLabel());
     callBtn.classList.remove('live', 'ringing', 'answering');
@@ -2298,17 +2310,19 @@
   }
 
   // ------------------------------------------------------ was that any good?
-  // Two buttons, offered once per call and only when the operator asked for
-  // them. Deliberately not a modal: a popup over the card the moment a call
-  // ends is in the way of the transcript, and the one thing a caller might
-  // want after a bad call is to read what was said.
+  // Two buttons, offered once per conversation and only when the operator
+  // asked for them — per door since 0.10.48: the call, the text line and the
+  // machine each carry their own switch, so the caller passes in whether THIS
+  // door's switch is on. Deliberately not a modal: a popup over the card the
+  // moment a call ends is in the way of the transcript, and the one thing a
+  // caller might want after a bad call is to read what was said.
   //
-  // The answer lands on that call's own transcript, so "find me the bad ones"
-  // is a question the panel can answer. Nothing else is collected.
-  function offerFeedback(endedRoom) {
+  // The answer lands on that conversation's own transcript, so "find me the
+  // bad ones" is a question the panel can answer. Nothing else is collected.
+  function offerFeedback(endedRoom, enabled) {
     const bar = $('rateBar');
     if (!bar) return;
-    if (!endedRoom || !(live && live.askFeedback)) { bar.hidden = true; return; }
+    if (!endedRoom || !enabled) { bar.hidden = true; return; }
     $('rateLabel').textContent = 'How was it?';
     $('rateBtns').hidden = false;
     bar.hidden = false;
@@ -2497,11 +2511,20 @@
   // and fold the card back to idle. Safe to call with no socket — the reset
   // is the part that always has to happen.
   function endChat() {
+    // Captured before the id is forgotten: the chat's record is filed under
+    // the id's own tail (chat/session.py write_record), and /call-feedback
+    // matches on that same tail — so the id IS the room for rating purposes.
+    const endedChat = localStorage.getItem('callinChat') || '';
+    const typed = !!capBox.querySelector('.cap.you');
     if (chatWs && chatWs.readyState === 1) {
       try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
     }
     localStorage.removeItem('callinChat');
     resetChatUI('Chat ended');
+    // After the reset, which folds the card to idle — the bar sits under the
+    // idle card exactly as it does after a call. Only a chat the caller
+    // actually typed in: an untouched chat writes no record to rate.
+    offerFeedback(endedChat, typed && live && live.askChatFeedback);
   }
 
   function resetChatUI(note) {
@@ -2610,7 +2633,7 @@
       try {
         room.localParticipant.publishData(
           new TextEncoder().encode('end'),
-          { reliable: true, topic: 'wavetalk.turn-end' });
+          { reliable: true, topic: 'talkwave.turn-end' });
       } catch (e) { /* endpointing still ends the turn, just slower */ }
     }
     micOp = micOp.then(async () => {
@@ -2638,7 +2661,7 @@
           }
         }
       } catch (e) {
-        console.warn('Wave Talk: could not switch the mic —', e);
+        console.warn('Talk Wave: could not switch the mic —', e);
       }
     });
     return micOp;
@@ -2752,7 +2775,7 @@
   if ('serviceWorker' in navigator && !framed && window.isSecureContext) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').catch(
-        (e) => console.info('Wave Talk: no service worker —', e.message));
+        (e) => console.info('Talk Wave: no service worker —', e.message));
     });
   }
 

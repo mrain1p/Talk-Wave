@@ -404,7 +404,7 @@ async def answer(ctx: JobContext) -> None:
             await ctx.room.local_participant.publish_data(
                 json.dumps({"type": "action", "icon": "✉",
                             "label": "Message delivered", "detail": receipt}).encode(),
-                reliable=True, topic="wavetalk.action")
+                reliable=True, topic="talkwave.action")
         except Exception as e:                                # noqa: BLE001
             log.debug("could not publish the voicemail receipt (harmless): %s", e)
         ack = greetings.ack_clip(persona.get("id") or "")

@@ -22,7 +22,7 @@
    Bump CACHE when the precache list changes. The worker script itself is
    served no-cache, so a new one is picked up on the next navigation. */
 
-const CACHE = 'wavetalk-v1';
+const CACHE = 'talkwave-v1';
 
 // The page, and the two scripts and stylesheet it cannot start without.
 // Unversioned URLs on purpose: at install time we do not know the ?v= tags,

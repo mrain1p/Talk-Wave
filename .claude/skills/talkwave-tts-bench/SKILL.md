@@ -1,11 +1,11 @@
 ---
-name: wavetalk-tts-bench
+name: talkwave-tts-bench
 description: Measure whether a TTS or STT backend can actually carry a live call before switching to it — first-audio latency, realtime factor, voice availability and what a swap silently changes. Use for "should I use cloud TTS", "is this voice fast enough", "compare local and cloud", "the DJ sounds laggy or gaps mid-sentence", or before pointing this at a backend nobody has tried.
 ---
 
 # Bench a speech backend
 
-Sibling to `wavetalk-llm-bench`. That one asks whether a model can *think* fast
+Sibling to `talkwave-llm-bench`. That one asks whether a model can *think* fast
 enough; this asks whether a backend can *speak* fast enough. They are different
 failures: a slow LLM makes the DJ hesitate, a slow TTS makes it gap mid-word.
 

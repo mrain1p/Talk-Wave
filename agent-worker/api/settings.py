@@ -347,6 +347,11 @@ def _custom_llm_endpoint(cfg: dict) -> str:
     """
     p = str(cfg.get("llm_provider", "")).lower()
     base = str(cfg.get("llm_base_url") or "").strip().rstrip("/")
+    # locca is the one provider whose blank Endpoint still names a server —
+    # the well-known host address build_llm falls back to — so its dropdown
+    # can be read from there before the operator has typed anything.
+    if p == "locca":
+        return base or settings_store.LOCCA_BASE_URL_DEFAULT.rstrip("/")
     if not base:
         return ""
     if p in ("openai-compatible", "openai"):
@@ -517,6 +522,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         models[provider] = found or models.get(provider, [])
         discovered[provider] = bool(found)
     models.setdefault("openai-compatible", [])
+    models.setdefault("locca", [])
     # The endpoint's list WINS for whichever provider is pointed at it: the
     # calls go to that URL, so a dropdown read from the official catalogue
     # offers names the server cannot route (observed with llama-swap: every

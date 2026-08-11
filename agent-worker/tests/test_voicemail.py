@@ -490,20 +490,24 @@ class TestTheBeepCanBeTheOperators(unittest.TestCase):
         finally:
             api_sounds.SOUNDS_DIR = old
 
-    def test_no_verdict_buttons_after_a_voicemail(self):
-        # "How was it?" over "Message left" read as the machine fishing for
-        # a compliment — there was no conversation to rate. A voicemail keeps
-        # its transcript open as a receipt instead; the verdict buttons and the
-        # collapse-to-drawer both belong to the call branch only.
+    def test_the_voicemail_verdict_is_the_operators_choice(self):
+        # This used to pin "no verdict buttons after a voicemail" — the fear
+        # being the machine fishing for a compliment over "Message left". In
+        # 0.10.48 the operator asked for thumbs per door, so the claim moves:
+        # the machine may ask, but ONLY behind its own switch (never the
+        # call's), and only when a message was actually left.
         from tests.support import REPO
 
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         self.assertIn("if (wasVm) {", js)
         self.assertIn("showVmReceipt();", js)
-        # offerFeedback is reached only in the non-voicemail branch.
-        after_branch = js.split("if (wasVm) {", 1)[1]
-        else_half = after_branch.split("} else {", 1)[1]
-        self.assertIn("offerFeedback(endedRoom);", else_half.split("}", 1)[0])
+        vm_half = js.split("if (wasVm) {", 1)[1].split("} else {", 1)[0]
+        self.assertIn("askVmFeedback", vm_half)
+        self.assertNotIn("live.askFeedback", vm_half)
+        self.assertIn(".cap.you", vm_half)      # only after a message left
+        # The call branch still reads the call's own switch, not the machine's.
+        else_half = js.split("if (wasVm) {", 1)[1].split("} else {", 1)[1]
+        self.assertIn("live.askFeedback", else_half.split("}", 1)[0])
 
     def test_the_beep_dropdown_says_what_the_default_is(self):
         # "Sound set default" answered the wrong question: the operator
