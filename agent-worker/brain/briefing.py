@@ -46,16 +46,17 @@ def clip(text: str, limit: int) -> str:
     return text[:limit].rsplit(" ", 1)[0] + "…"
 
 
-def _fld(value, limit: int = 120) -> str:
+def _fld(value, limit: int = 200) -> str:
     """One station-supplied field, hard-capped for the prompt.
 
     Every field below is interpolated into the SYSTEM PROMPT and re-sent on
     every turn — a multi-KB title (or one carrying prompt-like text) would
-    balloon latency and cost and could crowd the conduct rules. music.py's
-    search path has capped its fields at 120 chars for exactly this reason;
-    the briefing path (now-playing, recent, guests, skills, schedule) was
-    missed until the 0.10.58 review. A caller has only weak influence over
-    track metadata, but the cap is the belt the search path already wears.
+    balloon latency and cost and could crowd the conduct rules. So each field
+    is capped. The limits sit WELL above any real value — a song title, artist
+    or album is tens of characters, so the cap only ever bites a corrupt or
+    hostile field of thousands. It is a guard against junk, never a trim of
+    real metadata (0.10.61 gave the caps obvious headroom after the operator,
+    reasonably, read "capped per field" as "loses context" — it does not).
     """
     return demojibake(str(value or "")).strip()[:limit]
 
@@ -79,11 +80,11 @@ def _fmt_now_playing(np: dict) -> str:
             detail.append(_fld(track["genre"]))
         moods = track.get("moods") or []
         if isinstance(moods, list) and moods:
-            detail.append(", ".join(_fld(m, 40) for m in moods[:3]))
+            detail.append(", ".join(_fld(m, 60) for m in moods[:3]))
         if track.get("bpm"):
             detail.append(f"{_fld(track['bpm'], 12)} bpm")
         if track.get("musicalKey"):
-            detail.append(_fld(track["musicalKey"], 20))
+            detail.append(_fld(track["musicalKey"], 24))
         if detail:
             line += " — " + "; ".join(detail)
         bits.append(line + ".")
@@ -159,7 +160,7 @@ def _fmt_guests(show: dict) -> str:
     person who should have known.
     """
     names = [
-        _fld(g.get("name"), 60)
+        _fld(g.get("name"), 100)
         for g in (show.get("guests") or [])
         if isinstance(g, dict) and g.get("name")
     ]
@@ -184,7 +185,7 @@ def _fmt_show_shape(show: dict) -> str:
     """
     bits = []
     for key, suffix in _SHAPE_FIELDS:
-        values = [_fld(v, 40) for v in (show.get(key) or []) if str(v).strip()]
+        values = [_fld(v, 60) for v in (show.get(key) or []) if str(v).strip()]
         if values:
             bits.append(", ".join(values[:4]) + suffix)
     if not bits:
@@ -312,10 +313,10 @@ def _fmt_skills(skills: list) -> str:
     # timings to callers, which is the opposite of running a show.
     lines = []
     for s in (skills or [])[:12]:
-        name = _fld(s.get("kind") or s.get("name"), 60)
+        name = _fld(s.get("kind") or s.get("name"), 100)
         if not name:
             continue
-        label = _fld(s.get("label"), 60)
+        label = _fld(s.get("label"), 100)
         lines.append(name + (f" ({label})" if label and label.lower() != name else ""))
     if not lines:
         return ""
@@ -338,7 +339,7 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
     """
     shows = schedule.get("shows") or []
     names = [
-        _fld(s.get("name"), 80)
+        _fld(s.get("name"), 120)
         for s in shows
         if s.get("id") != active_id and s.get("name")
     ][:12]
