@@ -1601,8 +1601,8 @@
   .ctrlcard.kill:not(.paused) .switch::after { left: 20px; }
   .ctrlcard.kill.paused .switch { background: var(--accent); }
   /* The three lines wear smaller switches than the master — same vocabulary,
-     lower rank. Their cards make room on the right. */
-  .linerow .ctrlcard:not(.kill) { padding-right: 48px; }
+     lower rank. No padding-right: since 0.10.54 the switch sits in the grid's
+     own right column, not absolutely over reserved padding. */
   .ctrlcard .switch.small { width: 30px; height: 17px; right: 11px; }
   .ctrlcard .switch.small::after { width: 13px; height: 13px; }
   .ctrlcard.on .switch.small::after { left: 15px; }
@@ -3066,11 +3066,13 @@
   body.panelpage .linerow:last-child { border-bottom: 0; }
   body.panelpage .linerow .ctrlcard,
   body.panelpage .linerow .tile { border-bottom: 0; }
-  /* A line row reads left to right: switch, "Live calls · On", then the
-     chips and detail underneath — the switch spans both text rows. */
+  /* A line row reads left to right: "Live calls · On" with the chips and
+     detail underneath, and the switch on the RIGHT edge spanning both text
+     rows — mirroring THE LINE's switch above it (operator's ask, 0.10.54;
+     it originally led the row on the left). */
   body.panelpage .linerow .ctrlcard {
-    display: grid; grid-template-columns: auto auto minmax(0, 1fr);
-    grid-template-areas: "sw name state" "sw note note";
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "name state sw" "note note sw";
     column-gap: 10px; row-gap: 4px; align-items: center;
     padding: 9px 2px; min-height: 0;
   }
@@ -3079,7 +3081,7 @@
      knob sat loose above the outline. */
   body.panelpage .linerow .ctrlcard .switch {
     position: relative; right: auto; top: auto; transform: none;
-    grid-area: sw; justify-self: start;
+    grid-area: sw; justify-self: end;
   }
   body.panelpage .linerow .ctrlcard .ck {
     grid-area: name; font-size: 13px; letter-spacing: .02em;
