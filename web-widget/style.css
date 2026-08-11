@@ -3349,6 +3349,19 @@
     body.panelpage .dashgroup { padding: 8px 8px 6px; }
     body.panelpage .lines { margin-left: 4px; padding-left: 8px; }
     body.panelpage .actgrid { gap: 16px; }
+    /* The masthead's three-across row (nameplate · finder · controls) has a
+       min-content wider than a phone: the row forced the page beyond the
+       viewport, and everything below sat squeezed against a dead right
+       gutter (operator screenshot, 0.10.70). Wrap instead — nameplate and
+       controls share the top line, the finder takes a whole row beneath
+       them — and let the page-name sub-line break rather than set the
+       row's width. */
+    body.panelpage .masthead { flex-wrap: wrap; }
+    body.panelpage .masthead .mastname { flex: 1 1 auto; min-width: 0; }
+    body.panelpage .mastsub { overflow-wrap: anywhere; }
+    body.panelpage .masthead .settingsearch {
+      order: 3; flex: 1 1 100%; min-width: 0; margin: 8px 0 0;
+    }
   }
 
   /* --- footer -------------------------------------------------------------- */
