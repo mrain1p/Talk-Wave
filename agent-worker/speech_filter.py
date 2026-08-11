@@ -127,19 +127,31 @@ def strip_speaker_labels(text: str) -> str:
 # properly — but "the model regressed" is the one thing this file exists to
 # survive, and a DJ must never be able to speak code down the line.
 #
-# Three shapes, because the models that do this do not agree on one:
-# a fenced block, a bare `tool_code` marker line, and the call itself.
+# Four shapes, because the models that do this do not agree on one:
+# a fenced block, a bare marker line, an XML-style tag, and the call itself.
 _CODE_FENCE = re.compile(r"```[\s\S]*?(?:```|$)")
+# Marker lines. Gemini's `tool_code`/`tool_outputs`, plus the words other
+# families put on their own line before a call (0.10.58 review broadened this
+# past the Gemini-only anchor).
 _TOOL_MARKER = re.compile(
-    r"(?:^|\n)[ \t]*(?:tool_code|tool_outputs|tool_call)[ \t]*(?=\n|$)",
+    r"(?:^|\n)[ \t]*(?:tool_code|tool_outputs|tool_call|tool_use|"
+    r"function_call|functioncall)[ \t]*(?=\n|$)",
     re.IGNORECASE,
 )
-# `print(default_api.foo(...))`, or the bare `default_api.foo(...)`. Anchored on
-# the namespace the providers use, so ordinary speech containing a bracket is
-# untouched.
+# XML-tag calls: Hermes/Qwen and others wrap the call in <tool_call>…</tool_call>
+# or <function_call>…</function_call>. Strip the whole span, tags and all.
+_TOOL_XML = re.compile(
+    r"<(tool_call|function_call|tool_use)>[\s\S]*?(?:</\1>|$)",
+    re.IGNORECASE,
+)
+# `print(default_api.foo(...))`, or the bare `<namespace>.foo(...)`. Anchored on
+# the namespaces the model families use, at line start, so ordinary speech that
+# happens to contain a bracket is untouched. The list is the known-incomplete
+# edge the file exists to survive — add a namespace when a model regresses.
 _TOOL_CALL = re.compile(
     r"(?:^|\n)[ \t]*(?:print[ \t]*\([ \t]*)?"
-    r"(?:default_api|functions|tool_api)\.[A-Za-z_]\w*[ \t]*\([^\n]*"
+    r"(?:default_api|functions|tool_api|tools|multi_tool_use|api|toolbox)"
+    r"\.[A-Za-z_]\w*[ \t]*\([^\n]*"
 )
 
 
@@ -152,7 +164,8 @@ def looks_like_tool_code(text: str) -> bool:
     """
     if not text:
         return False
-    return bool(_TOOL_MARKER.search(text) or _TOOL_CALL.search(text))
+    return bool(_TOOL_MARKER.search(text) or _TOOL_CALL.search(text)
+                or _TOOL_XML.search(text))
 
 
 def strip_tool_code(text: str) -> str:
@@ -160,6 +173,7 @@ def strip_tool_code(text: str) -> str:
     if not text:
         return text
     cleaned = _CODE_FENCE.sub(" ", text)
+    cleaned = _TOOL_XML.sub(" ", cleaned)
     cleaned = _TOOL_CALL.sub(" ", cleaned)
     cleaned = _TOOL_MARKER.sub(" ", cleaned)
     if cleaned != text:

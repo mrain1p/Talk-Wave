@@ -21,7 +21,7 @@ from aiohttp import WSMsgType, web
 
 import settings as settings_store
 from api.auth import _guest_check, caller_tier
-from api.wire import _caller_key, origin_allowed
+from api.wire import _auth_key, _caller_key, origin_allowed
 from chat.session import SHELF
 
 log = logging.getLogger("callin.chat")
@@ -84,7 +84,9 @@ def _refusal(cfg: dict, request: web.Request, key: str) -> str | None:
         # that still chatted would make the dashboard's one big switch a lie
         # — the same hierarchy voicemail learned.
         return "The booth isn't taking anything at the moment — the line's closed for now."
-    reason = _guest_check(key, _caller_key(request))
+    # The guest-code lockout keys on the unspoofable socket peer, like the
+    # phone's — see wire._auth_key.
+    reason = _guest_check(key, _auth_key(request))
     if reason:
         return reason
     if not settings_store.tier_reaches(cfg.get("allow_chat"), _tier_for(key)):

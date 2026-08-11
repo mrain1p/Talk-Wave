@@ -46,30 +46,44 @@ def clip(text: str, limit: int) -> str:
     return text[:limit].rsplit(" ", 1)[0] + "…"
 
 
+def _fld(value, limit: int = 120) -> str:
+    """One station-supplied field, hard-capped for the prompt.
+
+    Every field below is interpolated into the SYSTEM PROMPT and re-sent on
+    every turn — a multi-KB title (or one carrying prompt-like text) would
+    balloon latency and cost and could crowd the conduct rules. music.py's
+    search path has capped its fields at 120 chars for exactly this reason;
+    the briefing path (now-playing, recent, guests, skills, schedule) was
+    missed until the 0.10.58 review. A caller has only weak influence over
+    track metadata, but the cap is the belt the search path already wears.
+    """
+    return demojibake(str(value or "")).strip()[:limit]
+
+
 def _fmt_now_playing(np: dict) -> str:
     track = np.get("nowPlaying") or {}
     ctx = np.get("context") or {}
     bits = []
 
     if track.get("title"):
-        line = f"Now playing: \"{track['title']}\""
+        line = f"Now playing: \"{_fld(track['title'])}\""
         if track.get("artist"):
-            line += f" by {track['artist']}"
+            line += f" by {_fld(track['artist'])}"
         # The station analyses tracks and publishes what it found. Without
         # this the DJ could name the record but had nothing to SAY about it —
         # and "what is this?" is one of the commonest things a caller asks.
         detail = []
         if track.get("album"):
-            detail.append(str(track["album"]))
+            detail.append(_fld(track["album"]))
         if track.get("genre"):
-            detail.append(str(track["genre"]))
+            detail.append(_fld(track["genre"]))
         moods = track.get("moods") or []
         if isinstance(moods, list) and moods:
-            detail.append(", ".join(str(m) for m in moods[:3]))
+            detail.append(", ".join(_fld(m, 40) for m in moods[:3]))
         if track.get("bpm"):
-            detail.append(f"{track['bpm']} bpm")
+            detail.append(f"{_fld(track['bpm'], 12)} bpm")
         if track.get("musicalKey"):
-            detail.append(str(track["musicalKey"]))
+            detail.append(_fld(track["musicalKey"], 20))
         if detail:
             line += " — " + "; ".join(detail)
         bits.append(line + ".")
@@ -145,7 +159,7 @@ def _fmt_guests(show: dict) -> str:
     person who should have known.
     """
     names = [
-        demojibake(str(g.get("name") or "")).strip()
+        _fld(g.get("name"), 60)
         for g in (show.get("guests") or [])
         if isinstance(g, dict) and g.get("name")
     ]
@@ -170,7 +184,7 @@ def _fmt_show_shape(show: dict) -> str:
     """
     bits = []
     for key, suffix in _SHAPE_FIELDS:
-        values = [str(v).strip() for v in (show.get(key) or []) if str(v).strip()]
+        values = [_fld(v, 40) for v in (show.get(key) or []) if str(v).strip()]
         if values:
             bits.append(", ".join(values[:4]) + suffix)
     if not bits:
@@ -184,7 +198,8 @@ def _tracks(items: list, limit: int) -> list[str]:
     for t in (items or [])[:limit]:
         if t.get("title"):
             artist = t.get("artist")
-            out.append(f"\"{t['title']}\"" + (f" by {artist}" if artist else ""))
+            out.append(f"\"{_fld(t['title'])}\""
+                       + (f" by {_fld(artist)}" if artist else ""))
     return out
 
 
@@ -297,10 +312,10 @@ def _fmt_skills(skills: list) -> str:
     # timings to callers, which is the opposite of running a show.
     lines = []
     for s in (skills or [])[:12]:
-        name = str(s.get("kind") or s.get("name") or "").strip()
+        name = _fld(s.get("kind") or s.get("name"), 60)
         if not name:
             continue
-        label = str(s.get("label") or "").strip()
+        label = _fld(s.get("label"), 60)
         lines.append(name + (f" ({label})" if label and label.lower() != name else ""))
     if not lines:
         return ""
@@ -323,7 +338,7 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
     """
     shows = schedule.get("shows") or []
     names = [
-        demojibake(s.get("name", ""))
+        _fld(s.get("name"), 80)
         for s in shows
         if s.get("id") != active_id and s.get("name")
     ][:12]

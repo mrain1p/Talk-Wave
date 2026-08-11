@@ -366,6 +366,44 @@ class TestCallerIdentityCannotBeChosen(unittest.TestCase):
                          "8.8.4.4")
 
 
+class TestTheAuthLockoutKeyIsUnspoofable(unittest.TestCase):
+    """The redial cooldown can afford the walkable caller_key; the brute-force
+    lockout cannot. A LAN client hitting :8100 directly is a private peer, so
+    the default trusts its X-Forwarded-For — which let it rotate its lockout
+    bucket forever (defeating the throttle in front of the guest code and admin
+    password) or drop a victim into cooldown. _auth_key believes the forwarded
+    caller ONLY behind an explicit trusted proxy; otherwise the socket peer,
+    which the client cannot choose (0.10.58 review)."""
+
+    def _key(self, peer, xff=None, trusted=""):
+        from api import wire as api_wire
+
+        old = api_wire._TRUSTED_PROXIES_RAW
+        api_wire._TRUSTED_PROXIES_RAW = trusted
+        try:
+            headers = {"X-Forwarded-For": xff} if xff else {}
+            return api_wire._auth_key(
+                types.SimpleNamespace(headers=headers, remote=peer))
+        finally:
+            api_wire._TRUSTED_PROXIES_RAW = old
+
+    def test_a_lan_client_cannot_spoof_its_lockout_bucket(self):
+        # Private peer, default (no explicit proxy list): the forwarded header
+        # is IGNORED for auth — the socket peer is the key.
+        self.assertEqual(self._key("172.18.0.9", xff="8.8.8.8"), "172.18.0.9")
+        # And it cannot pin the bucket to a victim's address either.
+        self.assertEqual(self._key("172.18.0.9", xff="9.9.9.9"), "172.18.0.9")
+
+    def test_an_explicit_trusted_proxy_restores_per_caller_precision(self):
+        # With the proxy named, the caller it OBSERVED (rightmost) is trusted.
+        self.assertEqual(
+            self._key("10.0.0.2", xff="1.2.3.4, 8.8.4.4", trusted="10.0.0.2"),
+            "8.8.4.4")
+
+    def test_a_public_peer_is_always_its_own_key(self):
+        self.assertEqual(self._key("8.8.8.8", xff="10.0.0.1"), "8.8.8.8")
+
+
 class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
     """Taking the rightmost X-Forwarded-For entry is right for one proxy and
     wrong for two. With a CDN in front of the reverse proxy, the entry the

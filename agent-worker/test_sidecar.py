@@ -47,6 +47,7 @@ from tests.test_http import (  # noqa: F401
     TestAnUnsignedWebhookCannotFillMemory,
     TestCallerIdentityCannotBeChosen,
     TestCallerIdentitySurvivesTwoProxies,
+    TestTheAuthLockoutKeyIsUnspoofable,
     TestHttpSurface,
     TestJoinTokensExpire,
     TestTheModelListFollowsTheEndpoint,

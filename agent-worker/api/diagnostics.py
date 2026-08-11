@@ -491,8 +491,9 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
     stages: list[dict] = []
 
-    def record(name, ms, note="", counts=True):
-        stages.append({"name": name, "ms": round(ms), "note": note, "counts": counts})
+    def record(name, ms, note="", counts=True, estimate=False):
+        stages.append({"name": name, "ms": round(ms), "note": note,
+                       "counts": counts, "estimate": estimate})
 
     # --- station snapshot (once per call, before the greeting) ---
     st = StationClient()
@@ -534,7 +535,8 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         if stt_provider_name != "local":
             stt_ms = 400.0
             record("Speech-to-text", stt_ms,
-                   f"{stt_provider_name} — ESTIMATE, network round trip not measured")
+                   f"{stt_provider_name} — network round trip not measured",
+                   estimate=True)
     except Exception as e:
         record("Speech-to-text", 0, f"failed: {e}"[:110])
         stt_provider_name = ""

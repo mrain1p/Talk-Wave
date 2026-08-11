@@ -41,7 +41,16 @@ CALL_OPENING_PRIME = (
 
 
 async def cancel(task: asyncio.Task) -> None:
+    # Await the cancellation, don't just request it. A task cancelled mid-await
+    # (generate_reply, await_sign_off) is otherwise destroyed while pending —
+    # "Task was destroyed but it is pending" noise, and its except/finally
+    # cleanup may not run before the loop tears down. Swallowing CancelledError
+    # here makes shutdown deterministic (0.10.58 review).
     task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
 
 
 def attach_error_recovery(session: AgentSession, record=None) -> None:

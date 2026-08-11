@@ -480,6 +480,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "agent-worker/tests/test_call_flow.py":
             "one subject: a call while it runs. Answering, holding for the "
             "broadcast, coming back from it, the silence ladder, ending.",
+        "agent-worker/tests/test_http.py":
+            "one subject: the HTTP edge — caller identity (who the server "
+            "believes you are, for cooldown and the unspoofable auth lockout), "
+            "mint ceilings, the listener sampler and feedback endpoints. Grows "
+            "a case per identity/rate rule, the same subject-placement rule as "
+            "the other module tests here.",
         "agent-worker/tests/test_call_record.py":
             "one subject: what is written down about a call, and what is "
             "deliberately not — now including the caller's own verdict.",

@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.58
+
+- **The brute-force lockout can no longer be spoofed on a LAN.** Wrong-password and guest-code lockouts now key on the connection's own address, not a header a local client could set — so a machine on your network can't rotate its way around the throttle or drop your admin address into cooldown. Behind a reverse proxy, set `CALLIN_TRUSTED_PROXIES` to restore exact per-caller precision (see [security](docs/security.md)).
+- **Long station data can't bloat the prompt.** Now-playing, recent tracks, guests, segments and the schedule are capped per field before they reach the DJ's prompt — the same cap library search already used — so an oversized or odd track title can't crowd the conduct rules or balloon per-turn cost.
+- **A failed door toggle now says so.** Flipping Live calls / Voicemail / Text line off and having the save fail used to revert in silence; it shows the error now, like the kill switch does.
+- Small hardening from the review: the DJ won't recite its own instructions or tool list aloud, the typed-tool-call filter covers more model families (Hermes/Qwen XML tags and other namespaces, not just Gemini's), shutdown cancels its background tasks cleanly, and the speed test marks the cloud-STT figure as an estimate (≈) rather than showing it like a measured number.
+
 ## 0.10.57
 
 - **Hanging up while the line is still connecting can no longer leave a call running behind an idle card.** Pressing Hang up during the token handshake now cancels cleanly instead of connecting a moment later with the mic open — a privacy fix from the code review.

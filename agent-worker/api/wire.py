@@ -153,3 +153,27 @@ def _caller_key(request: web.Request) -> str:
         if hops:
             return hops[0]
     return request.remote or "unknown"
+
+
+def _auth_key(request: web.Request) -> str:
+    """The bucket a wrong password or guest code counts against, and the one a
+    lockout applies to. Deliberately NOT _caller_key.
+
+    _caller_key trusts X-Forwarded-For from any private/loopback peer by
+    default (the bundled proxy reaches this container over the docker bridge).
+    That is fine for the redial cooldown, a pacing knob — but it means a client
+    on the LAN, connecting straight to :8100, is treated as a trusted proxy and
+    can set its own X-Forwarded-For: rotate the header to sit at "tries left"
+    forever, defeating the throttle in front of the 6-char guest code and the
+    admin password, or drop a victim's address (the operator's own) into
+    cooldown (0.10.58 review). A security control cannot ride a spoofable key.
+
+    So the forwarded caller is believed here ONLY when an explicit
+    CALLIN_TRUSTED_PROXIES list vouches for the immediate peer; otherwise the
+    socket's own address — which the client cannot choose — is the answer.
+    Behind the bundled reverse proxy, set CALLIN_TRUSTED_PROXIES to it to
+    restore per-caller precision without reopening the spoof.
+    """
+    if _TRUSTED_PROXIES_RAW and _peer_is_a_trusted_proxy(request.remote):
+        return _caller_key(request)
+    return (request.remote or "unknown")
