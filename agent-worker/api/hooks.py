@@ -12,13 +12,10 @@ wholesale, so every other row has to be carried through untouched.
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import logging
 import os
-import secrets
 import time
-from pathlib import Path
 
 import httpx
 from aiohttp import web
@@ -26,25 +23,29 @@ from aiohttp import web
 import settings as settings_store
 from api.auth import _write_allowed
 from api.env import PORT
-from api.live_cache import _LIVE_BUST_FLOOR, _live_cache
 from api.wire import _cors
 from log_setup import describe
+from api.hook_receiver import (  # noqa: F401  (shared state, one-way; the
+    # receiver's own faces are re-exported so its callers — diagnostics, the
+    # tests — keep one import for the webhook subject)
+    HOOK_ID,
+    WANTED_EVENTS,
+    _BUSTING_PREFIXES,
+    _air_path,
+    _hook_events,
+    _hook_state,
+    _load_hook_secret,
+    _mint_hook_secret,
+    _secret_path,
+    _store_hook_secret,
+    _unauthorised,
+    handle_hooks_recent,
+    handle_station_hook,
+)
 from station import StationClient
 
 log = logging.getLogger("callin.token")
 
-
-from collections import deque
-
-# Our row's identity on the station, and the only thing that makes
-# registration idempotent. Sending no id means the station mints a fresh one
-# every time, so the same Talk Wave moving to a new LAN address left its old
-# row behind and added a second — and the station caps the list (16 in
-# SUB/WAVE 1.6.0), after which registration fails for good with nothing
-# obvious to point at. An env var because one station can serve two of these,
-# and two rows claiming one id is a collision the station resolves by dropping
-# one of them silently.
-HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "talk_wave"
 
 # The id this app registered under before the 0.10.52 rename, recognised as
 # ours forever. The rename shipped claiming "nothing behaves differently" and
@@ -53,66 +54,6 @@ HOOK_ID = (os.environ.get("CALLIN_HOOK_ID") or "").strip() or "talk_wave"
 # one behind, burning one of the station's sixteen webhook slots for good.
 # Adopt it where it can be adopted; delete strays where it can't.
 LEGACY_HOOK_IDS = ("wave_talk",)
-
-# The Authorization header our row registers with. The station does not SIGN
-# its hooks, but it does echo a per-hook header verbatim on every push — which
-# turns a receiver that anyone on the LAN could otherwise drive into one only
-# the station can. Minted once and kept on disk, because the station redacts
-# the stored header on read: after registration, our copy is the only copy
-# there is to compare an arriving push against.
-def _secret_path() -> Path:
-    return Path(os.environ.get("CALLIN_HOOK_SECRET_PATH")
-                or Path(__file__).parent.parent.parent / "data" / "hook-secret.json")
-
-
-def _air_path() -> Path:
-    """Where the last VERIFIED voice push is written for the worker's on-air
-    guard. Derived from the secret path's directory so a deployment (or a
-    test) that redirects one redirects the other. call/air.py carries a twin
-    of this derivation — duplicated so the worker does not import the HTTP
-    surface for one path string; TestThePushFileHasOneAddress pins them
-    together."""
-    return Path(os.environ.get("CALLIN_HOOK_AIR_PATH")
-                or _secret_path().with_name("hook-air.json"))
-
-
-def _load_hook_secret() -> str:
-    try:
-        d = json.loads(_secret_path().read_text())
-        return str(d.get("authHeader") or "")
-    except Exception:                                         # noqa: BLE001
-        return ""
-
-
-def _store_hook_secret(value: str) -> None:
-    try:
-        path = _secret_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"authHeader": value}))
-    except Exception as e:                                    # noqa: BLE001
-        # The receiver checks against this file, so an unwritable file means
-        # verification quietly stays OFF — the old, open behaviour — while the
-        # station dutifully sends a header nothing looks at. Loud for that
-        # reason: nothing else would ever mention it.
-        log.warning("could not persist the webhook secret (%s) — push "
-                    "verification stays off until it can be written", e)
-
-
-def _mint_hook_secret() -> str:
-    return "Bearer " + secrets.token_urlsafe(24)
-
-
-# The pushes the on-air card reacts to. Intersected with the station's own
-# advertised vocabulary before it is sent rather than assumed: the station
-# validates this list against an enum and refuses the WHOLE registration over
-# one name it doesn't know, so a station that renames or retires an event
-# would otherwise take our webhooks down with it.
-WANTED_EVENTS = ("track.play", "dj.say", "dj.link", "request.received")
-
-# Which arriving events are worth a cache bust, derived from what we asked for
-# rather than listed again — the two drifting apart is how you get a
-# subscription whose events change nothing on the card.
-_BUSTING_PREFIXES = frozenset(e.split(".")[0] for e in WANTED_EVENTS)
 
 # How long a transient failure is retried before standing down. Every attempt
 # carries the admin credentials, and unbounded retries have been observed
@@ -124,21 +65,6 @@ _MAX_ATTEMPTS = 5
 # own POST before answering us, so this is slack for the event loop rather
 # than a network budget.
 _DELIVERY_WAIT = 3.0
-
-_hook_events: deque = deque(maxlen=50)
-_hook_state: dict = {
-    "registered": False,
-    "url": "",
-    "id": HOOK_ID,
-    # Which station the registration is true OF. Empty until one accepts us.
-    "station": "",
-    "events": [],
-    # Pushes actually received. `registered` only ever meant the station
-    # accepted a row; this is the number that says packets are arriving.
-    "received": 0,
-    "detail": "not attempted",
-}
-
 
 def _lan_ip() -> str:
     """The address the NAS can reach this box on — NOT localhost."""
@@ -198,95 +124,6 @@ def _station_said(r: httpx.Response) -> str:
             return f"{path}: {msg}"[:200]
     text = (r.text or "").strip()
     return text[:200] if text else f"HTTP {r.status_code}"
-
-
-async def handle_station_hook(request: web.Request) -> web.Response:
-    """Receiver for the station's pushes.
-
-    Once registration has stored a secret, a push must carry it back in the
-    Authorization header or it is turned away — the station echoes a per-hook
-    header verbatim, and ours is minted at registration. Until then (no
-    credentials, an old station, a first boot) the endpoint is open, so
-    payloads stay untrusted data either way: store, bust caches, never act
-    directly on their contents."""
-    expected = _load_hook_secret()
-    if expected:
-        got = str(request.headers.get("Authorization") or "")
-        if not hmac.compare_digest(got, expected):
-            # Counted separately from `received`, so the test fire can tell
-            # "nothing arrived" apart from "arrived and was turned away".
-            _hook_state["rejected"] = _hook_state.get("rejected", 0) + 1
-            log.warning("station webhook rejected — Authorization header "
-                        "missing or wrong")
-            return web.json_response({"error": "bad authorization"}, status=401)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    event = str(body.get("event") or body.get("type") or "?")[:80]
-    # Summarised, not stored whole. This endpoint cannot be authenticated (the
-    # station does not sign its hooks), so `body` is arbitrary and unbounded up
-    # to aiohttp's 1MB limit — and the deque holds fifty of them, in a process
-    # already running near the SDK's own memory warning line. It is only ever
-    # read back as a diagnostic list, so a trimmed rendering is all it was
-    # worth keeping.
-    _hook_events.append({
-        "at": time.time(),
-        "event": event,
-        "data": {str(k)[:40]: str(v)[:120] for k, v in list(body.items())[:12]}
-        if isinstance(body, dict) else {},
-    })
-    # Saturates at the deque's length, so it cannot be counted from the list.
-    _hook_state["received"] = _hook_state.get("received", 0) + 1
-    log.info("station webhook: %s", event)
-
-    # The worker's on-air guard anchors its hold on this file: a dj.say or
-    # dj.link push lands at the station's HANDOFF instant, seconds before the
-    # guard's 4s log poll would notice — which was most of why the hold ran
-    # early against the audible link (0.10.69). VERIFIED pushes only: an open
-    # receiver writing this would let anyone on the LAN gag the call DJ at
-    # will, which is exactly the "never act on their contents" rule above.
-    if expected and event in ("dj.say", "dj.link") and isinstance(body, dict):
-        try:
-            path = _air_path()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({
-                "at": time.time(),
-                "event": event,
-                "text": str(body.get("text") or "")[:2000],
-            }))
-        except Exception as e:                                # noqa: BLE001
-            log.debug("could not write the on-air push file: %s", e)
-
-    # Anything that changes what the card shows invalidates the cache — but not
-    # more often than the cache would have expired anyway.
-    #
-    # This endpoint cannot be authenticated (the station doesn't sign hooks),
-    # and every bust makes the next /live fan out into four to six station
-    # reads. Left ungoverned, anyone who can reach this can make every open
-    # widget hammer the station on every poll. The floor means a flood of
-    # hooks costs the station no more than the normal 30-second refresh.
-    if event.split(".")[0] in _BUSTING_PREFIXES:
-        if time.time() - _live_cache["at"] >= _LIVE_BUST_FLOOR:
-            _live_cache["data"] = None
-    return web.json_response({"ok": True})
-
-
-def _unauthorised(request: web.Request) -> web.Response:
-    return _cors(request, web.json_response(
-        {"error": request.get("auth_error") or "not allowed",
-         "authRequired": bool(request.get("auth_required"))},
-        status=401,
-    ))
-
-
-async def handle_hooks_recent(request: web.Request) -> web.Response:
-    # Operator debugging surface — same gate as the rest of the panel.
-    if not _write_allowed(request):
-        return _unauthorised(request)
-    return _cors(request, web.json_response(
-        {"registered": _hook_state, "events": list(_hook_events)[-15:]}
-    ))
 
 
 async def handle_hooks_test(request: web.Request) -> web.Response:

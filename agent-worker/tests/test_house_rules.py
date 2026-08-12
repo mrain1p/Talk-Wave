@@ -520,6 +520,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
             "three above.",
+        "agent-worker/tests/test_webhooks.py":
+            "one subject: the station's pushes — registering for them, "
+            "proving one arrived, and what a verified push may steer. "
+            "Crossed the ceiling when 0.10.89 pinned the voice lifecycle's "
+            "phased entries; same subject-placement rule as the modules "
+            "around it.",
         "agent-worker/tests/test_tools_logic.py":
             "one subject: what a tool does once reached — provider "
             "construction, adapters, and what the DJ may claim afterwards. "
@@ -550,14 +556,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # helper names back.
         "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
-        # 0.10.69 pushed it over when the receiver learned to write the
-        # on-air push file. The seam is real and one-way: REGISTRATION
-        # (reconcile, lookalikes, the warm ping) talks TO the station and
-        # never reads a push; the RECEIVER (and its /hooks/recent and
-        # /hooks/test surface) listens FROM it and never registers. Cut
-        # there when it next grows.
-        "agent-worker/api/hooks.py": (626, "a receiver module split out from "
-                                           "the registration/reconcile side"),
+        # api/hooks.py was here from 0.10.69 until 0.10.89, when the voice
+        # lifecycle grew the receiver past the ratchet and the recorded seam
+        # was cut for real: the receiver (push verification, the air file,
+        # the shared identity/secret/state) moved to api/hook_receiver.py
+        # (240 lines) and registration kept hooks.py (460), importing the
+        # shared names one-way. Both sides came back under the ceiling.
         # panel.js was here from 0.10.79 (the sound-board seam) until
         # 0.10.85, when the recorded cut happened for real: the previewers,
         # slot cards, board and uploads moved to panel-sounds.js (787
