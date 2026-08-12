@@ -3,6 +3,11 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.96
+
+- **The conversation gets the room the header was wasting.** The card's top band was 38px tall around an 11px label — the tallest thing on a card whose other controls are 26–31px — and the identity row padded another 11px above and below the DJ's name. Both tighten, the who's-on-air block moves up, and every pixel reclaimed goes straight into the transcript, which is 12px taller for the same overall card. Embeds are untouched: their two-line transcript is a promise to the host page's layout.
+- **The mic chip squares up.** MIC OFF / MUTED was the last rounded element on a card where every other corner — the state pill, the timer, the pips, the level bars — is a right angle.
+
 ## 0.10.95
 
 - **An empty room is no longer a fault when callers tune in.** The pipeline check's Listeners stage warned that the station "will refuse song requests" whenever nobody was listening — on a deployment with **Tune the caller in** switched on, which is precisely the setting that solves it, because the caller's own browser pulls the stream and counts as the listener. It now passes with that explanation, and when the toggle is off the warning names it as the fix instead of just reporting the problem.

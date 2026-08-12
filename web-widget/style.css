@@ -158,20 +158,28 @@
   }
   /* Avatar beside the text rather than stacked above it — the stacked version
      wasted vertical space and pushed the captions off screen. */
+  /* 7px, not 11 — the identity block sits above a transcript that is the
+     card's actual subject, and the air here was room the conversation wanted
+     (operator-reported, 2026-08-12). What the header gives up, the rig's
+     min-height takes back, so the card is the same size and the transcript
+     is the part that grew. */
   .who-row {
     display: flex; align-items: center; gap: var(--band-gap); text-align: left;
-    padding: 11px 0; border-bottom: 1px solid var(--hairline);
+    padding: 7px 0; border-bottom: 1px solid var(--hairline);
   }
   .who-row .meta { min-width: 0; flex: 1; }
 
   /* --- status --- */
-  /* The header band is 38px, which is also the height of the corner controls
-     that sit in it. No rule under it — the who-row below already draws one,
-     and two rules 38px apart made the name look like a table row. */
+  /* The header band is 34px, which is also the height of the corner controls
+     that sit in it — change one and change the other. No rule under it — the
+     who-row below already draws one, and two rules a band apart made the name
+     look like a table row. It was 38px, the tallest thing on a card whose
+     other controls are 26–31px, for an 11px label; the 4px came back to the
+     transcript. */
   .eyebrow {
     font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--coral);
-    height: 38px; margin: 0;
+    height: 34px; margin: 0;
     display: flex; align-items: center; gap: 8px;
   }
   /* The corner controls are pinned right by a spacer that eats the free
@@ -446,7 +454,10 @@
      inside a fixed box. Standalone only; a compact embed keeps its own tighter
      budget. The header sits outside the rig, so this holds regardless of how
      long the station name or now-playing line is. */
-  body:not(.compact) .rig { min-height: 272px; }
+  /* 284, up from 272 by exactly what the header band and the who-row gave
+     back — the linebox is the only child that flexes, so the whole 12px
+     lands in the transcript and the card's overall height is unchanged. */
+  body:not(.compact) .rig { min-height: 284px; }
   /* Chat opens the transcript drawer (.open) the call reading-back uses, but
      here the flex fill owns the height — so drop .open's fixed 44vh back to the
      normal basis and let the rig's spare room size it, same as every mode. */
@@ -608,10 +619,13 @@
     display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 4px;
   }
   .meter.you .mtop .mlabel { margin-bottom: 0; }
+  /* Square, like the state pill, the timer, the pips and the bars beside it.
+     This was the one rounded element left on the card — 999px on a surface
+     where every other corner is a right angle (operator-reported). */
   .micchip {
     font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700; line-height: 1;
-    padding: 2px 5px; border: 1px solid currentColor; border-radius: 999px;
+    padding: 2px 5px; border: 1px solid currentColor; border-radius: 0;
     color: var(--coral); white-space: nowrap; flex: 0 0 auto;
   }
   .micchip[hidden] { display: none; }
@@ -1217,7 +1231,7 @@
      it was on screen. Still chrome (no fill, no border at rest), but sized
      like a control and a step brighter. */
   .card .gear {
-    width: 34px; height: 38px; padding: 0; border-radius: 0;
+    width: 34px; height: 34px; padding: 0; border-radius: 0;
     border: 1px solid transparent;
     background: transparent; color: var(--sage);
     font-family: var(--font-mono); font-size: 16px; line-height: 1;
