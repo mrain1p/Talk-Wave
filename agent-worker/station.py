@@ -387,6 +387,46 @@ class StationClient:
             log.info("lyrics unavailable (%s)", describe(e))
             return {}
 
+    @staticmethod
+    def _refusal_words(response) -> str:
+        """The station's own words for a refusal, rule and all.
+
+        A 4xx used to come back as str(HTTPStatusError) — "Client error '409
+        Conflict' for url …" — which threw the body away. Since SUB/WAVE
+        1.8's blocklist rules (#1332) that body NAMES what refused ("never
+        play · rule", the field and values), and the DJ can only stay in
+        character about a refusal it was told the reason for: "house rules
+        say no death metal" beats fumbling (parked 2026-08-10, done 0.10.91).
+        """
+        try:
+            d = response.json()
+        except Exception:                                     # noqa: BLE001
+            return (getattr(response, "text", "") or "").strip()[:240]
+        if not isinstance(d, dict):
+            return ""
+        msg = str(d.get("message") or d.get("error") or d.get("detail")
+                  or d.get("reason") or "").strip()
+        hit = d.get("blockedBy") or d.get("blocked_by") or {}
+        if isinstance(hit, dict) and hit:
+            bits = []
+            if hit.get("field"):
+                vals = hit.get("values")
+                if isinstance(vals, list) and vals:
+                    bits.append(f"{hit['field']}: "
+                                + ", ".join(str(v) for v in vals[:4]))
+                elif hit.get("value"):
+                    bits.append(f"{hit['field']}: {hit['value']}")
+                else:
+                    bits.append(str(hit["field"]))
+            elif hit.get("label"):
+                bits.append(str(hit["label"]))
+            kind = "rule" if str(hit.get("kind")) == "rule" else "never-play list"
+            rule = "; ".join(bits)
+            named = (f"blocked by the station's {kind}"
+                     + (f" ({rule})" if rule else ""))
+            msg = f"{msg} — {named}" if msg else named
+        return msg[:240]
+
     async def queue_track(self, track: dict) -> dict:
         """Push an exact track from a search result onto the queue.
 
@@ -414,6 +454,12 @@ class StationClient:
             )
             r.raise_for_status()
             return {"ok": True, **_body(r)}
+        except httpx.HTTPStatusError as e:
+            # 409 = the blocklist (or a duplicate); the body names the rule.
+            said = self._refusal_words(e.response)
+            log.warning("queue-track refused (%s): %s",
+                        e.response.status_code, said or describe(e))
+            return {"ok": False, "error": said or str(e)[:140]}
         except Exception as e:
             if _sent_but_unconfirmed(e):
                 log.warning("queue-track slow to confirm (%s) — treating as queued", e)
@@ -449,7 +495,16 @@ class StationClient:
             except httpx.HTTPStatusError as e:
                 last = e
                 if e.response.status_code < 500:
-                    break        # a real refusal — retrying would just repeat it
+                    # A real refusal — retrying would just repeat it. The
+                    # body names WHY (a never-play rule, requests closed,
+                    # the rate gate) and the DJ can only stay in character
+                    # about a reason it was told.
+                    said = self._refusal_words(e.response)
+                    if said:
+                        log.warning("request refused (%s): %s",
+                                    e.response.status_code, said)
+                        return {"error": said}
+                    break
                 log.info("station 5xx on request (%s) — retrying once",
                          e.response.status_code)
             except Exception as e:

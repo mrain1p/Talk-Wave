@@ -182,6 +182,7 @@ from tests.test_speech_filter import (  # noqa: F401
     TestSpeechFilter,
 )
 from tests.test_station import (  # noqa: F401
+    TestARefusalNamesItsRule,
     TestATimingOutStationKeepsTheRightDJ,
     TestATimingOutStationKeepsTheRightVoice,
     TestABadPlaylistStaysSmall,

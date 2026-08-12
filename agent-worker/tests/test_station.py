@@ -434,6 +434,53 @@ class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
         self.assertEqual(guard.holds, ["pending"])
 
 
+class TestARefusalNamesItsRule(unittest.TestCase):
+    """SUB/WAVE 1.8's blocklist rules answer a refused request or queue with
+    a body that names WHAT blocked the track. The old error path returned
+    str(HTTPStatusError) — "Client error '409 …'" — which threw the body
+    away, and the DJ fumbled a refusal it was never told the reason for."""
+
+    class _Resp:
+        def __init__(self, payload=None, text=""):
+            self._payload = payload
+            self.text = text
+
+        def json(self):
+            if self._payload is None:
+                raise ValueError("not json")
+            return self._payload
+
+    def _words(self, payload=None, text=""):
+        from station import StationClient
+
+        return StationClient._refusal_words(self._Resp(payload, text))
+
+    def test_the_named_rule_reaches_the_dj(self):
+        said = self._words({
+            "message": "request declined",
+            "blockedBy": {"kind": "rule", "field": "genre",
+                          "values": ["Death Metal"]},
+        })
+        self.assertIn("request declined", said)
+        self.assertIn("rule", said)
+        self.assertIn("genre: Death Metal", said)
+
+    def test_a_plain_entry_block_reads_as_the_never_play_list(self):
+        said = self._words({"blockedBy": {"kind": "entry", "label": "Last Christmas"}})
+        self.assertIn("never-play list", said)
+        self.assertIn("Last Christmas", said)
+
+    def test_a_bare_message_survives_and_non_json_falls_to_text(self):
+        self.assertEqual(self._words({"error": "requests are closed"}),
+                         "requests are closed")
+        self.assertEqual(self._words(text="  too many requests  "),
+                         "too many requests")
+
+    def test_it_is_bounded(self):
+        said = self._words({"message": "x" * 5000})
+        self.assertLessEqual(len(said), 240)
+
+
 class TestTheCardCacheHasOneHome(unittest.TestCase):
     """Five modules stale the /live answer and one builds it. They must all be
     holding the same dict — a second copy would mean a settings save, a new

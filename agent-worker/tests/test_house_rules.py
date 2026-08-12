@@ -520,6 +520,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
             "three above.",
+        "agent-worker/tests/test_station.py":
+            "one subject: what the station says, and what the card and the "
+            "DJ say about it. Crossed the ceiling when 0.10.91 pinned "
+            "refusals naming their blocklist rule; same subject-placement "
+            "rule as the modules around it.",
         "agent-worker/tests/test_webhooks.py":
             "one subject: the station's pushes — registering for them, "
             "proving one arrived, and what a verified push may steer. "
