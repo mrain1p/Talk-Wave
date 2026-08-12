@@ -766,11 +766,11 @@ GROUPS = [
 
 SCHEMA: dict[str, dict] = {
     # --- station ---
-    "station_base_url": dict(group="station", kind="text", label="Station API",
+    "station_base_url": dict(group="station", kind="text", label="SUB/WAVE station API",
         help="Personas, cards, voices and tools are all discovered from here. "
              "Point it at a different SUB/WAVE to re-home the whole sidecar."),
     "station_mcp_url": dict(group="station", kind="text", label="MCP endpoint",
-        placeholder="derived: {Station API}/mcp",
+        placeholder="derived: {SUB/WAVE station API}/mcp",
         help="Where the agent's tools come from. Only set this if the station "
              "publishes MCP somewhere other than under its API."),
 

@@ -712,6 +712,74 @@
     tile('tileChain', chain,
       needKey ? 'no key for ' + llm : (resolved.llm_model || ''),
       needKey ? 'bad' : 'ok');
+    paintNeeds();
+  }
+
+  // ------------------------------------------------- needs attention
+  // The dashboard's other half (operator's ask, 0.10.76): what stands
+  // between this deployment and a working call, derived from the SAME
+  // signals the tiles read so the two can never disagree. Each row jumps to
+  // its fix, and any page holding an item pins its chip in the picker.
+  function computeNeeds() {
+    const items = [];
+    if (!authConfigured) {
+      items.push({ page: 'safety', group: 'security',
+                   label: 'Set the admin password',
+                   note: 'the panel and the phone are open to whoever walks up' });
+    }
+    const access = ($('front_access') && $('front_access').value)
+      || resolved.front_access;
+    if (access === 'guest' && !guestConfigured) {
+      items.push({ page: 'safety', group: 'security',
+                   label: 'Set the guest code',
+                   note: 'the door demands a code nobody has — every call is refused' });
+    }
+    const llm = ($('llm_provider') && $('llm_provider').value)
+      || resolved.llm_provider;
+    const keyField = PROVIDER_KEY[llm];
+    if (keyField && secrets[keyField] && !secrets[keyField].set) {
+      items.push({ page: 'config', group: 'brains',
+                   label: 'Add the ' + llm + ' key',
+                   note: 'the DJ has no model to think with' });
+    }
+    if (live && live.reachable === false) {
+      items.push({ page: 'config', group: 'station',
+                   label: 'Reach the station',
+                   note: 'nothing answers at the SUB/WAVE station API address' });
+    }
+    return items;
+  }
+
+  function paintNeeds() {
+    const list = $('needsList');
+    if (!list) return;
+    const items = computeNeeds();
+    list.innerHTML = '';
+    items.forEach((it) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'needrow';
+      const k = document.createElement('span');
+      k.className = 'nk';
+      k.textContent = it.label;
+      const n = document.createElement('span');
+      n.className = 'nn';
+      n.textContent = it.note;
+      b.append(k, n);
+      b.onclick = () => showSection(document.querySelector(
+        'details.sec[data-group="' + it.group + '"]'));
+      list.appendChild(b);
+    });
+    if ($('needsSay')) {
+      $('needsSay').textContent = items.length
+        ? items.length + ' thing' + (items.length === 1 ? '' : 's')
+          + ' before the line is ready'
+        : 'nothing — the line is ready';
+    }
+    const pages = new Set(items.map((it) => it.page));
+    document.querySelectorAll('#panelNav a[data-page]').forEach((a) => {
+      a.classList.toggle('attn', pages.has(a.dataset.page));
+    });
   }
 
   async function paintNightTile() {
@@ -1429,6 +1497,7 @@
     // First run: the setup card in the markup, shown until a password exists.
     $('pwNudge').hidden = authConfigured;
     if (!authConfigured) $('firstPw').focus();
+    paintNeeds();
   }
 
   // Signing out only forgets the password on THIS browser — the panel

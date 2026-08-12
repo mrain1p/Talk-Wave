@@ -2013,6 +2013,17 @@ class TestThePanelReadsAtAGlance(unittest.TestCase):
         self.assertIn('.tag[data-state="on"]', self.css)
         self.assertIn('.tag[data-state="off"]', self.css)
 
+    def test_the_dashboard_says_what_needs_doing(self):
+        # 0.10.76: transmission shares the dashboard with a needs-attention
+        # column, and the picker pins any page holding an item. The needs
+        # derive from the SAME signals the tiles read (computeNeeds), so the
+        # dashboard cannot disagree with itself.
+        self.assertIn("function computeNeeds", self.js)
+        self.assertIn("function paintNeeds", self.js)
+        self.assertIn(".needrow", self.css)
+        self.assertIn("a.attn::after", self.css)
+        self.assertIn(".dashsplit", self.css)
+
     def test_the_panel_cycle_matches_the_cards(self):
         # Same four stops, same DRAWN icons, same stored key — two surfaces,
         # one mental model. 0.10.67 replaced the typed glyphs (the ☀ read as

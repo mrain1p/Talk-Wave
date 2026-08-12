@@ -1319,6 +1319,34 @@
   }
   .panelnav:empty { display: none; }
 
+  /* The dashboard's split half (0.10.76, operator's ask): transmission on
+     the left, what-needs-doing on the right. A need is the control cards'
+     shape coloured by state — coral says fix me — and each row jumps to its
+     fix; the empty state says the line is ready rather than vanishing. */
+  .dashsplit {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    align-items: start;
+  }
+  @media (max-width: 940px) { .dashsplit { grid-template-columns: 1fr; } }
+  .needslist { display: grid; gap: 8px; }
+  .needrow {
+    display: grid; gap: 3px; text-align: left; padding: 10px 12px;
+    cursor: pointer; border: 1px solid var(--coral); border-radius: 10px;
+    background: color-mix(in srgb, var(--coral) 7%, transparent);
+    color: var(--text);
+  }
+  .needrow .nk {
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--coral);
+  }
+  .needrow .nn { font-size: 11.5px; color: var(--dim); }
+  /* The picker's pin: a red asterisk in a ring on any page with an item. */
+  .panelnav a.attn::after {
+    content: "✱"; display: inline-grid; place-items: center;
+    width: 13px; height: 13px; margin-left: 7px; font-size: 8px;
+    color: var(--coral); border: 1px solid var(--coral); border-radius: 999px;
+  }
+
   /* The dashboard's own band — the same voice as a super-group heading, but
      its own class: applyVisibility() hides a .supergroup with no visible
      sections under it, and this one is followed by cards, not sections. */

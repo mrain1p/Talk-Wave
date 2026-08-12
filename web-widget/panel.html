@@ -196,6 +196,7 @@
            the door above, each door beside the traffic it produces. The
            switch cards and stat tiles keep their ids and inner spans, so
            paintDash and paintNightTile fill the new shape unchanged. -->
+      <div class="dashsplit">
       <div class="dashgroup transmission">
         <div class="dashcaption">
           <p class="tlabel">Transmission</p>
@@ -251,6 +252,20 @@
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- The dashboard's other half (operator's ask, 0.10.76): what stands
+           between this deployment and a working call, each row a jump to its
+           fix. Filled by paintNeeds() from the SAME signals the tiles read,
+           so the two can never disagree; empty says the line is ready rather
+           than vanishing. The same items pin the page picker's chips. -->
+      <div class="dashgroup needs">
+        <div class="dashcaption">
+          <p class="tlabel">Needs attention</p>
+          <p class="dashmodesay" id="needsSay"></p>
+        </div>
+        <div class="needslist" id="needsList"></div>
+      </div>
       </div>
     </div>
 
@@ -413,7 +428,7 @@
       <summary><span class="chev">▶</span><span class="secname">Station</span><em class="secblurb"></em><span class="tag" id="tagStation"></span></summary>
       <div class="body">
         <div class="row">
-          <label for="station_base_url">Station API</label>
+          <label for="station_base_url">SUB/WAVE station API</label>
           <input type="text" id="station_base_url" placeholder="http://your-station:7700/api" />
         </div>
         <!-- In the open since 0.9.145 (the operator found the disclosure a
@@ -422,7 +437,7 @@
              with a person's name once cost days of tool-less calls. -->
         <div class="row">
           <label for="station_mcp_url">MCP endpoint</label>
-          <input type="text" id="station_mcp_url" placeholder="derived: {Station API}/mcp" />
+          <input type="text" id="station_mcp_url" placeholder="derived: {SUB/WAVE station API}/mcp" />
         </div>
         <p class="hint wide" style="margin-top:0">Derived from the address
           above automatically — usually nothing to do here.</p>
