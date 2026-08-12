@@ -234,11 +234,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # that never answers should not leave the caller watching a typing dot
     # forever.
     "chat_greeting_mode":    (None, "fresh"),
-    # Where a tool run's receipt card lands in the chat. "after" is the
-    # default and a deliberate behaviour change at 0.10.65 (the operator's
-    # ask): the cards used to lead the reply, and a receipt before the DJ has
-    # said a word reads as the paperwork interrupting the person.
-    "chat_action_cards":     (None, "after"),
+    # Where a tool run's receipt card lands, on every door that shows one —
+    # was chat_action_cards (chat-only) until 0.10.92, when the operator asked
+    # for one answer across calls, texts and voicemail. "after" is the default
+    # and a deliberate behaviour change twice over (0.10.65 for chat, 0.10.92
+    # for calls): the cards used to lead the reply, and a receipt before the
+    # DJ has said a word reads as the paperwork interrupting the person.
+    "action_cards":          (None, "after"),
     "chat_greeting":         (None, ""),
     "chat_reply_timeout_secs": (None, 45),
     # Keep a chat feeling like a conversation, not a turn-based move: when the
@@ -1034,14 +1036,6 @@ SCHEMA: dict[str, dict] = {
              "line — a silent line reads as broken. “Canned” sends the line "
              "below (instant, no model cost); “Written each time” has the DJ "
              "write one in persona at open; “Off” waits for the caller."),
-    "chat_action_cards": dict(group="chat", kind="select",
-        label="Action receipts",
-        help="The ✅ card a station action leaves in the chat — a queued "
-             "request, a takeover, a beat. After the DJ's line, the words "
-             "land first and the card reads as the paperwork; as-it-happens "
-             "is how the phone's cards behave; off leaves the DJ's word as "
-             "the only trace (the action still runs, and the transcript "
-             "still records it)."),
     "chat_greeting": dict(group="chat", kind="text",
         label="Canned greeting",
         placeholder="You're through to the booth — what's on your mind?",
@@ -1471,6 +1465,18 @@ SCHEMA: dict[str, dict] = {
     "style_answering": dict(group="style", kind="text", label="Answering",
         placeholder="default: as the persona would, at its own length",
         help="e.g. 'keep answers to two sentences'."),
+    # Filed under House style rather than any one door: the receipt is how the
+    # booth presents an action wherever it acts, and it was found-then-lost as
+    # a chat-only setting (the operator went looking for it under calls).
+    "action_cards": dict(group="style", kind="select",
+        label="Action receipts",
+        help="The ✅ card a station action leaves in the transcript — a queued "
+             "request, a takeover, a beat — on calls, texts and voicemail "
+             "alike. After the DJ's line, the words land first and the card "
+             "reads as the paperwork; as-it-happens fires the moment the tool "
+             "does; off leaves the DJ's word as the only trace (the action "
+             "still runs, and the record still lists it). The machine has no "
+             "DJ line, so anything but off shows its delivery receipt."),
     "style_signoff": dict(group="closing", kind="text", label="Signing off",
         placeholder="default: in character, no fixed formula",
         help="e.g. 'mention what's coming up next before you hang up'."),
@@ -1566,7 +1572,7 @@ STATIC_CHOICES = {
         ("fresh", "Written each time — in persona at open"),
         ("off", "Off — wait for the caller to type first"),
     ],
-    "chat_action_cards": [
+    "action_cards": [
         ("after", "After the DJ's line — words first, then the receipt (default)"),
         ("before", "As it happens — the receipt leads the line"),
         ("off", "Off — no cards; the DJ's word is the only trace"),
@@ -2121,6 +2127,13 @@ def _migrate(stored: dict) -> dict:
     if _coerce(stored.get("_rev"), 1) < 3:
         if "tts_mode" not in stored:
             stored["tts_mode"] = "cloud"
+    # 0.10.92: receipt placement stopped being chat-only — action_cards now
+    # covers calls, texts and voicemail. A stored chat-era answer becomes the
+    # operator's answer for every door; a store that never set it follows the
+    # new default, which moves CALL cards behind the DJ's line (the operator's
+    # ask, and the point of the change).
+    if "action_cards" not in stored and "chat_action_cards" in stored:
+        stored["action_cards"] = stored["chat_action_cards"]
     return stored
 
 

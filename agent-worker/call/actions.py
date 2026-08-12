@@ -46,10 +46,17 @@ class CallActions:
         "takeover": ("🔀", "Show takeover set"),
     }
 
-    def __init__(self, limit: int, room=None) -> None:
+    def __init__(self, limit: int, room=None, mode: str = "before") -> None:
         self.limit = max(0, int(limit or 0))
         self.count = 0
         self._room = room
+        # The action_cards setting, for the room-publish path only: "before"
+        # publishes the instant a tool lands, "after" holds the card until the
+        # DJ's line commits (lifecycle.attach_card_flush releases it), "off"
+        # publishes nothing. A consumer that routes cards through on_note (the
+        # chat's WebSocket) does its own routing and ignores this.
+        self.mode = (mode or "before").strip().lower()
+        self.held: list[bytes] = []
         # What actually happened, for consumers with no room to publish to:
         # the chat line writes its record from this, the way the call's
         # record hears the room. And an optional hook for delivering the
@@ -97,13 +104,21 @@ class CallActions:
                               "label": label, "detail": detail})
             except Exception as e:                             # noqa: BLE001
                 log.debug("action note hook failed (harmless): %s", e)
-        if self._room is None:
+        if self._room is None or self.mode == "off":
+            # "off" withholds only the caller-facing card: the count, the
+            # taken list and the record's tools entry all still happen.
             return
+        payload = json.dumps({
+            "type": "action", "kind": kind, "icon": icon,
+            "label": label, "detail": detail,
+        }).encode()
+        if self.mode == "after":
+            self.held.append(payload)
+            return
+        self._publish(payload)
+
+    def _publish(self, payload: bytes) -> None:
         try:
-            payload = json.dumps({
-                "type": "action", "kind": kind, "icon": icon,
-                "label": label, "detail": detail,
-            }).encode()
             # Fire-and-forget: a caption card is never worth delaying a tool
             # return (and so never worth failing the action over).
             spawn(
@@ -113,3 +128,12 @@ class CallActions:
             )
         except Exception as e:
             log.debug("action card publish failed (harmless): %s", e)
+
+    def flush_cards(self) -> None:
+        """Release everything the "after" mode held. Called each time a DJ
+        line commits, so the widget paints the words first and the card lands
+        under them. Under "before"/"off" the holder is empty and this is a
+        no-op."""
+        held, self.held = self.held, []
+        for payload in held:
+            self._publish(payload)

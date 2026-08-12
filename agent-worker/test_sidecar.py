@@ -124,6 +124,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestACallerWhoWasNeverHeardIsToldSo,
     TestALineThatFailsToGenerateIsStillSpoken,
     TestBackgroundWorkIsNotGarbageCollected,
+    TestCallReceiptCardsFollowTheLine,
     TestCallRecordTimestamps,
     TestCallStructure,
     TestTheBarReleaseEndsTheTurn,
@@ -175,6 +176,10 @@ from tests.test_brain import (  # noqa: F401
     TestPrompts,
     TestTheConductHarnessCannotReachTheRealStation,
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
+)
+from tests.test_conduct import (  # noqa: F401
+    TestActionBulletsRideTheirOwnSwitch,
+    TestThePromptNeverPromisesATakeoverItCannotDo,
 )
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,

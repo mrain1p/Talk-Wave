@@ -58,6 +58,7 @@ tests/test_tools_logic.py        what a tool does, and what it may claim afterwa
 tests/test_music_tools.py        searches, requests, and what the caller is told about either
 tests/test_takeover.py           putting a show on air: the one action that outlives the call
 tests/test_brain.py              prompt assembly and what the DJ is told
+tests/test_conduct.py            what the prompt may promise — action rules ride their switches
 tests/test_speech_filter.py      what is allowed to reach the caller's ears
 tests/test_station.py            what the station says, and what the card says about it
 tests/test_webhooks.py           registering for pushes, and proving one arrived

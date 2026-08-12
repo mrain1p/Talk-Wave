@@ -589,6 +589,24 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
 
         self.assertIn('topic="vm-beep"', inspect.getsource(capture.answer))
 
+    def test_the_delivery_receipt_obeys_the_receipts_setting(self):
+        # action_cards went booth-wide in 0.10.92: "off" withholds the
+        # machine's "Message delivered" card too. The gate has to sit ABOVE
+        # the publish — the delivery itself and the held message must never
+        # depend on whether the caller is shown the paperwork.
+        import inspect
+
+        from voicemail import capture
+
+        src = inspect.getsource(capture.answer)
+        deliver = src.index("vm_deliver.deliver(")
+        gate = src.index('cfg.get("action_cards")')
+        publish = src.index('"Message delivered"')
+        self.assertLess(deliver, gate,
+                        "delivery must not be inside the receipt gate")
+        self.assertLess(gate, publish,
+                        "the receipt publish must sit behind the setting")
+
     def test_the_caller_sees_the_machine_hearing_them(self):
         # A voicemail card sat silent while someone spoke — no sign a word was
         # registering (operator, 2026-08-10). The worker now publishes what it

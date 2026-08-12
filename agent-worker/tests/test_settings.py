@@ -906,3 +906,15 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         # Never set = the new default, in the new unit.
         self._write_store({"llm_provider": "openai"})
         self.assertEqual(10, settings_store.load()["chat_max_minutes"])
+
+    def test_the_receipt_placement_survives_its_promotion_to_every_door(self):
+        # 0.10.92 renamed chat_action_cards to action_cards when it grew from
+        # chat-only to covering calls and voicemail too. A chat-era answer is
+        # the operator's answer for every door and is carried across; a store
+        # that never set it takes the booth-wide default.
+        import settings as settings_store
+
+        self._write_store({"chat_action_cards": "before"})
+        self.assertEqual("before", settings_store.load()["action_cards"])
+        self._write_store({"llm_provider": "openai"})
+        self.assertEqual("after", settings_store.load()["action_cards"])

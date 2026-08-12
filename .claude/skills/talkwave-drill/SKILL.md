@@ -30,6 +30,11 @@ ssh $NAS 'docker exec -i -e LOG_TO_FILE=0 -e SCENARIO_SET=coverage -e GATES=all 
 ssh $NAS 'docker exec -i -e LOG_TO_FILE=0 -e SCENARIO_SET=coverage -e GATES=all -e MODE=chat $WORKER python -' < agent-worker/scripted_call.py > "$SCRATCH/drill-chat.log"
 ```
 
+Then the **refusal sweep** — the same coverage set with `GATES=none` (every gate off, in
+memory only): every action ask must now be declined plainly, in character, with no
+substitute dressed up as the thing ("the pub door opens in a bit" over a song request is
+the incident this exists to catch). Grade the refusals as hard as the executions.
+
 The harness file is piped from THIS checkout; the code under test is the image's — so new
 scenarios run against the deployed brain without a redeploy, and `NEW_CONDUCT` prepending
 (see the harness docstring) tests a prompt tweak the same way.

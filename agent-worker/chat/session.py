@@ -48,7 +48,7 @@ DEFAULT_CHAT_GREETING = "You're through to the booth — {dj} here. What's on yo
 
 
 def route_action_cards(mode: str, on_event):
-    """Where a tool run's receipt card goes, by the chat_action_cards setting.
+    """Where a tool run's receipt card goes, by the action_cards setting.
 
     Returns (on_note, flush). on_note is handed to CallActions and fires the
     moment a tool acts; flush is called once the DJ's line has gone out.
@@ -253,7 +253,7 @@ class ChatSession:
 
         cfg = settings_store.permissions_for(settings_store.load(), self.tier)
         on_note, flush_cards = route_action_cards(
-            str(cfg.get("chat_action_cards") or "after"), on_event)
+            str(cfg.get("action_cards") or "after"), on_event)
         station = StationClient()
         try:
             persona = await station.resolve_live_persona()

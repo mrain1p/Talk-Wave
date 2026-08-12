@@ -302,8 +302,10 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
             self.assertIn("Stay in character", text)
             self.assertIn("fourth wall", text)
             self.assertIn("dodge", text.lower())
-        # And the call list names a show/DJ change as a takeover to DO.
-        self.assertIn("TAKEOVER", conduct.rules({}))
+        # And the call list names a show/DJ change as a takeover to DO — but
+        # only when the switch is on; the bare-cfg claim is the refusal (see
+        # TestThePromptNeverPromisesATakeoverItCannotDo in test_brain).
+        self.assertIn("TAKEOVER", conduct.rules({"allow_takeover": True}))
 
     def test_the_tool_loop_answers_and_runs_tools(self):
         from livekit.agents import llm as lk_llm
@@ -559,11 +561,11 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
 
 
 class TestChatActionCardsFollowTheLine(_TempStores):
-    """Where a tool run's receipt card lands is the operator's
-    chat_action_cards setting (0.10.65): after the DJ's line by default — the
-    words land, then the paperwork — before it for the old behaviour, or not
-    at all. Whatever the mode, the action itself runs and the reply arrives;
-    only the chat's furniture moves."""
+    """Where a tool run's receipt card lands is the operator's action_cards
+    setting (0.10.65 as chat_action_cards; booth-wide since 0.10.92): after
+    the DJ's line by default — the words land, then the paperwork — before it
+    for the old behaviour, or not at all. Whatever the mode, the action itself
+    runs and the reply arrives; only the chat's furniture moves."""
 
     def _run_ask(self):
         from livekit.agents import llm as lk_llm
@@ -657,14 +659,14 @@ class TestChatActionCardsFollowTheLine(_TempStores):
         self.assertEqual(card["label"], "Queued")
 
     def test_before_leads_the_line(self):
-        settings_store.save({"chat_action_cards": "before"})
+        settings_store.save({"action_cards": "before"})
         events = self._run_ask()
         kinds = [e["type"] for e in events]
         self.assertLess(kinds.index("action"), kinds.index("done"),
                         "'before' is the pre-0.10.65 order, kept selectable")
 
     def test_off_withholds_the_card_but_not_the_action(self):
-        settings_store.save({"chat_action_cards": "off"})
+        settings_store.save({"action_cards": "off"})
         events = self._run_ask()
         self.assertNotIn("action", [e["type"] for e in events])
         done = next(e for e in events if e["type"] == "done")

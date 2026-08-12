@@ -1375,12 +1375,21 @@
      shape coloured by state — coral says fix me — and each row jumps to its
      fix; the empty state says the line is ready rather than vanishing. */
   .dashsplit {
-    /* 2:1, the operator's ratio: the levers act, the needs list only reads. */
+    /* 2:1, the operator's ratio: the levers act, the needs list only reads.
+       stretch, not start: a short needs box beside the tall transmission
+       cluster read as two pages sharing a corner (operator, 0.10.92). */
     display: grid; grid-template-columns: 2fr 1fr; gap: 14px;
-    align-items: start;
+    align-items: stretch;
   }
   @media (max-width: 940px) { .dashsplit { grid-template-columns: 1fr; } }
-  .needslist { display: grid; gap: 8px; }
+  .needslist { display: grid; gap: 8px; flex: 1; align-content: start; }
+  /* Empty state: the one auto row stretches (grid's default align-content)
+     so the all-clear sentence sits mid-box rather than hugging the rule. */
+  .needslist.empty { align-content: stretch; }
+  .needempty {
+    display: grid; place-items: center; text-align: center; padding: 10px;
+    font-style: italic; font-size: 13px; color: var(--dim);
+  }
   .needrow {
     display: grid; gap: 3px; text-align: left; padding: 10px 12px;
     cursor: pointer; border: 1px solid var(--coral); border-radius: 10px;

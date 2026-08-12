@@ -171,6 +171,20 @@ def attach_heard_logging(session: AgentSession, counter: dict, record=None) -> N
     session.on("function_tools_executed", _log_tools)
 
 
+def attach_card_flush(session: AgentSession, actions) -> None:
+    """The phone's action_cards "after" mode: a tool's receipt card is held
+    until the DJ line mentioning it commits — conversation_item_added fires
+    only once the utterance finishes, so the words reach the caller's screen
+    before the paperwork. Held cards at hang-up drop; the record has them."""
+
+    def _flush(ev) -> None:
+        item = getattr(ev, "item", None)
+        if getattr(item, "role", None) == "assistant":
+            actions.flush_cards()
+
+    session.on("conversation_item_added", _flush)
+
+
 # What the SDK's close reasons mean in the record. Written out rather than
 # passed through raw, because "PARTICIPANT_DISCONNECTED" is the answer to a
 # question nobody asked — the operator wants to know whether the caller rang

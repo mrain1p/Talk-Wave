@@ -141,7 +141,8 @@ class CallSession:
         self.instructions = ""
         self.session: AgentSession | None = None
 
-        self.actions = CallActions(self.cfg.get("max_actions_per_call"), room=ctx.room)
+        self.actions = CallActions(self.cfg.get("max_actions_per_call"), room=ctx.room,
+                                   mode=str(self.cfg.get("action_cards") or "after"))
         self.air = OnAirGuard(self.station, self.cfg, room=ctx.room)
 
         self.started_at = time.time()
@@ -355,6 +356,7 @@ class CallSession:
         lifecycle.attach_first_word(session, self.record)
         lifecycle.attach_turn_commit(ctx, session)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
+        lifecycle.attach_card_flush(session, self.actions)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard, actions=self.actions)
         lifecycle.attach_time_limit(ctx, session, cfg)
