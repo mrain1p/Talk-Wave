@@ -15,7 +15,7 @@ import types
 import unittest
 
 import settings as settings_store
-from tests.support import _TempStores
+from tests.support import AGENT_WORKER, _TempStores
 
 
 class TestTheTextLineIsOriginGated(unittest.TestCase):
@@ -778,3 +778,47 @@ class TestChatActionCardsFollowTheLine(_TempStores):
         done = next(e for e in events if e["type"] == "done")
         self.assertIn("Queued it up", done["text"],
                       "the action ran and the DJ still reports it")
+
+
+class TestTheReplyArrivesAtTheOperatorsPace(_TempStores):
+    """The reveal used to be a fixed 30ms per character — about 33 c/s, near
+    400 words a minute, which the operator (rightly) called nothing like
+    someone typing. Two settings now: HOW the reply arrives, and how fast."""
+
+    def test_the_defaults_read_as_a_person_typing(self):
+        import settings as settings_store
+
+        cfg = settings_store.load()
+        self.assertEqual(cfg["chat_reveal"], "typing")
+        self.assertEqual(cfg["chat_type_pace"], "natural")
+
+    def test_both_offer_choices_the_panel_can_paint(self):
+        # A select with no STATIC_CHOICES entry paints empty and the setting
+        # ships unreachable — the failure mode /talkwave-setting exists for.
+        import settings as settings_store
+
+        for field in ("chat_reveal", "chat_type_pace"):
+            choices = settings_store.STATIC_CHOICES.get(field) or []
+            self.assertTrue(choices, f"{field} has no choices")
+            values = [v for v, _ in choices]
+            self.assertIn(settings_store.load()[field], values)
+            for _, label in choices:
+                self.assertIn("—", label, "every option says its consequence")
+
+    def test_the_pace_only_matters_while_it_is_being_typed(self):
+        import settings as settings_store
+
+        self.assertEqual(
+            settings_store.SCHEMA["chat_type_pace"]["needs"],
+            ("chat_reveal", "typing"))
+
+    def test_the_widget_is_told_both(self):
+        # The reveal happens in the caller's browser, so /live has to carry
+        # them or the settings are unreachable however well they are stored.
+        src = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        self.assertIn("chatReveal", src)
+        self.assertIn("chatTypePace", src)
+        widget = (AGENT_WORKER.parent / "web-widget" / "call.js").read_text(
+            encoding="utf-8")
+        self.assertIn("chatTypePace", widget)
+        self.assertIn("chatReveal", widget)

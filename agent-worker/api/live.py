@@ -249,6 +249,10 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "callShowEmoji": bool(cfg.get("call_show_emoji")),
         "vmShowWords": bool(cfg.get("vm_show_words")),
         "vmShowEmoji": bool(cfg.get("vm_show_emoji")),
+        # How the DJ's reply arrives, and how fast. Client-side only: the
+        # reveal happens in the caller's browser, so the widget needs both.
+        "chatReveal": str(cfg.get("chat_reveal") or "typing"),
+        "chatTypePace": str(cfg.get("chat_type_pace") or "natural"),
         "chatShowWords": bool(cfg.get("chat_show_words")),
         "chatShowEmoji": bool(cfg.get("chat_show_emoji")),
         "ptt": bool(cfg.get("show_push_to_talk")),

@@ -283,7 +283,7 @@
         <p class="tlabel">Activity</p>
         <span class="actspacer" aria-hidden="true"></span>
         <label class="actshow">Show <input id="actShow" inputmode="numeric"
-               aria-label="How many days of buckets" /></label>
+               aria-label="How many of the selected unit to chart" /></label>
         <span class="segs" role="group" aria-label="Bucket the charts by">
           <button type="button" class="seg" id="actDay">Day</button>
           <button type="button" class="seg" id="actWeek">Week</button>
@@ -1153,6 +1153,15 @@
         <div class="row">
           <label for="chat_greeting">Canned greeting</label>
           <input type="text" id="chat_greeting" />
+        </div>
+        <h4 class="subhead">How the reply arrives</h4>
+        <div class="row">
+          <label for="chat_reveal">How the reply arrives</label>
+          <select id="chat_reveal"></select>
+        </div>
+        <div class="row">
+          <label for="chat_type_pace">Typing pace</label>
+          <select id="chat_type_pace"></select>
         </div>
       </div>
     </details>

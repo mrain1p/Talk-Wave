@@ -102,6 +102,10 @@ class ChatSession:
         self.turns: list[tuple[str, str]] = []
         self.actions_log: list[tuple[str, str]] = []   # (tool, receipt)
         self.persona_name = ""
+        # The id as well as the name: a voice call records both, and a
+        # record that knows only "Ash" cannot be grouped by persona the
+        # way the calls beside it can (operator-spotted, 2026-08-12).
+        self.persona_id = ""
         # One message in flight per chat: two tabs racing the same id would
         # interleave two tool loops through one transcript.
         self.lock = asyncio.Lock()
@@ -129,6 +133,7 @@ class ChatSession:
         try:
             persona = await station.resolve_live_persona()
             self.persona_name = persona.get("name") or self.persona_name
+            self.persona_id = persona.get("id") or self.persona_id
             if mode == "fresh":
                 text = await self._fresh_greeting(cfg, station, persona)
             else:
@@ -163,6 +168,7 @@ class ChatSession:
         try:
             persona = await station.resolve_live_persona()
             self.persona_name = persona.get("name") or self.persona_name
+            self.persona_id = persona.get("id") or self.persona_id
             prompt = await build_system_prompt(station, persona, cfg=cfg,
                                                mode="chat")
             ctx = lk_llm.ChatContext.empty()
@@ -269,6 +275,7 @@ class ChatSession:
         try:
             persona = await station.resolve_live_persona()
             self.persona_name = persona.get("name") or self.persona_name
+            self.persona_id = persona.get("id") or self.persona_id
             prompt = await build_system_prompt(station, persona, cfg=cfg,
                                                mode="chat")
 
@@ -402,7 +409,8 @@ class ChatSession:
             from call.record import CallRecord
 
             rec = CallRecord(f"chat-{self.id[-12:]}",
-                             {"name": self.persona_name}, cfg,
+                             {"id": self.persona_id,
+                              "name": self.persona_name}, cfg,
                              tier=self.tier, started=self.started)
             rec.data["kind"] = "chat"
             for who, said in self.turns:

@@ -178,6 +178,9 @@ from tests.test_brain import (  # noqa: F401
     TestTheConductHarnessCannotReachTheRealStation,
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
+from tests.test_chat import (  # noqa: F401
+    TestTheReplyArrivesAtTheOperatorsPace,
+)
 from tests.test_conduct import (  # noqa: F401
     TestADoubtedActionIsCheckedNotExplainedAway,
     TestActionBulletsRideTheirOwnSwitch,

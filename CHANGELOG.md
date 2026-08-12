@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.99
+
+- **The DJ types like a person now.** The typed reply used to appear at a fixed 30ms a character — about 400 words a minute, which reads as a machine dumping text. It is now a **Typing pace** you choose (slower, normal, faster, or instant), defaulting to a brisk human typist: a two-line reply takes about six seconds instead of three and a half. However slow the pace, a long reply still lands within a few seconds rather than crawling.
+- **And you can choose how the reply arrives at all.** **How the reply arrives** offers *as it's typed* — the words appearing as they're written — or *typing cue, then the line*, where the three dots stay up while the booth composes and the reply lands whole. The pace setting only appears when it can matter.
+- **Show means "how many of what you picked".** The activity strip's SHOW box was days no matter which unit was selected, silently capping at 7 for a week and 30 for a month — so the field could read 14 while the chart drew 7. It now means what it says: 7 days, switch to WEEK for 7 weeks, MONTH for 7 months, anything up to 45, and the count carries when you switch units. Asking for a single day still gives the hour-by-hour view.
+- **The charts label their datapoints.** Every bucket carries its own tick — dates by day, week-commencing by week, month names (with the year when it isn't this one) by month — thinned to about ten labels so 45 buckets read as an axis instead of a smear.
+- **The door mix keys line up.** Calls, texts and voicemail each get a row with the counts on a shared right-hand rail, instead of wrapping into one run-together line.
+- Chat records carry the persona's id as well as their name, so a text conversation can be grouped by DJ the way a call already could.
+
 ## 0.10.98
 
 - **A doubted action gets checked, never explained away.** In a real chat the DJ promised a dedication, claimed twice that it had gone out, and when the caller said they couldn't hear it, explained the silence with distance and a dog lifting his head — then finally sent it on the caller's third push. Both mouths are now told that a caller saying "I don't hear it" or "did you actually do it?" is *information, not doubt to be soothed*: check whether a tool really ran, say so plainly if it didn't, and do it. Inventing physics to cover an action never taken is named as the worst thing on the page, with that conversation as the worked example.
