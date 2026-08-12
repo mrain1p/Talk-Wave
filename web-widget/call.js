@@ -747,6 +747,33 @@
     // (operator: "Call Danny Boy" was clipping while two bare icons took the
     // same width). The class lets the CSS size the two cases apart.
     el.classList.toggle('icononly', st.emoji && !st.words);
+    if (st.words) fitLabel(el);
+  }
+
+  // Long wording SHRINKS to fit rather than ellipsising away (operator's ask,
+  // 2026-08-12: "if their text isn't fitting, shrink the text in their button
+  // boxes"). Wrapping was the other option and is wrong here — every door
+  // shares one row at a pinned height, so a second line would change the
+  // card's geometry, which the compact embed reports to its host page.
+  //
+  // Measured rather than guessed at with a media query: what overflows is a
+  // function of the WORD the operator typed, not of the viewport.
+  const LABEL_MIN_PX = 9;
+  function fitLabel(el) {
+    el.style.fontSize = '';
+    // Zero width means the card is not laid out yet (hidden door, first
+    // paint) — leave it alone; the next repaint measures for real.
+    if (!el.clientWidth) return;
+    // Fits as it is: leave no inline size behind, so the stylesheet keeps
+    // owning the button and a later theme or width change is free to differ.
+    if (el.scrollWidth <= el.clientWidth) return;
+    const base = parseFloat(getComputedStyle(el).fontSize) || 13;
+    for (let px = base - 0.5; px >= LABEL_MIN_PX; px -= 0.5) {
+      el.style.fontSize = px + 'px';
+      if (el.scrollWidth <= el.clientWidth) return;
+    }
+    // Still too long at the floor: the ellipsis in the CSS takes it from
+    // here, which is the honest end of the road for pathological wording.
   }
 
   function callLabel() {

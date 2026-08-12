@@ -1237,11 +1237,17 @@ SCHEMA: dict[str, dict] = {
         needs=("call_button_mode", "custom"),
         placeholder="Call the DJ",
         help="Shown only for the custom option above."),
+    # One row, a column per door — the panel prints THIS field's help for the
+    # whole row (its .prow names it), so this one describes all three and the
+    # other two carry the per-door caveat for anyone reading the schema.
     "ask_call_feedback": dict(group="player", kind="check",
-        label="Ask how the call went",
-        help="A thumbs up or down under the card once the line drops, stored "
-             "against that call's own transcript so a bad one can be found and "
-             "read back. Nothing else is collected."),
+        label="Ask how it went",
+        help="A thumbs up or down under the card once the conversation ends, "
+             "stored against its own transcript so a bad one can be found and "
+             "read back. Nothing else is collected. Chats only ask when the "
+             "caller actually typed something; leaving it off for voicemail "
+             "keeps the machine's receipt as the last word, since “how was "
+             "it?” over “message left” can read as fishing."),
     "ask_chat_feedback": dict(group="player", kind="check",
         label="Ask after a text chat",
         help="The same thumbs, offered when the caller ends a chat they "

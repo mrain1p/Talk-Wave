@@ -2074,6 +2074,10 @@
   }
   .phead span:not(:first-child), .prow input, .prow .pnone { justify-self: center; }
   .phead:first-child { padding-top: 0; }
+  /* Three doors rather than two surfaces — same grammar, one more column. */
+  .doors3 .phead, .doors3 .prow {
+    grid-template-columns: minmax(0, 1fr) 54px 54px 54px;
+  }
   .prow { padding: 7px 0; font-size: 12.5px; color: var(--text); }
   .prow input { width: 15px; height: 15px; accent-color: var(--accent); }
   /* Not a disabled checkbox: a disabled box still reads as a setting that

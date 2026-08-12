@@ -1341,9 +1341,20 @@
         <label class="check tickright"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
 
         <h4 class="subhead">After the conversation</h4>
-        <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
-        <label class="check"><input type="checkbox" id="ask_chat_feedback" /> Ask after a text chat</label>
-        <label class="check"><input type="checkbox" id="ask_vm_feedback" /> Ask after a voicemail</label>
+        <!-- One question, three doors — it used to ask the same thing three
+             times over, once per door (operator's ask, 2026-08-12). Same
+             matrix shape as the Page/Embed rows above, so it reads as a
+             column per door rather than as three unrelated toggles, and
+             data-help names the one field whose help describes the row. -->
+        <div class="pmatrix doors3">
+          <div class="phead"><span></span><span>Calls</span><span>Texts</span><span>Voicemail</span></div>
+          <div class="prow" data-help="ask_call_feedback">
+            <span class="plabel">Ask how it went</span>
+            <input type="checkbox" id="ask_call_feedback" aria-label="Ask after a call" />
+            <input type="checkbox" id="ask_chat_feedback" aria-label="Ask after a text chat" />
+            <input type="checkbox" id="ask_vm_feedback" aria-label="Ask after a voicemail" />
+          </div>
+        </div>
       </div>
     </details>
 
