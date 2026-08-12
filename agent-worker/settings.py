@@ -243,6 +243,15 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "action_cards":          (None, "after"),
     "chat_greeting":         (None, ""),
     "chat_reply_timeout_secs": (None, 45),
+    # How the DJ's reply ARRIVES in the caller's browser. "typing" reveals it
+    # as it is written, which is what makes a text line read as a person;
+    # "dots" shows the typing cue and then lands the line whole.
+    "chat_reveal":           (None, "typing"),
+    # And how fast that reveal runs, in characters per second. The first
+    # version was a fixed 30ms per character — about 33 c/s, roughly 400 wpm,
+    # which is nobody typing (operator, 2026-08-12). "natural" is the default
+    # and is deliberately slower than what shipped before it.
+    "chat_type_pace":        (None, "natural"),
     # Keep a chat feeling like a conversation, not a turn-based move: when the
     # CALLER has gone quiet with the ball in their court, the DJ nudges once. On
     # by default; 0 or the switch off disables it. Never fires while the DJ is
@@ -1033,6 +1042,20 @@ SCHEMA: dict[str, dict] = {
              "line — a silent line reads as broken. “Canned” sends the line "
              "below (instant, no model cost); “Written each time” has the DJ "
              "write one in persona at open; “Off” waits for the caller."),
+    "chat_reveal": dict(group="chat", kind="select",
+        label="How the reply arrives",
+        help="“As it's typed” reveals the DJ's words as they're written, which "
+             "is what makes the line read as a person at a keyboard. “Typing "
+             "cue, then the line” shows the three dots while the booth "
+             "composes and lands the reply whole — quicker to read, and the "
+             "better answer on a slow connection."),
+    "chat_type_pace": dict(group="chat", kind="select",
+        label="Typing pace",
+        needs=("chat_reveal", "typing"),
+        help="How fast those words appear. Normal is about a brisk human "
+             "typist; the setting before this one ran at roughly 400 words a "
+             "minute, which read as a machine. A long reply always lands "
+             "within a few seconds whatever this says, so it can never crawl."),
     "chat_greeting": dict(group="chat", kind="text",
         label="Canned greeting",
         placeholder="You're through to the booth — what's on your mind?",
@@ -1563,6 +1586,16 @@ STATIC_CHOICES = {
         ("canned", "Canned — the line below, instantly"),
         ("fresh", "Written each time — in persona at open"),
         ("off", "Off — wait for the caller to type first"),
+    ],
+    "chat_reveal": [
+        ("typing", "As it's typed — the words appear as the DJ writes them (default)"),
+        ("dots", "Typing cue, then the line — three dots, then the reply lands whole"),
+    ],
+    "chat_type_pace": [
+        ("slower", "Slower — an unhurried typist"),
+        ("natural", "Normal — a brisk human typist (default)"),
+        ("brisk", "Faster — quick, still readable as typing"),
+        ("instant", "Instant — no reveal, the line appears at once"),
     ],
     "action_cards": [
         ("after", "After the DJ's line — words first, then the receipt (default)"),

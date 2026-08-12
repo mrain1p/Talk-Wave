@@ -34,7 +34,11 @@
     .filter((r) => RATES.indexOf(r) !== -1);
   delete state.dim; delete state.filter;      // pre-0.10.50 vocabulary
   const save = () => localStorage.setItem(LS, JSON.stringify(state));
-  const clampShow = (n) => Math.max(1, Math.min(30, n | 0 || 7));
+  // Show is HOW MANY of whatever unit is selected — 7 days, 7 weeks, 7
+  // months — so switching the unit keeps the count and changes the span
+  // (operator's ask, 2026-08-12). It used to mean days no matter what, with
+  // week silently capping at 7 and month at 30.
+  const clampShow = (n) => Math.max(1, Math.min(45, n | 0 || 7));
   state.show = clampShow(state.show);
 
   let calls = null;       // null = unavailable; [] = genuinely no records
@@ -70,10 +74,23 @@
 
   // ------------------------------------------------------------- buckets
   const DAY_MS = 24 * 3600 * 1000;
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const md = (d) => (d.getMonth() + 1) + '/' + d.getDate();
+
+  // Every bucket carries a label; how many of them get PRINTED is the only
+  // thing that thins. Aim for about ten ticks whatever the count, so 45
+  // buckets read as an axis rather than a smear (the operator asked for
+  // labels at the increments "within reason" — this is the reason).
+  function tickEvery(n) { return n <= 12 ? 1 : Math.ceil(n / 10); }
+
   function buckets() {
     const out = [];
-    if (state.range === 'day') {
-      // 24 hourly buckets ending at the current hour.
+    const n = clampShow(state.show);
+    if (state.range === 'day' && n === 1) {
+      // One day, hour by hour — the old intraday view, now reached by
+      // asking for a single day rather than being what "day" always meant.
       const end = new Date(); end.setMinutes(0, 0, 0);
       const endMs = end.getTime() + 3600 * 1000;
       for (let i = 23; i >= 0; i--) {
@@ -82,35 +99,61 @@
         out.push({ start, end: start + 3600 * 1000,
                    label: (h < 10 ? '0' : '') + h + ':00' });
       }
-      // The spec's axis: 00:00 / 12:00 / NOW — three ticks, not 24.
       out.forEach((b, i) => {
         const h = new Date(b.start).getHours();
         b.tick = i === out.length - 1 ? 'NOW'
           : h === 0 ? '00:00' : h === 12 ? '12:00' : '';
       });
-    } else {
-      const n = state.range === 'month' ? clampShow(state.show) : Math.min(7, clampShow(state.show));
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-      // One tick per bucket, thinned to every Nth when more than 10 —
-      // weekday prefixes on the endpoints only.
-      const every = n > 20 ? 4 : n > 10 ? 2 : 1;
+      return out;
+    }
+    const every = tickEvery(n);
+    const marked = (i) => i === n - 1 || i === 0 || (n - 1 - i) % every === 0;
+    if (state.range === 'month') {
+      // Calendar months, so "3 months" means three months as anyone reads
+      // it, not ninety days.
+      const now = new Date();
       for (let i = n - 1; i >= 0; i--) {
-        const start = today.getTime() - i * DAY_MS;
-        const d = new Date(start);
-        const md = (d.getMonth() + 1) + '/' + d.getDate();
-        const endpoint = i === n - 1 || i === 0;
-        out.push({ start, end: start + DAY_MS, label: md,
-                   tick: (endpoint || (n - 1 - i) % every === 0)
-                     ? (endpoint ? DAYS[d.getDay()] + ' ' + md : md) : '' });
+        const s = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const e = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        const label = MONTHS[s.getMonth()]
+          + (s.getFullYear() === now.getFullYear()
+             ? '' : " '" + String(s.getFullYear()).slice(2));
+        out.push({ start: s.getTime(), end: e.getTime(), label,
+                   tick: marked(i) ? label : '' });
       }
+      return out;
+    }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (state.range === 'week') {
+      // Weeks back from the one containing today, each starting Sunday, so
+      // a bucket is the week people mean rather than a rolling seven days.
+      const sun = new Date(today);
+      sun.setDate(sun.getDate() - sun.getDay());
+      for (let i = n - 1; i >= 0; i--) {
+        const s = new Date(sun); s.setDate(s.getDate() - i * 7);
+        const label = md(s);
+        out.push({ start: s.getTime(), end: s.getTime() + 7 * DAY_MS,
+                   label, tick: marked(i) ? label : '' });
+      }
+      return out;
+    }
+    for (let i = n - 1; i >= 0; i--) {
+      const start = today.getTime() - i * DAY_MS;
+      const d = new Date(start);
+      const endpoint = i === n - 1 || i === 0;
+      out.push({ start, end: start + DAY_MS, label: md(d),
+                 tick: marked(i)
+                   ? (endpoint ? DAYS[d.getDay()] + ' ' + md(d) : md(d)) : '' });
     }
     return out;
   }
-  const periodWord = () => (state.range === 'day' ? 'today'
-    : state.range === 'week' ? 'this week'
-    : clampShow(state.show) === 30 ? 'this month'
-    : 'last ' + clampShow(state.show) + ' days');
+  const periodWord = () => {
+    const n = clampShow(state.show);
+    const unit = state.range === 'month' ? 'month'
+      : state.range === 'week' ? 'week' : 'day';
+    if (n === 1) return unit === 'day' ? 'today' : 'this ' + unit;
+    return 'last ' + n + ' ' + unit + 's';
+  };
   const DOOR_WORDS = { call: 'calls', chat: 'texts', voicemail: 'voicemails' };
   const filterWord = () => {
     // "doors" until the door set narrows; a narrowed rating set is an
@@ -188,9 +231,12 @@
         '<span class="mixseg ' + s.cls + '" style="flex:' + s.n + '"></span>'
       ).join('') + '</div>'
       + '<div class="mixlegend">' + counts.map((s) =>
+        // Name on the left rail, numbers on the right — see .mixlegend.
         '<button type="button" class="mixkey" data-v="' + s.v + '">'
-        + '<span class="sw ' + s.cls + '"></span>' + s.label + ' ' + s.n
-        + ' · ' + Math.round((s.n / total) * 100) + '%</button>'
+        + '<span class="kname"><span class="sw ' + s.cls + '"></span>'
+        + s.label + '</span>'
+        + '<span class="knum">' + s.n + ' · '
+        + Math.round((s.n / total) * 100) + '%</span></button>'
       ).join('') + '</div>'
       + '<p class="mixfoot">' + total + ' doors total · ' + periodWord() + '</p>';
     // A legend swatch is the doors multi-select's shortcut: click solos that
@@ -291,8 +337,10 @@
   function paintControls() {
     [['actDay', 'day'], ['actWeek', 'week'], ['actMonth', 'month']]
       .forEach(([id, r]) => $(id).classList.toggle('on', state.range === r));
-    $('actShow').value = state.range === 'day' ? '' : clampShow(state.show);
-    $('actShow').disabled = state.range === 'day';
+    // Always live now: the count means the same thing in every unit, so
+    // there is nothing to disable it for.
+    $('actShow').value = clampShow(state.show);
+    $('actShow').disabled = false;
     // The pickers' summaries say what is ticked without opening them.
     $('doorPick').querySelectorAll('input').forEach((box) => {
       box.checked = state.doors.indexOf(box.dataset.v) !== -1;
@@ -310,22 +358,24 @@
         : state.rates.map((r) =>
             r === 'up' ? '▲' : r === 'down' ? '▼' : 'unrated').join(' · ');
   }
-  [['actDay', 'day', 7], ['actWeek', 'week', 7], ['actMonth', 'month', 30]]
-    .forEach(([id, r, n]) => {
+  // Switching the unit KEEPS the count — 7 days becomes 7 weeks becomes 7
+  // months. It used to reset to a per-unit default, which is what made the
+  // box look like it meant days whatever was selected.
+  [['actDay', 'day'], ['actWeek', 'week'], ['actMonth', 'month']]
+    .forEach(([id, r]) => {
       $(id).onclick = () => {
-        state.range = r; state.show = n;
+        state.range = r;
         save(); paintControls(); render();
       };
     });
   $('actShow').onchange = () => {
-    // Snap back on nonsense rather than guessing (spec: clamp 1–30) — and
-    // snap to what the current view will HONOUR: week renders at most 7
-    // buckets, and the sprint review caught the field reading "14" while
-    // the chart quietly drew 7.
-    let n = clampShow(parseInt($('actShow').value, 10));
-    if (state.range === 'week') n = Math.min(7, n);
-    state.show = n;
-    $('actShow').value = n;
+    // Snap back on nonsense rather than guessing (1–45). No per-unit cap
+    // any more: the field said "14" while the chart quietly drew 7, which
+    // is exactly the lie this rework removes.
+    state.show = clampShow(parseInt($('actShow').value, 10));
+    // Write the CLAMPED number back, or the field keeps saying 99 while the
+    // chart draws 45 — the same lie in the other direction.
+    $('actShow').value = state.show;
     save(); render();
   };
   [['doorPick', 'doors'], ['ratePick', 'rates']].forEach(([id, key]) => {

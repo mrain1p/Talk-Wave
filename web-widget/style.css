@@ -3457,14 +3457,38 @@
   body.panelpage .mixseg.vm, body.panelpage .mixkey .sw.vm {
     background: color-mix(in srgb, var(--alpenglow) 18%, transparent);
   }
+  /* A column each, not a ragged wrapped row: the three keys carry a name, a
+     count and a percentage, and left to flex-wrap they ran together into one
+     unreadable line (operator, 2026-08-12). One row per door aligns the
+     swatches and lets the numbers sit on their own right-hand rail, so the
+     mix reads down the way the band reads across. */
   body.panelpage .mixlegend {
-    display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;
+    display: grid; grid-template-columns: 1fr auto; gap: 5px 12px;
+    margin-top: 10px;
   }
   body.panelpage .mixkey {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    border: 0; background: transparent; padding: 0;
+    display: grid; grid-column: 1 / -1;
+    grid-template-columns: subgrid; align-items: center;
+    cursor: pointer; border: 0; background: transparent; padding: 2px 0;
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
-    text-transform: uppercase; color: var(--sage);
+    text-transform: uppercase; color: var(--sage); text-align: left;
+  }
+  /* The name (swatch + word) on the left, the numbers on the right rail. */
+  body.panelpage .mixkey .kname {
+    display: inline-flex; align-items: center; gap: 7px; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  body.panelpage .mixkey .knum {
+    color: var(--sage-dim); font-variant-numeric: tabular-nums;
+    white-space: nowrap; text-align: right;
+  }
+  body.panelpage .mixkey:hover .knum { color: var(--sage); }
+  /* No subgrid (older WebKit): fall back to the readable two-part row. */
+  @supports not (grid-template-columns: subgrid) {
+    body.panelpage .mixlegend { display: block; }
+    body.panelpage .mixkey {
+      display: flex; width: 100%; justify-content: space-between; gap: 12px;
+    }
   }
   body.panelpage .mixkey:hover { color: var(--alpenglow); }
   body.panelpage .mixkey .sw {

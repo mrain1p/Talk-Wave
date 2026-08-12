@@ -2449,21 +2449,49 @@
   let chatTarget = '', chatShown = 0, chatDone = false, chatTimer = null;
   // A typing cue asked for while a reveal was still running — see showTyping.
   let typingPending = false;
+  // Characters owed but not yet whole — see chatTick.
+  let chatCarry = 0;
+  const CHAT_TICK_MS = 30;
+  // However slow the pace, a long reply still lands inside this. Eight
+  // seconds reads as a person writing a paragraph; much more and a caller is
+  // watching a progress bar made of words.
+  const CHAT_MAX_SECS = 8;
+  // Characters per second per setting. "Normal" is a brisk human typist —
+  // deliberately well under the ~33 c/s the fixed 30ms tick used to give.
+  const CHAT_PACE = { slower: 11, natural: 19, brisk: 28, instant: 0 };
+  function chatCps() {
+    const pace = CHAT_PACE[(live && live.chatTypePace) || 'natural'];
+    return pace === undefined ? CHAT_PACE.natural : pace;
+  }
+  // "dots" holds the typing cue and lands the line whole; "typing" reveals it
+  // as written. Instant pace is the same arrival with no cue.
+  function chatRevealsAsTyped() {
+    return ((live && live.chatReveal) || 'typing') === 'typing'
+      && chatCps() > 0;
+  }
   function chatStopReveal() {
     if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
-    chatTarget = ''; chatShown = 0; chatDone = false;
+    chatTarget = ''; chatShown = 0; chatDone = false; chatCarry = 0;
   }
   function chatTick() {
     if (chatShown < chatTarget.length) {
-      // ONE character at a time — it should read as someone writing it live,
-      // not a reply that pops in (operator's ask). A long reply reveals in a
-      // FIXED number of steps rather than a fixed catch-up, so a whole
-      // paragraph streams over a few readable seconds no matter its length —
-      // the old "remaining / 60" landed any long reply in under two seconds,
-      // which flew past too fast to read ("no one could keep up", operator on
-      // a live chat, 2026-08-10). Short replies still go character by character.
+      // It should read as someone writing it live, not a reply that pops in
+      // (operator's ask). The pace is now the operator's, in characters per
+      // second — a fixed one character per 30ms tick was about 33 c/s, near
+      // 400 words a minute, which is nobody typing (operator, 2026-08-12).
+      //
+      // The floor is what stops a long reply crawling: whatever pace is set,
+      // the whole thing lands within CHAT_MAX_SECS. That replaced an older
+      // "remaining / 60" catch-up which landed any long reply in under two
+      // seconds — too fast to read ("no one could keep up", 2026-08-10).
       const total = chatTarget.length;
-      const step = total > 220 ? Math.ceil(total / 170) : 1;
+      const cps = Math.max(chatCps(), total / CHAT_MAX_SECS);
+      // Carry the fraction between ticks, or any pace below one character per
+      // tick would floor to zero and never move.
+      chatCarry += cps * (CHAT_TICK_MS / 1000);
+      const step = Math.floor(chatCarry);
+      if (step < 1) return;
+      chatCarry -= step;
       chatShown = Math.min(total, chatShown + step);
       if (!chatPend) chatPend = 'chat-' + (++capSeq);
       addCaption(chatPend, 'dj', chatTarget.slice(0, chatShown), false);
@@ -2565,18 +2593,27 @@
         hideTyping();
         addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
       } else if (msg.type === 'delta') {
-        hideTyping();
-        // Feed the reveal buffer, don't render straight — the ticker types it
-        // out at a human pace.
+        // In "dots" mode the cue STAYS up and nothing is revealed until the
+        // reply is whole — that is the difference between the two settings.
         chatTarget += msg.text || '';
-        if (!chatTimer) chatTimer = setInterval(chatTick, 30);
+        if (chatRevealsAsTyped()) {
+          hideTyping();
+          // Feed the reveal buffer, don't render straight — the ticker types
+          // it out at the operator's pace.
+          if (!chatTimer) chatTimer = setInterval(chatTick, CHAT_TICK_MS);
+        }
       } else if (msg.type === 'done') {
         hideTyping();
         // The final text wins (it's the authoritative wording); let the ticker
         // finish revealing it, then finalise.
         chatTarget = msg.text || chatTarget;
         chatDone = true;
-        if (!chatTimer) chatTimer = setInterval(chatTick, 30);
+        if (!chatRevealsAsTyped()) {
+          // Land it whole: the cue was the wait, so there is nothing left to
+          // reveal. chatTick's own done-branch does the finalising.
+          chatShown = chatTarget.length;
+        }
+        if (!chatTimer) chatTimer = setInterval(chatTick, CHAT_TICK_MS);
       } else if (msg.type === 'ended') {
         hideTyping();
         // The server confirmed the close (record written, chat dropped) — so
