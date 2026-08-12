@@ -63,7 +63,37 @@
     // `!== false` form matches the other corner controls — show_signin
     // defaults off, so the server always sends an explicit true/false here.
     set('signinBtn', c.signin !== false && !!(d && d.signinAvailable));
+    // First-run: the card itself asks for the admin password while none
+    // exists (needsSetup rides /live per-request). Never in an embed — a
+    // host page's visitors are not the operator.
+    set('setupNudge', !framed && !!(d && d.needsSetup));
   }
+
+  // The same /auth/password the panel's nudge uses; an empty `current` is
+  // the first set. Success hides the banner for good — needsSetup goes
+  // false server-side the moment the store holds a hash.
+  if ($('setupPwBtn')) $('setupPwBtn').onclick = async () => {
+    const pw = $('setupPw').value || '';
+    const msg = $('setupPwMsg');
+    if (pw.length < 8) { msg.textContent = 'Use at least 8 characters.'; return; }
+    const btn = $('setupPwBtn');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/auth/password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current: '', new: pw }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.textContent = d.error || 'Could not set it — try the settings page.';
+        return;
+      }
+      $('setupPw').value = '';
+      $('setupNudge').hidden = true;
+      setStatus('Password set — your settings live at /settings');
+      refreshLive();
+    } finally { btn.disabled = false; }
+  };
 
   $('lockBtn').onclick = () => {
     rememberCallKey('');

@@ -721,3 +721,37 @@ class TestEveryTestClassIsAggregated(unittest.TestCase):
             "defined under tests/ but never imported by test_sidecar.py — "
             "these classes DO NOT RUN in CI or the commit hook: "
             f"{missing}")
+
+
+class TestTheInstallerTellsTheTruth(unittest.TestCase):
+    """install.sh is the one-command fresh install (curl | bash). A script
+    that fetches files by name drifts the moment a file is renamed — the
+    compose rename this same week would have broken it silently — so every
+    name it fetches must exist in the repo, and its refuse-to-overwrite
+    guard must stay: it is an installer, not an updater."""
+
+    def setUp(self):
+        from tests.support import REPO
+        self.repo = REPO
+        self.script = (REPO / "install.sh").read_text(encoding="utf-8")
+
+    def test_every_fetched_file_exists(self):
+        import re
+
+        fetched = re.findall(r'"\$RAW/([^"]+)"', self.script)
+        self.assertGreaterEqual(len(fetched), 4, "the fetch list shrank")
+        for name in fetched:
+            with self.subTest(name=name):
+                self.assertTrue((self.repo / name).is_file(),
+                                f"install.sh fetches {name}, which is not in "
+                                "the repo")
+
+    def test_it_refuses_to_overwrite_a_deployment(self):
+        self.assertIn("refusing to overwrite", self.script)
+        self.assertIn('[ -e "$DIR/.env" ]', self.script)
+
+    def test_the_secret_lands_in_both_files(self):
+        # One generated secret, two files that must agree — the exact dance
+        # the installer exists to do for people.
+        self.assertIn("REPLACE_WITH_A_FRESH_SECRET", self.script)
+        self.assertIn("LIVEKIT_API_SECRET=", self.script)

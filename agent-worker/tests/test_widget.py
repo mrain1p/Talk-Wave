@@ -1320,6 +1320,62 @@ class TestTheFinderIsNotAUsernameField(unittest.TestCase):
                       "focus — autofill does not listen to attributes alone")
 
 
+class TestTheCallPageOffersFirstRunSetup(_TempStores):
+    """Until an admin password exists the whole box is open to whoever walks
+    up — so the FIRST page anyone reaches says it and takes one (operator's
+    ask, 0.10.72 era). /live carries needsSetup per-request; the banner never
+    shows in an embed, and the flag goes false forever once a hash exists."""
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        from pathlib import Path
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        self._old_key = os.environ.pop("CALLIN_ADMIN_KEY", None)
+
+    def tearDown(self):
+        import admin_auth
+        admin_auth.AUTH_PATH = self._old_auth
+        if self._old_key is not None:
+            os.environ["CALLIN_ADMIN_KEY"] = self._old_key
+        super().tearDown()
+
+    def _live(self):
+        from api.live import _for_this_caller
+
+        req = types.SimpleNamespace(headers={}, remote="9.9.9.9")
+        return _for_this_caller(req, {"canAsk": {}, "askTiers": {}})
+
+    def test_an_unconfigured_box_asks_and_a_configured_one_never_does(self):
+        import admin_auth
+
+        self.assertTrue(self._live()["needsSetup"])
+        admin_auth.set_password("hunter2hunter2")
+        self.assertFalse(self._live()["needsSetup"])
+
+    def test_the_env_break_glass_counts_as_configured(self):
+        # ADMIN_KEY is read from the environment once, at boot — which is
+        # when an operator sets it — so the test patches the module constant
+        # rather than pretending the env can change under a running process.
+        from api import auth as api_auth
+
+        old = api_auth.ADMIN_KEY
+        api_auth.ADMIN_KEY = "operator-break-glass"
+        try:
+            self.assertFalse(self._live()["needsSetup"])
+        finally:
+            api_auth.ADMIN_KEY = old
+
+    def test_the_banner_exists_and_stays_out_of_embeds(self):
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="setupNudge"', html)
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("!framed && !!(d && d.needsSetup)", js,
+                      "the setup ask must be gated out of embeds — a host "
+                      "page's visitors are not the operator")
+
+
 class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
     """The chat text box shipped invisible because its CSS used tokens that do
     not exist (--field, --ink, --soft-border): `var(--field)` with no --field

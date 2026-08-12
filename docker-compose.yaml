@@ -47,13 +47,16 @@ services:
     container_name: talkwave-worker
     restart: unless-stopped
     stop_grace_period: 2m                                                 # keep at 2m so a redeploy mid-call gets to finish the goodbye + transcript
-    env_file: .env
+    env_file:
+      - path: .env                                                        # optional — HOST_IP and any baseline config
+        required: false
     environment:
       - LIVEKIT_URL=ws://livekit-server:7880                              # must match the livekit service's name above
       - CALLIN_INTERNAL_URL=http://talkwave-web:8100                      # must match the web service's name below
       - LOG_TO_FILE=0                                                     # keep 0 — docker captures stdout already
     volumes:
       - ./data:/data                                                      # keep IDENTICAL to the web half's mount below
+      - ./livekit.yaml:/etc/livekit.yaml:ro                               # the keypair is read from here when .env doesn't set one
       - talkwave-cache:/home/app/.cache                                   # keep — holds the ~141MB STT model so recreates don't re-download it
 
   talkwave-web:
@@ -61,7 +64,9 @@ services:
     container_name: talkwave-web
     command: ["python", "token_server.py"]                                # this override runs the WEB half
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env                                                        # optional — HOST_IP and any baseline config
+        required: false
     environment:
       - LIVEKIT_URL=ws://livekit-server:7880                              # matches the livekit service's name above
       - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443               # what the BROWSER dials (via the bundled caddy)
@@ -70,6 +75,7 @@ services:
       - LOG_TO_FILE=0                                                     # keep at 0 — docker captures stdout already
     volumes:
       - ./data:/data                                                      # keep IDENTICAL to the worker's mount above
+      - ./livekit.yaml:/etc/livekit.yaml:ro                               # the keypair is read from here when .env doesn't set one
     ports:
       - "8100:8100"                                                       # widget + API, plain http — keep it behind the TLS door or your proxy
 

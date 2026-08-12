@@ -29,38 +29,38 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 ## Features
 
 **Three ways to reach the booth**
-- **Live calls** — full-duplex voice with barge-in, live captions both ways, level meters, and a DJ who knows the show, the recent tracks, and what it just said on air.
-- **Voicemail** — an answering machine with per-persona greetings staged in each DJ's own voice; messages are held for you or delivered to the station, and an AI triage can turn one into a request or an on-air mention. See [Voicemail](docs/VOICEMAIL.md).
-- **The text line** — typed chat with the same DJ, same tools, same receipts, over a plain WebSocket — it works where WebRTC can't and keeps working while the media server is down.
+- **Live calls** — full-duplex voice with barge-in, live captions, and a DJ who knows the show it's on.
+- **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. See [Voicemail](docs/VOICEMAIL.md).
+- **The text line** — the same DJ, typed. Works where WebRTC can't.
 
-**A real radio station on the other end**
-- The DJ's tools come from the station's MCP server through a hard allowlist: requests, search, queueing, announcements, segments — with the audience-reaching ones off by default and the destructive ones never exposed at any setting.
-- **On-air ducking**: the call DJ and the broadcast DJ are the same voice, so while the station has the microphone the caller's replies queue instead of talking over the air — and the card says why the line went quiet.
-- Personas, show cards, voices and themes are discovered live from the station. Point Talk Wave at another SUB/WAVE and it re-homes itself.
-- Every action a caller triggers gets its own transcript line — the DJ *saying* it did something is a claim; that line is the receipt.
+**A real station on the other end**
+- Station tools through a hard allowlist — the audience-reaching ones off by default, the destructive ones never exposed.
+- **On-air ducking** — while the broadcast DJ is talking, the call waits its turn. Nothing overlaps, nothing is lost.
+- Personas, voices and themes discovered live. Point it at another SUB/WAVE and it re-homes itself.
+- Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did.
 
 **Speech, both directions**
-- **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or Ollama on your own network with no key at all. The same provider list the station offers, so one account runs both.
-- **STT**: a bundled Whisper that needs no key and no network, or cloud ears (Deepgram, OpenAI, Google) when callers are misheard. Echo cancellation, noise suppression and auto-gain are on by default, so the station playing in the caller's room isn't transcribed back.
-- **TTS**: any OpenAI-compatible endpoint via a JSON adapter — ElevenLabs and Fish Audio adapters ship in the box, plus one matching SUB/WAVE's own `/speak` so the call DJ uses the station's voice.
-- **Voice effects and filters**: telephone, CB, shortwave, lo-fi and friends — a radio colour on the DJ's voice with an intensity dial, settable per persona.
+- **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or Ollama, no key at all.
+- **STT**: bundled Whisper (no key, no network) or cloud ears (Deepgram, OpenAI, Google). Echo cancellation on by default.
+- **TTS**: any OpenAI-compatible endpoint via JSON adapters — ElevenLabs, Fish Audio, and the station's own `/speak` in the box.
+- **Voice effects**: telephone, CB, shortwave, lo-fi — per persona, with an intensity dial.
 
 **A player people actually use**
-- The call page **installs to a phone like an app** (PWA) and reads like a real phone there — portrait up top, words in the middle, actions under your thumb.
-- **Embeds** drop into any page with two lines of HTML, as an inline card, a floating launcher pill, a docked bar, or a pop-up button — previewed in the panel before you copy the snippet. See [Embedding](#embedding).
-- **Themes**: light, dark, match-the-page, or the station's own show colours live from its `/themes` — and every fixed string on the card is overridable in your station's voice.
-- **Call sounds**: ring, pickup, hold and hang-up from shipped sound sets — synthesized classics plus recorded public-domain line tones — every slot replaceable from a filterable shelf of clips and your own uploads.
-- Push to talk (on by default, per surface), a thumbs up/down after the call, and in-character timeouts so silence never just hangs there.
+- Installs to a phone like an app, and reads like one.
+- Embeds in two lines of HTML — inline card, launcher pill, docked bar, or pop-up. See [Embedding](#embedding).
+- Themes: light, dark, match-the-page, or the station's live show colours. Every string on the card overridable.
+- Call sounds from shipped sets — synthesized classics, real public-domain line tones — every slot replaceable with your own.
+- Push to talk, a post-call thumbs, and in-character timeouts so silence never just hangs there.
 
 **Gated like a phone line, not a demo**
-- **Three tiers** — admin, guest code, open — and a per-feature permission matrix: every station action is granted to the least trusted caller who should have it, or nobody.
-- Usage caps on concurrent calls, per hour, per day, redial wait and actions per call; a kill switch on the dashboard that outranks everything.
-- Two PBKDF2 passwords with fail2ban-style lockouts, write-only API keys, signed short-lived call tokens, and a caller treated as an untrusted stranger by both the prompt and the code. See [Security](docs/security.md).
+- Three caller tiers — admin, guest code, open — and a per-feature permission matrix: each action goes to the least trusted tier that should have it, or nobody.
+- Usage caps on everything a call can cost, and a kill switch that outranks it all.
+- PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens. See [Security](docs/security.md).
 
 **An operator's panel that tells the truth**
-- A dashboard that acts (kill switch, per-door toggles — posted instantly, no save) and reads (who's on air, station health, the call chain, activity charts).
-- Settings as pages under one URL; every change applies to the **next caller**, no restart, and clearing a field falls back to your `.env`.
-- Diagnostics that exercise the real code paths: a twelve-stage pipeline check that walks every leg of a call in order, a speed test, full call transcripts, live logs. Green means a call will work — not "the URL responded".
+- A dashboard that acts (toggles post instantly, no save) and reads (on air, station health, activity charts).
+- Settings apply to the **next caller** — no restarts, ever.
+- Diagnostics run the real code paths: green means a call will work, not "the URL responded".
 
 ## Before you start
 
@@ -74,6 +74,12 @@ What a deployment actually needs, so nothing surprises you at step three:
 - **Callers from outside your network** need one router rule (a single UDP port) and one compose line — [networking](docs/networking.md) walks it.
 
 ## Getting started
+
+**The one-command version:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/install.sh | bash
+```
 
 **The ten-minute version: [docs/quickstart.md](docs/quickstart.md)** — what you need, the five commands, first run, backup. The sections below are the same path with more said.
 

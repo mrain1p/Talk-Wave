@@ -372,6 +372,61 @@ class TestBootLaysTheDataSkeleton(_TempStores):
         self.assertFalse(data_dir.exists())
 
 
+class TestTheKeypairCanLiveInOneFile(unittest.TestCase):
+    """The LiveKit keypair used to live in two files that had to match by
+    hand — livekit.yaml for the media server, .env for these processes — and
+    a fresh install tripping over the dance is what prompted the fallback:
+    when the env supplies nothing, api/env.py reads the pair from the
+    mounted livekit.yaml (stdlib parse, one documented shape)."""
+
+    def _with_yaml(self, text):
+        import tempfile
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        path = os.path.join(td.name, "livekit.yaml")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.environ["LIVEKIT_CONFIG_PATH"] = path
+        self.addCleanup(lambda: os.environ.pop("LIVEKIT_CONFIG_PATH", None))
+
+    def test_the_pair_is_read_from_the_yaml(self):
+        from api import env as api_env
+
+        self._with_yaml("port: 7880\nkeys:\n  mykey: s3cretvalue\n")
+        self.assertEqual(api_env._keys_from_livekit_yaml(),
+                         ("mykey", "s3cretvalue"))
+
+    def test_env_wins_and_apply_fills_only_a_gap(self):
+        from api import env as api_env
+
+        self._with_yaml("keys:\n  yamlkey: yamlsecret\n")
+        old_key = os.environ.pop("LIVEKIT_API_KEY", None)
+        old_sec = os.environ.pop("LIVEKIT_API_SECRET", None)
+        try:
+            api_env.apply_livekit_keys()
+            self.assertEqual(os.environ.get("LIVEKIT_API_KEY"), "yamlkey")
+            self.assertEqual(os.environ.get("LIVEKIT_API_SECRET"), "yamlsecret")
+            # A pair the env already holds is never overwritten.
+            os.environ["LIVEKIT_API_SECRET"] = "envwins"
+            os.environ["LIVEKIT_API_KEY"] = "envkey"
+            api_env.apply_livekit_keys()
+            self.assertEqual(os.environ["LIVEKIT_API_SECRET"], "envwins")
+        finally:
+            for name, val in (("LIVEKIT_API_KEY", old_key),
+                              ("LIVEKIT_API_SECRET", old_sec)):
+                if val is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = val
+
+    def test_comments_and_quotes_do_not_confuse_the_parse(self):
+        from api import env as api_env
+
+        self._with_yaml("keys:\n  devkey: \"quoted\"  # a comment\n")
+        self.assertEqual(api_env._keys_from_livekit_yaml(),
+                         ("devkey", "quoted"))
+
+
 class TestUploadedSoundsCannotFillTheVolume(unittest.TestCase):
     """Each file was capped at 2MB and the collection at nothing, so the same
     2MB could be uploaded until the volume filled — the volume the settings,

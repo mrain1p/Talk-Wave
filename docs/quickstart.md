@@ -12,6 +12,14 @@ From nothing to a working call in about ten minutes.
 - A running **[SUB/WAVE](https://github.com/perminder-klair/subwave)** station. Talk Wave is its companion phone line, not a standalone radio.
 - **One LLM API key** (OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or a local Ollama, which needs none). Speech-to-text ships in the box; everything else has a working default.
 
+## The one-command version
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/install.sh | bash
+```
+
+Fetches the stack, generates the LiveKit secret, detects your LAN address, prepares `data/`, and starts everything — then tells you the address to open. It refuses to touch a folder that already holds a deployment. If you'd rather see every move, the same steps by hand:
+
 ## Install
 
 Make a folder, grab four files from this repo, create one empty directory:
@@ -29,8 +37,8 @@ The `chown` matters: the services run as uid 1000, and if Docker creates `data/`
 
 Then two edits:
 
-1. **`.env`** — set `HOST_IP` to this machine's LAN address, and paste a fresh LiveKit keypair (the file shows the one-line command that generates it).
-2. **`livekit.yaml`** — paste the same keypair.
+1. **`livekit.yaml`** — paste a fresh secret under `keys:` (the file shows the one-line generator). The app reads the keypair from here too, so it lives in one file.
+2. **`.env`** — set `HOST_IP` to this machine's LAN address.
 
 That is the whole configuration surface on disk. Everything else — model, voice, permissions, the lot — is set later in the settings panel and applies to the next call without a restart.
 

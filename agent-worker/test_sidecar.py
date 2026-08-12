@@ -25,6 +25,7 @@ from tests.test_settings import (  # noqa: F401
     TestEverySecretRendersSomewhere,
     TestSettingsThatAreOnlyWrongTogether,
     TestTheEmbedAllowlistIsASetting,
+    TestTheKeypairCanLiveInOneFile,
     TestTheDataDirCheckCannotStopTheWorker,
     TestTheProviderTablesAgreeWithEachOther,
     TestTheModelWarmedIsTheModelUsed,
@@ -59,6 +60,7 @@ from tests.test_widget import (  # noqa: F401
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestTheFinderIsNotAUsernameField,
+    TestTheCallPageOffersFirstRunSetup,
     TestDiagnosticsResultsKeepTheirScrollSkin,
     TestTheEmbedSitsFlushByDefault,
     TestThumbsArePerDoor,
@@ -248,6 +250,7 @@ from tests.test_docs import (  # noqa: F401
 )
 from tests.test_house_rules import (  # noqa: F401
     TestEverySkillWouldActuallyLoad,
+    TestTheInstallerTellsTheTruth,
     TestEveryTestClassIsAggregated,
     TestNewCodeDoesNotArriveUntested,
     TestTheParallelRunnerRunsTheSameSuite,
