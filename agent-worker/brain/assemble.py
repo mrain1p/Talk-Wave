@@ -22,6 +22,7 @@ from brain.briefing import (
 async def build_system_prompt(
     station: StationClient, persona: dict, snapshot: dict | None = None,
     cfg: dict | None = None, mode: str = "call",
+    speak_clock: bool | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -43,7 +44,22 @@ async def build_system_prompt(
     snap = snapshot or await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
     show = await station.active_show(snap["now_playing"], snap.get("schedule"))
 
-    facts = await station_context(station, cfg, snap, show)
+    # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it
+    # in — its StationConfig caches /settings, so the read is free there;
+    # this fallback covers the preview and chat paths with one authed read.
+    if speak_clock is None:
+        from station_config import StationConfig
+
+        sc = StationConfig()
+        try:
+            speak_clock = await sc.speak_clock()
+        except Exception:                                     # noqa: BLE001
+            speak_clock = True
+        finally:
+            await sc.aclose()
+
+    facts = await station_context(station, cfg, snap, show,
+                                  speak_clock=speak_clock)
 
     name = persona.get("name", "the DJ")
     # The station's own name, not ours. This line used to say "the SUB/WAVE

@@ -369,6 +369,41 @@ class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
         self.assertIn('"Roads" by Portishead', line)
         self.assertIn("Dummy", line)
 
+    def test_a_clockless_station_keeps_its_call_dj_clockless_too(self):
+        # The djSpeakClock mirror (SUB/WAVE 1.8): with the station's clock
+        # off air, the wall time stays out of the briefing — otherwise the
+        # call-in DJ is the one voice still announcing the hour. The daypart
+        # vibe survives either way, the station's own carve-out.
+        from brain.briefing import _fmt_now_playing
+
+        np = {"nowPlaying": {"title": "Roads"},
+              "context": {"clock": {"display": "9:41 pm"},
+                          "time": {"vibe": "late night"}}}
+        spoken = _fmt_now_playing(np, speak_clock=True)
+        self.assertIn("9:41 pm", spoken)
+        silent = _fmt_now_playing(np, speak_clock=False)
+        self.assertNotIn("9:41", silent)
+        self.assertIn("late night", silent)
+
+    def test_the_clock_mirror_defaults_on_and_coerces_like_the_station(self):
+        # Absent, non-boolean, unreadable or unauthed all mean the switch
+        # effectively doesn't exist — the station coerces the same way, so
+        # an upgrade is byte-identical for a station that never set it.
+        import asyncio
+
+        from station_config import StationConfig
+
+        sc = StationConfig.__new__(StationConfig)
+        for payload, want in (({}, True),
+                              ({"settings": {"djSpeakClock": False}}, False),
+                              ({"djSpeakClock": "nope"}, True),
+                              ({"nested": [{"djSpeakClock": True}]}, True)):
+            async def fake_settings(p=payload):
+                return p
+            sc.settings = fake_settings
+            self.assertIs(asyncio.run(StationConfig.speak_clock(sc)), want,
+                          payload)
+
 
 class TestACallerCanBeToldNothingIsKept(_TempStores):
     """A transcript is both sides of a stranger's conversation, kept on the

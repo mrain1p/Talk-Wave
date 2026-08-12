@@ -207,7 +207,10 @@ class CallSession:
             or await self.station_cfg.voice_for(self.persona["id"])
         )
         self.instructions = await brain.build_system_prompt(
-            self.station, self.persona, snapshot=snap, cfg=self.cfg
+            self.station, self.persona, snapshot=snap, cfg=self.cfg,
+            # The clock mirror (djSpeakClock, SUB/WAVE 1.8) rides the same
+            # cached /settings read voice_for() just warmed — free here.
+            speak_clock=await self.station_cfg.speak_clock(),
         )
         self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg,
                                  self.tier, started=self.started_at)
