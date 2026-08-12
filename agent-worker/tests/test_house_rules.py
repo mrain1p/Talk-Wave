@@ -441,13 +441,6 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "an endpoint, the same declarative-surface reason settings.py is "
             "exempt; splitting it scatters one client across files that all "
             "hold the same httpx session and the same last-known-good caches.",
-        "web-widget/panel.js":
-            "measured rather than assumed. The log and call viewers had a real "
-            "boundary and left in 0.9.106. What remains does not: the test "
-            "probes need fifteen names from the settings form and the pipeline "
-            "check ten, because all three read the same draft, resolved and "
-            "secrets state. Threading that many names across a seam is the "
-            "same module in more files, not a smaller one.",
         "web-widget/call.js":
             "measured, and every candidate region is coupled BOTH ways. The "
             "corner controls need two names out and owe fifteen back; the call "
@@ -547,6 +540,20 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # there when it next grows.
         "agent-worker/api/hooks.py": (626, "a receiver module split out from "
                                            "the registration/reconcile side"),
+        # Exempt from 0.9.106 ("the probes need fifteen names") until the
+        # 0.10.78 re-measurement found that the pages/dashboard era grew a
+        # NEW seam the old count predates: the tests-audio + sound-board
+        # cluster (playPcm through uploadSoundFile, ~1000 lines) is nearly
+        # closed — its audio helpers are called nowhere else, it owes the
+        # rest three names (loadSounds, paintSlotCards, buildSlotCards) and
+        # needs about four back beyond afetch/showResult, which the Panel
+        # global already publishes for the viewers and charts splits. That
+        # scores with the viewers' 6, not the fifteen that justified the
+        # exemption. Cut there when it next grows.
+        "web-widget/panel.js": (4407, "a panel-sounds.js (the audio "
+                                      "previewers, sound board, slot cards "
+                                      "and uploads) split out the way the "
+                                      "viewers and charts were"),
         # lifecycle.py was here from 0.9.125 until 0.10.9, when the recorded
         # seam was cut for real: the back-to-air mention and the transcript
         # reader moved to call/handoff.py and lifecycle came back under the
