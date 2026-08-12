@@ -3026,10 +3026,13 @@
     background: transparent; border: 0; border-radius: 0;
     box-shadow: none; padding: 26px 30px 40px; max-width: 1180px;
   }
+  /* details.sec > .body is in the list because it was the one surface the
+     square sweep missed: a 12px-rounded body under a square header read as
+     two pages sharing a corner (operator's ask, 2026-08-12). */
   body.panelpage :is(button, input, select, textarea, .tile, .ctrlcard,
     .supergroup, .panelnav a, .runbtn, .tag, .gear, .banner, .permgrid,
-    details.sec > summary, .snippet, .result, .preview, .previewstage,
-    .switch, .chip, .pill) {
+    details.sec > summary, details.sec > .body, .snippet, .result, .preview,
+    .previewstage, .switch, .chip, .pill) {
     border-radius: 0 !important;
   }
 

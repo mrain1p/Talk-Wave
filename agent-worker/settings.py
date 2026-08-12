@@ -766,7 +766,7 @@ GROUPS = [
     # voicemails alike, so "what the booth writes down" is the honest home.
     ("context",  "dj",     "Station awareness",  "What the DJ knows before picking up."),
     ("style",    "dj",     "House style",        "Light steers on top of the persona."),
-    ("record",   "dj",     "Call transcripts",   "What is written to disk, and for how long."),
+    ("record",   "dj",     "Transcripts",   "Calls, texts and voicemails — what is written to disk, and for how long."),
 
     # Calls: the live line's own page, in the order a call has a shape —
     # open, turn-take, close — then everything that runs around the speaking.
@@ -1414,14 +1414,15 @@ SCHEMA: dict[str, dict] = {
              "line for the on-air DJ, or one of the station's segments — "
              "bounded by the caller permissions above, one action per message."),
 
-    "record_calls": dict(group="record", kind="check", label="Keep call transcripts",
-        help="Both sides of each call, the tools it used and the settings it ran "
-             "under, written to data/calls — how a bad call gets diagnosed, and "
-             "also a stranger's conversation on your disk."),
+    "record_calls": dict(group="record", kind="check", label="Keep transcripts",
+        help="Both sides of every conversation — calls, texts and voicemail "
+             "messages — with the tools the DJ used and the settings it ran "
+             "under, written to data/calls. How a bad conversation gets "
+             "diagnosed, and also a stranger's words on your disk."),
     "record_keep": dict(group="record", kind="number",
         label="How many transcripts to keep",
         needs=("record_calls", True),
-        help="Older ones are deleted as new calls land. This is about how long a "
+        help="Older ones are deleted as new ones land. This is about how long a "
              "caller's words stay on your disk, not about space."),
 
     # --- usage ---

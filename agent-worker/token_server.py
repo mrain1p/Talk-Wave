@@ -187,9 +187,18 @@ def warn_if_open_to_the_web() -> None:
         )
 
 
+# aiohttp's default access line repeats a timestamp our own formatter has
+# already written, then spends 120 characters on the referer and the browser's
+# full user-agent — so in the panel's log viewer every request wrapped onto
+# three lines and buried the events worth reading. Client, request, status,
+# bytes: everything an operator diagnoses with, nothing they don't.
+ACCESS_LOG_FORMAT = '%a "%r" %s %b'
+
+
 if __name__ == "__main__":
     log.info("call-in widget + token server on http://localhost:%s", PORT)
     warn_if_open_to_the_web()
     log.info("browser will be told to connect to %s", LIVEKIT_PUBLIC_URL)
     settings_store.check_data_dir()
-    web.run_app(build_app(), port=PORT, print=None)
+    web.run_app(build_app(), port=PORT, print=None,
+                access_log_format=ACCESS_LOG_FORMAT)

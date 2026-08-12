@@ -39,7 +39,7 @@ One STT session ends on whichever comes first: the caller stops talking, the 30-
 | `air` | The text is handed to the on-air DJ as something to mention — a dedication, a shout |
 | triage | The model reads each message and picks one of the above, bounded by the caller permissions |
 
-`air` puts a stranger's words in front of every listener and `request` writes station state — both need the station admin credentials and carry the same *Station admin* badge as the permission switches. Every message also writes a call record (`kind: voicemail`), so *Recent calls* shows the whole night in one place, and one message counts against *Actions per call* like any other action.
+`air` puts a stranger's words in front of every listener and `request` writes station state — both need the station admin credentials and carry the same *Station admin* badge as the permission switches. Every message also writes a call record (`kind: voicemail`), so *Recent conversations* shows the whole night in one place, and one message counts against *Actions per call* like any other action.
 
 ## When the machine answers
 

@@ -53,6 +53,27 @@ _VOICE_CACHE = Path(
 _VOICE_TTL = 1800.0     # half an hour — voices change far less often than shows
 
 
+# What the last mirror actually said, so an unchanged one can stay quiet.
+# "mirroring 18 persona voices from station settings" is worth saying when the
+# answer CHANGES; every settings read repeating it identically (twice in the
+# same second, in the operator's log viewer) is noise standing where an event
+# should be.
+_LAST_MIRRORED: dict = {}
+
+
+def _note_mirrored(mapped: dict) -> None:
+    global _LAST_MIRRORED
+    if mapped == _LAST_MIRRORED:
+        log.debug("persona voices unchanged (%d mirrored)", len(mapped))
+        return
+    if _LAST_MIRRORED:
+        log.info("mirroring %d persona voices from station settings "
+                 "(changed from %d)", len(mapped), len(_LAST_MIRRORED))
+    else:
+        log.info("mirroring %d persona voices from station settings", len(mapped))
+    _LAST_MIRRORED = dict(mapped)
+
+
 def _remember_voices(mapped: dict) -> None:
     try:
         _VOICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
@@ -272,7 +293,7 @@ class StationConfig:
         if station:
             mapped = _extract_persona_voices(station)
             if mapped:
-                log.info("mirroring %d persona voices from station settings", len(mapped))
+                _note_mirrored(mapped)
                 _remember_voices(mapped)
                 return mapped
             log.info(

@@ -740,6 +740,31 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     )
 
 
+def listeners_verdict(count, tune_in_on_call: bool) -> dict:
+    """The Listeners stage's answer, given the station's count and the toggle.
+
+    Tune the caller in exists for exactly the rule this stage checks: the
+    widget pulls the stream for the length of the call, so the caller IS the
+    listener the station wants. With it on, an empty room between calls is not
+    the request-blocking fault it looks like — warning about it read as a
+    problem the deployment had already solved (operator-reported, 2026-08-12).
+    """
+    if count:
+        detail = f"{count} tuned in — requests are open"
+    elif tune_in_on_call:
+        detail = ("nobody tuned in right now — but Tune the caller in is on, "
+                  "so a caller counts as a listener and requests made on a "
+                  "call stay open")
+    else:
+        detail = ("nobody tuned in — the station refuses song requests while "
+                  "nobody is listening. Turn on Tune the caller in (Tune in "
+                  "section) and every caller counts as a listener for the "
+                  "length of their call")
+    return {"count": count,
+            "requestsOpen": bool(count) or tune_in_on_call,
+            "detail": detail}
+
+
 async def handle_test_env(request: web.Request) -> web.Response:
     """The links nothing else covers: is LiveKit up, is an agent worker
     actually registered to answer, and can the configured STT be built at all.
@@ -889,13 +914,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
         count = ((np.get("listeners") or {}).get("current"))
         if count is None:
             count = ((np.get("context") or {}).get("listeners") or {}).get("count")
-        result["listeners"] = {
-            "count": count,
-            "requestsOpen": bool(count),
-            "detail": (f"{count} tuned in — requests are open" if count else
-                       "nobody tuned in — the station will refuse song requests "
-                       "until someone is listening"),
-        }
+        result["listeners"] = listeners_verdict(count, bool(cfg.get("tune_in_on_call")))
     except Exception as e:
         result["listeners"] = {"count": None, "requestsOpen": False, "detail": _plain_error(e)[:120]}
 
