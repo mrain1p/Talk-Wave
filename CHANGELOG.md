@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.91
+
+- **A refused request names its reason.** SUB/WAVE 1.8's blocklist rules answer a declined request or queue with the rule that blocked it — and the DJ now hears those words instead of a bare HTTP error, so it can stay in character about the refusal ("house rules say no death metal tonight") rather than fumbling a reason it was never told. Applies to both the request path and exact-track queueing; on older stations the body's own message comes through the same way.
+
 ## 0.10.89 – 0.10.90
 
 The SUB/WAVE v1.8.0 alignment. The station shipped the voice lifecycle Talk Wave proposed, and the ducking that has been estimating since 0.10.69 becomes exact.
