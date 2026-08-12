@@ -302,6 +302,33 @@ class StationConfig:
             if isinstance(entry, dict) and entry.get(key)
         }
 
+    async def speak_clock(self) -> bool:
+        """Whether the station's DJ may name the time of day (djSpeakClock,
+        SUB/WAVE 1.8). Mirrored so a station that has gone clockless doesn't
+        find the call-in DJ is the one voice still announcing the hour.
+        Defaults ON like the station's own coercion: absent, non-boolean,
+        unreadable or unauthed all mean the switch effectively doesn't exist.
+        """
+        settings = await self.settings()
+
+        def find(node):
+            if isinstance(node, dict):
+                if isinstance(node.get("djSpeakClock"), bool):
+                    return node["djSpeakClock"]
+                for v in node.values():
+                    got = find(v)
+                    if got is not None:
+                        return got
+            elif isinstance(node, list):
+                for v in node:
+                    got = find(v)
+                    if got is not None:
+                        return got
+            return None
+
+        found = find(settings)
+        return True if found is None else found
+
     async def llm_config(self) -> dict:
         """What model the station itself runs its DJ on, so the call-in agent
         can default to the same thing rather than diverging.

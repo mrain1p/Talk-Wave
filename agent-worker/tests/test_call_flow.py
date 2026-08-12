@@ -797,11 +797,11 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         guard.mark_on_air(10)
         self.assertGreaterEqual(guard._assumed_until, time.time() + 14)
 
-    def test_the_push_file_reads_back_as_log_shaped_evidence(self):
-        # The web process writes the last verified voice push; the guard reads
-        # it as (seconds-since, text), the same shape the station poll
-        # answers with — so one _log_says_busy sizes both. An absent file is
-        # no evidence at all: a push can prove the air busy, never clear.
+    def test_the_push_file_reads_back_as_evidence(self):
+        # The web process writes the last verified voice push; the guard
+        # reads it raw and judges it with _push_verdict. An absent file is
+        # no evidence at all; a legacy (handoff-stamped) entry can prove the
+        # air busy, never clear — exactly the old behaviour.
         import json
         import os
         import tempfile
@@ -812,15 +812,60 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 guard = self._guard()
-                self.assertIsNone(guard._pushed_speech())
+                self.assertIsNone(guard._pushed_state())
                 with open(p, "w", encoding="utf-8") as f:
                     json.dump({"at": time.time() - 3,
                                "text": "Back after this."}, f)
-                since, text = guard._pushed_speech()
-                self.assertAlmostEqual(since, 3, delta=2)
-                self.assertEqual(text, "Back after this.")
+                verdict = guard._push_verdict(guard._pushed_state(), time.time())
+                self.assertEqual(verdict[0], "busy")
+                self.assertEqual(verdict[1], "Back after this.")
             finally:
                 os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+
+    def test_a_forecast_holds_only_inside_the_handover_window(self):
+        # SUB/WAVE 1.8's voice.queued can warn many seconds ahead. The whole
+        # point of the warning is that the call keeps flowing through the
+        # queue wait and hands over just before the voice lands — a 20s
+        # warning must NOT gag the call for 20 seconds (the operator's ask).
+        import time
+
+        guard = self._guard(on_air_handover_secs=5)
+        now = time.time()
+        far = {"at": now, "v": 2, "phase": "queued", "voiceId": "v1",
+               "text": "coming up", "durMs": 6000, "airAt": now + 20}
+        self.assertIsNone(guard._push_verdict(far, now))
+        near = dict(far, airAt=now + 4)
+        verdict = guard._push_verdict(near, now)
+        self.assertEqual(verdict[0], "busy")
+        self.assertIn("Hold that thought", verdict[2])
+        # …and the hold releases once the forecast clip has played out.
+        played = dict(far, airAt=now - 10)
+        self.assertIsNone(guard._push_verdict(played, now))
+
+    def test_measured_speech_is_held_exactly_with_no_lag(self):
+        # voice.start is stamped at AIR time with the clip's measured length
+        # — the handoff lag belongs to the old evidence only, and adding it
+        # here is how a 1.8 station's DJ would linger 2s after every link.
+        import time
+
+        guard = self._guard(on_air_lag_secs=6)
+        now = time.time()
+        speaking = {"at": now - 5, "v": 2, "phase": "speaking",
+                    "voiceId": "v2", "text": "x", "durMs": 6000}
+        self.assertEqual(guard._push_verdict(speaking, now)[0], "busy")
+        over = dict(speaking, at=now - 8)
+        self.assertIsNone(guard._push_verdict(over, now))
+
+    def test_a_measured_end_reads_as_positively_clear(self):
+        # voice.end is the one push that can prove the air QUIET — the
+        # poll's word-sized estimate has no idea a link ran short, and
+        # before 1.8 nothing did.
+        import time
+
+        guard = self._guard()
+        ended = {"at": time.time(), "v": 2, "phase": "clear",
+                 "voiceId": "v3", "text": ""}
+        self.assertEqual(guard._push_verdict(ended, time.time())[0], "clear")
 
     def test_the_hold_is_sized_to_what_the_station_is_saying(self):
         # One fixed number either reopened the gate while a minute-long

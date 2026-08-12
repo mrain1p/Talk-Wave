@@ -442,13 +442,16 @@ class TestTheCardCacheHasOneHome(unittest.TestCase):
 
     def test_every_module_that_stales_the_card_shares_the_dict(self):
         from api import auth as api_auth
-        from api import hooks as api_hooks
+        from api import hook_receiver as api_hook_receiver
         from api import live as api_live
         from api import live_cache
         from api import settings as api_settings
         from api import sounds as api_sounds
 
-        for mod in (api_auth, api_hooks, api_live, api_settings, api_sounds):
+        # hook_receiver, not hooks, since the 0.10.89 split: the RECEIVER is
+        # the side that busts the card cache when a push lands.
+        for mod in (api_auth, api_hook_receiver, api_live, api_settings,
+                    api_sounds):
             self.assertIs(
                 mod._live_cache, live_cache._live_cache,
                 f"{mod.__name__} busts a cache of its own")

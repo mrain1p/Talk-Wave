@@ -3129,16 +3129,32 @@
   body.panelpage input, body.panelpage select, body.panelpage textarea {
     border: 1px solid var(--edge); background: transparent;
   }
+  /* Chrome paints autofilled fields its own pale blue with an internal
+     style nothing normal overrides — the finder wore it like a sore thumb
+     (operator's words, 0.10.90; a password manager keeps touching that box
+     despite every opt-out flag, see the masthead comment in panel.html).
+     The inset shadow is the one sanctioned trick that repaints it. */
+  body.panelpage input:-webkit-autofill,
+  body.panelpage input:-webkit-autofill:hover,
+  body.panelpage input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--pine) inset;
+    -webkit-text-fill-color: var(--text);
+    caret-color: var(--text);
+    transition: background-color 99999s ease-out;
+  }
 
   /* --- dashboard: de-nest the groups, rule the cards, square red toggles ---- */
   body.panelpage .dashgroup {
     background: transparent; border: 0; padding: 0;
   }
-  /* The needs column wears its own frame (operator's ask, 0.10.78): it is
-     the page's warning shelf, and without a box it read as loose rows
-     floating beside the transmission cluster. */
+  /* Both dashboard groups wear the same frame as the station strip and the
+     activity charts (operator's ask, 0.10.90 — transmission joined at their
+     second look): one family of quiet boxes, square like everything else on
+     this page (the base .dashgroup radius bled through on the needs box). */
+  body.panelpage .dashgroup.transmission,
   body.panelpage .dashgroup.needs {
-    border: 1px solid var(--edge); padding: 9px 11px 11px;
+    border: 1px solid var(--edge); border-radius: 0;
+    padding: 9px 11px 11px;
     background: color-mix(in srgb, var(--alpenglow) 3%, transparent);
   }
   body.panelpage .dashgroup .tlabel {

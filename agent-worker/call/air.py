@@ -56,11 +56,13 @@ class OnAirGuard:
     gate, the on-air tools and the widget's status chip all read it, so they
     cannot disagree with each other.
 
-    "Busy" means ACTIVELY SPEAKING — not thinking, not queued. It's derived
-    from when the station last logged on-air speech, held for as long as those
-    words take to say (`speaking_secs`), because the station tells us when a
-    link STARTED and what it says, not when it finished. `on_air_quiet_secs`
-    is the fallback hold for an entry with no words.
+    "Busy" means ACTIVELY SPEAKING — or, on a station that warns us
+    (voice.queued, SUB/WAVE 1.8), ABOUT TO BE, once the forecast is inside
+    the hand-over window. A 1.8 station bounds the busy spell exactly
+    (voice.start … voice.end, measured); an older one only says when a link
+    STARTED and what it says, so the end is estimated from the words
+    (`speaking_secs`) plus the handoff lag. `on_air_quiet_secs` is the
+    fallback hold for an entry with no words either way.
     """
 
     POLL_SECS = 4.0     # a station read per call every 4s, not per turn
@@ -71,17 +73,25 @@ class OnAirGuard:
         self.room = room
         self.enabled = bool(cfg.get("avoid_on_air_overlap"))
         self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
-        # Every signal the station gives — log entry, webhook push, even its
-        # own player overlay — is stamped at HANDOFF: the file written for
-        # Liquidsoap, before the ~1s file poll, the queue and the ducking
-        # ramp put it on the stream. The audible link therefore runs a few
-        # seconds BEHIND every timestamp we anchor on, and a hold sized only
-        # by the words released while the tail was still airing (the
-        # operator's "ends early", 0.10.69). This is that gap, added to the
-        # hold's tail. The hold still BEGINS at handoff on purpose: a few
-        # seconds of early quiet is cheap, an overlap is the thing this whole
-        # guard exists to prevent.
+        # On a PRE-1.8 station every signal — log entry, webhook push, even
+        # its own player overlay — is stamped at HANDOFF: the audible link
+        # runs a few seconds BEHIND every timestamp we anchor on, and a hold
+        # sized only by the words released while the tail was still airing
+        # (the operator's "ends early", 0.10.69). This is that gap, added to
+        # the hold's tail — for HANDOFF-STAMPED evidence only. A station on
+        # SUB/WAVE 1.8 stamps at air time and sends the voice.* lifecycle
+        # (our own issue #1382); that evidence carries "v": 2 in the push
+        # file and is held on exactly, no lag.
         self.lag_secs = max(0.0, float(cfg.get("on_air_lag_secs") or 0))
+        # How close to the FORECAST air instant (voice.queued, 1.8+) the DJ
+        # hands over. The station can warn many seconds ahead — the whole
+        # point of the warning is that the call keeps flowing through the
+        # queue wait and steps away just before the voice lands, not that it
+        # gags for the entire lead (the operator's ask, 0.10.89).
+        self.handover_secs = max(0.0, float(cfg.get("on_air_handover_secs") or 0))
+        # The voice.queued spell the caller has already been handed over
+        # for, so one forecast never says the line twice.
+        self._announced_id = ""
         self.on_air = False
         self._clear = asyncio.Event()
         self._clear.set()
@@ -282,24 +292,66 @@ class OnAirGuard:
         # starts lag_secs later, so the words finish lag_secs later too.
         return since < self.lag_secs + speaking_secs(text, int(self.quiet_secs) or 30)
 
-    def _pushed_speech(self) -> tuple[float, str] | None:
-        """The last verified dj.say/dj.link push, as (seconds-since, text) —
-        the same shape the station poll answers with.
-
-        The push is the same log entry the poll would find, delivered at the
-        station's handoff instant instead of up to POLL_SECS later — which
-        was most of why the hold used to start late against the audible link.
-        A push can only ever prove the air BUSY, never clear: hooks may not
-        be registered at all, and this file's absence or age says nothing.
+    def _pushed_state(self) -> dict | None:
+        """The last verified push, raw. Two generations live in the file:
+        legacy dj.say/dj.link entries (handoff-stamped, no "v") and the 1.8
+        voice lifecycle ("v": 2 with a phase — queued / speaking / clear).
         """
         try:
             d = json.loads(_air_path().read_text())
-            at = float(d.get("at") or 0)
-            if at <= 0:
+            if float(d.get("at") or 0) <= 0:
                 return None
-            return (time.time() - at, str(d.get("text") or ""))
+            return d
         except Exception:                                     # noqa: BLE001
             return None
+
+    # What one push entry proves about the air, at `now`.
+    #   ("busy", text, line)  — hold; `line` is the hand-over sentence when
+    #                            this edge deserves one of its own
+    #   ("clear", "", "")     — POSITIVELY quiet (voice.end): outranks the
+    #                            poll's word-sized estimate for the same
+    #                            utterance, which has no idea it ended early
+    #   None                  — this entry proves nothing right now (too old,
+    #                            or a forecast still outside the hand-over
+    #                            window; the poll's verdict stands)
+    def _push_verdict(self, d: dict, now: float) -> tuple[str, str, str] | None:
+        if not isinstance(d, dict):
+            return None
+        text = str(d.get("text") or "")
+        if int(d.get("v") or 0) < 2:
+            # Legacy handoff-stamped entry: busy while the words (plus the
+            # handoff lag) are still airing — exactly the old behaviour.
+            since = now - float(d.get("at") or 0)
+            if self._log_says_busy((since, text)):
+                return ("busy", text,
+                        "Hold on a second — let me let that go out on air first.")
+            return None
+        phase = str(d.get("phase") or "")
+        at = float(d.get("at") or 0)
+        dur = max(0.0, float(d.get("durMs") or 0) / 1000.0)
+        if phase == "queued":
+            lead = float(d.get("airAt") or at) - now
+            if lead > self.handover_secs:
+                return None          # the call keeps flowing until it's close
+            # Inside the window: hold from here until the voice has landed
+            # and played out (voice.start/end refine this the moment they
+            # arrive; this bound only matters if they never do).
+            landed = float(d.get("airAt") or at) + (
+                dur or speaking_secs(text, int(self.quiet_secs) or 30))
+            if now < landed + 1.0:
+                return ("busy", text,
+                        "Hold that thought — I've got to go on air for a second.")
+            return None
+        if phase == "speaking":
+            # Measured start; the clip length is measured too when present.
+            held_for = dur or speaking_secs(text, int(self.quiet_secs) or 30)
+            if now - at < held_for + 1.0:
+                return ("busy", text,
+                        "Hold on a second — I'm on the air.")
+            return None
+        if phase == "clear":
+            return ("clear", "", "")
+        return None
 
     PUSH_TICK = 1.0     # the push file is local and cheap — read it every second
 
@@ -342,32 +394,51 @@ class OnAirGuard:
 
             # The cached poll answer ages between polls — its "seconds since"
             # was true when read, so advance it rather than replaying it.
+            now = time.time()
             aged = speech
             if speech is not None and speech_read_at:
-                aged = (speech[0] + (time.time() - speech_read_at), speech[1])
-            pushed = self._pushed_speech()
-            if pushed is not None and self._log_says_busy(pushed):
-                # Fresh push evidence outranks the poll: same entry, earlier.
-                evidence = pushed
-                busy = self._assess(pushed, False)
+                aged = (speech[0] + (now - speech_read_at), speech[1])
+            state = self._pushed_state()
+            verdict = self._push_verdict(state, now) if state else None
+            hand_line = "Hold on a second — let me let that go out on air first."
+            aired_now = ""
+            if verdict and verdict[0] == "busy":
+                # Push evidence outranks the poll: same speech, earlier and
+                # (on a 1.8 station) exactly bounded. The synthetic zero-age
+                # tuple keeps _assess's pending-delivery resolution working.
+                aired_now = verdict[1]
+                hand_line = verdict[2] or hand_line
+                busy = self._assess((0.0, verdict[1] or "x"), False)
+            elif verdict and verdict[0] == "clear":
+                # voice.end is a MEASURED stop: it outranks the poll's
+                # word-sized estimate for the utterance it closes, which has
+                # no idea the link ran short. Our own assumed/pending windows
+                # still hold — an end event cannot be matched to an action
+                # the station has not confirmed yet.
+                busy = now < self._assumed_until or now < self._pending_until
             else:
-                evidence = aged
                 busy = self._assess(aged, poll_failed)
+                aired_now = aged[1] if aged else ""
             if busy != self.on_air:
                 self.on_air = busy
                 self._publish(busy)
                 if busy:
                     self._clear.clear()
                     log.info("on-air DJ is speaking — holding the call DJ back")
-                    if evidence and evidence[1]:
-                        self.aired_text = evidence[1]
-                    if not first:
+                    if aired_now:
+                        self.aired_text = aired_now
+                    # One hand-over per forecast spell: the queued warning
+                    # and the start it forecasts are the same busy edge.
+                    vid = str((state or {}).get("voiceId") or "")
+                    if not first and (not vid or vid != self._announced_id):
+                        if vid:
+                            self._announced_id = vid
                         # Cut the call DJ off mid-sentence if need be: the whole
                         # point is that the broadcast never hears itself doubled.
                         try:
                             session.interrupt()
                             session.say(
-                                "Hold on a second — let me let that go out on air first.",
+                                hand_line,
                                 allow_interruptions=False,
                                 # Not conversation, and an extra model turn in
                                 # the history is what Gemini 400s on when a

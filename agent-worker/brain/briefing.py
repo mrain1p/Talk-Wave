@@ -61,7 +61,7 @@ def _fld(value, limit: int = 200) -> str:
     return demojibake(str(value or "")).strip()[:limit]
 
 
-def _fmt_now_playing(np: dict) -> str:
+def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:
     track = np.get("nowPlaying") or {}
     ctx = np.get("context") or {}
     bits = []
@@ -96,7 +96,11 @@ def _fmt_now_playing(np: dict) -> str:
     time_ctx = ctx.get("time") or {}
 
     where = []
-    if clock.get("display"):
+    # Mirrored from the station's djSpeakClock (SUB/WAVE 1.8): a station
+    # that keeps the wall clock off air must not find the call-in DJ is the
+    # one voice still announcing the hour. The daypart vibe below stays
+    # either way — the station's own switch makes the same carve-out.
+    if speak_clock and clock.get("display"):
         where.append(clock["display"])
     # `time` is a plain string ("evening") on some builds and an object with a
     # `vibe` on others — take whichever this station sends.
@@ -353,7 +357,8 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
     return line
 
 
-async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
+async def station_context(station, cfg: dict, snap: dict, show: dict,
+                          speak_clock: bool = True) -> str:
     """Everything true about the station right now, as prompt text.
 
     Every read is already in the SNAPSHOT — including the schedule — so this
@@ -363,7 +368,7 @@ async def station_context(station, cfg: dict, snap: dict, show: dict) -> str:
     2026-08-10). The snapshot already gathered it concurrently; reuse it.
     """
     parts = [
-        _fmt_now_playing(snap["now_playing"]),
+        _fmt_now_playing(snap["now_playing"], speak_clock),
         # Both come off the live show record, so they cost no extra read — and
         # both are a line at most, which is what earns them a place in a prompt
         # paid for on every turn.

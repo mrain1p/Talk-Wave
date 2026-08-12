@@ -35,12 +35,8 @@ from api.diagnostics import (
 )
 from api.env import LIVEKIT_PUBLIC_URL, PORT
 from api.stats import handle_stats_listeners, sample_listeners
-from api.hooks import (
-    handle_hooks_recent,
-    handle_hooks_test,
-    handle_station_hook,
-    keep_station_warm,
-)
+from api.hook_receiver import handle_hooks_recent, handle_station_hook
+from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
 from api.live import (
     handle_avatar,

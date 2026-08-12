@@ -580,3 +580,38 @@ class TestAVoicePushAnchorsTheAirGuard(_StationWebhooks):
 
         self.assertEqual(str(self.hooks._air_path()),
                          str(call_air._air_path()))
+
+    def test_the_voice_lifecycle_writes_phased_entries(self):
+        # SUB/WAVE 1.8's voice.* events (our own issue #1382). queued carries
+        # the forecast as an ABSOLUTE airAt so the guard never re-derives it;
+        # start is the measurement; end deliberately writes empty text so a
+        # version-skewed old worker reading it falls to its short fallback
+        # hold instead of sizing a fresh one from words that just finished.
+        import time
+
+        self.register(_FakeStation())
+        auth = {"Authorization": self.hooks._load_hook_secret()}
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.queued", "voiceId": "9f3a", "text": "coming up",
+             "durationMs": 6200, "estimatedAirInMs": 1300,
+             "estimated": True}, headers=auth)))
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertEqual((d["v"], d["phase"], d["voiceId"]), (2, "queued", "9f3a"))
+        self.assertAlmostEqual(d["airAt"], time.time() + 1.3, delta=2)
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "9f3a", "text": "coming up",
+             "durationMs": 6200}, headers=auth)))
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertEqual((d["phase"], d["durMs"]), ("speaking", 6200))
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.end", "voiceId": "9f3a"}, headers=auth)))
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertEqual(d["phase"], "clear")
+        self.assertEqual(d["text"], "")
+
+    def test_the_voice_events_are_asked_for(self):
+        # The registration intersects with the station's vocabulary, so a
+        # pre-1.8 station simply never grants these — but they have to be in
+        # the wanted list at all for a 1.8 station to send them.
+        for e in ("voice.queued", "voice.start", "voice.end"):
+            self.assertIn(e, self.hooks.WANTED_EVENTS)
