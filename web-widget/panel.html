@@ -103,13 +103,28 @@
     <!-- The first-run password card retired at 0.10.77 (operator's call):
          the dashboard's NEEDS ATTENTION column carries the ask now, with a
          jump to the Access section that holds the one implementation. -->
-    <div class="banner" id="loginGate" hidden>
-      <strong>Panel locked.</strong>
-      <span class="loginrow">
-        <input type="password" id="loginPw" placeholder="panel password" autocomplete="off" />
-        <button id="loginBtn">Unlock</button>
-      </span>
-      <span id="loginMsg"></span>
+    <!-- The gate is the ONLY thing on screen while .locked hides the rest,
+         so it has to carry the page's identity itself — the bare one-line
+         banner it used to be read as an unstyled fragment floating in an
+         empty page (operator-reported, 0.10.83). Same ids, same panel.js
+         contract; only the clothes changed. -->
+    <div class="lockgate" id="loginGate" hidden>
+      <div class="lockcard">
+        <p class="locktitle">TALK WAVE</p>
+        <p class="locksub">Operator panel</p>
+        <svg class="lockmark" viewBox="0 0 22 26" width="26" height="30" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="11" width="18" height="13" rx="1.5"/><path d="M6 11V7.5a5 5 0 0 1 10 0V11"/><circle cx="11" cy="17" r="1.6" fill="currentColor" stroke="none"/></svg>
+        <p class="lockline">Settings, keys and the kill switch for the station's
+          call-in line live behind this page. It opens with the admin
+          password; the phone itself is not affected.</p>
+        <span class="loginrow">
+          <input type="password" id="loginPw" placeholder="Admin password" autocomplete="off" />
+          <button id="loginBtn">Unlock</button>
+        </span>
+        <span id="loginMsg"></span>
+        <p class="lockfoot">Locked out? <code>CALLIN_ADMIN_KEY</code> in the
+          stack environment is the recovery override — see Security in the
+          docs.</p>
+      </div>
     </div>
 
     <!-- The page picker is the sticky band (the heading and its promise

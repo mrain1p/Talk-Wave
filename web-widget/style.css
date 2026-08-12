@@ -870,9 +870,60 @@
      until the password is right. Robust to new sections: they are hidden by
      default rather than needing to be added to a list. */
   #panel.locked > *:not(.panelbar):not(#loginGate) { display: none !important; }
-  #loginGate .loginrow { display: inline-flex; gap: 8px; margin: 0 8px; }
-  #loginGate input { width: 180px; }
-  #loginMsg { font-size: 11.5px; color: var(--accent); }
+  /* The gate is the whole page while .locked stands, so it carries the
+     nameplate, the rule and the explanation itself — the one-line banner it
+     replaced read as an unstyled fragment in an empty viewport
+     (operator-reported, 0.10.83). */
+  .lockgate { display: grid; place-items: center; min-height: 76vh; padding: 20px 12px; }
+  /* The display rule above would beat the UA's [hidden] and show the gate on
+     every unlocked panel — the six-URL-rows bug's exact shape. */
+  .lockgate[hidden] { display: none; }
+  .lockcard {
+    width: min(430px, 100%); position: relative; text-align: center;
+    border: 1px solid var(--line2); background: var(--bg);
+    border-radius: 10px; padding: 30px 30px 22px;
+  }
+  .lockcard::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0;
+    border-top: 3px solid var(--accent);
+  }
+  .locktitle {
+    margin: 0; font: 700 24px/1 var(--font-mono); letter-spacing: .08em;
+    color: var(--text);
+  }
+  .locksub {
+    margin: 9px 0 0; font: 700 10px/1 var(--font-mono); letter-spacing: .3em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  .lockmark { display: block; margin: 20px auto 0; color: var(--sage-dim); }
+  /* The display rule above beats the UA's [hidden] — re-assert it. */
+  .lockmark[hidden] { display: none; }
+  .lockline {
+    margin: 14px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--dim);
+    text-align: left;
+  }
+  .lockgate .loginrow { display: flex; gap: 8px; margin: 18px 0 0; }
+  .lockgate .loginrow input {
+    flex: 1 1 auto; min-width: 0; padding: 10px 12px; font-size: 13.5px;
+  }
+  .lockgate .loginrow button {
+    flex: 0 0 auto; padding: 0 18px; cursor: pointer;
+    border: 1px solid var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    font: 700 11px var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+  }
+  .lockgate .loginrow button:hover {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  #loginMsg {
+    display: block; margin-top: 10px; min-height: 15px;
+    font-size: 12px; color: var(--accent);
+  }
+  .lockfoot {
+    margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 11px; line-height: 1.5; color: var(--sage-dim); text-align: left;
+  }
+  .lockfoot code { font-family: var(--font-mono); font-size: 10.5px; color: var(--sage); }
 
   /* --- the connection dot ------------------------------------------------ */
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 0; background: var(--sage-dim); vertical-align: middle; }
@@ -3008,6 +3059,21 @@
      is showing — the icon alone read as anything but a theme control. */
   body.panelpage .masthead .gear .glabel { margin-left: 6px; }
   body.panelpage .dashband { display: none; }
+
+  /* --- the login gate, in the newspaper's own clothes --------------------- */
+  body.panelpage .lockcard {
+    border-radius: 0; border-color: var(--edge);
+    background: color-mix(in srgb, var(--alpenglow) 3%, transparent);
+  }
+  body.panelpage .lockcard::before { border-top-color: var(--coral); }
+  body.panelpage .lockgate .loginrow button {
+    border-color: var(--coral); color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 10%, transparent);
+  }
+  body.panelpage .lockgate .loginrow button:hover {
+    background: color-mix(in srgb, var(--coral) 18%, transparent);
+  }
+  body.panelpage #loginMsg { color: var(--coral); }
 
   /* --- super-group section slabs: heading + a coral rule filling the line --- */
   body.panelpage .supergroup {
