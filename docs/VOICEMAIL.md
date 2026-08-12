@@ -24,7 +24,7 @@ ring  →  "You've reached Yosemite FM. Francesca's on the air right now —
 
 The greeting must be in the voice of whoever is on air and must play **instantly**, so it is rendered ahead of time — once per persona — by the **Stage greetings** button, which walks the roster and reports per-persona success. Staged clips re-render only when their text, voice or TTS backend changes. A station-level clip in your default voice answers when nobody is on air, and the fallback order means a missing clip never makes a silent pickup: this persona's clip → the station clip → any clip → the beep alone.
 
-Two modes: **staged** (instant, the default) or **fresh** — one line written in persona at pickup, with the staged clip as backup if the model can't make it in time. Greeting text takes `{station}`, `{dj}` and `{show}`. The beep is synthesized in the browser; upload a WAV in *Call sounds* to replace it (server-played, so WAV only — anything unplayable falls back to the tone, never silence).
+Two modes: **fresh** (the default) — one line written in persona at pickup, with the staged clip as backup if the model can't make it in time — or **staged**, the pre-rendered clip alone, instant every time. Greeting text takes `{station}`, `{dj}` and `{show}`. The beep is synthesized in the browser; upload a WAV in *Call sounds* to replace it (server-played, so WAV only — anything unplayable falls back to the tone, never silence).
 
 ## Taking the message
 

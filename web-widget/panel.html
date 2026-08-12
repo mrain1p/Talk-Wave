@@ -421,16 +421,12 @@
           <label for="station_base_url">SUB/WAVE station API</label>
           <input type="text" id="station_base_url" placeholder="http://your-station:7700/api" />
         </div>
-        <!-- In the open since 0.9.145 (the operator found the disclosure a
-             hiding place, not tidiness), but still a real field: a station
-             publishing MCP elsewhere needs it, and a browser autofilling it
-             with a person's name once cost days of tool-less calls. -->
-        <div class="row">
-          <label for="station_mcp_url">MCP endpoint</label>
-          <input type="text" id="station_mcp_url" placeholder="derived: {SUB/WAVE station API}/mcp" />
-        </div>
-        <p class="hint wide" style="margin-top:0">Derived from the address
-          above automatically — usually nothing to do here.</p>
+        <!-- The MCP endpoint row retired at 0.10.80 (operator's call): it is
+             always derived as {station API}/mcp in practice, and the box was
+             pure hazard — a browser autofilling a person's name into it once
+             cost days of tool-less calls. SUBWAVE_MCP_URL in the environment
+             remains the escape hatch for a station publishing MCP somewhere
+             unusual. -->
 
         <h4 class="subhead">Station admin credentials</h4>
         <p class="hint wide" style="margin-top:0">The station's own login.
@@ -1092,8 +1088,8 @@
           <input type="number" id="chat_max_messages" min="0" max="500" step="10" />
         </div>
         <div class="row narrow">
-          <label for="chat_max_hours">Longest chat (hours)</label>
-          <input type="number" id="chat_max_hours" min="1" max="48" step="1" />
+          <label for="chat_max_minutes">Longest chat (minutes)</label>
+          <input type="number" id="chat_max_minutes" min="1" max="1440" step="1" />
         </div>
         <div class="row narrow">
           <label for="max_open_chats">Open chats at once</label>

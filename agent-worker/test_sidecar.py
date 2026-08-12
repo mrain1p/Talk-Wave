@@ -33,6 +33,7 @@ from tests.test_settings import (  # noqa: F401
     TestTurnTakingSettingsReachTheCall,
     TestUploadedSoundsCannotFillTheVolume,
     TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry,
+    TestAnUpgradeClosesNoDoorAndHandsOutNoPower,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,

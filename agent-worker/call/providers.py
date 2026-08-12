@@ -101,7 +101,15 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
     must never be posted to a host the operator has not saved. See
     token_server._credentials_travel_to.
     """
-    provider = str(cfg.get("llm_provider", "openai")).lower()
+    provider = str(cfg.get("llm_provider") or "").lower()
+    # Blank since 0.10.80's fresh-install defaults: nothing is picked until
+    # the operator picks it. Refuse with the fix in the message — the bare
+    # "Unsupported llm_provider:" below reads as a bug, not a gap.
+    if not provider:
+        raise ValueError(
+            "no AI provider is configured — pick one under Configuration → "
+            "Brains in the settings panel"
+        )
     # Same hazard as STT: a model left over from another provider.  The
     # discovered lists are authoritative when available, so only drop a model
     # that clearly belongs to a different provider.

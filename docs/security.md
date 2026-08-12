@@ -13,7 +13,7 @@ Work down it. Each line says what goes wrong if you skip it.
 **Before anyone outside your house can reach the page**
 
 - [ ] **Admin password set.** Until one exists the panel is open to whoever can load the page — and every line is locked: no calls, texts or voicemail in any access mode until the password is set. → *Access*
-- [ ] **Guest code set**, or Call-in access deliberately set to *Open*. *Automatic* means open until a code exists — no code is an open line, not a closed one. → *Access*
+- [ ] **Call-in access chosen deliberately.** A fresh install starts *Admin only* — opening the line to a guest code or to anyone is a decision you make, not a state you inherit. On deployments from before 0.10.80 the old *Automatic* rule still runs: open until a code exists — no code is an open line, not a closed one. → *Access*
 - [ ] **TLS on the front door.** Passwords travel with every request, and browsers refuse the microphone on plain http anyway.
 - [ ] **The embed allowlist** (*Players → Embed on another page → Allowed origins*) set to your real origin(s), or empty. `*` lets any page on the internet mint call tokens against you; the server warns at startup if you choose it. Empty is same-origin only — the widget's own page needs no entry.
 - [ ] **Fresh LiveKit secret.** Never the example one.
@@ -29,9 +29,9 @@ Work down it. Each line says what goes wrong if you skip it.
 
 Each caller permission is granted to the *least trusted caller who gets it*: **off**, **anyone**, **guest code**, or **admin**. The tier is decided at the door, travels inside the signed room name, and is resolved before the DJ's tool list is built — a caller cannot raise their own. Put the far-reaching ones on **admin** and they are yours alone while the line stays open to everybody else.
 
-- [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. Off by default.
-- [ ] **`allow_skip_track` / `allow_dj_segment`** reach every listener, not the caller. Off by default; **admin** if you want them at all.
-- [ ] **`allow_takeover`** — the furthest-reaching switch: pins a different show on air and keeps going after the caller hangs up. Off by default; needs station admin credentials.
+- [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. Guest tier by default on a fresh install — only callers you handed the code to — and off on anything upgraded from before 0.10.80.
+- [ ] **`allow_skip_track` / `allow_dj_segment`** reach every listener, not the caller. Admin tier by default on a fresh install (your own phone, nobody else's); off on upgrades.
+- [ ] **`allow_takeover`** — the furthest-reaching switch: pins a different show on air and keeps going after the caller hangs up. Admin tier by default on a fresh install, off on upgrades; needs station admin credentials either way.
 
 **Privacy — what you keep about people who call**
 
@@ -58,10 +58,10 @@ Both under *Access*, and the store refuses to let them match.
 
 | | |
 |---|---|
-| **Automatic** (default) | open until you set a guest code, then required |
+| **Admin only** (default on a fresh install) | the phone answers only the admin password — a new line starts closed and is opened as a decision |
 | **Open** | anyone who loads the page can call — the guest door is off and the code does not elevate; the admin password still opens everything |
 | **Guest code** | the code you hand out, or the admin password |
-| **Admin only** | the phone is closed to callers — useful while setting up |
+| **Automatic** (default on deployments from before 0.10.80) | open until you set a guest code, then required |
 
 *Open* and *Guest code* are one choice apiece, not a cascade. Choosing a code-gated mode without having set that password refuses every call and the panel says so, rather than falling open. And every mode — *Open* included — waits for the admin password to exist first: an unconfigured deployment refuses all calls until it has an owner.
 

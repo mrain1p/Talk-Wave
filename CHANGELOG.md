@@ -3,6 +3,18 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.80
+
+The fresh-install defaults review, with the operator, setting by setting. **Nothing changes on an upgrade**: a store written before 0.10.80 is stamped with the doors and grants it was actually running, so a line that took calls yesterday takes them tomorrow — these defaults are for deployments that begin now.
+
+- **A fresh line starts closed.** *Call-in access* defaults to **Admin only** — you open the line to a guest code or to anyone as a decision, not as a state you inherit. The Sign-in button is on by default on the call page (that is how your own browser gets through); embeds stay bare.
+- **The permission grants became a real ladder.** Anyone: requests, library search, the like button, voicemail, texts. Guest code: everything short of the station-wide switches (announcements, segments, exact-track queueing join here). Admin: skip, programme beat, takeover, the un-like — what reaches every listener answers only to your own phone.
+- **No AI provider is pre-picked.** Brains starts genuinely blank — the dashboard's needs column says *Pick the AI provider*, the chain tile reads *no brain* until you do, and shipping "openai" pre-selected stopped masquerading as a recommendation. The ears default to the **built-in Whisper** (base.en — no key, no network, works out of the box); Deepgram and the other cloud ears are labelled what they are, optional accuracy upgrades.
+- **The MCP endpoint box retired.** It is always derived from the station address in practice, and the one thing the box ever did in the field was accept a browser-autofilled name and cost days of tool-less calls. `SUBWAVE_MCP_URL` in the environment remains the escape hatch.
+- **Livelier out of the box.** Voicemail greets **fresh** — written in persona at pickup, staged clip as the instant fallback; the text line opens the same way; the thumbs ask is on after calls, texts and voicemails alike; transcripts keep 100.
+- **Text-line clocks tightened.** Quiet chats close after 5 minutes; the longest-chat ceiling moved from hours to **minutes** (default 10 — a stored hours value keeps its real duration); the quiet-caller nudge waits 20 seconds.
+- **Smaller dials.** 20 calls/hour, 20-second redial wait; the secondary doors (message, text) default to drawn icons beside a worded Call button; back-to-air commentary is off until chosen; the panel's Collapse-all chip retired.
+
 ## 0.10.70 – 0.10.79
 
 One entry for the run, written as it heads to `main` — this stretch was the fresh-install polish pass: a first boot became one command, one secret and a phone that asks, and the dashboard learned to say what still stands between a new deployment and a working call.

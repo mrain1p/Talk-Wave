@@ -224,12 +224,19 @@ class TestAdminAuth(unittest.TestCase):
         self.assertFalse(self.auth.verify_guest("guestcode"))
 
     def test_guest_gate_is_open_until_a_code_exists(self):
+        import settings as settings_store
         from api import auth as api_auth
 
         # On a SET-UP line: since 0.10.78 an unconfigured deployment refuses
         # every door outright, so the open-until-a-code-exists behaviour
-        # starts once the admin password does.
+        # starts once the admin password does — and it is `auto` mode's
+        # behaviour, which stopped being the default at 0.10.80 (fresh
+        # installs are admin-only until opened).
         self.auth.set_password("admin password here")
+        settings_store.save({"front_access": "auto"})
+        # This class is not _TempStores, so put the mode back for the
+        # module's other tests (blank pops the override).
+        self.addCleanup(lambda: settings_store.save({"front_access": ""}))
         self.assertIsNone(api_auth._guest_check("", "ip-a"))
         self.auth.set_guest_password("guestcode")
         self.assertIsNotNone(api_auth._guest_check("", "ip-a"))
@@ -504,11 +511,15 @@ class TestFrontDoorPolicy(_TempStores):
         return api_auth._guest_check(key, "10.0.0.9")
 
     def test_auto_is_the_old_behaviour_and_the_default(self):
-        # The default has to leave existing deployments exactly as they were:
-        # a line that took calls yesterday must take them after an upgrade.
+        # Since 0.10.80 a FRESH install defaults to admin-only — a line
+        # starts closed and is opened as a decision — while a store from
+        # before the change is stamped `auto` by _migrate, so a line that
+        # took calls yesterday still takes them after an upgrade
+        # (TestAnUpgradeClosesNoDoorAndHandsOutNoPower holds that half).
+        # `auto` itself keeps its meaning: open until a code exists.
         import admin_auth
 
-        self.assertEqual(settings_store.load()["front_access"], "auto")
+        self.assertEqual(settings_store.load()["front_access"], "admin")
         admin_auth.clear_guest_password()
         self.assertIsNone(self._check("auto"), "auto closed a line that had no code")
         admin_auth.set_guest_password("guest-code")

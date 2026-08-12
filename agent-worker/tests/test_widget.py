@@ -112,15 +112,17 @@ class TestThumbsArePerDoor(_TempStores):
         import settings as settings_store
         from api.live import look_payload
 
+        # All three default ON since 0.10.80, so per-door independence is
+        # proven by switching one OFF and watching the other two stay lit.
         base = settings_store.load()
-        off = look_payload(dict(base), "Rosie")
+        on = look_payload(dict(base), "Rosie")
         for _, flag in self.DOORS:
-            self.assertFalse(off[flag], flag)
+            self.assertTrue(on[flag], flag)
         for field, flag in self.DOORS:
-            on = look_payload({**base, field: True}, "Rosie")
+            off = look_payload({**base, field: False}, "Rosie")
             for _, other in self.DOORS:
-                self.assertEqual(on[other], other == flag,
-                                 f"{field} lit {other}")
+                self.assertEqual(off[other], other != flag,
+                                 f"{field} doused {other}")
 
 
 class TestTheEmbedSitsFlushByDefault(_TempStores):
@@ -1260,8 +1262,12 @@ class TestSigningInClimbsTheTier(_TempStores):
 
     def test_a_stranger_is_offered_the_climb_and_a_code_makes_it(self):
         import admin_auth
+        import settings as settings_store
 
         admin_auth.set_guest_password("guest99")
+        # The admin-only default (0.10.80) has no guest lane to climb into —
+        # this test is about the climb, so open the guest door.
+        settings_store.save({"front_access": "guest"})
         # A stranger sees the offer and cannot announce...
         stranger = self._live_for()
         self.assertTrue(stranger["signinAvailable"])
@@ -1526,12 +1532,15 @@ class TestEveryDoorReadsForItself(unittest.TestCase):
         self.assertTrue(payload["chatShowEmoji"])
 
     def test_words_are_on_by_default_for_every_door(self):
-        # The default is the card exactly as it read before — words, no icon —
-        # so an existing deployment sees no surprise until the operator opts in.
-        for f in ("call_show_words", "vm_show_words", "chat_show_words"):
-            self.assertTrue(settings_store.FIELDS[f][1], f"{f} should default on")
-        for f in ("call_show_emoji", "vm_show_emoji", "chat_show_emoji"):
+        # The 0.10.80 default reading (operator's fresh-install review):
+        # Call keeps its word — the card's one promise — and the two
+        # secondary doors sit beside it as drawn icons.
+        self.assertTrue(settings_store.FIELDS["call_show_words"][1])
+        self.assertFalse(settings_store.FIELDS["call_show_emoji"][1])
+        for f in ("vm_show_words", "chat_show_words"):
             self.assertFalse(settings_store.FIELDS[f][1], f"{f} should default off")
+        for f in ("vm_show_emoji", "chat_show_emoji"):
+            self.assertTrue(settings_store.FIELDS[f][1], f"{f} should default on")
 
     def test_a_door_left_with_neither_falls_back_to_its_word(self):
         # showParts is the widget's guard: both switches off must not blank the

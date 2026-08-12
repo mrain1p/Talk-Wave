@@ -380,10 +380,12 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertIn("Wait for the tool's result", text)
 
     def test_the_defaults_greet_and_time_out(self):
-        # A silent line reads as broken, so greeting is ON by default; and a
-        # stalled model must not spin a typing dot forever, so a reply timeout
-        # exists by default.
-        self.assertEqual(settings_store.FIELDS["chat_greeting_mode"][1], "canned")
+        # A silent line reads as broken, so greeting is ON by default —
+        # written in persona since 0.10.80 (the operator's fresh-install
+        # review); the staged/canned line remains the fallback. And a
+        # stalled model must not spin a typing dot forever, so a reply
+        # timeout exists by default.
+        self.assertEqual(settings_store.FIELDS["chat_greeting_mode"][1], "fresh")
         self.assertGreater(int(settings_store.FIELDS["chat_reply_timeout_secs"][1]), 0)
 
     def test_a_quiet_caller_is_nudged_once_by_default(self):

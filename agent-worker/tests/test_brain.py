@@ -407,7 +407,7 @@ class TestACallerCanBeToldNothingIsKept(_TempStores):
     def test_the_setting_exists_and_defaults_to_keeping_them(self):
         cfg = settings_store.load()
         self.assertIs(cfg["record_calls"], True)
-        self.assertEqual(cfg["record_keep"], 40)
+        self.assertEqual(cfg["record_keep"], 100)
 
 
 class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):

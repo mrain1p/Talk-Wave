@@ -113,7 +113,7 @@
     // gone, and a page that arrives shut just adds a click before every
     // read. Opened via JS, not markup, so each section's toggle listener —
     // the lazy painters — fires exactly as if the operator opened it; once,
-    // so Collapse all and the operator's own folding survive later repaints.
+    // so the operator's own folding survives later repaints.
     // The diagnostics rows stay folded: they are viewers with run buttons in
     // their headers, and four empty result panes stacked open is the exact
     // shape their comment says was reported.
@@ -156,21 +156,10 @@
     });
     PAGE_IDS.push('diag');
     link('diag', 'Diagnostics');
-    // An action chip, not a page: after a long session a page is a stack of
-    // opened drawers, and closing them one by one is the only thing the bar
-    // couldn't do (operator's ask). It reaches every page's drawers, so a
-    // page you left untidy is tidy when you turn back to it.
-    const fold = document.createElement('a');
-    fold.href = '#';
-    fold.className = 'navfold';
-    fold.textContent = 'Collapse all';
-    fold.title = 'Close every open section';
-    fold.onclick = (e) => {
-      e.preventDefault();
-      document.querySelectorAll('details.sec[open]')
-        .forEach((d) => { d.open = false; });
-    };
-    nav.appendChild(fold);
+    // Collapse all retired at 0.10.80 (operator's call, the same review that
+    // added it at 0.10.64): pages made every page short enough that folding
+    // is the section chevrons' job, and an action chip among page chips read
+    // as a page.
     sizeStickyBar();
   }
 
@@ -368,7 +357,10 @@
     if (station.model && list.includes(station.model)) {
       labels[station.model] = station.model + '  — same as the station';
     }
-    fill('llm_model', list, { labels });
+    fill('llm_model', list, { labels,
+      blankLabel: resolved.llm_model
+        ? 'Default — ' + resolved.llm_model
+        : 'Not set — pick a model' });
     $('llm_model').value = overrides.llm_model || '';
 
     const note = $('modelSourceNote');
@@ -388,7 +380,9 @@
     missingProviderNote(note, 'llm');
 
     const stt = $('stt_provider').value || resolved.stt_provider;
-    fill('stt_model', (options.sttModels || {})[stt] || []);
+    fill('stt_model', (options.sttModels || {})[stt] || [], {
+      blankLabel: resolved.stt_model
+        ? 'Default — ' + resolved.stt_model : 'Default' });
     $('stt_model').value = overrides.stt_model || '';
     const sttNote = $('sttSourceNote');
     if (sttNote) { sttNote.textContent = ''; missingProviderNote(sttNote, 'stt'); }
@@ -465,8 +459,12 @@
       + (keysTag('station') ? ' · ' + keysTag('station') : ''));
     setTag('tagVoice', (resolved.tts_mode || '') +
       (resolved.tts_voice ? ' · ' + resolved.tts_voice : ' · station voice'));
-    setTag('tagBrains', (resolved.llm_provider || '') + ' · ' + (resolved.llm_model || '')
-      + ' · ' + keysTag('brains'));
+    // "not set" reads as the state it is; a fresh install's blank provider
+    // used to render this tag as a floating " · " (0.10.80).
+    setTag('tagBrains', resolved.llm_provider
+      ? resolved.llm_provider + ' · ' + (resolved.llm_model || 'no model')
+        + ' · ' + keysTag('brains')
+      : 'not set — pick a provider');
     setTag('tagEars', (resolved.stt_provider || '') + ' · ' + (resolved.stt_model || ''));
     // Permission count comes from the schema group, so it can't go stale when
     // a new permission is added. Tiered ones are counted through permOn:
@@ -714,15 +712,18 @@
     // Named rather than counted: "3 of 3 configured" is true of a call that
     // cannot happen, because a provider with no key is still a provider.
     // Unsaved picks included, like every other live read on this page.
-    const pick = (id, fallback) => ($(id) && $(id).value) || fallback || '?';
+    const pick = (id, fallback) => ($(id) && $(id).value) || fallback || '';
+    // Blank provider is a state, not a glyph (0.10.80): a fresh install has
+    // no brain until one is picked, and this tile says so instead of "?".
     const llm = pick('llm_provider', resolved.llm_provider);
-    const chain = [llm, pick('tts_mode', resolved.tts_mode),
-                   pick('stt_provider', resolved.stt_provider)].join(' · ');
+    const chain = [llm || 'no brain', pick('tts_mode', resolved.tts_mode) || '?',
+                   pick('stt_provider', resolved.stt_provider) || '?'].join(' · ');
     const keyField = PROVIDER_KEY[llm];
-    const needKey = !!(keyField && secrets[keyField] && !secrets[keyField].set);
+    const needKey = !!(llm && keyField && secrets[keyField] && !secrets[keyField].set);
     tile('tileChain', chain,
-      needKey ? 'no key for ' + llm : (resolved.llm_model || ''),
-      needKey ? 'bad' : 'ok');
+      !llm ? 'pick the AI provider'
+        : needKey ? 'no key for ' + llm : (resolved.llm_model || ''),
+      (!llm || needKey) ? 'bad' : 'ok');
     paintNeeds();
   }
 
@@ -748,8 +749,16 @@
     }
     const llm = ($('llm_provider') && $('llm_provider').value)
       || resolved.llm_provider;
+    // Blank since 0.10.80: a fresh install ships no provider pre-picked, so
+    // the first gap is the choice itself — the key row below only makes
+    // sense once there is a provider to hold a key for.
+    if (!llm) {
+      items.push({ page: 'config', group: 'brains',
+                   label: 'Pick the AI provider',
+                   note: 'no provider is chosen — the DJ has no model to think with' });
+    }
     const keyField = PROVIDER_KEY[llm];
-    if (keyField && secrets[keyField] && !secrets[keyField].set) {
+    if (llm && keyField && secrets[keyField] && !secrets[keyField].set) {
       items.push({ page: 'config', group: 'brains',
                    label: 'Add the ' + llm + ' key',
                    note: 'the DJ has no model to think with' });
@@ -1371,10 +1380,17 @@
     // Labelled, because the ids alone do not say what they are — "gateway" in
     // a list next to "google" is a coin toss, and two of these are
     // aggregators rather than vendors.
+    // The blank option tells the truth about what blank DOES: with no layer
+    // below supplying a provider (fresh install, 0.10.80), it is an open
+    // choice, not a default.
     fill('llm_provider', options.llmProviders,
-      { labels: options.llmProviderLabels || null });
+      { labels: options.llmProviderLabels || null,
+        blankLabel: resolved.llm_provider
+          ? 'Default — ' + resolved.llm_provider
+          : 'Not set — pick a provider' });
     fill('stt_provider', options.sttProviders, {
       labels: { local: 'Built-in Whisper — local, no key (default)' },
+      blankLabel: 'Default — built-in Whisper, no key',
     });
 
     // "Random each call" sits alongside the roster because it's the same
@@ -2586,9 +2602,10 @@
   };
 
   function stationQuery() {
+    // The MCP endpoint row retired at 0.10.80 — the probe derives it from
+    // the station address the same way every call does.
     const q = new URLSearchParams();
     if ($('station_base_url').value) q.set('station_base_url', $('station_base_url').value);
-    if ($('station_mcp_url').value) q.set('station_mcp_url', $('station_mcp_url').value);
     return q.toString() ? '?' + q.toString() : '';
   }
 

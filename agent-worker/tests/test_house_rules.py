@@ -550,7 +550,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # global already publishes for the viewers and charts splits. That
         # scores with the viewers' 6, not the fifteen that justified the
         # exemption. Cut there when it next grows.
-        "web-widget/panel.js": (4407, "a panel-sounds.js (the audio "
+        # 4407 → 4424 in the same release that added the entry: the
+        # fresh-install defaults review (needs item, honest blank labels,
+        # tile states) landed +17 before any split could happen. The seam is
+        # unchanged and still the answer.
+        "web-widget/panel.js": (4424, "a panel-sounds.js (the audio "
                                       "previewers, sound board, slot cards "
                                       "and uploads) split out the way the "
                                       "viewers and charts were"),
