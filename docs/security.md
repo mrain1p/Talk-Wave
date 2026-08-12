@@ -12,7 +12,7 @@ Work down it. Each line says what goes wrong if you skip it.
 
 **Before anyone outside your house can reach the page**
 
-- [ ] **Admin password set.** Until one exists the panel is open to whoever can load the page. → *Access*
+- [ ] **Admin password set.** Until one exists the panel is open to whoever can load the page — and every line is locked: no calls, texts or voicemail in any access mode until the password is set. → *Access*
 - [ ] **Guest code set**, or Call-in access deliberately set to *Open*. *Automatic* means open until a code exists — no code is an open line, not a closed one. → *Access*
 - [ ] **TLS on the front door.** Passwords travel with every request, and browsers refuse the microphone on plain http anyway.
 - [ ] **The embed allowlist** (*Players → Embed on another page → Allowed origins*) set to your real origin(s), or empty. `*` lets any page on the internet mint call tokens against you; the server warns at startup if you choose it. Empty is same-origin only — the widget's own page needs no entry.
@@ -63,6 +63,6 @@ Both under *Access*, and the store refuses to let them match.
 | **Guest code** | the code you hand out, or the admin password |
 | **Admin only** | the phone is closed to callers — useful while setting up |
 
-*Open* and *Guest code* are one choice apiece, not a cascade. Choosing a code-gated mode without having set that password refuses every call and the panel says so, rather than falling open.
+*Open* and *Guest code* are one choice apiece, not a cascade. Choosing a code-gated mode without having set that password refuses every call and the panel says so, rather than falling open. And every mode — *Open* included — waits for the admin password to exist first: an unconfigured deployment refuses all calls until it has an owner.
 
 **Lockout**: 5 wrong tries per address → 5-minute cooldown; a second round → banned until restart, guest failures counted separately. Locked out? `CALLIN_ADMIN_KEY` is always accepted, or restart. The lockout keys on the immediate socket peer — which a client cannot choose — and believes a forwarded address only when `CALLIN_TRUSTED_PROXIES` names the proxy, so set that whenever a reverse proxy is in front.

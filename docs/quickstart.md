@@ -50,7 +50,7 @@ docker compose up -d
 
 Open **`https://<HOST_IP>:8443`**. The first visit shows a one-time certificate screen (self-signed TLS — HTTPS is required for the microphone); proceed past it, then:
 
-1. **Set the admin password** — the page asks before anything else, because until one exists the panel is open to whoever can reach it.
+1. **Set the admin password** — the page asks before anything else, because until one exists the panel is open to whoever can reach it and the line itself answers nobody: no calls, texts or voicemail until the password is set.
 2. Open the settings (the gear), go to **Configuration**, point **SUB/WAVE Station** at your station and add your **LLM key** under Brains.
 3. Run **the pipeline check** (Diagnostics page) — twelve stages that walk every leg of a real call in order and name the first thing that would break.
 4. **Press Call.**

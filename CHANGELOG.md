@@ -3,6 +3,20 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.70 – 0.10.78
+
+One entry for the run, written as it heads to `main` — this stretch was the fresh-install polish pass: a first boot became one command, one secret and a phone that asks, and the dashboard learned to say what still stands between a new deployment and a working call.
+
+- **Fresh install is one command** (0.10.71–0.10.75). `install.sh` fetches the stack, generates the LiveKit secret, detects the LAN address, prepares `data/` with the right ownership and starts everything — then says what address to open. The compose file reads like the quick start it belongs to ([docs/quickstart.md](docs/quickstart.md)); the LiveKit keypair is read from the mounted `livekit.yaml` when the env doesn't set one, so there is exactly one secret in exactly one file; `.env` became optional.
+- **The phone asks for its password** (0.10.74, 0.10.77). On a fresh install the call page itself asks for the admin password — in the conversation box, wearing the same skin as the guest gate, so the card keeps its one shape — and `/settings` carries the same ask in its needs column. The old top-of-page banners retired; the needs column replaced them.
+- **No password means no doors** (0.10.78). Until the admin password exists the line answers nobody — no calls, no texts, no voicemail, in every access mode including *Anyone*. A line whose panel anyone could claim must not also be a line anyone can ring: the call button says *Line not set up*, the dashboard's access tile says *Locked*, and the door opens the moment the password is set.
+- **The dashboard splits into doing and needing** (0.10.76). *Transmission* (the line, its three doors, their traffic) takes two thirds; **NEEDS ATTENTION** takes the rest — each row names what stands between this deployment and a working call and jumps to its fix, and any page holding a gap wears a coral pin in the page picker. Empty is an answer too: "nothing — the line is ready".
+- **The dashboard stops blending together** (0.10.78). The station strip, the needs column and each activity chart sit in their own quiet frame; an empty chart says *why* it is empty in a sentence instead of an em-dash; the three line switches align; the theme button wears the word **Theme** so it can be found.
+- **Every tool the DJ can reach gets drilled** (0.10.72–0.10.73). The full-coverage sweep exercises the DJ's whole tool surface over the call line and the text line inside the deployed worker and grades what it actually did from the transcripts — the pre-release check for anything that touches tools, conduct or the brain.
+- **The masthead behaves on phones** (0.10.70). The settings masthead no longer forces the page wider than a phone's viewport; the finder takes its own row instead.
+
+Also in this span, docs-only: the README became a landing page, the manual went on a diet (961 → 478 lines), and the 0.10.63–0.10.69 run below was recorded.
+
 ## 0.10.63 – 0.10.69
 
 One entry for the whole run — these shipped to `main` without notes at the time; recorded here so the log stays whole.
