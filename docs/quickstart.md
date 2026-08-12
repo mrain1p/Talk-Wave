@@ -1,6 +1,6 @@
 # Quick start
 
-From nothing to a working call in about ten minutes. This is the Docker path — the one to use unless you know why you want the other one.
+From nothing to a working call in about ten minutes.
 
 [← back to the README](../README.md)
 
@@ -50,14 +50,6 @@ Open **`https://<HOST_IP>:8443`**. The first visit shows a one-time certificate 
 ## Where things live
 
 Everything the deployment owns is in that one folder, and only `data/` ever changes — the app fills it as you use things (settings, keys, transcripts, uploads). **Backing up = copying `data/` + `.env` + `livekit.yaml`.** The two Docker volumes hold only re-downloadable state.
-
-## Upgrade
-
-```bash
-docker compose pull && docker compose up -d
-```
-
-Both Talk Wave containers ship from one image and must move together — the compose does that; a GUI that recreates only one leaves them version-skewed, and both report their version on `/health` so you can tell.
 
 ## Next steps
 

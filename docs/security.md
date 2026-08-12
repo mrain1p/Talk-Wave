@@ -6,208 +6,63 @@ What is exposed, what is enforced rather than advised, and what to check before 
 
 ---
 
-## Security and privacy
-
-### Exposing this safely — the whole checklist, in one place
-
-The answers used to be scattered across six sections, which is how a real
-deployment ended up reachable from the internet with no guest code and no
-redial limit — every individual setting was documented and nobody had a list.
+## Exposing this safely — the checklist
 
 Work down it. Each line says what goes wrong if you skip it.
 
 **Before anyone outside your house can reach the page**
 
-- [ ] **Admin password set.** Until one exists the panel is open to same-origin
-      requests, which includes anyone who can load the page from a literal
-      address. → *Access → Passwords*
-- [ ] **Guest code set**, or `front_access` deliberately set to something else.
-      `auto` means *open until a code exists* — so no code is an open line, not
-      a closed one. → *Access → Passwords*
-- [ ] **TLS on the front door.** Passwords and the guest code travel with every
-      request; over plain http they are readable on the wire. Browsers also
-      refuse microphone access on non-HTTPS origins, so calls cannot work
-      anyway.
-- [ ] **The embed allowlist** (*Embed on another page → Allowed origins*, or
-      `CALLIN_ALLOWED_ORIGINS` as the env baseline) set to your real origin(s),
-      or empty. `*` lets any page on the internet mint call tokens against you.
+- [ ] **Admin password set.** Until one exists the panel is open to whoever can load the page. → *Access*
+- [ ] **Guest code set**, or Call-in access deliberately set to *Open*. *Automatic* means open until a code exists — no code is an open line, not a closed one. → *Access*
+- [ ] **TLS on the front door.** Passwords travel with every request, and browsers refuse the microphone on plain http anyway.
+- [ ] **The embed allowlist** (*Players → Embed on another page → Allowed origins*) set to your real origin(s), or empty. `*` lets any page on the internet mint call tokens against you; the server warns at startup if you choose it. Empty is same-origin only — the widget's own page needs no entry.
 - [ ] **Fresh LiveKit secret.** Never the example one.
-- [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable
-      without deleting files on the host.
+- [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable without deleting files on the host.
+- [ ] **Reach the panel by hostname only after a password exists.** Before one is set, the panel accepts same-origin requests only from a literal address (a *name* can be pointed at your box by someone else); `CALLIN_PANEL_ORIGINS` is the escape hatch during setup.
 
-**Money and airtime — the limits that matter once the line is reachable**
+**Money and airtime — every call spends your API keys**
 
-- [ ] **`calls_per_hour` non-zero.** 0 is unlimited. The daily cap alone still
-      allows a whole day's worth inside one hour.
-- [ ] **`calls_per_day` non-zero.** The hard ceiling on what a day can cost.
-- [ ] **`caller_cooldown_secs` non-zero.** 0 lets one person redial in a loop.
-- [ ] **`max_actions_per_call`** set. Caps requests, segments and on-air
-      messages from a single call.
+- [ ] **`calls_per_hour`, `calls_per_day`, `caller_cooldown_secs` non-zero.** 0 means unlimited; the hourly cap alone still permits 24× that in a day.
+- [ ] **`max_actions_per_call`** set — caps requests, segments and on-air messages from one call.
+
 **Who gets what — permissions are a tier, not a switch**
 
-Since 0.9.116 each caller permission is set to the *least trusted caller who
-gets it*: **off**, **anyone**, **guest code**, or **admin**. The tier is
-decided from what the caller typed at the door, travels to the worker inside
-the signed room name, and is resolved before the DJ's tool list is built — a
-caller cannot raise their own.
+Each caller permission is granted to the *least trusted caller who gets it*: **off**, **anyone**, **guest code**, or **admin**. The tier is decided at the door, travels inside the signed room name, and is resolved before the DJ's tool list is built — a caller cannot raise their own. Put the far-reaching ones on **admin** and they are yours alone while the line stays open to everybody else.
 
-The practical consequence, and the reason it exists: you no longer have to
-choose between a public line and being able to do anything useful from your
-own phone. Put the far-reaching ones on **admin** and they are yours alone
-while the line stays open to everybody else.
-
-Upgrading changes nothing — the old `true` meant "anyone who got through the
-door", which is exactly **anyone**, and that is what it migrates to.
-
-- [ ] **`allow_announcements`** — understand it before granting it to
-      **anyone**. It lets a caller hand the on-air DJ a line to read *to
-      everyone listening*. Off by default since 0.9.89. The tool allowlist and
-      the conduct prompt push back, but that is a model declining, not a gate
-      refusing.
-- [ ] **`allow_skip_track` / `allow_dj_segment`** — both reach every listener
-      rather than the caller. Off by default; **admin** is the tier to use if
-      you want them at all on a station with an audience.
-- [ ] **`allow_takeover`** — the furthest-reaching switch here, and the only
-      one whose effect outlives the call: it pins a show ahead of the weekly
-      schedule, so a different DJ is on air for an hour (longer if the caller
-      asks) and keeps going after they hang up. It also lets a caller cancel a
-      takeover *you* set from the station's own admin page. Off by default.
-      Needs station admin credentials, and Actions per call is the only thing
-      pacing it.
-- [ ] **Check the columns you cannot fill.** Granting something to **guest**
-      with no guest code set would grant it to a tier nobody can be. The panel
-      greys those cells out and says why rather than letting you save a
-      setting that never applies.
+- [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. Off by default.
+- [ ] **`allow_skip_track` / `allow_dj_segment`** reach every listener, not the caller. Off by default; **admin** if you want them at all.
+- [ ] **`allow_takeover`** — the furthest-reaching switch: pins a different show on air and keeps going after the caller hangs up. Off by default; needs station admin credentials.
 
 **Privacy — what you keep about people who call**
 
-- [ ] **`record_calls`.** On by default, because it is how a bad call gets
-      diagnosed. It writes both sides of a stranger's conversation to
-      `data/calls/`. Turn it off if you do not want that; `record_keep`
-      controls how long the ones you keep survive.
-- [ ] **`ask_caller_name`** is off by default. A volunteered name is still used
-      and still ends up in the transcript.
-- [ ] **Transcripts are plain JSON on disk**, owner-readable only. So is
-      `data/secrets.json`. Protect the volume; never commit `data/`.
-- [ ] **Tell callers.** Nothing in the widget says a call is recorded. If you
-      keep transcripts and the line is public, that is your disclosure to make.
-
-**The network**
-
-- [ ] Decide which connectivity option you are on — see [Calling from outside
-      your network](#calling-from-outside-your-network) — rather than
-      discovering it from a failed call.
+- [ ] **`record_calls`** is on by default (it is how a bad call gets diagnosed) and writes both sides of a stranger's conversation to `data/calls/`. `record_keep` controls retention; turn it off if you don't want it.
+- [ ] **Transcripts and `data/secrets.json` are plain files on disk**, owner-readable only. Protect the volume; never commit `.env` or `data/`.
+- [ ] **Tell callers.** Nothing in the widget says a call is recorded — if you keep transcripts on a public line, that disclosure is yours to make.
 - [ ] If you forwarded a port, **delete the rule** when you stop running this.
 
-### What is enforced rather than advised
+## What is enforced rather than advised
 
-Worth knowing which of these the software will hold for you:
+- Passwords are PBKDF2 hashes; the store refuses a guest code equal to the admin one; an **unreadable password file counts as configured**, locking rather than opening.
+- A stored API key is only ever sent to the host it is saved for — testing a draft URL withholds it and says so.
+- A caller's address comes from the socket, not a header they control, unless the connection came from a proxy named in `CALLIN_TRUSTED_PROXIES`.
+- Destructive station tools are not on the call line at all, whatever the settings say.
+- Join tokens last two minutes — the guest code and the usage limits are re-checked at every mint.
 
-- Passwords are PBKDF2 hashes; the store refuses a guest code equal to the
-  admin one; **an unreadable password file counts as configured**, so a file
-  permission fault locks the panel and the phone rather than opening them.
-- A stored API key is only ever sent to the host it is saved for — testing a
-  draft URL withholds it and says so.
-- A caller's address comes from the socket, not a header they control, unless
-  the connection came from a trusted proxy.
-- Destructive station tools are not on the call line at all, whatever the
-  settings say.
-- Join tokens last two minutes.
+## Two passwords, two jobs
 
-### Two passwords, two jobs
+Both under *Access*, and the store refuses to let them match.
 
-Both under *Access → Passwords*, and the store refuses to let them match.
+**Admin** protects the panel, API keys and test buttons — and opens the phone, so an operator carries one password. **Guest** is optional and protects only the phone; the code is the whole thing, no username.
 
-**Admin** protects the panel, API keys and test buttons. Whoever holds it
-controls the application and can spend your API keys. Until one is set the
-panel stays open with a standing nudge — fine on a trusted LAN, but a
-deliberate choice.
-
-**Guest** is optional and protects only the phone: the Call button, `/token`,
-and every embed. There's no username; the code is the whole thing. Admin is
-accepted as a guest code, so an operator carries one password.
-
-**Who can call the booth** is its own setting beside them, not something
-inferred from whether a guest code happens to exist:
+**Who can call** is its own setting beside them:
 
 | | |
 |---|---|
 | **Automatic** (default) | open until you set a guest code, then required |
-| **Open** | anyone who loads the page can call — the guest door is off, and the code does not elevate (since 0.10.66); the admin password still opens everything |
+| **Open** | anyone who loads the page can call — the guest door is off and the code does not elevate; the admin password still opens everything |
 | **Guest code** | the code you hand out, or the admin password |
 | **Admin only** | the phone is closed to callers — useful while setting up |
 
-*Open* and *Guest code* are one choice apiece, not a cascade: the line is
-code-gated or open, never both, so turning the guest pathway off does not
-require closing the line or deleting the stored code.
+*Open* and *Guest code* are one choice apiece, not a cascade. Choosing a code-gated mode without having set that password refuses every call and the panel says so, rather than falling open.
 
-Choosing *Guest code* or *Admin only* without having set that password refuses
-every call, and the panel says so, rather than falling open. The panel itself
-is admin-only in all four.
-
-Lockout is 5 failures per address → 5-minute cooldown, a second round → banned
-until restart, with guest failures counted separately. Locked out? Set
-`CALLIN_ADMIN_KEY` (always accepted) or restart. Passwords travel with each
-request, so beyond your LAN use the HTTPS front door — over plain http they are
-readable on the wire.
-
-**Which address** is the address the connection came from, not one the caller
-can name. `X-Forwarded-For` is a list the client starts, so it is only read
-when the connection arrived from a reverse proxy you trust, and then only the
-entry that proxy appended — see `CALLIN_TRUSTED_PROXIES` in `.env.example`. It
-defaults to any loopback or private peer, which covers the normal deployment: a
-reverse proxy reaching the container over the docker bridge. This reads one hop
-— the entry your proxy appended. With a CDN in front as well, that entry is the
-CDN's address rather than the caller's, so per-caller limits collapse into one
-shared bucket.
-
-The **brute-force lockout** (wrong passwords and guest codes) is stricter than
-the redial cooldown, and deliberately so: it keys on the immediate socket peer
-— which a client cannot choose — and believes the forwarded caller **only when
-`CALLIN_TRUSTED_PROXIES` explicitly names the proxy**. The redial cooldown is a
-pacing knob and can afford the lenient forwarded key; a security throttle
-cannot. The consequence for a LAN deployment: if `:8100` is reachable directly
-(not only through the proxy), a local client that could otherwise spoof its
-`X-Forwarded-For` still cannot rotate its lockout bucket or drop your admin
-address into cooldown — but per-caller precision for the lockout returns only
-once you set `CALLIN_TRUSTED_PROXIES` to your proxy. Set it whenever a proxy is
-in front; leave it unset and the lockout simply falls back to the socket peer.
-
-**Stored keys only travel to the host they're saved for.** The panel can test a
-URL before saving it, and a test builds the real provider — so a URL supplied
-in a request could otherwise make this service post your OpenAI key, your TTS
-key or the station's admin password to whatever host was named, which is the
-one thing keeping keys server-side is meant to prevent. A draft URL is still
-tested; the key just stays home, and the result says so.
-
-**Join tokens last two minutes.** The guest code and the usage limits are
-checked when a token is minted, so a long-lived token is a line that can be
-reopened without passing either again.
-
-**Before exposing beyond your LAN:**
-
-1. The embed allowlist — **empty by default since 0.9.77**, which is
-   same-origin only and is what most deployments want: the widget on this
-   service's own page needs no entry. Set it only to embed the widget on
-   another site, and then to that site's origin. Since 0.10.63 it is a panel
-   setting (*The call card → Embed on another page → Allowed origins*) that
-   applies on the next request, with `CALLIN_ALLOWED_ORIGINS` as the env
-   baseline under it. `*` lets *any* page on the internet embed the widget and
-   mint call tokens against you — it used to be the default, and the token
-   server warns at startup if you choose it. This is the *embed* permission
-   and nothing more: it does not open the settings panel.
-2. Set the admin password, and a guest code if the page is public. Do this
-   before you reach the panel by hostname — with no password set, the panel
-   accepts a same-origin request only from a literal address, because a *name*
-   can be pointed at this box by someone else and the browser would present
-   that as same-origin. If you need the named origin during setup, put it in
-   `CALLIN_PANEL_ORIGINS` (not the embed list — the two permissions are
-   different sizes and are kept apart).
-3. Fresh LiveKit keypair. Never deploy the example key.
-4. Real TLS on the front door, so visitors see no certificate warnings.
-5. Keep usage limits non-zero — every call spends real money. Set **calls per
-   day** and **actions per call**, not just the hourly limit: an hourly cap
-   alone still permits 24× that in a day.
-6. Know what's plaintext: `data/secrets.json` holds API keys unencrypted.
-   Protect the volume; never commit `.env` or `data/`.
-
+**Lockout**: 5 wrong tries per address → 5-minute cooldown; a second round → banned until restart, guest failures counted separately. Locked out? `CALLIN_ADMIN_KEY` is always accepted, or restart. The lockout keys on the immediate socket peer — which a client cannot choose — and believes a forwarded address only when `CALLIN_TRUSTED_PROXIES` names the proxy, so set that whenever a reverse proxy is in front.
