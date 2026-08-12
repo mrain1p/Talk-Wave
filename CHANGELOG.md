@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.93
+
+- **The DJ stops miming actions it can't do.** Two real calls asked to "switch the show to Donovan's Pub" on a line with takeover switched off — and the DJ, told unconditionally that a takeover "is a thing you can do", queued a *song* instead and said "the pub door opens in a bit". The behaviour prompt now tells the truth per deployment: every action it teaches (requests, search, shoutouts, the takeover) appears only when its switch is on, a new "Not on this line tonight" line names what's off out loud, and asks for those get a plain in-character no — never a substitute dressed up as the thing, never "that shoutout's in the air now" when nothing went anywhere.
+- **The spoken title comes from the receipt, not the ask.** When the station resolves a request to a different track than the caller named, the DJ now says which track actually got lined up instead of echoing the caller's words back as a success.
+- **Station IDs go through the real beat.** A caller asking for a station ID reaches the station's own produced `station-id` segment instead of the DJ improvising one as an announcement.
+- Internal: the conduct drill grew a refusal sweep (`GATES=none` — every switch off, watching how the DJ declines) alongside the coverage sweep, plus the show-change scenario in the real caller's words; `tests/test_conduct.py` carries the regression tests for both incidents.
+
 ## 0.10.92
 
 - **Action receipts became a booth setting, for every door.** The card a station action leaves — a queued request, a takeover, a beat — used to place itself differently per door: chat had the setting (filed under Texts), calls always led with the card, and the machine always showed its delivery receipt. One **Action receipts** under The booth → House style now answers for all three: **after the DJ's line** (the default — on a call the card now waits for the spoken line to finish, so "that's in the queue" lands before the paperwork), **as it happens** (the old call order, kept selectable), or **off** (no cards anywhere; the action still runs and the record still lists it, and off silences the machine's delivery receipt too). A chat-era choice carries across the rename untouched; a deployment that never set it takes the new default, which is the one visible change on upgrade — call cards move behind the line.
