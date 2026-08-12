@@ -3,6 +3,16 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.89 – 0.10.90
+
+The SUB/WAVE v1.8.0 alignment. The station shipped the voice lifecycle Talk Wave proposed, and the ducking that has been estimating since 0.10.69 becomes exact.
+
+- **The on-air hold is now measured, not guessed — on a 1.8 station.** The station warns that a voice is *coming* (`voice.queued`, with a lead estimate), stamps the start at air time, and says when it stopped. The call keeps flowing through the queue wait and hands over only when the landing is close — **Hand over before air** (new, default 5s) decides how close — with "Hold that thought — I've got to go on air for a second" when there's room to say it. The measured end releases the gate the moment the link finishes, even when it ran short of the word-count estimate; the old **Handoff-to-air lag** applies only to pre-1.8 evidence, where the stamps still run early. Older stations keep the entire estimation ladder unchanged, and the new events are only requested from stations that know them.
+- **The call DJ goes clockless with its station.** SUB/WAVE 1.8's `djSpeakClock: false` keeps the time of day off the air — mirrored, so the briefing drops the wall clock too and the call-in DJ isn't the one voice still announcing the hour. Daypart flavour ("late night") stays, matching the station's own carve-out.
+- **Dashboard, one family of boxes.** Transmission and NEEDS ATTENTION wear the same quiet frame as the station strip and the activity charts, and Chrome's pale-blue autofill paint on the finder is repainted with the page's own surface.
+
+Internal: the webhook receiver moved to its own module along the seam the file-length ratchet recorded at 0.10.69 — the same motion the sound board made at 0.10.85.
+
 ## 0.10.81 – 0.10.88
 
 One evening of a real fresh install being tested, and every wall it hit torn down. The theme of the run: **when something refuses, it now says why and names the fix** — nothing in this span makes the software more permissive, it makes the refusals legible.
