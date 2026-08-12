@@ -21,6 +21,10 @@ REVIEW.md
 RELEASE-REVIEW-1.0.md
 BUILD-INSTRUCTIONS.md
 talkwave-panel-spec.md
+# Drafts of requests to file upstream — they go stale the moment the
+# issue is filed, and one reached a public branch by being the only
+# working note here without a rule (0.10.99).
+UPSTREAM-REQUEST-*.md
 subwave-openapi.json
 # Worked-off notes retire here rather than sitting beside the live ones
 # looking like open work (the three audit docs moved 2026-08-11, ~95% done,
