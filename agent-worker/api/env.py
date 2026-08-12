@@ -77,12 +77,25 @@ def apply_livekit_keys() -> None:
     # the operator diagnosed it from raw 401 logs (0.10.86).
     import logging
 
+    # "Missing" and "present but unreadable" are different fixes, and saying
+    # the wrong one sends the operator to the compose file when the problem
+    # is a Synology ACL (a file can show rwxrwxrwx+ on the host and still
+    # refuse uid 1000 — exactly how this deployment's mounted livekit.yaml
+    # failed, 0.10.87).
+    path = Path(os.environ.get("LIVEKIT_CONFIG_PATH") or "/etc/livekit.yaml")
+    if path.is_file():
+        why = (f"{path} is mounted but this process cannot READ it — on a "
+               f"Synology an ACL can refuse uid 1000 while ls shows rwx for "
+               f"everyone. On the host: chmod 644 livekit.yaml (and "
+               f"synoacltool -del livekit.yaml if that alone doesn't take)")
+    else:
+        why = (f"no livekit.yaml at {path} — mount it into this container: "
+               f"./livekit.yaml:/etc/livekit.yaml:ro under BOTH talkwave "
+               f"services, as the shipped docker-compose.yaml does")
     logging.getLogger("callin.env").error(
-        "no LiveKit keypair: LIVEKIT_API_SECRET is unset and no livekit.yaml "
-        "was found at /etc/livekit.yaml. Mount it into this container — "
-        "./livekit.yaml:/etc/livekit.yaml:ro under BOTH talkwave services, "
-        "as the shipped docker-compose.yaml does — or set the keypair in "
-        ".env. Until then LiveKit will refuse every token with a 401."
+        "no LiveKit keypair: LIVEKIT_API_SECRET is unset and %s. Or set the "
+        "keypair in .env. Until then LiveKit refuses every token with a 401.",
+        why,
     )
 
 
