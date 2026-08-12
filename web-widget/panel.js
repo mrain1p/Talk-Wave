@@ -701,9 +701,12 @@
     // The note answers "and what does each tier GET" — named as what it
     // counts, because bare numbers read as a riddle (operator-reported).
     // The missing-password warning still outranks it.
-    tile('tileAccess', ACCESS[access] || access || '—',
+    // No password = no line: the server refuses every mint until one exists
+    // (0.10.78), so the honest value here is the lockdown, not the mode the
+    // door will have once it opens.
+    tile('tileAccess', authConfigured ? (ACCESS[access] || access || '—') : 'Locked',
       authConfigured ? 'permissions — ' + canDo
-                     : 'this panel has no password',
+                     : 'no calls until the admin password is set',
       authConfigured ? (access === 'open' ? 'warn' : 'ok') : 'bad');
     $('tileAccess').title = 'How many caller permissions each door tier can '
       + 'use — the switches under Caller permissions decide.';
@@ -733,7 +736,8 @@
     if (!authConfigured) {
       items.push({ page: 'safety', group: 'security',
                    label: 'Set the admin password',
-                   note: 'the panel and the phone are open to whoever walks up' });
+                   note: 'the panel is open to whoever walks up, and every '
+                     + 'line stays locked until it is set' });
     }
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access;
@@ -2011,13 +2015,17 @@
     const idx = opts.indexOf(opts.includes(stored) ? stored : '');
     const next = opts[(idx + 1) % opts.length];
     // Drawn, not typed \u2014 the same table the card's cycle uses (shared.js
-    // THEME_ICONS), so the two surfaces' controls cannot drift.
-    btn.innerHTML = { light: THEME_ICONS.light, dark: THEME_ICONS.dark,
-                      station: THEME_ICONS.station,
-                      '': THEME_ICONS.device }[next];
-    btn.title = { light: 'Switch to light', dark: 'Switch to dark',
-                  station: "The station's show colours",
-                  '': 'Match the device' }[next];
+    // THEME_ICONS), so the two surfaces' controls cannot drift. The label
+    // rides along because the destination icon alone doesn't say "theme" \u2014
+    // the operator hunted for this button while it wore the monitor (0.10.78).
+    btn.innerHTML = ({ light: THEME_ICONS.light, dark: THEME_ICONS.dark,
+                       station: THEME_ICONS.station,
+                       '': THEME_ICONS.device }[next])
+      + '<span class="glabel">Theme</span>';
+    btn.title = 'Theme \u2014 ' + ({ light: 'switch to light',
+                  dark: 'switch to dark',
+                  station: "the station's show colours",
+                  '': 'match the device' }[next]);
   }
 
   (function bindPanelThemeCycle() {

@@ -880,11 +880,14 @@
     // a paused off-air line says closed rather than offering the recorder.
     const flags = shown || live || {};
     const paused = !!flags.callsPaused;
+    // An un-set-up line has no machine either — the server refuses the
+    // voicemail mint along with everything else until a password exists.
+    const unset = !!flags.needsSetup;
     const vmButton = vmPolicy() !== 'never' && reason !== 'offline' && !paused
-      && !!(framed ? flags.embedVmBtn : flags.vmBtn);
+      && !unset && !!(framed ? flags.embedVmBtn : flags.vmBtn);
     $('vmBtn').hidden = !vmButton || !!room;
     callBtn.dataset.vm = '';
-    if (reason !== 'offline' && !paused
+    if (reason !== 'offline' && !paused && !unset
         && vmPolicy() !== 'never' && !room && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
@@ -892,8 +895,8 @@
       return;
     }
     callBtn.disabled = true;
-    callBtn.textContent = paused && reason !== 'offline'
-      ? word('closed', 'Line closed')
+    callBtn.textContent = unset && reason !== 'offline' ? 'Line not set up'
+      : paused && reason !== 'offline' ? word('closed', 'Line closed')
       : reason === 'offline' ? 'Station offline' : 'Nobody to call';
   }
 
@@ -910,6 +913,18 @@
 
   function paintIdleButtons(d) {
     if (room) return;
+    // First-run: the server refuses every mint until an admin password
+    // exists (0.10.78), so every door here is honestly dead — one disabled
+    // button, and the setup ask above it says what opens the line.
+    if (d.needsSetup) {
+      $('vmBtn').hidden = true;
+      if ($('chatBtn')) $('chatBtn').hidden = true;
+      callBtn.hidden = false;
+      callBtn.disabled = true;
+      callBtn.dataset.vm = '';
+      callBtn.textContent = 'Line not set up';
+      return;
+    }
     const needsCode = !!d.guestRequired && !callKey();
     const machineOn = vmPolicy() !== 'never';
     // The kill switch outranks the machine: paused means the booth answers

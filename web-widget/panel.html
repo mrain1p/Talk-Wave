@@ -87,8 +87,14 @@
       <div class="panelbar">
         <a class="gear" href="/" title="Back to the call page"
            aria-label="Back to the call page">&#8592;</a>
-        <button class="gear" id="themeBtn" title="Light / dark"
-                aria-label="Toggle light or dark">&#9681;</button>
+        <!-- The icon is the cycle's NEXT stop (shared.js THEME_ICONS), and
+             three of the four stops don't say "theme" on their own — the
+             operator hunted this masthead for a theme control while the
+             button sat here wearing the follow-the-device monitor
+             (0.10.78). The word makes it findable; panelPaintGlyph keeps
+             the label when it swaps the icon. -->
+        <button class="gear" id="themeBtn" title="Theme"
+                aria-label="Change the theme"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg><span class="glabel">Theme</span></button>
         <button class="gear signout" id="dashLogoutBtn" hidden
                 title="Sign this browser out of the panel and the phone">Sign out</button>
       </div>

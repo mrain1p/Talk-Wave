@@ -226,6 +226,10 @@ class TestAdminAuth(unittest.TestCase):
     def test_guest_gate_is_open_until_a_code_exists(self):
         from api import auth as api_auth
 
+        # On a SET-UP line: since 0.10.78 an unconfigured deployment refuses
+        # every door outright, so the open-until-a-code-exists behaviour
+        # starts once the admin password does.
+        self.auth.set_password("admin password here")
         self.assertIsNone(api_auth._guest_check("", "ip-a"))
         self.auth.set_guest_password("guestcode")
         self.assertIsNotNone(api_auth._guest_check("", "ip-a"))
@@ -238,6 +242,7 @@ class TestAdminAuth(unittest.TestCase):
         # settings panel — the two live in separate buckets.
         from api import auth as api_auth
 
+        self.auth.set_password("admin password here")
         self.auth.set_guest_password("guestcode")
         api_auth._auth_state.pop("ip-b", None)
         api_auth._auth_state.pop("guest:ip-b", None)
@@ -539,10 +544,11 @@ class TestFrontDoorPolicy(_TempStores):
         self.assertEqual(self._check("admin"), "code required")
 
     def test_an_unconfigured_gate_refuses_rather_than_opening(self):
-        # The property worth having. Selecting a password-based policy without
-        # having set that password must not silently behave like "open" — that
-        # is how a deployment ends up publicly callable while its operator
-        # believes it is locked.
+        # The property worth having, widened at 0.10.78 (operator's ask):
+        # until an admin password exists NO mode opens — including an
+        # explicit "open". A line whose panel anyone can claim must not also
+        # be a line anyone can ring; the stranger who could call could first
+        # walk into /settings and own the deployment.
         import admin_auth
         from api import auth as api_auth
 
@@ -552,11 +558,11 @@ class TestFrontDoorPolicy(_TempStores):
         api_auth._auth_configured = lambda: False
         admin_auth.guest_is_set = lambda: False
         try:
-            for mode in ("guest", "admin"):
+            for mode in ("open", "auto", "guest", "admin"):
                 with self.subTest(mode=mode):
                     reason = self._check(mode)
                     self.assertIsNotNone(reason, "an unset gate fell open")
-                    self.assertIn("isn't taking calls", reason)
+                    self.assertIn("isn't set up yet", reason)
         finally:
             api_auth._auth_configured = real_admin
             admin_auth.guest_is_set = real_guest
