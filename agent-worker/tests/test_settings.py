@@ -871,6 +871,33 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         self.assertEqual(raw.get("allow_takeover"), "off")
         self.assertEqual(raw.get("_rev"), settings_store.STORE_REV)
 
+    def test_the_voice_backend_moved_the_same_way_a_release_later(self):
+        # 0.10.85 blanked tts_mode's default. Three stores, three answers:
+        # pre-0.10.80 (no _rev) keeps the cloud shape it was running; a
+        # 0.10.80-84 store (_rev 2) predates the change too and keeps cloud —
+        # WITHOUT re-receiving rev 2's stamps, which is what the per-block
+        # generation gates exist for; a current store left blank means blank.
+        import settings as settings_store
+
+        self._write_store({"llm_provider": "openai"})
+        self.assertEqual(settings_store.load()["tts_mode"], "cloud")
+        self._write_store({"_rev": 2})
+        cfg = settings_store.load()
+        self.assertEqual(cfg["tts_mode"], "cloud")
+        self.assertEqual(cfg["front_access"], "admin",
+                         "a rev-2 store took rev 2's stamps again")
+        # A CURRENT store: fresh file, written by this generation's save().
+        settings_store.SETTINGS_PATH.unlink()
+        settings_store.save({"llm_provider": "openai"})
+        self.assertEqual(settings_store.load()["tts_mode"], "")
+
+    def test_an_unpicked_voice_refuses_with_the_fix_in_the_message(self):
+        from call.providers import build_tts
+
+        with self.assertRaises(ValueError) as ctx:
+            build_tts({"tts_mode": ""}, "some-voice")
+        self.assertIn("no voice backend", str(ctx.exception))
+
     def test_the_chat_ceiling_moved_to_minutes_without_moving_anyones(self):
         import settings as settings_store
 

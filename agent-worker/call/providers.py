@@ -240,6 +240,14 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
 
 
 def build_tts(cfg: dict, voice: str) -> AdapterTTS:
+    # Blank since 0.10.85's defaults review, like the LLM: nothing is picked
+    # until the operator picks it. Refusing with the fix beats limping into
+    # the cloud shape with no key and failing mid-greeting.
+    if not str(cfg.get("tts_mode") or ""):
+        raise ValueError(
+            "no voice backend is configured — pick one under Configuration → "
+            "Voice in the settings panel"
+        )
     # One resolver, in tts_adapter. This was three copies of the same three
     # lines — token_server twice and here — and all three let an absolute path
     # through to open(). It also used to resolve against Path(__file__) rather
