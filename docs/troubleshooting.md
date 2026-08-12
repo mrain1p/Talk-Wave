@@ -47,6 +47,12 @@ names the fix. The classics:
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://`
   page is blocked as mixed content, silently. Set **Station stream URL** to an
   https one; the *Station stream* stage says so outright.
+- **Every save says "cross-origin request blocked"** — you are reaching the
+  panel by a HOSTNAME before any admin password exists. Pre-password the
+  panel only trusts a literal address (a name can be pointed at your box by
+  someone else; an IP cannot). Open the panel once at the box's own IP, set
+  the admin password there, and the hostname works from then on — or name
+  the origin in `CALLIN_PANEL_ORIGINS`.
 - **The call button says "Line not set up"** — no admin password exists yet,
   and until one does every door refuses: calls, texts and voicemail alike, in
   every access mode. The call page itself asks for the password on a fresh
@@ -60,6 +66,13 @@ names the fix. The classics:
   recreate. Both processes print the same instruction at startup, naming the
   files. Ownership alone is not enough on filesystems that create files with
   mode `000` (Synology shares do). `CALLIN_ADMIN_KEY` gets you in meanwhile.
+- **The worker retry-loops on 401s / "no LiveKit keypair" at boot** — either
+  `livekit.yaml` isn't mounted into both talkwave services (the shipped
+  compose mounts `./livekit.yaml:/etc/livekit.yaml:ro` under each), or it is
+  mounted but unreadable: on a Synology an ACL can refuse uid 1000 while
+  `ls -l` shows `rwxrwxrwx+`. On the host: `chmod 644 livekit.yaml`, and
+  `synoacltool -del livekit.yaml` if that alone doesn't take. The boot log
+  says which case you're in.
 - **Voice test 400s on local TTS** — the voice id doesn't exist on that server
   (cloud names and local ids aren't interchangeable). *Reload voice list* after
   switching backend.

@@ -337,11 +337,12 @@ class TestWidgetServerContract(unittest.TestCase):
     # page -> the scripts that page loads, in load order.
     PAGES = {
         "index.html": ("shared.js", "call.js"),
-        # panel-viewers.js and panel-charts.js read window.Panel, which
-        # panel.js publishes, so the order is load-bearing rather than
-        # cosmetic.
-        "panel.html": ("shared.js", "panel.js", "panel-viewers.js",
-                       "panel-charts.js"),
+        # panel-sounds.js, panel-viewers.js and panel-charts.js read
+        # window.Panel, which panel.js publishes, so the order is
+        # load-bearing rather than cosmetic. panel-sounds.js additionally
+        # publishes Panel.sounds back for panel.js's call sites.
+        "panel.html": ("shared.js", "panel.js", "panel-sounds.js",
+                       "panel-viewers.js", "panel-charts.js"),
     }
 
     @classmethod
@@ -374,8 +375,8 @@ class TestWidgetServerContract(unittest.TestCase):
         self.assertGreater(len(self.fetched), 10)
         self.assertEqual(
             set(self.sources),
-            {"shared.js", "call.js", "panel.js", "panel-viewers.js",
-             "panel-charts.js"})
+            {"shared.js", "call.js", "panel.js", "panel-sounds.js",
+             "panel-viewers.js", "panel-charts.js"})
 
     def test_every_script_belongs_to_a_page_and_every_page_loads_its_own(self):
         # A file that exists but nothing loads is the split's own failure mode:
@@ -2057,7 +2058,7 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
     def test_the_dropdown_filters_to_wav(self):
         # Anchored to the filter itself, not an occurrence count of the
         # slot name — a Play button added elsewhere once shifted the split.
-        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        js = (REPO / "web-widget" / "panel-sounds.js").read_text(encoding="utf-8")
         i = js.index("const eligible = slot === 'vm_beep'")
         self.assertIn("\\.wav$", js[i:i + 200])
 
@@ -2065,7 +2066,7 @@ class TestTheBeepIsPreviewableAndWavOnly(unittest.TestCase):
         # The per-moment test buttons became the ▶ on each slot card; the
         # beep's ▶ must still route through its OWN preview — its default is
         # synthesized server-side, and the browser sound engine can't play it.
-        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        js = (REPO / "web-widget" / "panel-sounds.js").read_text(encoding="utf-8")
         self.assertIn("function previewBeep", js)
         play = js.split("play.onclick", 1)[1][:200]
         self.assertIn("previewBeep()", play)

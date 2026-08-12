@@ -33,6 +33,44 @@ from tts_adapter import pick_speakable_voice, resolve_adapter
 log = logging.getLogger("callin.token")
 
 
+def _plain_error(e: BaseException) -> str:
+    """The message an operator can act on.
+
+    Python 3.11 exception groups stringify to "unhandled errors in a
+    TaskGroup (1 sub-exception)" — httpx/anyio raise them for every connect
+    failure and timeout — and a probe that shows the wrapper has told the
+    operator nothing. The station test did exactly that on a real deployment
+    (0.10.82); the real cause was one level down the whole time.
+    """
+    seen: list[str] = []
+
+    def walk(x: BaseException) -> None:
+        sub = getattr(x, "exceptions", None)
+        if sub:
+            for s in sub:
+                walk(s)
+            return
+        # httpx's timeout family stringifies to NOTHING, so the fallback used
+        # to be the bare class name — a probe answered a real operator with
+        # the single word "ReadTimeout" (0.10.88). Name what actually
+        # happened instead.
+        worded = {
+            "ReadTimeout": "timed out waiting for a reply — the other end "
+                           "is answering too slowly",
+            "ConnectTimeout": "timed out trying to connect — nothing "
+                              "answered at that address in time",
+            "WriteTimeout": "timed out sending the request",
+            "PoolTimeout": "timed out waiting for a free connection",
+        }
+        msg = (str(x).strip() or worded.get(type(x).__name__)
+               or type(x).__name__)
+        if msg not in seen:
+            seen.append(msg)
+
+    walk(e)
+    return "; ".join(seen[:3])
+
+
 # --- test endpoints -------------------------------------------------------
 # These exercise the same code paths a real call uses, so a green result here
 # means the call will work rather than "the URL responded".
@@ -227,7 +265,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
             ),
         )
     except Exception as e:
-        msg = str(e)
+        msg = _plain_error(e)
         # By far the most common failure: a voice id from one backend sent to
         # the other (stock cloud names vs the local sample registry).
         #
@@ -384,7 +422,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
             ),
         )
     except Exception as e:
-        err = str(e)
+        err = _plain_error(e)
         # A model name the server does not route is a miss the server itself
         # can explain. Observed with llama-swap (llama.cpp's multi-model
         # router, 2026-08-08): it answers 404 "no router for requested model"
@@ -732,7 +770,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
             result["livekit"] = {"ok": r.status_code < 500, "url": lk_url,
                                  "detail": f"HTTP {r.status_code}"}
     except Exception as e:
-        result["livekit"] = {"ok": False, "url": lk_url, "detail": str(e)[:120]}
+        result["livekit"] = {"ok": False, "url": lk_url, "detail": _plain_error(e)[:120]}
         result["ok"] = False
 
     # A registered worker is what actually answers the call.
@@ -748,8 +786,48 @@ async def handle_test_env(request: web.Request) -> web.Response:
         finally:
             await lkapi.aclose()
     except Exception as e:
-        result["livekitAuth"] = {"ok": False, "detail": str(e)[:120]}
+        detail = _plain_error(e)
+        # The SDK's "either token, or api_key and api_secret, must be set"
+        # names the symptom, not the deployment fix — a real operator's
+        # adapted compose was missing the livekit.yaml mounts and this stage
+        # left them to work that out alone (0.10.86).
+        if "api_key and api_secret" in detail or "api_secret" in detail:
+            detail = ("no LiveKit keypair reached this container — mount "
+                      "./livekit.yaml:/etc/livekit.yaml:ro into BOTH talkwave "
+                      "services (the shipped compose does), or set "
+                      "LIVEKIT_API_SECRET in .env")
+        result["livekitAuth"] = {"ok": False, "detail": detail[:200]}
         result["ok"] = False
+
+    # What livekit.yaml says it will ADVERTISE — the flag the browser's own
+    # media probe can only guess at. A deployment removed --node-ip from the
+    # compose while the yaml still said use_external_ip: false: LiveKit
+    # advertised its container address, every server stage passed, and media
+    # had nowhere to flow (0.10.88). The parse can't see a --node-ip passed
+    # on the command line, so the false/unset combination is a warning that
+    # names both readings, never a failure.
+    from api.env import rtc_flags
+
+    flags = rtc_flags()
+    if flags is not None:
+        if flags["use_external_ip"]:
+            result["rtc"] = {"ok": True, "detail":
+                             "use_external_ip: true — the public address is "
+                             "discovered and advertised"}
+        elif flags["node_ip"]:
+            result["rtc"] = {"ok": True, "detail":
+                             f"node_ip pins {flags['node_ip']} — LAN-only by "
+                             "design; for callers from anywhere remove it and "
+                             "set use_external_ip: true"}
+        else:
+            result["rtc"] = {"ok": False, "detail":
+                             "livekit.yaml has use_external_ip: false and no "
+                             "node_ip — fine only when the compose passes "
+                             "--node-ip (the shipped LAN default does). If "
+                             "you removed --node-ip for public callers, set "
+                             "use_external_ip: true in livekit.yaml, or "
+                             "LiveKit advertises its container address and "
+                             "media never flows"}
 
     # --- STT constructible with the configured provider/key ---
     try:
@@ -770,7 +848,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
         }
     except Exception as e:
         result["stt"] = {"ok": False, "provider": cfg.get("stt_provider"),
-                         "detail": str(e)[:160]}
+                         "detail": _plain_error(e)[:160]}
         result["ok"] = False
 
     # --- station admin credentials ---
@@ -799,7 +877,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
                 r.raise_for_status()
                 result["admin"] = {"ok": True, "detail": "accepted by the station"}
         except Exception as e:
-            result["admin"] = {"ok": False, "detail": str(e)[:120]}
+            result["admin"] = {"ok": False, "detail": _plain_error(e)[:120]}
 
     # --- listeners: the station refuses song requests when nobody is tuned in ---
     try:
@@ -819,7 +897,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
                        "until someone is listening"),
         }
     except Exception as e:
-        result["listeners"] = {"count": None, "requestsOpen": False, "detail": str(e)[:120]}
+        result["listeners"] = {"count": None, "requestsOpen": False, "detail": _plain_error(e)[:120]}
 
     # --- keys the current configuration depends on ---
     need = []
@@ -884,7 +962,7 @@ async def handle_test_admin(request: web.Request) -> web.Response:
             ok = True
         return _cors(request, web.json_response({"ok": ok, "detail": detail}))
     except Exception as e:
-        return _cors(request, web.json_response({"ok": False, "detail": str(e)[:140]}))
+        return _cors(request, web.json_response({"ok": False, "detail": _plain_error(e)[:140]}))
 
 
 async def handle_test_station(request: web.Request) -> web.Response:
@@ -904,9 +982,17 @@ async def handle_test_station(request: web.Request) -> web.Response:
     secrets_store.apply_to_env()
 
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
-    base = request.query.get("station_base_url") or cfg["station_base_url"]
+    # Resolved through the same sane-URL helpers every call uses — never the
+    # raw stored/env values. A comment-poisoned SUBWAVE_MCP_URL ("# blank
+    # derives …", the env_file inline-comment leak) sailed through the old
+    # cfg.get() and this probe handed httpx a URL starting with '#' while a
+    # real call, resolving via station_mcp_url(), worked fine — the exact
+    # split that makes a diagnostic lie about the thing it diagnoses
+    # (operator's NAS, 0.10.84).
+    qbase = request.query.get("station_base_url")
+    base = qbase or settings_store.station_base_url()
     mcp_url = request.query.get("station_mcp_url") or (
-        cfg.get("station_mcp_url") or f"{str(base).rstrip('/')}/mcp"
+        f"{qbase.rstrip('/')}/mcp" if qbase else settings_store.station_mcp_url()
     )
 
     # Connect with the same guarded MCP list a real call uses, and report the
@@ -953,7 +1039,7 @@ async def handle_test_station(request: web.Request) -> web.Response:
         result["toolCount"] = len(mcp_names) + len(et["local"])
         result["ok"] = True
     except Exception as e:
-        result["error"] = str(e)
+        result["error"] = _plain_error(e)
     finally:
         try:
             await server.aclose()

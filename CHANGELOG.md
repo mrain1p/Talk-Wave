@@ -3,6 +3,19 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.81 – 0.10.88
+
+One evening of a real fresh install being tested, and every wall it hit torn down. The theme of the run: **when something refuses, it now says why and names the fix** — nothing in this span makes the software more permissive, it makes the refusals legible.
+
+- **Setup dead-ends explain themselves.** The pre-password origin refusal names the blocked origin and both ways forward (the panel only trusts a literal IP until a password exists — DNS-rebinding defence); the missing-LiveKit-keypair boot message tells *missing* apart from *mounted-but-unreadable* (a Synology ACL can refuse the container while `ls` shows `rwxrwxrwx+`); the worker no longer retry-loops on bare 401s without saying any of that.
+- **`.env` comments stop poisoning values.** Compose's env-file format has no inline comments — `KEY=value  # note` puts the note *into the value*, and a real container ran with half a sentence of English in `CALLIN_INTERNAL_URL`. The example file keeps comments on their own lines (a test holds it), and boot names any env value that looks like it swallowed one.
+- **The diagnostics stop guessing.** Probe failures unwrap Python's exception groups instead of answering "unhandled errors in a TaskGroup"; timeouts say what timed out and that the other end answered slowly; the station probe resolves its URLs through the same sanitizers a call uses; the LiveKit stage reads `livekit.yaml`'s rtc flags and warns about the advertising misconfiguration *before* the browser probe fails on it; and the pipeline check visibly works — rows pulse while the server batch runs instead of the whole thing reading as hung.
+- **Speech-to-text can no longer fall into a hole.** The last-resort fallback is the built-in Whisper, never Google — Google STT wants service-account credentials, not the Gemini key, and the note says exactly that when it applies.
+- **The panel earned its polish.** The lock screen is a proper card carrying the page's identity; the on-air DJ photo shows a drawn silhouette until it actually loads (no more broken-image flash); provider dropdowns refresh the moment a key is saved instead of waiting for a page reload; **Test keys + reload models** says which saved keys answered and which did not; the provider lists read blank → local → cloud; and the voice backend joined the AI provider in having no pre-picked default — a fresh install chooses, existing deployments keep exactly what they ran.
+- **The off-LAN recipe stops being a half-trap.** The compose's callers-from-anywhere swap now says it is two edits (the command line *and* `use_external_ip: true`) — applying half of it advertises the container address and media silently never flows.
+
+Internal, but recorded: the panel's sound board moved into its own file (`panel-sounds.js`) along the seam the file-length ratchet had held open since 0.10.79.
+
 ## 0.10.80
 
 The fresh-install defaults review, with the operator, setting by setting. **Nothing changes on an upgrade**: a store written before 0.10.80 is stamped with the doors and grants it was actually running, so a line that took calls yesterday takes them tomorrow — these defaults are for deployments that begin now.

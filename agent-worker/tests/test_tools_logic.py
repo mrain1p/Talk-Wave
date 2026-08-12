@@ -520,13 +520,38 @@ class TestMainToolLogic(_TempStores):
             self.assertTrue(cfg.get("voices_path"), path.name)
 
     def test_effective_stt_falls_back_without_keys(self):
+        # The last resort is the built-in Whisper since 0.10.86 — the old
+        # google fallback assumed application-default credentials that no
+        # fresh install has, and a real deployment's STT stage failed with
+        # an ADC lecture while a working Whisper sat in the container.
         provider, model, note = self.providers.effective_stt({"stt_provider": "deepgram"})
-        self.assertEqual(provider, "google")  # no deepgram or openai key set
-        self.assertIn("falling back", note)
+        self.assertEqual(provider, "local")  # no deepgram or openai key set
+        self.assertIn("built-in Whisper", note)
         os.environ["OPENAI_API_KEY"] = "sk-x"
         provider, model, note = self.providers.effective_stt({"stt_provider": "deepgram"})
         self.assertEqual(provider, "openai")
         self.assertEqual(model, "gpt-4o-mini-transcribe")
+
+    def test_google_stt_needs_service_account_not_the_gemini_key(self):
+        # The trap by name: a saved Gemini key makes 'google' appear in the
+        # provider list, but Google STT authenticates with a SERVICE ACCOUNT.
+        # Without one the pick must land on Whisper and the note must say
+        # which credential is actually missing.
+        old = os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+        try:
+            provider, model, note = self.providers.effective_stt(
+                {"stt_provider": "google"})
+            self.assertEqual(provider, "local")
+            self.assertIn("GOOGLE_APPLICATION_CREDENTIALS", note)
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/tmp/sa.json"
+            provider, _, note = self.providers.effective_stt(
+                {"stt_provider": "google"})
+            self.assertEqual(provider, "google")
+        finally:
+            if old is None:
+                os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+            else:
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = old
 
     def test_effective_stt_rejects_cross_provider_model(self):
         provider, model, _ = self.providers.effective_stt(

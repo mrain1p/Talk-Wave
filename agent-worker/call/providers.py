@@ -56,14 +56,28 @@ def effective_stt(cfg: dict) -> tuple[str, str, str]:
         provider, default = "local", "base.en"
     elif wanted == "deepgram" and os.environ.get("DEEPGRAM_API_KEY"):
         provider, default = "deepgram", "nova-3"
-    elif wanted == "openai" or (wanted == "deepgram" and os.environ.get("OPENAI_API_KEY")):
+    elif wanted == "openai" and os.environ.get("OPENAI_API_KEY"):
         provider, default = "openai", "gpt-4o-mini-transcribe"
-        if wanted == "deepgram":
-            note = "no Deepgram key — using OpenAI STT"
-    else:
+    elif wanted == "deepgram" and os.environ.get("OPENAI_API_KEY"):
+        provider, default = "openai", "gpt-4o-mini-transcribe"
+        note = "no Deepgram key — using OpenAI STT"
+    elif wanted == "google" and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         provider, default = "google", ""
-        if wanted != "google":
-            note = f"no usable key for {wanted} — falling back to Google STT"
+    else:
+        # The built-in Whisper, not Google (0.10.86): the old last resort
+        # assumed Google application-default credentials exist, which is
+        # never true on a fresh install — a real deployment's STT stage
+        # failed with an ADC lecture while a working Whisper sat in the
+        # container. Google STT wants a SERVICE ACCOUNT
+        # (GOOGLE_APPLICATION_CREDENTIALS), not the Gemini API key, so a
+        # google pick without one falls here too and the note says why.
+        provider, default = "local", "base.en"
+        if wanted == "google":
+            note = ("Google STT needs service-account credentials "
+                    "(GOOGLE_APPLICATION_CREDENTIALS), not the Gemini key — "
+                    "using the built-in Whisper")
+        elif wanted != "local":
+            note = f"no usable key for {wanted} — using the built-in Whisper"
 
     model = model_for(provider, requested, choices, default)
     if requested and model != requested:
@@ -240,6 +254,14 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
 
 
 def build_tts(cfg: dict, voice: str) -> AdapterTTS:
+    # Blank since 0.10.85's defaults review, like the LLM: nothing is picked
+    # until the operator picks it. Refusing with the fix beats limping into
+    # the cloud shape with no key and failing mid-greeting.
+    if not str(cfg.get("tts_mode") or ""):
+        raise ValueError(
+            "no voice backend is configured — pick one under Configuration → "
+            "Voice in the settings panel"
+        )
     # One resolver, in tts_adapter. This was three copies of the same three
     # lines — token_server twice and here — and all three let an absolute path
     # through to open(). It also used to resolve against Path(__file__) rather

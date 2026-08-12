@@ -63,7 +63,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # provider; STT_MODEL is what it means now that four providers share it.
     "stt_model":        (("STT_MODEL", "DEEPGRAM_MODEL"), "base.en"),
 
-    "tts_mode":         ("TTS_MODE", "cloud"),
+    # Blank like the LLM (0.10.85, the same review): 'cloud' pre-picked
+    # pointed at api.openai.com with no key and failed mid-greeting, which is
+    # a worse first experience than being asked to choose. Docker installs
+    # that set TTS_MODE in .env keep what they chose; _migrate stamps 'cloud'
+    # into pre-0.10.85 stores so an upgrade changes nothing.
+    "tts_mode":         ("TTS_MODE", ""),
     "tts_adapter":      ("TTS_ADAPTER_CONFIG", ""),
     "tts_base_url":     ("TTS_BASE_URL", "https://api.openai.com"),
     "tts_model":        (None, ""),
@@ -825,8 +830,8 @@ SCHEMA: dict[str, dict] = {
         help="Only for a self-hosted or gateway endpoint. Required for "
              "'OpenAI-compatible' — it is the address of your own server. "
              "locca falls back to its usual host address when left blank. "
-             "With one set, the Model list is read from it (hit “Reload "
-             "model lists”) — servers like llama-swap only route model "
+             "With one set, the Model list is read from it (hit “Test keys "
+             "+ reload models”) — servers like llama-swap only route model "
              "names they declare."),
     "llm_temperature": dict(group="brains", kind="number", label="Temperature",
         help="0.8 suits a DJ. Below 0.5 sounds clipped."),
@@ -1717,17 +1722,10 @@ LOCCA_BASE_URL_DEFAULT = "http://host.docker.internal:8080/v1"
 # regardless meant a fresh install's Provider dropdown was four ways to
 # configure a call that could not connect, and the failure arrived later, from
 # a test button, as a 401 — rather than at the moment of choosing.
+# Declaration order is dropdown order (operator's ask, 0.10.85): the LOCAL
+# runners lead — they need no key and no account, so they are what a fresh
+# install can actually pick — and the cloud vendors follow.
 LLM_PROVIDER_KEY: dict[str, str | None] = {
-    "openai": "openai_api_key",
-    "openrouter": "openrouter_api_key",
-    "google": "google_api_key",
-    "anthropic": "anthropic_api_key",
-    # The three SUB/WAVE offers that this did not. A companion app that cannot
-    # point at the same provider the station is already paying for makes the
-    # operator keep two accounts to run one radio station.
-    "deepseek": "deepseek_api_key",
-    "requesty": "requesty_api_key",
-    "gateway": "gateway_api_key",
     # Your own OpenAI-protocol server, like the station's own
     # openai-compatible provider: no managed key. If the server wants one
     # anyway, set OPENAI_COMPAT_API_KEY in the environment.
@@ -1737,6 +1735,17 @@ LLM_PROVIDER_KEY: dict[str, str | None] = {
     # same box by picking the same name.
     "locca": None,
     "ollama": None,
+    # The clouds. deepseek/requesty/gateway are the three SUB/WAVE offers
+    # that this did not: a companion app that cannot point at the provider
+    # the station already pays for makes the operator keep two accounts to
+    # run one radio station.
+    "openai": "openai_api_key",
+    "openrouter": "openrouter_api_key",
+    "google": "google_api_key",
+    "anthropic": "anthropic_api_key",
+    "deepseek": "deepseek_api_key",
+    "requesty": "requesty_api_key",
+    "gateway": "gateway_api_key",
 }
 
 # Longer names for the dropdown. The bare id says what to type, not what it is
@@ -1926,6 +1935,7 @@ def _check_data_dir() -> None:
     # the third time in one afternoon that a skip hid a defect.
     data_dir = SETTINGS_PATH.parent
     _lay_data_skeleton(data_dir)
+    _warn_commented_env()
     if not hasattr(os, "getuid"):
         return                      # Windows: mode bits carry no meaning here
     if not data_dir.exists():
@@ -1954,6 +1964,44 @@ def _check_data_dir() -> None:
             "them, so what is in them is NOT in effect. Almost always owner or "
             "mode after the switch to a non-root container: %s",
             data_dir, ", ".join(blocked), fix,
+        )
+
+
+def _warn_commented_env() -> None:
+    """Name env values that look like they swallowed an inline comment.
+
+    docker compose's env_file format has no inline comments: everything after
+    `=` is the value, `#` included. A real container came up with
+    CALLIN_INTERNAL_URL holding half a sentence of English and nothing
+    complained anywhere (0.10.82). .env.example keeps comments on their own
+    lines now, but every .env copied before that carries the mines — this
+    names them at boot instead of leaving each one to be found by symptom.
+
+    The tell is whitespace-then-# inside the value ("value  # note"), not a
+    bare # — a password may legitimately contain one.
+    """
+    import secrets_store
+
+    names: set[str] = set()
+    for env_var, _default in FIELDS.values():
+        if isinstance(env_var, str) and env_var:
+            names.add(env_var)
+        elif isinstance(env_var, tuple):
+            names.update(v for v in env_var if v)
+    names.update(v for v in secrets_store.SECRET_FIELDS.values() if v)
+    names.update(n for n in os.environ
+                 if n.startswith(("CALLIN_", "LIVEKIT_", "SUBWAVE_")))
+    suspect = sorted(
+        n for n in names
+        if re.search(r"\s#", os.environ.get(n, "")) or
+        os.environ.get(n, "").lstrip().startswith("#")
+    )
+    if suspect:
+        log.error(
+            "these environment values appear to contain an inline comment — "
+            "compose's env_file format keeps everything after '=' as the "
+            "VALUE, '#' included: %s. Move the comment onto its own line in "
+            ".env and recreate the containers.", ", ".join(suspect),
         )
 
 
@@ -1986,11 +2034,13 @@ def _lay_data_skeleton(data_dir) -> None:
 # had chosen back to the built-in default, which is the same class of failure
 # as a setting that does nothing — you find out from a caller.
 # The settings store's generation. Bumped when a DEFAULT changes in a way an
-# existing deployment must be insulated from (see the 0.10.80 block in
-# _migrate); save() marks every store it writes, which is what tells a store
-# that merely never set a field apart from one written before the field's
-# default moved.
-STORE_REV = 2
+# existing deployment must be insulated from (see the gated blocks in
+# _migrate — each compares against its own literal generation, because a
+# store stamped at rev 2 must not receive rev 2's stamps again when rev 3
+# lands); save() marks every store it writes with THIS ceiling, which is
+# what tells a store that merely never set a field apart from one written
+# before the field's default moved.
+STORE_REV = 3
 
 
 def _migrate(stored: dict) -> dict:
@@ -2039,7 +2089,7 @@ def _migrate(stored: dict) -> dict:
     # stamping that one would hand a fresh install the old defaults the
     # moment it saved anything. save() writes the marker on every write, so
     # only stores that really predate 0.10.80 are ever stamped.
-    if _coerce(stored.get("_rev"), 1) < STORE_REV:
+    if _coerce(stored.get("_rev"), 1) < 2:
         if "front_access" not in stored:
             stored["front_access"] = "auto"
         for field in ("allow_announcements", "allow_skills", "allow_exact_queue",
@@ -2047,6 +2097,12 @@ def _migrate(stored: dict) -> dict:
                       "allow_dj_segment", "allow_takeover"):
             if field not in stored:
                 stored[field] = TIER_OFF
+    # 0.10.85: tts_mode's default became blank (pick a backend), the same
+    # move llm_provider made at 0.10.80 — and the same insulation: a store
+    # from before this was running the cloud shape, and keeps it.
+    if _coerce(stored.get("_rev"), 1) < 3:
+        if "tts_mode" not in stored:
+            stored["tts_mode"] = "cloud"
     return stored
 
 

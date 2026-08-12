@@ -8,10 +8,11 @@ Keep it that way; the whole thing is served as static files by `token_server.py`
 | File | Served at | What it is |
 |---|---|---|
 | `index.html` | `/` | The call page. Loads `shared.js` + `call.js` |
-| `panel.html` | `/settings` | The operator's page. Loads `shared.js` + `panel.js` + `panel-viewers.js` + `panel-charts.js` |
+| `panel.html` | `/settings` | The operator's page. Loads `shared.js` + `panel.js` + `panel-sounds.js` + `panel-viewers.js` + `panel-charts.js` |
 | `shared.js` | `/shared.js` | What both pages need, published as the `Callin` global |
 | `call.js` | `/call.js` | The phone: the card, the meters, the captions, the call itself |
-| `panel.js` | `/panel.js` | The operator's surface: settings, secrets, `/test/*`, uploads |
+| `panel.js` | `/panel.js` | The operator's surface: settings, secrets, `/test/*` |
+| `panel-sounds.js` | `/panel-sounds.js` | The sound board: slot cards, the shelf, previews and uploads |
 | `panel-viewers.js` | `/panel-viewers.js` | Reading back what happened: the log and call viewers |
 | `panel-charts.js` | `/panel-charts.js` | The ACTIVITY strip: four charts over /calls + /stats/listeners |
 | `style.css` | `/style.css` | Both pages. Themed by `data-theme` on `<html>` |
@@ -35,8 +36,10 @@ works" from "media works".
 Script tags, not modules — there is **no build step, no bundler, no npm**, and every split was
 done in a way that keeps it that way. `shared.js` publishes one global, `Callin`, and each page's
 scripts destructure what they need from it at the top of their own IIFE. `panel.js` publishes a
-second, `Panel`, carrying the names its two consumers need (`panel-viewers.js` takes `afetch` +
-`showResult`; `panel-charts.js` takes `afetch`) — which
+second, `Panel`, carrying the names its three consumers need (`panel-viewers.js` takes `afetch` +
+`showResult`; `panel-charts.js` takes `afetch`; `panel-sounds.js` takes those plus `markClean`
+and two getters for the panel's mutable `live`/schema state, and publishes `Panel.sounds`
+back for panel.js's four call sites) — which
 is why the script order in `panel.html` is load-bearing rather than cosmetic. `$` is
 `document.getElementById`.
 

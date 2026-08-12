@@ -277,7 +277,18 @@ def _write_allowed(request: web.Request) -> bool:
     if parsed.netloc == request.host and _is_literal_address(parsed.hostname):
         return True
     log.warning("blocked cross-origin write from %s", origin)
-    request["auth_error"] = "cross-origin request blocked"
+    # Name the way out. The bare "cross-origin request blocked" cost the
+    # operator two separate evenings (the guest code, then the station
+    # address) before anyone connected it to the hostname in their address
+    # bar — the refusal is deliberate, but a dead end with no exit sign is
+    # not (0.10.81).
+    request["auth_error"] = (
+        "setup from " + origin + " is blocked until a password exists — "
+        "before one does, the panel only trusts a literal address (a NAME "
+        "can be pointed at this box by someone else; an IP cannot). Open "
+        "the panel once at the box's own IP and set the admin password "
+        "there, or put this origin in CALLIN_PANEL_ORIGINS."
+    )
     return False
 
 

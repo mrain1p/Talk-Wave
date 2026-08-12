@@ -441,6 +441,18 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "an endpoint, the same declarative-surface reason settings.py is "
             "exempt; splitting it scatters one client across files that all "
             "hold the same httpx session and the same last-known-good caches.",
+        "web-widget/panel.js":
+            "measured again after the 0.10.85 split took the sound board out "
+            "(4481 → 3715): the regions left are the settings form, the "
+            "dashboard, the permission matrix and the test probes, and every "
+            "one of them reads the same draft, resolved, secrets and options "
+            "state — the fifteen-names verdict from 0.9.106 holds for what "
+            "remains. The one real seam this file grew has been cut.",
+        "web-widget/panel-sounds.js":
+            "one subject: the sound board — slot cards, the shelf, previews "
+            "and uploads. Split from panel.js at 0.10.85 along the ratchet's "
+            "recorded seam; it grows a row when the board gains a moment, "
+            "and splitting a board across files would scatter one table.",
         "web-widget/call.js":
             "measured, and every candidate region is coupled BOTH ways. The "
             "corner controls need two names out and owe fifteen back; the call "
@@ -508,6 +520,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
             "three above.",
+        "agent-worker/tests/test_tools_logic.py":
+            "one subject: what a tool does once reached — provider "
+            "construction, adapters, and what the DJ may claim afterwards. "
+            "Crossed the ceiling when 0.10.86 pinned the Google-STT "
+            "service-account trap; same subject-placement rule as the "
+            "modules around it.",
         "agent-worker/tests/test_house_rules.py":
             "one subject: how this repo is kept. It grows a rule per "
             "incident — the aggregator sweep alone (0.10.5) came from two "
@@ -540,24 +558,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # there when it next grows.
         "agent-worker/api/hooks.py": (626, "a receiver module split out from "
                                            "the registration/reconcile side"),
-        # Exempt from 0.9.106 ("the probes need fifteen names") until the
-        # 0.10.78 re-measurement found that the pages/dashboard era grew a
-        # NEW seam the old count predates: the tests-audio + sound-board
-        # cluster (playPcm through uploadSoundFile, ~1000 lines) is nearly
-        # closed — its audio helpers are called nowhere else, it owes the
-        # rest three names (loadSounds, paintSlotCards, buildSlotCards) and
-        # needs about four back beyond afetch/showResult, which the Panel
-        # global already publishes for the viewers and charts splits. That
-        # scores with the viewers' 6, not the fifteen that justified the
-        # exemption. Cut there when it next grows.
-        # 4407 → 4424 in the same release that added the entry: the
-        # fresh-install defaults review (needs item, honest blank labels,
-        # tile states) landed +17 before any split could happen. The seam is
-        # unchanged and still the answer.
-        "web-widget/panel.js": (4424, "a panel-sounds.js (the audio "
-                                      "previewers, sound board, slot cards "
-                                      "and uploads) split out the way the "
-                                      "viewers and charts were"),
+        # panel.js was here from 0.10.79 (the sound-board seam) until
+        # 0.10.85, when the recorded cut happened for real: the previewers,
+        # slot cards, board and uploads moved to panel-sounds.js (787
+        # lines, three names owed back as Panel.sounds, five taken from the
+        # Panel global) and panel.js dropped 4481 → 3715. Both files are in
+        # EXEMPT above with the post-split measurements.
         # lifecycle.py was here from 0.9.125 until 0.10.9, when the recorded
         # seam was cut for real: the back-to-air mention and the transcript
         # reader moved to call/handoff.py and lifecycle came back under the

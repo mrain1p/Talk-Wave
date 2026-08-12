@@ -58,6 +58,43 @@ def _keys_from_livekit_yaml() -> tuple[str, str]:
     return "", ""
 
 
+def rtc_flags() -> dict | None:
+    """The rtc flags from the same livekit.yaml the keypair comes from, or
+    None when no yaml is readable (a dev box without one).
+
+    Parsed so the pipeline check can say WHICH flag is wrong instead of
+    guessing: a real deployment removed --node-ip from the compose (the
+    callers-from-anywhere variant) while livekit.yaml still said
+    use_external_ip: false — LiveKit advertised its container address,
+    signalling worked, and media had nowhere to flow (0.10.88). The stdlib
+    parse, same reasoning as the keypair reader above.
+    """
+    path = Path(os.environ.get("LIVEKIT_CONFIG_PATH") or "/etc/livekit.yaml")
+    if not path.is_file():
+        path = Path(__file__).parent.parent.parent / "livekit.yaml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:                                         # noqa: BLE001
+        return None
+    flags: dict = {"use_external_ip": False, "node_ip": ""}
+    in_rtc = False
+    for line in text.splitlines():
+        stripped = line.split("#", 1)[0].rstrip()
+        if not stripped.strip():
+            continue
+        if not line[:1].isspace():
+            in_rtc = stripped.strip() == "rtc:"
+            continue
+        if in_rtc and ":" in stripped:
+            key, _, value = stripped.strip().partition(":")
+            key, value = key.strip(), value.strip().strip("'\"")
+            if key == "use_external_ip":
+                flags["use_external_ip"] = value.lower() == "true"
+            elif key == "node_ip":
+                flags["node_ip"] = value
+    return flags
+
+
 def apply_livekit_keys() -> None:
     """Push the yaml keypair into the environment when .env didn't supply
     one. The SDK and every route read os.environ, so this must run before
@@ -69,6 +106,34 @@ def apply_livekit_keys() -> None:
     if name and secret:
         os.environ["LIVEKIT_API_KEY"] = name
         os.environ["LIVEKIT_API_SECRET"] = secret
+        return
+    # No secret anywhere: the worker will retry-loop on 401s and the token
+    # server will mint tokens LiveKit refuses, both of which look like
+    # anything but a missing mount. Say the fix ONCE, here, where the gap is
+    # known — a real deployment's adapted compose was missing the mounts and
+    # the operator diagnosed it from raw 401 logs (0.10.86).
+    import logging
+
+    # "Missing" and "present but unreadable" are different fixes, and saying
+    # the wrong one sends the operator to the compose file when the problem
+    # is a Synology ACL (a file can show rwxrwxrwx+ on the host and still
+    # refuse uid 1000 — exactly how this deployment's mounted livekit.yaml
+    # failed, 0.10.87).
+    path = Path(os.environ.get("LIVEKIT_CONFIG_PATH") or "/etc/livekit.yaml")
+    if path.is_file():
+        why = (f"{path} is mounted but this process cannot READ it — on a "
+               f"Synology an ACL can refuse uid 1000 while ls shows rwx for "
+               f"everyone. On the host: chmod 644 livekit.yaml (and "
+               f"synoacltool -del livekit.yaml if that alone doesn't take)")
+    else:
+        why = (f"no livekit.yaml at {path} — mount it into this container: "
+               f"./livekit.yaml:/etc/livekit.yaml:ro under BOTH talkwave "
+               f"services, as the shipped docker-compose.yaml does")
+    logging.getLogger("callin.env").error(
+        "no LiveKit keypair: LIVEKIT_API_SECRET is unset and %s. Or set the "
+        "keypair in .env. Until then LiveKit refuses every token with a 401.",
+        why,
+    )
 
 
 apply_livekit_keys()

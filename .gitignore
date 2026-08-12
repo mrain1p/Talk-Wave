@@ -37,3 +37,7 @@ notes-archive/
 # *.local.md file, never in a committed skill.
 .claude/settings.local.json
 .claude/*.local.md
+# Preview-launcher entries are per-machine scaffolding (the verify skill adds
+# and removes its stub entry per session); tracking it shipped one session's
+# leftovers to everybody (untracked 0.10.81).
+.claude/launch.json

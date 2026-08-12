@@ -519,7 +519,7 @@ class TestTheBeepCanBeTheOperators(unittest.TestCase):
         # synthesized by the server — and the label has to say so.
         from tests.support import REPO
 
-        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        js = (REPO / "web-widget" / "panel-sounds.js").read_text(encoding="utf-8")
         self.assertIn("Classic tone — synthesized (default)", js)
         self.assertIn("'vm_beep'", js.split("SOUND_SLOTS = ")[1][:120])
 

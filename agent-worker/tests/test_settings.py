@@ -765,6 +765,54 @@ class TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry(_TempStores):
                          "24-hour default")
 
 
+class TestACommentedEnvValueIsNamedAtBoot(_TempStores):
+    """compose's env_file format has no inline comments — `KEY=value # note`
+    puts the note INTO the value, silently. A real container ran with
+    CALLIN_INTERNAL_URL holding half a sentence of English (0.10.82); the
+    boot check names such values instead of leaving each to be found by
+    symptom."""
+
+    def test_the_leak_is_named_and_a_hashy_password_is_not(self):
+        import settings as settings_store
+
+        os.environ["STT_MODEL"] = "nova-3            # model for the provider"
+        # A '#' with no whitespace before it is a legitimate value (a
+        # password, say) and must not be reported as a leak.
+        os.environ["SUBWAVE_ADMIN_PASS"] = "p#ssw0rd"
+        try:
+            with self.assertLogs("callin.settings", level="ERROR") as cm:
+                settings_store._warn_commented_env()
+            joined = "\n".join(cm.output)
+            self.assertIn("STT_MODEL", joined)
+            self.assertNotIn("SUBWAVE_ADMIN_PASS", joined)
+        finally:
+            os.environ.pop("SUBWAVE_ADMIN_PASS", None)
+
+    def test_a_clean_environment_stays_quiet(self):
+        import settings as settings_store
+
+        with self.assertNoLogs("callin.settings", level="ERROR"):
+            settings_store._warn_commented_env()
+
+    def test_a_poisoned_mcp_env_still_derives_a_real_url(self):
+        # The leak's sharpest edge, from the operator's NAS: SUBWAVE_MCP_URL
+        # holding "# blank derives {SUBWAVE_BASE_URL}/mcp" reached httpx as a
+        # request URL. The sane-URL helper must shrug it off and derive.
+        import settings as settings_store
+
+        old = os.environ.get("SUBWAVE_MCP_URL")
+        os.environ["SUBWAVE_MCP_URL"] = "# blank derives {SUBWAVE_BASE_URL}/mcp"
+        try:
+            url = settings_store.station_mcp_url()
+            self.assertTrue(url.startswith("http"), url)
+            self.assertTrue(url.endswith("/mcp"), url)
+        finally:
+            if old is None:
+                os.environ.pop("SUBWAVE_MCP_URL", None)
+            else:
+                os.environ["SUBWAVE_MCP_URL"] = old
+
+
 class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
     """0.10.80 changed the fresh-install defaults: front_access became
     admin-only and the permission grants became a real tier ladder. The
@@ -822,6 +870,33 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         self.assertEqual(raw.get("front_access"), "auto")
         self.assertEqual(raw.get("allow_takeover"), "off")
         self.assertEqual(raw.get("_rev"), settings_store.STORE_REV)
+
+    def test_the_voice_backend_moved_the_same_way_a_release_later(self):
+        # 0.10.85 blanked tts_mode's default. Three stores, three answers:
+        # pre-0.10.80 (no _rev) keeps the cloud shape it was running; a
+        # 0.10.80-84 store (_rev 2) predates the change too and keeps cloud —
+        # WITHOUT re-receiving rev 2's stamps, which is what the per-block
+        # generation gates exist for; a current store left blank means blank.
+        import settings as settings_store
+
+        self._write_store({"llm_provider": "openai"})
+        self.assertEqual(settings_store.load()["tts_mode"], "cloud")
+        self._write_store({"_rev": 2})
+        cfg = settings_store.load()
+        self.assertEqual(cfg["tts_mode"], "cloud")
+        self.assertEqual(cfg["front_access"], "admin",
+                         "a rev-2 store took rev 2's stamps again")
+        # A CURRENT store: fresh file, written by this generation's save().
+        settings_store.SETTINGS_PATH.unlink()
+        settings_store.save({"llm_provider": "openai"})
+        self.assertEqual(settings_store.load()["tts_mode"], "")
+
+    def test_an_unpicked_voice_refuses_with_the_fix_in_the_message(self):
+        from call.providers import build_tts
+
+        with self.assertRaises(ValueError) as ctx:
+            build_tts({"tts_mode": ""}, "some-voice")
+        self.assertIn("no voice backend", str(ctx.exception))
 
     def test_the_chat_ceiling_moved_to_minutes_without_moving_anyones(self):
         import settings as settings_store

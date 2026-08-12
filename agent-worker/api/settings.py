@@ -564,7 +564,9 @@ async def handle_settings_options(request: web.Request) -> web.Response:
             "stt": [p for p in settings_store.STT_PROVIDER_KEY
                     if p not in stt_providers],
         },
-        "ttsModes": ["cloud", "local"],
+        # Local first, like the provider lists (0.10.85): the no-account
+        # option leads, the hosted one follows.
+        "ttsModes": ["local", "cloud"],
         "ttsAdapters": adapters,
         "ttsAdapterBaseUrls": adapter_urls,
         "voices": voices,
