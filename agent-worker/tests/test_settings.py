@@ -794,6 +794,24 @@ class TestACommentedEnvValueIsNamedAtBoot(_TempStores):
         with self.assertNoLogs("callin.settings", level="ERROR"):
             settings_store._warn_commented_env()
 
+    def test_a_poisoned_mcp_env_still_derives_a_real_url(self):
+        # The leak's sharpest edge, from the operator's NAS: SUBWAVE_MCP_URL
+        # holding "# blank derives {SUBWAVE_BASE_URL}/mcp" reached httpx as a
+        # request URL. The sane-URL helper must shrug it off and derive.
+        import settings as settings_store
+
+        old = os.environ.get("SUBWAVE_MCP_URL")
+        os.environ["SUBWAVE_MCP_URL"] = "# blank derives {SUBWAVE_BASE_URL}/mcp"
+        try:
+            url = settings_store.station_mcp_url()
+            self.assertTrue(url.startswith("http"), url)
+            self.assertTrue(url.endswith("/mcp"), url)
+        finally:
+            if old is None:
+                os.environ.pop("SUBWAVE_MCP_URL", None)
+            else:
+                os.environ["SUBWAVE_MCP_URL"] = old
+
 
 class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
     """0.10.80 changed the fresh-install defaults: front_access became

@@ -929,9 +929,17 @@ async def handle_test_station(request: web.Request) -> web.Response:
     secrets_store.apply_to_env()
 
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
-    base = request.query.get("station_base_url") or cfg["station_base_url"]
+    # Resolved through the same sane-URL helpers every call uses — never the
+    # raw stored/env values. A comment-poisoned SUBWAVE_MCP_URL ("# blank
+    # derives …", the env_file inline-comment leak) sailed through the old
+    # cfg.get() and this probe handed httpx a URL starting with '#' while a
+    # real call, resolving via station_mcp_url(), worked fine — the exact
+    # split that makes a diagnostic lie about the thing it diagnoses
+    # (operator's NAS, 0.10.84).
+    qbase = request.query.get("station_base_url")
+    base = qbase or settings_store.station_base_url()
     mcp_url = request.query.get("station_mcp_url") or (
-        cfg.get("station_mcp_url") or f"{str(base).rstrip('/')}/mcp"
+        f"{qbase.rstrip('/')}/mcp" if qbase else settings_store.station_mcp_url()
     )
 
     # Connect with the same guarded MCP list a real call uses, and report the
