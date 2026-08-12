@@ -1162,9 +1162,9 @@
     </details>
 
     <details data-group="record" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Call transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="record_calls" /> Keep call transcripts</label>
+        <label class="check"><input type="checkbox" id="record_calls" /> Keep transcripts</label>
         <div class="row narrow">
           <label for="record_keep">How many transcripts to keep</label>
           <input type="number" id="record_keep" min="1" max="500" step="1" />
@@ -1490,8 +1490,12 @@
     <!-- No subtext, matching the built super-group bands — see layoutPanel. -->
     <div class="supergroup" data-static="1" id="supDiag">
       <span>Diagnostics</span><em></em>
+      <!-- order:1 puts the button PAST the band's ::after rule, so the coral
+           line fills the middle and the button sits at the right edge —
+           margin-left:auto could not do it, because the rule's flex-grow
+           consumes the free space before an auto margin ever sees it. -->
       <button type="button" id="dashCheckBtn" class="btnquiet"
-              style="margin-left:auto">Run the full check</button>
+              style="order:1">Run the full check</button>
     </div>
 
     <details class="sec diag" data-diag="pipeline">
@@ -1519,13 +1523,13 @@
     </details>
 
     <details class="sec diag" data-diag="calls">
-      <summary><span class="chev">▶</span><span class="secname">Recent calls</span><em class="secblurb"></em><span class="tag">what was actually said</span>
+      <summary><span class="chev">▶</span><span class="secname">Recent conversations</span><em class="secblurb"></em><span class="tag">what was actually said</span>
         <button class="runbtn" id="viewCallsBtn">Load</button></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Both sides of the last few
-          conversations, with the tools the DJ used and anything that went
-          wrong. This is the thing to read when a call didn't go the way you
-          expected.</p>
+          conversations — calls, texts and voicemails, each labelled — with
+          the tools the DJ used and anything that went wrong. This is the
+          thing to read when one didn't go the way you expected.</p>
         <div class="diagbar" id="callBar" hidden>
           <button type="button" class="runbtn" id="callsOnlyBad"
                   title="Only calls with problems"><span class="bang">!</span> <span id="callsOnlyBadLabel"></span></button>
@@ -1553,7 +1557,8 @@
         <p class="hint wide" style="margin-top:0">Recent activity of the web
           service — settings changes, call tokens, station reads, webhooks. The
           call agent's own logs live in its container:
-          <code>docker logs &lt;stack&gt;-talkwave-worker-1</code>.</p>
+          <code>docker logs talkwave-worker</code>. What was actually SAID on a
+          call, text or voicemail is in Recent conversations above, not here.</p>
         <div class="diagbar" id="logFilters" hidden>
           <label for="logLevels">Levels</label>
           <select id="logLevels"></select>

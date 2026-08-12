@@ -697,6 +697,42 @@ class TestTheLogKeepsTheLinesThatMatter(unittest.TestCase):
         _logging.getLogger("aiohttp.access").info('POST /token HTTP/1.1 200')
         self.assertTrue(any("/token" in line for line in log_setup.recent_lines()))
 
+    def test_the_access_line_carries_no_user_agent_or_referer(self):
+        # aiohttp's default spends 120 characters on the referer and the
+        # browser's full user-agent, and repeats a timestamp the formatter has
+        # already written — in the panel's viewer every request wrapped onto
+        # three lines and buried the events worth reading (2026-08-12).
+        import token_server
+
+        fmt = token_server.ACCESS_LOG_FORMAT
+        for noise in ("User-Agent", "Referer", "%t"):
+            self.assertNotIn(noise, fmt)
+        for kept in ("%a", "%r", "%s", "%b"):
+            self.assertIn(kept, fmt)
+
+    def test_an_unchanged_voice_mirror_stops_saying_so(self):
+        # "mirroring 18 persona voices from station settings" is an event the
+        # first time and noise every time after — it appeared twice in the
+        # same second in the operator's log viewer.
+        import logging as _logging
+
+        import log_setup
+        import station_config
+
+        station_config._LAST_MIRRORED = {}
+        voices = {"p1": "v1", "p2": "v2"}
+        station_config._note_mirrored(voices)
+        station_config._note_mirrored(dict(voices))
+        station_config._note_mirrored(dict(voices))
+        said = [l for l in log_setup.recent_lines() if "mirroring" in l]
+        self.assertEqual(len(said), 1, f"repeated an unchanged mirror: {said}")
+        # A real change still speaks up.
+        station_config._note_mirrored({"p1": "v1", "p2": "v9", "p3": "v3"})
+        said = [l for l in log_setup.recent_lines() if "mirroring" in l]
+        self.assertEqual(len(said), 2)
+        self.assertIn("changed from 2", said[-1])
+        _logging.getLogger("callin.test").debug("")
+
     def test_the_panel_can_read_recent_lines_without_docker(self):
         import logging as _logging
 

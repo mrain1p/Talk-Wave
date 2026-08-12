@@ -3,6 +3,18 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.96
+
+- **The conversation gets the room the header was wasting.** The card's top band was 38px tall around an 11px label — the tallest thing on a card whose other controls are 26–31px — and the identity row padded another 11px above and below the DJ's name. Both tighten, the who's-on-air block moves up, and every pixel reclaimed goes straight into the transcript, which is 12px taller for the same overall card. Embeds are untouched: their two-line transcript is a promise to the host page's layout.
+- **The mic chip squares up.** MIC OFF / MUTED was the last rounded element on a card where every other corner — the state pill, the timer, the pips, the level bars — is a right angle.
+
+## 0.10.95
+
+- **An empty room is no longer a fault when callers tune in.** The pipeline check's Listeners stage warned that the station "will refuse song requests" whenever nobody was listening — on a deployment with **Tune the caller in** switched on, which is precisely the setting that solves it, because the caller's own browser pulls the stream and counts as the listener. It now passes with that explanation, and when the toggle is off the warning names it as the fix instead of just reporting the problem.
+- **Transcripts say what they actually hold.** The archive has kept calls, texts and voicemails side by side since voicemail shipped, but the section was called *Call transcripts* and the viewer *Recent calls*. They are now **Transcripts** ("calls, texts and voicemails — what is written to disk, and for how long") and **Recent conversations**, with the empty state and the docs following suit.
+- **The panel is one family of square boxes.** Section bodies were the one surface the flat-page redesign missed — a 12px-rounded body under a square header read as two pages sharing a corner. **Run the full check** also moves to the right-hand end of the Diagnostics band, with the rule filling the middle like every other band.
+- **The server log stops burying its own events.** Each request logged a repeated timestamp plus the referer and the browser's entire user-agent, wrapping every line into three; it now logs client, request, status and size. The voice mirror says "mirroring 18 persona voices" when that answer *changes* rather than on every settings read, and the log viewer's pointer to the worker container names it correctly (`talkwave-worker`) and says where spoken words actually live.
+
 ## 0.10.94
 
 - **Settings sections start closed.** Every drawer on every settings page arrives folded — the summaries carry the section's name, one-line blurb and state chip, so a shut page still reads at a glance, and it's cleaner to navigate (reverses 0.10.64's ship-open, at the operator's ask). Search still opens the sections it finds and folds them back when cleared; anything you open by hand stays open.

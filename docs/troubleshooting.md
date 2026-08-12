@@ -23,7 +23,7 @@ Known limitations, the failures that actually happen, how to read a call back af
 - **Two shared passwords, not user accounts.** One admin, one optional guest,
   each a single secret shared by everyone who has it. No per-person identity,
   so nothing attributes an action to a particular operator.
-- **Recent calls keeps the newest 100 (the default).** A diagnostic aid, not an archive.
+- **Recent conversations keeps the newest 100 (the default).** A diagnostic aid, not an archive.
 - **The panel is not built for hostile exposure.** It assumes an operator on a
   trusted network who has set a password.
 
@@ -83,17 +83,17 @@ names the fix. The classics:
 
 ## Diagnosing a call
 
-**Start with Recent calls**, under *Diagnostics*. Each call writes one file as
-it ends — both sides, every tool with its result, the config it ran under, and
-anything that failed.
+**Start with Recent conversations**, under *Diagnostics*. Each conversation —
+call, text chat or voicemail — writes one file as it ends — both sides, every
+tool with its result, the config it ran under, and anything that failed.
 
 That file is a transcript of a stranger's conversation sitting on your disk, so
-it is a choice: **Keep call transcripts** under *Call behaviour* turns it off
+it is a choice: **Keep transcripts** under *The booth* turns it off
 entirely, and **Transcripts to keep** decides how long the ones you do keep
-stick around (100 by default, deleted oldest-first as new calls land). With it
-off, nothing is written and Recent calls only shows what is already there — you
-are then diagnosing from the container logs, which is what this section exists
-to stop you doing.
+stick around (100 by default, deleted oldest-first as new ones land). With it
+off, nothing is written and Recent conversations only shows what is already
+there — you are then diagnosing from the container logs, which is what this
+section exists to stop you doing.
 
 ```
 2026-08-04 23:34:36  Dalia  ·  136s  ·  6 caller turns

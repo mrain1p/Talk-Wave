@@ -283,7 +283,8 @@
       out.innerHTML = '';
       if (!calls.length) {
         $('callBar').hidden = true;
-        out.textContent = 'No calls recorded yet. One file is written as each call ends.';
+        out.textContent = 'Nothing recorded yet. One file is written as each '
+          + 'call, text chat or voicemail ends.';
         return;
       }
       // /calls already returns newest first — the call you want is almost

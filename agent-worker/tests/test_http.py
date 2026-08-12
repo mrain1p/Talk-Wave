@@ -603,3 +603,35 @@ class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
             self.assertEqual(
                 self._endpoint(provider, "http://192.168.1.201:18081/v1"),
                 "", provider)
+
+
+class TestAnEmptyRoomIsNotAFaultWhenCallersTuneIn(unittest.TestCase):
+    """The pipeline check's Listeners stage warned "the station will refuse
+    song requests" whenever the count was zero — but Tune the caller in
+    exists for exactly that rule: the widget pulls the stream for the length
+    of the call, so the caller IS the listener. The operator read the warning
+    on a deployment that had already solved it (2026-08-12)."""
+
+    def _verdict(self, count, tuned):
+        from api.diagnostics import listeners_verdict
+
+        return listeners_verdict(count, tuned)
+
+    def test_listeners_present_is_a_pass_either_way(self):
+        for tuned in (True, False):
+            v = self._verdict(3, tuned)
+            self.assertTrue(v["requestsOpen"])
+            self.assertIn("3 tuned in", v["detail"])
+
+    def test_empty_room_with_tune_in_on_stays_open_and_says_why(self):
+        v = self._verdict(0, True)
+        self.assertTrue(v["requestsOpen"])
+        self.assertIn("Tune the caller in", v["detail"])
+        self.assertNotIn("refuse", v["detail"])
+
+    def test_empty_room_with_tune_in_off_warns_and_names_the_fix(self):
+        v = self._verdict(0, False)
+        self.assertFalse(v["requestsOpen"])
+        self.assertIn("refuses song requests", v["detail"])
+        # The warning must point at the toggle that solves it, not just moan.
+        self.assertIn("Tune the caller in", v["detail"])
