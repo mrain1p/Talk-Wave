@@ -729,9 +729,19 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
             guard = OnAirGuard(
                 _Station(), {"avoid_on_air_overlap": True, "on_air_quiet_secs": 30})
             guard.POLL_SECS = 0.01
-            # The settle window rides out the gaps in a banter break; this
-            # test is about the come-back line, not about waiting 2s for it.
+            # This test is about the come-back LINE, so every wall-clock
+            # delay in the guard is compressed. Both of these are real
+            # seconds in production and neither is what is being checked:
+            # the settle window that rides out a banter break, and the
+            # handoff lag that mark_on_air adds to its assumed-busy window.
+            # Leaving the lag at its 2s constant made the air busy for 2.05s
+            # of a 3s budget and the test failed on a slower CI runner while
+            # passing here (2026-08-12).
             guard.SETTLE_SECS = 0.01
+            guard.lag_secs = 0.0
+            # The loop's own heartbeat, too — at its real 1s the test got
+            # about three chances inside its budget, which is not a margin.
+            guard.PUSH_TICK = 0.01
             task = asyncio.create_task(guard.watch(_Session()))
             await asyncio.sleep(0.03)
             guard.mark_on_air(seconds=0.05, spoken="Big shout to Dave.")
