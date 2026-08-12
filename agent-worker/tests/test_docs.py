@@ -93,6 +93,21 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
             missing, f"env vars a setting reads but .env.example never names: "
                      f"{missing}")
 
+    def test_the_env_example_keeps_comments_off_the_value_lines(self):
+        # docker compose's env_file format has no inline comments: everything
+        # after `=` is the value, `#` included. A real deployment copied this
+        # file and its container came up with CALLIN_INTERNAL_URL holding
+        # half a sentence of English — and nothing complained anywhere
+        # (operator's NAS, 0.10.81). Comments go on their own lines.
+        offenders = [
+            line for line in self.envex.splitlines()
+            if not line.lstrip().startswith("#") and "=" in line
+            and "#" in line.split("=", 1)[1]
+        ]
+        self.assertEqual(offenders, [],
+                         "inline comments leak into env values under "
+                         f"compose's env_file: {offenders}")
+
     def test_the_shipped_compose_uses_the_data_directory_both_services_share(self):
         # They are one image in two containers and must see the same data/,
         # or a settings change never reaches the worker. (An init service

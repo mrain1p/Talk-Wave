@@ -672,13 +672,25 @@
       // A degraded station can hand back an avatar URL that 404s, and a
       // broken-image glyph on the dashboard read as a fault (operator's
       // screenshot, 0.10.77). The drawn silhouette is the default; the
-      // photo earns its place only by actually loading.
-      face.onerror = () => { face.hidden = true; if (sil) sil.hidden = false; };
-      const want = !!l.avatar;
-      face.hidden = !want;
-      if (sil) sil.hidden = want;
-      if (want && face.getAttribute('src') !== l.avatar) {
-        face.src = l.avatar;
+      // photo earns its place only by actually LOADING — 0.10.77 unhid it
+      // on the URL merely existing, so the first paint showed the broken
+      // glyph while the fetch was still in flight, and a poll repaint after
+      // a failure re-showed it without re-judging (operator-reported,
+      // 0.10.81). The silhouette holds the tile until onload says otherwise.
+      const show = (photo) => {
+        face.hidden = !photo;
+        if (sil) sil.hidden = !!photo;
+      };
+      face.onload = () => show(true);
+      face.onerror = () => { face.removeAttribute('src'); show(false); };
+      if (!l.avatar) {
+        face.removeAttribute('src');
+        show(false);
+      } else if (face.getAttribute('src') !== l.avatar) {
+        show(false);              // silhouette until the new photo lands
+        face.src = l.avatar;      // fires onload/onerror above
+      } else if (face.complete && face.naturalWidth) {
+        show(true);               // same photo, already proven — keep it up
       }
     }
     tile('tileOnAir', l.name || '—',
