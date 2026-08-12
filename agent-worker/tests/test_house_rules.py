@@ -421,6 +421,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "agent-worker/scripted_call.py":
+            "the conduct harness, and it cannot be split: it is DELIVERED by "
+            "stdin — `docker exec -i <worker> python - < scripted_call.py` — "
+            "so a second module would simply not be there when it ran, which "
+            "is the whole reason it is one file. Most of its length is the "
+            "scenario tables, and those are supposed to grow: every real call "
+            "worth not repeating becomes a few lines of caller turns here.",
         "agent-worker/settings.py":
             "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
             "because the station has a lot of settings, and reading it top to "

@@ -364,6 +364,88 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertIn("probe saw hello", outputs[0].output)
 
+    def test_a_promise_with_no_tool_behind_it_gets_one_more_pass(self):
+        # The chat conduct TELLS the DJ to say something before reaching for
+        # a tool ("hold on, let me dig through the racks"). A round that was
+        # only that line looked identical to a finished answer, so "let me
+        # get that dedication sent right on down to the booth" ended the turn
+        # and nothing was ever sent (operator-reported, 2026-08-12).
+        from livekit.agents import llm as lk_llm
+
+        from chat.session import ChatSession
+
+        @lk_llm.function_tool(name="test_probe")
+        async def probe(word: str = "") -> str:
+            """Test tool."""
+            return "sent"
+
+        class _Stream:
+            def __init__(self, chunks):
+                self._chunks = list(chunks)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self._chunks:
+                    raise StopAsyncIteration
+                return self._chunks.pop(0)
+
+            async def aclose(self):
+                pass
+
+        class _Model:
+            """Promises in round one, acts only when nudged in round two —
+            the exact shape that used to ship as a finished answer."""
+
+            def __init__(self):
+                self.rounds = 0
+
+            def chat(self, chat_ctx=None, tools=None):
+                self.rounds += 1
+                if self.rounds == 1:
+                    delta = types.SimpleNamespace(
+                        content="Let me get that dedication sent down "
+                                "to the booth for you.",
+                        tool_calls=[])
+                elif self.rounds == 2:
+                    call = types.SimpleNamespace(
+                        call_id="c1", name="test_probe", arguments="{}")
+                    delta = types.SimpleNamespace(content="", tool_calls=[call])
+                else:
+                    delta = types.SimpleNamespace(content=" That's away.",
+                                                  tool_calls=[])
+                return _Stream([types.SimpleNamespace(delta=delta)])
+
+            async def aclose(self):
+                pass
+
+        model = _Model()
+        chat = ChatSession("t2", "open")
+        ctx = lk_llm.ChatContext.empty()
+        ctx.add_message(role="user", content="dedicate it to my mate")
+        out = asyncio.run(chat._tool_loop(model, ctx, [probe], lambda ev: None))
+        outputs = [i for i in ctx.items
+                   if getattr(i, "type", "") == "function_call_output"]
+        self.assertEqual(len(outputs), 1, "the promised tool never ran")
+        # The caller keeps the line they already read, and the outcome.
+        self.assertIn("dedication", out)
+        self.assertIn("away", out)
+
+    def test_ordinary_chat_is_not_given_an_extra_round(self):
+        # The nudge costs a model round, so it fires only on the openers the
+        # conduct asks for — never on a reply that was simply conversation.
+        from chat.session import _PROMISES_ACTION
+
+        for promise in ("Let me dig through the racks",
+                        "hold on, checking what we've got",
+                        "On it — I'll get that queued"):
+            self.assertTrue(_PROMISES_ACTION.search(promise), promise)
+        for chatter in ("That's a grand one for a mate.",
+                        "The Chieftains were on top form that year.",
+                        "Nice — good taste."):
+            self.assertFalse(_PROMISES_ACTION.search(chatter), chatter)
+
 
 class TestTheTextLineFeelsLikeAConversation(_TempStores):
     """The text line was answering with silence until the caller typed, never
@@ -378,8 +460,32 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         text = conduct_chat.rules({})
         self.assertIn("Close the loop", text)
         # The concrete instruction that fixes "it never confirmed what
-        # happened": wait for the tool result, and say plainly if it failed.
-        self.assertIn("Wait for the tool's result", text)
+        # happened": the tool comes FIRST and the reply reports what it
+        # actually said. It used to be the other way round — say a line, then
+        # reach for the tool — and a round that was only the line looked
+        # identical to a finished answer, so "let me get that dedication sent
+        # down to the booth" ended the turn with nothing sent (operator,
+        # 2026-08-12). Chat has no dead air to cover; the phone does, which
+        # is why the spoken conduct still says it and TYPED_TOOLS_NOTE has to
+        # take it back.
+        self.assertIn("Reach for the TOOL first", text)
+        self.assertIn("Never claim an outcome the tool has not given you", text)
+
+    def test_the_typed_line_takes_back_the_spoken_speak_first_rule(self):
+        # _tools is imported verbatim from the spoken conduct and tells the DJ
+        # to say a line BEFORE reaching for the tool — right on a phone call,
+        # where silence is dead air, and the exact instruction that broke the
+        # text line. The typed note must countermand it, or the prompt asks
+        # for both.
+        from brain import conduct, conduct_chat
+
+        spoken = conduct.rules({"allow_requests": True})
+        typed = conduct_chat.rules({"allow_requests": True})
+        self.assertIn("BEFORE you reach for the tool", spoken)
+        # Wrapped at ~76 columns like the rest of the prompt, so match a
+        # fragment that cannot straddle the line break.
+        self.assertIn("does not apply", typed)
+        self.assertIn("Call the tool first", typed)
 
     def test_the_defaults_greet_and_time_out(self):
         # A silent line reads as broken, so greeting is ON by default —

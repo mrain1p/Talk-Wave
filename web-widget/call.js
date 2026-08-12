@@ -2447,6 +2447,8 @@
   // (flash-lite); this buffers the target text and reveals it a few characters
   // at a time, catching up on a long reply so it never lags far behind.
   let chatTarget = '', chatShown = 0, chatDone = false, chatTimer = null;
+  // A typing cue asked for while a reveal was still running — see showTyping.
+  let typingPending = false;
   function chatStopReveal() {
     if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
     chatTarget = ''; chatShown = 0; chatDone = false;
@@ -2471,6 +2473,9 @@
       chatPend = null;
       chatStopReveal();
       setStatus('', 'connected');
+      // The booth typed a line and then went to work: now the words have
+      // landed there is room for the cue that was deferred.
+      if (typingPending) { typingPending = false; showTyping(); }
     }
   }
 
@@ -2482,6 +2487,14 @@
   // the transcript while the booth composes and removed the instant real
   // words or an action card land. One at a time — hidden before shown.
   function showTyping() {
+    // A reveal still running IS the "something is happening" signal, so the
+    // dots would be a second one — and appending them next to half-written
+    // words put "DJ • • •" on the same line as the text the caller was still
+    // reading (operator screenshot, 2026-08-12). This happens whenever the
+    // booth types a line and THEN reaches for a tool: the server sends
+    // `typing` again while the first line is mid-reveal. Defer until the
+    // words have landed; chatTick picks it back up.
+    if (chatTimer) { typingPending = true; return; }
     hideTyping();
     capBox.classList.add('on');
     const node = document.createElement('p');
@@ -2495,6 +2508,7 @@
     notifyHeight();
   }
   function hideTyping() {
+    typingPending = false;
     const n = document.getElementById('chatTyping');
     if (n) n.remove();
   }
