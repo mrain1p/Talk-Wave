@@ -1963,6 +1963,12 @@
 
   .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12.5px; color: var(--text); }
   .check input { width: 15px; height: 15px; accent-color: var(--accent); }
+  /* Checkbox on the RIGHT, question and its description reading as a sentence
+     on the left (operator's ask, 2026-08-12). `order` rather than
+     row-reverse: the help text is injected INSIDE the label after the words,
+     and reversing the row would put it before them. */
+  .check.tickright { align-items: flex-start; }
+  .check.tickright input { order: 2; margin-left: auto; flex: 0 0 auto; margin-top: 2px; }
   .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 178px; line-height: 1.4; }
   .hint.wide { margin-left: 0; }
 

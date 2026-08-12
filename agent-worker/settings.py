@@ -1228,12 +1228,12 @@ SCHEMA: dict[str, dict] = {
         placeholder="default: Line closed"),
     "word_message_only": dict(group="wording", kind="text", label="Voicemail-only line",
         placeholder="default: Message only"),
-    "call_button_mode": dict(group="player", kind="select", label="Call button",
+    "call_button_mode": dict(group="wording", kind="select", label="Call button",
         help="“Call the DJ” is the honest label when the card shows whoever "
              "happens to be on air. The DJ's name reads better on a station "
              "whose listeners know the roster, and follows it as the show "
              "changes."),
-    "call_button_label": dict(group="player", kind="text", label="Button text",
+    "call_button_label": dict(group="wording", kind="text", label="Button text",
         needs=("call_button_mode", "custom"),
         placeholder="Call the DJ",
         help="Shown only for the custom option above."),

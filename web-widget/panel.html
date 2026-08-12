@@ -1331,16 +1331,6 @@
           <select id="avatar_style"></select>
         </div>
 
-        <h4 class="subhead">The Call button</h4>
-        <div class="row">
-          <label for="call_button_mode">Call button</label>
-          <select id="call_button_mode"></select>
-        </div>
-        <div class="row">
-          <label for="call_button_label">Button text</label>
-          <input type="text" id="call_button_label" />
-        </div>
-
         <h4 class="subhead">Colours</h4>
         <div class="row">
           <label for="widget_theme">Colours</label>
@@ -1348,7 +1338,7 @@
         </div>
 
         <h4 class="subhead">On the caller's phone</h4>
-        <label class="check"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
+        <label class="check tickright"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
 
         <h4 class="subhead">After the conversation</h4>
         <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
@@ -1401,6 +1391,18 @@
         <div class="row">
           <label for="word_message_only">Voicemail-only line</label>
           <input type="text" id="word_message_only" />
+        </div>
+        <!-- The Call button's own wording lives WITH the wording, not over in
+             Player settings where it used to sit two sections away from every
+             other word on the card (operator's ask, 2026-08-12). -->
+        <h4 class="subhead">The Call button</h4>
+        <div class="row">
+          <label for="call_button_mode">Call button</label>
+          <select id="call_button_mode"></select>
+        </div>
+        <div class="row">
+          <label for="call_button_label">Button text</label>
+          <input type="text" id="call_button_label" />
         </div>
       </div>
     </details>
