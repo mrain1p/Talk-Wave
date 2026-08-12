@@ -24,7 +24,7 @@ doing.
 back-and-forth, and a Beatles request resolved against the live library.
 
 ```
-[browser mic] --WebRTC--> [livekit-server] --> [agent-worker]
+[browser mic] --WebRTC--> [livekit-server] --> [talkwave-worker]
                                                 STT -> LLM -> TTS
                                                      |
                                           SUB/WAVE MCP (allowlisted)
@@ -36,6 +36,7 @@ The README is the short version. The detail lives here:
 
 | | |
 |---|---|
+| **[Quick start](docs/quickstart.md)** | Nothing to a working call in ten minutes |
 | **[Getting started](#getting-started)** | Docker, or local on Windows |
 | **[Settings reference](docs/settings.md)** | Every setting, its default, and what it changes |
 | **[Calling from outside your network](docs/networking.md)** | The three topologies, and why a call can connect with no audio |
@@ -123,8 +124,8 @@ cross-origin writes refused. See [Security](docs/security.md).
 | Component | What it does |
 |---|---|
 | `livekit-server` | WebRTC media — one room per call |
-| `agent-worker` | Resolves the persona, builds the prompt, runs STT → LLM → TTS with MCP tools attached |
-| `token-server` | Mints join tokens (the browser never sees LiveKit secrets), serves widget and panel, proxies station reads |
+| `talkwave-worker` | Resolves the persona, builds the prompt, runs STT → LLM → TTS with MCP tools attached |
+| `talkwave-web` | Mints join tokens (the browser never sees LiveKit secrets), serves widget and panel, proxies station reads |
 | `web-widget` | The call page — installable to a phone's home screen, or a compact embeddable card |
 
 Inside the worker, one call is one `CallSession` and every file under
@@ -186,6 +187,8 @@ Two things worth knowing as an operator: caller audio is processed by whichever 
 
 ## Getting started
 
+**The ten-minute version: [docs/quickstart.md](docs/quickstart.md)** — what you need, the five commands, first run, backup, upgrade. The sections below are the same path with more said.
+
 ### Docker (recommended)
 
 Images publish to `ghcr.io/mrain1p/talk-wave`; `:latest` tracks `main`. The
@@ -233,7 +236,7 @@ microphone requires it — it is the zero-config way to get an HTTPS origin on a
 LAN. If you already run a reverse proxy (Caddy, Traefik, nginx, a NAS's built
 in one), delete the `caddy` service and terminate TLS there instead — but
 replicate both routes from the `Caddyfile`, not just one: the widget to
-`token-server:8100` **and** `/rtc` to `livekit-server:7880` (WebSocket). The
+`talkwave-web:8100` **and** `/rtc` to `livekit-server:7880` (WebSocket). The
 `/rtc` half is the one people forget; without it the page loads, the call
 connects, and no audio ever flows. Set `LIVEKIT_PUBLIC_URL` to
 `wss://your-hostname` so the browser signals through the same origin.

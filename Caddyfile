@@ -24,6 +24,6 @@ https://:8443 {
 	}
 
 	handle {
-		reverse_proxy token-server:8100
+		reverse_proxy talkwave-web:8100
 	}
 }

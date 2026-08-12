@@ -18,6 +18,7 @@ import tests  # noqa: F401
 from tests.test_settings import (  # noqa: F401
     TestAConfigValueCannotNameAFileOnTheDisk,
     TestANeighbouringServiceIsNotOnLocalhost,
+    TestBootLaysTheDataSkeleton,
     TestNoSettingIsSmuggledThroughTheEnvironment,
     TestOneSettingReplacingAnotherSaysSo,
     TestSettings,

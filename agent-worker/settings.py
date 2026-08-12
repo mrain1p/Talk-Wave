@@ -1882,6 +1882,7 @@ def _check_data_dir() -> None:
     # POSIX-only, was skipped on the author's machine, and reached CI broken —
     # the third time in one afternoon that a skip hid a defect.
     data_dir = SETTINGS_PATH.parent
+    _lay_data_skeleton(data_dir)
     if not hasattr(os, "getuid"):
         return                      # Windows: mode bits carry no meaning here
     if not data_dir.exists():
@@ -1911,6 +1912,27 @@ def _check_data_dir() -> None:
             "mode after the switch to a non-root container: %s",
             data_dir, ", ".join(blocked), fix,
         )
+
+
+def _lay_data_skeleton(data_dir) -> None:
+    """One boot makes `ls data/` show the real shape.
+
+    Only the DIRECTORIES — calls, sounds, voicemail — so the operator sees the
+    structure on day one instead of folders appearing weeks apart as features
+    first fire. The JSON stores stay lazy on purpose: their absence IS a state
+    the app reads (no admin-auth.json means "no password yet" and drives the
+    first-run banner; deleting it stays the documented reset), so each file
+    appears the moment it first has something true to say. Failure is
+    tolerable here — if the mount is unwritable, the ownership check below is
+    the loud diagnosis, not this.
+    """
+    if not data_dir.exists():
+        return                      # nothing mounted; nothing to lay out
+    for name in ("calls", "sounds", "voicemail"):
+        try:
+            (data_dir / name).mkdir(exist_ok=True)
+        except Exception:                                     # noqa: BLE001
+            return
 
 
 # Settings that were replaced rather than removed, and how to read an old file

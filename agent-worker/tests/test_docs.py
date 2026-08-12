@@ -102,21 +102,32 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
             compose.count("./data:/data"), 2,
             "both python services must mount the same data directory")
 
-    def test_the_front_door_waits_for_something_to_be_behind_it(self):
-        # Caddy proxies to token-server. Waiting only for the container to
-        # exist meant the first load after a restart could hit a 502 from a
-        # front door pointing at a process still starting up. Read as text
+    def test_the_compose_keeps_its_load_bearing_lines(self):
+        # 0.10.71 rewrote the example compose for readability, and the
+        # operator DELIBERATELY dropped the healthcheck/service_healthy
+        # pairing this test used to require (the cost: a restart can 502 the
+        # TLS door for a few seconds — accepted). What must survive any
+        # future trim is pinned here instead: the internal URLs that name
+        # other services must name services that exist, the worker keeps its
+        # shutdown budget, and a service_healthy gate may only return
+        # together with a healthcheck to give it meaning. Read as text
         # rather than parsed, because pyyaml is not a dependency of this
         # suite and never should become one.
         compose = (REPO / "docker-compose.yaml").read_text(encoding="utf-8")
+        for name in ("talkwave-worker:", "talkwave-web:", "livekit-server:"):
+            self.assertIn("\n  " + name, compose,
+                          f"service {name} renamed — every URL and doc that "
+                          "names it must move in the same commit")
         self.assertIn(
-            "healthcheck:", compose,
-            "token-server has no healthcheck, so `service_healthy` below "
-            "cannot mean anything")
+            "CALLIN_INTERNAL_URL=http://talkwave-web:8100", compose,
+            "the worker's slot-release URL must name the web service — a "
+            "rename that misses it jams the line for 30 minutes per call")
         self.assertIn(
-            "condition: service_healthy", compose,
-            "caddy no longer waits for token-server to actually be serving")
-        self.assertIn(
-            "/health", compose,
-            "the healthcheck must probe /health — the one endpoint that "
-            "answers without auth and without touching the station")
+            "stop_grace_period", compose,
+            "without a stop grace the default 10s SIGKILL lands mid-call on "
+            "every redeploy")
+        if "service_healthy" in compose:
+            self.assertIn(
+                "healthcheck:", compose,
+                "a service_healthy condition without a healthcheck can never "
+                "be satisfied — the stack would not start")

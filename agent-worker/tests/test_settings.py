@@ -337,6 +337,41 @@ class TestTheDataDirCheckCannotStopTheWorker(unittest.TestCase):
             settings_store.check_data_dir()
 
 
+class TestBootLaysTheDataSkeleton(_TempStores):
+    """One boot makes `ls data/` show the real shape (0.10.71): the operator
+    should see calls/, sounds/ and voicemail/ on day one, not folders
+    appearing weeks apart as features first fire. Directories ONLY — the JSON
+    stores stay lazy because their absence is a state the app reads (no
+    admin-auth.json means "no password yet"), and creating them empty would
+    say nothing true."""
+
+    def test_the_skeleton_directories_appear(self):
+        data_dir = settings_store.SETTINGS_PATH.parent
+        data_dir.mkdir(parents=True, exist_ok=True)
+        settings_store.check_data_dir()
+        for name in ("calls", "sounds", "voicemail"):
+            with self.subTest(name=name):
+                self.assertTrue((data_dir / name).is_dir())
+
+    def test_no_json_store_is_invented(self):
+        data_dir = settings_store.SETTINGS_PATH.parent
+        data_dir.mkdir(parents=True, exist_ok=True)
+        settings_store.check_data_dir()
+        self.assertFalse(settings_store.SETTINGS_PATH.exists(),
+                         "an empty settings.json at boot says nothing true")
+
+    def test_an_unmounted_dir_is_left_alone(self):
+        # No data directory at all means nothing is mounted — creating one
+        # here would put state where the operator never asked for it.
+        import shutil
+
+        data_dir = settings_store.SETTINGS_PATH.parent
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+        settings_store.check_data_dir()
+        self.assertFalse(data_dir.exists())
+
+
 class TestUploadedSoundsCannotFillTheVolume(unittest.TestCase):
     """Each file was capped at 2MB and the collection at nothing, so the same
     2MB could be uploaded until the volume filled — the volume the settings,

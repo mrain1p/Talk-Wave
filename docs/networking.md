@@ -216,6 +216,13 @@ internal IP matches the LiveKit host, that the protocol is UDP, and that you
 applied the change. Then have someone call from mobile data with wifi off,
 which is the only real proof.
 
+This config serves **LAN and off-LAN callers together** — removing `node_ip`
+does not trade one for the other. LAN traffic reaches the advertised public
+address by looping back through your own router (NAT hairpin, which nearly
+every home router does). So after the mobile-data proof call, make one from
+the LAN too; if that one fails, your router is the rare one that refuses
+hairpin, and pinning `node_ip` back is the LAN-only fallback.
+
 **What that exposes.** LiveKit's media port, and nothing else on the host —
 forwarding is per-port, per-protocol, per-destination. Getting audio in still
 requires ICE credentials and a DTLS fingerprint issued per session over the
@@ -236,7 +243,7 @@ Whichever option carries the media, the **signalling** works best as a single pu
 
 | Route on `https://call.example.com` | Goes to | Notes |
 |---|---|---|
-| `/` (everything else) | `token-server:8100` | the widget, the panel, the API |
+| `/` (everything else) | `talkwave-web:8100` | the widget, the panel, the API |
 | `/rtc` | `livekit-server:7880` | **WebSocket support ON** — this is signalling |
 
 Then set `LIVEKIT_PUBLIC_URL=wss://call.example.com` in the stack environment and redeploy. With a real certificate (Let's Encrypt via your proxy) there is no certificate screen at all, and because the page and the signalling share an origin, the pipeline check's browser-media stage passes by construction.

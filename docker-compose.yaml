@@ -1,149 +1,89 @@
-# The whole call-in stack: LiveKit (media), the agent worker (the DJ), the token/widget server,
-# and a Caddy TLS front door. Local no-docker dev on Windows: run-local.ps1.
+# TALK-WAVE — the whole call-in stack:
+#   1. LiveKit (media)
+#   2. The worker (the DJ)
+#   3. The token/widget web server
+#   4. A Caddy TLS front door (optional — skip it if your own reverse proxy terminates TLS)
 #
-# Quick start:
-#   1. cp livekit.example.yaml livekit.yaml   — generate a FRESH keypair; use_external_ip: true
-#   2. cp .env.example .env                   — set HOST_IP (this machine's LAN address; the one
-#                                               deployment variable — everything below derives)
-#   3. chown -R 1000:1000 ./data && chmod -R u+rwX ./data
-#      Both commands — the python services run as uid 1000, and ownership alone is not enough on
-#      filesystems that create mode-000 files (Synology shares). Failure is loud and fails shut;
-#      CALLIN_ADMIN_KEY is the way back in.
-#   4. docker compose up -d                   — with a source checkout, add --build to build locally
+# QUICK START:
+#   1. cp livekit.example.yaml livekit.yaml    (generate a FRESH keypair)
+#   2. cp .env.example .env                    (set HOST_IP — this machine's LAN address)
+#   3. mkdir data && chown -R 1000:1000 ./data && chmod -R u+rwX ./data    (the services run as uid 1000)
+#   4. docker compose up -d
+#   5. open https://<HOST_IP>:8443 — set the admin password, add an API key, press Call
+#      (HTTPS is required for the microphone; first visit shows a one-time certificate screen)
 #
-# Running your own reverse proxy? Delete the caddy service and carry over BOTH Caddyfile routes —
-# the widget to token-server:8100 AND /rtc to livekit-server:7880 — or calls connect with no audio.
-# HTTPS is required either way (browsers only grant the microphone to HTTPS origins), and a TLS
-# page refuses the station's plain-http LAN stream as mixed content — silently, no music behind
-# the call — so set SUBWAVE_STREAM_URL to the station's PUBLIC https stream.
-# Before exposing beyond your LAN: set CALLIN_ALLOWED_ORIGINS and CALLIN_ADMIN_KEY.
-
-# Cap container logs — docker's default grows unbounded.
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
+# FILE STRUCTURE — what YOU create (everything else the app writes into data/ as it runs):
+#   talk-wave/
+#   ├── docker-compose.yaml   ← this file
+#   ├── .env                  ← cp .env.example .env, set HOST_IP
+#   ├── livekit.yaml          ← cp livekit.example.yaml livekit.yaml, fresh keypair
+#   ├── Caddyfile             ← from the repo, as-is (skip if using your own proxy)
+#   └── data/                 ← empty; chown 1000:1000 — the app fills it, and it IS the backup
+#
+# NOTES:
+#   - Using your own reverse proxy? Delete the caddy service and replicate BOTH Caddyfile
+#     routes — the site to talkwave-web:8100 AND /rtc to livekit-server:7880 (websocket).
+#     See docs/networking.md.
+#   - Want callers from outside your network? Follow docs/networking.md (one router
+#     rule), then swap the two command lines under livekit-server — LAN callers keep
+#     working through your router.
 
 services:
-  # container_name is pinned on every service so a stack GUI shows "talkwave-worker" instead of
-  # "<project>-agent-worker-1". In-network DNS still uses the SERVICE names in the URLs below.
   livekit-server:
-    image: livekit/livekit-server:v1.13.5
+    image: livekit/livekit-server:v1.13.5                                  # keep version pinned
     container_name: livekit-server
-    # --node-ip: without it a containerized LiveKit advertises its CONTAINER IP as the media
-    # address — signalling works, audio never flows, calls hang at "Ringing".
-    command: --config /etc/livekit.yaml --node-ip ${HOST_IP:-127.0.0.1}
+    command: --config /etc/livekit.yaml --node-ip ${HOST_IP:-127.0.0.1}    # zero-config LAN default
+    # command: --config /etc/livekit.yaml                                  # ← SWAP with the line above for callers from ANYWHERE — one router rule first (docs/networking.md); LAN keeps working
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    logging: *default-logging
     ports:
-      - "7880:7880"                     # HTTP/WebSocket signaling
-      - "7881:7881"                     # RTC TCP fallback
-      - "7882:7882/udp"                 # ALL call audio, muxed — the one port outside callers need
+      - "7880:7880"                                                        # signalling (WebSocket)
+      - "7881:7881"                                                        # TCP fallback for callers whose networks block UDP
+      - "7882:7882/udp"                                                    # ALL call audio, muxed — forward THIS one on your router for off-LAN
     volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
-    networks:
-      - callin-net
+      - ./livekit.yaml:/etc/livekit.yaml:ro                                # your keypair config from step 1
 
-  agent-worker:
+  talkwave-worker:
     image: ghcr.io/mrain1p/talk-wave:latest
     container_name: talkwave-worker
-    build:
-      context: .
-      dockerfile: agent-worker/Dockerfile
     restart: unless-stopped
-    # Docker's default 10s SIGKILL lands mid-call on redeploy; the worker's shutdown budget
-    # (transcript write, slot release, wrap-up line) is 60s. Only actually waits during a call.
-    stop_grace_period: 2m
-    security_opt:
-      - no-new-privileges:true
-    logging: *default-logging
+    stop_grace_period: 2m                                                 # keep at 2m so a redeploy mid-call gets to finish the goodbye + transcript
     env_file: .env
     environment:
-      - LIVEKIT_URL=ws://livekit-server:7880          # in-network name, not the .env dev default
-      - CALLIN_INTERNAL_URL=http://token-server:8100  # the worker releases call slots through it
-      - LOG_TO_FILE=0                                 # docker already captures stdout
+      - LIVEKIT_URL=ws://livekit-server:7880                              # must match the livekit service's name above
+      - CALLIN_INTERNAL_URL=http://talkwave-web:8100                      # must match the web service's name below
+      - LOG_TO_FILE=0                                                     # keep 0 — docker captures stdout already
     volumes:
-      # Panel settings and API keys. BOTH python services mount the same directory (or panel
-      # changes never reach the worker); owned by uid 1000 — see the chown note at the top.
-      - ./data:/data
-      # The ~141MB STT model cache — without it every recreate re-downloads before answering.
-      # A named volume inherits the right ownership from the image; a bind mount does not. To use
-      # ./cache instead: mkdir + chown 1000:1000 + chmod u+rwX it first, then swap the line.
-      - talkwave-cache:/home/app/.cache
-      # Optional: edit TTS adapter configs without a rebuild.
-      # - ./agent-worker/tts-adapters:/app/tts-adapters
-    depends_on:
-      - livekit-server
-    networks:
-      - callin-net
+      - ./data:/data                                                      # keep IDENTICAL to the web half's mount below
+      - talkwave-cache:/home/app/.cache                                   # keep — holds the ~141MB STT model so recreates don't re-download it
 
-  token-server:
+  talkwave-web:
     image: ghcr.io/mrain1p/talk-wave:latest
     container_name: talkwave-web
-    build:
-      context: .
-      dockerfile: agent-worker/Dockerfile
-    command: ["python", "token_server.py"]
+    command: ["python", "token_server.py"]                                # this override runs the WEB half
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    logging: *default-logging
     env_file: .env
     environment:
-      - LIVEKIT_URL=ws://livekit-server:7880              # in-container "localhost" is the container
-      - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443   # what the BROWSER connects to (via caddy)
-      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station  # station webhook callback
-      # Where the CALLER'S BROWSER pulls the broadcast. Blank derives the station's plain-http LAN
-      # address — fine on http, blocked as mixed content on TLS. A bare origin also works.
-      - SUBWAVE_STREAM_URL=${SUBWAVE_STREAM_URL:-}
-      - LOG_TO_FILE=0
+      - LIVEKIT_URL=ws://livekit-server:7880                              # matches the livekit service's name above
+      - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443               # what the BROWSER dials (via the bundled caddy)
+      # - LIVEKIT_PUBLIC_URL=wss://call.example.com                       # SWAP the one above to this version for proxy/domain (docs/networking.md)
+      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station   # where the station posts webhooks — derived from HOST_IP; change only if SUB/WAVE is on ANOTHER network (then use your public https URL)
+      - LOG_TO_FILE=0                                                     # keep at 0 — docker captures stdout already
     volumes:
-      - ./data:/data          # same directory, same uid as the worker's mount
+      - ./data:/data                                                      # keep IDENTICAL to the worker's mount above
     ports:
-      - "8100:8100"           # widget + token mint; put a reverse proxy in front
-    # /health answers without auth or station reads — "this process is up" and nothing more.
-    # Caddy waits on it so a restart can't put the TLS door in front of nothing (was a 502).
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-    depends_on:
-      - livekit-server
-    networks:
-      - callin-net
+      - "8100:8100"                                                       # widget + API, plain http — keep it behind the TLS door or your proxy
 
-  # TLS front door: browsers only grant the microphone on HTTPS, so the widget is opened via
-  # https://<HOST_IP>:8443. Plain :8100 stays for same-machine dev and the webhook callback.
+  # CADDY IS OPTIONAL — delete this whole service if your own reverse proxy terminates TLS (see NOTES)
   caddy:
-    image: caddy:2
+    image: caddy:2                                                        # keep at 2 — pins the major so a routine pull can't break the door
     container_name: talkwave-caddy
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    logging: *default-logging
     ports:
-      - "8443:8443"
+      - "8443:8443"                                                       # the HTTPS front door — this is the address from quick start step 5
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro                               # from the repo as-is — edit only to change routes
       - caddy-data:/data
-    depends_on:
-      token-server:
-        condition: service_healthy    # proxies to it — "created" was a 502 on every restart
-      livekit-server:
-        condition: service_started
-    networks:
-      - callin-net
 
 volumes:
+  talkwave-cache:
   caddy-data:
-  talkwave-cache:     # only the worker loads the STT model, so only the worker mounts it
-
-networks:
-  callin-net:
-    driver: bridge
