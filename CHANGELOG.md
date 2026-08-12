@@ -3,6 +3,10 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.94
+
+- **Settings sections start closed.** Every drawer on every settings page arrives folded — the summaries carry the section's name, one-line blurb and state chip, so a shut page still reads at a glance, and it's cleaner to navigate (reverses 0.10.64's ship-open, at the operator's ask). Search still opens the sections it finds and folds them back when cleared; anything you open by hand stays open.
+
 ## 0.10.93
 
 - **The DJ stops miming actions it can't do.** Two real calls asked to "switch the show to Donovan's Pub" on a line with takeover switched off — and the DJ, told unconditionally that a takeover "is a thing you can do", queued a *song* instead and said "the pub door opens in a bit". The behaviour prompt now tells the truth per deployment: every action it teaches (requests, search, shoutouts, the takeover) appears only when its switch is on, a new "Not on this line tonight" line names what's off out loud, and asks for those get a plain in-character no — never a substitute dressed up as the thing, never "that shoutout's in the air now" when nothing went anywhere.
