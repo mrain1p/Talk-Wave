@@ -765,6 +765,36 @@ class TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry(_TempStores):
                          "24-hour default")
 
 
+class TestACommentedEnvValueIsNamedAtBoot(_TempStores):
+    """compose's env_file format has no inline comments — `KEY=value # note`
+    puts the note INTO the value, silently. A real container ran with
+    CALLIN_INTERNAL_URL holding half a sentence of English (0.10.82); the
+    boot check names such values instead of leaving each to be found by
+    symptom."""
+
+    def test_the_leak_is_named_and_a_hashy_password_is_not(self):
+        import settings as settings_store
+
+        os.environ["STT_MODEL"] = "nova-3            # model for the provider"
+        # A '#' with no whitespace before it is a legitimate value (a
+        # password, say) and must not be reported as a leak.
+        os.environ["SUBWAVE_ADMIN_PASS"] = "p#ssw0rd"
+        try:
+            with self.assertLogs("callin.settings", level="ERROR") as cm:
+                settings_store._warn_commented_env()
+            joined = "\n".join(cm.output)
+            self.assertIn("STT_MODEL", joined)
+            self.assertNotIn("SUBWAVE_ADMIN_PASS", joined)
+        finally:
+            os.environ.pop("SUBWAVE_ADMIN_PASS", None)
+
+    def test_a_clean_environment_stays_quiet(self):
+        import settings as settings_store
+
+        with self.assertNoLogs("callin.settings", level="ERROR"):
+            settings_store._warn_commented_env()
+
+
 class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
     """0.10.80 changed the fresh-install defaults: front_access became
     admin-only and the permission grants became a real tier ladder. The

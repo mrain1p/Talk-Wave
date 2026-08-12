@@ -33,6 +33,31 @@ from tts_adapter import pick_speakable_voice, resolve_adapter
 log = logging.getLogger("callin.token")
 
 
+def _plain_error(e: BaseException) -> str:
+    """The message an operator can act on.
+
+    Python 3.11 exception groups stringify to "unhandled errors in a
+    TaskGroup (1 sub-exception)" — httpx/anyio raise them for every connect
+    failure and timeout — and a probe that shows the wrapper has told the
+    operator nothing. The station test did exactly that on a real deployment
+    (0.10.82); the real cause was one level down the whole time.
+    """
+    seen: list[str] = []
+
+    def walk(x: BaseException) -> None:
+        sub = getattr(x, "exceptions", None)
+        if sub:
+            for s in sub:
+                walk(s)
+            return
+        msg = str(x).strip() or type(x).__name__
+        if msg not in seen:
+            seen.append(msg)
+
+    walk(e)
+    return "; ".join(seen[:3])
+
+
 # --- test endpoints -------------------------------------------------------
 # These exercise the same code paths a real call uses, so a green result here
 # means the call will work rather than "the URL responded".
@@ -227,7 +252,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
             ),
         )
     except Exception as e:
-        msg = str(e)
+        msg = _plain_error(e)
         # By far the most common failure: a voice id from one backend sent to
         # the other (stock cloud names vs the local sample registry).
         #
@@ -384,7 +409,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
             ),
         )
     except Exception as e:
-        err = str(e)
+        err = _plain_error(e)
         # A model name the server does not route is a miss the server itself
         # can explain. Observed with llama-swap (llama.cpp's multi-model
         # router, 2026-08-08): it answers 404 "no router for requested model"
@@ -732,7 +757,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
             result["livekit"] = {"ok": r.status_code < 500, "url": lk_url,
                                  "detail": f"HTTP {r.status_code}"}
     except Exception as e:
-        result["livekit"] = {"ok": False, "url": lk_url, "detail": str(e)[:120]}
+        result["livekit"] = {"ok": False, "url": lk_url, "detail": _plain_error(e)[:120]}
         result["ok"] = False
 
     # A registered worker is what actually answers the call.
@@ -748,7 +773,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
         finally:
             await lkapi.aclose()
     except Exception as e:
-        result["livekitAuth"] = {"ok": False, "detail": str(e)[:120]}
+        result["livekitAuth"] = {"ok": False, "detail": _plain_error(e)[:120]}
         result["ok"] = False
 
     # --- STT constructible with the configured provider/key ---
@@ -770,7 +795,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
         }
     except Exception as e:
         result["stt"] = {"ok": False, "provider": cfg.get("stt_provider"),
-                         "detail": str(e)[:160]}
+                         "detail": _plain_error(e)[:160]}
         result["ok"] = False
 
     # --- station admin credentials ---
@@ -799,7 +824,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
                 r.raise_for_status()
                 result["admin"] = {"ok": True, "detail": "accepted by the station"}
         except Exception as e:
-            result["admin"] = {"ok": False, "detail": str(e)[:120]}
+            result["admin"] = {"ok": False, "detail": _plain_error(e)[:120]}
 
     # --- listeners: the station refuses song requests when nobody is tuned in ---
     try:
@@ -819,7 +844,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
                        "until someone is listening"),
         }
     except Exception as e:
-        result["listeners"] = {"count": None, "requestsOpen": False, "detail": str(e)[:120]}
+        result["listeners"] = {"count": None, "requestsOpen": False, "detail": _plain_error(e)[:120]}
 
     # --- keys the current configuration depends on ---
     need = []
@@ -884,7 +909,7 @@ async def handle_test_admin(request: web.Request) -> web.Response:
             ok = True
         return _cors(request, web.json_response({"ok": ok, "detail": detail}))
     except Exception as e:
-        return _cors(request, web.json_response({"ok": False, "detail": str(e)[:140]}))
+        return _cors(request, web.json_response({"ok": False, "detail": _plain_error(e)[:140]}))
 
 
 async def handle_test_station(request: web.Request) -> web.Response:
@@ -953,7 +978,7 @@ async def handle_test_station(request: web.Request) -> web.Response:
         result["toolCount"] = len(mcp_names) + len(et["local"])
         result["ok"] = True
     except Exception as e:
-        result["error"] = str(e)
+        result["error"] = _plain_error(e)
     finally:
         try:
             await server.aclose()

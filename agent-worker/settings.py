@@ -1926,6 +1926,7 @@ def _check_data_dir() -> None:
     # the third time in one afternoon that a skip hid a defect.
     data_dir = SETTINGS_PATH.parent
     _lay_data_skeleton(data_dir)
+    _warn_commented_env()
     if not hasattr(os, "getuid"):
         return                      # Windows: mode bits carry no meaning here
     if not data_dir.exists():
@@ -1954,6 +1955,44 @@ def _check_data_dir() -> None:
             "them, so what is in them is NOT in effect. Almost always owner or "
             "mode after the switch to a non-root container: %s",
             data_dir, ", ".join(blocked), fix,
+        )
+
+
+def _warn_commented_env() -> None:
+    """Name env values that look like they swallowed an inline comment.
+
+    docker compose's env_file format has no inline comments: everything after
+    `=` is the value, `#` included. A real container came up with
+    CALLIN_INTERNAL_URL holding half a sentence of English and nothing
+    complained anywhere (0.10.82). .env.example keeps comments on their own
+    lines now, but every .env copied before that carries the mines — this
+    names them at boot instead of leaving each one to be found by symptom.
+
+    The tell is whitespace-then-# inside the value ("value  # note"), not a
+    bare # — a password may legitimately contain one.
+    """
+    import secrets_store
+
+    names: set[str] = set()
+    for env_var, _default in FIELDS.values():
+        if isinstance(env_var, str) and env_var:
+            names.add(env_var)
+        elif isinstance(env_var, tuple):
+            names.update(v for v in env_var if v)
+    names.update(v for v in secrets_store.SECRET_FIELDS.values() if v)
+    names.update(n for n in os.environ
+                 if n.startswith(("CALLIN_", "LIVEKIT_", "SUBWAVE_")))
+    suspect = sorted(
+        n for n in names
+        if re.search(r"\s#", os.environ.get(n, "")) or
+        os.environ.get(n, "").lstrip().startswith("#")
+    )
+    if suspect:
+        log.error(
+            "these environment values appear to contain an inline comment — "
+            "compose's env_file format keeps everything after '=' as the "
+            "VALUE, '#' included: %s. Move the comment onto its own line in "
+            ".env and recreate the containers.", ", ".join(suspect),
         )
 
 
