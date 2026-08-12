@@ -3,6 +3,11 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.92
+
+- **Action receipts became a booth setting, for every door.** The card a station action leaves — a queued request, a takeover, a beat — used to place itself differently per door: chat had the setting (filed under Texts), calls always led with the card, and the machine always showed its delivery receipt. One **Action receipts** under The booth → House style now answers for all three: **after the DJ's line** (the default — on a call the card now waits for the spoken line to finish, so "that's in the queue" lands before the paperwork), **as it happens** (the old call order, kept selectable), or **off** (no cards anywhere; the action still runs and the record still lists it, and off silences the machine's delivery receipt too). A chat-era choice carries across the rename untouched; a deployment that never set it takes the new default, which is the one visible change on upgrade — call cards move behind the line.
+- **The needs column keeps its corner.** NEEDS ATTENTION on the dashboard now stands as tall as the Transmission cluster beside it, and an all-clear paints "Nothing needs attention — the line is ready." in the middle of the box instead of shrinking to a bare header row.
+
 ## 0.10.91
 
 - **A refused request names its reason.** SUB/WAVE 1.8's blocklist rules answer a declined request or queue with the rule that blocked it — and the DJ now hears those words instead of a bare HTTP error, so it can stay in character about the refusal ("house rules say no death metal tonight") rather than fumbling a reason it was never told. Applies to both the request path and exact-track queueing; on older stations the body's own message comes through the same way.
