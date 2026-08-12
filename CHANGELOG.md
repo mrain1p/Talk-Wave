@@ -3,7 +3,7 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.70 – 0.10.78
+## 0.10.70 – 0.10.79
 
 One entry for the run, written as it heads to `main` — this stretch was the fresh-install polish pass: a first boot became one command, one secret and a phone that asks, and the dashboard learned to say what still stands between a new deployment and a working call.
 
@@ -15,7 +15,7 @@ One entry for the run, written as it heads to `main` — this stretch was the fr
 - **Every tool the DJ can reach gets drilled** (0.10.72–0.10.73). The full-coverage sweep exercises the DJ's whole tool surface over the call line and the text line inside the deployed worker and grades what it actually did from the transcripts — the pre-release check for anything that touches tools, conduct or the brain.
 - **The masthead behaves on phones** (0.10.70). The settings masthead no longer forces the page wider than a phone's viewport; the finder takes its own row instead.
 
-Also in this span, docs-only: the README became a landing page, the manual went on a diet (961 → 478 lines), and the 0.10.63–0.10.69 run below was recorded.
+Also in this span: housekeeping (0.10.79 put panel.js on the split-when-it-grows list after a re-measurement found its sound board is a real seam) and docs-only work — the README became a landing page, the manual went on a diet (961 → 478 lines), and the 0.10.63–0.10.69 run below was recorded.
 
 ## 0.10.63 – 0.10.69
 
