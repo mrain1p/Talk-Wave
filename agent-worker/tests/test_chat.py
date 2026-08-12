@@ -302,8 +302,10 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
             self.assertIn("Stay in character", text)
             self.assertIn("fourth wall", text)
             self.assertIn("dodge", text.lower())
-        # And the call list names a show/DJ change as a takeover to DO.
-        self.assertIn("TAKEOVER", conduct.rules({}))
+        # And the call list names a show/DJ change as a takeover to DO — but
+        # only when the switch is on; the bare-cfg claim is the refusal (see
+        # TestThePromptNeverPromisesATakeoverItCannotDo in test_brain).
+        self.assertIn("TAKEOVER", conduct.rules({"allow_takeover": True}))
 
     def test_the_tool_loop_answers_and_runs_tools(self):
         from livekit.agents import llm as lk_llm

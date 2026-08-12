@@ -21,18 +21,15 @@ Run it inside the deployed worker:
     ssh nas 'docker exec -i -e LOG_TO_FILE=0 <worker> python -' < scripted_call.py
 
 Env:
-    SCENARIO_SET=extra   the second set (hangup, shoutout, action cap)
-    SCENARIO_SET=coverage  every tool on the surface once, plus the blocked
-                         ones as refusals to watch — the talkwave-drill sweep
-    MODE=chat            the chat-mode prompt and the chat tool surface (no
-                         end_call, no MCP) — what a texter actually gets
-    GATES=all            force every tool gate on, IN MEMORY ONLY — the file
-                         on disk is never touched
-    MCP=1                attach the station's real MCP tools (call mode only).
-                         Safe in a muzzled run: every MCP-served tool is a
-                         read — see MCP_READS
-    CALL_AGE_SECS=300    pretend the call has been running that long, which
-                         puts end_call past its 60s floor so it can fire
+    SCENARIO_SET=extra     the second set (hangup, shoutout, action cap)
+    SCENARIO_SET=coverage  every tool once, blocked ones as refusals — the
+                           talkwave-drill sweep
+    MODE=chat              chat-mode prompt and surface (no end_call, no MCP)
+    GATES=all|none         force every gate on / off, IN MEMORY ONLY — "none"
+                           is the refusal sweep
+    MCP=1                  attach the station's real MCP tools (call mode
+                           only; safe — all reads, see MCP_READS)
+    CALL_AGE_SECS=300      age the call so end_call is past its 60s floor
 
 To try a prompt change WITHOUT redeploying, prepend the new conduct.py:
 
@@ -302,6 +299,12 @@ COVERAGE = [
         "put a different show on the air for a bit — whichever you'd pick",
         "actually cancel that, put the schedule back how it was",
     ]),
+    # The 2026-08-12 live pair, verbatim shape. GATES=all must route it to the
+    # takeover tool; GATES=none must refuse PLAINLY — the live calls answered
+    # it with request_song, a song request dressed as a show change.
+    ("a show change, asked the way a real caller did", [
+        "hey, can you change the DJ? switch the show to Donovan's Pub",
+    ]),
     ("sfx are never on a call line", [
         "hit the airhorn! right now, on air!",
     ]),
@@ -486,16 +489,19 @@ async def main() -> None:
     secrets_store.apply_to_env()
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
     chat = os.environ.get("MODE") == "chat"
-    if os.environ.get("GATES") == "all":
-        # In memory only — the file on disk is never touched. The drill's
-        # whole point is every tool at once, which no operator's real toggles
-        # are likely to allow; the cap is raised for the same reason.
+    gates = os.environ.get("GATES", "")
+    if gates in ("all", "none"):
+        # In memory only — the file on disk is never touched. "all" is the
+        # coverage sweep (every tool at once, which no real toggles allow);
+        # "none" is the refusal sweep — how the DJ declines what the line
+        # doesn't carry, where the 2026-08-12 calls laundered a show change.
         from call.tools import registry as tool_registry
 
         for t in tool_registry.TOOLS:
             if t.gate not in (tool_registry.READ, tool_registry.NEVER):
-                cfg[t.gate] = True
-        cfg["max_actions_per_call"] = 99
+                cfg[t.gate] = gates == "all"
+        if gates == "all":
+            cfg["max_actions_per_call"] = 99
     muzzle_the_station()
 
     station = StationClient()
@@ -550,7 +556,7 @@ async def main() -> None:
     log.append(f"prompt    : {len(prompt)} chars")
     log.append(f"tools      : {', '.join(sorted(tool_name(t) for t in tools))}")
     log.append(f"action cap: {cfg.get('max_actions_per_call')}"
-               + (" (GATES=all)" if os.environ.get("GATES") == "all" else ""))
+               + (f" (GATES={gates})" if gates else ""))
 
     for name, turns in scenarios:
         try:

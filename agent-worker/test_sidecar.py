@@ -177,6 +177,10 @@ from tests.test_brain import (  # noqa: F401
     TestTheConductHarnessCannotReachTheRealStation,
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
+from tests.test_conduct import (  # noqa: F401
+    TestActionBulletsRideTheirOwnSwitch,
+    TestThePromptNeverPromisesATakeoverItCannotDo,
+)
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,
     TestPunctuationIsSpokenNotSpelled,

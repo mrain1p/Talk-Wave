@@ -195,9 +195,13 @@ def build_on_air_tools(
         @lk_llm.function_tool(name="subwave_dj_segment")
         async def dj_segment(type: str) -> str:
             """Fire one of the station's scripted beats on air: station-id,
-            hourly, link, banter, or a programme-intro/feature/outro. These are
-            the programme's own furniture, not a listener request — reach for
-            one only when the moment genuinely calls for it."""
+            hourly, link, banter, or a programme-intro/feature/outro. A caller
+            asking for a station ID or the top of the hour by name means THIS
+            tool, not an announcement — an announcement is you improvising a
+            line; this is the station's own produced beat, and they asked for
+            the real one. Otherwise these are the programme's furniture, not a
+            listener request — reach for one only when the moment genuinely
+            calls for it."""
             if actions.at_limit():
                 return actions.refusal()
             waited = await wait_for_clear_air()

@@ -450,7 +450,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             this". Pass the caller's own words; the station's picker matches
             them against the library properly, which a name search cannot do.
             Also takes a specific track ('Let It Be by The Beatles'). When in
-            doubt between this and a name search, use this one."""
+            doubt between this and a name search, use this one. MUSIC ONLY:
+            this queues a track, nothing else — it can never change the show,
+            the DJ, or anything about the schedule, and must not be used to
+            stand in for those."""
             if actions.at_limit():
                 return actions.refusal()
             text = request

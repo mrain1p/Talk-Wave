@@ -113,18 +113,21 @@ class TestBrainSplit(_TempStores):
         # The pairs contradict each other by design, so shipping both is the
         # failure mode — that is how a caller gets asked what kind of fun they
         # meant AND has something submitted anyway.
+        # allow_requests rides along: the fragments live inside the Requests
+        # bullet, which since the 2026-08-12 miming incident only exists when
+        # the switch is on.
         pairs = [
-            ({"confirm_requests": True},
+            ({"allow_requests": True, "confirm_requests": True},
              "say it back and get a quick yes", "No need to confirm"),
-            ({"confirm_requests": False},
+            ({"allow_requests": True, "confirm_requests": False},
              "No need to confirm", "say it back and get a quick yes"),
-            ({"shape_vague_requests": True},
+            ({"allow_requests": True, "shape_vague_requests": True},
              "two or three real directions", "don't interrogate them"),
-            ({"shape_vague_requests": False},
+            ({"allow_requests": True, "shape_vague_requests": False},
              "don't interrogate them", "two or three real directions"),
-            ({"ask_caller_name": True},
+            ({"allow_requests": True, "ask_caller_name": True},
              "ask once, briefly", "Don't ask the caller their name"),
-            ({"ask_caller_name": False},
+            ({"allow_requests": True, "ask_caller_name": False},
              "Don't ask the caller their name", "ask once, briefly"),
         ]
         for cfg, present, absent in pairs:

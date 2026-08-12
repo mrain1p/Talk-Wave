@@ -16,9 +16,9 @@ from __future__ import annotations
 from brain.conduct import (
     DOORWAY,
     LANGUAGE_AND_MIMICRY,
-    RUNNING_THE_CALL,
-    SAY_THE_TRUE_THING,
     _tools,
+    running_the_call,
+    say_the_true_thing,
 )
 
 HOW_TO_TYPE = """\
@@ -110,7 +110,7 @@ def rules(cfg: dict) -> str:
     blocks = [
         DOORWAY,
         HOW_TO_TYPE,
-        RUNNING_THE_CALL,
+        running_the_call(cfg),
         CHAT_CLOSING,
     ]
     # The table guidance earns its tokens only when the DJ actually holds the
@@ -122,7 +122,7 @@ def rules(cfg: dict) -> str:
         _tools(cfg),
         TYPED_TOOLS_NOTE,
         REPORT_THE_OUTCOME,
-        SAY_THE_TRUE_THING,
+        say_the_true_thing(cfg),
         LANGUAGE_AND_MIMICRY,
     ]
     return "\n\n".join(blocks)
