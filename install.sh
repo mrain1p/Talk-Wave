@@ -48,8 +48,19 @@ else
   echo "   could not detect it — set HOST_IP in $DIR/.env before callers can connect"
 fi
 
+say "Preparing data/ (the services run as uid 1000)"
+mkdir -p data
+# Ownership needs root on most systems; try, and say so plainly if it fails —
+# a root-owned data/ means the app can't read its own files (the login gate
+# and docker logs both name it, but never seeing it is better).
+if ! chown -R 1000:1000 data 2>/dev/null || ! chmod -R u+rwX data 2>/dev/null; then
+  echo "   run this yourself, then start the stack:"
+  echo "   sudo chown -R 1000:1000 '$PWD/data' && sudo chmod -R u+rwX '$PWD/data'"
+  echo "   docker compose up -d"
+  exit 0
+fi
+
 say "Starting the stack"
-# data/ ownership is handled by the stack's own init service on first start.
 docker compose up -d
 
 say "Done — open https://${HOST_IP:-<this-machine>}:8443"

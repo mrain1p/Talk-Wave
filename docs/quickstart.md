@@ -30,9 +30,10 @@ wget https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/docker-compose.yam
 wget https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/Caddyfile
 wget -O .env https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/.env.example
 wget -O livekit.yaml https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/livekit.example.yaml
+mkdir data && chown -R 1000:1000 ./data && chmod -R u+rwX ./data
 ```
 
-(`data/` makes itself: a tiny init service creates and owns it on first start, so there is no chown step to forget.)
+The `chown` matters: the services run as uid 1000, and a `data/` they can't read means no setup ask and a locked panel — the login gate and the logs name it, but never seeing it is better.
 
 Then two edits:
 

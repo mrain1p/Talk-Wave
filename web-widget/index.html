@@ -81,25 +81,6 @@
          line area at the bottom of the card. See there. -->
     <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark" hidden>&#9788;</button><button class="gear" id="signinBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="lockBtn" title="Sign out — forget the code on this device" aria-label="Sign out — forget the code on this device" hidden><svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1" y="5.5" width="9" height="6.5" rx="1"/><path d="M3 5.5V3.8a2.5 2.5 0 0 1 5 0v1.7"/></svg></button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
-    <!-- First run, on the phone itself (0.10.72 era, operator's ask): until
-         an admin password exists the whole box is open to whoever walks up,
-         so the FIRST page anyone reaches says it and takes one — the same
-         /auth/password the panel's own nudge uses, and the same trust model
-         (an unconfigured box belongs to whoever reaches it first). /live
-         carries needsSetup per-request, so this appears only while true and
-         never in an embed. -->
-    <div class="banner setup" id="setupNudge" hidden>
-      <strong>Set an admin password to finish setting up.</strong>
-      <p>This line is open until one exists. The password opens the settings
-        panel at <code>/settings</code> — and the phone, for you.</p>
-      <span class="loginrow">
-        <input type="password" id="setupPw" autocomplete="new-password"
-               placeholder="at least 8 characters" />
-        <button id="setupPwBtn">Set password</button>
-      </span>
-      <span id="setupPwMsg"></span>
-    </div>
-
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
       <!-- Shown in place of the image when a persona has no picture — or when
@@ -172,6 +153,21 @@
           <button id="guestBtn">Unlock</button>
         </span>
         <span id="guestMsg"></span>
+      </div>
+
+      <!-- First run, in the conversation's own space (operator's ask): until
+           an admin password exists the line belongs to whoever walks up, so
+           the place where words would appear says it and takes one — the
+           guest gate's own skin, so the card keeps its exact shape. /live
+           carries needsSetup per-request; never shown in an embed. -->
+      <div class="guestgate" id="setupNudge" hidden>
+        <span class="glabel">No admin password is set — this line belongs to whoever walks up. Set it here, or at <code>/settings</code>.</span>
+        <span class="grow">
+          <input type="password" id="setupPw" autocomplete="new-password"
+                 placeholder="at least 8 characters" />
+          <button id="setupPwBtn">Set password</button>
+        </span>
+        <span id="setupPwMsg"></span>
       </div>
 
       <div class="after" id="afterRow">

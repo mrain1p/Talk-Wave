@@ -1324,7 +1324,8 @@
      shape coloured by state — coral says fix me — and each row jumps to its
      fix; the empty state says the line is ready rather than vanishing. */
   .dashsplit {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    /* 2:1, the operator's ratio: the levers act, the needs list only reads. */
+    display: grid; grid-template-columns: 2fr 1fr; gap: 14px;
     align-items: start;
   }
   @media (max-width: 940px) { .dashsplit { grid-template-columns: 1fr; } }
@@ -1556,6 +1557,16 @@
     position: absolute; top: 10px; right: 10px;
     width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
   }
+  /* The silhouette that stands in for a photo that is absent or refuses to
+     load — drawn, like every other icon, so a degraded station never shows
+     the browser's broken-image glyph on the dashboard (0.10.77). */
+  .tile .tavatar.sil {
+    display: inline-grid; place-items: center;
+    color: var(--sage-dim); border: 1px solid var(--hairline);
+  }
+  /* The display rule above beats the UA's [hidden] — re-assert it, or the
+     silhouette ghosts behind a loaded photo (the six URL rows bug, again). */
+  .tile .tavatar.sil[hidden] { display: none; }
 
   /* A table is a surface like any other here: contained, header band,
      rows that answer hover — bare rows floating in the section read as

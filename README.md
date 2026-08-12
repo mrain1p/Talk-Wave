@@ -99,10 +99,11 @@ talk-wave/
 ```bash
 cp .env.example .env
 cp livekit.example.yaml livekit.yaml   # generate a fresh secret for it
+mkdir -p data && chown -R 1000:1000 data && chmod -R u+rwX data
 docker compose up -d
 ```
 
-`data/` creates and owns itself on first start — a tiny init service hands it to the app's uid before anything else runs, which is also the thing to check first if settings ever stop saving on an old deployment.
+Both processes run as **uid 1000**, so `data/` has to belong to it — that is what the third line does. Skip it and the app can't read its own files: no setup ask, a locked panel, and the reason named at the login gate and in the logs.
 
 **`HOST_IP`** is the one deployment variable — the docker host's LAN address, driving LiveKit's advertised media address, the browser URL and the webhook callback. Otherwise `.env` only needs the LiveKit keypair; the rest is panel.
 

@@ -7,8 +7,9 @@
 # QUICK START:
 #   1. cp livekit.example.yaml livekit.yaml    (generate a FRESH keypair — the app reads it from here too)
 #   2. cp .env.example .env                    (set HOST_IP — this machine's LAN address)
-#   3. docker compose up -d
-#   4. open https://<HOST_IP>:8443 — set the admin password, add an API key, press Call
+#   3. mkdir data && chown -R 1000:1000 ./data && chmod -R u+rwX ./data    (the services run as uid 1000)
+#   4. docker compose up -d
+#   5. open https://<HOST_IP>:8443 — set the admin password, add an API key, press Call
 #      (HTTPS is required for the microphone; first visit shows a one-time certificate screen)
 #
 # FILE STRUCTURE — what YOU create (everything else the app writes into data/ as it runs):
@@ -17,7 +18,9 @@
 #   ├── .env                  ← cp .env.example .env, set HOST_IP
 #   ├── livekit.yaml          ← cp livekit.example.yaml livekit.yaml, fresh keypair
 #   ├── Caddyfile             ← from the repo, as-is (skip if using your own proxy)
-#   └── data/                 ← created and owned FOR you on first start — it IS the backup
+#   └── data/                 ← empty, owned by uid 1000 (step 3 — skip it and the app can't read
+#                               its own files: no setup ask, a locked panel, the reason at the
+#                               login gate and in docker logs). This folder IS the backup.
 #
 # NOTES:
 #   - Using your own reverse proxy? Delete the caddy service and replicate BOTH Caddyfile
@@ -28,19 +31,6 @@
 #     working through your router.
 
 services:
-  # Runs ONCE as root before the app starts: hands data/ to the app's uid and
-  # exits. This is why there is no chown step in the quick start — and if your
-  # data/ is already owned right, this whole service (and the two depends_on
-  # blocks below) can simply be deleted.
-  talkwave-init:
-    image: ghcr.io/mrain1p/talk-wave:latest
-    container_name: talkwave-init
-    user: "0:0"
-    command: ["sh", "-c", "chown -R 1000:1000 /data && chmod -R u+rwX /data"]
-    restart: "no"
-    volumes:
-      - ./data:/data
-
   livekit-server:
     image: livekit/livekit-server:v1.13.5                                  # keep version pinned
     container_name: livekit-server
@@ -70,9 +60,6 @@ services:
       - ./data:/data                                                      # keep IDENTICAL to the web half's mount below
       - ./livekit.yaml:/etc/livekit.yaml:ro                               # the keypair is read from here when .env doesn't set one
       - talkwave-cache:/home/app/.cache                                   # keep — holds the ~141MB STT model so recreates don't re-download it
-    depends_on:
-      talkwave-init:
-        condition: service_completed_successfully                         # data/ is owned right before this starts
 
   talkwave-web:
     image: ghcr.io/mrain1p/talk-wave:latest
@@ -93,9 +80,6 @@ services:
       - ./livekit.yaml:/etc/livekit.yaml:ro                               # the keypair is read from here when .env doesn't set one
     ports:
       - "8100:8100"                                                       # widget + API, plain http — keep it behind the TLS door or your proxy
-    depends_on:
-      talkwave-init:
-        condition: service_completed_successfully                         # data/ is owned right before this starts
 
   # CADDY IS OPTIONAL — delete this whole service if your own reverse proxy terminates TLS (see NOTES)
   caddy:

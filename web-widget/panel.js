@@ -248,7 +248,7 @@
     }
     if ($('mastSub')) {
       $('mastSub').textContent =
-        (PAGE_TITLES[page] || page).toUpperCase() + ' · ' + location.host;
+        location.host + ' · ' + (PAGE_TITLES[page] || page).toUpperCase();
     }
     sizeStickyBar();
   }
@@ -669,9 +669,17 @@
 
     const l = live || {};
     const face = $('tileOnAirImg');
+    const sil = $('tileOnAirSil');
     if (face) {
-      face.hidden = !l.avatar;
-      if (l.avatar && face.getAttribute('src') !== l.avatar) {
+      // A degraded station can hand back an avatar URL that 404s, and a
+      // broken-image glyph on the dashboard read as a fault (operator's
+      // screenshot, 0.10.77). The drawn silhouette is the default; the
+      // photo earns its place only by actually loading.
+      face.onerror = () => { face.hidden = true; if (sil) sil.hidden = false; };
+      const want = !!l.avatar;
+      face.hidden = !want;
+      if (sil) sil.hidden = want;
+      if (want && face.getAttribute('src') !== l.avatar) {
         face.src = l.avatar;
       }
     }
@@ -1347,34 +1355,9 @@
     $('embedCaptions').onchange = paintEmbedSnippet;
   }
 
-  // First-run guidance: a fresh install opens on a panel with no keys and no
-  // "start here". When the chosen LLM provider has no key, say what to do
-  // first — once a key exists this disappears on its own.
-  function paintFirstRun() {
-    let banner = $('firstRun');
-    const provider = resolved.llm_provider || 'openai';
-    const keyField = PROVIDER_KEY[provider];
-    const needsKey = keyField && !(secrets[keyField] && secrets[keyField].set);
-    if (!needsKey) { if (banner) banner.remove(); return; }
-    if (!banner) {
-      banner = document.createElement('div');
-      banner.id = 'firstRun';
-      banner.className = 'banner';
-      const sub = document.querySelector('#panel .sub');
-      (sub || $('panel').firstElementChild).insertAdjacentElement('afterend', banner);
-    }
-    banner.innerHTML = '';
-    banner.append('Start here: 1) add your ' + provider + ' API key under ');
-    const jump = document.createElement('a');
-    jump.textContent = 'Brains';
-    jump.href = '#';
-    jump.onclick = (e) => {
-      e.preventDefault();
-      showSection(document.querySelector('details.sec[data-group="brains"]'));
-    };
-    banner.append(jump,
-      ' · 2) run the full pipeline check at the bottom · 3) press Call.');
-  }
+  // The "Start here" banner and the first-run password card both retired at
+  // 0.10.77 (operator's call): the dashboard's NEEDS ATTENTION column says
+  // the same things, in one place, with a jump on every row.
 
   function paint() {
     fill('tts_mode', options.ttsModes);
@@ -1424,7 +1407,6 @@
     paintAsks();
     paintTools();
     paintTags();
-    paintFirstRun();
     paintSecurity();
     markClean();
 
@@ -1494,9 +1476,6 @@
     // be ticked at all — that has to follow immediately, not on a reload.
     paintPermissions();
 
-    // First run: the setup card in the markup, shown until a password exists.
-    $('pwNudge').hidden = authConfigured;
-    if (!authConfigured) $('firstPw').focus();
     paintNeeds();
   }
 
@@ -1559,21 +1538,6 @@
   };
   $('clearGuestBtn').onclick = () => setGuest('');
 
-  // The first-run card and the Access section set the same password, so they
-  // run the same handler — the card fills the section's fields and presses its
-  // button rather than posting for itself. Two implementations of "set the
-  // admin password" is two places for the rules to drift.
-  function setFirstPassword() {
-    $('sec_new_pw').value = $('firstPw').value;
-    $('sec_current_pw').value = '';
-    $('firstPwMsg').textContent = 'Saving…';
-    $('setPwBtn').click();
-  }
-  $('firstPwBtn').onclick = setFirstPassword;
-  $('firstPw').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') setFirstPassword();
-  });
-
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');
     // Two steps, one button: the new-password box only exists once asked
@@ -1589,7 +1553,6 @@
     const newPw = $('sec_new_pw').value;
     if (newPw.length < 8) {
       showResult(out, false, 'Use at least 8 characters.');
-      if ($('firstPwMsg')) $('firstPwMsg').textContent = 'Use at least 8 characters.';
       return;
     }
     const btn = $('setPwBtn'); btn.disabled = true;
@@ -1601,10 +1564,6 @@
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
         showResult(out, false, d.error || 'failed');
-        // The first-run card is a second way into this handler, and it is at
-        // the top of the page where `out` is not. Without this, a refused
-        // password there just sat there doing nothing visible.
-        if ($('firstPwMsg')) $('firstPwMsg').textContent = d.error || 'failed';
         return;
       }
       localStorage.setItem('callinAdminKey', newPw);
@@ -1760,7 +1719,7 @@
         return;
       }
       secrets = d.secrets;
-      paintSecrets(); paintTags(); paintFirstRun();
+      paintSecrets(); paintTags();
       const n = Object.keys(set).length, c = (clear || []).length;
       say(true,
         (n ? n + ' key' + (n > 1 ? 's' : '') + ' saved. ' : '') +

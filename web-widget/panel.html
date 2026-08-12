@@ -94,26 +94,9 @@
       </div>
     </header>
 
-    <!-- First run. Shown until an admin password exists, and it ASKS rather
-         than pointing: this used to be one sentence saying to go and set a
-         password in a section further down, which is a thing to do later and
-         reads like one — while everything on this page, including the keys,
-         is open to whoever can reach it. The box is here, and it is the first
-         thing on the page. Setting it runs the same handler the Access
-         section does, so there is one implementation. -->
-    <div class="banner setup" id="pwNudge" hidden>
-      <strong>Set an admin password to finish setting up.</strong>
-      <p>This page has no password yet, so anyone who can reach it can change
-        every setting and spend your API keys. It is also the password that
-        opens the phone for you.</p>
-      <span class="loginrow">
-        <input type="password" id="firstPw" autocomplete="new-password"
-               placeholder="at least 8 characters" />
-        <button id="firstPwBtn">Set password</button>
-      </span>
-      <span id="firstPwMsg"></span>
-    </div>
-
+    <!-- The first-run password card retired at 0.10.77 (operator's call):
+         the dashboard's NEEDS ATTENTION column carries the ask now, with a
+         jump to the Access section that holds the one implementation. -->
     <div class="banner" id="loginGate" hidden>
       <strong>Panel locked.</strong>
       <span class="loginrow">
@@ -179,6 +162,7 @@
       <div class="stationstrip">
         <button type="button" class="tile" id="tileOnAir" data-jump="call">
           <img class="tavatar" id="tileOnAirImg" alt="" hidden />
+          <span class="tavatar sil" id="tileOnAirSil" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.2" r="3.4"/><path d="M4.8 20.2a7.2 7.2 0 0 1 14.4 0"/></svg></span>
           <span class="tk">On air</span><span class="tv">—</span><span class="tn"></span>
         </button>
         <button type="button" class="tile" id="tileStation" data-jump="station">
