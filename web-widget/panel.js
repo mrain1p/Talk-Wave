@@ -798,6 +798,16 @@
     if (!list) return;
     const items = computeNeeds();
     list.innerHTML = '';
+    // Empty is a state, not an absence (operator, 0.10.92): the box keeps its
+    // column and says so in the middle of it, instead of shrinking to a bare
+    // header beside the tall transmission cluster.
+    list.classList.toggle('empty', !items.length);
+    if (!items.length) {
+      const d = document.createElement('div');
+      d.className = 'needempty';
+      d.textContent = 'Nothing needs attention — the line is ready.';
+      list.appendChild(d);
+    }
     items.forEach((it) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -814,10 +824,12 @@
       list.appendChild(b);
     });
     if ($('needsSay')) {
+      // The empty message lives in the body now — saying it in the caption
+      // too would read the same sentence twice in one box.
       $('needsSay').textContent = items.length
         ? items.length + ' thing' + (items.length === 1 ? '' : 's')
           + ' before the line is ready'
-        : 'nothing — the line is ready';
+        : '';
     }
     const pages = new Set(items.map((it) => it.page));
     document.querySelectorAll('#panelNav a[data-page]').forEach((a) => {

@@ -124,6 +124,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestACallerWhoWasNeverHeardIsToldSo,
     TestALineThatFailsToGenerateIsStillSpoken,
     TestBackgroundWorkIsNotGarbageCollected,
+    TestCallReceiptCardsFollowTheLine,
     TestCallRecordTimestamps,
     TestCallStructure,
     TestTheBarReleaseEndsTheTurn,

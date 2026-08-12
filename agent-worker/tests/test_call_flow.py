@@ -1186,3 +1186,88 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
         # post-connect close is not a caller finishing a sentence.
         guard = js.split("talkwave.turn-end")[0][-700:]
         self.assertIn("wasOpen && !pttOpen && room && !vmCall", guard)
+
+
+class TestCallReceiptCardsFollowTheLine(unittest.TestCase):
+    """The action_cards setting reached the phone in 0.10.92 (it was
+    chat-only before): "after" holds a tool's receipt card until the DJ's
+    line commits, "before" publishes the moment the tool lands, "off"
+    publishes nothing — and whatever the mode, the count and the taken list
+    are untouched, so the record and the per-call ceiling never move with
+    the furniture."""
+
+    def _actions(self, mode):
+        from call.actions import CallActions
+
+        published = []
+
+        async def _publish(payload, **kw):
+            published.append(payload)
+
+        room = types.SimpleNamespace(local_participant=types.SimpleNamespace(
+            publish_data=_publish))
+        return CallActions(5, room=room, mode=mode), published
+
+    def test_after_holds_until_the_line_commits(self):
+        async def _run():
+            actions, published = self._actions("after")
+            actions.note("request", "Donovan's Pub")
+            await asyncio.sleep(0)
+            self.assertEqual([], published,
+                             "'after' must not publish before the DJ's line")
+            actions.flush_cards()
+            await asyncio.sleep(0)
+            self.assertEqual(1, len(published))
+            self.assertEqual(1, actions.count)
+            # A second flush must not repeat the card.
+            actions.flush_cards()
+            await asyncio.sleep(0)
+            self.assertEqual(1, len(published))
+        asyncio.run(_run())
+
+    def test_before_publishes_as_it_happens(self):
+        async def _run():
+            actions, published = self._actions("before")
+            actions.note("request", "Donovan's Pub")
+            await asyncio.sleep(0)
+            self.assertEqual(1, len(published))
+        asyncio.run(_run())
+
+    def test_off_withholds_the_card_but_not_the_ledger(self):
+        async def _run():
+            actions, published = self._actions("off")
+            actions.note("request", "Donovan's Pub")
+            actions.flush_cards()
+            await asyncio.sleep(0)
+            self.assertEqual([], published)
+            self.assertEqual(1, actions.count,
+                             "off hides the furniture, never the ledger")
+            self.assertEqual([("request", "Donovan's Pub")], actions.taken)
+        asyncio.run(_run())
+
+    def test_the_call_wires_the_setting_and_the_flush(self):
+        # The mode default in CallActions is "before", so a missed wire would
+        # silently keep the phone on the old order — pin both ends: the
+        # session passes the setting in, and the lifecycle releases held
+        # cards when a DJ line commits.
+        import inspect
+
+        from call import lifecycle
+        import call.session as call_session
+
+        src = inspect.getsource(call_session.CallSession.__init__)
+        self.assertIn('cfg.get("action_cards")', src)
+        wired = {}
+
+        class _Session:
+            def on(self, name, fn):
+                wired[name] = fn
+
+        flushed = []
+        actions = types.SimpleNamespace(flush_cards=lambda: flushed.append(1))
+        lifecycle.attach_card_flush(_Session(), actions)
+        fire = wired["conversation_item_added"]
+        fire(types.SimpleNamespace(item=types.SimpleNamespace(role="user")))
+        self.assertEqual([], flushed, "a caller's line releases nothing")
+        fire(types.SimpleNamespace(item=types.SimpleNamespace(role="assistant")))
+        self.assertEqual([1], flushed)

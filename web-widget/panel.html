@@ -737,6 +737,13 @@
           <label for="style_conversation">Conversation</label>
           <input type="text" id="style_conversation" />
         </div>
+        <!-- Booth-wide since 0.10.92: one answer for calls, texts and the
+             machine — it lived under Texts and the operator went looking for
+             it under calls. -->
+        <div class="row">
+          <label for="action_cards">Action receipts</label>
+          <select id="action_cards"></select>
+        </div>
 
         <div class="testrow" style="margin-top:12px">
           <button id="viewPromptBtn">View the assembled prompt</button>
@@ -1146,10 +1153,6 @@
         <div class="row">
           <label for="chat_greeting_mode">Open with a greeting</label>
           <select id="chat_greeting_mode"></select>
-        </div>
-        <div class="row">
-          <label for="chat_action_cards">Action receipts</label>
-          <select id="chat_action_cards"></select>
         </div>
         <div class="row">
           <label for="chat_greeting">Canned greeting</label>
