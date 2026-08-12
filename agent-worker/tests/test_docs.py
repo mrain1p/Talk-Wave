@@ -95,12 +95,15 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
 
     def test_the_shipped_compose_uses_the_data_directory_both_services_share(self):
         # They are one image in two containers and must see the same data/,
-        # or a settings change never reaches the worker.
+        # or a settings change never reaches the worker. Three mounts since
+        # 0.10.75: the two app services plus the init service that hands the
+        # directory to their uid before either starts.
         compose = (REPO / "docker-compose.yaml").read_text(
             encoding="utf-8")
         self.assertEqual(
-            compose.count("./data:/data"), 2,
-            "both python services must mount the same data directory")
+            compose.count("./data:/data"), 3,
+            "the worker, the web half and the init service must all mount "
+            "the same data directory")
 
     def test_the_compose_keeps_its_load_bearing_lines(self):
         # 0.10.71 rewrote the example compose for readability, and the
@@ -126,6 +129,11 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
             "stop_grace_period", compose,
             "without a stop grace the default 10s SIGKILL lands mid-call on "
             "every redeploy")
+        # The init service is why the quick start has no chown step: it hands
+        # data/ to uid 1000 before the app starts. A fresh box without it is
+        # a silent lockout (root-owned data/ reads as "password configured").
+        self.assertIn("talkwave-init:", compose)
+        self.assertIn("service_completed_successfully", compose)
         if "service_healthy" in compose:
             self.assertIn(
                 "healthcheck:", compose,

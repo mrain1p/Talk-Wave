@@ -30,10 +30,9 @@ wget https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/docker-compose.yam
 wget https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/Caddyfile
 wget -O .env https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/.env.example
 wget -O livekit.yaml https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/livekit.example.yaml
-mkdir data && chown -R 1000:1000 ./data && chmod -R u+rwX ./data
 ```
 
-The `chown` matters: the services run as uid 1000, and if Docker creates `data/` for you it belongs to root and nothing can be saved — the containers will say so loudly at startup, but it is nicer to never see that.
+(`data/` makes itself: a tiny init service creates and owns it on first start, so there is no chown step to forget.)
 
 Then two edits:
 
