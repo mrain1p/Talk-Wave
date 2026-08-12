@@ -91,9 +91,12 @@ def _matches(track: dict, query: str) -> bool:
     return all(w in hay for w in query.lower().split())
 
 
-async def fake_search(self, q):
+async def fake_search(self, q, offset=0, limit=30):
+    # Same signature as the real method: the wrapper passes offset/limit, and
+    # a fake that rejects them reads as the search tool being broken — the
+    # first coverage sweep lost queue_track's scenario to exactly that.
     STATION_CALLS.append(("search_library", {"q": q}))
-    return [t for t in LIBRARY if _matches(t, q)]
+    return [t for t in LIBRARY if _matches(t, q)][offset:offset + limit]
 
 
 async def fake_submit(self, text, requester=""):
