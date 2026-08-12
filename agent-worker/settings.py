@@ -43,15 +43,25 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Blank = derived as {station_base_url}/mcp.
     "station_mcp_url":  ("SUBWAVE_MCP_URL", ""),
 
-    "llm_provider":     ("LLM_PROVIDER", "openai"),
-    "llm_model":        ("LLM_MODEL", "gpt-4.1-mini"),
+    # Blank on purpose (0.10.80, the fresh-install defaults review): shipping
+    # "openai" pre-picked read as a recommendation and hid the decision. A
+    # fresh install now has no brain until the operator chooses one, and the
+    # dashboard's needs column says exactly that. Existing deployments keep
+    # working: docker installs carry LLM_PROVIDER in .env, and anyone who
+    # ever touched the panel has it stored.
+    "llm_provider":     ("LLM_PROVIDER", ""),
+    "llm_model":        ("LLM_MODEL", ""),
     "llm_base_url":     ("LLM_BASE_URL", ""),
     "llm_temperature":  (None, 0.8),
 
-    "stt_provider":     ("STT_PROVIDER", "deepgram"),
+    # The bundled Whisper (0.10.80): no key, no network, works out of the box
+    # — which is what a default should do. Deepgram and the other cloud ears
+    # are the upgrade for accuracy, not the entry fee. Docker installs that
+    # set STT_PROVIDER in .env keep what they chose.
+    "stt_provider":     ("STT_PROVIDER", "local"),
     # DEEPGRAM_MODEL is the historical name from when Deepgram was the only
     # provider; STT_MODEL is what it means now that four providers share it.
-    "stt_model":        (("STT_MODEL", "DEEPGRAM_MODEL"), "nova-3"),
+    "stt_model":        (("STT_MODEL", "DEEPGRAM_MODEL"), "base.en"),
 
     "tts_mode":         ("TTS_MODE", "cloud"),
     "tts_adapter":      ("TTS_ADAPTER_CONFIG", ""),
@@ -88,50 +98,54 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # real options first. Costs one extra turn; makes the call a conversation
     # rather than a form.
     "shape_vague_requests": (None, False),
-    # OFF by default from 0.9.89. Unlike a request, this lands on everyone
-    # listening rather than on the caller who asked: a stranger hands the DJ a
-    # line and the station reads it, in persona, to the whole audience. The
-    # allowlist keeps the destructive tools off a call line and the conduct
-    # prompt pushes back — but that is a model declining, not a gate refusing,
-    # and a patient caller gets words onto the air. Defaulting it on meant
-    # every deployment shipped that way without choosing it.
-    "allow_announcements": (None, "off"),
+    # The tier ladder got real defaults at 0.10.80 (the operator's
+    # fresh-install review): ANYONE gets what stays on the call, GUESTS get
+    # everything short of the station-wide switches, ADMIN alone holds what
+    # reaches every listener at a stranger's say-so. Existing deployments
+    # keep the old all-off grants — _migrate stamps them — so an upgrade
+    # hands nothing out.
+    #
+    # Announcements land on air, but at guest tier only for callers the
+    # operator has handed a code to — that handing-out is the consent step
+    # the old off-default (0.9.89) existed to force.
+    "allow_announcements": (None, "guest"),
     "allow_library_search": (None, "open"),
     # Let a caller who has picked a track out of the search results have THAT
     # recording queued, rather than the words being resolved a second time.
-    # Off by default: it bypasses the station's own request rate limit, so it
-    # leans entirely on `max_actions_per_call` to keep one caller in check.
-    "allow_exact_queue":  (None, "off"),
+    # Guest tier: it bypasses the station's own request rate limit, so a
+    # stranger still goes through the resolver and it leans on
+    # `max_actions_per_call` to keep one code-holder in check.
+    "allow_exact_queue":  (None, "guest"),
     # The lowest-harm action there is: a like on the current record, exactly
     # what any listener taps in the app — no credentials, no audio changed.
-    # Off by default only for consistency; the station's own Likes toggle and
-    # per-IP rate limit are the real gates.
-    "allow_favorite":     (None, "off"),
+    # Open: the station's own Likes toggle and per-IP rate limit are the
+    # real gates, and this is exactly what any listener taps in the app.
+    "allow_favorite":     (None, "open"),
     # The operator's own un-heart of the current track (admin likes system, not
     # the public like above, which has no un-like). Only coherent for a caller
-    # signed in AS the operator, so it wants the admin tier and needs station
-    # credentials to work at all.
-    "allow_unfavorite":   (None, "off"),
-    # Off by default: this puts audio on air on the caller's say-so. Skills
-    # are the station's own segments (weather, news, dedications, story
-    # time…). Safe-ish, but a stranger triggers them. (Sound effects were
-    # considered and deliberately not offered — stingers on a caller's
-    # say-so add nothing to a call.)
-    "allow_skills":       (None, "off"),
+    # signed in AS the operator, so it defaults to the admin tier and needs
+    # station credentials to work at all.
+    "allow_unfavorite":   (None, "admin"),
+    # Guest tier: this puts audio on air on the caller's say-so. Skills are
+    # the station's own segments (weather, news, dedications, story time…) —
+    # safe-ish, so a code-holder may trigger them while a stranger may not.
+    # (Sound effects were considered and deliberately not offered — stingers
+    # on a caller's say-so add nothing to a call.)
+    "allow_skills":       (None, "guest"),
     # With skills on, the DJ may also OFFER one when the moment fits ("want
     # me to spin you a story?") instead of waiting to be asked.
     "offer_skills":       (None, False),
 
-    # Station-wide, and off by default. Unlike a request, these two land on
-    # everyone listening rather than on the caller who asked. Both are served
-    # by local wrappers so "Actions per call" caps them — over MCP they would
-    # have no ceiling at all.
-    "allow_skip_track":   (None, "off"),
-    "allow_dj_segment":   (None, "off"),
+    # Station-wide, so admin tier: these land on everyone listening rather
+    # than on the caller who asked — the operator's own phone, nobody
+    # else's. Both are served by local wrappers so "Actions per call" caps
+    # them — over MCP they would have no ceiling at all.
+    "allow_skip_track":   (None, "admin"),
+    "allow_dj_segment":   (None, "admin"),
     # Further-reaching than either, and the only caller action whose effect
-    # outlives the call: it puts a different show — a different DJ — on air for
-    # an hour by default. Off by default for the obvious reason.
-    "allow_takeover":     (None, "off"),
+    # outlives the call: it puts a different show — a different DJ — on air
+    # for an hour by default. Admin, for the obvious reason.
+    "allow_takeover":     (None, "admin"),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -170,7 +184,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # operator who does not want that must be able to have it, and be able to
     # say how long anything kept sticks around.
     "record_calls":     (None, True),
-    "record_keep":      (None, 40),
+    "record_keep":      (None, 100),
 
     # --- voicemail --------------------------------------------------------
     # A second, much smaller kind of call: greeting, beep, one caller
@@ -196,9 +210,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # shape of gate.
     "chat_enabled":          (None, False),
     "allow_chat":            (None, "open"),
-    "chat_idle_minutes":     (None, 30),
+    "chat_idle_minutes":     (None, 5),
     "chat_max_messages":     (None, 60),
-    "chat_max_hours":        (None, 12),
+    # Minutes since 0.10.80 (was chat_max_hours — _migrate converts): a chat
+    # is a phone-call-shaped visit, not a day-long session, and hour-shaped
+    # answers kept dead chats alive holding their transcript in memory.
+    "chat_max_minutes":      (None, 10),
     "max_open_chats":        (None, 20),
     "chats_per_hour":        (None, 0),
     "chats_per_day":         (None, 0),
@@ -211,7 +228,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # for the caller. The response ceiling in seconds is the hang-guard: a model
     # that never answers should not leave the caller watching a typing dot
     # forever.
-    "chat_greeting_mode":    (None, "canned"),
+    "chat_greeting_mode":    (None, "fresh"),
     # Where a tool run's receipt card lands in the chat. "after" is the
     # default and a deliberate behaviour change at 0.10.65 (the operator's
     # ask): the cards used to lead the reply, and a receipt before the DJ has
@@ -224,9 +241,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # by default; 0 or the switch off disables it. Never fires while the DJ is
     # the one still owing a reply.
     "chat_reprompt":         (None, True),
-    "chat_reprompt_secs":    (None, 15),
+    "chat_reprompt_secs":    (None, 20),
     "voicemail_greeting":    (None, ""),
-    "voicemail_greeting_mode": (None, "staged"),
+    # Fresh by default (0.10.80): a line written in persona at pickup, with
+    # the staged clip as the instant fallback — the machine still answers
+    # promptly on a slow backend, it just answers alive when it can.
+    "voicemail_greeting_mode": (None, "fresh"),
     "voicemail_max_seconds": (None, 30),
     "voicemail_destination": (None, "hold"),
     "max_call_seconds": (None, 600),
@@ -248,9 +268,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Every call costs real money (LLM + cloud TTS/STT) and airtime. Without a
     # limit, one open tab can mint tokens in a loop. These are deliberately
     # generous — the aim is to stop runaway use, not to ration callers.
-    "calls_per_hour":       (None, 30),   # across everyone; 0 = unlimited
+    "calls_per_hour":       (None, 20),   # across everyone; 0 = unlimited
     "calls_per_day":        (None, 100),  # the hard wallet ceiling
-    "caller_cooldown_secs": (None, 45),   # per caller, between calls
+    "caller_cooldown_secs": (None, 20),   # per caller, between calls
     "max_concurrent_calls": (None, 2),    # simultaneous live calls
     # Whether the ring stops (soft fade) the moment the DJ answers. On is
     # how a phone behaves; off lets a long ring or jingle finish under the
@@ -309,23 +329,25 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Who may reach the PHONE. The panel is always admin-only and is not
     # affected by this.
     #
-    #   auto   open until a guest code is set, then required — what this has
-    #          always done, kept as the default so upgrading changes nothing
+    #   auto   open until a guest code is set, then required — the historical
+    #          behaviour, still honoured for stores that carry it
     #   open   anyone who can load the page can call, code or no code
     #   guest  the guest code (or the admin password) is required
     #   admin  the admin password only — the phone is closed to callers
     #
-    # `auto` exists rather than being tidied away because the alternative was
-    # a default that silently stopped every existing deployment from taking
-    # calls. The explicit modes are the ones that refuse when their password
-    # is missing; auto is the one that reads the password to decide.
+    # Default `admin` since 0.10.80 (the operator's fresh-install review): a
+    # new line starts closed and is OPENED as a decision, matching the
+    # first-run lockdown one step further out. The 0.9.61 lesson still
+    # holds — a default change must not close a line that was taking calls —
+    # which is why _migrate stamps `auto` into any store that predates this:
+    # existing deployments keep exactly the door they had.
     # A guest code typed on a shared machine outlives the person who typed
     # it. 0 keeps it until Sign out; anything else forgets it after that
     # many minutes, and the card offers a lock button to forget it now.
     # Hours, not minutes: "how long should a handed-out code last" is a
     # question with day-shaped answers. 0 = until Sign out.
     "guest_session_hours": (None, 24),
-    "front_access":     (None, "auto"),
+    "front_access":     (None, "admin"),
 
     # --- the widget itself, as a caller sees it --------------------------
     # A caller staring at one button has no idea a phone-in can do anything
@@ -373,7 +395,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_voicemail_button": (None, False),
     "show_chat_button":       (None, True),
     "embed_chat_button":      (None, False),
-    "show_signin":            (None, False),
+    # On for the page since 0.10.80: with the line defaulting to admin-only,
+    # the sign-in chip is how the operator's own browser gets through — a
+    # fresh install without it showed a door with no keyhole. Embeds stay
+    # bare; a host page's visitors are strangers.
+    "show_signin":            (None, True),
     "embed_signin":           (None, False),
     # An embed sits flush in whatever area its host gives it — no border, no
     # sheet of its own — unless the operator ticks the outline back on. The
@@ -392,12 +418,15 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # existing card looks exactly as it did; the operator opts an icon in.
     # The widget shows the word if a feature ends up with neither ticked, so
     # a door is never blank.
+    # The 0.10.80 default reading: Call keeps its word (it is the card's one
+    # promise), the two secondary doors sit beside it as drawn icons — three
+    # worded buttons in a row read as a form, not a phone.
     "call_show_words":        (None, True),
     "call_show_emoji":        (None, False),
-    "vm_show_words":          (None, True),
-    "vm_show_emoji":          (None, False),
-    "chat_show_words":        (None, True),
-    "chat_show_emoji":        (None, False),
+    "vm_show_words":          (None, False),
+    "vm_show_emoji":          (None, True),
+    "chat_show_words":        (None, False),
+    "chat_show_emoji":        (None, True),
     # A colour on the DJ's voice, applied in the caller's browser only — the
     # broadcast never hears it. One answer for both surfaces: the effect is
     # part of the DJ's character, and a DJ who is CB on the page and clean in
@@ -453,21 +482,24 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
 
     # After the line drops, ask the caller whether that went well. Two
     # buttons, stored against the call's own record, so a bad call can be
-    # found and read rather than remembered. Off by default: it is a prompt
-    # every caller sees, and an operator who is not going to read the answers
-    # should not be collecting them.
-    "ask_call_feedback": (None, False),
+    # found and read rather than remembered. On by default since 0.10.80
+    # (the operator's fresh-install review): the answers feed the dashboard's
+    # ratings filter and the calls viewer, and a deployment that never
+    # collects them cannot tell a good night from a bad one.
+    "ask_call_feedback": (None, True),
     # Per-door, not one switch: the operator asked to decide separately for
     # the text line and the machine — a thumbs prompt that reads fine after a
     # live call can read as fishing after a voicemail, and that is their call
     # to make, not ours.
-    "ask_chat_feedback": (None, False),
-    "ask_vm_feedback": (None, False),
+    "ask_chat_feedback": (None, True),
+    "ask_vm_feedback": (None, True),
 
     # After the call, hand a short line back to the on-air DJ so the station
     # reflects that the call happened ("just had someone on about ..."). Kept
-    # deliberately brief — a passing mention, not a recap.
-    "callback_enabled":      (None, True),
+    # deliberately brief — a passing mention, not a recap. Off by default
+    # (0.10.80): it writes to the broadcast and needs station credentials, so
+    # it should be chosen, not inherited.
+    "callback_enabled":      (None, False),
     "callback_max_words":    (None, 30),
     "callback_instructions": (None, ""),
     "callback_min_turns":    (None, 2),
@@ -766,18 +798,22 @@ GROUPS = [
 
 SCHEMA: dict[str, dict] = {
     # --- station ---
-    "station_base_url": dict(group="station", kind="text", label="Station API",
+    "station_base_url": dict(group="station", kind="text", label="SUB/WAVE station API",
         help="Personas, cards, voices and tools are all discovered from here. "
              "Point it at a different SUB/WAVE to re-home the whole sidecar."),
-    "station_mcp_url": dict(group="station", kind="text", label="MCP endpoint",
-        placeholder="derived: {Station API}/mcp",
-        help="Where the agent's tools come from. Only set this if the station "
-             "publishes MCP somewhere other than under its API."),
+    # station_mcp_url deliberately has no schema entry (0.10.80, operator's
+    # call): it is always derived as {station API}/mcp in practice, and a
+    # panel row for a value nobody sets is one more box to mistrust — a real
+    # deployment once had a browser autofill a NAME into it and every call
+    # lost its tools. SUBWAVE_MCP_URL in the environment remains the escape
+    # hatch for a station that publishes MCP somewhere unusual.
 
     # --- brains ---
     "llm_provider": dict(group="brains", kind="select", label="Provider",
-        help="Only providers you have a key for are listed — add one below and "
-             "it appears here. Ollama runs on your own network and needs none."),
+        help="Nothing is picked until you pick it — the DJ has no model to "
+             "think with until then, and the dashboard says so. Only providers "
+             "you have a key for are listed — add one below and it appears "
+             "here. Ollama runs on your own network and needs none."),
     "llm_model": dict(group="brains", kind="select", label="Model",
         help="Read live from the provider. Over ~1.5s to first token sounds "
              "laggy on a call."),
@@ -797,17 +833,24 @@ SCHEMA: dict[str, dict] = {
 
     # --- ears ---
     "stt_provider": dict(group="ears", kind="select", label="Provider",
-        help="'local' is in this container already — no key, no network — so "
-             "calls work out of the box. A cloud provider buys word-by-word "
-             "captions and better accuracy on names, and needs a key."),
+        help="The built-in Whisper is the default: in this container already, "
+             "no key, no network. The cloud ears (Deepgram, OpenAI, Google) "
+             "are strictly optional — a key buys word-by-word captions and "
+             "better accuracy on names, most noticeable from a phone in a "
+             "noisy place."),
     "stt_model": dict(group="ears", kind="select", label="Model",
-        help="For local: base.en is the default, tiny.en is faster, small.en "
-             "is better on names."),
+        help="For the built-in Whisper: base.en is the default and right for "
+             "phone-quality audio; tiny.en is faster on weak CPUs, small.en "
+             "and medium.en hear names better but cost real CPU time per "
+             "turn — test a call before trusting medium.en on a NAS."),
 
     # --- voice ---
     "tts_mode": dict(group="voice", kind="select", label="Backend",
-        help="'local' uses your VibeVoice persona voices but may be slower than "
-             "realtime; 'cloud' is fast but won't match the on-air timbre."),
+        help="'local' points at your own OpenAI-compatible speech server — "
+             "whatever you run — and can use the station's persona voices, "
+             "but a small GPU may generate slower than realtime (Test voice "
+             "measures it). 'cloud' is fast but won't match the on-air "
+             "timbre."),
     "tts_base_url": dict(group="voice", kind="text", label="Endpoint",
         help="Any OpenAI-compatible speech endpoint. Press Test voice after "
              "changing this or the adapter: a mismatched pair produces audio at "
@@ -945,10 +988,10 @@ SCHEMA: dict[str, dict] = {
         label="Messages per chat",
         help="A ceiling on one conversation, not a rate: hitting it closes "
              "the chat politely. 0 = no ceiling."),
-    "chat_max_hours": dict(group="chat", kind="number",
-        label="Longest chat (hours)",
-        help="However active, a chat this old is closed and written down. "
-             "Resumable is not immortal."),
+    "chat_max_minutes": dict(group="chat", kind="number",
+        label="Longest chat (minutes)",
+        help="However active, a chat this old is closed and written down — "
+             "a visit, not a residency. Resumable is not immortal."),
     "max_open_chats": dict(group="chat", kind="number",
         label="Open chats at once",
         help="Across all callers. Each open chat is a transcript in memory "
@@ -1882,6 +1925,7 @@ def _check_data_dir() -> None:
     # POSIX-only, was skipped on the author's machine, and reached CI broken —
     # the third time in one afternoon that a skip hid a defect.
     data_dir = SETTINGS_PATH.parent
+    _lay_data_skeleton(data_dir)
     if not hasattr(os, "getuid"):
         return                      # Windows: mode bits carry no meaning here
     if not data_dir.exists():
@@ -1913,6 +1957,27 @@ def _check_data_dir() -> None:
         )
 
 
+def _lay_data_skeleton(data_dir) -> None:
+    """One boot makes `ls data/` show the real shape.
+
+    Only the DIRECTORIES — calls, sounds, voicemail — so the operator sees the
+    structure on day one instead of folders appearing weeks apart as features
+    first fire. The JSON stores stay lazy on purpose: their absence IS a state
+    the app reads (no admin-auth.json means "no password yet" and drives the
+    first-run banner; deleting it stays the documented reset), so each file
+    appears the moment it first has something true to say. Failure is
+    tolerable here — if the mount is unwritable, the ownership check below is
+    the loud diagnosis, not this.
+    """
+    if not data_dir.exists():
+        return                      # nothing mounted; nothing to lay out
+    for name in ("calls", "sounds", "voicemail"):
+        try:
+            (data_dir / name).mkdir(exist_ok=True)
+        except Exception:                                     # noqa: BLE001
+            return
+
+
 # Settings that were replaced rather than removed, and how to read an old file
 # as though it had always been written the new way.
 #
@@ -1920,6 +1985,14 @@ def _check_data_dir() -> None:
 # renamed field with no migration would silently revert whatever the operator
 # had chosen back to the built-in default, which is the same class of failure
 # as a setting that does nothing — you find out from a caller.
+# The settings store's generation. Bumped when a DEFAULT changes in a way an
+# existing deployment must be insulated from (see the 0.10.80 block in
+# _migrate); save() marks every store it writes, which is what tells a store
+# that merely never set a field apart from one written before the field's
+# default moved.
+STORE_REV = 2
+
+
 def _migrate(stored: dict) -> dict:
     """Translate retired fields in place. Pure: the file is left alone until
     the next save, so a rollback still reads its own settings."""
@@ -1949,6 +2022,31 @@ def _migrate(stored: dict) -> dict:
         stored["voicemail_enabled"] = stored["voicemail_when"] in ("closed", "always")
         if stored["voicemail_when"] == "never":
             stored["voicemail_when"] = "closed"
+    # 0.10.80: the longest-chat ceiling moved from hours to minutes. A stored
+    # hours value keeps its real duration; a store that never set it falls to
+    # the new default like everything else.
+    if "chat_max_minutes" not in stored and "chat_max_hours" in stored:
+        hours = _coerce(stored.get("chat_max_hours"), 0)
+        if hours:
+            stored["chat_max_minutes"] = int(hours) * 60
+    # 0.10.80: fresh installs default to a closed, admin-only line with
+    # tiered permission grants. An EXISTING deployment must keep exactly the
+    # behaviour it had (the 0.9.61 rule), so the old defaults are stamped in
+    # for every changed field a pre-0.10.80 store does not answer for itself
+    # — a door must not close, and a power must not be handed out, because of
+    # an upgrade. Gated on the store's generation marker, not on the file
+    # existing: a store CREATED after this change also lacks these keys, and
+    # stamping that one would hand a fresh install the old defaults the
+    # moment it saved anything. save() writes the marker on every write, so
+    # only stores that really predate 0.10.80 are ever stamped.
+    if _coerce(stored.get("_rev"), 1) < STORE_REV:
+        if "front_access" not in stored:
+            stored["front_access"] = "auto"
+        for field in ("allow_announcements", "allow_skills", "allow_exact_queue",
+                      "allow_favorite", "allow_unfavorite", "allow_skip_track",
+                      "allow_dj_segment", "allow_takeover"):
+            if field not in stored:
+                stored[field] = TIER_OFF
     return stored
 
 
@@ -2090,6 +2188,10 @@ def save(patch: dict) -> dict:
                 current.pop(key, None)
             else:
                 current[key] = _coerce(value, FIELDS[key][1])
+        # Every write stamps the store's generation, so _migrate can tell a
+        # store that never set a field from one written before that field's
+        # default moved (the 0.10.80 stamps read this).
+        current["_rev"] = STORE_REV
 
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = SETTINGS_PATH.with_suffix(".json.tmp")

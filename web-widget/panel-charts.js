@@ -126,18 +126,31 @@
   };
 
   // ------------------------------------------------------------- renderers
-  const empty = (bodyId, capId) => {
-    $(bodyId).innerHTML = '<p class="actempty">—</p>';
+  // An empty frame says WHY it is empty (operator's ask, 0.10.78): the bare
+  // em-dash read the same for "no data source" and "no traffic yet", and
+  // neither told a fresh install that the blank was normal.
+  const empty = (bodyId, capId, msg) => {
+    $(bodyId).innerHTML = '<p class="actempty">' + (msg || '—') + '</p>';
     $(capId).textContent = '—';
   };
+  const NO_RECORDS = 'no records to read — they appear once the first caller '
+    + 'comes through';
 
   function renderDoors(bs) {
-    if (!calls) return empty('doorsChart', 'doorsCap');
+    if (!calls) return empty('doorsChart', 'doorsCap', NO_RECORDS);
     const rows = calls.filter(matches);
     const per = bs.map((b) => {
       const inB = rows.filter((c) => when(c) >= b.start && when(c) < b.end);
       return { n: inB.length, bad: inB.some(failedC), tick: b.tick };
     });
+    // Zero traffic in the window is an answer, not a fault: a sentence in
+    // the frame instead of a row of invisible zero-height bars.
+    if (!per.some((p) => p.n)) {
+      $('doorsChart').innerHTML = '<p class="actempty">nothing '
+        + periodWord() + ' — the first call draws the first bar</p>';
+      $('doorsCap').textContent = '0 ' + filterWord() + ' ' + periodWord();
+      return;
+    }
     const max = Math.max(1, ...per.map((p) => p.n));
     $('doorsChart').innerHTML =
       '<div class="actbars">' + per.map((p) =>
@@ -153,7 +166,7 @@
   }
 
   function renderMix(bs) {
-    if (!calls) return empty('mixChart', 'mixCap');
+    if (!calls) return empty('mixChart', 'mixCap', NO_RECORDS);
     const inP = calls.filter((c) => when(c) >= bs[0].start).filter(matches);
     const segs = [['call', 'calls', 'CALLS'], ['chat', 'texts', 'TEXTS'],
                   ['voicemail', 'vm', 'VOICEMAIL']];
@@ -165,7 +178,8 @@
     if (!total) {
       // Zero traffic is an ANSWER, not a missing series: say it the way
       // DOORS does, instead of the em-dash that means "no data source".
-      $('mixChart').innerHTML = '<p class="actempty">—</p>';
+      $('mixChart').innerHTML = '<p class="actempty">no doors '
+        + periodWord() + ' — the mix appears with the first caller</p>';
       $('mixCap').textContent = '0 doors ' + periodWord();
       return;
     }
@@ -192,13 +206,18 @@
   }
 
   function renderListeners(bs) {
-    if (!samples || !samples.length) return empty('lisChart', 'lisCap');
+    const NO_SAMPLES = 'no listener samples yet — the worker asks the '
+      + 'station every few minutes and draws the curve from its answers';
+    if (!samples || !samples.length) return empty('lisChart', 'lisCap', NO_SAMPLES);
     const per = bs.map((b) => {
       const inB = samples.filter((s) =>
         s.t * 1000 >= b.start && s.t * 1000 < b.end);
       return inB.length ? Math.max(...inB.map((s) => s.n)) : null;
     });
-    if (per.every((p) => p === null)) return empty('lisChart', 'lisCap');
+    if (per.every((p) => p === null)) {
+      return empty('lisChart', 'lisCap',
+        'no samples in this window — widen the range, or wait for new ones');
+    }
     const peak = Math.max(1, ...per.filter((p) => p !== null));
     const W = 100, H = 40;
     const x = (i) => (per.length === 1 ? W / 2 : (i / (per.length - 1)) * W);
@@ -229,11 +248,12 @@
   }
 
   function renderTtfw(bs) {
-    if (!calls) return empty('ttfwChart', 'ttfwCap');
+    if (!calls) return empty('ttfwChart', 'ttfwCap', NO_RECORDS);
     // Calls only, by definition — a door set with calls unticked leaves this
     // frame honestly empty rather than charting doors that never speak first.
     if (state.doors.indexOf('call') === -1) {
-      return empty('ttfwChart', 'ttfwCap');
+      return empty('ttfwChart', 'ttfwCap',
+        'calls are unticked in the doors filter — only calls have a first word');
     }
     const rows = calls
       .filter((c) => kindOf(c) === 'call' && when(c) >= bs[0].start)
@@ -241,7 +261,11 @@
       .map((c) => ({ t: when(c), secs: ttfwOf(c) }))
       .filter((r) => r.secs !== null)
       .sort((a, b) => a.t - b.t);
-    if (!rows.length) return empty('ttfwChart', 'ttfwCap');
+    if (!rows.length) {
+      return empty('ttfwChart', 'ttfwCap', 'no answered calls '
+        + periodWord() + ' — each call charts how long its caller waited '
+        + 'to hear a voice');
+    }
     const sorted = rows.map((r) => r.secs).sort((a, b) => a - b);
     const mid = sorted.length >> 1;
     const median = sorted.length % 2

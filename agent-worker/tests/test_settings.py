@@ -53,7 +53,11 @@ class TestTheEmbedAllowlistIsASetting(_TempStores):
 class TestSettings(_TempStores):
     def test_defaults_when_nothing_stored(self):
         cfg = settings_store.load()
-        self.assertEqual(cfg["stt_model"], "nova-3")
+        # The 0.10.80 fresh-install defaults: the built-in Whisper, and no
+        # AI provider until the operator picks one.
+        self.assertEqual(cfg["stt_provider"], "local")
+        self.assertEqual(cfg["stt_model"], "base.en")
+        self.assertEqual(cfg["llm_provider"], "")
         self.assertTrue(cfg["allow_requests"])
         self.assertNotIn("allow_sfx", cfg)  # removed feature stays removed
 
@@ -70,10 +74,13 @@ class TestSettings(_TempStores):
         self.assertEqual(settings_store.load()["stt_model"], "base.en")
 
     def test_empty_string_clears_an_override(self):
-        settings_store.save({"llm_provider": "google"})
-        self.assertEqual(settings_store.load()["llm_provider"], "google")
-        settings_store.save({"llm_provider": ""})
-        self.assertEqual(settings_store.load()["llm_provider"], "openai")
+        # A non-blank default, so the fall-through is visible as a VALUE:
+        # llm_provider's default became genuinely blank at 0.10.80 and would
+        # prove clearing and storing-empty indistinguishable.
+        settings_store.save({"stt_provider": "openai"})
+        self.assertEqual(settings_store.load()["stt_provider"], "openai")
+        settings_store.save({"stt_provider": ""})
+        self.assertEqual(settings_store.load()["stt_provider"], "local")
 
     def test_reset_semantics_for_booleans(self):
         # The panel's Reset sends '' for checkboxes too — that must CLEAR the
@@ -91,7 +98,9 @@ class TestSettings(_TempStores):
         settings_store.save({"allow_skills": "open"})
         self.assertEqual(settings_store.load()["allow_skills"], "open")
         settings_store.save({"allow_skills": ""})
-        self.assertEqual(settings_store.load()["allow_skills"], "off")
+        # Falls to the 0.10.80 default tier (guest), not to "off": the store
+        # already carries _rev, so the pre-0.10.80 stamp does not apply.
+        self.assertEqual(settings_store.load()["allow_skills"], "guest")
 
     def test_coercion_of_string_bools_and_numbers(self):
         settings_store.save({"call_volume": "80", "call_sounds": "false"})
@@ -335,6 +344,96 @@ class TestTheDataDirCheckCannotStopTheWorker(unittest.TestCase):
         # The other half: it must not cry wolf on a directory that is fine.
         with self.assertNoLogs("callin.settings", level="ERROR"):
             settings_store.check_data_dir()
+
+
+class TestBootLaysTheDataSkeleton(_TempStores):
+    """One boot makes `ls data/` show the real shape (0.10.71): the operator
+    should see calls/, sounds/ and voicemail/ on day one, not folders
+    appearing weeks apart as features first fire. Directories ONLY — the JSON
+    stores stay lazy because their absence is a state the app reads (no
+    admin-auth.json means "no password yet"), and creating them empty would
+    say nothing true."""
+
+    def test_the_skeleton_directories_appear(self):
+        data_dir = settings_store.SETTINGS_PATH.parent
+        data_dir.mkdir(parents=True, exist_ok=True)
+        settings_store.check_data_dir()
+        for name in ("calls", "sounds", "voicemail"):
+            with self.subTest(name=name):
+                self.assertTrue((data_dir / name).is_dir())
+
+    def test_no_json_store_is_invented(self):
+        data_dir = settings_store.SETTINGS_PATH.parent
+        data_dir.mkdir(parents=True, exist_ok=True)
+        settings_store.check_data_dir()
+        self.assertFalse(settings_store.SETTINGS_PATH.exists(),
+                         "an empty settings.json at boot says nothing true")
+
+    def test_an_unmounted_dir_is_left_alone(self):
+        # No data directory at all means nothing is mounted — creating one
+        # here would put state where the operator never asked for it.
+        import shutil
+
+        data_dir = settings_store.SETTINGS_PATH.parent
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+        settings_store.check_data_dir()
+        self.assertFalse(data_dir.exists())
+
+
+class TestTheKeypairCanLiveInOneFile(unittest.TestCase):
+    """The LiveKit keypair used to live in two files that had to match by
+    hand — livekit.yaml for the media server, .env for these processes — and
+    a fresh install tripping over the dance is what prompted the fallback:
+    when the env supplies nothing, api/env.py reads the pair from the
+    mounted livekit.yaml (stdlib parse, one documented shape)."""
+
+    def _with_yaml(self, text):
+        import tempfile
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        path = os.path.join(td.name, "livekit.yaml")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.environ["LIVEKIT_CONFIG_PATH"] = path
+        self.addCleanup(lambda: os.environ.pop("LIVEKIT_CONFIG_PATH", None))
+
+    def test_the_pair_is_read_from_the_yaml(self):
+        from api import env as api_env
+
+        self._with_yaml("port: 7880\nkeys:\n  mykey: s3cretvalue\n")
+        self.assertEqual(api_env._keys_from_livekit_yaml(),
+                         ("mykey", "s3cretvalue"))
+
+    def test_env_wins_and_apply_fills_only_a_gap(self):
+        from api import env as api_env
+
+        self._with_yaml("keys:\n  yamlkey: yamlsecret\n")
+        old_key = os.environ.pop("LIVEKIT_API_KEY", None)
+        old_sec = os.environ.pop("LIVEKIT_API_SECRET", None)
+        try:
+            api_env.apply_livekit_keys()
+            self.assertEqual(os.environ.get("LIVEKIT_API_KEY"), "yamlkey")
+            self.assertEqual(os.environ.get("LIVEKIT_API_SECRET"), "yamlsecret")
+            # A pair the env already holds is never overwritten.
+            os.environ["LIVEKIT_API_SECRET"] = "envwins"
+            os.environ["LIVEKIT_API_KEY"] = "envkey"
+            api_env.apply_livekit_keys()
+            self.assertEqual(os.environ["LIVEKIT_API_SECRET"], "envwins")
+        finally:
+            for name, val in (("LIVEKIT_API_KEY", old_key),
+                              ("LIVEKIT_API_SECRET", old_sec)):
+                if val is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = val
+
+    def test_comments_and_quotes_do_not_confuse_the_parse(self):
+        from api import env as api_env
+
+        self._with_yaml("keys:\n  devkey: \"quoted\"  # a comment\n")
+        self.assertEqual(api_env._keys_from_livekit_yaml(),
+                         ("devkey", "quoted"))
 
 
 class TestUploadedSoundsCannotFillTheVolume(unittest.TestCase):
@@ -664,3 +763,71 @@ class TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry(_TempStores):
                          "choosing 'until Sign out' — the migration must "
                          "carry that choice, not replace it with the new "
                          "24-hour default")
+
+
+class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
+    """0.10.80 changed the fresh-install defaults: front_access became
+    admin-only and the permission grants became a real tier ladder. The
+    0.9.61 rule is that a default change must never alter what an existing
+    deployment does — a store written before 0.10.80 (no _rev marker) is
+    stamped with the doors and grants it was actually running."""
+
+    def _write_store(self, data: dict) -> None:
+        import json
+
+        import settings as settings_store
+
+        settings_store.SETTINGS_PATH.write_text(
+            json.dumps(data), encoding="utf-8")
+
+    def test_an_old_store_keeps_its_open_door_and_off_grants(self):
+        import settings as settings_store
+
+        # Any pre-0.10.80 store: has keys, has no _rev marker.
+        self._write_store({"llm_provider": "openai"})
+        cfg = settings_store.load()
+        self.assertEqual(cfg["front_access"], "auto",
+                         "an upgrade must not close a line that was open")
+        for field in ("allow_announcements", "allow_skills",
+                      "allow_exact_queue", "allow_favorite",
+                      "allow_unfavorite", "allow_skip_track",
+                      "allow_dj_segment", "allow_takeover"):
+            self.assertEqual(cfg[field], "off",
+                             f"an upgrade handed out {field}")
+
+    def test_a_current_store_gets_the_new_defaults(self):
+        import settings as settings_store
+
+        # A store first written by 0.10.80+: save() stamps the generation
+        # marker, so leaving a field unset means the NEW default, not the
+        # preserved old one.
+        settings_store.save({"llm_provider": "openai"})
+        cfg = settings_store.load()
+        self.assertEqual(cfg["front_access"], "admin")
+        self.assertEqual(cfg["allow_skills"], "guest")
+        self.assertEqual(cfg["allow_takeover"], "admin")
+        self.assertEqual(cfg["allow_favorite"], "open")
+
+    def test_saving_an_old_store_locks_its_behaviour_in(self):
+        import json
+
+        import settings as settings_store
+
+        self._write_store({"llm_provider": "openai"})
+        settings_store.save({"llm_model": "gpt-4.1-mini"})
+        raw = json.loads(
+            settings_store.SETTINGS_PATH.read_text(encoding="utf-8"))
+        # The stamps are now real stored values, so the preserved behaviour
+        # survives however many upgrades come later.
+        self.assertEqual(raw.get("front_access"), "auto")
+        self.assertEqual(raw.get("allow_takeover"), "off")
+        self.assertEqual(raw.get("_rev"), settings_store.STORE_REV)
+
+    def test_the_chat_ceiling_moved_to_minutes_without_moving_anyones(self):
+        import settings as settings_store
+
+        self._write_store({"chat_max_hours": 2})
+        self.assertEqual(120, settings_store.load()["chat_max_minutes"])
+        # Never set = the new default, in the new unit.
+        self._write_store({"llm_provider": "openai"})
+        self.assertEqual(10, settings_store.load()["chat_max_minutes"])

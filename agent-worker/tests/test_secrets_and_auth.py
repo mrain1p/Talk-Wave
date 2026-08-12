@@ -224,8 +224,19 @@ class TestAdminAuth(unittest.TestCase):
         self.assertFalse(self.auth.verify_guest("guestcode"))
 
     def test_guest_gate_is_open_until_a_code_exists(self):
+        import settings as settings_store
         from api import auth as api_auth
 
+        # On a SET-UP line: since 0.10.78 an unconfigured deployment refuses
+        # every door outright, so the open-until-a-code-exists behaviour
+        # starts once the admin password does — and it is `auto` mode's
+        # behaviour, which stopped being the default at 0.10.80 (fresh
+        # installs are admin-only until opened).
+        self.auth.set_password("admin password here")
+        settings_store.save({"front_access": "auto"})
+        # This class is not _TempStores, so put the mode back for the
+        # module's other tests (blank pops the override).
+        self.addCleanup(lambda: settings_store.save({"front_access": ""}))
         self.assertIsNone(api_auth._guest_check("", "ip-a"))
         self.auth.set_guest_password("guestcode")
         self.assertIsNotNone(api_auth._guest_check("", "ip-a"))
@@ -238,6 +249,7 @@ class TestAdminAuth(unittest.TestCase):
         # settings panel — the two live in separate buckets.
         from api import auth as api_auth
 
+        self.auth.set_password("admin password here")
         self.auth.set_guest_password("guestcode")
         api_auth._auth_state.pop("ip-b", None)
         api_auth._auth_state.pop("guest:ip-b", None)
@@ -499,11 +511,15 @@ class TestFrontDoorPolicy(_TempStores):
         return api_auth._guest_check(key, "10.0.0.9")
 
     def test_auto_is_the_old_behaviour_and_the_default(self):
-        # The default has to leave existing deployments exactly as they were:
-        # a line that took calls yesterday must take them after an upgrade.
+        # Since 0.10.80 a FRESH install defaults to admin-only — a line
+        # starts closed and is opened as a decision — while a store from
+        # before the change is stamped `auto` by _migrate, so a line that
+        # took calls yesterday still takes them after an upgrade
+        # (TestAnUpgradeClosesNoDoorAndHandsOutNoPower holds that half).
+        # `auto` itself keeps its meaning: open until a code exists.
         import admin_auth
 
-        self.assertEqual(settings_store.load()["front_access"], "auto")
+        self.assertEqual(settings_store.load()["front_access"], "admin")
         admin_auth.clear_guest_password()
         self.assertIsNone(self._check("auto"), "auto closed a line that had no code")
         admin_auth.set_guest_password("guest-code")
@@ -539,10 +555,11 @@ class TestFrontDoorPolicy(_TempStores):
         self.assertEqual(self._check("admin"), "code required")
 
     def test_an_unconfigured_gate_refuses_rather_than_opening(self):
-        # The property worth having. Selecting a password-based policy without
-        # having set that password must not silently behave like "open" — that
-        # is how a deployment ends up publicly callable while its operator
-        # believes it is locked.
+        # The property worth having, widened at 0.10.78 (operator's ask):
+        # until an admin password exists NO mode opens — including an
+        # explicit "open". A line whose panel anyone can claim must not also
+        # be a line anyone can ring; the stranger who could call could first
+        # walk into /settings and own the deployment.
         import admin_auth
         from api import auth as api_auth
 
@@ -552,11 +569,11 @@ class TestFrontDoorPolicy(_TempStores):
         api_auth._auth_configured = lambda: False
         admin_auth.guest_is_set = lambda: False
         try:
-            for mode in ("guest", "admin"):
+            for mode in ("open", "auto", "guest", "admin"):
                 with self.subTest(mode=mode):
                     reason = self._check(mode)
                     self.assertIsNotNone(reason, "an unset gate fell open")
-                    self.assertIn("isn't taking calls", reason)
+                    self.assertIn("isn't set up yet", reason)
         finally:
             api_auth._auth_configured = real_admin
             admin_auth.guest_is_set = real_guest

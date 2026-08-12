@@ -17,6 +17,62 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 PORT = int(os.environ.get("TOKEN_SERVER_PORT", "8100"))
 
+
+def _keys_from_livekit_yaml() -> tuple[str, str]:
+    """The keypair straight from livekit.yaml, so ONE file holds the secret.
+
+    It used to live in two places that had to match by hand — livekit.yaml
+    for the media server, .env for these processes — and a fresh install
+    tripping over that dance is what prompted this (0.10.72 era). The compose
+    mounts livekit.yaml read-only into both python services; when .env
+    supplies nothing, the pair is read from here. Parsed with the stdlib on
+    purpose: pyyaml is not a dependency of the suite or the app, and the one
+    shape LiveKit documents —
+
+        keys:
+          <name>: <secret>
+
+    — does not need one.
+    """
+    path = Path(os.environ.get("LIVEKIT_CONFIG_PATH") or "/etc/livekit.yaml")
+    if not path.is_file():
+        # A source checkout / run-local.ps1: the repo root's own copy.
+        path = Path(__file__).parent.parent.parent / "livekit.yaml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:                                         # noqa: BLE001
+        return "", ""
+    in_keys = False
+    for line in text.splitlines():
+        stripped = line.split("#", 1)[0].rstrip()
+        if not stripped.strip():
+            continue
+        if not line[:1].isspace():
+            in_keys = stripped.strip() == "keys:"
+            continue
+        if in_keys and ":" in stripped:
+            name, _, secret = stripped.strip().partition(":")
+            name, secret = name.strip(), secret.strip().strip("'\"")
+            if name and secret:
+                return name, secret
+    return "", ""
+
+
+def apply_livekit_keys() -> None:
+    """Push the yaml keypair into the environment when .env didn't supply
+    one. The SDK and every route read os.environ, so this must run before
+    either — it does, at this module's import, and main.py imports it early
+    for the worker's sake."""
+    if os.environ.get("LIVEKIT_API_SECRET"):
+        return
+    name, secret = _keys_from_livekit_yaml()
+    if name and secret:
+        os.environ["LIVEKIT_API_KEY"] = name
+        os.environ["LIVEKIT_API_SECRET"] = secret
+
+
+apply_livekit_keys()
+
 LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 # What the *browser* connects to — not the internal docker hostname.

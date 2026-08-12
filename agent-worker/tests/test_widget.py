@@ -112,15 +112,17 @@ class TestThumbsArePerDoor(_TempStores):
         import settings as settings_store
         from api.live import look_payload
 
+        # All three default ON since 0.10.80, so per-door independence is
+        # proven by switching one OFF and watching the other two stay lit.
         base = settings_store.load()
-        off = look_payload(dict(base), "Rosie")
+        on = look_payload(dict(base), "Rosie")
         for _, flag in self.DOORS:
-            self.assertFalse(off[flag], flag)
+            self.assertTrue(on[flag], flag)
         for field, flag in self.DOORS:
-            on = look_payload({**base, field: True}, "Rosie")
+            off = look_payload({**base, field: False}, "Rosie")
             for _, other in self.DOORS:
-                self.assertEqual(on[other], other == flag,
-                                 f"{field} lit {other}")
+                self.assertEqual(off[other], other != flag,
+                                 f"{field} doused {other}")
 
 
 class TestTheEmbedSitsFlushByDefault(_TempStores):
@@ -1260,8 +1262,12 @@ class TestSigningInClimbsTheTier(_TempStores):
 
     def test_a_stranger_is_offered_the_climb_and_a_code_makes_it(self):
         import admin_auth
+        import settings as settings_store
 
         admin_auth.set_guest_password("guest99")
+        # The admin-only default (0.10.80) has no guest lane to climb into —
+        # this test is about the climb, so open the guest door.
+        settings_store.save({"front_access": "guest"})
         # A stranger sees the offer and cannot announce...
         stranger = self._live_for()
         self.assertTrue(stranger["signinAvailable"])
@@ -1318,6 +1324,62 @@ class TestTheFinderIsNotAUsernameField(unittest.TestCase):
         self.assertIn("document.activeElement !== box", js[start:start + 4500],
                       "the finder must discard a fill that arrives without "
                       "focus — autofill does not listen to attributes alone")
+
+
+class TestTheCallPageOffersFirstRunSetup(_TempStores):
+    """Until an admin password exists the whole box is open to whoever walks
+    up — so the FIRST page anyone reaches says it and takes one (operator's
+    ask, 0.10.72 era). /live carries needsSetup per-request; the banner never
+    shows in an embed, and the flag goes false forever once a hash exists."""
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        from pathlib import Path
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        self._old_key = os.environ.pop("CALLIN_ADMIN_KEY", None)
+
+    def tearDown(self):
+        import admin_auth
+        admin_auth.AUTH_PATH = self._old_auth
+        if self._old_key is not None:
+            os.environ["CALLIN_ADMIN_KEY"] = self._old_key
+        super().tearDown()
+
+    def _live(self):
+        from api.live import _for_this_caller
+
+        req = types.SimpleNamespace(headers={}, remote="9.9.9.9")
+        return _for_this_caller(req, {"canAsk": {}, "askTiers": {}})
+
+    def test_an_unconfigured_box_asks_and_a_configured_one_never_does(self):
+        import admin_auth
+
+        self.assertTrue(self._live()["needsSetup"])
+        admin_auth.set_password("hunter2hunter2")
+        self.assertFalse(self._live()["needsSetup"])
+
+    def test_the_env_break_glass_counts_as_configured(self):
+        # ADMIN_KEY is read from the environment once, at boot — which is
+        # when an operator sets it — so the test patches the module constant
+        # rather than pretending the env can change under a running process.
+        from api import auth as api_auth
+
+        old = api_auth.ADMIN_KEY
+        api_auth.ADMIN_KEY = "operator-break-glass"
+        try:
+            self.assertFalse(self._live()["needsSetup"])
+        finally:
+            api_auth.ADMIN_KEY = old
+
+    def test_the_banner_exists_and_stays_out_of_embeds(self):
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="setupNudge"', html)
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("!framed && !!(d && d.needsSetup)", js,
+                      "the setup ask must be gated out of embeds — a host "
+                      "page's visitors are not the operator")
 
 
 class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
@@ -1470,12 +1532,15 @@ class TestEveryDoorReadsForItself(unittest.TestCase):
         self.assertTrue(payload["chatShowEmoji"])
 
     def test_words_are_on_by_default_for_every_door(self):
-        # The default is the card exactly as it read before — words, no icon —
-        # so an existing deployment sees no surprise until the operator opts in.
-        for f in ("call_show_words", "vm_show_words", "chat_show_words"):
-            self.assertTrue(settings_store.FIELDS[f][1], f"{f} should default on")
-        for f in ("call_show_emoji", "vm_show_emoji", "chat_show_emoji"):
+        # The 0.10.80 default reading (operator's fresh-install review):
+        # Call keeps its word — the card's one promise — and the two
+        # secondary doors sit beside it as drawn icons.
+        self.assertTrue(settings_store.FIELDS["call_show_words"][1])
+        self.assertFalse(settings_store.FIELDS["call_show_emoji"][1])
+        for f in ("vm_show_words", "chat_show_words"):
             self.assertFalse(settings_store.FIELDS[f][1], f"{f} should default off")
+        for f in ("vm_show_emoji", "chat_show_emoji"):
+            self.assertTrue(settings_store.FIELDS[f][1], f"{f} should default on")
 
     def test_a_door_left_with_neither_falls_back_to_its_word(self):
         # showParts is the widget's guard: both switches off must not blank the
@@ -1956,6 +2021,17 @@ class TestThePanelReadsAtAGlance(unittest.TestCase):
         self.assertIn("el.dataset.state", self.js)
         self.assertIn('.tag[data-state="on"]', self.css)
         self.assertIn('.tag[data-state="off"]', self.css)
+
+    def test_the_dashboard_says_what_needs_doing(self):
+        # 0.10.76: transmission shares the dashboard with a needs-attention
+        # column, and the picker pins any page holding an item. The needs
+        # derive from the SAME signals the tiles read (computeNeeds), so the
+        # dashboard cannot disagree with itself.
+        self.assertIn("function computeNeeds", self.js)
+        self.assertIn("function paintNeeds", self.js)
+        self.assertIn(".needrow", self.css)
+        self.assertIn("a.attn::after", self.css)
+        self.assertIn(".dashsplit", self.css)
 
     def test_the_panel_cycle_matches_the_cards(self):
         # Same four stops, same DRAWN icons, same stored key — two surfaces,

@@ -343,6 +343,15 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     # choice apiece, so on an open line the code does not elevate and
     # offering it would be a lie. The admin password is a door in every mode.
     import admin_auth
+
+    # First-run: until an admin password (or the env break-glass) exists, the
+    # CALL page offers to set one — same predicate as the panel's own nudge,
+    # same trust model (an unconfigured box belongs to whoever reaches it
+    # first), and per-request rather than cached so it vanishes the moment
+    # the store holds a hash.
+    from api.auth import _auth_configured
+    out["needsSetup"] = not _auth_configured()
+
     admin_set = admin_auth.is_set()
     guest_set = admin_auth.guest_is_set()
     mode = str(settings_store.load().get("front_access") or "auto").lower()

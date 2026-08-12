@@ -18,12 +18,14 @@ import tests  # noqa: F401
 from tests.test_settings import (  # noqa: F401
     TestAConfigValueCannotNameAFileOnTheDisk,
     TestANeighbouringServiceIsNotOnLocalhost,
+    TestBootLaysTheDataSkeleton,
     TestNoSettingIsSmuggledThroughTheEnvironment,
     TestOneSettingReplacingAnotherSaysSo,
     TestSettings,
     TestEverySecretRendersSomewhere,
     TestSettingsThatAreOnlyWrongTogether,
     TestTheEmbedAllowlistIsASetting,
+    TestTheKeypairCanLiveInOneFile,
     TestTheDataDirCheckCannotStopTheWorker,
     TestTheProviderTablesAgreeWithEachOther,
     TestTheModelWarmedIsTheModelUsed,
@@ -31,6 +33,7 @@ from tests.test_settings import (  # noqa: F401
     TestTurnTakingSettingsReachTheCall,
     TestUploadedSoundsCannotFillTheVolume,
     TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry,
+    TestAnUpgradeClosesNoDoorAndHandsOutNoPower,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,
@@ -58,6 +61,7 @@ from tests.test_widget import (  # noqa: F401
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestTheFinderIsNotAUsernameField,
+    TestTheCallPageOffersFirstRunSetup,
     TestDiagnosticsResultsKeepTheirScrollSkin,
     TestTheEmbedSitsFlushByDefault,
     TestThumbsArePerDoor,
@@ -169,6 +173,7 @@ from tests.test_brain import (  # noqa: F401
     TestPromptAssembly,
     TestPrompts,
     TestTheConductHarnessCannotReachTheRealStation,
+    TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,
@@ -246,6 +251,7 @@ from tests.test_docs import (  # noqa: F401
 )
 from tests.test_house_rules import (  # noqa: F401
     TestEverySkillWouldActuallyLoad,
+    TestTheInstallerTellsTheTruth,
     TestEveryTestClassIsAggregated,
     TestNewCodeDoesNotArriveUntested,
     TestTheParallelRunnerRunsTheSameSuite,

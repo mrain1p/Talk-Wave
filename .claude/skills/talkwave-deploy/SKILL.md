@@ -5,8 +5,8 @@ description: Deploy or update the Talk Wave stack — first-time setup, pulling 
 
 # Deploy Talk Wave
 
-Four services, defined in `docker-compose.yaml`: `livekit-server`, `agent-worker`,
-`token-server`, `caddy`. The two Python services are **one image in two containers** —
+Four services, defined in `docker-compose.yaml`: `livekit-server`, `talkwave-worker`,
+`talkwave-web`, `caddy`. The two Python services are **one image in two containers** —
 `ghcr.io/mrain1p/talk-wave`.
 
 The operator manages stacks through a **GUI (Portainer-style "update the stack")** and prefers

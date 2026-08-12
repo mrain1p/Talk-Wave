@@ -41,6 +41,13 @@ from call.session import CallSession
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
+# The LiveKit keypair may live only in livekit.yaml (one file, one secret —
+# see api/env.py). The SDK reads os.environ, so the fallback must land before
+# anything LiveKit-shaped runs; importing api.env applies it.
+from api.env import apply_livekit_keys  # noqa: E402
+
+apply_livekit_keys()
+
 import log_setup
 from log_setup import describe
 

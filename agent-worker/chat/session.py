@@ -411,8 +411,8 @@ class ChatShelf:
         """Close what the clocks say is over: the idle timeout, the message
         ceiling, and the hard age limit. Each closed chat writes its record."""
         now = time.time()
-        idle_cap = 60 * int(cfg.get("chat_idle_minutes") or 30)
-        age_cap = 3600 * int(cfg.get("chat_max_hours") or 12)
+        idle_cap = 60 * int(cfg.get("chat_idle_minutes") or 5)
+        age_cap = 60 * int(cfg.get("chat_max_minutes") or 10)
         msg_cap = int(cfg.get("chat_max_messages") or 0)
         for chat_id, chat in list(self.chats.items()):
             over = (now - chat.last_active > idle_cap

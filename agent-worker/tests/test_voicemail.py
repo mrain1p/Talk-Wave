@@ -348,7 +348,11 @@ class TestTheLineHasModes(unittest.TestCase):
         import settings as settings_store
 
         self.assertTrue(settings_store.FIELDS["live_calls_enabled"][1])
-        self.assertEqual("staged",
+        # Fresh since 0.10.80 (the operator's fresh-install review): written
+        # in persona at pickup, staged clip as the instant fallback — safe to
+        # default because the fallback ladder means a slow backend still
+        # answers promptly (TestAFreshGreetingIsBudgeted holds that line).
+        self.assertEqual("fresh",
                          settings_store.FIELDS["voicemail_greeting_mode"][1])
 
     def test_the_card_is_told_which_line_it_is(self):

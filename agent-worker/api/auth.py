@@ -142,6 +142,17 @@ def _guest_check(key: str, ip: str) -> str | None:
     """
     import settings as settings_store
 
+    # First-run lockdown (0.10.78, operator's ask): until an admin password
+    # exists, NO door opens — not calls, not chat, not voicemail — in every
+    # front_access mode, including an explicit "open". A line whose panel
+    # anyone can claim must not also be a line anyone can ring: the same
+    # stranger who could call could first walk into /settings, set the
+    # password and own the deployment. This is the one check /token, /chat
+    # and /guest-login all pass through, so the refusal cannot drift.
+    if not _auth_configured():
+        return ("the booth isn't set up yet — calls open once the operator "
+                "sets the admin password")
+
     mode = str(settings_store.load().get("front_access") or "auto").lower()
     if mode == "open":
         return None
@@ -151,13 +162,6 @@ def _guest_check(key: str, ip: str) -> str | None:
     # is a misconfiguration rather than an invitation.
     if mode == "auto" and not admin_auth.guest_is_set():
         return None
-
-    # Nothing to check against. Refusing is the safe reading of "a password is
-    # required": an unconfigured gate must not silently become an open door.
-    if mode == "admin" and not _auth_configured():
-        return "the booth line isn't taking calls yet"
-    if mode == "guest" and not (admin_auth.guest_is_set() or _auth_configured()):
-        return "the booth line isn't taking calls yet"
 
     bucket = "guest:" + ip
     gate = _auth_gate(bucket)

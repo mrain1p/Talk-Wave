@@ -23,7 +23,7 @@ Known limitations, the failures that actually happen, how to read a call back af
 - **Two shared passwords, not user accounts.** One admin, one optional guest,
   each a single secret shared by everyone who has it. No per-person identity,
   so nothing attributes an action to a particular operator.
-- **Recent calls keeps the newest 40.** A diagnostic aid, not an archive.
+- **Recent calls keeps the newest 100 (the default).** A diagnostic aid, not an archive.
 - **The panel is not built for hostile exposure.** It assumes an operator on a
   trusted network who has set a password.
 
@@ -47,6 +47,10 @@ names the fix. The classics:
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://`
   page is blocked as mixed content, silently. Set **Station stream URL** to an
   https one; the *Station stream* stage says so outright.
+- **The call button says "Line not set up"** — no admin password exists yet,
+  and until one does every door refuses: calls, texts and voicemail alike, in
+  every access mode. The call page itself asks for the password on a fresh
+  install; *Permissions & safety → Access* is the other way in.
 - **Locked out of the panel** — set `CALLIN_ADMIN_KEY`, or restart to clear
   bans. To remove the password entirely, delete `data/admin-auth.json`.
 - **The panel has forgotten everything, or the login says a file cannot be
@@ -73,7 +77,7 @@ anything that failed.
 That file is a transcript of a stranger's conversation sitting on your disk, so
 it is a choice: **Keep call transcripts** under *Call behaviour* turns it off
 entirely, and **Transcripts to keep** decides how long the ones you do keep
-stick around (40 by default, deleted oldest-first as new calls land). With it
+stick around (100 by default, deleted oldest-first as new calls land). With it
 off, nothing is written and Recent calls only shows what is already there — you
 are then diagnosing from the container logs, which is what this section exists
 to stop you doing.
@@ -89,7 +93,7 @@ to stop you doing.
 
 The tool column is the point: the DJ saying it did something is a claim, that
 line is the receipt. The config line ties a bad call to the setting that caused
-it. Files live in `data/calls/`, newest 40 kept.
+it. Files live in `data/calls/`, the newest **Transcripts to keep** of them (100 by default).
 
 The other rows: **Full pipeline check** names the first thing that would break;
 **Speed test** reports time to first audio per leg (over ~1.5s sounds laggy);
@@ -104,7 +108,7 @@ version — check both containers match, since they ship as one image but run as
 two.
 
 ```bash
-cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar
+cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls LISTENERS_PATH=/tmp/l.json LISTENER_SAMPLE_INTERVAL=0 python -m unittest test_sidecar
 ```
 
 **Those environment variables are not optional.** Most test classes redirect

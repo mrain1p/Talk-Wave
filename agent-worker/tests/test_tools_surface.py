@@ -253,28 +253,37 @@ class TestStationWideTools(_TempStores):
 
     def test_all_of_them_are_off_by_default(self):
         # On the real defaults, not a hand-made dict — a permission that
-        # quietly defaults to on is how someone else's station starts
-        # skipping tracks. Resolved for the most trusted caller there is: if
-        # even an admin caller does not get these by default, nobody does.
-        cfg = settings_store.permissions_for(settings_store.load(), "admin")
-        self.assertFalse(cfg.get("allow_skip_track"))
-        self.assertFalse(cfg.get("allow_dj_segment"))
-        self.assertFalse(cfg.get("allow_takeover"))
-        self.assertEqual(self._tools(cfg) & self.STATION_WIDE, set())
+        # quietly defaults to on for a STRANGER is how someone else's station
+        # starts skipping tracks. Since 0.10.80 the defaults are a tier
+        # ladder: the admin caller — the operator's own phone — holds the
+        # station-wide switches, and nobody below gets any of them.
+        raw = settings_store.load()
+        for tier in ("open", "guest"):
+            with self.subTest(tier=tier):
+                cfg = settings_store.permissions_for(raw, tier)
+                self.assertFalse(cfg.get("allow_skip_track"))
+                self.assertFalse(cfg.get("allow_dj_segment"))
+                self.assertFalse(cfg.get("allow_takeover"))
+                self.assertEqual(self._tools(cfg) & self.STATION_WIDE, set())
+        admin = settings_store.permissions_for(raw, "admin")
+        self.assertTrue(admin.get("allow_skip_track"))
+        self.assertEqual(self._tools(admin) & self.STATION_WIDE,
+                         self.STATION_WIDE)
 
     def test_raw_tiers_must_never_reach_a_tool_builder(self):
         # The trap this whole design is arranged around: the stored value is
-        # a string, "off" is truthy, and every tool builder has always asked
-        # `cfg.get("allow_x")`. Handing one the UNRESOLVED settings would
-        # switch on every station-wide permission at once — the loudest
-        # possible failure, on somebody else's broadcast. So resolving is not
-        # a step that can be skipped: this is what says so out loud.
+        # a string, every tier name is truthy, and every tool builder has
+        # always asked `cfg.get("allow_x")`. Handing one the UNRESOLVED
+        # settings would switch on every station-wide permission for every
+        # caller at once — the loudest possible failure, on somebody else's
+        # broadcast. So resolving is not a step that can be skipped: this is
+        # what says so out loud.
         raw = settings_store.load()
-        self.assertEqual(raw["allow_skip_track"], "off")
+        self.assertEqual(raw["allow_skip_track"], "admin")
         self.assertTrue(bool(raw["allow_skip_track"]),
                         "the point of this test: the raw value IS truthy")
         self.assertEqual(
-            self._tools(settings_store.permissions_for(raw, "admin"))
+            self._tools(settings_store.permissions_for(raw, "open"))
             & self.STATION_WIDE, set())
 
     def test_a_tier_only_reaches_the_callers_at_or_above_it(self):

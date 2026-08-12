@@ -63,7 +63,37 @@
     // `!== false` form matches the other corner controls — show_signin
     // defaults off, so the server always sends an explicit true/false here.
     set('signinBtn', c.signin !== false && !!(d && d.signinAvailable));
+    // First-run: the card itself asks for the admin password while none
+    // exists (needsSetup rides /live per-request). Never in an embed — a
+    // host page's visitors are not the operator.
+    set('setupNudge', !framed && !!(d && d.needsSetup));
   }
+
+  // The same /auth/password the panel's nudge uses; an empty `current` is
+  // the first set. Success hides the banner for good — needsSetup goes
+  // false server-side the moment the store holds a hash.
+  if ($('setupPwBtn')) $('setupPwBtn').onclick = async () => {
+    const pw = $('setupPw').value || '';
+    const msg = $('setupPwMsg');
+    if (pw.length < 8) { msg.textContent = 'Use at least 8 characters.'; return; }
+    const btn = $('setupPwBtn');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/auth/password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current: '', new: pw }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.textContent = d.error || 'Could not set it — try the settings page.';
+        return;
+      }
+      $('setupPw').value = '';
+      $('setupNudge').hidden = true;
+      setStatus('Password set — your settings live at /settings');
+      refreshLive();
+    } finally { btn.disabled = false; }
+  };
 
   $('lockBtn').onclick = () => {
     rememberCallKey('');
@@ -850,11 +880,14 @@
     // a paused off-air line says closed rather than offering the recorder.
     const flags = shown || live || {};
     const paused = !!flags.callsPaused;
+    // An un-set-up line has no machine either — the server refuses the
+    // voicemail mint along with everything else until a password exists.
+    const unset = !!flags.needsSetup;
     const vmButton = vmPolicy() !== 'never' && reason !== 'offline' && !paused
-      && !!(framed ? flags.embedVmBtn : flags.vmBtn);
+      && !unset && !!(framed ? flags.embedVmBtn : flags.vmBtn);
     $('vmBtn').hidden = !vmButton || !!room;
     callBtn.dataset.vm = '';
-    if (reason !== 'offline' && !paused
+    if (reason !== 'offline' && !paused && !unset
         && vmPolicy() !== 'never' && !room && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
@@ -862,8 +895,8 @@
       return;
     }
     callBtn.disabled = true;
-    callBtn.textContent = paused && reason !== 'offline'
-      ? word('closed', 'Line closed')
+    callBtn.textContent = unset && reason !== 'offline' ? 'Line not set up'
+      : paused && reason !== 'offline' ? word('closed', 'Line closed')
       : reason === 'offline' ? 'Station offline' : 'Nobody to call';
   }
 
@@ -880,6 +913,18 @@
 
   function paintIdleButtons(d) {
     if (room) return;
+    // First-run: the server refuses every mint until an admin password
+    // exists (0.10.78), so every door here is honestly dead — one disabled
+    // button, and the setup ask above it says what opens the line.
+    if (d.needsSetup) {
+      $('vmBtn').hidden = true;
+      if ($('chatBtn')) $('chatBtn').hidden = true;
+      callBtn.hidden = false;
+      callBtn.disabled = true;
+      callBtn.dataset.vm = '';
+      callBtn.textContent = 'Line not set up';
+      return;
+    }
     const needsCode = !!d.guestRequired && !callKey();
     const machineOn = vmPolicy() !== 'never';
     // The kill switch outranks the machine: paused means the booth answers

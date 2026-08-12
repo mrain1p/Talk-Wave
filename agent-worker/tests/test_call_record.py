@@ -342,7 +342,14 @@ class TestCallPrivacy(_TempStores):
                     await station.aclose()
             return asyncio.run(go())
 
-        # Off by default: no segment list, because it can't run any.
+        # The default build resolves at the ADMIN tier (assemble.py), and
+        # skills default to the guest tier since 0.10.80 — so the fullest
+        # view carries the list. What must stay true is that a tier the
+        # grant does not reach gets no list: promising the DJ a segment the
+        # registry will refuse is how invented capabilities happen.
+        self.assertIn("weather", build().lower())
+
+        settings_store.save({"allow_skills": "off"})
         self.assertNotIn("weather", build().lower())
 
         settings_store.save({"allow_skills": True})

@@ -173,6 +173,9 @@ class TestTheDoorDecidesTheTier(_TempStores):
         admin_auth.AUTH_PATH = Path(self._authtmp.name) / "admin-auth.json"
         admin_auth.set_password("hunter2hunter2")
         admin_auth.set_guest_password("letmein")
+        # front_access defaults to admin-only since 0.10.80, which closes
+        # the guest lane this class exists to exercise — give the door one.
+        settings_store.save({"front_access": "guest"})
 
     def tearDown(self):
         self.admin_auth.AUTH_PATH = self._old_auth
