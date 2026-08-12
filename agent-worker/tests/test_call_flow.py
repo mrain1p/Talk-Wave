@@ -729,6 +729,9 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
             guard = OnAirGuard(
                 _Station(), {"avoid_on_air_overlap": True, "on_air_quiet_secs": 30})
             guard.POLL_SECS = 0.01
+            # The settle window rides out the gaps in a banter break; this
+            # test is about the come-back line, not about waiting 2s for it.
+            guard.SETTLE_SECS = 0.01
             task = asyncio.create_task(guard.watch(_Session()))
             await asyncio.sleep(0.03)
             guard.mark_on_air(seconds=0.05, spoken="Big shout to Dave.")
@@ -781,21 +784,75 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         self.assertFalse(guard._clear.is_set())
 
     def test_the_lag_rides_the_holds_tail(self):
-        # Every station signal — log entry, push, even its own player overlay
-        # — is stamped at HANDOFF, and the audible link runs a few seconds
-        # behind it. Without the lag the hold released while the link's last
-        # words were still airing (the operator's "ends early", 0.10.69).
-        guard = self._guard(on_air_lag_secs=6)
-        # A no-words entry holds quiet_secs (30) plus the lag (6).
-        self.assertTrue(guard._log_says_busy((31.0, "")))
-        self.assertFalse(guard._log_says_busy((37.0, "")))
+        # Handoff-stamped evidence — the log poll, and pre-1.8 pushes — is
+        # stamped when the audio is handed over, and the audible link runs a
+        # couple of seconds behind it. Without the lag the hold released
+        # while the link's last words were still airing (the operator's
+        # "ends early", 0.10.69). A constant since 0.10.97, not a setting.
+        from call.air import OnAirGuard
+
+        guard = self._guard()
+        lag = OnAirGuard.HANDOFF_LAG_SECS
+        # A no-words entry holds quiet_secs (30) plus the lag.
+        self.assertTrue(guard._log_says_busy((30.0 + lag - 1, "")))
+        self.assertFalse(guard._log_says_busy((30.0 + lag + 1, "")))
+
+    def test_a_gap_inside_a_banter_break_does_not_return_the_caller(self):
+        # A banter break is several utterances back to back. Each voice.end
+        # used to reopen the gate, so one break cost the caller a come-back
+        # line and another hand-over line three times over (operator-reported
+        # from a real call, 2026-08-12). The settle window rides the gaps.
+        import time
+
+        from call.air import OnAirGuard
+
+        guard = self._guard()
+        guard.on_air = True
+        now = time.time()
+
+        # The utterance ended a moment ago: still held, silently.
+        guard._quiet_since = now - (OnAirGuard.SETTLE_SECS / 2)
+        self.assertTrue(guard._settle(False, now))
+        # Long enough quiet that the break really is over: released.
+        guard._quiet_since = now - (OnAirGuard.SETTLE_SECS + 1)
+        self.assertFalse(guard._settle(False, now))
+        # A fresh voice inside the window clears the clock, so the NEXT gap
+        # gets a full settle window of its own rather than a stale one.
+        self.assertTrue(guard._settle(True, now))
+        self.assertEqual(guard._quiet_since, 0.0)
+
+    def test_the_settle_window_cannot_invent_a_busy_spell(self):
+        # It only ever EXTENDS one: a caller who dialled into quiet air must
+        # not be held by a window that never had a voice behind it.
+        import time
+
+        guard = self._guard()
+        guard.on_air = False
+        self.assertFalse(guard._settle(False, time.time()))
+
+    def test_the_handoff_lag_is_no_longer_an_operators_dial(self):
+        # It was one until 0.10.97 and should not have been: nobody can
+        # measure their mixer's handoff gap from the panel, and it sat in the
+        # middle of the ducking list looking like a dial worth turning. A
+        # stale value left in someone's settings.json must not resurrect it.
+        from call.air import OnAirGuard
+
+        import settings as settings_store
+
+        self.assertNotIn("on_air_lag_secs", settings_store.FIELDS)
+        self.assertNotIn("on_air_lag_secs", settings_store.SCHEMA)
+        guard = self._guard(on_air_lag_secs=99)
+        self.assertEqual(guard.lag_secs, OnAirGuard.HANDOFF_LAG_SECS)
 
     def test_our_own_action_holds_through_the_lag_too(self):
         import time
 
-        guard = self._guard(on_air_lag_secs=5)
+        from call.air import OnAirGuard
+
+        guard = self._guard()
         guard.mark_on_air(10)
-        self.assertGreaterEqual(guard._assumed_until, time.time() + 14)
+        self.assertGreaterEqual(guard._assumed_until,
+                                time.time() + 9 + OnAirGuard.HANDOFF_LAG_SECS)
 
     def test_the_push_file_reads_back_as_evidence(self):
         # The web process writes the last verified voice push; the guard
@@ -848,7 +905,7 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # here is how a 1.8 station's DJ would linger 2s after every link.
         import time
 
-        guard = self._guard(on_air_lag_secs=6)
+        guard = self._guard()
         now = time.time()
         speaking = {"at": now - 5, "v": 2, "phase": "speaking",
                     "voiceId": "v2", "text": "x", "durMs": 6000}
@@ -876,9 +933,11 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         a_minute_of_words = " ".join(["word"] * 120)
         self.assertTrue(guard._log_says_busy((40.0, a_minute_of_words)))
         self.assertFalse(guard._log_says_busy((40.0, "Quick station ID.")))
-        # No words at all falls back to on_air_quiet_secs (30 here).
+        # No words at all falls back to on_air_quiet_secs (30 here), plus the
+        # handoff lag that rides every poll-shaped verdict's tail.
         self.assertTrue(guard._log_says_busy((20.0, "")))
-        self.assertFalse(guard._log_says_busy((31.0, "")))
+        self.assertFalse(
+            guard._log_says_busy((31.0 + guard.HANDOFF_LAG_SECS, "")))
         self.assertFalse(guard._log_says_busy(None))
 
     def test_dead_air_is_worse_than_an_overlap(self):

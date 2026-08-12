@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.97
+
+- **The typed DJ reaches for the tool first and speaks afterwards.** It was told to say a line *before* acting — right on a phone call, where silence reads as a dropped line, and wrong in a chat, where the caller can see a typing cue and an action card. A round that was only that line looked identical to a finished answer, so "let me get that dedication sent right on down to the booth" ended the turn with nothing sent. Now the tool runs first and the reply reports what it actually did; if the DJ narrates anyway, one extra pass makes it act rather than leaving the promise hanging. Where the action card sits — before or after the reply — remains purely the **Action receipts** setting.
+- **A banter break is one hand-over, not five.** Several utterances back to back used to reopen the line in each gap between them, so the caller heard "right, where were we" and "hold on, I'm on air" three times over one break. The guard now rides out gaps shorter than a couple of seconds: one step out, one step back.
+- **The handoff-to-air lag stops being a dial.** Nobody can measure their mixer's handoff gap from a settings panel, and it sat in the middle of the ducking list looking like something worth turning. It is a constant now, unchanged in effect; the fallback hold moves to the end of the list where a fallback belongs.
+- **Two chat-card fixes.** The typing dots no longer land on the same line as a half-written reply, and on a narrow card the post-chat strip stops clipping "TRANSCRIPT · 15 LINES" and stacking "HOW WAS IT?" beside the thumbs.
+
 ## 0.10.96
 
 - **The conversation gets the room the header was wasting.** The card's top band was 38px tall around an 11px label — the tallest thing on a card whose other controls are 26–31px — and the identity row padded another 11px above and below the DJ's name. Both tighten, the who's-on-air block moves up, and every pixel reclaimed goes straight into the transcript, which is 12px taller for the same overall card. Embeds are untouched: their two-line transcript is a promise to the host page's layout.

@@ -960,8 +960,13 @@
   /* The drawer toggle is a label on a closed drawer, not an action — it takes
      the 9.5px micro-label the transcript's own speaker labels use. `.card
      button` (0,1,1) outranks a bare class, hence the .card prefix. */
+  /* min-width:0 and the ellipsis because this is a flex child on a strip that
+     runs out of room first on a narrow card: "TRANSCRIPT · 15 LINES" was
+     clipped mid-word against the rating buttons (operator screenshot,
+     2026-08-12). It gives way by truncating; the buttons never shrink. */
   .card .callended {
     height: 24px; padding: 0 9px; text-align: left;
+    min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
     background: var(--granite); border: 1px solid var(--hairline);
     color: var(--sage); font: 700 9.5px/1 var(--font-mono);
@@ -979,10 +984,16 @@
      also be blocked by a modal about it. */
   .rate { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
   .rate[hidden] { display: none; }
+  /* nowrap because "HOW WAS IT?" broke onto three stacked lines and stood the
+     whole strip up beside the thumbs (operator screenshot, 2026-08-12), and
+     it disappears entirely on a narrow card: two thumbs need no caption, and
+     the transcript's own label is the one that has to survive. */
   .rate .rlabel {
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: uppercase; color: var(--sage-dim);
+    white-space: nowrap; flex: 0 0 auto;
   }
+  @media (max-width: 430px) { .rate .rlabel { display: none; } }
   .rate .rbtns { display: inline-flex; gap: 6px; }
   .rate .rbtns[hidden] { display: none; }
   .card .rate button {

@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 
@@ -41,6 +42,16 @@ MAX_TOOL_ROUNDS = 4
 # outgrow any context window; the record keeps everything, the prompt keeps
 # the conversation's living end.
 PROMPT_TURNS = 30
+
+# The openers the chat conduct asks for by name ("hold on, let me dig through
+# the racks", "on it — checking what we've got"), plus the plain futures they
+# come out as. Matching our own instruction rather than guessing at the model:
+# see the nudge in _tool_loop for what this is used to catch.
+_PROMISES_ACTION = re.compile(
+    r"\b(let me|lemme|i'?ll\b|i am going to|i'?m going to|i'?m gonna|"
+    r"hold on|hang on|one sec|one moment|give me a|on it\b|"
+    r"checking|looking|digging|sending|queueing|queuing|getting that)\b",
+    re.IGNORECASE)
 
 # The booth's opening line when nothing is configured — filled with the DJ's
 # name so a fresh chat is greeted by whoever is actually on air.
@@ -306,6 +317,7 @@ class ChatSession:
 
         by_name = {t.info.name: t for t in tools}
         reply = ""
+        nudge_left = True
         try:
             for _ in range(MAX_TOOL_ROUNDS):
                 text_out, calls = "", []
@@ -322,6 +334,27 @@ class ChatSession:
                 await stream.aclose()
                 reply += text_out
                 if not calls:
+                    # A promise with no tool call behind it is the one shape
+                    # this loop used to ship as a finished answer. The chat
+                    # conduct TELLS the DJ to say something before reaching
+                    # for a tool ("hold on, let me dig through the racks"),
+                    # and a round that is only that line looked identical to
+                    # a round that was done — so "let me get that dedication
+                    # sent down to the booth" ended the turn and nothing was
+                    # ever sent (operator-reported, 2026-08-12). One extra
+                    # pass, only when the words match the opener the conduct
+                    # asked for, and only once per message.
+                    if nudge_left and tools and _PROMISES_ACTION.search(text_out):
+                        nudge_left = False
+                        ctx.add_message(role="assistant", content=text_out)
+                        ctx.add_message(role="user", content=(
+                            "[You just told the caller you were about to do "
+                            "something. If it needs one of your tools, call "
+                            "it NOW. Do not type another word to them — they "
+                            "have already read that line, and a second copy "
+                            "of it reads as a stutter. If nothing actually "
+                            "needs doing, answer with nothing at all.]"))
+                        continue
                     break
                 for call in calls:
                     ctx.insert(lk_llm.FunctionCall(

@@ -848,16 +848,12 @@
           other — the caller hears two of them, and so does everyone listening.</p>
         <label class="check"><input type="checkbox" id="avoid_on_air_overlap" /> Pause the call while the station is talking</label>
         <div class="row narrow">
-          <label for="on_air_quiet_secs">Air is busy for (s)</label>
-          <input type="number" id="on_air_quiet_secs" min="0" max="180" step="5" />
-        </div>
-        <div class="row narrow">
-          <label for="on_air_lag_secs">Handoff-to-air lag (s)</label>
-          <input type="number" id="on_air_lag_secs" min="0" max="15" step="1" />
-        </div>
-        <div class="row narrow">
           <label for="on_air_handover_secs">Hand over before air (s)</label>
           <input type="number" id="on_air_handover_secs" min="0" max="30" step="1" />
+        </div>
+        <div class="row narrow">
+          <label for="on_air_quiet_secs">Fallback: air is busy for (s)</label>
+          <input type="number" id="on_air_quiet_secs" min="0" max="180" step="5" />
         </div>
       </div>
     </details>

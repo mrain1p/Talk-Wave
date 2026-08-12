@@ -68,21 +68,43 @@ class OnAirGuard:
     POLL_SECS = 4.0     # a station read per call every 4s, not per turn
     MAX_HOLD = 45.0     # never leave a caller in silence longer than this
 
+    # HANDOFF-STAMPED evidence only — the 4s log poll, and pre-1.8 pushes.
+    # Those signals are stamped when the audio is handed to the mixer, a
+    # couple of seconds before it is audible, so the words finish that much
+    # later too and the gap rides the hold's tail (0.10.69: the tail ending
+    # early was the reported bug). A station on SUB/WAVE 1.8 stamps at AIR
+    # time and sends the voice.* lifecycle; that evidence carries "v": 2 and
+    # is held on exactly, with no lag. It was an operator setting until
+    # 0.10.97 and should not have been: nobody can measure their mixer's
+    # handoff gap from the panel, the two stations that matter both want ~2s,
+    # and it sat in the middle of the ducking list looking like a dial worth
+    # turning.
+    HANDOFF_LAG_SECS = 2.0
+
+    # One busy spell, not five. A banter break is several utterances back to
+    # back — voice.end, then voice.queued again a second later — and each gap
+    # used to reopen the gate, so the caller heard "right, where were we" and
+    # "hold on, I'm on air" three times over one break (operator-reported
+    # from a real call, 2026-08-12). Staying held across a gap this short
+    # makes the whole break ONE hand-over and ONE return.
+    #
+    # 2s is a deliberate floor, not a round number: it has to outlast the gap
+    # a mixer leaves between two utterances of one break, and every second of
+    # it is added to the silence after a link that really HAS finished — the
+    # same silence the operator called too long in that same report. Bridging
+    # the break still wins, because the alternative is heard three times.
+    SETTLE_SECS = 2.0
+
     def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
         self.station = station
         self.room = room
         self.enabled = bool(cfg.get("avoid_on_air_overlap"))
         self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
-        # On a PRE-1.8 station every signal — log entry, webhook push, even
-        # its own player overlay — is stamped at HANDOFF: the audible link
-        # runs a few seconds BEHIND every timestamp we anchor on, and a hold
-        # sized only by the words released while the tail was still airing
-        # (the operator's "ends early", 0.10.69). This is that gap, added to
-        # the hold's tail — for HANDOFF-STAMPED evidence only. A station on
-        # SUB/WAVE 1.8 stamps at air time and sends the voice.* lifecycle
-        # (our own issue #1382); that evidence carries "v": 2 in the push
-        # file and is held on exactly, no lag.
-        self.lag_secs = max(0.0, float(cfg.get("on_air_lag_secs") or 0))
+        # See HANDOFF_LAG_SECS: a constant since 0.10.97, not a setting.
+        self.lag_secs = self.HANDOFF_LAG_SECS
+        # First tick of quiet inside a busy spell, or 0 when the air is busy.
+        # The settle window is measured from here — see SETTLE_SECS.
+        self._quiet_since = 0.0
         # How close to the FORECAST air instant (voice.queued, 1.8+) the DJ
         # hands over. The station can warn many seconds ahead — the whole
         # point of the warning is that the call keeps flowing through the
@@ -353,6 +375,29 @@ class OnAirGuard:
             return ("clear", "", "")
         return None
 
+    def _settle(self, busy: bool, now: float) -> bool:
+        """Ride out the gaps INSIDE a busy spell — see SETTLE_SECS.
+
+        A banter break arrives as several utterances a second or two apart,
+        and returning the caller into each gap cost a come-back line and then
+        another hand-over line, three times over one break. While the settle
+        window runs the gate stays shut and nothing is said either way; a
+        fresh voice clears the clock, so the next gap gets a full window of
+        its own rather than a stale one.
+
+        Only ever EXTENDS a busy spell: it cannot invent one, so a caller who
+        dialled into quiet air is unaffected.
+        """
+        if busy:
+            self._quiet_since = 0.0
+            return True
+        if self.on_air:
+            if not self._quiet_since:
+                self._quiet_since = now
+            if now - self._quiet_since < self.SETTLE_SECS:
+                return True
+        return False
+
     PUSH_TICK = 1.0     # the push file is local and cheap — read it every second
 
     async def watch(self, session: AgentSession) -> None:
@@ -419,6 +464,8 @@ class OnAirGuard:
             else:
                 busy = self._assess(aged, poll_failed)
                 aired_now = aged[1] if aged else ""
+
+            busy = self._settle(busy, now)
             if busy != self.on_air:
                 self.on_air = busy
                 self._publish(busy)

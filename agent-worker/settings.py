@@ -301,14 +301,6 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # talking over itself. This holds those actions back until the air is
     # clear.
     "avoid_on_air_overlap": (None, True),
-    "on_air_quiet_secs":    (None, 30),
-    # On a pre-1.8 station every signal (log entry, push, its own overlay) is
-    # stamped at HANDOFF; the audible link runs this many seconds behind it,
-    # so it rides the hold's tail (0.10.69, the tail ending early was the
-    # reported bug). A station sending voice.* events stamps at AIR time
-    # (SUB/WAVE 1.8) and this is ignored for that evidence — the guard knows
-    # which kind it is holding on.
-    "on_air_lag_secs":      (None, 2),
     # How many seconds before the broadcast voice actually lands the call DJ
     # hands over, when the station says it is coming (voice.queued, SUB/WAVE
     # 1.8): with a long warning the call keeps flowing and the DJ steps away
@@ -316,6 +308,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # queue wait. Needs ~2s of warning to say the hand-over line; with less,
     # the gate closes silently. 0 = hand over the moment the warning arrives.
     "on_air_handover_secs": (None, 5),
+    # Last, because it is the fallback: only an entry with no words at all
+    # falls back to a fixed hold. The handoff lag that used to sit between
+    # these two stopped being an operator's decision in 0.10.97 — see
+    # OnAirGuard.HANDOFF_LAG_SECS.
+    "on_air_quiet_secs":    (None, 30),
 
     # The station refuses song requests when nobody is tuned in. A caller on
     # the line is engaged with the station but isn't pulling the stream, so
@@ -1278,21 +1275,6 @@ SCHEMA: dict[str, dict] = {
         help="Anything sent to air waits for the broadcast to go quiet, and the DJ "
              "steps back from the call while it plays — telling the caller either "
              "side rather than talking over itself."),
-    "on_air_quiet_secs": dict(group="onair", kind="number",
-        label="Fallback: air is busy for (s)",
-        needs=("avoid_on_air_overlap", True),
-        help="Only a fallback, for when the station's log doesn't say what was "
-             "spoken — when it does, the hold is sized to the words themselves. "
-             "A typical link runs 20–30 seconds."),
-    "on_air_lag_secs": dict(group="onair", kind="number",
-        label="Handoff-to-air lag (s)",
-        needs=("avoid_on_air_overlap", True),
-        help="Pre-1.8 stations only: they stamp a link when the audio is "
-             "HANDED OVER, a few seconds before it is audible, so this gap "
-             "rides the hold's tail. A station on SUB/WAVE 1.8+ stamps at "
-             "air time and sends voice events — the guard ignores this for "
-             "those. Raise it if an older station's DJ still returns early; "
-             "0 turns it off."),
     "on_air_handover_secs": dict(group="onair", kind="number",
         label="Hand over before air (s)",
         needs=("avoid_on_air_overlap", True),
@@ -1301,7 +1283,16 @@ SCHEMA: dict[str, dict] = {
              "this close to air, then the DJ says its hand-over line and "
              "steps back — instead of holding the whole wait. Needs ~2s of "
              "warning for the line; with less the gate closes silently. "
-             "5 suits the default mixer lead."),
+             "5 suits the default mixer lead — lower it if the caller hears "
+             "silence between the hand-over line and the broadcast."),
+    # Last in the group, because it is the fallback rather than a dial an
+    # operator reaches for (their ask, 2026-08-12).
+    "on_air_quiet_secs": dict(group="onair", kind="number",
+        label="Fallback: air is busy for (s)",
+        needs=("avoid_on_air_overlap", True),
+        help="Only a fallback, for when the station's log doesn't say what was "
+             "spoken — when it does, the hold is sized to the words themselves. "
+             "A typical link runs 20–30 seconds."),
 
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "
