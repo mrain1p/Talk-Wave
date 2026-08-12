@@ -2336,7 +2336,17 @@
     font-family: var(--font-body); font-size: 11.5px; line-height: 1.5;
   }
   .stages li.pending .icon { color: var(--dimmer); }
-  .stages li.running .icon { color: var(--warn); }
+  .stages li.running .icon {
+    color: var(--warn);
+    animation: stagepulse 1.1s ease-in-out infinite;
+  }
+  /* A row that is WORKING has to look different from one that is waiting —
+     without motion the whole check read as hung while the server batch ran
+     (operator-reported, 0.10.88). */
+  @keyframes stagepulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .25; }
+  }
   .stages li.pass .icon { color: var(--ok); }
   .stages li.warn .icon { color: var(--warn); }
   .stages li.fail .icon { color: var(--accent); }

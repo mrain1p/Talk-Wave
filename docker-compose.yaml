@@ -35,7 +35,7 @@ services:
     image: livekit/livekit-server:v1.13.5                                  # keep version pinned
     container_name: livekit-server
     command: --config /etc/livekit.yaml --node-ip ${HOST_IP:-127.0.0.1}    # zero-config LAN default
-    # command: --config /etc/livekit.yaml                                  # ← SWAP with the line above for callers from ANYWHERE — one router rule first (docs/networking.md); LAN keeps working
+    # command: --config /etc/livekit.yaml                                  # ← SWAP with the line above for callers from ANYWHERE — TWO edits, not one: this swap AND use_external_ip: true in livekit.yaml, plus the router rule (docs/networking.md). Swapping without the yaml flag advertises the container IP and media silently never flows; LAN keeps working either way
     restart: unless-stopped
     ports:
       - "7880:7880"                                                        # signalling (WebSocket)

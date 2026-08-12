@@ -58,6 +58,43 @@ def _keys_from_livekit_yaml() -> tuple[str, str]:
     return "", ""
 
 
+def rtc_flags() -> dict | None:
+    """The rtc flags from the same livekit.yaml the keypair comes from, or
+    None when no yaml is readable (a dev box without one).
+
+    Parsed so the pipeline check can say WHICH flag is wrong instead of
+    guessing: a real deployment removed --node-ip from the compose (the
+    callers-from-anywhere variant) while livekit.yaml still said
+    use_external_ip: false — LiveKit advertised its container address,
+    signalling worked, and media had nowhere to flow (0.10.88). The stdlib
+    parse, same reasoning as the keypair reader above.
+    """
+    path = Path(os.environ.get("LIVEKIT_CONFIG_PATH") or "/etc/livekit.yaml")
+    if not path.is_file():
+        path = Path(__file__).parent.parent.parent / "livekit.yaml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:                                         # noqa: BLE001
+        return None
+    flags: dict = {"use_external_ip": False, "node_ip": ""}
+    in_rtc = False
+    for line in text.splitlines():
+        stripped = line.split("#", 1)[0].rstrip()
+        if not stripped.strip():
+            continue
+        if not line[:1].isspace():
+            in_rtc = stripped.strip() == "rtc:"
+            continue
+        if in_rtc and ":" in stripped:
+            key, _, value = stripped.strip().partition(":")
+            key, value = key.strip(), value.strip().strip("'\"")
+            if key == "use_external_ip":
+                flags["use_external_ip"] = value.lower() == "true"
+            elif key == "node_ip":
+                flags["node_ip"] = value
+    return flags
+
+
 def apply_livekit_keys() -> None:
     """Push the yaml keypair into the environment when .env didn't supply
     one. The SDK and every route read os.environ, so this must run before

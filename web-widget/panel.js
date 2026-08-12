@@ -3232,7 +3232,18 @@
       run: async (env) => {
         if (!env.livekit?.ok) return { status: 'fail', detail: env.livekit?.detail || 'unreachable' };
         if (!env.livekitAuth?.ok) return { status: 'fail', detail: env.livekitAuth.detail };
-        return { status: 'pass', detail: env.livekit.url + ' · credentials OK' };
+        // The server read livekit.yaml's rtc flags (0.10.88): the one
+        // advertising misconfiguration every other stage sails past —
+        // use_external_ip false with no node_ip means the container address
+        // goes out as the media address, and only the browser probe fails,
+        // ten seconds later, with a guess.
+        if (env.rtc && !env.rtc.ok) {
+          return { status: 'warn',
+                   detail: env.livekit.url + ' · credentials OK — but '
+                     + env.rtc.detail };
+        }
+        return { status: 'pass', detail: env.livekit.url + ' · credentials OK'
+          + (env.rtc ? ' · ' + env.rtc.detail : '') };
       },
     },
     {
@@ -3580,9 +3591,22 @@
     out.className = 'result on'; out.textContent = 'Running…';
 
     const rows = PIPELINE.map((s) => ({ name: s.name, status: 'pending', detail: '' }));
-    renderStages(rows);
 
-    // /test/env answers three of the stages in one round trip.
+    // The server answers several stages in ONE round trip below, and on a
+    // slow station that request can run tens of seconds — during which every
+    // row used to sit inert and the whole check read as hung
+    // (operator-reported, 0.10.88). The rows that ride the batch say so
+    // while it runs; a stage's own turn still gets its "checking…".
+    PIPELINE.forEach((s, i) => {
+      if (s.run.length > 0) {
+        rows[i].status = 'running';
+        rows[i].detail = 'in the server batch — a slow station stretches this…';
+      }
+    });
+    renderStages(rows);
+    out.textContent = 'Running — the server walks its checks in one batch; '
+      + 'a station that answers slowly stretches this to ~30s.';
+
     let env = {};
     try {
       env = await afetch('/test/env', {
@@ -3590,6 +3614,10 @@
         body: JSON.stringify(draft()),
       }).then((r) => r.json());
     } catch (e) { env = {}; }
+    // The batch is home: quiet the placeholders before the walk.
+    rows.forEach((r) => {
+      if (r.status === 'running') { r.status = 'pending'; r.detail = ''; }
+    });
 
     let failed = null, warned = 0;
     for (let i = 0; i < PIPELINE.length; i++) {

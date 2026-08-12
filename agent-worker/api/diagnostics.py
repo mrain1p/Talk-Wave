@@ -50,7 +50,20 @@ def _plain_error(e: BaseException) -> str:
             for s in sub:
                 walk(s)
             return
-        msg = str(x).strip() or type(x).__name__
+        # httpx's timeout family stringifies to NOTHING, so the fallback used
+        # to be the bare class name — a probe answered a real operator with
+        # the single word "ReadTimeout" (0.10.88). Name what actually
+        # happened instead.
+        worded = {
+            "ReadTimeout": "timed out waiting for a reply — the other end "
+                           "is answering too slowly",
+            "ConnectTimeout": "timed out trying to connect — nothing "
+                              "answered at that address in time",
+            "WriteTimeout": "timed out sending the request",
+            "PoolTimeout": "timed out waiting for a free connection",
+        }
+        msg = (str(x).strip() or worded.get(type(x).__name__)
+               or type(x).__name__)
         if msg not in seen:
             seen.append(msg)
 
@@ -785,6 +798,36 @@ async def handle_test_env(request: web.Request) -> web.Response:
                       "LIVEKIT_API_SECRET in .env")
         result["livekitAuth"] = {"ok": False, "detail": detail[:200]}
         result["ok"] = False
+
+    # What livekit.yaml says it will ADVERTISE — the flag the browser's own
+    # media probe can only guess at. A deployment removed --node-ip from the
+    # compose while the yaml still said use_external_ip: false: LiveKit
+    # advertised its container address, every server stage passed, and media
+    # had nowhere to flow (0.10.88). The parse can't see a --node-ip passed
+    # on the command line, so the false/unset combination is a warning that
+    # names both readings, never a failure.
+    from api.env import rtc_flags
+
+    flags = rtc_flags()
+    if flags is not None:
+        if flags["use_external_ip"]:
+            result["rtc"] = {"ok": True, "detail":
+                             "use_external_ip: true — the public address is "
+                             "discovered and advertised"}
+        elif flags["node_ip"]:
+            result["rtc"] = {"ok": True, "detail":
+                             f"node_ip pins {flags['node_ip']} — LAN-only by "
+                             "design; for callers from anywhere remove it and "
+                             "set use_external_ip: true"}
+        else:
+            result["rtc"] = {"ok": False, "detail":
+                             "livekit.yaml has use_external_ip: false and no "
+                             "node_ip — fine only when the compose passes "
+                             "--node-ip (the shipped LAN default does). If "
+                             "you removed --node-ip for public callers, set "
+                             "use_external_ip: true in livekit.yaml, or "
+                             "LiveKit advertises its container address and "
+                             "media never flows"}
 
     # --- STT constructible with the configured provider/key ---
     try:
