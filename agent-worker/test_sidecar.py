@@ -170,6 +170,7 @@ from tests.test_brain import (  # noqa: F401
     TestPromptAssembly,
     TestPrompts,
     TestTheConductHarnessCannotReachTheRealStation,
+    TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,

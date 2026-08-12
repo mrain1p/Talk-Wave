@@ -22,6 +22,15 @@ Run it inside the deployed worker:
 
 Env:
     SCENARIO_SET=extra   the second set (hangup, shoutout, action cap)
+    SCENARIO_SET=coverage  every tool on the surface once, plus the blocked
+                         ones as refusals to watch — the talkwave-drill sweep
+    MODE=chat            the chat-mode prompt and the chat tool surface (no
+                         end_call, no MCP) — what a texter actually gets
+    GATES=all            force every tool gate on, IN MEMORY ONLY — the file
+                         on disk is never touched
+    MCP=1                attach the station's real MCP tools (call mode only).
+                         Safe in a muzzled run: every MCP-served tool is a
+                         read — see MCP_READS
     CALL_AGE_SECS=300    pretend the call has been running that long, which
                          puts end_call past its 60s floor so it can fire
 
@@ -70,6 +79,10 @@ LIBRARY = [
 ]
 
 STATION_CALLS: list[tuple[str, dict]] = []
+
+# Every tool name the model actually called, across all scenarios — the
+# coverage summary is printed from this.
+FIRED: set[str] = set()
 
 
 def _matches(track: dict, query: str) -> bool:
@@ -163,6 +176,39 @@ def muzzle_the_station() -> None:
     StationClient.unlike_track = fake_unlike
 
 
+# The MCP-served half of the surface is reads, all of it — every write is
+# served by a LOCAL wrapper so the per-call action cap applies (registry.py's
+# rule). That is what makes the station's real MCP server safe to attach to a
+# muzzled run. The names are pinned by hand anyway: if a write ever becomes
+# MCP-served, it stays off this list and fails closed rather than firing on
+# air mid-drill.
+MCP_READS = (
+    "subwave_health", "subwave_now_playing", "subwave_station_state",
+    "subwave_schedule", "subwave_session", "subwave_request_status",
+    "subwave_list_skills",
+)
+
+
+async def attach_mcp_reads(cfg):
+    """The same connection a live call makes (session.py), minus the toolset
+    wrapper — list_tools() hands back function tools the runner can invoke."""
+    import station_config as station_config_mod
+    from livekit.agents import mcp as lk_mcp
+
+    from call.tools import mcp_allowlist
+
+    allowed = [n for n in mcp_allowlist(cfg) if n in MCP_READS]
+    server = lk_mcp.MCPServerHTTP(
+        url=settings_store.station_mcp_url(),
+        transport_type="streamable_http",
+        allowed_tools=allowed or ["__none__"],
+        headers=station_config_mod.mcp_headers() or None,
+        client_session_timeout_seconds=7,
+    )
+    await server.initialize()
+    return await server.list_tools(), server
+
+
 # ------------------------------------------------------------------- scenarios
 
 EXTRA = [
@@ -197,6 +243,70 @@ EXTRA = [
         "@nudge Still nothing from the caller. Say a brief goodbye in "
         "character — you're letting them go and getting back to the "
         "broadcast. One line, then stop.",
+    ]),
+]
+
+# Every tool the registry can put on a line, asked for once, in caller words —
+# the talkwave-drill sweep. Run with GATES=all (nobody's real toggles allow all
+# of this at once) and MCP=1 so the reads are on the surface too. Ordered so
+# the state a later turn needs exists by the time it runs: the request before
+# its status check, the takeover before its cancel. The blocked tools are here
+# too, as refusals to watch for — a DJ reaching for a sound effect has been
+# promised something the line does not carry.
+COVERAGE = [
+    ("reads: health, now playing, the queue", [
+        "quick one before anything else — is the station actually running okay today?",
+        "what's this track playing right now?",
+        "and what's coming up after it?",
+    ]),
+    ("reads: schedule and the on-air patter", [
+        "what shows have you got on this station this week?",
+        "what were you talking about on air just before I rang in?",
+    ]),
+    ("lyrics of the current track", [
+        "what are the words to this one? I can never make them out",
+    ]),
+    ("library search, then the new arrivals", [
+        "have you got anything by Fleetwood Mac in the racks?",
+        "and what's new in the library this week?",
+    ]),
+    ("a request by name, then its status", [
+        "play Dreams by Fleetwood Mac for me",
+        "did that actually make it into the queue?",
+    ]),
+    ("the exact copy, queued by id", [
+        "find the track Africa by Toto and queue that exact copy — the precise "
+        "one you find, not a re-match",
+    ]),
+    ("a heart on, a heart off", [
+        "oh I love this one — stick a heart on it from me",
+        "actually no, take that heart back off",
+    ]),
+    ("an announcement on air", [
+        "can you give a shoutout on air to my sister Ana? she's listening at work",
+    ]),
+    ("segments: list them, run one", [
+        "what segments can you actually run?",
+        "go on then — do the weather",
+    ]),
+    ("a programme beat", [
+        "fire off a station ID for me, I love those",
+    ]),
+    ("skipping the track, for everyone", [
+        "this song is dreadful — skip it",
+    ]),
+    ("a takeover, then cancelled", [
+        "put a different show on the air for a bit — whichever you'd pick",
+        "actually cancel that, put the schedule back how it was",
+    ]),
+    ("sfx are never on a call line", [
+        "hit the airhorn! right now, on air!",
+    ]),
+    ("playlist rebuild is never on a call line", [
+        "the playlist's gone stale — rebuild the whole thing for me",
+    ]),
+    ("hanging up cleanly", [
+        "that's everything, thanks — see ya",
     ]),
 ]
 
@@ -246,9 +356,16 @@ def tool_name(t) -> str:
 
 
 async def invoke(tool, args: dict) -> str:
-    """Run the real wrapper. It reaches the recorders, never the station."""
+    """Run the real wrapper. It reaches the recorders, never the station —
+    except an attached MCP read, which really asks the station and may."""
     try:
-        out = tool(**args)
+        # An MCP tool is a raw-schema tool whose implementation takes the
+        # argument DICT itself, not keywords — calling it with ** hands every
+        # argument to a parameter that doesn't exist.
+        if getattr(tool, "__livekit_raw_tool_info", None) is not None:
+            out = tool(args)
+        else:
+            out = tool(**args)
         return await out if asyncio.iscoroutine(out) else str(out)
     except Exception as e:                                    # noqa: BLE001
         return f"<tool raised {type(e).__name__}: {e}>"
@@ -325,6 +442,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log):
                     except Exception:                          # noqa: BLE001
                         args = {}
                 log.append(f"  TOOL -> {tc.name}({json.dumps(args, ensure_ascii=False)})")
+                FIRED.add(tc.name)
                 tool = by_name.get(tc.name)
                 if tool is None:
                     result = f"<{tc.name} is not exposed on this call line>"
@@ -364,19 +482,40 @@ async def main() -> None:
 
     secrets_store.apply_to_env()
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
+    chat = os.environ.get("MODE") == "chat"
+    if os.environ.get("GATES") == "all":
+        # In memory only — the file on disk is never touched. The drill's
+        # whole point is every tool at once, which no operator's real toggles
+        # are likely to allow; the cap is raised for the same reason.
+        from call.tools import registry as tool_registry
+
+        for t in tool_registry.TOOLS:
+            if t.gate not in (tool_registry.READ, tool_registry.NEVER):
+                cfg[t.gate] = True
+        cfg["max_actions_per_call"] = 99
     muzzle_the_station()
 
     station = StationClient()
     snap = await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
     persona = station.persona_from(snap["dj"], snap["personas"])
-    prompt = await brain.build_system_prompt(station, persona, snapshot=snap)
+    # cfg is passed rather than left to the admin-tier fallback so the forced
+    # gates reach the prompt too — a prompt that promises less than the tool
+    # surface makes the model look shy of tools it was never told about.
+    prompt = await brain.build_system_prompt(
+        station, persona, snapshot=snap, cfg=cfg,
+        mode="chat" if chat else "call")
 
     actions = CallActions(int(cfg.get("max_actions_per_call") or 0))
-    guard = OnAirGuard(station, cfg)
+    # Chat's wiring, mirrored from chat/session.py: no overlap guard (a typed
+    # DJ never needs holding off the air) and, below, no end_call — a text
+    # line has no receiver to put down.
+    guard = OnAirGuard(station,
+                       {"avoid_on_air_overlap": False} if chat else cfg)
     # CALL_AGE_SECS pretends the call has been running a while, so the 60s
     # hangup guard is out of the way and end_call can actually be observed.
     started = time.time() - float(os.environ.get("CALL_AGE_SECS", "0"))
-    scenarios = EXTRA if os.environ.get("SCENARIO_SET") == "extra" else SCENARIOS
+    which = os.environ.get("SCENARIO_SET", "")
+    scenarios = {"extra": EXTRA, "coverage": COVERAGE}.get(which, SCENARIOS)
 
     class FakeCtx:
         room = type("R", (), {"name": "script-test"})()
@@ -384,16 +523,31 @@ async def main() -> None:
     tools = []
     tools += build_library_tools(cfg, station, actions)
     tools += build_on_air_tools(cfg, station, actions, guard, guarded=False)
-    tools += build_call_control_tools(FakeCtx(), lambda: None, started)
+    mcp_server = None
+    if chat:
+        if os.environ.get("MCP") == "1":
+            print("[MODE=chat ignores MCP=1 — a production chat line carries "
+                  "no MCP tools]")
+    else:
+        tools += build_call_control_tools(FakeCtx(), lambda: None, started)
+        if os.environ.get("MCP") == "1":
+            try:
+                mcp_tools, mcp_server = await attach_mcp_reads(cfg)
+                tools += mcp_tools
+            except Exception as e:                             # noqa: BLE001
+                print(f"[MCP reads unavailable ({e}) — sweeping the local "
+                      "surface only]")
 
     llm = build_llm(cfg)
 
     log = []
     log.append(f"persona   : {persona.get('name')}")
+    log.append(f"mode      : {'chat' if chat else 'call'}")
     log.append(f"model     : {cfg.get('llm_provider')} / {cfg.get('llm_model')}")
     log.append(f"prompt    : {len(prompt)} chars")
     log.append(f"tools      : {', '.join(sorted(tool_name(t) for t in tools))}")
-    log.append(f"action cap: {cfg.get('max_actions_per_call')}")
+    log.append(f"action cap: {cfg.get('max_actions_per_call')}"
+               + (" (GATES=all)" if os.environ.get("GATES") == "all" else ""))
 
     for name, turns in scenarios:
         try:
@@ -405,6 +559,30 @@ async def main() -> None:
     for nm, payload in STATION_CALLS:
         log.append(f"  {nm}: {json.dumps(payload, ensure_ascii=False)[:200]}")
 
+    if which == "coverage":
+        # The verdict the drill reads first. "Never called" is judged against
+        # the transcript rather than as an automatic failure — a read the
+        # call-start briefing already answers may legitimately go uncalled.
+        from call.tools.registry import blocked_names
+
+        surface = {tool_name(t) for t in tools}
+        log.append(f"\n{'=' * 72}\nCOVERAGE\n{'=' * 72}")
+        log.append(f"exercised   : {', '.join(sorted(FIRED & surface)) or '(none)'}")
+        log.append(f"never called: {', '.join(sorted(surface - FIRED)) or '(none)'}")
+        ghosts = sorted(FIRED - surface)
+        if ghosts:
+            log.append(f"CALLED BUT NOT ON THE SURFACE: {', '.join(ghosts)}")
+        reached = sorted(FIRED & set(blocked_names()))
+        if reached:
+            log.append(f"REACHED FOR A BLOCKED TOOL: {', '.join(reached)} — "
+                       "the model tried; the line held (nothing is exposed), "
+                       "but the conduct wants a look")
+
+    if mcp_server is not None:
+        try:
+            await mcp_server.aclose()
+        except Exception:                                      # noqa: BLE001
+            pass
     await station.aclose()
     print("\n".join(log))
 

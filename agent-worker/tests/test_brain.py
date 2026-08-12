@@ -469,6 +469,35 @@ class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):
         self.assertIn("dj_segment", self.muzzled)
 
 
+class TestTheDrillsMcpReadsKeepUpWithTheRegistry(unittest.TestCase):
+    """The drill sweep (`scripted_call.py` with MCP=1) attaches the station's
+    REAL MCP server to a muzzled run, on the strength of one fact: every
+    MCP-served tool is a read. MCP_READS pins the names by hand so a write
+    that ever became MCP-served would fail closed — left off the sweep —
+    rather than firing on air mid-drill. But a pinned list can also fall
+    silently behind a NEW read, which shrinks the drill's coverage with no
+    sign anywhere. This keeps the two in step. If it fails because a tool
+    became MCP-served: add it to MCP_READS only if it is a read; if it
+    writes, it belongs behind a LOCAL wrapper (registry.py's own rule), not
+    on this list."""
+
+    def test_mcp_reads_equals_the_registrys_mcp_surface(self):
+        import ast
+
+        from call.tools.registry import MCP, TOOLS
+
+        tree = ast.parse(
+            (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8"))
+        pinned = None
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Assign)
+                    and any(getattr(t, "id", "") == "MCP_READS"
+                            for t in node.targets)):
+                pinned = set(ast.literal_eval(node.value))
+        self.assertIsNotNone(pinned, "scripted_call.py no longer pins MCP_READS")
+        self.assertEqual(pinned, {t.name for t in TOOLS if t.served == MCP})
+
+
 class TestTheDJKnowsTheStationsShows(unittest.TestCase):
     """Two real calls (2026-08-09, rooms ee3ef9616834 and 7046da2b9289):
     Wade refused a takeover of The Overlook as caller nonsense, because the
