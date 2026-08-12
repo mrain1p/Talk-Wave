@@ -3,6 +3,11 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.98
+
+- **A doubted action gets checked, never explained away.** In a real chat the DJ promised a dedication, claimed twice that it had gone out, and when the caller said they couldn't hear it, explained the silence with distance and a dog lifting his head — then finally sent it on the caller's third push. Both mouths are now told that a caller saying "I don't hear it" or "did you actually do it?" is *information, not doubt to be soothed*: check whether a tool really ran, say so plainly if it didn't, and do it. Inventing physics to cover an action never taken is named as the worst thing on the page, with that conversation as the worked example.
+- The conduct drill replays that exact call, turn for turn, so it cannot come back quietly.
+
 ## 0.10.97
 
 - **The typed DJ reaches for the tool first and speaks afterwards.** It was told to say a line *before* acting — right on a phone call, where silence reads as a dropped line, and wrong in a chat, where the caller can see a typing cue and an action card. A round that was only that line looked identical to a finished answer, so "let me get that dedication sent right on down to the booth" ended the turn with nothing sent. Now the tool runs first and the reply reports what it actually did; if the DJ narrates anyway, one extra pass makes it act rather than leaving the promise hanging. Where the action card sits — before or after the reply — remains purely the **Action receipts** setting.

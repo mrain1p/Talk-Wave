@@ -54,6 +54,31 @@ class TestThePromptNeverPromisesATakeoverItCannotDo(unittest.TestCase):
         self.assertIn("MUSIC ONLY", inspect.getsource(music))
 
 
+class TestADoubtedActionIsCheckedNotExplainedAway(unittest.TestCase):
+    """A real chat, 2026-08-12 (record ...195347): a dedication was promised
+    with no tool behind it, then claimed as done ("passed it right on to
+    Séamus... playing out over the airwaves as we speak"), then explained
+    away when the caller said they couldn't hear it ("the sound's got to
+    travel from the back corner of Donovan's out through the old masts") —
+    and only actually sent on the caller's third push. Claiming an outcome
+    is one failure; inventing physics to cover it is the one that costs the
+    caller their trust in everything else."""
+
+    def test_both_mouths_are_told_to_go_and_look(self):
+        from brain import conduct, conduct_chat
+
+        for text in (conduct.rules({}), conduct_chat.rules({})):
+            self.assertIn("BELIEVE THEM", text)
+            self.assertIn("Check whether a tool really ran", text)
+
+    def test_the_invented_cover_story_is_shown_as_the_wrong_answer(self):
+        from brain import conduct
+
+        text = conduct.rules({})
+        self.assertIn("old\n         masts", text)      # the NO example
+        self.assertIn("that never went out", text)      # the YES example
+
+
 class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
     """The generalisation of the takeover lesson, caught by the drill's
     refusal sweep the same day: with no announce tool the DJ "passed on" a
