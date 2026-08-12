@@ -47,6 +47,10 @@ names the fix. The classics:
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://`
   page is blocked as mixed content, silently. Set **Station stream URL** to an
   https one; the *Station stream* stage says so outright.
+- **The call button says "Line not set up"** — no admin password exists yet,
+  and until one does every door refuses: calls, texts and voicemail alike, in
+  every access mode. The call page itself asks for the password on a fresh
+  install; *Permissions & safety → Access* is the other way in.
 - **Locked out of the panel** — set `CALLIN_ADMIN_KEY`, or restart to clear
   bans. To remove the password entirely, delete `data/admin-auth.json`.
 - **The panel has forgotten everything, or the login says a file cannot be
@@ -104,7 +108,7 @@ version — check both containers match, since they ship as one image but run as
 two.
 
 ```bash
-cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls python -m unittest test_sidecar
+cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls LISTENERS_PATH=/tmp/l.json LISTENER_SAMPLE_INTERVAL=0 python -m unittest test_sidecar
 ```
 
 **Those environment variables are not optional.** Most test classes redirect

@@ -55,7 +55,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 **Gated like a phone line, not a demo**
 - Three caller tiers — admin, guest code, open — and a per-feature permission matrix: each action goes to the least trusted tier that should have it, or nobody.
 - Usage caps on everything a call can cost, and a kill switch that outranks it all.
-- PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens. See [Security](docs/security.md).
+- PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens — and a fresh install answers nobody until its admin password is set. See [Security](docs/security.md).
 
 **An operator's panel that tells the truth**
 - A dashboard that acts (toggles post instantly, no save) and reads (on air, station health, activity charts).
@@ -105,7 +105,7 @@ docker compose up -d
 
 Both processes run as **uid 1000**, so `data/` has to belong to it — that is what the third line does. Skip it and the app can't read its own files: no setup ask, a locked panel, and the reason named at the login gate and in the logs.
 
-**`HOST_IP`** is the one deployment variable — the docker host's LAN address, driving LiveKit's advertised media address, the browser URL and the webhook callback. Otherwise `.env` only needs the LiveKit keypair; the rest is panel.
+**`HOST_IP`** is the one deployment variable — the docker host's LAN address, driving LiveKit's advertised media address, the browser URL and the webhook callback. That is all `.env` has to say: the LiveKit keypair is read from the mounted `livekit.yaml` (env still overrides), so the secret lives in one file. The rest is panel.
 
 **`SUBWAVE_STREAM_URL`** should be the station's public `https://` stream. Left blank it derives from the station's own address, which is plain http on the LAN — and since the widget must be served over TLS for the microphone to work, the browser blocks that stream as mixed content and the caller hears no station. It fails silently, so set it first. A bare origin is enough; the station's published mounts are discovered, mp3 first.
 
