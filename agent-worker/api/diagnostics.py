@@ -773,7 +773,17 @@ async def handle_test_env(request: web.Request) -> web.Response:
         finally:
             await lkapi.aclose()
     except Exception as e:
-        result["livekitAuth"] = {"ok": False, "detail": _plain_error(e)[:120]}
+        detail = _plain_error(e)
+        # The SDK's "either token, or api_key and api_secret, must be set"
+        # names the symptom, not the deployment fix — a real operator's
+        # adapted compose was missing the livekit.yaml mounts and this stage
+        # left them to work that out alone (0.10.86).
+        if "api_key and api_secret" in detail or "api_secret" in detail:
+            detail = ("no LiveKit keypair reached this container — mount "
+                      "./livekit.yaml:/etc/livekit.yaml:ro into BOTH talkwave "
+                      "services (the shipped compose does), or set "
+                      "LIVEKIT_API_SECRET in .env")
+        result["livekitAuth"] = {"ok": False, "detail": detail[:200]}
         result["ok"] = False
 
     # --- STT constructible with the configured provider/key ---

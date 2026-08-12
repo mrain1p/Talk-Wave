@@ -69,6 +69,21 @@ def apply_livekit_keys() -> None:
     if name and secret:
         os.environ["LIVEKIT_API_KEY"] = name
         os.environ["LIVEKIT_API_SECRET"] = secret
+        return
+    # No secret anywhere: the worker will retry-loop on 401s and the token
+    # server will mint tokens LiveKit refuses, both of which look like
+    # anything but a missing mount. Say the fix ONCE, here, where the gap is
+    # known — a real deployment's adapted compose was missing the mounts and
+    # the operator diagnosed it from raw 401 logs (0.10.86).
+    import logging
+
+    logging.getLogger("callin.env").error(
+        "no LiveKit keypair: LIVEKIT_API_SECRET is unset and no livekit.yaml "
+        "was found at /etc/livekit.yaml. Mount it into this container — "
+        "./livekit.yaml:/etc/livekit.yaml:ro under BOTH talkwave services, "
+        "as the shipped docker-compose.yaml does — or set the keypair in "
+        ".env. Until then LiveKit will refuse every token with a 401."
+    )
 
 
 apply_livekit_keys()

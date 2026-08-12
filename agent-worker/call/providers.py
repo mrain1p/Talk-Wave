@@ -56,14 +56,28 @@ def effective_stt(cfg: dict) -> tuple[str, str, str]:
         provider, default = "local", "base.en"
     elif wanted == "deepgram" and os.environ.get("DEEPGRAM_API_KEY"):
         provider, default = "deepgram", "nova-3"
-    elif wanted == "openai" or (wanted == "deepgram" and os.environ.get("OPENAI_API_KEY")):
+    elif wanted == "openai" and os.environ.get("OPENAI_API_KEY"):
         provider, default = "openai", "gpt-4o-mini-transcribe"
-        if wanted == "deepgram":
-            note = "no Deepgram key — using OpenAI STT"
-    else:
+    elif wanted == "deepgram" and os.environ.get("OPENAI_API_KEY"):
+        provider, default = "openai", "gpt-4o-mini-transcribe"
+        note = "no Deepgram key — using OpenAI STT"
+    elif wanted == "google" and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         provider, default = "google", ""
-        if wanted != "google":
-            note = f"no usable key for {wanted} — falling back to Google STT"
+    else:
+        # The built-in Whisper, not Google (0.10.86): the old last resort
+        # assumed Google application-default credentials exist, which is
+        # never true on a fresh install — a real deployment's STT stage
+        # failed with an ADC lecture while a working Whisper sat in the
+        # container. Google STT wants a SERVICE ACCOUNT
+        # (GOOGLE_APPLICATION_CREDENTIALS), not the Gemini API key, so a
+        # google pick without one falls here too and the note says why.
+        provider, default = "local", "base.en"
+        if wanted == "google":
+            note = ("Google STT needs service-account credentials "
+                    "(GOOGLE_APPLICATION_CREDENTIALS), not the Gemini key — "
+                    "using the built-in Whisper")
+        elif wanted != "local":
+            note = f"no usable key for {wanted} — using the built-in Whisper"
 
     model = model_for(provider, requested, choices, default)
     if requested and model != requested:

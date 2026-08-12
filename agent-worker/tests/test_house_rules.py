@@ -520,6 +520,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
             "three above.",
+        "agent-worker/tests/test_tools_logic.py":
+            "one subject: what a tool does once reached — provider "
+            "construction, adapters, and what the DJ may claim afterwards. "
+            "Crossed the ceiling when 0.10.86 pinned the Google-STT "
+            "service-account trap; same subject-placement rule as the "
+            "modules around it.",
         "agent-worker/tests/test_house_rules.py":
             "one subject: how this repo is kept. It grows a rule per "
             "incident — the aggregator sweep alone (0.10.5) came from two "
