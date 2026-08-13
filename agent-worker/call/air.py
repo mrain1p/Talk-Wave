@@ -433,8 +433,21 @@ class OnAirGuard:
         tail = getattr(self, "duck_pad", DUCK_PAD_SECS)
         if phase == "queued":
             lead = float(d.get("airAt") or at) - now
-            if lead > self.handover_secs:
+            if lead > self.handover_secs and not self.on_air:
                 return None          # the call keeps flowing until it's close
+            # ALREADY holding and the station has queued another one? Then this
+            # break is not over, however far out the forecast is, and the hold
+            # continues. THE bridge for a multi-part break, and it is driven by
+            # the station's own warning rather than by a blanket pad.
+            #
+            # Measured 2026-08-13, a real call: two voice.queued landed at
+            # +12.6s while the caller was already on hold, the forecast was
+            # further out than the hand-over window, so this returned None, the
+            # estimate ran out 0.2s later and the line was released — then
+            # re-held at +17.8s. The caller got a return line and a second
+            # hand-over line for one continuous break. The hand-over window is
+            # about when to START a hold from quiet; it was never meant to
+            # decide whether to END one while more speech is queued.
             # Inside the window: hold from here until the voice has landed
             # and played out (voice.start/end refine this the moment they
             # arrive; this bound only matters if they never do).

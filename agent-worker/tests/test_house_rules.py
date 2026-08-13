@@ -609,7 +609,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # file that has been diagnosed by hand three times, and the twenty
         # lines that make a duck readable from a call record are worth more
         # than the twenty lines of headroom. The seam below is unchanged.
-        "agent-worker/call/air.py": (665, "a verdict module (speaking_secs, "
+        "agent-worker/call/air.py": (680, "a verdict module (speaking_secs, "
                                           "DUCK_PAD_SECS, _push_verdict, "
                                           "_assess, _settle) split from the "
                                           "live guard and its watch loop"),

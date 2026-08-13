@@ -860,6 +860,35 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # never told the hold was over.
         self.assertIsNone(guard._comeback)
 
+
+    def test_a_queued_voice_while_holding_bridges_the_break(self):
+        # The bridge, and it is the station's own warning rather than a pad.
+        # Measured on a real call 2026-08-13: two voice.queued landed while the
+        # caller was already on hold, both forecast further out than the
+        # hand-over window, so the verdict was None, the estimate ran out and
+        # the line was RELEASED — then re-held five seconds later. One
+        # continuous break cost the caller a return line and a second
+        # hand-over line.
+        import time
+
+        from call.air import OnAirGuard
+
+        guard = self._guard()
+        now = time.time()
+        # Forecast well beyond the hand-over window.
+        entry = {"at": now, "v": 2, "phase": "queued", "voiceId": "b2",
+                 "text": "the next part", "durMs": 6000,
+                 "airAt": now + guard.handover_secs + 30}
+
+        guard.on_air = False
+        self.assertIsNone(OnAirGuard._push_verdict(guard, entry, now),
+                          "a distant forecast must not gag a quiet line")
+
+        guard.on_air = True
+        verdict = OnAirGuard._push_verdict(guard, entry, now)
+        self.assertIsNotNone(verdict, "the break was dropped mid-way again")
+        self.assertEqual(verdict[0], "busy")
+
     def test_a_finished_link_pays_no_settle_tax(self):
         # The other half: with nothing in flight there is nothing to cancel,
         # so a link that really has finished releases on its own timing.
