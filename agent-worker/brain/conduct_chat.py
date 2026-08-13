@@ -16,6 +16,7 @@ from __future__ import annotations
 from brain.conduct import (
     DOORWAY,
     LANGUAGE_AND_MIMICRY,
+    SPEAK_AS_YOURSELF,
     running_the_call,
     say_the_true_thing,
 )
@@ -120,7 +121,7 @@ def rules(cfg: dict) -> str:
     """
     blocks = [
         DOORWAY,
-        HOW_TO_TYPE,
+        HOW_TO_TYPE + SPEAK_AS_YOURSELF,
         running_the_call(cfg),
         CHAT_CLOSING,
     ]

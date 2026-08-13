@@ -1557,3 +1557,69 @@ class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
         record.problem = record.problems.append
         self._greet(self._Air(wait=2.0), record=record)
         self.assertEqual(record.problems, [])
+
+
+class TestAHoldAlwaysEnds(unittest.TestCase):
+    """A hold nobody can end is worse than an overlap.
+
+    `mark_pending_air` shuts the gate until the station's log shows an action
+    it may never log. That was tolerable while it only meant the DJ stayed
+    quiet — from 0.10.107 the caller's microphone is disabled too, and a real
+    call sat muted until it was abandoned: "he went off air to say it but
+    never released the microphone back to me. that's a bug that kills it."
+    """
+
+    def _guard(self):
+        from call.air import OnAirGuard
+
+        g = OnAirGuard.__new__(OnAirGuard)
+        g.quiet_secs = 30.0
+        g.lag_secs = OnAirGuard.HANDOFF_LAG_SECS
+        g.handover_secs = 0.0
+        g._last_buf = 0.0
+        g._assumed_until = 0.0
+        g._pending_until = 0.0
+        g.on_air = False
+        return g
+
+    def test_the_unconfirmed_window_is_survivable(self):
+        # 90s of a muted caller is not a hold, it is a dropped call that has
+        # not admitted it yet.
+        from call.air import OnAirGuard
+
+        self.assertLessEqual(OnAirGuard.PENDING_CEILING, 30.0)
+
+    def test_an_expired_pending_window_reopens_the_gate(self):
+        import time
+
+        g = self._guard()
+        g._pending_until = time.time() - 1        # ceiling already passed
+        self.assertFalse(g._assess(None, poll_failed=False))
+
+    def test_our_own_action_covers_the_listeners_delay(self):
+        # The DJ said "right, I'm back" and its own announcement started a
+        # beat later, over the top of it — the assumed window was sized on the
+        # encoder's clock, and the caller hears the stream later than that.
+        import time
+
+        from call.air import OnAirGuard
+
+        g = self._guard()
+        g._clear = __import__("asyncio").Event()
+        g._clear.set()
+        g.room = None
+        g.stepped_away = False
+        g.aired_text = ""
+        g._last_buf = 9.0
+        before = time.time()
+        OnAirGuard.mark_on_air(g, seconds=10.0)
+        # 10s of speech + 9s of buffer + the handoff lag, not 10 + lag.
+        self.assertGreaterEqual(g._assumed_until - before, 19.0)
+
+    def test_with_no_measurement_it_falls_back_rather_than_to_zero(self):
+        from call.air import OnAirGuard
+
+        g = self._guard()
+        self.assertEqual(g.stream_buffer(), OnAirGuard.HANDOFF_LAG_SECS)
+        g._last_buf = 7.0
+        self.assertEqual(g.stream_buffer(), 7.0)

@@ -478,3 +478,81 @@ class TestAQueuedTrackCanComeBackOut(unittest.TestCase):
     def test_the_tool_rides_its_own_switch(self):
         _, tool = self._tool({"ok": True}, cfg={"allow_requests": True})
         self.assertIsNone(tool)
+
+
+class TestARefusalIsNotAskedTwice(unittest.TestCase):
+    """The DJ fired subwave_request_song four times on one call, twice inside
+    the same second, and collected two identical rate-limit refusals.
+
+    The conduct already said "don't retry a refusal". It cannot be enforced
+    there: the model emits several tool calls in ONE turn, so there is no
+    moment between them for a rule to apply. The wrapper holds it instead —
+    the station's answer of a second ago is still its answer now.
+    """
+
+    def _tool(self, errors):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            def __init__(self):
+                self.asked = 0
+
+            async def search_library(self, q, offset=0, limit=30):
+                return []
+
+            async def submit_request(self, text, name=""):
+                self.asked += 1
+                nxt = errors.pop(0) if errors else None
+                return {"error": nxt} if nxt else {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                return {"track": {"title": "T", "artist": "A"},
+                        "queuePosition": 1}
+
+        st = _Station()
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools({"allow_requests": True}, st,
+                                        CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        return st, next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+
+    def test_the_station_is_not_asked_again_inside_the_window(self):
+        st, tool = self._tool(["Easy there — try again in 2s."])
+        first = asyncio.run(tool(request="something noir"))
+        self.assertIn("Easy there", first)
+        second = asyncio.run(tool(request="something noir"))
+        # The station saw ONE request, not two.
+        self.assertEqual(st.asked, 1)
+        self.assertIn("Still the same answer", second)
+        self.assertIn("Do NOT", second)
+
+    def test_the_reason_is_repeated_back_not_invented(self):
+        st, tool = self._tool(["Your last request is still queued."])
+        asyncio.run(tool(request="a"))
+        again = asyncio.run(tool(request="b"))
+        self.assertIn("still queued", again)
+
+    def test_the_hold_expires_so_a_patient_caller_is_not_blocked(self):
+        from call.tools import music
+
+        st, tool = self._tool(["Easy there — try again in 2s."])
+        asyncio.run(tool(request="a"))
+        held = music._REFUSAL_HOLDS_SECS
+        try:
+            music._REFUSAL_HOLDS_SECS = -1        # as if the window had passed
+            asyncio.run(tool(request="a"))
+        finally:
+            music._REFUSAL_HOLDS_SECS = held
+        self.assertEqual(st.asked, 2)
+
+    def test_a_success_leaves_the_gate_open(self):
+        st, tool = self._tool([])
+        asyncio.run(tool(request="a"))
+        asyncio.run(tool(request="b"))
+        self.assertEqual(st.asked, 2)

@@ -121,8 +121,10 @@ def build_on_air_tools(
             note += "The station was slow to confirm, but it has gone through. "
         if not guarded:
             return (
-                f"{note}{what} is going out on air now, in your own voice. Tell "
-                "the caller it's done, in your own words."
+                f"{note}{what} has been HANDED TO THE BOOTH and airs in a moment, "
+                "in your own voice. It has NOT been heard yet — 'that went out "
+                "already, everyone heard it' is false at this instant and the "
+                "caller can check. Say it's on its way, in your own words."
             )
         if unconfirmed:
             # No honest number exists: the station accepted it but had not

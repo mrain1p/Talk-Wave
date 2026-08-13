@@ -310,3 +310,28 @@ class TestARefusalIsPassedOnNotNarrated(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheDJSpeaksAsItselfNotAboutItself(unittest.TestCase):
+    """"Duke reached across the console and yanked the lever."
+
+    A caller asked, in as many words, "why are you talking about yourself in
+    the third person? it's weird" (2026-08-13). It is the stage-direction ban
+    wearing better clothes — the persona narrating its own actions as prose
+    instead of speaking them — and the existing rule did not name it, so the
+    model kept doing it in a voice the operator had written to be atmospheric.
+    """
+
+    def test_both_mouths_are_told_to_speak_in_the_first_person(self):
+        from brain import conduct, conduct_chat
+
+        for text in (conduct.rules({}), conduct_chat.rules({})):
+            self.assertIn("not narrating a novel", text)
+            self.assertIn("third person", text)
+
+    def test_the_real_line_is_the_worked_example(self):
+        from brain import conduct
+
+        text = conduct.rules({})
+        self.assertIn("Duke reached across the console", text)   # the NO
+        self.assertIn("needle's off the groove", text)           # the YES
