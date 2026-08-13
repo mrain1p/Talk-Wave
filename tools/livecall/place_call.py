@@ -27,8 +27,7 @@ CODE = os.environ.get("TALKWAVE_GUEST_CODE") or ""
 
 if not URL:
     raise SystemExit(
-        "Set TALKWAVE_URL (and TALKWAVE_GUEST_CODE if the line is gated).
-"
+        "Set TALKWAVE_URL (and TALKWAVE_GUEST_CODE if the line is gated).\n"
         "The real values are in .claude/OPERATOR.local.md.")
 
 
