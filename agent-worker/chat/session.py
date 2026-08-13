@@ -413,10 +413,32 @@ class ChatSession:
                         "needs doing, answer with nothing at all.]"))
                     continue
                 break
+            # ALL the calls, then all the outputs — never interleaved.
+            #
+            # This used to append call, output, call, output…, which reads as
+            # a separate model turn per tool. Gemini 3 attaches its
+            # `thought_signature` to the FIRST function-call part of a
+            # parallel group and to no other (measured: three parallel calls,
+            # one signature), so splitting the group leaves every later call
+            # starting a group of its own with no signature — and the next
+            # request is rejected outright:
+            #
+            #   400 Function call is missing a thought_signature in
+            #   functionCall parts … `default_api:subwave_recent_tracks`,
+            #   position 5
+            #
+            # Fatal, not retryable, and it killed the whole reply: the caller
+            # got "Line dropped a beat there — say that again for me?" while
+            # the log carried the real reason. Reproduced live on 0.10.117
+            # against a two-tool turn.
+            #
+            # Emitting them as one group is also just what the wire format
+            # means: these calls happened together, in one model turn.
             for call in calls:
                 ctx.insert(lk_llm.FunctionCall(
                     call_id=call.call_id, name=call.name,
                     arguments=call.arguments or "{}"))
+            for call in calls:
                 result, is_error = await self._run_tool(by_name, call)
                 ctx.insert(lk_llm.FunctionCallOutput(
                     call_id=call.call_id, name=call.name,

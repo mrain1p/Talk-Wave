@@ -187,6 +187,7 @@ from tests.test_brain import (  # noqa: F401
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
 from tests.test_chat import (  # noqa: F401
+    TestParallelToolCallsStayOneGroup,
     TestAChatIsOneConversationNotAStringOfStrangers,
     TestTheReplyArrivesAtTheOperatorsPace,
 )

@@ -1008,3 +1008,46 @@ class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
 
         src = inspect.getsource(ChatShelf.sweep)
         self.assertIn("aclose", src)
+
+
+class TestParallelToolCallsStayOneGroup(_TempStores):
+    """Gemini 3 signs the FIRST function call of a parallel group and no other.
+
+    Measured against the live model: three parallel calls, exactly one
+    `thought_signature`. So the group has to reach the next request AS a
+    group. The loop used to append call, output, call, output… — a separate
+    model turn per tool — which left every later call starting a group of its
+    own with nothing signing it, and the API refused the whole request:
+
+        400 Function call is missing a thought_signature in functionCall
+        parts … `default_api:subwave_recent_tracks`, position 5
+
+    Fatal and not retryable. The caller saw "Line dropped a beat there — say
+    that again for me?" while the log carried the real reason. Reproduced on
+    a live two-tool turn at 0.10.117.
+    """
+
+    def test_every_call_is_inserted_before_any_output(self):
+        import inspect
+
+        from chat.session import ChatSession
+
+        src = inspect.getsource(ChatSession._tool_loop)
+        body = src[src.index("for call in calls:"):]
+        first_out = body.index("FunctionCallOutput")
+        # No second FunctionCall may appear after the outputs begin, and the
+        # inserts must sit in two separate loops rather than one.
+        self.assertEqual(body.count("for call in calls:"), 2,
+                         "the calls and the outputs share one loop again")
+        self.assertLess(body.index("FunctionCall("), first_out)
+
+    def test_the_tools_still_all_run(self):
+        # Splitting the loop must not drop a tool: every call still gets run
+        # and every one still gets an output pushed back.
+        import inspect
+
+        from chat.session import ChatSession
+
+        src = inspect.getsource(ChatSession._tool_loop)
+        self.assertIn("await self._run_tool(by_name, call)", src)
+        self.assertEqual(src.count("_run_tool"), 1)
