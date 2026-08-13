@@ -1610,10 +1610,19 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         g._pending_until = time.time() - 1        # ceiling already passed
         self.assertFalse(g._assess(None, poll_failed=False))
 
-    def test_our_own_action_covers_the_listeners_delay(self):
+    def test_our_own_action_outlasts_its_own_announcement(self):
         # The DJ said "right, I'm back" and its own announcement started a
-        # beat later, over the top of it — the assumed window was sized on the
-        # encoder's clock, and the caller hears the stream later than that.
+        # beat later, over the top of it: the hold has to outlast the speech.
+        #
+        # It used to be sized as speech + whatever streamBufferSeconds the
+        # station reported, on the reading that the caller is that far behind
+        # the live edge. Measured 2026-08-13 and the premise did not hold: the
+        # reported 22 is Icecast's BURST SIZE, and the plain `<audio>` element
+        # the widget tunes a caller in with plays 2.3 seconds behind the
+        # newest byte, not 22. What the old sizing bought was ~17 seconds of
+        # silence after the DJ had already finished — read off a real record,
+        # a 37.8s voice sizing a ~60s hold. So it is speech + ONE pad, and a
+        # station claiming a large buffer no longer inflates it.
         import time
 
         from call.air import OnAirGuard
@@ -1624,11 +1633,12 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         g.room = None
         g.stepped_away = False
         g.aired_text = ""
-        g._last_buf = 9.0
+        g._last_buf = 22.0                       # what this station reports
         before = time.time()
         OnAirGuard.mark_on_air(g, seconds=10.0)
-        # 10s of speech + 9s of buffer + the handoff lag, not 10 + lag.
-        self.assertGreaterEqual(g._assumed_until - before, 19.0)
+        held = g._assumed_until - before
+        self.assertGreater(held, 10.0, "the hold ends before the DJ does")
+        self.assertAlmostEqual(held, 10.0 + g.duck_pad, delta=1.0)
 
     def test_with_no_measurement_it_falls_back_rather_than_to_zero(self):
         from call.air import OnAirGuard
@@ -1669,3 +1679,125 @@ class TestTheOnAirFlagIsAValueNotAPresence(unittest.TestCase):
         self.assertIn("p.attributes['talkwave.onair'] === '1'", src)
         # The presence test is what made a deletion invisible.
         self.assertNotIn("'talkwave.onair' in p.attributes", src)
+
+class TestTheDuckWritesDownWhatItDid(_TempStores):
+    """A transcript showed the DJ going quiet and coming back, with no way to
+    tell whether the hold was early, late, or the right length in the wrong
+    place. The operator's report — "goes off air earlier than needed and
+    returns before the on air DJ even says a word" — was unanswerable from the
+    record. It is not now.
+    """
+
+    def test_our_own_action_is_written_down_with_its_length(self):
+        from call.air import OnAirGuard
+        from call.air_log import AirLog
+
+        g = object.__new__(OnAirGuard)
+        g._assumed_until = 0.0
+        g._clear = __import__("asyncio").Event()
+        g._clear.set()
+        g.on_air = False
+        g.room = None
+        g.duck_pad = 4.5
+        g._last_buf = 22.0
+        g.lag_secs = 2.0
+        g.stepped_away = False
+        g.aired_text = ""
+        g.air_log = AirLog()
+        OnAirGuard.mark_on_air(g, seconds=10.0, spoken="a line for the air")
+
+        rows = g.air_log.rows
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["what"], "hold opened")
+        self.assertEqual(rows[0]["why"], "we put something on air")
+        # 10s of words + ONE pad. The station reports a 22s buffer and it is
+        # recorded — a diagnosis needs to see what the station claimed — but
+        # it no longer sizes the hold; see tail().
+        self.assertAlmostEqual(rows[0]["forSecs"], 10.0 + 4.5, delta=1.0)
+        self.assertEqual(rows[0]["bufSecs"], 22.0)
+
+    def test_the_timeline_starts_at_the_call(self):
+        # The first real run replayed the receiver's whole history and wrote a
+        # 25-MINUTE timeline for a 150-second call, carrying five station
+        # utterances this caller was never connected for.
+        import time
+
+        from call.air_log import AirLog
+
+        now = time.time()
+        log = AirLog(since=now - 60)
+        log.replay([{"at": now - 900, "event": "voice.queued"},
+                    {"at": now - 10, "event": "voice.start"}])
+        self.assertEqual([r["what"] for r in log.rows], ["station voice.start"])
+
+    def test_a_station_push_records_when_the_caller_will_hear_it(self):
+        # THE distinction the whole bug turns on: a voice.* timestamp is
+        # stamped at the encoder and the caller is bufSecs behind it. A hold
+        # opened well before audibleIn reaches zero is a duck that started
+        # early — stated on the record rather than reconstructed by hand.
+        import time
+
+        from call.air_log import AirLog
+
+        log = AirLog()
+        log.station({"at": time.time(), "event": "voice.queued",
+                     "phase": "queued", "voiceId": "5f4bf953",
+                     "durMs": 17827, "bufSecs": 22.0})
+        row = log.rows[0]
+        self.assertEqual(row["what"], "station voice.queued")
+        self.assertEqual(row["durSecs"], 17.8)
+        # From the EVENT, not from the clock at write time: the guard records
+        # in bursts at the hold's edges, and computing this against `now` gave
+        # -1497s on the first real call.
+        self.assertAlmostEqual(row["audibleIn"], 22.0, delta=0.2)
+
+    def test_audible_in_survives_being_written_down_late(self):
+        import time
+
+        from call.air_log import AirLog
+
+        log = AirLog(since=0)
+        log.station({"at": time.time() - 300, "event": "voice.start",
+                     "phase": "speaking", "bufSecs": 22.0})
+        self.assertAlmostEqual(log.rows[0]["audibleIn"], 22.0, delta=0.2)
+
+    def test_pushes_the_call_never_polled_are_folded_in(self):
+        # The guard reads only the newest entry, so a whole queued/start/end
+        # sequence between two polls was invisible. The receiver keeps a short
+        # history for exactly this.
+        import time
+
+        from call.air_log import AirLog
+
+        now = time.time()
+        log = AirLog(since=now - 30)          # the call started 30s ago
+        log.replay([{"at": now - 9, "event": "voice.queued", "phase": "queued",
+                     "durMs": 6000, "bufSecs": 22.0},
+                    {"at": now - 1, "event": "voice.end", "phase": "clear"}])
+        self.assertEqual([r["what"] for r in log.rows],
+                         ["station voice.queued", "station voice.end"])
+
+    def test_it_reaches_the_record_and_is_bounded(self):
+        from call.air_log import AirLog
+
+        class _Rec:
+            def __init__(self):
+                self.data = {}
+
+        log = AirLog()
+        for _ in range(AirLog.LIMIT + 10):
+            log.opened("the station is on air")
+        rec = _Rec()
+        log.write(rec)
+        self.assertEqual(len(rec.data["air"]), AirLog.LIMIT)
+
+    def test_a_broken_timeline_never_reaches_the_call(self):
+        # A diagnostic that ends a call is worse than no diagnostic.
+        from call.air_log import AirLog
+
+        log = AirLog()
+        log.station("not a dict")
+        log.replay("not a list")
+        log.write(None)
+        self.assertEqual(log.rows, [])
+

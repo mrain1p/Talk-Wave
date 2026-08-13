@@ -40,6 +40,7 @@ from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 from . import background, greeting, handoff, lifecycle, promise_guard
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
+from .air_log import AirLog
 from .record import CallRecord
 from .providers import build_llm, build_stt, build_tts
 from .tools import (
@@ -216,6 +217,10 @@ class CallSession:
         )
         self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg,
                                  self.tier, started=self.started_at)
+        # The ducking timeline rides with the guard and lands on the record at
+        # the end — see call/air_log.py. Attached here rather than built in the
+        # guard so a guard nobody is recording carries no cost.
+        self.air.air_log = AirLog(since=self.started_at)
 
         # Checked against the backend BEFORE the first line, not discovered by
         # the caller. See tts_adapter.pick_speakable_voice — a voice the
@@ -459,6 +464,8 @@ class CallSession:
                     for role, text in handoff.transcript(self.session, limit=400)
                 ]
                 self.record.finalise(final)
+                if self.air.air_log:
+                    self.air.air_log.write(self.record)
             except Exception as e:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []

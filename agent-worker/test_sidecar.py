@@ -60,6 +60,7 @@ from tests.test_http import (  # noqa: F401
     TestUsageControls,
 )
 from tests.test_widget import (  # noqa: F401
+    TestTheCallerIsNotRescuedMidAnnouncement,
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestTheFinderIsNotAUsernameField,
@@ -124,6 +125,7 @@ from tests.test_call_record import (  # noqa: F401
 from tests.test_call_flow import (  # noqa: F401
     TestTheOnAirFlagIsAValueNotAPresence,
     TestAHoldAlwaysEnds,
+    TestTheDuckWritesDownWhatItDid,
     TestTheGreetingWaitsForTheOnAirDJ,
     TestAPromisedActionActuallyHappens,
     TestACallerWhoWasNeverHeardIsToldSo,
@@ -230,6 +232,8 @@ from tests.test_station import (  # noqa: F401
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestTheAirFileRemembersWhatHappened,
+    TestTheHandoffEventDoesNotOutrankTheLifecycle,
     TestTheCallerHearsTheStreamLate,
     TestADeliveredPushIsProvedRatherThanAssumed,
     TestAVoicePushAnchorsTheAirGuard,

@@ -167,13 +167,77 @@ def _remember_air(event: str, body: dict) -> None:
                  "voiceId": str(body.get("voiceId") or "")[:64],
                  "bufSecs": buf,
                  "text": ""}
-    if entry is not None:
+    if entry is None:
+        return
+    try:
+        path = _air_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        prev = {}
         try:
-            path = _air_path()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(entry))
-        except Exception as e:                            # noqa: BLE001
-            log.debug("could not write the on-air push file: %s", e)
+            prev = json.loads(path.read_text())
+        except Exception:                                 # noqa: BLE001
+            prev = {}
+
+        # The legacy dj.say/dj.link is the SAME utterance as the voice.*
+        # lifecycle, stamped at handoff instead of at air — the station emits
+        # both, and this file holds one entry, so the v1 event was overwriting
+        # a v2 one about a second later and taking the duration and the stream
+        # buffer with it. Measured on air 2026-08-13: voice.queued at +74.68s
+        # carrying durMs=17827 and bufSecs=22, dj.say at +75.88s carrying
+        # neither, after which the guard sized the hold from a word count with
+        # no buffer and handed the caller back at the exact moment the DJ
+        # became audible to them. A station fluent in the lifecycle does not
+        # need us to read its handoff events at all.
+        demote = int(entry.get("v") or 0) < 2 and _lifecycle_is_live(prev, now)
+        _keep(entry, prev, path, demote=demote)
+    except Exception as e:                                # noqa: BLE001
+        log.debug("could not write the on-air push file: %s", e)
+
+
+# How long a v2 entry proves the station is speaking the voice lifecycle. Long
+# enough to cover a whole utterance plus the queue wait; short enough that a
+# station downgraded mid-run falls back to its handoff events within a track.
+LIFECYCLE_TRUST_SECS = 180.0
+
+# How many pushes the file remembers. The guard reads only the newest, but
+# nothing could ever answer "what did the station actually do, and when" — the
+# ducking has been diagnosed twice now by watching this file at 200ms for five
+# minutes, which is not a thing an operator can be asked to do.
+AIR_HISTORY = 24
+
+
+def _lifecycle_is_live(prev: dict, now: float) -> bool:
+    """Has the station spoken v2 voice.* recently enough to be trusted?"""
+    if not isinstance(prev, dict):
+        return False
+    for e in list(prev.get("recent") or [])[-AIR_HISTORY:]:
+        if int((e or {}).get("v") or 0) >= 2 and \
+                now - float((e or {}).get("at") or 0) < LIFECYCLE_TRUST_SECS:
+            return True
+    return int(prev.get("v") or 0) >= 2 and \
+        now - float(prev.get("at") or 0) < LIFECYCLE_TRUST_SECS
+
+
+def _keep(entry: dict, prev: dict, path: Path, demote: bool = False) -> None:
+    """Write the authoritative entry, and append this push to the history.
+
+    `demote` records the push in `recent` — it happened, and a timeline that
+    hides events is worse than none — without letting it become what the guard
+    reads. The top level keeps the shape it has always had, so a worker on an
+    older image reads `at`/`text`/`phase` and never looks at `recent`: this
+    stays safe across the version skew a two-container deploy can leave.
+    """
+    recent = list((prev or {}).get("recent") or [])
+    row = {k: entry.get(k) for k in
+           ("at", "event", "v", "phase", "voiceId", "durMs", "bufSecs",
+            "airAt")}
+    if demote:
+        row["ignored"] = "the station is speaking the voice lifecycle"
+    recent.append(row)
+    out = dict(prev if demote else entry)
+    out.pop("recent", None)
+    out["recent"] = recent[-AIR_HISTORY:]
+    path.write_text(json.dumps(out))
 
 
 async def handle_station_hook(request: web.Request) -> web.Response:

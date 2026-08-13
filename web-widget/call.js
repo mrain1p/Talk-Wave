@@ -2928,10 +2928,25 @@
 
   let pttOpen = false;
   const HOLD_MS = 300;
-  // The longest the broadcast may keep the caller's microphone. Deliberately
-  // shorter than the worker's own 90s unconfirmed-action ceiling: this is the
-  // caller's escape hatch, not a mirror of the server's patience.
-  const MAX_HOLD_MS = 20000;
+  // The longest the broadcast may keep the caller's microphone. A BACKSTOP
+  // against a worker that never publishes "clear" — not a timer competing
+  // with a legitimate hold.
+  //
+  // It was 20s, chosen when the worker's own ceiling was 90s and a stuck hold
+  // could mute a caller indefinitely. Both halves of that reasoning are gone:
+  // the worker's unconfirmed ceiling is 15s since 0.10.113, and a measured
+  // voice.end ends a hold on the spot. What 20s did instead was fire in the
+  // middle of every NORMAL on-air hold, because a real announcement runs
+  // longer than that — measured on a call 2026-08-13: 30.4s of speech, a
+  // 35.7s hold, and at 20s the caller was handed the microphone and told "the
+  // booth is taking a while up there, say your piece" while the DJ still had
+  // fifteen seconds to go on the air. From the caller's seat that is the DJ
+  // coming back early, and it is the widget doing it, not the guard.
+  //
+  // 75s clears the longest thing the DJ can legitimately put on air (a
+  // station segment, whose own fallback hold is 60s) and still rescues a
+  // caller from a hold that genuinely stuck.
+  const MAX_HOLD_MS = 75000;
   let holdTimer = 0, holdExpired = false, wasLiveBeforeHold = false;
 
   // Every mic switch goes through ONE queue, always driving toward the

@@ -2172,3 +2172,31 @@ class TestHiddenActuallyHides(unittest.TestCase):
             "these ship hidden but a display rule targets them, which beats "
             "the UA's [hidden] rule — add a `.cls[hidden]` spot rule: "
             f"{sorted(set(unhideable))}")
+
+class TestTheCallerIsNotRescuedMidAnnouncement(_TempStores):
+    """MAX_HOLD_MS was 20s, set when the worker's own ceiling was 90s. Both
+    halves of that reasoning are gone — the unconfirmed ceiling is 15s since
+    0.10.113 and a measured voice.end ends a hold on the spot — and what 20s
+    did instead was fire in the middle of every normal on-air hold. Measured
+    on a call 2026-08-13: 30.4s of speech, a 35.7s hold, and at 20s the caller
+    was handed the microphone and told "the booth is taking a while up there"
+    while the DJ still had fifteen seconds on the air. From the caller's seat
+    that is the DJ coming back early, and it was the widget doing it.
+    """
+
+    def test_the_backstop_clears_a_real_announcement(self):
+        import re
+
+        from tests.support import REPO
+
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        m = re.search(r"const MAX_HOLD_MS = (\d+);", js)
+        self.assertTrue(m, "MAX_HOLD_MS is gone or renamed")
+        secs = int(m.group(1)) / 1000.0
+        # The longest thing the DJ can legitimately air is a station segment,
+        # whose fallback hold in call/tools/broadcast.py is 60s.
+        self.assertGreaterEqual(secs, 60.0,
+                                "the escape hatch fires during a normal hold")
+        # Still a backstop, not an eternity.
+        self.assertLessEqual(secs, 120.0)
+
