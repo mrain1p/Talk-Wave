@@ -1637,3 +1637,35 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         self.assertEqual(g.stream_buffer(), OnAirGuard.HANDOFF_LAG_SECS)
         g._last_buf = 7.0
         self.assertEqual(g.stream_buffer(), 7.0)
+
+
+class TestTheOnAirFlagIsAValueNotAPresence(unittest.TestCase):
+    """The card sat in "Working the booth" for the rest of a real call.
+
+    2026-08-13, from the worker's own log: it held at 12:32:07, logged "air is
+    clear" at 12:32:27, and the caller's card stayed on air for the remaining
+    eighty seconds. The guard was right and the widget never heard it.
+
+    The worker cleared the flag by setting the attribute to "", which LiveKit
+    treats as DELETING it — and the widget only reacted when the key was
+    present, so the clear was invisible. Both halves are fixed: the worker
+    always sends a value, and the widget reads the value rather than testing
+    for the key, which makes it right against an old worker too.
+    """
+
+    def test_the_worker_never_clears_by_deleting(self):
+        import inspect
+
+        from call import air
+
+        src = inspect.getsource(air.OnAirGuard._publish)
+        self.assertIn('"1" if on_air else "0"', src)
+        self.assertNotIn('else ""', src)
+
+    def test_the_widget_compares_the_value(self):
+        from tests.support import REPO
+
+        src = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("p.attributes['talkwave.onair'] === '1'", src)
+        # The presence test is what made a deletion invisible.
+        self.assertNotIn("'talkwave.onair' in p.attributes", src)

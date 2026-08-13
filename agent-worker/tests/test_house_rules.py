@@ -586,7 +586,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Deliberately NOT cut in the same change as the timing fix. The
         # operator is on a broken deployment; moving this logic and altering
         # it at once means a regression has two candidate causes.
-        "agent-worker/call/air.py": (622, "a verdict module (speaking_secs, "
+        "agent-worker/call/air.py": (629, "a verdict module (speaking_secs, "
                                           "DUCK_PAD_SECS, _push_verdict, "
                                           "_assess, _settle) split from the "
                                           "live guard and its watch loop"),

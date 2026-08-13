@@ -242,7 +242,14 @@ class OnAirGuard:
         try:
             spawn(
                 self.room.local_participant.set_attributes(
-                    {"talkwave.onair": "1" if on_air else ""}
+                    # "0", not "". An empty attribute value is a DELETE in
+                    # LiveKit, so clearing the flag removed the key — and the
+                    # widget only reacted when the key was PRESENT. The card
+                    # therefore never came out of "Working the booth": proven
+                    # on a real call 2026-08-13, where the guard logged "air
+                    # is clear" and the caller's card stayed on air for the
+                    # remaining 80 seconds. The flag now always exists.
+                    {"talkwave.onair": "1" if on_air else "0"}
                 )
             )
         except Exception as e:

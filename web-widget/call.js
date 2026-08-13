@@ -1577,7 +1577,14 @@
       if (!p || !p.attributes) return;
       const s = p.attributes['lk.agent.state'];
       if (s) setAgentState(s);
-      if ('talkwave.onair' in p.attributes) setOnAir(!!p.attributes['talkwave.onair']);
+      // Compared to "1" rather than tested for presence. The worker used to
+      // clear this by setting it to "", which LiveKit treats as deleting the
+      // attribute — so the key disappeared, the `in` test went false, and
+      // setOnAir(false) was never called. The card sat in "Working the booth"
+      // for the rest of the call while the worker's own log said the air had
+      // been clear for eighty seconds. Absent, empty and "0" now all read as
+      // off, so this is right against an old worker as well as a new one.
+      setOnAir(p.attributes['talkwave.onair'] === '1');
     };
     r.on(LivekitClient.RoomEvent.ParticipantAttributesChanged, (_changed, p) => read(p));
     r.on(LivekitClient.RoomEvent.ParticipantConnected, read);
