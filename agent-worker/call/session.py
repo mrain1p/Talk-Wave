@@ -220,7 +220,7 @@ class CallSession:
         # The ducking timeline rides with the guard and lands on the record at
         # the end — see call/air_log.py. Attached here rather than built in the
         # guard so a guard nobody is recording carries no cost.
-        self.air.air_log = AirLog()
+        self.air.air_log = AirLog(since=self.started_at)
 
         # Checked against the backend BEFORE the first line, not discovered by
         # the caller. See tts_adapter.pick_speakable_voice — a voice the

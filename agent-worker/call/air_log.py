@@ -45,9 +45,14 @@ class AirLog:
     # further rows, and the record should not grow without bound.
     LIMIT = 60
 
-    def __init__(self) -> None:
+    def __init__(self, since: float = 0.0) -> None:
         self.rows: list[dict] = []
         self._open_at = 0.0
+        # Pushes older than this belong to somebody else's call. The first
+        # real run replayed the receiver's whole 24-entry buffer and produced
+        # a 25-MINUTE timeline for a 150-second call, with five station
+        # utterances on it that this caller was never even connected for.
+        self.since = since or time.time()
 
     def _add(self, what: str, at: float = 0.0, **fields) -> None:
         """`at` is when the thing HAPPENED, which for a replayed station push
@@ -90,10 +95,12 @@ class AirLog:
     def station(self, entry: dict) -> None:
         """One push from the station, as the guard saw it.
 
-        `audibleAt` is the number the whole problem turns on: when the CALLER
-        hears this, which is the station's own timestamp plus the buffer it
-        reports. A row where the hold opened well before audibleAt is a duck
-        that started too early, stated rather than inferred.
+        `audibleIn` is how long AFTER this push the caller hears it: the
+        forecast lead for a queued clip, plus whatever the stream is behind.
+        Derived from the event's own fields on purpose — the first real run
+        computed it against wall-clock at write time and produced -1497s,
+        because the guard records in bursts at the hold's edges rather than as
+        each push lands.
         """
         try:
             if not isinstance(entry, dict):
@@ -107,7 +114,7 @@ class AirLog:
                       durSecs=round(float(entry.get("durMs") or 0) / 1000.0, 1)
                       or None,
                       bufSecs=round(buf, 1) or None,
-                      audibleIn=round(base + buf - time.time(), 1) or None,
+                      audibleIn=round(base + buf - at, 1) or None,
                       ignored=entry.get("ignored") or None)
         except Exception:                                      # noqa: BLE001
             pass
@@ -125,6 +132,8 @@ class AirLog:
             fresh = []
             for e in list(recent or [])[-24:]:
                 if not isinstance(e, dict):
+                    continue
+                if float(e.get("at") or 0) < self.since:
                     continue
                 key = (round(float(e.get("at") or 0), 3),
                        "station " + str(e.get("event") or "?"))

@@ -1705,6 +1705,20 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         self.assertAlmostEqual(rows[0]["forSecs"], 32.0, delta=1.0)
         self.assertEqual(rows[0]["bufSecs"], 22.0)
 
+    def test_the_timeline_starts_at_the_call(self):
+        # The first real run replayed the receiver's whole history and wrote a
+        # 25-MINUTE timeline for a 150-second call, carrying five station
+        # utterances this caller was never connected for.
+        import time
+
+        from call.air_log import AirLog
+
+        now = time.time()
+        log = AirLog(since=now - 60)
+        log.replay([{"at": now - 900, "event": "voice.queued"},
+                    {"at": now - 10, "event": "voice.start"}])
+        self.assertEqual([r["what"] for r in log.rows], ["station voice.start"])
+
     def test_a_station_push_records_when_the_caller_will_hear_it(self):
         # THE distinction the whole bug turns on: a voice.* timestamp is
         # stamped at the encoder and the caller is bufSecs behind it. A hold
@@ -1721,7 +1735,20 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         row = log.rows[0]
         self.assertEqual(row["what"], "station voice.queued")
         self.assertEqual(row["durSecs"], 17.8)
-        self.assertAlmostEqual(row["audibleIn"], 22.0, delta=1.0)
+        # From the EVENT, not from the clock at write time: the guard records
+        # in bursts at the hold's edges, and computing this against `now` gave
+        # -1497s on the first real call.
+        self.assertAlmostEqual(row["audibleIn"], 22.0, delta=0.2)
+
+    def test_audible_in_survives_being_written_down_late(self):
+        import time
+
+        from call.air_log import AirLog
+
+        log = AirLog(since=0)
+        log.station({"at": time.time() - 300, "event": "voice.start",
+                     "phase": "speaking", "bufSecs": 22.0})
+        self.assertAlmostEqual(log.rows[0]["audibleIn"], 22.0, delta=0.2)
 
     def test_pushes_the_call_never_polled_are_folded_in(self):
         # The guard reads only the newest entry, so a whole queued/start/end
@@ -1732,7 +1759,7 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         from call.air_log import AirLog
 
         now = time.time()
-        log = AirLog()
+        log = AirLog(since=now - 30)          # the call started 30s ago
         log.replay([{"at": now - 9, "event": "voice.queued", "phase": "queued",
                      "durMs": 6000, "bufSecs": 22.0},
                     {"at": now - 1, "event": "voice.end", "phase": "clear"}])
