@@ -2498,6 +2498,9 @@
   let typingPending = false;
   // Characters owed but not yet whole — see chatTick.
   let chatCarry = 0;
+  // The turn's raw text, and the messages split out of it. chatTarget is
+  // always the one piece being revealed right now — see chatResplit.
+  let chatRaw = '', chatSegs = [], chatSeg = 0;
   const CHAT_TICK_MS = 30;
   // However slow the pace, a long reply still lands inside this. Eight
   // seconds reads as a person writing a paragraph; much more and a caller is
@@ -2519,6 +2522,32 @@
   function chatStopReveal() {
     if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
     chatTarget = ''; chatShown = 0; chatDone = false; chatCarry = 0;
+    chatRaw = ''; chatSegs = []; chatSeg = 0;
+  }
+
+  // One TURN can be several messages. The DJ writes in paragraphs and may
+  // speak either side of a tool call, and all of it used to pour into ONE
+  // caption node — so a reply that was plainly three things read as a single
+  // unbroken slab (operator screenshot, 2026-08-12). A blank line is where
+  // people break a text, so that is the seam: each piece gets its own row,
+  // revealed in turn, exactly as if the booth had sent three messages.
+  //
+  // Re-split the whole raw buffer each time rather than looking at one
+  // delta: a blank line can arrive straddling two chunks, and re-splitting
+  // cannot be fooled by where the network happened to cut it. The \r in the
+  // class matters too — a model emitting CRLF sends a blank line this would
+  // otherwise never see.
+  function chatResplit() {
+    const parts = chatRaw.split(/\n[ \t\r]*\n+/).map(function (s) {
+      return s.trim();
+    });
+    // Keep empties only at the tail: a trailing blank line is the turn still
+    // being written, not a message. Interior blanks are just spacing.
+    chatSegs = parts.filter(function (s, i) {
+      return s || i === parts.length - 1;
+    });
+    if (!chatSegs.length) chatSegs = [''];
+    chatTarget = chatSegs[chatSeg] || '';
   }
   function chatTick() {
     if (chatShown < chatTarget.length) {
@@ -2543,8 +2572,25 @@
       if (!chatPend) chatPend = 'chat-' + (++capSeq);
       addCaption(chatPend, 'dj', chatTarget.slice(0, chatShown), false);
     }
-    if (chatDone && chatShown >= chatTarget.length) {
+    if (chatShown < chatTarget.length) return;
+    // This piece is fully out. If another is already waiting behind it then
+    // its blank line has been SEEN, so this row is finished — close it and
+    // start the next message on a row of its own.
+    if (chatSeg < chatSegs.length - 1) {
       addCaption(chatPend || ('chat-' + (++capSeq)), 'dj', chatTarget, true);
+      chatPend = null;
+      chatSeg += 1;
+      chatShown = 0;
+      chatCarry = 0;
+      chatTarget = chatSegs[chatSeg] || '';
+      return;
+    }
+    if (chatDone) {
+      // The last piece, and nothing more is coming. A turn that ended on a
+      // blank line leaves an empty tail with no row of its own to write.
+      if (chatTarget) {
+        addCaption(chatPend || ('chat-' + (++capSeq)), 'dj', chatTarget, true);
+      }
       chatPend = null;
       chatStopReveal();
       setStatus('', 'connected');
@@ -2642,7 +2688,8 @@
       } else if (msg.type === 'delta') {
         // In "dots" mode the cue STAYS up and nothing is revealed until the
         // reply is whole — that is the difference between the two settings.
-        chatTarget += msg.text || '';
+        chatRaw += msg.text || '';
+        chatResplit();
         if (chatRevealsAsTyped()) {
           hideTyping();
           // Feed the reveal buffer, don't render straight — the ticker types
@@ -2653,11 +2700,14 @@
         hideTyping();
         // The final text wins (it's the authoritative wording); let the ticker
         // finish revealing it, then finalise.
-        chatTarget = msg.text || chatTarget;
+        // The final text is the authoritative wording, so re-split from it
+        // rather than from the streamed pieces.
+        chatRaw = msg.text || chatRaw;
+        chatResplit();
         chatDone = true;
         if (!chatRevealsAsTyped()) {
-          // Land it whole: the cue was the wait, so there is nothing left to
-          // reveal. chatTick's own done-branch does the finalising.
+          // Land them whole: the cue was the wait, so there is nothing left
+          // to reveal. Each message still gets its own row.
           chatShown = chatTarget.length;
         }
         if (!chatTimer) chatTimer = setInterval(chatTick, CHAT_TICK_MS);
