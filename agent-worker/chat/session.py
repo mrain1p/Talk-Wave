@@ -128,6 +128,29 @@ class ChatSession:
         # socket, resume the same id for a fresh empty list, and burst again
         # (0.10.57 review). Persisting it here makes reconnecting no cheaper.
         self.msg_times: list[float] = []
+        # Built once, for the whole conversation. Both of these used to be
+        # rebuilt inside ask(), which looks harmless — the transcript is
+        # replayed every message either way, so the DJ still sees the
+        # history — but two things ride on the OBJECTS rather than on the
+        # text, and both were being thrown away every turn:
+        #
+        #   * the LLM client caches Gemini 3's per-call `thought_signature`
+        #     and re-injects it on later requests. Discard the client and
+        #     the signature goes with it, so replaying an earlier tool call
+        #     is rejected: "Function call is missing a thought_signature in
+        #     functionCall parts" (400, fatal). Reproduced on a multi-tool
+        #     turn — which is exactly what "queue me three songs" produces.
+        #   * CallActions is the per-conversation action cap. Rebuilt per
+        #     message its count restarts at zero, so `max_actions_per_call`
+        #     was per MESSAGE on the text line and a texter got a fresh
+        #     budget with every line they sent. The phone builds it once and
+        #     was always right.
+        #
+        # The prompt and the persona are deliberately NOT hoisted: they carry
+        # what is playing right now, and a chat that spans a handover is
+        # supposed to change DJ (see ask()).
+        self._llm = None
+        self.actions = None
 
     def remember(self, who: str, text: str) -> None:
         """Record one turn and when it happened. The only writer of `turns`."""
@@ -299,7 +322,12 @@ class ChatSession:
             prompt = await build_system_prompt(station, persona, cfg=cfg,
                                                mode="chat")
 
-            actions = CallActions(int(cfg.get("max_actions_per_call") or 0))
+            if self.actions is None:
+                self.actions = CallActions(
+                    int(cfg.get("max_actions_per_call") or 0))
+            actions = self.actions
+            # Re-pointed every message: the receipt sink belongs to THIS
+            # request's websocket, while the ledger behind it does not.
             actions.on_note = on_note
             # Disabled guard: a typed DJ never needs holding off the air, but
             # the broadcast wrappers still want the shared clear-air API.
@@ -319,7 +347,9 @@ class ChatSession:
             self.messages += 1
             self.last_active = time.time()
 
-            reply = await self._tool_loop(build_llm(cfg), ctx, tools, on_event)
+            if self._llm is None:
+                self._llm = build_llm(cfg)
+            reply = await self._tool_loop(self._llm, ctx, tools, on_event)
             if not reply.strip():
                 # The same promise the phone makes: a model outage never
                 # becomes silence.
@@ -346,61 +376,58 @@ class ChatSession:
         by_name = {t.info.name: t for t in tools}
         reply = ""
         nudge_left = True
-        try:
-            for _ in range(MAX_TOOL_ROUNDS):
-                text_out, calls = "", []
-                stream = model.chat(chat_ctx=ctx, tools=tools)
-                async for chunk in stream:
-                    delta = getattr(chunk, "delta", None)
-                    if not delta:
-                        continue
-                    if delta.content:
-                        text_out += delta.content
-                        on_event({"type": "delta", "text": delta.content})
-                    if delta.tool_calls:
-                        calls.extend(delta.tool_calls)
-                await stream.aclose()
-                reply += text_out
-                if not calls:
-                    # A promise with no tool call behind it is the one shape
-                    # this loop used to ship as a finished answer. The chat
-                    # conduct TELLS the DJ to say something before reaching
-                    # for a tool ("hold on, let me dig through the racks"),
-                    # and a round that is only that line looked identical to
-                    # a round that was done — so "let me get that dedication
-                    # sent down to the booth" ended the turn and nothing was
-                    # ever sent (operator-reported, 2026-08-12). One extra
-                    # pass, only when the words match the opener the conduct
-                    # asked for, and only once per message.
-                    if nudge_left and tools and _PROMISES_ACTION.search(text_out):
-                        nudge_left = False
-                        ctx.add_message(role="assistant", content=text_out)
-                        ctx.add_message(role="user", content=(
-                            "[You just told the caller you were about to do "
-                            "something. If it needs one of your tools, call "
-                            "it NOW. Do not type another word to them — they "
-                            "have already read that line, and a second copy "
-                            "of it reads as a stutter. If nothing actually "
-                            "needs doing, answer with nothing at all.]"))
-                        continue
-                    break
-                for call in calls:
-                    ctx.insert(lk_llm.FunctionCall(
-                        call_id=call.call_id, name=call.name,
-                        arguments=call.arguments or "{}"))
-                    result, is_error = await self._run_tool(by_name, call)
-                    ctx.insert(lk_llm.FunctionCallOutput(
-                        call_id=call.call_id, name=call.name,
-                        output=result, is_error=is_error))
-            else:
-                log.warning("chat %s: model still calling tools after %d "
-                            "rounds — answering with what it has",
-                            self.id, MAX_TOOL_ROUNDS)
-        finally:
-            try:
-                await model.aclose()
-            except Exception:                                  # noqa: BLE001
-                pass
+        for _ in range(MAX_TOOL_ROUNDS):
+            text_out, calls = "", []
+            stream = model.chat(chat_ctx=ctx, tools=tools)
+            async for chunk in stream:
+                delta = getattr(chunk, "delta", None)
+                if not delta:
+                    continue
+                if delta.content:
+                    text_out += delta.content
+                    on_event({"type": "delta", "text": delta.content})
+                if delta.tool_calls:
+                    calls.extend(delta.tool_calls)
+            await stream.aclose()
+            reply += text_out
+            if not calls:
+                # A promise with no tool call behind it is the one shape
+                # this loop used to ship as a finished answer. The chat
+                # conduct TELLS the DJ to say something before reaching
+                # for a tool ("hold on, let me dig through the racks"),
+                # and a round that is only that line looked identical to
+                # a round that was done — so "let me get that dedication
+                # sent down to the booth" ended the turn and nothing was
+                # ever sent (operator-reported, 2026-08-12). One extra
+                # pass, only when the words match the opener the conduct
+                # asked for, and only once per message.
+                if nudge_left and tools and _PROMISES_ACTION.search(text_out):
+                    nudge_left = False
+                    ctx.add_message(role="assistant", content=text_out)
+                    ctx.add_message(role="user", content=(
+                        "[You just told the caller you were about to do "
+                        "something. If it needs one of your tools, call "
+                        "it NOW. Do not type another word to them — they "
+                        "have already read that line, and a second copy "
+                        "of it reads as a stutter. If nothing actually "
+                        "needs doing, answer with nothing at all.]"))
+                    continue
+                break
+            for call in calls:
+                ctx.insert(lk_llm.FunctionCall(
+                    call_id=call.call_id, name=call.name,
+                    arguments=call.arguments or "{}"))
+                result, is_error = await self._run_tool(by_name, call)
+                ctx.insert(lk_llm.FunctionCallOutput(
+                    call_id=call.call_id, name=call.name,
+                    output=result, is_error=is_error))
+        else:
+            log.warning("chat %s: model still calling tools after %d "
+                        "rounds — answering with what it has",
+                        self.id, MAX_TOOL_ROUNDS)
+        # No aclose() here any more: the model belongs to the CONVERSATION
+        # now, not to this message. Closing it per message is what dropped
+        # the thought-signature cache. ChatSession.aclose() owns it.
         return reply
 
     async def _run_tool(self, by_name, call) -> tuple[str, bool]:
@@ -441,6 +468,17 @@ class ChatSession:
         detail = ", ".join(f"{k}={v!r}"[:80] for k, v in (args or {}).items())
         text = f"({detail}) -> {result}" if detail else str(result)
         self.tool_log.append((time.time(), name, text, failed))
+
+    async def aclose(self) -> None:
+        """Let go of the conversation's model. Idempotent, and never allowed
+        to raise — a chat ending is not a place to fail."""
+        model, self._llm = self._llm, None
+        if model is None:
+            return
+        try:
+            await model.aclose()
+        except Exception as e:                                 # noqa: BLE001
+            log.debug("closing the chat model failed (harmless): %s", e)
 
     def write_record(self, reason: str) -> None:
         """The chat's durable trace, in the same archive the calls use —
@@ -516,6 +554,15 @@ class ChatShelf:
                           if msg_cap and chat.messages >= msg_cap
                           else "the chat went quiet")
                 chat.write_record(reason)
+                # The conversation owned an LLM client from 0.10.117; ending
+                # the chat has to let go of it or every closed chat leaks one.
+                # Spawned rather than awaited: sweep() is sync and called from
+                # both an async hook and the tests, and a chat ending must not
+                # become a place that can block or raise.
+                try:
+                    asyncio.get_running_loop().create_task(chat.aclose())
+                except RuntimeError:
+                    pass          # no loop (a test) — nothing was built either
                 del self.chats[chat_id]
                 log.info("chat %s closed: %s (%d msgs)", chat_id, reason,
                          chat.messages)

@@ -187,6 +187,7 @@ from tests.test_brain import (  # noqa: F401
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
 from tests.test_chat import (  # noqa: F401
+    TestAChatIsOneConversationNotAStringOfStrangers,
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401

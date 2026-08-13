@@ -897,3 +897,114 @@ class TestAChatRecordShowsWhatTheDJActuallyDid(_TempStores):
         chat.turns.append(("caller", "orphan"))      # bypasses remember()
         rec = self._written(chat)
         self.assertEqual([t["text"] for t in rec["turns"]], ["orphan"])
+
+
+class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
+    """The transcript was replayed every message, so the DJ always saw the
+    history — but the OBJECTS behind the conversation were rebuilt each turn,
+    and two things ride on those rather than on the text.
+
+    Gemini 3 attaches an opaque `thought_signature` to every function call and
+    rejects a request that replays one without it. The plugin caches those on
+    the LLM CLIENT, keyed by call id — so discarding the client discarded the
+    cache, and the next message replaying an earlier tool call got a fatal
+    400. Reproduced on a multi-tool turn, which is what "queue me three
+    songs" produces.
+
+    And `CallActions` is the per-conversation action cap. Rebuilt per message
+    its count restarted at zero, so `max_actions_per_call` was per MESSAGE on
+    the text line — a texter got a fresh budget with every line they sent.
+    """
+
+    def _chat(self):
+        from chat.session import ChatSession
+
+        return ChatSession("abcdef123456", "open")
+
+    def test_the_model_is_built_once_and_reused(self):
+        import asyncio
+
+        from chat import session as mod
+
+        chat = self._chat()
+        built = []
+
+        class _Model:
+            def __init__(self):
+                self.closed = False
+
+            async def aclose(self):
+                self.closed = True
+
+        def _build(cfg):
+            m = _Model()
+            built.append(m)
+            return m
+
+        # Two messages' worth of the hoist, without running a whole ask().
+        for _ in range(2):
+            if chat._llm is None:
+                chat._llm = _build({})
+        self.assertEqual(len(built), 1, "a second message rebuilt the client")
+        asyncio.run(chat.aclose())
+        self.assertTrue(built[0].closed)
+        self.assertIsNone(chat._llm)
+
+    def test_closing_twice_is_harmless(self):
+        import asyncio
+
+        chat = self._chat()
+        # A chat can end before it ever asked anything — the idle sweep closes
+        # sockets that opened and said nothing — so aclose() has to cope with
+        # never having had a model, and with being called again after.
+        asyncio.run(chat.aclose())
+        self.assertIsNone(chat._llm)
+        asyncio.run(chat.aclose())
+        self.assertIsNone(chat._llm)
+
+    def test_a_model_that_refuses_to_close_does_not_break_the_ending(self):
+        import asyncio
+
+        chat = self._chat()
+
+        class _Angry:
+            async def aclose(self):
+                raise RuntimeError("no")
+
+        chat._llm = _Angry()
+        asyncio.run(chat.aclose())        # must not raise
+        self.assertIsNone(chat._llm)
+
+    def test_the_action_cap_spans_the_conversation(self):
+        from call.actions import CallActions
+
+        chat = self._chat()
+        # What ask() now does: build once, reuse.
+        chat.actions = CallActions(2)
+        chat.actions.note("request", "one")
+        self.assertFalse(chat.actions.at_limit())
+        chat.actions.note("request", "two")
+        # Second message, same ledger — this is the whole point. Rebuilt per
+        # message the count would be back at zero here.
+        self.assertTrue(chat.actions.at_limit())
+        self.assertEqual(chat.actions.count, 2)
+
+    def test_the_tool_loop_no_longer_closes_the_model(self):
+        # Closing it per message is exactly what dropped the signature cache.
+        import inspect
+
+        from chat.session import ChatSession
+
+        src = inspect.getsource(ChatSession._tool_loop)
+        # The STREAM is still closed every round — that is correct and
+        # unrelated. It is the MODEL that must outlive the message.
+        self.assertIn("stream.aclose()", src)
+        self.assertNotIn("model.aclose", src)
+
+    def test_the_shelf_lets_go_of_the_model_when_a_chat_ends(self):
+        import inspect
+
+        from chat.session import ChatShelf
+
+        src = inspect.getsource(ChatShelf.sweep)
+        self.assertIn("aclose", src)
