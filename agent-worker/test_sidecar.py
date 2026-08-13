@@ -122,6 +122,7 @@ from tests.test_call_record import (  # noqa: F401
     TestTheRecordAndItsProblemsShareOneClock,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestAHoldAlwaysEnds,
     TestTheGreetingWaitsForTheOnAirDJ,
     TestAPromisedActionActuallyHappens,
     TestACallerWhoWasNeverHeardIsToldSo,
@@ -154,6 +155,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestMainToolLogic,
 )
 from tests.test_music_tools import (  # noqa: F401
+    TestARefusalIsNotAskedTwice,
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
     TestAQueuedTrackCanComeBackOut,
@@ -187,6 +189,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestTheDJSpeaksAsItselfNotAboutItself,
     TestADoubtedActionIsCheckedNotExplainedAway,
     TestActionBulletsRideTheirOwnSwitch,
     TestARefusalIsPassedOnNotNarrated,

@@ -44,6 +44,15 @@ def degraded() -> bool:
 # work" while the segment was audibly going out on air.
 ACTION_TIMEOUT = 45.0
 
+# The library reads are the third case: not an action, but not quick either.
+# Measured against the operator's live station (381,023 tracks) a filtered
+# /library/browse takes ~4.1s — the default read timeout is 4.5s, so it sat a
+# few hundred milliseconds from tripping and duly tripped on a real call, where
+# the DJ told the caller it "couldn't read the library just now". The station is
+# doing real work over a big index; give it room, but far less than an ACTION,
+# because a caller is waiting on the answer.
+LIBRARY_TIMEOUT = 15.0
+
 
 def _body(r: httpx.Response) -> dict:
     """A 2xx is the success signal, not the body's shape. Some station
@@ -427,6 +436,7 @@ class StationClient:
             r = await self._client.get(
                 f"/library/observatory/track/{track_id}",
                 auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
             )
             r.raise_for_status()
             d = r.json()
@@ -466,6 +476,7 @@ class StationClient:
             r = await self._client.get(
                 "/library/browse", params=params,
                 auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
             )
             r.raise_for_status()
             d = r.json()

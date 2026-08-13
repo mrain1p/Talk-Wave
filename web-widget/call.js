@@ -1520,6 +1520,32 @@
     const bar = $('pttBtn');
     if (bar) bar.disabled = on;
     if (muteBtn) muteBtn.disabled = on;
+    // Repaint the bar's own label — it is the control the caller is looking
+    // at, so it is the one that has to say "on hold" rather than go on
+    // telling them to tap it.
+    paintPtt();
+    // A hold that never lifts is worse than an overlap. The worker holds the
+    // gate for up to 90s waiting for the station to confirm an action it may
+    // never log (air.mark_pending_air), which used to mean only that the DJ
+    // stayed quiet — since the mic lock landed it means the CALLER cannot
+    // speak either, and one real call sat muted until it was abandoned. This
+    // is the floor under that: whatever the worker says, the caller gets the
+    // microphone back. The card keeps saying the DJ is on air, because it is.
+    clearTimeout(holdTimer);
+    if (on) {
+      holdTimer = setTimeout(() => {
+        if (!djOnAir) return;
+        holdExpired = true;
+        if (bar) bar.disabled = false;
+        if (muteBtn) muteBtn.disabled = false;
+        paintPtt();
+        addSystemLine('🎙', 'Go ahead',
+          'The booth is taking a while up there — say your piece and the DJ '
+          + 'will catch up.');
+      }, MAX_HOLD_MS);
+    } else {
+      holdExpired = false;
+    }
     if (on) {
       // Shut whatever is open. A caller mid-press when the broadcast takes
       // the mic must not stay open behind the hold.
@@ -2882,6 +2908,11 @@
 
   let pttOpen = false;
   const HOLD_MS = 300;
+  // The longest the broadcast may keep the caller's microphone. Deliberately
+  // shorter than the worker's own 90s unconfirmed-action ceiling: this is the
+  // caller's escape hatch, not a mirror of the server's patience.
+  const MAX_HOLD_MS = 20000;
+  let holdTimer = 0, holdExpired = false;
 
   // Every mic switch goes through ONE queue, always driving toward the
   // LATEST intent. Firing setMicrophoneEnabled calls concurrently — a tap
@@ -2898,7 +2929,7 @@
     // caller only found out when the reply ignored it (operator-reported).
     // Refused HERE rather than at each of the three call sites because this
     // is the single queue every mic switch already goes through.
-    if (open && djOnAir) {
+    if (open && djOnAir && !holdExpired) {
       setStatus('The DJ is on the station mic — hold on', 'info');
       return micOp;
     }
@@ -2974,8 +3005,14 @@
     // The Space hint only where a keyboard is plausible — a phone
     // advertising a key it does not have reads as broken. The operator's
     // own wording (word_ptt) still wins on every device.
+    // On hold the bar has to say so itself. Disabling it and leaving "Tap to
+    // talk" on the face is an instruction the caller cannot follow — they
+    // tap, nothing happens, and the only explanation is a line of status text
+    // somewhere else on the card (operator's ask, 2026-08-13).
     $('pttMain').textContent =
-      pttOpen ? "You're live — tap to go quiet"
+      (djOnAir && !holdExpired)
+              ? "You're on hold — the DJ is on the station mic"
+              : pttOpen ? "You're live — tap to go quiet"
               : word('ptt', matchMedia('(pointer: coarse)').matches
                   ? 'Tap to talk' : 'Tap to talk — or hold Space');
     // The meter tells the same story as the bar, in the vocabulary the mute

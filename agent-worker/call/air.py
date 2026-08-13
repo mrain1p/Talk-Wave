@@ -111,6 +111,9 @@ class OnAirGuard:
         # queue wait and steps away just before the voice lands, not that it
         # gags for the entire lead (the operator's ask, 0.10.89).
         self.handover_secs = max(0.0, float(cfg.get("on_air_handover_secs") or 0))
+        # Last streamBufferSeconds the station reported on a voice push. 0
+        # until one arrives; stream_buffer() falls back to the handoff lag.
+        self._last_buf = 0.0
         # The voice.queued spell the caller has already been handed over
         # for, so one forecast never says the line twice.
         self._announced_id = ""
@@ -154,8 +157,14 @@ class OnAirGuard:
         the DJ sat silent after its own announcement finished, waiting on a
         caller it had told to hold. Heard on real calls, reported 2026-08-08.
         """
-        self._assumed_until = max(self._assumed_until,
-                                  time.time() + seconds + self.lag_secs)
+        # + the listener's distance from the live edge. Without it the DJ
+        # said "right, I'm back" and the announcement it had just sent started
+        # playing a beat later, over the top of it — reported 2026-08-13 as
+        # "he comes back a second or two later only for the on-air DJ to kick
+        # in a moment after that". Same encoder-vs-listener gap as the poll's.
+        self._assumed_until = max(
+            self._assumed_until,
+            time.time() + seconds + self.lag_secs + self.stream_buffer())
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
@@ -165,7 +174,17 @@ class OnAirGuard:
             self._publish(True)
             log.info("our own action is going out on air — holding the call DJ back")
 
-    PENDING_CEILING = 90.0   # an unconfirmed delivery is given this long to appear
+    def stream_buffer(self) -> float:
+        """How far behind the live edge the caller is, as last measured."""
+        return self._last_buf if self._last_buf > 0 else self.lag_secs
+
+    # An unconfirmed delivery is given this long to appear in the station's
+    # log. It used to be 90s, which was tolerable when a stuck hold only meant
+    # the DJ stayed quiet — from 0.10.107 it also mutes the CALLER, and a real
+    # call sat muted until it was abandoned. A hold nobody can end is worse
+    # than an overlap, so this is now the shortest window that still covers a
+    # slow station: past it the gate reopens and the DJ can talk again.
+    PENDING_CEILING = 25.0
 
     def mark_pending_air(self, spoken: str = "") -> None:
         """The station took our action but was too slow to confirm it, so
@@ -362,6 +381,14 @@ class OnAirGuard:
         # Falls back to the handoff lag when the station is too old to send
         # one: better a two-second tail than none.
         buf = d.get("bufSecs")
+        # Remembered for mark_on_air: our own actions get no push until the
+        # station airs them, so without this they would size their hold from
+        # the encoder's clock and come back before the caller had heard a word.
+        try:
+            if float(d.get("bufSecs") or 0) > 0:
+                self._last_buf = float(d["bufSecs"])
+        except (TypeError, ValueError):
+            pass
         try:
             buf = float(buf)
         except (TypeError, ValueError):

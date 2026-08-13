@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from station import StationClient
 
@@ -113,6 +114,20 @@ def _fmt_track(t: dict, with_id: bool = False) -> str:
     return bits
 
 
+# How long a station refusal stands before the wrapper will pass another
+# request through. Short enough that a caller who waits is not blocked, long
+# enough to swallow a burst emitted in one turn.
+_REFUSAL_HOLDS_SECS = 20.0
+
+
+def _recent_refusal(state: dict) -> str:
+    """The station's own words, if it refused us moments ago."""
+    at = state.get("at") or 0.0
+    if not at or time.monotonic() - at > _REFUSAL_HOLDS_SECS:
+        return ""
+    return str(state.get("why") or "")
+
+
 def _when_it_plays(position) -> str:
     """Turn a queue position into something a DJ would actually say.
 
@@ -149,6 +164,8 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
     from livekit.agents import llm as lk_llm
 
     tools = []
+    # One per call, closed over by request_song — see _recent_refusal.
+    refusals: dict = {}
 
     # Always built — a read with no side effects, like the MCP reads, so the
     # gate vocabulary has no row for it. Registry: subwave_current_lyrics.
@@ -409,8 +426,26 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     if await station.search_library(cleaned):
                         text = cleaned
 
+            # A refusal the station just gave is still true a second later.
+            # The conduct says "don't retry a refusal" and on a real call
+            # (2026-08-13) the DJ fired this four times, twice inside the same
+            # second, collecting two identical rate-limit refusals — prompt
+            # rules cannot govern a model that emits parallel tool calls, so
+            # the wrapper holds the line instead.
+            held = _recent_refusal(refusals)
+            if held:
+                return (
+                    f"Still the same answer from the station: {held} Do NOT "
+                    "send it again — you already have the reason, and asking "
+                    "twice a second makes it worse. Tell the caller what the "
+                    "station said, and either wait it out or use a tool that "
+                    "isn't rate-limited."
+                )
+
             res = await station.submit_request(text, requester or "")
             if res.get("error"):
+                refusals["at"] = time.monotonic()
+                refusals["why"] = str(res["error"])
                 return f"The station couldn't take that request: {res['error']}"
 
             # Every success path below says QUEUED, never playing. Observed on

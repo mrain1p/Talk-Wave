@@ -749,6 +749,14 @@
     background: var(--amber); color: var(--pine);
     box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 35%, transparent);
   }
+  /* Held: the broadcast has the microphone. Quiet and clearly not pressable,
+     but NOT the greyed-out look of a broken control — the bar says "you're on
+     hold" and this has to read as a state the call is in, not as a fault. */
+  .card.onair .pttbar:disabled {
+    opacity: .75; cursor: default;
+    border-style: dashed;
+    color: var(--sage);
+  }
   .pttbar .pttmain {
     font: 700 11.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: uppercase;
