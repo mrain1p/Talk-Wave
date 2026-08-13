@@ -690,6 +690,21 @@
     return fillWords(w[key] || fallback);
   }
 
+  // Who the transcript says is talking. "DJ" is the generic default; with
+  // transcript_dj_name on it is the persona's own name, which reads better on
+  // a station whose listeners know the roster and follows the name as the
+  // show changes (operator's ask, 2026-08-12). Falls back to DJ whenever the
+  // name is not known yet — a label that flickers to blank mid-call would be
+  // worse than the generic one.
+  function djLabel() {
+    const l = shown || live || {};
+    if (!l.transcriptDjName) return 'DJ';
+    // Same field the card's headline uses (`name`) — one source, so the
+    // transcript can never disagree with the name printed above it.
+    const name = String(l.name || '').trim();
+    return name || 'DJ';
+  }
+
   // What a door shows — its word, its icon, or both — read per feature from
   // /live (callShowWords / callShowEmoji, and the vm/chat pairs). The words
   // themselves are still the wording overrides; this only decides whether an
@@ -747,6 +762,33 @@
     // (operator: "Call Danny Boy" was clipping while two bare icons took the
     // same width). The class lets the CSS size the two cases apart.
     el.classList.toggle('icononly', st.emoji && !st.words);
+    if (st.words) fitLabel(el);
+  }
+
+  // Long wording SHRINKS to fit rather than ellipsising away (operator's ask,
+  // 2026-08-12: "if their text isn't fitting, shrink the text in their button
+  // boxes"). Wrapping was the other option and is wrong here — every door
+  // shares one row at a pinned height, so a second line would change the
+  // card's geometry, which the compact embed reports to its host page.
+  //
+  // Measured rather than guessed at with a media query: what overflows is a
+  // function of the WORD the operator typed, not of the viewport.
+  const LABEL_MIN_PX = 9;
+  function fitLabel(el) {
+    el.style.fontSize = '';
+    // Zero width means the card is not laid out yet (hidden door, first
+    // paint) — leave it alone; the next repaint measures for real.
+    if (!el.clientWidth) return;
+    // Fits as it is: leave no inline size behind, so the stylesheet keeps
+    // owning the button and a later theme or width change is free to differ.
+    if (el.scrollWidth <= el.clientWidth) return;
+    const base = parseFloat(getComputedStyle(el).fontSize) || 13;
+    for (let px = base - 0.5; px >= LABEL_MIN_PX; px -= 0.5) {
+      el.style.fontSize = px + 'px';
+      if (el.scrollWidth <= el.clientWidth) return;
+    }
+    // Still too long at the floor: the ellipsis in the CSS takes it from
+    // here, which is the honest end of the road for pathological wording.
   }
 
   function callLabel() {
@@ -959,6 +1001,11 @@
     }
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
+    // The text line's send button is written in the markup rather than set
+    // per state, so its override lands here — once /live has been read, on
+    // every repaint, which is where every other word on the card is decided.
+    const sendBtn = $('chatSendBtn');
+    if (sendBtn) sendBtn.textContent = word('send', 'Send');
     if (lineClosedNow) {
       // A closed line is a deliberate state, not a fault: one disabled
       // button, and the status line under the card says the booth is not
@@ -1645,7 +1692,7 @@
       node = document.createElement('p');
       node.className = 'cap ' + who;
       node.innerHTML = '<span class="who"></span><span class="said"></span>';
-      node.querySelector('.who').textContent = who === 'dj' ? 'DJ' : 'You';
+      node.querySelector('.who').textContent = who === 'dj' ? djLabel() : 'You';
       capBox.appendChild(node);
       capNodes.set(id, node);
       // Only a NEW turn rises in. An interim transcript rewrites the same
@@ -1897,7 +1944,7 @@
     setAgentState('initializing');
     startTimer();
     notifyHeight();
-    setStatus('Connecting…', 'connecting');
+    setStatus(word('connecting', 'Connecting…'), 'connecting');
     $('endedBar').hidden = true;
     $('rateBar').hidden = true;      // last call's verdict, not this one's
     capNodes.clear();
@@ -2139,7 +2186,7 @@
       // green On the line at the DJ's first word.
       document.querySelector('.card').classList.add('oncall');
       if (!rafId) tick();
-      setStatus('Connected — waiting for the DJ…', 'connected');
+      setStatus(word('waiting', 'Connected — waiting for the DJ…'), 'connected');
     } catch (err) {
       console.error(err);
       stopRinging();
@@ -2334,7 +2381,7 @@
     // showVmReceipt) and this is the fallback for a message that left no
     // transcribable words.
     setStatus(wasVm ? 'Message received — the DJ will review your request shortly.'
-                    : 'Call ended');
+                    : word('ended', 'Call ended'));
     // The card's idle truth — including the second button — comes back from
     // the next /live read rather than being reconstructed by hand here. The
     // burst catches a takeover this call may have set in motion, which airs at
@@ -2451,6 +2498,9 @@
   let typingPending = false;
   // Characters owed but not yet whole — see chatTick.
   let chatCarry = 0;
+  // The turn's raw text, and the messages split out of it. chatTarget is
+  // always the one piece being revealed right now — see chatResplit.
+  let chatRaw = '', chatSegs = [], chatSeg = 0;
   const CHAT_TICK_MS = 30;
   // However slow the pace, a long reply still lands inside this. Eight
   // seconds reads as a person writing a paragraph; much more and a caller is
@@ -2472,6 +2522,32 @@
   function chatStopReveal() {
     if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
     chatTarget = ''; chatShown = 0; chatDone = false; chatCarry = 0;
+    chatRaw = ''; chatSegs = []; chatSeg = 0;
+  }
+
+  // One TURN can be several messages. The DJ writes in paragraphs and may
+  // speak either side of a tool call, and all of it used to pour into ONE
+  // caption node — so a reply that was plainly three things read as a single
+  // unbroken slab (operator screenshot, 2026-08-12). A blank line is where
+  // people break a text, so that is the seam: each piece gets its own row,
+  // revealed in turn, exactly as if the booth had sent three messages.
+  //
+  // Re-split the whole raw buffer each time rather than looking at one
+  // delta: a blank line can arrive straddling two chunks, and re-splitting
+  // cannot be fooled by where the network happened to cut it. The \r in the
+  // class matters too — a model emitting CRLF sends a blank line this would
+  // otherwise never see.
+  function chatResplit() {
+    const parts = chatRaw.split(/\n[ \t\r]*\n+/).map(function (s) {
+      return s.trim();
+    });
+    // Keep empties only at the tail: a trailing blank line is the turn still
+    // being written, not a message. Interior blanks are just spacing.
+    chatSegs = parts.filter(function (s, i) {
+      return s || i === parts.length - 1;
+    });
+    if (!chatSegs.length) chatSegs = [''];
+    chatTarget = chatSegs[chatSeg] || '';
   }
   function chatTick() {
     if (chatShown < chatTarget.length) {
@@ -2496,8 +2572,25 @@
       if (!chatPend) chatPend = 'chat-' + (++capSeq);
       addCaption(chatPend, 'dj', chatTarget.slice(0, chatShown), false);
     }
-    if (chatDone && chatShown >= chatTarget.length) {
+    if (chatShown < chatTarget.length) return;
+    // This piece is fully out. If another is already waiting behind it then
+    // its blank line has been SEEN, so this row is finished — close it and
+    // start the next message on a row of its own.
+    if (chatSeg < chatSegs.length - 1) {
       addCaption(chatPend || ('chat-' + (++capSeq)), 'dj', chatTarget, true);
+      chatPend = null;
+      chatSeg += 1;
+      chatShown = 0;
+      chatCarry = 0;
+      chatTarget = chatSegs[chatSeg] || '';
+      return;
+    }
+    if (chatDone) {
+      // The last piece, and nothing more is coming. A turn that ended on a
+      // blank line leaves an empty tail with no row of its own to write.
+      if (chatTarget) {
+        addCaption(chatPend || ('chat-' + (++capSeq)), 'dj', chatTarget, true);
+      }
       chatPend = null;
       chatStopReveal();
       setStatus('', 'connected');
@@ -2595,7 +2688,8 @@
       } else if (msg.type === 'delta') {
         // In "dots" mode the cue STAYS up and nothing is revealed until the
         // reply is whole — that is the difference between the two settings.
-        chatTarget += msg.text || '';
+        chatRaw += msg.text || '';
+        chatResplit();
         if (chatRevealsAsTyped()) {
           hideTyping();
           // Feed the reveal buffer, don't render straight — the ticker types
@@ -2606,11 +2700,14 @@
         hideTyping();
         // The final text wins (it's the authoritative wording); let the ticker
         // finish revealing it, then finalise.
-        chatTarget = msg.text || chatTarget;
+        // The final text is the authoritative wording, so re-split from it
+        // rather than from the streamed pieces.
+        chatRaw = msg.text || chatRaw;
+        chatResplit();
         chatDone = true;
         if (!chatRevealsAsTyped()) {
-          // Land it whole: the cue was the wait, so there is nothing left to
-          // reveal. chatTick's own done-branch does the finalising.
+          // Land them whole: the cue was the wait, so there is nothing left
+          // to reveal. Each message still gets its own row.
           chatShown = chatTarget.length;
         }
         if (!chatTimer) chatTimer = setInterval(chatTick, CHAT_TICK_MS);
@@ -2621,7 +2718,7 @@
         // next open sends a stale id the server can only refuse (0.10.57).
         localStorage.removeItem('callinChat');
         // Fold the card back to idle; the transcript stays in the drawer.
-        resetChatUI('Chat ended');
+        resetChatUI(word('ended', 'Chat ended'));
       }
     };
     chatWs.onclose = () => {
@@ -2647,7 +2744,7 @@
       try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
     }
     localStorage.removeItem('callinChat');
-    resetChatUI('Chat ended');
+    resetChatUI(word('ended', 'Chat ended'));
     // After the reset, which folds the card to idle — the bar sits under the
     // idle card exactly as it does after a call. Only a chat the caller
     // actually typed in: an untouched chat writes no record to rate.

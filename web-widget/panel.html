@@ -1331,16 +1331,6 @@
           <select id="avatar_style"></select>
         </div>
 
-        <h4 class="subhead">The Call button</h4>
-        <div class="row">
-          <label for="call_button_mode">Call button</label>
-          <select id="call_button_mode"></select>
-        </div>
-        <div class="row">
-          <label for="call_button_label">Button text</label>
-          <input type="text" id="call_button_label" />
-        </div>
-
         <h4 class="subhead">Colours</h4>
         <div class="row">
           <label for="widget_theme">Colours</label>
@@ -1348,12 +1338,23 @@
         </div>
 
         <h4 class="subhead">On the caller's phone</h4>
-        <label class="check"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
+        <label class="check tickright"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
 
         <h4 class="subhead">After the conversation</h4>
-        <label class="check"><input type="checkbox" id="ask_call_feedback" /> Ask how the call went</label>
-        <label class="check"><input type="checkbox" id="ask_chat_feedback" /> Ask after a text chat</label>
-        <label class="check"><input type="checkbox" id="ask_vm_feedback" /> Ask after a voicemail</label>
+        <!-- One question, three doors — it used to ask the same thing three
+             times over, once per door (operator's ask, 2026-08-12). Same
+             matrix shape as the Page/Embed rows above, so it reads as a
+             column per door rather than as three unrelated toggles, and
+             data-help names the one field whose help describes the row. -->
+        <div class="pmatrix doors3">
+          <div class="phead"><span></span><span>Calls</span><span>Texts</span><span>Voicemail</span></div>
+          <div class="prow" data-help="ask_call_feedback">
+            <span class="plabel">Ask how it went</span>
+            <input type="checkbox" id="ask_call_feedback" aria-label="Ask after a call" />
+            <input type="checkbox" id="ask_chat_feedback" aria-label="Ask after a text chat" />
+            <input type="checkbox" id="ask_vm_feedback" aria-label="Ask after a voicemail" />
+          </div>
+        </div>
       </div>
     </details>
 
@@ -1401,6 +1402,35 @@
         <div class="row">
           <label for="word_message_only">Voicemail-only line</label>
           <input type="text" id="word_message_only" />
+        </div>
+        <div class="row">
+          <label for="word_send">Send (text line)</label>
+          <input type="text" id="word_send" />
+        </div>
+        <div class="row">
+          <label for="word_connecting">Connecting</label>
+          <input type="text" id="word_connecting" />
+        </div>
+        <div class="row">
+          <label for="word_waiting">Waiting for the DJ</label>
+          <input type="text" id="word_waiting" />
+        </div>
+        <div class="row">
+          <label for="word_ended">Conversation ended</label>
+          <input type="text" id="word_ended" />
+        </div>
+        <label class="check tickright"><input type="checkbox" id="transcript_dj_name" /> Name the DJ in the transcript</label>
+        <!-- The Call button's own wording lives WITH the wording, not over in
+             Player settings where it used to sit two sections away from every
+             other word on the card (operator's ask, 2026-08-12). -->
+        <h4 class="subhead">The Call button</h4>
+        <div class="row">
+          <label for="call_button_mode">Call button</label>
+          <select id="call_button_mode"></select>
+        </div>
+        <div class="row">
+          <label for="call_button_label">Button text</label>
+          <input type="text" id="call_button_label" />
         </div>
       </div>
     </details>

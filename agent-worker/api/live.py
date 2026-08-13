@@ -263,9 +263,13 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
             k[len("word_"):]: str(cfg.get(k) or "")
             for k in ("word_ringing", "word_answering", "word_online",
                       "word_recording", "word_hangup", "word_vm_button",
-                      "word_ptt", "word_closed", "word_message_only")
+                      "word_ptt", "word_closed", "word_message_only",
+                      "word_send", "word_connecting", "word_waiting",
+                      "word_ended")
             if cfg.get(k)
         },
+        # Whether the transcript labels the DJ's lines with their name.
+        "transcriptDjName": bool(cfg.get("transcript_dj_name")),
         "voiceEffect": str(cfg.get("voice_effect") or "none"),
         # Not `or 60`: a stored 0 is a real answer (the clean voice), and
         # the old `or 100` silently turned intensity-zero into full blast.
