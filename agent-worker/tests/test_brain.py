@@ -445,7 +445,10 @@ class TestACallerCanBeToldNothingIsKept(_TempStores):
     def test_the_setting_exists_and_defaults_to_keeping_them(self):
         cfg = settings_store.load()
         self.assertIs(cfg["record_calls"], True)
-        self.assertEqual(cfg["record_keep"], 100)
+        # 1000 since 0.10.106 (operator's ask). A record is a few KB, so a
+        # thousand is single-digit MB — and the old 100 aged out a busy
+        # evening's calls before anyone had read them back.
+        self.assertEqual(cfg["record_keep"], 1000)
 
 
 class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):

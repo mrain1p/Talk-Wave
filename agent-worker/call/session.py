@@ -37,13 +37,14 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
-from . import background, handoff, lifecycle
+from . import background, greeting, handoff, lifecycle, promise_guard
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .record import CallRecord
 from .providers import build_llm, build_stt, build_tts
 from .tools import (
     build_call_control_tools,
+    build_discovery_tools,
     build_library_tools,
     build_on_air_tools,
     mcp_allowlist,
@@ -260,6 +261,7 @@ class CallSession:
             self.cfg, self.station, self.actions,
             get_session=lambda: self.session, air=self.air, record=self.record,
         )
+        local += build_discovery_tools(self.cfg, self.station, self.actions)
         # The AgentSession doesn't exist yet — tools are built first — so the
         # hang-up tool is handed a way to read it later, not the thing itself.
         local += build_call_control_tools(
@@ -357,13 +359,18 @@ class CallSession:
         lifecycle.attach_turn_commit(ctx, session)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_card_flush(session, self.actions)
+        # Attached after card_flush and before the idle watch on purpose: it
+        # reacts to the same conversation_item_added, and the receipt cards
+        # for a nudged tool must still land behind the DJ's line.
+        promise_guard.attach_promise_guard(session, self.record)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard, actions=self.actions)
         lifecycle.attach_time_limit(ctx, session, cfg)
         ctx.add_shutdown_callback(self._on_shutdown)
 
     async def greet(self) -> None:
-        await lifecycle.greet(self.session, self.cfg, record=self.record)
+        await greeting.greet(self.session, self.cfg, record=self.record,
+                              air=self.air)
 
     def _note_if_nothing_was_heard(self, duration: float, final: list) -> None:
         """Say so, in the record, when a call produced no caller audio.

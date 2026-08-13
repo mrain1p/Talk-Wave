@@ -24,7 +24,7 @@ log = logging.getLogger("callin.agent")
 def is_prime(role: str, text: str) -> bool:
     """A user turn the caller never said: a bracketed situation note.
 
-    The greeting's opening prime started this (see lifecycle.CALL_OPENING_PRIME
+    The greeting's opening prime started this (see greeting.CALL_OPENING_PRIME
     — Gemini demands a user turn in front of a leading function call), and the
     late request-match note joined it. They sit in the history as `user`
     messages because that is the only shape providers accept, but the caller

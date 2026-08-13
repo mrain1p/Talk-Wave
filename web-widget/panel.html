@@ -624,7 +624,9 @@
           point the row at <em>Guest</em> yourself.</p>
         <div class="permgrid" id="permGridCallAdmin">
           <div class="phead"><span>Also on this call</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
+          <div class="row permrow" data-perm="allow_sound_search"><select id="allow_sound_search"></select></div>
           <div class="row permrow" data-perm="allow_exact_queue"><select id="allow_exact_queue"></select></div>
+          <div class="row permrow" data-perm="allow_cancel_queue"><select id="allow_cancel_queue"></select></div>
           <div class="row permrow" data-perm="allow_unfavorite"><select id="allow_unfavorite"></select></div>
           <div class="row permrow" data-perm="allow_announcements"><select id="allow_announcements"></select></div>
           <div class="row permrow" data-perm="allow_skills"><select id="allow_skills"></select></div>
@@ -1506,10 +1508,47 @@
     <details data-group="tools" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Station tools</span><em class="secblurb"></em><span class="tag" id="tagTools"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Every tool the station publishes
-          over MCP, and whether a caller can reach it. The blocked ones are listed
-          too. Reference only — change what's reachable under Caller permissions.</p>
+        <p class="hint wide" style="margin-top:0">Every tool the DJ can reach, and
+          whether a caller can. Some come from the station's MCP server; the rest
+          are wrappers of ours over the station's REST API, for the things MCP
+          doesn't publish. The blocked ones are listed too. Reference only —
+          change what's reachable under Caller permissions.</p>
         <ul class="toollist" id="toolList"></ul>
+
+        <h4 class="subhead">How the DJ finds a record</h4>
+        <p class="hint wide" style="margin-top:0">Five ways in, and picking the
+          wrong one is how a caller gets told a track isn't here when it is. The
+          DJ is taught this triage in its prompt; the rows above decide which of
+          them it actually has.</p>
+        <ul class="hint wide" style="margin-top:0">
+          <li><strong>They named a track or artist</strong> — library search. A
+            literal word match on titles and artists, nothing cleverer: one wrong
+            letter finds nothing, so the DJ is told to try the artist alone and
+            correct a misheard title before ever reporting a miss.</li>
+          <li><strong>They described a sound</strong> — sound search. Matches the
+            analysed audio rather than the words, so "dreamy and cinematic" comes
+            back with real records instead of songs with "dreamy" in the title.
+            Needs the station's heavy analyzer.</li>
+          <li><strong>They want more of what's on</strong> — the station's own
+            neighbours of the current track, with tempo and key.</li>
+          <li><strong>They gave a mood, genre or era</strong> — browse. Moods come
+            from the station's fixed vocabulary, so a caller's word for a feeling
+            gets translated rather than matching nothing.</li>
+          <li><strong>They gave nothing to go on</strong> — a request, and the
+            station's picker chooses. This is the only one that is rate-limited:
+            the station allows one request at a time per address, and every caller
+            here shares one address.</li>
+        </ul>
+        <p class="hint wide">Once a record is found, <em>Queue the exact track
+          picked</em> puts that recording in by id — no re-matching, and no
+          request limit. Without it the DJ has to re-submit the title as a
+          request, which can come back with a different recording.</p>
+
+        <h4 class="subhead">What the station can do that this line doesn't use</h4>
+        <p class="hint wide" style="margin-top:0">Kept here on purpose, as the
+          list to work through: the station's liked-tracks and play-history reads,
+          its genre adjacency map, and the library observatory's projection. None
+          are wired to a caller tool yet.</p>
       </div>
     </details>
 

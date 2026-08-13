@@ -1,10 +1,13 @@
-"""Library search, requests, and exact queueing.
+"""Name search, requests, and the queue.
 
 Local wrappers rather than raw MCP, because prompt guidance about phrasing
 turned out to be soft: the model followed it most of the time, and a caller
 heard "can't pull that from the racks" for a track the library holds three
 copies of. These wrappers make good phrasing unnecessary — the tool itself
 retries, and refuses a search that was never a search.
+
+Searching by NAME is only one way into a library, and for a while it was the
+only one the call line had. `discovery.py` holds the others.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from station import StationClient
 
 from ..actions import CallActions
 from ..background import spawn
+from .late_match import _surface_late_match
 from .registry import library_search_needs_mcp
 
 log = logging.getLogger("callin.agent")
@@ -131,133 +135,6 @@ def _when_it_plays(position) -> str:
 # One quick look before the tool answers — a station that resolves fast gets
 # the title into the tool result itself, which is the best outcome.
 _INLINE_POLL_SECS = 2.0
-
-# How long the station gets to say what a request matched, once the inline
-# poll has already missed. Observed on a real call (2026-08-08): the station
-# matched "Spiders" by Moby some time after the tool's 2s look, so the DJ told
-# the caller "something is lined up" and could not name it — the caller had to
-# ask, and the DJ had to go digging through station state to answer. Waiting
-# longer inline is the wrong fix: the tool return is latency the caller hears
-# as silence. So the tool answers immediately and this schedule keeps looking
-# in the background.
-_LATE_MATCH_DELAYS = (3.0, 5.0, 8.0, 13.0, 21.0)
-
-# How long the announcer waits for a quiet moment before giving up, in
-# half-second beats. A caller mid-sentence, a DJ mid-reply or a broadcast
-# hold must not be talked over for the sake of naming a song.
-_QUIET_BEATS = 40
-
-
-def _already_named(session, title: str) -> bool:
-    """Did the DJ already tell the caller which track it is?
-
-    Exactly what happened on the call that motivated all this: the caller
-    asked, the DJ read the answer off station state, and a late announcement
-    on top of that would read as the DJ forgetting the conversation.
-    """
-    needle = str(title or "").casefold()
-    if not needle:
-        return False
-    try:
-        items = list(session.history.items)[-12:]
-    except Exception:
-        return False
-    for item in items:
-        if getattr(item, "role", None) != "assistant":
-            continue
-        content = getattr(item, "content", None)
-        text = content if isinstance(content, str) else (
-            getattr(item, "text_content", "") or "")
-        if needle in str(text).casefold():
-            return True
-    return False
-
-
-async def _surface_late_match(
-    station: StationClient, rid: str, get_session=None, air=None, record=None,
-    delays=None, actions=None,
-) -> None:
-    """Keep asking the station what a request matched, and pass it on.
-
-    Runs in the background after request_song has already answered. If the
-    match lands, the DJ volunteers it at the next quiet moment; if it never
-    does, the record says so — a request whose title never surfaced is the
-    thing an operator reads the transcript to find.
-    """
-    track: dict = {}
-    position = None
-    for delay in (_LATE_MATCH_DELAYS if delays is None else delays):
-        # The caller is waiting on THIS, so hold the 'DJ is working' flag across
-        # the whole poll — otherwise the idle watcher reads the quiet as the
-        # caller having left and asks "still there?" (the Zeppelin call).
-        if actions is not None:
-            actions.mark_working(delay + 10)
-        await asyncio.sleep(delay)
-        try:
-            st = await station.request_status(str(rid))
-        except Exception:
-            continue
-        t = st.get("track") or st.get("matched") or {}
-        if isinstance(t, dict) and t.get("title"):
-            track, position = t, st.get("queuePosition")
-            break
-
-    if not track:
-        if record:
-            record.problem(
-                "A request went in but the station never said what it matched, "
-                "so the caller was never told the track. Either the station's "
-                "resolver is slow past the polling window or the request "
-                "matched nothing — check the station's request queue."
-            )
-        return
-
-    if record:
-        record.tool("subwave_request_song",
-                    f"matched after the tool returned: {_fmt_track(track)}")
-
-    session = get_session() if get_session else None
-    if session is None:
-        return
-    if _already_named(session, track.get("title")):
-        return
-
-    # A quiet moment: the DJ is listening, the caller is not mid-word, and
-    # the broadcast does not have the microphone. If one never comes, stay
-    # quiet — the match is in the history-side receipts either way.
-    for _ in range(_QUIET_BEATS):
-        busy = (
-            str(getattr(session, "agent_state", "") or "") != "listening"
-            or str(getattr(session, "user_state", "") or "") == "speaking"
-            or bool(getattr(air, "on_air", False))
-        )
-        if not busy:
-            break
-        await asyncio.sleep(0.5)
-    else:
-        return
-
-    try:
-        # The bracketed user turn is the same trick the greeting uses: a
-        # generation prompted by instructions alone, on a history ending in
-        # the DJ's own turn, is exactly the shape weak models answer by
-        # re-saying that turn. The note is never spoken and never counts as
-        # a caller turn — see handoff.is_prime.
-        await session.generate_reply(
-            user_input=(
-                f"[The station has just resolved the earlier request: it "
-                f"matched {_fmt_track(track)}. {_when_it_plays(position)}]"
-            ),
-            instructions=(
-                "Pass the station's pick on to the caller — one short line in "
-                "your own voice, and it's queued, not playing yet. If the "
-                "conversation has moved on, drop it in lightly and come back "
-                "to what you were talking about."
-            ),
-        )
-    except Exception as e:
-        log.debug("late-match announcement failed (harmless): %s", e)
-
 
 def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                         get_session=None, air=None, record=None) -> list:
@@ -440,6 +317,70 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             )
 
         tools.append(queue_track)
+
+    # Deliberately NOT tied to exact_queue: a caller who can only request can
+    # still change their mind, and the thing they want undone is usually the
+    # request, not a pick from a search page.
+    if cfg.get("allow_cancel_queue") and not library_search_needs_mcp():
+        @lk_llm.function_tool(name="subwave_cancel_queued_track")
+        async def cancel_queued_track(id: str = "", title: str = "") -> str:
+            """Take a track back OUT of the queue before it airs — the caller
+            changed their mind, or you queued the wrong one. Pass the id if
+            you have it from a search result or a queue read; otherwise pass
+            the title and it will be matched against what's actually queued.
+            Cannot touch the track on air or the one being cued up next: for
+            that, there is only skipping."""
+            if actions.at_limit():
+                return actions.refusal()
+            track_id = (id or "").strip()
+            named = title or track_id
+            if not track_id:
+                # A title is what the DJ actually has after "no, not that one"
+                # — it just said the name out loud. Resolve it against the
+                # real queue rather than making the model produce an id it
+                # never saw.
+                needle = (title or "").strip().casefold()
+                if not needle:
+                    return ("You need to say WHICH track to pull — a title or "
+                            "an id. Ask the caller which one they mean.")
+                state = await station.state()
+                for item in (state.get("upcoming") or []):
+                    t = item if isinstance(item, dict) else {}
+                    if needle in str(t.get("title") or "").casefold():
+                        # /state names it subsonic_id; /dj/search calls the
+                        # same value id. Take either rather than depending on
+                        # which read the DJ happened to come through.
+                        track_id = str(t.get("subsonic_id") or t.get("id") or "")
+                        named = t.get("title") or title
+                        break
+                if not track_id:
+                    return (
+                        f"Nothing called \"{title}\" is in the queue — it may have "
+                        "already played, or it never went in. Tell the caller that "
+                        "plainly rather than saying you pulled it."
+                    )
+
+            res = await station.cancel_queued_track(track_id)
+            if res.get("reason") == "already-playing":
+                return (
+                    f"Too late for \"{named}\" — it's already on air or cued up as "
+                    "the next thing out. It CANNOT be pulled now. Tell the caller "
+                    "straight; if they want it gone you can only skip it, and that "
+                    "cuts it off for everyone listening."
+                )
+            if not res.get("ok"):
+                return (
+                    f"That didn't come out of the queue: "
+                    f"{res.get('error') or 'the station refused it'}. Tell the "
+                    "caller plainly — do NOT claim it's gone."
+                )
+            actions.note("cancel", f"\"{named}\"")
+            return (
+                f"\"{named}\" is out of the queue — it will not play. Say so, and "
+                "if they wanted something in its place, put that in now."
+            )
+
+        tools.append(cancel_queued_track)
 
     if cfg.get("allow_requests"):
         @lk_llm.function_tool(name="subwave_request_song")

@@ -100,7 +100,21 @@ class ChatSession:
         # (who, text) in order — "caller" / "dj". The record is written from
         # this, and the prompt reads its tail.
         self.turns: list[tuple[str, str]] = []
+        # When each of those turns happened. Kept beside `turns` rather than
+        # inside it so the prompt reader and the WS payload keep their (who,
+        # text) shape; `remember()` is the only writer, which is what stops
+        # the two drifting. Before this the record stamped every turn at
+        # WRITE time, so a whole conversation shared one timestamp and the
+        # pacing — the thing you read a bad chat back to see — was gone.
+        self.turn_at: list[float] = []
         self.actions_log: list[tuple[str, str]] = []   # (tool, receipt)
+        # Every tool the model actually called, with what came back:
+        # (when, name, result, failed). The action ledger above is only the
+        # SUCCESSES, because that is what a receipt card is for — so a chat
+        # whose requests were all refused wrote a record with no tools in it
+        # at all, and read as though the DJ had simply chatted. Observed
+        # 2026-08-13, on the two chats that prompted all of this.
+        self.tool_log: list[tuple[float, str, str, bool]] = []
         self.persona_name = ""
         # The id as well as the name: a voice call records both, and a
         # record that knows only "Ash" cannot be grouped by persona the
@@ -114,6 +128,11 @@ class ChatSession:
         # socket, resume the same id for a fresh empty list, and burst again
         # (0.10.57 review). Persisting it here makes reconnecting no cheaper.
         self.msg_times: list[float] = []
+
+    def remember(self, who: str, text: str) -> None:
+        """Record one turn and when it happened. The only writer of `turns`."""
+        self.turns.append((who, text))
+        self.turn_at.append(time.time())
 
     async def greet(self, cfg: dict, on_event) -> None:
         """The booth speaks first when a fresh chat opens — a text line that
@@ -144,7 +163,7 @@ class ChatSession:
             if not text:
                 return
             on_event({"type": "delta", "text": text})
-            self.turns.append(("dj", text))
+            self.remember("dj", text)
             self.last_active = time.time()
             on_event({"type": "done", "text": text, "dj": self.persona_name})
         finally:
@@ -201,7 +220,7 @@ class ChatSession:
                     pass
             out = out.strip()
             if out:
-                self.turns.append(("dj", out))
+                self.remember("dj", out)
                 self.last_active = time.time()
             on_event({"type": "done", "text": out, "dj": self.persona_name})
         finally:
@@ -259,7 +278,8 @@ class ChatSession:
         from call.actions import CallActions
         from call.air import OnAirGuard
         from call.providers import build_llm
-        from call.tools import build_library_tools, build_on_air_tools
+        from call.tools import (build_discovery_tools, build_library_tools,
+                                build_on_air_tools)
 
         # Keys entered in the settings page live in their own store; push
         # them into the environment before building the model — the same
@@ -285,6 +305,7 @@ class ChatSession:
             # the broadcast wrappers still want the shared clear-air API.
             guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
             tools = build_library_tools(cfg, station, actions) + \
+                build_discovery_tools(cfg, station, actions) + \
                 build_on_air_tools(cfg, station, actions, guard, guarded=False)
 
             ctx = lk_llm.ChatContext.empty()
@@ -294,7 +315,7 @@ class ChatSession:
                                 content=said)
             ctx.add_message(role="user", content=text)
 
-            self.turns.append(("caller", text))
+            self.remember("caller", text)
             self.messages += 1
             self.last_active = time.time()
 
@@ -304,7 +325,7 @@ class ChatSession:
                 # becomes silence.
                 reply = ("Line's a bit crackly at my end — say that again "
                          "for me?")
-            self.turns.append(("dj", reply))
+            self.remember("dj", reply)
             self.actions_log.extend(
                 (kind, detail) for kind, detail in actions.taken)
             self.last_active = time.time()
@@ -383,8 +404,14 @@ class ChatSession:
         return reply
 
     async def _run_tool(self, by_name, call) -> tuple[str, bool]:
+        # Everything that leaves here is written down first. A voice call gets
+        # this for free from the SDK's function_tools_executed event; chat has
+        # no such event, so the only place that knows a tool ran is this
+        # method — and until 0.10.104 it told nobody but the log, which does
+        # not survive a container restart.
         tool = by_name.get(call.name)
         if tool is None:
+            self._note_tool(call.name, "no such tool", failed=True)
             return f"no such tool: {call.name}", True
         try:
             kwargs = json.loads(call.arguments or "{}")
@@ -393,10 +420,27 @@ class ChatSession:
         try:
             out = await tool(**kwargs)
             log.info("chat %s tool: %s -> %.90s", self.id, call.name, out)
+            self._note_tool(call.name, out, args=kwargs)
             return str(out), False
         except Exception as e:                                 # noqa: BLE001
             log.warning("chat %s tool %s failed: %s", self.id, call.name, e)
+            self._note_tool(call.name, f"raised {type(e).__name__}: {e}",
+                            args=kwargs, failed=True)
             return "that didn't work — tell them plainly, in your own words", True
+
+    def _note_tool(self, name: str, result, args: dict | None = None,
+                   failed: bool = False) -> None:
+        """One line in the record for one tool call.
+
+        The ARGUMENTS go in beside the result on purpose: reading a bad chat
+        back, "search_library returned nothing" is only half an answer — the
+        question is always what it searched FOR, and that is the difference
+        between a library that lacks the track and a DJ that looked up the
+        wrong words.
+        """
+        detail = ", ".join(f"{k}={v!r}"[:80] for k, v in (args or {}).items())
+        text = f"({detail}) -> {result}" if detail else str(result)
+        self.tool_log.append((time.time(), name, text, failed))
 
     def write_record(self, reason: str) -> None:
         """The chat's durable trace, in the same archive the calls use —
@@ -413,10 +457,18 @@ class ChatSession:
                               "name": self.persona_name}, cfg,
                              tier=self.tier, started=self.started)
             rec.data["kind"] = "chat"
-            for who, said in self.turns:
-                rec.turn(who, said)
-            for kind, detail in self.actions_log:
-                rec.tool(kind, detail)
+            for i, (who, said) in enumerate(self.turns):
+                # zip() would silently drop turns if the two lists ever
+                # disagreed; falling back to the start time keeps every turn
+                # and makes a bug here look like a wrong clock, not a missing
+                # conversation.
+                at = self.turn_at[i] if i < len(self.turn_at) else self.started
+                rec.turn(who, said, at=at)
+            # The real tool log, not the action ledger: the ledger holds only
+            # what SUCCEEDED, so a chat spent talking around three refusals
+            # used to write a record with an empty tools list.
+            for at, name, detail, failed in self.tool_log:
+                rec.tool(name, detail, at=at, failed=failed)
             rec.write(reason=reason, keep=int(cfg.get("record_keep") or 0))
         except Exception as e:                                 # noqa: BLE001
             log.warning("could not write chat record %s: %s", self.id, e)

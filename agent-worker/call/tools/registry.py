@@ -109,6 +109,50 @@ TOOLS: tuple[Tool, ...] = (
          "request endpoint's rate limit, so Actions per call is the only thing "
          "pacing a caller.",
          needs_station_admin=True),
+    Tool("subwave_cancel_queued_track", "allow_cancel_queue", LOCAL,
+         "Takes a queued track back out before it airs.",
+         "Station admin credentials required. The station refuses once the "
+         "track has left its player's queue — on air or being prepared — and "
+         "that refusal reaches the caller as 'too late for that one'. Off by "
+         "default: it can cancel a track someone ELSE requested, which is the "
+         "whole reason the station gives listeners no cancel of their own. "
+         "Counts against Actions per call.",
+         needs_station_admin=True),
+
+    # --- discovery: the ways to explore a library that are not a name search -
+    # Added 0.10.104 after a run of bad calls in which the DJ had one crude
+    # word-match search and a blind resolver, and nothing else: it told a
+    # caller a track was missing when the library held it one letter away,
+    # and answered "something dreamy" by guessing. The station has had these
+    # three surfaces the whole time.
+    Tool("subwave_search_by_sound", "allow_sound_search", LOCAL,
+         "Finds tracks by how they SOUND, from a description — \"dreamy "
+         "cinematic strings, slow and sad\".",
+         "Station admin credentials required, and the station's heavy "
+         "analyzer: it embeds the phrase and matches it against analysed "
+         "audio, so it only covers tracks that have been through that pass. "
+         "Where a name search would return songs with 'dreamy' in the title, "
+         "this returns songs that sound dreamy. A station without the "
+         "analyzer answers plainly that it can't, rather than 'nothing "
+         "found'.",
+         needs_station_admin=True),
+    Tool("subwave_more_like_this", "allow_sound_search", LOCAL,
+         "The tracks that sit closest to a given one — the station's own "
+         "\"what mixes well after this\".",
+         "Station admin credentials required. Shares the sound-search switch: "
+         "both answer \"more of this feeling\" off the same analysis, and an "
+         "operator happy with one has no reason to withhold the other. "
+         "Defaults to the track on air, so \"more like this\" needs no id.",
+         needs_station_admin=True),
+    Tool("subwave_browse_library", "allow_library_search", LOCAL,
+         "Browses the library by mood, energy, genre, era or "
+         "vocal/instrumental — no track name needed.",
+         "Station admin credentials required. Shares the library-search "
+         "switch: it answers the same \"what have you got\" question from the "
+         "other end. Moods come from the station's own fixed vocabulary, "
+         "which the tool hands to the DJ rather than letting it invent a word "
+         "that matches nothing.",
+         needs_station_admin=True),
     Tool("subwave_like_track", "allow_favorite", LOCAL,
          "Adds a like to the track playing now — the same heart a listener taps.",
          "No station credentials needed, and the lowest-harm action here: a "
@@ -280,6 +324,10 @@ def effective_tools(cfg: dict) -> dict:
         "subwave_search_library": "local: retry fallback",
         "subwave_request_song": "local: pre-flight + status",
         "subwave_queue_track": "local: exact pick, counts against the call limit",
+        "subwave_cancel_queued_track": "local: refuses once it's on the way to air",
+        "subwave_search_by_sound": "local: needs the station's audio analysis",
+        "subwave_more_like_this": "local: neighbours of the track on air by default",
+        "subwave_browse_library": "local: the station's own mood vocabulary",
         "subwave_dj_announce": f"local: {waits}",
         "subwave_run_skill": f"local: {waits}",
     }

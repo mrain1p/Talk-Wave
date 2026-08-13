@@ -122,6 +122,8 @@ from tests.test_call_record import (  # noqa: F401
     TestTheRecordAndItsProblemsShareOneClock,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestTheGreetingWaitsForTheOnAirDJ,
+    TestAPromisedActionActuallyHappens,
     TestACallerWhoWasNeverHeardIsToldSo,
     TestALineThatFailsToGenerateIsStillSpoken,
     TestBackgroundWorkIsNotGarbageCollected,
@@ -154,6 +156,7 @@ from tests.test_tools_logic import (  # noqa: F401
 from tests.test_music_tools import (  # noqa: F401
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
+    TestAQueuedTrackCanComeBackOut,
     TestCurrentLyricsAreARead,
     TestLikingTheTrackOnAir,
     TestSearchPagesLikeTheStation,
@@ -184,7 +187,16 @@ from tests.test_chat import (  # noqa: F401
 from tests.test_conduct import (  # noqa: F401
     TestADoubtedActionIsCheckedNotExplainedAway,
     TestActionBulletsRideTheirOwnSwitch,
+    TestARefusalIsPassedOnNotNarrated,
+    TestNoToolIsBuiltWithoutThePromptKnowingIt,
     TestThePromptNeverPromisesATakeoverItCannotDo,
+    TestThePromptStopsClaimingRequestsCannotBeCancelled,
+    TestThePromptTeachesTheDJHowToActuallyFindARecord,
+)
+from tests.test_discovery import (  # noqa: F401
+    TestBrowsingSpeaksTheStationsOwnVocabulary,
+    TestDiscoveryToolsRideTheirSwitches,
+    TestFindingMusicByHowItSounds,
 )
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,
@@ -193,6 +205,7 @@ from tests.test_speech_filter import (  # noqa: F401
 )
 from tests.test_station import (  # noqa: F401
     TestARefusalNamesItsRule,
+    TestBothCancelRefusalsAre409,
     TestATimingOutStationKeepsTheRightDJ,
     TestATimingOutStationKeepsTheRightVoice,
     TestABadPlaylistStaysSmall,
@@ -249,6 +262,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestTheMachineAnswersThroughTheRightRefusals,
 )
 from tests.test_chat import (  # noqa: F401
+    TestAChatRecordShowsWhatTheDJActuallyDid,
     TestChatActionCardsFollowTheLine,
     TestChatsEndInsteadOfAccumulating,
     TestTheFloodBrakeSurvivesAReconnect,

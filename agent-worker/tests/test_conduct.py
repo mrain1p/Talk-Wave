@@ -124,5 +124,189 @@ class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
             self.assertNotIn("Not on this line tonight", everything)
 
 
+class TestThePromptTeachesTheDJHowToActuallyFindARecord(unittest.TestCase):
+    """The night of 2026-08-12/13, in prompt form.
+
+    Three separate callers, three shapes of the same failure, and in every
+    one the DJ had a better tool built and switched on that the prompt had
+    never mentioned. `tool_rules.finding_rule` is the fix; these hold it in
+    place, including the part where each clause disappears with its switch.
+    """
+
+    ON = {"allow_requests": "open", "allow_library_search": "open",
+          "allow_sound_search": "open", "allow_exact_queue": "open",
+          "allow_cancel_queue": "open"}
+
+    def _both(self, cfg):
+        from brain import conduct, conduct_chat
+
+        return conduct.rules(cfg), conduct_chat.rules(cfg)
+
+    def test_a_name_search_missing_is_not_proof_the_track_is_absent(self):
+        # Caller asked for "Firestorm by Kygo". The track is called Firestone
+        # and the library holds it; /dj/search is a literal match, so one
+        # letter was the whole difference and the caller was told their song
+        # did not exist.
+        for rules in self._both(self.ON):
+            self.assertIn("NOT proof", rules)
+            self.assertIn("Firestone", rules)
+            # The two recoveries it never tried.
+            self.assertIn("Search the ARTIST on their own", rules)
+            self.assertIn("Use what you know", rules)
+
+    def test_a_described_vibe_is_routed_to_the_sound_search(self):
+        for rules in self._both(self.ON):
+            self.assertIn("subwave_search_by_sound", rules)
+            self.assertIn("subwave_more_like_this", rules)
+
+    def test_a_picked_search_result_is_queued_not_re_requested(self):
+        # Caller picked "On the Nature of Daylight" out of the results; the
+        # DJ submitted the TITLE as a request three times and got three
+        # different wrong records while the right one sat in the list. The
+        # exact-queue tool was on the whole time and the prompt had never
+        # named it — the 16,644-character conduct did not contain the string
+        # "queue_track".
+        for rules in self._both(self.ON):
+            self.assertIn("subwave_queue_track", rules)
+            self.assertIn("Dinah Washington", rules)
+
+    def test_every_finding_clause_rides_its_own_switch(self):
+        from brain import conduct
+
+        names_only = conduct.rules({"allow_requests": "open",
+                                    "allow_library_search": "open"})
+        self.assertIn("subwave_search_library", names_only)
+        self.assertNotIn("subwave_search_by_sound", names_only)
+        self.assertNotIn("subwave_queue_track", names_only)
+
+        nothing = conduct.rules({"allow_requests": "open"})
+        self.assertNotIn("subwave_browse_library", nothing)
+        self.assertNotIn("Firestone", nothing)
+
+
+class TestThePromptStopsClaimingRequestsCannotBeCancelled(unittest.TestCase):
+    """It said so for months after the station gained DELETE /dj/queue/:id.
+
+    A caller asked for the track he had just been given to be taken back out;
+    the DJ said "can't pull a track back once it's rolling down the wire",
+    which was the prompt talking, and the track had not started. Both halves
+    are written from the tool now.
+    """
+
+    def test_with_the_tool_on_the_dj_is_told_it_can_pull_a_waiting_track(self):
+        from brain import conduct
+
+        rules = conduct.rules({"allow_requests": "open",
+                               "allow_cancel_queue": "open"})
+        self.assertIn("subwave_cancel_queued_track", rules)
+        self.assertNotIn("CANNOT be cancelled", rules)
+        # The two limits that make it honest rather than a new way to lie.
+        self.assertIn("the tool refuses", rules)
+        self.assertIn("a DIFFERENT caller", rules)
+
+    def test_with_the_tool_off_the_old_truth_comes_back(self):
+        from brain import conduct
+
+        rules = conduct.rules({"allow_requests": "open"})
+        self.assertIn("CANNOT be cancelled", rules)
+        self.assertNotIn("subwave_cancel_queued_track", rules)
+
+
+class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
+    """The general shape of the 0.10.104 bug, caught once and for all.
+
+    `subwave_queue_track` had a switch, a permission row, station credentials
+    and a working wrapper — and the 16,644-character conduct never contained
+    the string "queue_track". So the model was handed a tool it was never told
+    to use, and reached for the wrong one instead; a caller asked for a
+    specific recording three times and got three different wrong ones.
+
+    Absence is invisible: nothing failed, no test went red, and the only
+    symptom was a caller being annoyed. This is the test that would have
+    caught it on the day it shipped — every tool the caller's DJ is handed
+    must be NAMED somewhere in the prompt that comes with it.
+
+    Deliberately a weak claim (named at all, not named well). A strong one
+    would be unmaintainable prose-matching; this one only has to be true.
+    """
+
+    # Tools the model is not steered to by name because the prompt describes
+    # WHEN to use them in words instead. Each needs a reason, and the reason
+    # has to survive being read out loud.
+    NAMED_ELSEWHERE = {
+        # The five station reads are covered by "Check what's playing /
+        # coming up rather than guessing" and the briefing's own facts. They
+        # are also always on, so there is no switch to be out of step with.
+        "subwave_health", "subwave_now_playing", "subwave_station_state",
+        "subwave_schedule", "subwave_session",
+        # A read with no switch, same as above.
+        "subwave_current_lyrics",
+        # Follow-ups to a tool the prompt does name, reached from that tool's
+        # own result text rather than from the conduct.
+        "subwave_request_status", "subwave_recent_tracks",
+        # These carry a named bullet in _tools() rather than a bare tool name
+        # ("Put things on air", "Offering a segment", the takeover bullet).
+        "subwave_dj_announce", "subwave_list_skills", "subwave_run_skill",
+        "subwave_skip_track", "subwave_dj_segment",
+        "subwave_takeover_show", "subwave_cancel_takeover",
+        "subwave_like_track", "subwave_unlike_track",
+    }
+
+    def test_every_unlocked_tool_is_named_or_deliberately_not(self):
+        from brain import conduct, conduct_chat
+        from call.tools.registry import TOOLS, NEVER
+
+        # Everything on at once: the question is whether the prompt CAN name
+        # a tool, not whether this operator switched it on.
+        cfg = {t.gate: "open" for t in TOOLS if t.gate not in ("read", NEVER)}
+        for rules in (conduct.rules, conduct_chat.rules):
+            text = rules(cfg)
+            missing = [
+                t.name for t in TOOLS
+                if t.gate != NEVER
+                and t.name not in self.NAMED_ELSEWHERE
+                and t.name not in text
+            ]
+            self.assertEqual(
+                missing, [],
+                "these tools are handed to the model with nothing in the "
+                "prompt telling it they exist, which is how queue_track went "
+                "unused for months: " + ", ".join(missing))
+
+    def test_a_blocked_tool_is_never_named_as_available(self):
+        # The mirror image, and the worse direction: naming a tool the line
+        # does not carry is what taught the DJ to MIME an action.
+        from brain import conduct
+        from call.tools.registry import TOOLS, NEVER
+
+        cfg = {t.gate: "open" for t in TOOLS if t.gate not in ("read", NEVER)}
+        text = conduct.rules(cfg)
+        for tool in TOOLS:
+            if tool.gate == NEVER:
+                self.assertNotIn(tool.name, text)
+
+    def test_the_exemption_list_cannot_outlive_its_tools(self):
+        # A retired tool left in the exemption list would silently excuse a
+        # DIFFERENT tool later if the name were ever reused.
+        from call.tools.registry import BY_NAME
+
+        stale = sorted(n for n in self.NAMED_ELSEWHERE if n not in BY_NAME)
+        self.assertEqual(stale, [], f"no such tool any more: {stale}")
+
+
+class TestARefusalIsPassedOnNotNarrated(unittest.TestCase):
+    """The station said one specific thing and the caller heard three
+    inventions of it: "the queue's jammed solid", "the decks won't clear",
+    "requests open back up in a few minutes". What it actually said was
+    "your last request is still queued — it airs first"."""
+
+    def test_the_reason_the_tool_gave_is_the_thing_to_say(self):
+        from brain import conduct, conduct_chat
+
+        for rules in (conduct.rules({}), conduct_chat.rules({})):
+            self.assertIn("pass on the REASON IT GAVE", rules)
+            self.assertIn("queue's jammed solid", rules)   # the NO example
+
+
 if __name__ == "__main__":
     unittest.main()

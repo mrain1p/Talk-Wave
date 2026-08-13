@@ -76,13 +76,21 @@ class CallRecord:
         }
 
     # -- during the call ---------------------------------------------------
-    def turn(self, who: str, text: str) -> None:
-        """who is 'caller' or 'dj'."""
+    def turn(self, who: str, text: str, at: float | None = None) -> None:
+        """who is 'caller' or 'dj'.
+
+        `at` exists for the chat line, which does not build its record until
+        the conversation ends and would otherwise stamp every turn with the
+        moment it was written — a whole conversation sharing one timestamp,
+        with the ordering and the pacing gone. A call passes nothing and gets
+        the clock, as before.
+        """
         text = str(text or "").strip()
         if not text or len(self.data["turns"]) >= MAX_TURNS:
             return
         self.data["turns"].append(
-            {"t": _iso(time.time()), "who": who, "text": text[:MAX_TEXT]}
+            {"t": _iso(time.time() if at is None else at),
+             "who": who, "text": text[:MAX_TEXT]}
         )
 
     def first_word(self) -> None:
@@ -96,12 +104,22 @@ class CallRecord:
         if "firstWordAt" not in self.data:
             self.data["firstWordAt"] = _iso(time.time())
 
-    def tool(self, name: str, result: str = "") -> None:
+    def tool(self, name: str, result: str = "", at: float | None = None,
+             failed: bool = False) -> None:
+        """One tool call, with what it answered. `at` as for turn().
+
+        `failed` marks a call that errored or was refused. Those are the ones
+        an operator is reading the transcript to find — a chat where the DJ
+        talked around three rate-limited requests looked, in the record, like
+        a chat where the DJ did nothing at all.
+        """
         if len(self.data["tools"]) >= MAX_TURNS:
             return
-        self.data["tools"].append(
-            {"t": _iso(time.time()), "name": name, "result": str(result or "")[:400]}
-        )
+        entry = {"t": _iso(time.time() if at is None else at),
+                 "name": name, "result": str(result or "")[:400]}
+        if failed:
+            entry["failed"] = True
+        self.data["tools"].append(entry)
 
     def problem(self, what: str) -> None:
         if len(self.data["problems"]) >= 50:
