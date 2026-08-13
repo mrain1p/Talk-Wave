@@ -303,7 +303,7 @@ window.Callin = (function () {
     ['talk', 'Just talk, or ask about the station',
       'The DJ answers you — reading live station state or speaking from character. Nothing is changed and nothing goes to air.'],
     ['request', 'Request music',
-      'A track, or a mood, era or likeness the station resolves into one. The main thing a caller does.'],
+      'A track by name, a sound you can only describe, a mood or an era — the DJ has a different way in for each, and can take one back out before it airs. The main thing a caller does.'],
     ['air', 'Say something on the air',
       'A shoutout, a dedication, a message — read out to everyone listening in the DJ’s own voice.'],
     ['segment', 'Run a station segment',

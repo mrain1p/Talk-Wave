@@ -31,6 +31,8 @@ Each caller permission is granted to the *least trusted caller who gets it*: **o
 
 - [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. Guest tier by default on a fresh install — only callers you handed the code to — and off on anything upgraded from before 0.10.80.
 - [ ] **`allow_skip_track` / `allow_dj_segment`** reach every listener, not the caller. Admin tier by default on a fresh install (your own phone, nobody else's); off on upgrades.
+- [ ] **`allow_cancel_queue`** takes a not-yet-aired track back out of the queue. The queue is shared, so it can cancel a record a *different* caller asked for — which is exactly why the station exposes no listener-facing cancel of its own. Off by default, and worth leaving there on an open line.
+- [ ] **`allow_sound_search`** is a pair of READS (a “sounds like” search, and the neighbours of the track on air). They queue nothing, change nothing and are not counted against Actions per call — the risk is disclosure of your library's contents, the same as library search, not action.
 - [ ] **`allow_takeover`** — the furthest-reaching switch: pins a different show on air and keeps going after the caller hangs up. Admin tier by default on a fresh install, off on upgrades; needs station admin credentials either way.
 
 **Privacy — what you keep about people who call**
