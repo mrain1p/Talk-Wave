@@ -394,7 +394,13 @@ class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
 
         self.assertGreater(long_guard.holds[0], short_guard.holds[0])
         self.assertLessEqual(long_guard.holds[0], 180)
-        self.assertGreaterEqual(short_guard.holds[0], 12)
+        # No 12s floor any more (0.10.113). It meant a one-line shoutout
+        # gagged the call for twelve seconds and the caller sat through most
+        # of it in silence — "held working the booth way too long". A short
+        # line is held for about as long as it takes to say, and the duck's
+        # close is added once, by the guard, not baked in here.
+        self.assertGreaterEqual(short_guard.holds[0], 2)
+        self.assertLess(short_guard.holds[0], 12)
 
     def test_the_words_ride_along_for_the_comeback_line(self):
         # The guard remembers what went out so the DJ can nod at it when it

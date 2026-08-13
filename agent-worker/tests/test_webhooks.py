@@ -671,9 +671,11 @@ class TestTheCallerHearsTheStreamLate(unittest.TestCase):
         from call.air import OnAirGuard
 
         now = time.time()
+        from call.air import DUCK_PAD_SECS
+
         entry = {"v": 2, "phase": "clear", "at": now}
-        self.assertIsNone(self._verdict(entry, OnAirGuard.HANDOFF_LAG_SECS / 2))
-        self.assertEqual(self._verdict(entry, OnAirGuard.HANDOFF_LAG_SECS + 1),
+        self.assertIsNone(self._verdict(entry, DUCK_PAD_SECS / 2))
+        self.assertEqual(self._verdict(entry, DUCK_PAD_SECS + 1),
                          ("clear", "", ""))
 
     def test_the_receiver_records_what_the_station_measured(self):

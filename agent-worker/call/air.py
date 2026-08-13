@@ -33,6 +33,15 @@ def _air_path() -> Path:
                         / "data" / "hook-secret.json").with_name("hook-air.json"))
 
 
+# The duck, at each end, in seconds. The operator's number, and the only
+# padding in this file — every hold is "as long as the voice actually runs,
+# plus this". It replaced a pile of separately-reasonable constants (a 2s
+# handoff lag, a +1s fudge on two branches, a 12s floor under the word
+# estimate, a 25s default for our own actions) which were individually small
+# and stacked into holds of half a minute. One number you can turn.
+DUCK_PAD_SECS = 4.5
+
+
 def speaking_secs(spoken: str, fallback: int) -> int:
     """How long the on-air DJ will be talking, sized from the words themselves.
 
@@ -46,7 +55,11 @@ def speaking_secs(spoken: str, fallback: int) -> int:
     words = len(str(spoken or "").split())
     if not words:
         return fallback
-    return max(12, min(180, int(words / 2.4) + 4))
+    # No 12s floor any more: it meant a four-word station ID gagged the call
+    # for twelve seconds and the caller sat through most of it in silence.
+    # The pad is added by the caller (DUCK_PAD_SECS), once, so it is not
+    # baked in here as well.
+    return max(2, min(180, int(words / 2.4)))
 
 
 class OnAirGuard:
@@ -114,6 +127,11 @@ class OnAirGuard:
         # Last streamBufferSeconds the station reported on a voice push. 0
         # until one arrives; stream_buffer() falls back to the handoff lag.
         self._last_buf = 0.0
+        # The duck's close, per guard rather than as a bare module constant,
+        # for the same reason SETTLE_SECS and lag_secs are reachable: a test
+        # about the come-back LINE has to be able to compress every real
+        # second in the way, and this one is 4.5 of them.
+        self.duck_pad = DUCK_PAD_SECS
         # The voice.queued spell the caller has already been handed over
         # for, so one forecast never says the line twice.
         self._announced_id = ""
@@ -145,7 +163,7 @@ class OnAirGuard:
         # passing rather than the DJ returning as if nothing happened.
         self.aired_text = ""
 
-    def mark_on_air(self, seconds: float = 25.0, spoken: str = "") -> None:
+    def mark_on_air(self, seconds: float = 8.0, spoken: str = "") -> None:
         """Treat the air as busy from now, because we just made it busy.
 
         The poll then confirms it and extends as needed; the gate does not
@@ -157,14 +175,17 @@ class OnAirGuard:
         the DJ sat silent after its own announcement finished, waiting on a
         caller it had told to hold. Heard on real calls, reported 2026-08-08.
         """
-        # + the listener's distance from the live edge. Without it the DJ
-        # said "right, I'm back" and the announcement it had just sent started
-        # playing a beat later, over the top of it — reported 2026-08-13 as
-        # "he comes back a second or two later only for the on-air DJ to kick
-        # in a moment after that". Same encoder-vs-listener gap as the poll's.
-        self._assumed_until = max(
-            self._assumed_until,
-            time.time() + seconds + self.lag_secs + self.stream_buffer())
+        # However long the words run, plus ONE pad — the same duck close every
+        # other branch uses. It used to be `seconds + lag + buffer`, three
+        # separately-reasonable numbers stacked on top of a `seconds` that
+        # already had a 12s floor in it, which is how a one-line shoutout
+        # became half a minute of held caller.
+        #
+        # This is a CEILING, not a promise: a voice.end from the station drops
+        # it on the spot (see the watch loop), so the normal case is that the
+        # air really is measured and this never runs out.
+        self._assumed_until = max(self._assumed_until,
+                                  time.time() + seconds + self.tail())
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
@@ -173,6 +194,16 @@ class OnAirGuard:
             self.on_air = True
             self._publish(True)
             log.info("our own action is going out on air — holding the call DJ back")
+
+    def tail(self) -> float:
+        """How long to keep holding after the voice itself has finished.
+
+        The duck's close. Normally DUCK_PAD_SECS; a station that reports a
+        genuinely long stream buffer gets that instead, because the caller
+        really is that far behind the live edge and releasing sooner would
+        put the DJ back over the top of what they are still hearing.
+        """
+        return max(self.duck_pad, self.stream_buffer())
 
     def stream_buffer(self) -> float:
         """How far behind the live edge the caller is, as last measured."""
@@ -184,7 +215,7 @@ class OnAirGuard:
     # call sat muted until it was abandoned. A hold nobody can end is worse
     # than an overlap, so this is now the shortest window that still covers a
     # slow station: past it the gate reopens and the DJ can talk again.
-    PENDING_CEILING = 25.0
+    PENDING_CEILING = 15.0
 
     def mark_pending_air(self, spoken: str = "") -> None:
         """The station took our action but was too slow to confirm it, so
@@ -394,7 +425,9 @@ class OnAirGuard:
         except (TypeError, ValueError):
             buf = None
         if buf is None or buf <= 0:
-            buf = self.lag_secs
+            buf = 0.0
+        # One pad for every branch below — see DUCK_PAD_SECS.
+        tail = max(getattr(self, "duck_pad", DUCK_PAD_SECS), buf)
         if phase == "queued":
             lead = float(d.get("airAt") or at) - now
             if lead > self.handover_secs:
@@ -404,7 +437,7 @@ class OnAirGuard:
             # arrive; this bound only matters if they never do).
             landed = float(d.get("airAt") or at) + (
                 dur or speaking_secs(text, int(self.quiet_secs) or 30))
-            if now < landed + buf + 1.0:
+            if now < landed + tail:
                 return ("busy", text,
                         "Hold that thought — I've got to go on air for a second.")
             return None
@@ -412,7 +445,7 @@ class OnAirGuard:
             # Measured start; the clip length is measured too when present.
             # Both are encoder-side, so the whole window slides by the buffer.
             held_for = dur or speaking_secs(text, int(self.quiet_secs) or 30)
-            if now - at < held_for + buf + 1.0:
+            if now - at < held_for + tail:
                 return ("busy", text,
                         "Hold on a second — I'm on the air.")
             return None
@@ -421,7 +454,7 @@ class OnAirGuard:
             # did. Until the buffer has drained they are still hearing it, so
             # this entry does not prove quiet yet — say nothing and let the
             # poll's estimate carry the tail.
-            if now - at < buf:
+            if now - at < tail:
                 return None
             return ("clear", "", "")
         return None
@@ -506,12 +539,24 @@ class OnAirGuard:
                 hand_line = verdict[2] or hand_line
                 busy = self._assess((0.0, verdict[1] or "x"), False)
             elif verdict and verdict[0] == "clear":
-                # voice.end is a MEASURED stop: it outranks the poll's
-                # word-sized estimate for the utterance it closes, which has
-                # no idea the link ran short. Our own assumed/pending windows
-                # still hold — an end event cannot be matched to an action
-                # the station has not confirmed yet.
-                busy = now < self._assumed_until or now < self._pending_until
+                # voice.end is a MEASURED stop, and it now beats OUR OWN
+                # GUESS as well as the poll's.
+                #
+                # It used to lose to _assumed_until / _pending_until, on the
+                # reasoning that an end event cannot be proved to close the
+                # action we just sent. True, and beside the point: the station
+                # is telling us the air is quiet NOW, and quiet is the only
+                # thing this gate is about. What it bought instead was the
+                # caller sitting held for the remainder of a 25-second
+                # estimate after the DJ had already stopped talking —
+                # "held working the booth way too long, I had to hang up".
+                #
+                # So the measurement wins and the guesses are dropped, not
+                # merely out-voted: leaving them set would have them reassert
+                # the hold on the very next tick.
+                self._assumed_until = 0.0
+                self._pending_until = 0.0
+                busy = False
             else:
                 busy = self._assess(aged, poll_failed)
                 aired_now = aged[1] if aged else ""

@@ -568,6 +568,28 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # helper names back.
         "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
+        # 0.10.113 pushed it over while rebuilding the duck: the pads were
+        # collapsed into one constant and a measured voice.end was made to
+        # beat our own estimate, both of which needed the reasoning written
+        # down beside them (this file is where a timing decision gets
+        # re-litigated at 2am, and an uncommented constant is how the last
+        # round of them accumulated).
+        #
+        # The seam is real and one-way: the VERDICT logic — speaking_secs,
+        # DUCK_PAD_SECS, _push_verdict, _log_says_busy, _assess, _settle — is
+        # a pure question ("given this evidence, is the air busy") that reads
+        # no live state except the clock and a handful of deadlines, and it is
+        # what every test in test_call_flow and test_webhooks actually
+        # exercises. What is left is the live guard: the watch loop, the
+        # publish, wait_until_clear, the come-back line, CallAgent.
+        #
+        # Deliberately NOT cut in the same change as the timing fix. The
+        # operator is on a broken deployment; moving this logic and altering
+        # it at once means a regression has two candidate causes.
+        "agent-worker/call/air.py": (622, "a verdict module (speaking_secs, "
+                                          "DUCK_PAD_SECS, _push_verdict, "
+                                          "_assess, _settle) split from the "
+                                          "live guard and its watch loop"),
         # api/hooks.py was here from 0.10.69 until 0.10.89, when the voice
         # lifecycle grew the receiver past the ratchet and the recorded seam
         # was cut for real: the receiver (push verification, the air file,
