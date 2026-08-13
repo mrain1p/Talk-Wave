@@ -715,3 +715,106 @@ class TestTheCallerHearsTheStreamLate(unittest.TestCase):
                      "streamBufferSeconds": 99999})
             d = json.loads(path.read_text(encoding="utf-8"))
         self.assertLessEqual(d["bufSecs"], 30.0)
+
+class TestTheAirFileRemembersWhatHappened(_TempStores):
+    """The ducking has been diagnosed three times by watching hook-air.json at
+    200ms for five minutes, because the file held ONE entry and each push
+    overwrote the last. A queued -> start -> end sequence that completed
+    between two polls left no trace at all. It keeps a short history now.
+    """
+
+    def _write(self, event, **body):
+        from api import hook_receiver
+        hook_receiver._remember_air(event, body)
+
+    def _read(self):
+        import json
+
+        from api.hook_receiver import _air_path
+        return json.loads(_air_path().read_text())
+
+    def test_the_history_survives_the_next_push(self):
+        self._write("voice.queued", voiceId="a1", text="hello",
+                    durationMs=6000, estimatedAirInMs=1200,
+                    streamBufferSeconds=22)
+        self._write("voice.end", voiceId="a1", streamBufferSeconds=22)
+        d = self._read()
+        self.assertEqual(d["event"], "voice.end")
+        events = [r["event"] for r in d["recent"]]
+        self.assertEqual(events, ["voice.queued", "voice.end"])
+        # And the numbers the diagnosis turns on are IN the history, not only
+        # in the entry that happened to be last.
+        self.assertEqual(d["recent"][0]["bufSecs"], 22.0)
+        self.assertEqual(d["recent"][0]["durMs"], 6000)
+
+    def test_the_history_is_bounded(self):
+        from api.hook_receiver import AIR_HISTORY
+
+        for i in range(AIR_HISTORY + 8):
+            self._write("voice.end", voiceId=f"v{i}")
+        self.assertEqual(len(self._read()["recent"]), AIR_HISTORY)
+
+
+class TestTheHandoffEventDoesNotOutrankTheLifecycle(_TempStores):
+    """Measured on air 2026-08-13: voice.queued arrives carrying durMs=17827
+    and bufSecs=22, and 1.2 SECONDS LATER the legacy dj.say for the same
+    utterance overwrites it carrying neither. The guard then sized the hold
+    from a word count with no stream buffer and handed the caller back at the
+    moment the DJ became audible to them — "returns before the on air DJ even
+    says a word". The station emits both; they are the same speech, stamped at
+    handoff and at air. When it speaks the lifecycle, the handoff event is a
+    duplicate with a worse clock.
+    """
+
+    def _write(self, event, **body):
+        from api import hook_receiver
+        hook_receiver._remember_air(event, body)
+
+    def _read(self):
+        import json
+
+        from api.hook_receiver import _air_path
+        return json.loads(_air_path().read_text())
+
+    def test_dj_say_does_not_replace_a_live_lifecycle_entry(self):
+        self._write("voice.queued", voiceId="a1", text="the real one",
+                    durationMs=17827, estimatedAirInMs=1200,
+                    streamBufferSeconds=22)
+        self._write("dj.say", text="the real one")
+        d = self._read()
+        self.assertEqual(d["event"], "voice.queued",
+                         "the handoff event overwrote the measured one again")
+        self.assertEqual(d["durMs"], 17827)
+        self.assertEqual(d["bufSecs"], 22.0)
+
+    def test_it_is_still_recorded_as_having_happened(self):
+        # Demoted, not dropped: a timeline that hides events is worse than
+        # none, and "we ignored this" is exactly what a diagnosis needs to see.
+        self._write("voice.queued", voiceId="a1", text="x", durationMs=1000,
+                    streamBufferSeconds=22)
+        self._write("dj.say", text="x")
+        rows = self._read()["recent"]
+        self.assertEqual(rows[-1]["event"], "dj.say")
+        self.assertIn("ignored", rows[-1])
+
+    def test_a_station_with_no_lifecycle_still_works(self):
+        # An older station sends only dj.say/dj.link, and that must keep
+        # driving the hold exactly as it always has.
+        self._write("dj.say", text="older station")
+        self.assertEqual(self._read()["event"], "dj.say")
+
+    def test_the_lifecycle_is_not_trusted_forever(self):
+        # A station downgraded mid-run falls back within a track rather than
+        # going deaf until the worker restarts.
+        import time
+
+        from api import hook_receiver
+        self._write("voice.queued", voiceId="a1", text="x", durationMs=1000)
+        old = hook_receiver.LIFECYCLE_TRUST_SECS
+        hook_receiver.LIFECYCLE_TRUST_SECS = -1.0
+        try:
+            self._write("dj.say", text="later")
+        finally:
+            hook_receiver.LIFECYCLE_TRUST_SECS = old
+        self.assertEqual(self._read()["event"], "dj.say")
+

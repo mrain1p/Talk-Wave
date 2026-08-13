@@ -140,6 +140,33 @@
       box.appendChild(ul);
     }
 
+    // The ducking timeline. Reading this used to mean watching the worker's
+    // air file at 200ms for five minutes and correlating by hand — three
+    // separate diagnoses did exactly that. "Audible in" is the number the
+    // whole thing turns on: a voice.* timestamp is stamped where the station
+    // mixes, and the caller is the stream buffer behind it, so a hold that
+    // opens while that is still counting down is a duck that started early.
+    if ((c.air || []).length) {
+      section('On air, and the hold');
+      const ul = document.createElement('ul');
+      ul.className = 'cbproblems';
+      c.air.forEach((a) => {
+        const li = document.createElement('li');
+        const bits = [a.why, a.forSecs && 'for ' + a.forSecs + 's',
+          a.heldSecs && 'held ' + a.heldSecs + 's',
+          a.durSecs && a.durSecs + 's of speech',
+          typeof a.audibleIn === 'number' && (a.audibleIn > 0
+            ? 'audible to the caller in ' + a.audibleIn + 's'
+            : 'audible ' + Math.abs(a.audibleIn) + 's ago'),
+          a.bufSecs && 'caller ' + a.bufSecs + 's behind',
+          a.ignored && 'IGNORED: ' + a.ignored].filter(Boolean);
+        li.textContent = callTime(a.t) + '  ' + a.what
+          + (bits.length ? ' — ' + bits.join(', ') : '');
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
     section('Conversation');
     const events = []
       .concat((c.turns || []).map((t) => ({ t: t.t, kind: t.who, text: t.text })))

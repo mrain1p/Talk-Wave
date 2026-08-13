@@ -566,6 +566,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # cutting — the two splits that came out of 0.9.102 and 0.9.106 both
     # started as one.
     SPLITTING = {
+        # 0.10.121 pushed it over with the ducking timeline. The seam was
+        # already named in web-widget/CLAUDE.md and is genuinely two viewers:
+        # the LOG viewer (renderLog, the level filter, the tail) against the
+        # CALL viewer (renderCall, callTime, the action vocabulary, the row
+        # list). They share only afetch and showResult, both from Panel.
+        # Deliberately NOT cut here: the ducking is being diagnosed on a live
+        # deployment, and moving this file in the same change would give any
+        # regression two candidate causes.
+        "web-widget/panel-viewers.js": (606, "the log viewer split from the "
+                                             "call viewer; they share only "
+                                             "Panel.afetch and showResult"),
         # 0.9.122 pushed it over adding per-adapter auth and the {voice}
         # endpoint templating for ElevenLabs. The seam is real and one-way:
         # discovery (parse_voice_list, available_voices, pick_speakable_voice,
@@ -592,7 +603,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Deliberately NOT cut in the same change as the timing fix. The
         # operator is on a broken deployment; moving this logic and altering
         # it at once means a regression has two candidate causes.
-        "agent-worker/call/air.py": (629, "a verdict module (speaking_secs, "
+        # Raised 629 -> 650 at 0.10.121 for the timeline hooks: this is the
+        # file that has been diagnosed by hand three times, and the twenty
+        # lines that make a duck readable from a call record are worth more
+        # than the twenty lines of headroom. The seam below is unchanged.
+        "agent-worker/call/air.py": (650, "a verdict module (speaking_secs, "
                                           "DUCK_PAD_SECS, _push_verdict, "
                                           "_assess, _settle) split from the "
                                           "live guard and its watch loop"),

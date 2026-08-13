@@ -1669,3 +1669,97 @@ class TestTheOnAirFlagIsAValueNotAPresence(unittest.TestCase):
         self.assertIn("p.attributes['talkwave.onair'] === '1'", src)
         # The presence test is what made a deletion invisible.
         self.assertNotIn("'talkwave.onair' in p.attributes", src)
+
+class TestTheDuckWritesDownWhatItDid(_TempStores):
+    """A transcript showed the DJ going quiet and coming back, with no way to
+    tell whether the hold was early, late, or the right length in the wrong
+    place. The operator's report — "goes off air earlier than needed and
+    returns before the on air DJ even says a word" — was unanswerable from the
+    record. It is not now.
+    """
+
+    def test_our_own_action_is_written_down_with_its_length(self):
+        from call.air import OnAirGuard
+        from call.air_log import AirLog
+
+        g = object.__new__(OnAirGuard)
+        g._assumed_until = 0.0
+        g._clear = __import__("asyncio").Event()
+        g._clear.set()
+        g.on_air = False
+        g.room = None
+        g.duck_pad = 4.5
+        g._last_buf = 22.0
+        g.lag_secs = 2.0
+        g.stepped_away = False
+        g.aired_text = ""
+        g.air_log = AirLog()
+        OnAirGuard.mark_on_air(g, seconds=10.0, spoken="a line for the air")
+
+        rows = g.air_log.rows
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["what"], "hold opened")
+        self.assertEqual(rows[0]["why"], "we put something on air")
+        # The two numbers the diagnosis needs: how long, and how far behind
+        # the caller is. 10s of words + a 22s tail (the buffer beats the pad).
+        self.assertAlmostEqual(rows[0]["forSecs"], 32.0, delta=1.0)
+        self.assertEqual(rows[0]["bufSecs"], 22.0)
+
+    def test_a_station_push_records_when_the_caller_will_hear_it(self):
+        # THE distinction the whole bug turns on: a voice.* timestamp is
+        # stamped at the encoder and the caller is bufSecs behind it. A hold
+        # opened well before audibleIn reaches zero is a duck that started
+        # early — stated on the record rather than reconstructed by hand.
+        import time
+
+        from call.air_log import AirLog
+
+        log = AirLog()
+        log.station({"at": time.time(), "event": "voice.queued",
+                     "phase": "queued", "voiceId": "5f4bf953",
+                     "durMs": 17827, "bufSecs": 22.0})
+        row = log.rows[0]
+        self.assertEqual(row["what"], "station voice.queued")
+        self.assertEqual(row["durSecs"], 17.8)
+        self.assertAlmostEqual(row["audibleIn"], 22.0, delta=1.0)
+
+    def test_pushes_the_call_never_polled_are_folded_in(self):
+        # The guard reads only the newest entry, so a whole queued/start/end
+        # sequence between two polls was invisible. The receiver keeps a short
+        # history for exactly this.
+        import time
+
+        from call.air_log import AirLog
+
+        now = time.time()
+        log = AirLog()
+        log.replay([{"at": now - 9, "event": "voice.queued", "phase": "queued",
+                     "durMs": 6000, "bufSecs": 22.0},
+                    {"at": now - 1, "event": "voice.end", "phase": "clear"}])
+        self.assertEqual([r["what"] for r in log.rows],
+                         ["station voice.queued", "station voice.end"])
+
+    def test_it_reaches_the_record_and_is_bounded(self):
+        from call.air_log import AirLog
+
+        class _Rec:
+            def __init__(self):
+                self.data = {}
+
+        log = AirLog()
+        for _ in range(AirLog.LIMIT + 10):
+            log.opened("the station is on air")
+        rec = _Rec()
+        log.write(rec)
+        self.assertEqual(len(rec.data["air"]), AirLog.LIMIT)
+
+    def test_a_broken_timeline_never_reaches_the_call(self):
+        # A diagnostic that ends a call is worse than no diagnostic.
+        from call.air_log import AirLog
+
+        log = AirLog()
+        log.station("not a dict")
+        log.replay("not a list")
+        log.write(None)
+        self.assertEqual(log.rows, [])
+

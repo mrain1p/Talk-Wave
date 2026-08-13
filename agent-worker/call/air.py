@@ -162,6 +162,9 @@ class OnAirGuard:
         # The words that went out on air, for the come-back line to nod at in
         # passing rather than the DJ returning as if nothing happened.
         self.aired_text = ""
+        # This call's ducking timeline — see call/air_log.py. Attached by the
+        # session; None on a guard nobody is recording.
+        self.air_log = None
 
     def mark_on_air(self, seconds: float = 8.0, spoken: str = "") -> None:
         """Treat the air as busy from now, because we just made it busy.
@@ -193,7 +196,13 @@ class OnAirGuard:
             self._clear.clear()
             self.on_air = True
             self._publish(True)
-            log.info("our own action is going out on air — holding the call DJ back")
+            log.info("our own action is going out on air — holding the call DJ "
+                     "back for %.1fs (%.1fs of words + %.1fs tail)",
+                     seconds + self.tail(), seconds, self.tail())
+            if getattr(self, "air_log", None):
+                self.air_log.opened("we put something on air",
+                                    until=self._assumed_until,
+                                    buf=self.stream_buffer(), text=spoken)
 
     def tail(self) -> float:
         """How long to keep holding after the voice itself has finished.
@@ -575,6 +584,12 @@ class OnAirGuard:
                 if busy:
                     self._clear.clear()
                     log.info("on-air DJ is speaking — holding the call DJ back")
+                    if getattr(self, "air_log", None):
+                        self.air_log.station(state or {})
+                        self.air_log.replay((state or {}).get("recent") or [])
+                        self.air_log.opened(
+                            "the station is on air", buf=self.stream_buffer(),
+                            text=aired_now)
                     if aired_now:
                         self.aired_text = aired_now
                     # One hand-over per forecast spell: the queued warning
@@ -601,6 +616,11 @@ class OnAirGuard:
                 else:
                     self._clear.set()
                     log.info("air is clear — the call DJ has the floor again")
+                    if getattr(self, "air_log", None):
+                        self.air_log.replay((state or {}).get("recent") or [])
+                        self.air_log.closed(
+                            "voice.end" if verdict and verdict[0] == "clear"
+                            else "the estimate ran out")
                     if self.stepped_away:
                         self.stepped_away = False
                         await self._come_back(session)
