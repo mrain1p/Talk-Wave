@@ -358,11 +358,15 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         ctx.add_message(role="user", content="run the probe")
         out = asyncio.run(chat._tool_loop(_Model(), ctx, [probe], lambda ev: None))
         self.assertEqual(out, "all done")
-        # The tool's result made it into the context for round two.
-        outputs = [i for i in ctx.items
-                   if getattr(i, "type", "") == "function_call_output"]
-        self.assertEqual(len(outputs), 1)
-        self.assertIn("probe saw hello", outputs[0].output)
+        # The tool's result made it into the context for round two — as TEXT
+        # since 0.10.119, not as a function_call_output. Gemini 3 refuses to
+        # replay a functionCall part it did not sign and does not sign them
+        # all, so a structured replay cannot be built; what matters here is
+        # that the RESULT reached the next round, not how it was wrapped.
+        said = " ".join(str(getattr(i, "content", "")) for i in ctx.items)
+        self.assertIn("probe saw hello", said)
+        self.assertNotIn("function_call_output",
+                         [getattr(i, "type", "") for i in ctx.items])
 
     def test_a_promise_with_no_tool_behind_it_gets_one_more_pass(self):
         # The chat conduct TELLS the DJ to say something before reaching for
@@ -425,9 +429,10 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         ctx = lk_llm.ChatContext.empty()
         ctx.add_message(role="user", content="dedicate it to my mate")
         out = asyncio.run(chat._tool_loop(model, ctx, [probe], lambda ev: None))
-        outputs = [i for i in ctx.items
-                   if getattr(i, "type", "") == "function_call_output"]
-        self.assertEqual(len(outputs), 1, "the promised tool never ran")
+        said = " ".join(str(getattr(i, "content", "")) for i in ctx.items)
+        # The tool result reaches round two as text now (0.10.119).
+        self.assertIn("test_probe", said, "the promised tool never ran")
+        self.assertIn("sent", said)
         # The caller keeps the line they already read, and the outcome.
         self.assertIn("dedication", out)
         self.assertIn("away", out)
@@ -510,7 +515,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
     def test_the_nudge_lands_as_one_dj_turn(self):
         # Drive nudge() end to end with a faked station, prompt and model: it
         # must stream a line and land it as a DJ turn (not vanish, not double).
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
         import brain.assemble as assemble_mod
         import call.providers as providers_mod
 
@@ -547,9 +552,9 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         async def _fake_prompt(*a, **k):
             return "SYS"
 
-        orig = (chat_session.StationClient, assemble_mod.build_system_prompt,
+        orig = (openers.StationClient, assemble_mod.build_system_prompt,
                 providers_mod.build_llm)
-        chat_session.StationClient = _FakeStation
+        openers.StationClient = _FakeStation
         assemble_mod.build_system_prompt = _fake_prompt
         providers_mod.build_llm = lambda cfg: _Model()
         try:
@@ -558,7 +563,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
             events = []
             asyncio.run(chat.nudge({}, events.append))
         finally:
-            (chat_session.StationClient, assemble_mod.build_system_prompt,
+            (openers.StationClient, assemble_mod.build_system_prompt,
              providers_mod.build_llm) = orig
 
         self.assertEqual(events[-1]["type"], "done")
@@ -584,7 +589,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertIn("caller_spoke", src)
 
     def test_a_canned_greeting_speaks_first_in_the_djs_name(self):
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
 
         persona = {"name": "Dalia", "station": "SUB/WAVE"}
 
@@ -595,8 +600,8 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
             async def aclose(self):
                 pass
 
-        orig = chat_session.StationClient
-        chat_session.StationClient = lambda *a, **k: _FakeStation()
+        orig = openers.StationClient
+        openers.StationClient = lambda *a, **k: _FakeStation()
         try:
             chat = chat_session.ChatSession("g1", "open")
             events = []
@@ -604,7 +609,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
                 {"chat_greeting_mode": "canned", "chat_greeting": "Hey, {dj} here."},
                 events.append))
         finally:
-            chat_session.StationClient = orig
+            openers.StationClient = orig
 
         self.assertTrue(any("Dalia" in (e.get("text") or "") for e in events),
                         "the canned greeting should fill the on-air DJ's name")
@@ -612,7 +617,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertEqual(chat.turns[-1], ("dj", "Hey, Dalia here."))
 
     def test_greeting_off_stays_silent(self):
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
 
         chat = chat_session.ChatSession("g2", "open")
         events = []
@@ -676,7 +681,7 @@ class TestChatActionCardsFollowTheLine(_TempStores):
     def _run_ask(self):
         from livekit.agents import llm as lk_llm
 
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
         import brain.assemble as assemble_mod
         import call.providers as providers_mod
         import call.tools as tools_mod
@@ -1010,44 +1015,46 @@ class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
         self.assertIn("aclose", src)
 
 
-class TestParallelToolCallsStayOneGroup(_TempStores):
-    """Gemini 3 signs the FIRST function call of a parallel group and no other.
+class TestToolResultsGoBackAsText(_TempStores):
+    """Gemini 3 signs a tool call with an opaque `thought_signature` and
+    refuses to replay a functionCall part without one — and it does not sign
+    them all. Measured against the live model: two calls in one response, ONE
+    signature. So a faithful structured replay cannot be built, and the
+    request died 400, fatal and not retryable, taking the whole reply with it.
 
-    Measured against the live model: three parallel calls, exactly one
-    `thought_signature`. So the group has to reach the next request AS a
-    group. The loop used to append call, output, call, output… — a separate
-    model turn per tool — which left every later call starting a group of its
-    own with nothing signing it, and the API refused the whole request:
-
-        400 Function call is missing a thought_signature in functionCall
-        parts … `default_api:subwave_recent_tracks`, position 5
-
-    Fatal and not retryable. The caller saw "Line dropped a beat there — say
-    that again for me?" while the log carried the real reason. Reproduced on
-    a live two-tool turn at 0.10.117.
+    Four shapes were tried against the real model. Interleaved parts fail.
+    Grouped parts fail. Replaying only the signed call succeeds but the model
+    answers with nothing. Text succeeds and answers properly — and needs no
+    signatures, no ids and no plumbing, so every backend takes the same path.
     """
 
-    def test_every_call_is_inserted_before_any_output(self):
+    def test_no_function_call_parts_are_replayed(self):
         import inspect
 
         from chat.session import ChatSession
 
         src = inspect.getsource(ChatSession._tool_loop)
-        body = src[src.index("for call in calls:"):]
-        first_out = body.index("FunctionCallOutput")
-        # No second FunctionCall may appear after the outputs begin, and the
-        # inserts must sit in two separate loops rather than one.
-        self.assertEqual(body.count("for call in calls:"), 2,
-                         "the calls and the outputs share one loop again")
-        self.assertLess(body.index("FunctionCall("), first_out)
+        self.assertNotIn("FunctionCall(", src)
+        self.assertNotIn("FunctionCallOutput(", src)
 
-    def test_the_tools_still_all_run(self):
-        # Splitting the loop must not drop a tool: every call still gets run
-        # and every one still gets an output pushed back.
-        import inspect
+    def test_the_report_carries_the_result_and_forbids_a_repeat(self):
+        from chat.session import _tool_report
 
-        from chat.session import ChatSession
+        out = _tool_report([("subwave_request_song", "Added to the queue.",
+                             False)])
+        self.assertIn("Added to the queue.", out)
+        self.assertIn("request_song", out)
+        # Bracketed like every other situation note here, so the speech
+        # filter strips it if it ever reaches a voice.
+        self.assertTrue(out.startswith("[") and out.endswith("]"))
+        # Without a formal function_response the model has no structural
+        # signal its call ran, and will fire the same one again.
+        self.assertIn("not call these same tools again", out)
 
-        src = inspect.getsource(ChatSession._tool_loop)
-        self.assertIn("await self._run_tool(by_name, call)", src)
-        self.assertEqual(src.count("_run_tool"), 1)
+    def test_a_failed_tool_is_marked_as_failed(self):
+        from chat.session import _tool_report
+
+        out = _tool_report([("subwave_skip_track", "the station refused it",
+                             True)])
+        self.assertIn("FAILED", out)
+        self.assertIn("the station refused it", out)

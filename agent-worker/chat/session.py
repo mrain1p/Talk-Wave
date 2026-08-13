@@ -30,6 +30,7 @@ import time
 import uuid
 
 import settings as settings_store
+from chat import openers
 from station import StationClient
 
 log = logging.getLogger("callin.chat")
@@ -52,11 +53,6 @@ _PROMISES_ACTION = re.compile(
     r"hold on|hang on|one sec|one moment|give me a|on it\b|"
     r"checking|looking|digging|sending|queueing|queuing|getting that)\b",
     re.IGNORECASE)
-
-# The booth's opening line when nothing is configured — filled with the DJ's
-# name so a fresh chat is greeted by whoever is actually on air.
-DEFAULT_CHAT_GREETING = "You're through to the booth — {dj} here. What's on your mind?"
-
 
 def route_action_cards(mode: str, on_event):
     """Where a tool run's receipt card goes, by the action_cards setting.
@@ -82,12 +78,29 @@ def route_action_cards(mode: str, on_event):
             lambda: [on_event({"type": "action", **card}) for card in held])
 
 
-def _fill_greeting(text: str, persona: dict) -> str:
-    """{station} {dj} {show} in the canned greeting, same tokens the card and
-    the voicemail greeting fill."""
-    return (text.replace("{station}", persona.get("station") or "the station")
-                .replace("{dj}", persona.get("name") or "the DJ")
-                .replace("{show}", persona.get("show") or "")).strip()
+def _tool_report(ran: list[tuple[str, str, bool]]) -> str:
+    """What just ran, and what it said, for the model's next round.
+
+    Bracketed like every other situation note in this codebase (the call's
+    opening prime, the idle nudge, the late-match line) so the speech filter
+    strips it if it ever reaches a voice, and so the model reads it as stage
+    direction rather than as something the caller typed.
+
+    The "don't call them again" line is doing real work: without a formal
+    function_response the model has no structural signal that its call was
+    executed, and will happily fire the same one a second time. Saying so
+    plainly costs a sentence and MAX_TOOL_ROUNDS bounds the damage anyway.
+    """
+    lines = []
+    for name, result, failed in ran:
+        short = name.replace("subwave_", "")
+        lines.append(f"- {short}{' FAILED' if failed else ''}: {result}")
+    return ("[Your tools just ran. This is what they actually returned — "
+            "answer the caller from THIS, not from what you expected:\n"
+            + "\n".join(lines)
+            + "\nDo not call these same tools again for this request. Reach "
+              "for a DIFFERENT tool only if what came back genuinely needs "
+              "one.]")
 
 
 class ChatSession:
@@ -158,129 +171,12 @@ class ChatSession:
         self.turn_at.append(time.time())
 
     async def greet(self, cfg: dict, on_event) -> None:
-        """The booth speaks first when a fresh chat opens — a text line that
-        answers with silence until the caller types reads as broken. "canned"
-        formats the operator's line (no model cost); "fresh" writes one in
-        persona. Either way it lands as the DJ's opening turn, streamed like
-        any reply so the widget renders it identically.
-        """
-        mode = str(cfg.get("chat_greeting_mode") or "off")
-        if mode == "off":
-            return
-
-        import secrets_store
-        secrets_store.apply_to_env()
-
-        station = StationClient()
-        try:
-            persona = await station.resolve_live_persona()
-            self.persona_name = persona.get("name") or self.persona_name
-            self.persona_id = persona.get("id") or self.persona_id
-            if mode == "fresh":
-                text = await self._fresh_greeting(cfg, station, persona)
-            else:
-                text = _fill_greeting(
-                    str(cfg.get("chat_greeting") or "").strip()
-                    or DEFAULT_CHAT_GREETING, persona)
-            text = (text or "").strip()
-            if not text:
-                return
-            on_event({"type": "delta", "text": text})
-            self.remember("dj", text)
-            self.last_active = time.time()
-            on_event({"type": "done", "text": text, "dj": self.persona_name})
-        finally:
-            await station.aclose()
+        """The booth speaks first when a chat opens. See chat/openers.py."""
+        await openers.greet(self, cfg, on_event)
 
     async def nudge(self, cfg: dict, on_event) -> None:
-        """The caller has gone quiet with the ball in their court. ONE short,
-        in-persona line to keep the line breathing — a text chat that sits
-        silent after its own last message feels dead and turn-based (operator's
-        ask). Explicitly NOT "are you still there?": this is a conversation, not
-        a roll call. No tools; fired once per silence by the WS idle timer."""
-        import secrets_store
-        secrets_store.apply_to_env()
-
-        from livekit.agents import llm as lk_llm
-
-        from brain.assemble import build_system_prompt
-        from call.providers import build_llm
-
-        station = StationClient()
-        try:
-            persona = await station.resolve_live_persona()
-            self.persona_name = persona.get("name") or self.persona_name
-            self.persona_id = persona.get("id") or self.persona_id
-            prompt = await build_system_prompt(station, persona, cfg=cfg,
-                                               mode="chat")
-            ctx = lk_llm.ChatContext.empty()
-            ctx.add_message(role="system", content=prompt)
-            for who, said in self.turns[-12:]:
-                ctx.add_message(role="user" if who == "caller" else "assistant",
-                                content=said)
-            ctx.add_message(role="user", content=(
-                "[The caller has gone quiet since your last message — they "
-                "haven't typed for a little while. Type ONE short, warm line in "
-                "your own voice to keep the conversation breathing: pick the "
-                "thread back up, or lightly offer a next thing. NOT 'are you "
-                "still there?' — this is a chat, not a roll call — and no "
-                "question they must answer to stay. A light nudge, then leave "
-                "it with them.]"))
-            model = build_llm(cfg)
-            out = ""
-            try:
-                stream = model.chat(chat_ctx=ctx)
-                async for chunk in stream:
-                    delta = getattr(chunk, "delta", None)
-                    if delta and delta.content:
-                        out += delta.content
-                        on_event({"type": "delta", "text": delta.content})
-                await stream.aclose()
-            finally:
-                try:
-                    await model.aclose()
-                except Exception:                              # noqa: BLE001
-                    pass
-            out = out.strip()
-            if out:
-                self.remember("dj", out)
-                self.last_active = time.time()
-            on_event({"type": "done", "text": out, "dj": self.persona_name})
-        finally:
-            await station.aclose()
-
-    async def _fresh_greeting(self, cfg, station, persona) -> str:
-        """One short in-persona opener, written at open. The same prompt a
-        reply uses, with no tools and a single instruction — the voicemail
-        fresh greeting, at chat size."""
-        from livekit.agents import llm as lk_llm
-
-        from brain.assemble import build_system_prompt
-        from call.providers import build_llm
-
-        prompt = await build_system_prompt(station, persona, cfg=cfg,
-                                           mode="chat")
-        ctx = lk_llm.ChatContext.empty()
-        ctx.add_message(role="system", content=prompt)
-        ctx.add_message(role="user", content=(
-            "[The caller just opened the text line and has not typed yet. "
-            "Greet them first — one short, warm line in your own voice, no "
-            "question needed, just open the door.]"))
-        model = build_llm(cfg)
-        out = ""
-        try:
-            stream = model.chat(chat_ctx=ctx)
-            async for chunk in stream:
-                delta = getattr(chunk, "delta", None)
-                if delta and delta.content:
-                    out += delta.content
-            await stream.aclose()
-        finally:
-            try:
-                await model.aclose()
-            except Exception:                                  # noqa: BLE001
-                pass
-        return out.strip()
+        """One line to keep a quiet line breathing. See chat/openers.py."""
+        await openers.nudge(self, cfg, on_event)
 
     async def ask(self, text: str, on_event) -> None:
         """One caller message -> streamed DJ reply.
@@ -371,8 +267,6 @@ class ChatSession:
         """Stream the model, run any tools it calls, feed results back,
         repeat until it answers in words. The loop the voice SDK runs for a
         call, at chat size."""
-        from livekit.agents import llm as lk_llm
-
         by_name = {t.info.name: t for t in tools}
         reply = ""
         nudge_left = True
@@ -413,36 +307,43 @@ class ChatSession:
                         "needs doing, answer with nothing at all.]"))
                     continue
                 break
-            # ALL the calls, then all the outputs — never interleaved.
+            # Tool results go back as TEXT, not as function_call /
+            # function_call_output parts.
             #
-            # This used to append call, output, call, output…, which reads as
-            # a separate model turn per tool. Gemini 3 attaches its
-            # `thought_signature` to the FIRST function-call part of a
-            # parallel group and to no other (measured: three parallel calls,
-            # one signature), so splitting the group leaves every later call
-            # starting a group of its own with no signature — and the next
-            # request is rejected outright:
+            # Gemini 3 signs a tool call with an opaque `thought_signature`
+            # and refuses any later request that replays a functionCall part
+            # without one — and it does not sign them all. Measured against
+            # the live model: two calls in one response, ONE signature; three
+            # calls, one signature. So a faithful structured replay is
+            # impossible by construction, and the request dies:
             #
             #   400 Function call is missing a thought_signature in
-            #   functionCall parts … `default_api:subwave_recent_tracks`,
-            #   position 5
+            #   functionCall parts … `default_api:subwave_recent_tracks`
             #
-            # Fatal, not retryable, and it killed the whole reply: the caller
-            # got "Line dropped a beat there — say that again for me?" while
-            # the log carried the real reason. Reproduced live on 0.10.117
-            # against a two-tool turn.
+            # Fatal, not retryable, and it took the whole reply with it: the
+            # caller got "Line dropped a beat there — say that again for me?"
+            # while the log held the real reason.
             #
-            # Emitting them as one group is also just what the wire format
-            # means: these calls happened together, in one model turn.
-            for call in calls:
-                ctx.insert(lk_llm.FunctionCall(
-                    call_id=call.call_id, name=call.name,
-                    arguments=call.arguments or "{}"))
+            # Four shapes were tried against the real model before this one
+            # (see the 0.10.119 commit): interleaved parts and grouped parts
+            # both fail; replaying only the SIGNED call succeeds but the model
+            # answers with nothing, having been shown half of what happened.
+            # Text succeeds and answers properly.
+            #
+            # It is also the honest representation. Every tool here already
+            # returns a sentence written for the model to read — "Added to the
+            # queue: X. It is NOT playing yet" — never a JSON payload. Wrapping
+            # prose in a function_call_output bought us provider-specific
+            # fragility and no fidelity. And it is provider-AGNOSTIC: no
+            # signatures, no ids, nothing to plumb, so Ollama and every other
+            # local backend take the same path.
+            if text_out.strip():
+                ctx.add_message(role="assistant", content=text_out)
+            ran: list[tuple[str, str, bool]] = []
             for call in calls:
                 result, is_error = await self._run_tool(by_name, call)
-                ctx.insert(lk_llm.FunctionCallOutput(
-                    call_id=call.call_id, name=call.name,
-                    output=result, is_error=is_error))
+                ran.append((call.name, str(result), is_error))
+            ctx.add_message(role="user", content=_tool_report(ran))
         else:
             log.warning("chat %s: model still calling tools after %d "
                         "rounds — answering with what it has",
