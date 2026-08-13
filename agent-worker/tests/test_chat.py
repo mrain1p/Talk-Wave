@@ -1058,3 +1058,92 @@ class TestToolResultsGoBackAsText(_TempStores):
                              True)])
         self.assertIn("FAILED", out)
         self.assertIn("the station refused it", out)
+
+class TestAProviderFailureIsVisibleToTheOperator(_TempStores):
+    """The Gemini 400 broke every multi-tool chat turn for days while the
+    panel looked perfectly healthy: the caller got "line dropped a beat", the
+    operator got a normal-looking chat, and the actual reason lived only in a
+    container log that this deployment does not keep. A call already writes
+    its errors into the record's `problems`, which is the list the panel
+    counts a conversation as failed by. Chat now does the same, so the NEXT
+    provider that refuses us is a line in Needs attention within one
+    conversation instead of a mystery.
+    """
+
+    def test_the_relay_writes_the_real_error_down(self):
+        import inspect
+
+        from api import chat as chat_api
+
+        src = inspect.getsource(chat_api._relay)
+        self.assertIn("chat.problems.append", src)
+        # The panel matches on this phrase; changing it silently unhooks the
+        # Needs attention line from the thing it reports.
+        self.assertIn("brain returned an error", src)
+
+    def test_problems_reach_the_record(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        import settings as settings_store
+        from call import record
+        from chat.session import ChatSession
+
+        settings_store.save({"record_calls": True})
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        old, record.CALLS_DIR = record.CALLS_DIR, Path(tmp.name)
+        try:
+            chat = ChatSession("p1", "open")
+            chat.remember("caller", "hey")
+            chat.problems.append(
+                "the DJ's brain returned an error: APIStatusError: 400 "
+                "missing thought_signature")
+            chat.write_record("ended")
+        finally:
+            record.CALLS_DIR = old
+
+        files = list(Path(tmp.name).glob("*.json"))
+        self.assertTrue(files, "no record was written")
+        rec = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertEqual(len(rec["problems"]), 1)
+        self.assertIn("thought_signature", rec["problems"][0]["what"])
+
+    def test_the_panel_reports_it(self):
+        from tests.support import REPO
+
+        panel = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("brain returned an error", panel)
+        self.assertIn("lost a reply", panel)
+
+
+class TestTheLlmTestRunsTheShapeThatBreaks(_TempStores):
+    """One tool call proves a model can call a tool. It does NOT prove the
+    model can carry a conversation — Gemini 3 passed the old one-round test
+    and then rejected the second request of every real chat. So /test/llm now
+    runs two rounds against two tools and fails the provider here, in the
+    panel, rather than on a caller.
+    """
+
+    def test_the_endpoint_does_a_second_round(self):
+        import inspect
+
+        from api import diagnostics
+
+        src = inspect.getsource(diagnostics.handle_test_llm)
+        self.assertIn("now_playing", src, "only one tool is offered, so a "
+                                          "parallel group can never happen")
+        self.assertIn("followUp", src)
+        # Replayed through the shipped helper, not a hopeful copy of it: this
+        # button has to test the code path that runs on air.
+        self.assertIn("_tool_report", src)
+
+    def test_the_panel_shows_the_verdict(self):
+        from tests.support import REPO
+
+        panel = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("carrying the conversation", panel)
+        # And it counts: a provider that dies on round two is not a pass with
+        # a footnote.
+        self.assertIn("d.followUp !== 'failed'", panel)

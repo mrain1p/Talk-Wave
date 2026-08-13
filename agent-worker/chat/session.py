@@ -13,6 +13,10 @@ SDK's AgentSession text support is room-bound. Precedent for driving
 `llm.chat()` directly is already in-tree: the voicemail fresh greeting and
 the back-to-air handoff.
 
+The two times the booth types unprompted — the opening line and the nudge at
+a quiet line — are in openers.py: one un-tooled pass each, no rounds, no caps,
+no ledger.
+
 Resumable per browser: the widget holds the chat id in localStorage and the
 transcript lives HERE, in memory, until the idle clock or a ceiling ends it.
 In memory on purpose — a token-server restart ends every open chat, which is
@@ -128,6 +132,11 @@ class ChatSession:
         # at all, and read as though the DJ had simply chatted. Observed
         # 2026-08-13, on the two chats that prompted all of this.
         self.tool_log: list[tuple[float, str, str, bool]] = []
+        # Anything that went wrong that the caller was shielded from. Written
+        # into the record's `problems`, which is the list the panel already
+        # counts a conversation as failed by — so a broken provider shows up
+        # in Needs attention instead of only in a log nobody keeps.
+        self.problems: list[str] = []
         self.persona_name = ""
         # The id as well as the name: a voice call records both, and a
         # record that knows only "Ash" cannot be grouped by persona the
@@ -430,6 +439,8 @@ class ChatSession:
             # used to write a record with an empty tools list.
             for at, name, detail, failed in self.tool_log:
                 rec.tool(name, detail, at=at, failed=failed)
+            for what in self.problems:
+                rec.problem(what)
             rec.write(reason=reason, keep=int(cfg.get("record_keep") or 0))
         except Exception as e:                                 # noqa: BLE001
             log.warning("could not write chat record %s: %s", self.id, e)

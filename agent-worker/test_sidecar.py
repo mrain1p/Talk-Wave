@@ -188,6 +188,8 @@ from tests.test_brain import (  # noqa: F401
 )
 from tests.test_chat import (  # noqa: F401
     TestToolResultsGoBackAsText,
+    TestAProviderFailureIsVisibleToTheOperator,
+    TestTheLlmTestRunsTheShapeThatBreaks,
     TestAChatIsOneConversationNotAStringOfStrangers,
     TestTheReplyArrivesAtTheOperatorsPace,
 )

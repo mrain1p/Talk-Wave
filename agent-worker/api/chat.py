@@ -135,6 +135,19 @@ async def _relay(ws: web.WebSocketResponse, chat, make_coro) -> None:
                         # The same promise the phone makes: a model outage is
                         # never silence.
                         log.warning("chat %s turn failed: %s", chat.id, err)
+                        # And write the REAL reason down where the operator
+                        # can read it. A provider that rejects our requests
+                        # used to be completely invisible from the panel: the
+                        # caller saw "line dropped a beat", the operator saw a
+                        # normal-looking chat, and the 400 explaining it lived
+                        # only in a container log with LOG_TO_FILE off. That
+                        # is how the Gemini thought_signature failure survived
+                        # long enough to be reported as "the DJ is being
+                        # weird" instead of as an outage. A call already does
+                        # this via attach_error_recovery; chat now matches.
+                        chat.problems.append(
+                            f"the DJ's brain returned an error: "
+                            f"{type(err).__name__}: {err}")
                         await ws.send_json(
                             {"type": "done",
                              "text": "Line dropped a beat there — say that "
