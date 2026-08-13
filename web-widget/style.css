@@ -3564,6 +3564,29 @@
   /* Too many bars to letter them: the tooltip still answers, and a smear of
      overlapping numbers answers nothing. */
   body.panelpage .actbars.dense .actbar::after { content: none; }
+  /* What the line did: a ranked row per tool. A bar chart over eight
+     categories with long names is unreadable at this width; a list with the
+     bar as a rule behind it is not. */
+  body.panelpage .toolrows { display: flex; flex-direction: column; gap: 5px; }
+  body.panelpage .toolrow {
+    display: grid; grid-template-columns: 74px minmax(0, 1fr) 26px;
+    gap: 8px; align-items: center;
+  }
+  body.panelpage .toolrow .tw {
+    font: 700 9px/1.2 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage); text-transform: uppercase;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  body.panelpage .toolrow .tbar {
+    height: 9px; background: color-mix(in srgb, var(--edge) 60%, transparent);
+  }
+  body.panelpage .toolrow .tbar i {
+    display: block; height: 100%; background: var(--coral);
+  }
+  body.panelpage .toolrow .tn {
+    font: 700 10px/1 var(--font-mono); color: var(--alpenglow);
+    text-align: right;
+  }
   /* The listener curve needs a scale. It had none: a shape, and one number
      in the caption. The floor and the peak are printed against the plot, and
      every sampled point carries its own <title>. */

@@ -294,65 +294,76 @@
     $('mixCap').textContent = 'by type';
   }
 
-  function renderListeners(bs) {
-    const NO_SAMPLES = 'no listener samples yet — the worker asks the '
-      + 'station every few minutes and draws the curve from its answers';
-    if (!samples || !samples.length) return empty('lisChart', 'lisCap', NO_SAMPLES);
-    const per = bs.map((b) => {
-      const inB = samples.filter((s) =>
-        s.t * 1000 >= b.start && s.t * 1000 < b.end);
-      return inB.length ? Math.max(...inB.map((s) => s.n)) : null;
-    });
-    if (per.every((p) => p === null)) {
-      return empty('lisChart', 'lisCap',
-        'no samples in this window — widen the range, or wait for new ones');
+  // What the LINE produced, by tool, over the window.
+  //
+  // This card was Concurrent listeners until 0.10.117 — a STATION metric on a
+  // Talk Wave dashboard, and one the station's own admin already shows you.
+  // It told you how many people were listening, which is true and interesting
+  // and says nothing whatever about whether the phone line is doing its job.
+  // "The line put fourteen songs on air this week" is the sentence that
+  // justifies this software existing, and every number in it was already in
+  // the call records, unread.
+  //
+  // The listener series is still sampled and still served — nothing was
+  // ripped out — it simply isn't the headline any more.
+  function renderTools(bs) {
+    if (!calls) return empty('lisChart', 'lisCap', NO_RECORDS);
+    const rows = calls.filter(matches).filter((c) => when(c) >= bs[0].start);
+    const counts = new Map();
+    let failed = 0;
+    rows.forEach((c) => (c.tools || []).forEach((t) => {
+      const badge = toolWord(t.name);
+      if (!badge) return;
+      counts.set(badge, (counts.get(badge) || 0) + 1);
+      if (t.failed) failed++;
+    }));
+    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    if (!ranked.length) {
+      $('lisChart').innerHTML = '<p class="actempty">the DJ did nothing '
+        + periodWord() + ' — no requests, no shoutouts, nothing on air. '
+        + 'That is either a quiet line or a broken one</p>';
+      $('lisCap').textContent = '0 actions ' + periodWord();
+      return;
     }
-    const peak = Math.max(1, ...per.filter((p) => p !== null));
-    const W = 100, H = 40;
-    const x = (i) => (per.length === 1 ? W / 2 : (i / (per.length - 1)) * W);
-    const y = (n) => H - 2 - (n / peak) * (H - 6);
-    // Gaps stay gaps: an hour the sampler couldn't reach the station breaks
-    // the line rather than being drawn as zero listeners.
-    const runs = [];
-    let run = [];
-    per.forEach((p, i) => {
-      if (p === null) { if (run.length) runs.push(run); run = []; }
-      else run.push([x(i), y(p)]);
-    });
-    if (run.length) runs.push(run);
-    const lines = runs.map((r) =>
-      '<polyline points="' + r.map((p) => p[0].toFixed(1) + ','
-        + p[1].toFixed(1)).join(' ') + '" />').join('');
-    const areas = runs.filter((r) => r.length > 1).map((r) =>
-      '<polygon points="' + r.map((p) => p[0].toFixed(1) + ','
-        + p[1].toFixed(1)).join(' ')
-      + ' ' + r[r.length - 1][0].toFixed(1) + ',' + H
-      + ' ' + r[0][0].toFixed(1) + ',' + H + '" />').join('');
-    // The curve had no numbers on it at all — no scale, no per-point value,
-    // so "peak 7" in the caption was the only figure on a chart of 30
-    // points. A peak marker and an axis floor give it a scale to read
-    // against, and every bucket answers on hover.
-    const peakAt = per.indexOf(peak);
-    const dots = per.map((n, i) => n === null ? '' :
-      '<circle class="lisdot" r="1.4" cx="' + x(i).toFixed(1)
-      + '" cy="' + y(n).toFixed(1) + '"><title>' + esc(bs[i].label) + ': '
-      + n + ' listener' + (n === 1 ? '' : 's') + '</title></circle>').join('');
-    $('lisChart').innerHTML =
-      '<div class="lisplot">'
-      + '<svg class="lissvg" viewBox="0 0 ' + W + ' ' + H
-      + '" preserveAspectRatio="none">' + areas + lines + '</svg>'
-      + '<svg class="lisdots" viewBox="0 0 ' + W + ' ' + H
-      + '" preserveAspectRatio="none">' + dots + '</svg>'
-      + '<span class="lismax">' + peak + '</span>'
-      + '<span class="lismin">0</span>'
-      + '</div>'
-      + '<div class="actaxis">' + bs.map((b) =>
-        '<span>' + (b.tick || '') + '</span>').join('') + '</div>';
-    const seen = per.filter((n) => n !== null);
-    const avg = seen.reduce((a, n) => a + n, 0) / (seen.length || 1);
-    $('lisCap').textContent = 'peak ' + peak
-      + (peakAt >= 0 && bs[peakAt] ? ' on ' + bs[peakAt].label : '')
-      + ' · average ' + avg.toFixed(avg < 10 ? 1 : 0);
+    const top = ranked.slice(0, 6);
+    const max = top[0][1];
+    $('lisChart').innerHTML = '<div class="toolrows">' + top.map(([word, n]) =>
+      '<div class="toolrow">'
+      + '<span class="tw">' + esc(word) + '</span>'
+      + '<span class="tbar"><i style="width:'
+      + Math.max(3, Math.round((n / max) * 100)) + '%"></i></span>'
+      + '<span class="tn">' + n + '</span>'
+      + '</div>').join('') + '</div>';
+    const total = ranked.reduce((a, r) => a + r[1], 0);
+    $('lisCap').textContent = total + ' action' + (total === 1 ? '' : 's')
+      + ' across ' + rows.length + ' conversation'
+      + (rows.length === 1 ? '' : 's')
+      + (failed ? ' · ' + failed + ' refused' : '');
+  }
+
+  // The same eight words the call viewer's chips use, so the chart and the
+  // transcripts below it name the same things. Reads are dropped: "checked
+  // what was playing" is not something the line PRODUCED, and leaving them in
+  // buried the four actions under sixty lookups.
+  const TOOL_WORDS = [
+    [/request_song|queue_track/, 'queued'],
+    [/cancel_queued/, 'cancelled'],
+    [/search_by_sound|more_like_this|browse_library|search_library|recent_tracks/, null],
+    [/like_track/, 'liked'],
+    [/unlike_track/, 'un-liked'],
+    [/dj_announce/, 'on air'],
+    [/run_skill|dj_segment/, 'segments'],
+    [/skip_track/, 'skipped'],
+    [/takeover/, 'show change'],
+  ];
+
+  function toolWord(name) {
+    const n = String(name || '');
+    const hit = TOOL_WORDS.find(([re]) => re.test(n));
+    if (hit) return hit[1];
+    // An unknown WRITE is worth showing; the reads are all matched above.
+    return /health|now_playing|station_state|schedule|session|lyrics|status/
+      .test(n) ? null : n.replace(/^subwave_/, '');
   }
 
   function renderTtfw(bs) {
@@ -398,7 +409,7 @@
 
   function render() {
     const bs = buckets();
-    renderDoors(bs); renderMix(bs); renderListeners(bs); renderTtfw(bs);
+    renderDoors(bs); renderMix(bs); renderTools(bs); renderTtfw(bs);
   }
 
   // ------------------------------------------------------------- controls

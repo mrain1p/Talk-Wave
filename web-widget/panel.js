@@ -937,6 +937,23 @@
                      + 'model with better tool routing' });
     }
 
+    // The provider refused us outright. ONE is worth saying — it costs a whole
+    // reply, and the caller only ever sees "line dropped a beat", so without
+    // this line the operator's evidence is a container log they do not keep.
+    // Learned from the Gemini thought_signature 400 (0.10.119), which broke
+    // every multi-tool chat turn for days while the panel looked healthy.
+    const brainErr = recent.filter((c) => hasProblem(c, 'brain returned an error'));
+    if (brainErr.length) {
+      const why = ((brainErr[0].problems || []).find((p) =>
+        String(p.what || '').indexOf('brain returned an error') !== -1) || {});
+      items.push({ page: 'config', group: 'brains',
+                   label: brainErr.length + ' of the last ' + recent.length
+                     + ' conversations lost a reply',
+                   note: 'the model provider rejected the request — '
+                     + String(why.what || '').replace(
+                       /^the DJ.s brain returned an error: /, '').slice(0, 180) });
+    }
+
     const typed = recent.filter((c) => hasProblem(c, 'typed a tool call'));
     if (typed.length) {
       items.push({ page: 'config', group: 'brains',
@@ -2886,12 +2903,25 @@
         return;
       }
       const slow = d.firstTokenMs > 1500;
-      showResult(out, d.toolCalling && !slow,
+      // A second round is the one that catches a provider which passes the
+      // easy test and then dies mid-conversation, so it counts toward the
+      // verdict rather than sitting underneath it as a note.
+      const carries = d.followUp !== 'failed';
+      showResult(out, d.toolCalling && carries && !slow,
         withNote(d.provider + ' / ' + d.model +
         '\nfirst token ' + d.firstTokenMs + 'ms, total ' + d.totalMs + 'ms' +
-        '\ntool calling: ' + (d.toolCalling ? '✓ works' : '✗ model did not call the tool') +
+        '\ntool calling: ' + (d.toolCalling ? '✓ works' : '✗ model did not call the tool')
+        + (d.toolCalling ? ' (' + (d.parallelTools ? 'two at once' : 'one at a time') + ')' : '') +
+        (d.followUp === 'skipped' ? '' :
+          '\ncarrying the conversation: ' + (
+            d.followUp === 'ok' ? '✓ answered the follow-up'
+              : d.followUp === 'silent' ? '⚠ replied with nothing'
+                : '✗ ' + (d.followUpError || 'the provider rejected the follow-up'))) +
         (d.reply ? '\nreply: ' + d.reply : '') +
         (slow ? '\n⚠ Slow to first token — the call will feel laggy.' : '') +
+        (d.followUp === 'failed'
+          ? '\n✗ It answers once, then refuses the next request — every '
+            + 'conversation will lose a reply. Try another model.' : '') +
         (d.toolCalling ? '' : '\n✗ Without tool calling the DJ can never submit a request.'), d));
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }

@@ -358,11 +358,15 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         ctx.add_message(role="user", content="run the probe")
         out = asyncio.run(chat._tool_loop(_Model(), ctx, [probe], lambda ev: None))
         self.assertEqual(out, "all done")
-        # The tool's result made it into the context for round two.
-        outputs = [i for i in ctx.items
-                   if getattr(i, "type", "") == "function_call_output"]
-        self.assertEqual(len(outputs), 1)
-        self.assertIn("probe saw hello", outputs[0].output)
+        # The tool's result made it into the context for round two — as TEXT
+        # since 0.10.119, not as a function_call_output. Gemini 3 refuses to
+        # replay a functionCall part it did not sign and does not sign them
+        # all, so a structured replay cannot be built; what matters here is
+        # that the RESULT reached the next round, not how it was wrapped.
+        said = " ".join(str(getattr(i, "content", "")) for i in ctx.items)
+        self.assertIn("probe saw hello", said)
+        self.assertNotIn("function_call_output",
+                         [getattr(i, "type", "") for i in ctx.items])
 
     def test_a_promise_with_no_tool_behind_it_gets_one_more_pass(self):
         # The chat conduct TELLS the DJ to say something before reaching for
@@ -425,9 +429,10 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
         ctx = lk_llm.ChatContext.empty()
         ctx.add_message(role="user", content="dedicate it to my mate")
         out = asyncio.run(chat._tool_loop(model, ctx, [probe], lambda ev: None))
-        outputs = [i for i in ctx.items
-                   if getattr(i, "type", "") == "function_call_output"]
-        self.assertEqual(len(outputs), 1, "the promised tool never ran")
+        said = " ".join(str(getattr(i, "content", "")) for i in ctx.items)
+        # The tool result reaches round two as text now (0.10.119).
+        self.assertIn("test_probe", said, "the promised tool never ran")
+        self.assertIn("sent", said)
         # The caller keeps the line they already read, and the outcome.
         self.assertIn("dedication", out)
         self.assertIn("away", out)
@@ -510,7 +515,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
     def test_the_nudge_lands_as_one_dj_turn(self):
         # Drive nudge() end to end with a faked station, prompt and model: it
         # must stream a line and land it as a DJ turn (not vanish, not double).
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
         import brain.assemble as assemble_mod
         import call.providers as providers_mod
 
@@ -547,9 +552,9 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         async def _fake_prompt(*a, **k):
             return "SYS"
 
-        orig = (chat_session.StationClient, assemble_mod.build_system_prompt,
+        orig = (openers.StationClient, assemble_mod.build_system_prompt,
                 providers_mod.build_llm)
-        chat_session.StationClient = _FakeStation
+        openers.StationClient = _FakeStation
         assemble_mod.build_system_prompt = _fake_prompt
         providers_mod.build_llm = lambda cfg: _Model()
         try:
@@ -558,7 +563,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
             events = []
             asyncio.run(chat.nudge({}, events.append))
         finally:
-            (chat_session.StationClient, assemble_mod.build_system_prompt,
+            (openers.StationClient, assemble_mod.build_system_prompt,
              providers_mod.build_llm) = orig
 
         self.assertEqual(events[-1]["type"], "done")
@@ -584,7 +589,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertIn("caller_spoke", src)
 
     def test_a_canned_greeting_speaks_first_in_the_djs_name(self):
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
 
         persona = {"name": "Dalia", "station": "SUB/WAVE"}
 
@@ -595,8 +600,8 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
             async def aclose(self):
                 pass
 
-        orig = chat_session.StationClient
-        chat_session.StationClient = lambda *a, **k: _FakeStation()
+        orig = openers.StationClient
+        openers.StationClient = lambda *a, **k: _FakeStation()
         try:
             chat = chat_session.ChatSession("g1", "open")
             events = []
@@ -604,7 +609,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
                 {"chat_greeting_mode": "canned", "chat_greeting": "Hey, {dj} here."},
                 events.append))
         finally:
-            chat_session.StationClient = orig
+            openers.StationClient = orig
 
         self.assertTrue(any("Dalia" in (e.get("text") or "") for e in events),
                         "the canned greeting should fill the on-air DJ's name")
@@ -612,7 +617,7 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertEqual(chat.turns[-1], ("dj", "Hey, Dalia here."))
 
     def test_greeting_off_stays_silent(self):
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
 
         chat = chat_session.ChatSession("g2", "open")
         events = []
@@ -676,7 +681,7 @@ class TestChatActionCardsFollowTheLine(_TempStores):
     def _run_ask(self):
         from livekit.agents import llm as lk_llm
 
-        from chat import session as chat_session
+        from chat import openers, session as chat_session
         import brain.assemble as assemble_mod
         import call.providers as providers_mod
         import call.tools as tools_mod
@@ -897,3 +902,248 @@ class TestAChatRecordShowsWhatTheDJActuallyDid(_TempStores):
         chat.turns.append(("caller", "orphan"))      # bypasses remember()
         rec = self._written(chat)
         self.assertEqual([t["text"] for t in rec["turns"]], ["orphan"])
+
+
+class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
+    """The transcript was replayed every message, so the DJ always saw the
+    history — but the OBJECTS behind the conversation were rebuilt each turn,
+    and two things ride on those rather than on the text.
+
+    Gemini 3 attaches an opaque `thought_signature` to every function call and
+    rejects a request that replays one without it. The plugin caches those on
+    the LLM CLIENT, keyed by call id — so discarding the client discarded the
+    cache, and the next message replaying an earlier tool call got a fatal
+    400. Reproduced on a multi-tool turn, which is what "queue me three
+    songs" produces.
+
+    And `CallActions` is the per-conversation action cap. Rebuilt per message
+    its count restarted at zero, so `max_actions_per_call` was per MESSAGE on
+    the text line — a texter got a fresh budget with every line they sent.
+    """
+
+    def _chat(self):
+        from chat.session import ChatSession
+
+        return ChatSession("abcdef123456", "open")
+
+    def test_the_model_is_built_once_and_reused(self):
+        import asyncio
+
+        from chat import session as mod
+
+        chat = self._chat()
+        built = []
+
+        class _Model:
+            def __init__(self):
+                self.closed = False
+
+            async def aclose(self):
+                self.closed = True
+
+        def _build(cfg):
+            m = _Model()
+            built.append(m)
+            return m
+
+        # Two messages' worth of the hoist, without running a whole ask().
+        for _ in range(2):
+            if chat._llm is None:
+                chat._llm = _build({})
+        self.assertEqual(len(built), 1, "a second message rebuilt the client")
+        asyncio.run(chat.aclose())
+        self.assertTrue(built[0].closed)
+        self.assertIsNone(chat._llm)
+
+    def test_closing_twice_is_harmless(self):
+        import asyncio
+
+        chat = self._chat()
+        # A chat can end before it ever asked anything — the idle sweep closes
+        # sockets that opened and said nothing — so aclose() has to cope with
+        # never having had a model, and with being called again after.
+        asyncio.run(chat.aclose())
+        self.assertIsNone(chat._llm)
+        asyncio.run(chat.aclose())
+        self.assertIsNone(chat._llm)
+
+    def test_a_model_that_refuses_to_close_does_not_break_the_ending(self):
+        import asyncio
+
+        chat = self._chat()
+
+        class _Angry:
+            async def aclose(self):
+                raise RuntimeError("no")
+
+        chat._llm = _Angry()
+        asyncio.run(chat.aclose())        # must not raise
+        self.assertIsNone(chat._llm)
+
+    def test_the_action_cap_spans_the_conversation(self):
+        from call.actions import CallActions
+
+        chat = self._chat()
+        # What ask() now does: build once, reuse.
+        chat.actions = CallActions(2)
+        chat.actions.note("request", "one")
+        self.assertFalse(chat.actions.at_limit())
+        chat.actions.note("request", "two")
+        # Second message, same ledger — this is the whole point. Rebuilt per
+        # message the count would be back at zero here.
+        self.assertTrue(chat.actions.at_limit())
+        self.assertEqual(chat.actions.count, 2)
+
+    def test_the_tool_loop_no_longer_closes_the_model(self):
+        # Closing it per message is exactly what dropped the signature cache.
+        import inspect
+
+        from chat.session import ChatSession
+
+        src = inspect.getsource(ChatSession._tool_loop)
+        # The STREAM is still closed every round — that is correct and
+        # unrelated. It is the MODEL that must outlive the message.
+        self.assertIn("stream.aclose()", src)
+        self.assertNotIn("model.aclose", src)
+
+    def test_the_shelf_lets_go_of_the_model_when_a_chat_ends(self):
+        import inspect
+
+        from chat.session import ChatShelf
+
+        src = inspect.getsource(ChatShelf.sweep)
+        self.assertIn("aclose", src)
+
+
+class TestToolResultsGoBackAsText(_TempStores):
+    """Gemini 3 signs a tool call with an opaque `thought_signature` and
+    refuses to replay a functionCall part without one — and it does not sign
+    them all. Measured against the live model: two calls in one response, ONE
+    signature. So a faithful structured replay cannot be built, and the
+    request died 400, fatal and not retryable, taking the whole reply with it.
+
+    Four shapes were tried against the real model. Interleaved parts fail.
+    Grouped parts fail. Replaying only the signed call succeeds but the model
+    answers with nothing. Text succeeds and answers properly — and needs no
+    signatures, no ids and no plumbing, so every backend takes the same path.
+    """
+
+    def test_no_function_call_parts_are_replayed(self):
+        import inspect
+
+        from chat.session import ChatSession
+
+        src = inspect.getsource(ChatSession._tool_loop)
+        self.assertNotIn("FunctionCall(", src)
+        self.assertNotIn("FunctionCallOutput(", src)
+
+    def test_the_report_carries_the_result_and_forbids_a_repeat(self):
+        from chat.session import _tool_report
+
+        out = _tool_report([("subwave_request_song", "Added to the queue.",
+                             False)])
+        self.assertIn("Added to the queue.", out)
+        self.assertIn("request_song", out)
+        # Bracketed like every other situation note here, so the speech
+        # filter strips it if it ever reaches a voice.
+        self.assertTrue(out.startswith("[") and out.endswith("]"))
+        # Without a formal function_response the model has no structural
+        # signal its call ran, and will fire the same one again.
+        self.assertIn("not call these same tools again", out)
+
+    def test_a_failed_tool_is_marked_as_failed(self):
+        from chat.session import _tool_report
+
+        out = _tool_report([("subwave_skip_track", "the station refused it",
+                             True)])
+        self.assertIn("FAILED", out)
+        self.assertIn("the station refused it", out)
+
+class TestAProviderFailureIsVisibleToTheOperator(_TempStores):
+    """The Gemini 400 broke every multi-tool chat turn for days while the
+    panel looked perfectly healthy: the caller got "line dropped a beat", the
+    operator got a normal-looking chat, and the actual reason lived only in a
+    container log that this deployment does not keep. A call already writes
+    its errors into the record's `problems`, which is the list the panel
+    counts a conversation as failed by. Chat now does the same, so the NEXT
+    provider that refuses us is a line in Needs attention within one
+    conversation instead of a mystery.
+    """
+
+    def test_the_relay_writes_the_real_error_down(self):
+        import inspect
+
+        from api import chat as chat_api
+
+        src = inspect.getsource(chat_api._relay)
+        self.assertIn("chat.problems.append", src)
+        # The panel matches on this phrase; changing it silently unhooks the
+        # Needs attention line from the thing it reports.
+        self.assertIn("brain returned an error", src)
+
+    def test_problems_reach_the_record(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        import settings as settings_store
+        from call import record
+        from chat.session import ChatSession
+
+        settings_store.save({"record_calls": True})
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        old, record.CALLS_DIR = record.CALLS_DIR, Path(tmp.name)
+        try:
+            chat = ChatSession("p1", "open")
+            chat.remember("caller", "hey")
+            chat.problems.append(
+                "the DJ's brain returned an error: APIStatusError: 400 "
+                "missing thought_signature")
+            chat.write_record("ended")
+        finally:
+            record.CALLS_DIR = old
+
+        files = list(Path(tmp.name).glob("*.json"))
+        self.assertTrue(files, "no record was written")
+        rec = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertEqual(len(rec["problems"]), 1)
+        self.assertIn("thought_signature", rec["problems"][0]["what"])
+
+    def test_the_panel_reports_it(self):
+        from tests.support import REPO
+
+        panel = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("brain returned an error", panel)
+        self.assertIn("lost a reply", panel)
+
+
+class TestTheLlmTestRunsTheShapeThatBreaks(_TempStores):
+    """One tool call proves a model can call a tool. It does NOT prove the
+    model can carry a conversation — Gemini 3 passed the old one-round test
+    and then rejected the second request of every real chat. So /test/llm now
+    runs two rounds against two tools and fails the provider here, in the
+    panel, rather than on a caller.
+    """
+
+    def test_the_endpoint_does_a_second_round(self):
+        import inspect
+
+        from api import diagnostics
+
+        src = inspect.getsource(diagnostics.handle_test_llm)
+        self.assertIn("now_playing", src, "only one tool is offered, so a "
+                                          "parallel group can never happen")
+        self.assertIn("followUp", src)
+        # Replayed through the shipped helper, not a hopeful copy of it: this
+        # button has to test the code path that runs on air.
+        self.assertIn("_tool_report", src)
+
+    def test_the_panel_shows_the_verdict(self):
+        from tests.support import REPO
+
+        panel = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("carrying the conversation", panel)
+        # And it counts: a provider that dies on round two is not a pass with
+        # a footnote.
+        self.assertIn("d.followUp !== 'failed'", panel)

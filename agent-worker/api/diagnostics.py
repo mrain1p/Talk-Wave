@@ -346,9 +346,22 @@ async def _models_offered(base_url: str) -> list[str]:
 
 
 async def handle_test_llm(request: web.Request) -> web.Response:
-    """One short completion, with a tool offered. Reports whether the model
-    actually emits a tool call — plenty of local models answer fluently but
-    never call tools, which shows up as a DJ that never submits a request."""
+    """Two short rounds, with two tools offered.
+
+    Round one reports whether the model actually emits a tool call — plenty of
+    local models answer fluently but never call tools, which shows up as a DJ
+    that never submits a request.
+
+    Round two exists because round one was not enough. A model can pass a
+    single tool call and still fail the second request of a real conversation,
+    which is the one that has to carry what already happened: Gemini 3 signs
+    each tool call with an opaque `thought_signature` and rejects a replay
+    without one, and it does not sign them all. That broke every multi-tool
+    chat turn on this box, and this button said the model was fine. So it now
+    runs the shape that broke — a tool round, then a follow-up that replays
+    it — and a provider that cannot survive a conversation fails HERE, in the
+    panel, instead of on a live caller.
+    """
     if not _write_allowed(request):
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "not allowed",
@@ -385,15 +398,25 @@ async def handle_test_llm(request: web.Request) -> web.Response:
             """Put a song into the station's request queue."""
             return "queued"
 
+        @lk_llm.function_tool
+        async def now_playing() -> str:
+            """What is on air right now."""
+            return "Rhiannon by Fleetwood Mac"
+
+        tools = [request_song, now_playing]
         ctx = lk_llm.ChatContext.empty()
+        # Both tools are wanted, so a model that CAN fan out will — and the
+        # replay below then carries a parallel group, which is the case that
+        # actually breaks.
         ctx.add_message(
             role="user",
-            content="Please play Dreams by Fleetwood Mac. Use your tool to request it.",
+            content="Please play Dreams by Fleetwood Mac, and tell me what's "
+                    "on air right now. Use your tools for both.",
         )
 
         t0 = _time.perf_counter()
         text, tool_calls, first = "", [], None
-        stream = model.chat(chat_ctx=ctx, tools=[request_song])
+        stream = model.chat(chat_ctx=ctx, tools=tools)
         async for chunk in stream:
             if first is None:
                 first = _time.perf_counter() - t0
@@ -406,6 +429,30 @@ async def handle_test_llm(request: web.Request) -> web.Response:
                 tool_calls.extend(delta.tool_calls)
         await stream.aclose()
 
+        # -- round two: can this provider carry the conversation forward? ---
+        # Replayed exactly the way chat/session.py does it, so this button is
+        # testing the code path that ships and not a hopeful approximation of
+        # it. A provider that fails here fails on air.
+        follow, follow_err = "", ""
+        if tool_calls:
+            from chat.session import _tool_report
+
+            if text.strip():
+                ctx.add_message(role="assistant", content=text)
+            ctx.add_message(role="user", content=_tool_report(
+                [(c.name, "ok", False) for c in tool_calls]))
+            ctx.add_message(role="user",
+                            content="Thanks — so what did you just do?")
+            try:
+                stream = model.chat(chat_ctx=ctx, tools=tools)
+                async for chunk in stream:
+                    delta = getattr(chunk, "delta", None)
+                    if delta and getattr(delta, "content", None):
+                        follow += delta.content
+                await stream.aclose()
+            except Exception as e:                             # noqa: BLE001
+                follow_err = _plain_error(e)
+
         return _cors(
             request,
             web.json_response(
@@ -417,6 +464,17 @@ async def handle_test_llm(request: web.Request) -> web.Response:
                     "firstTokenMs": round((first or 0) * 1000),
                     "totalMs": round((_time.perf_counter() - t0) * 1000),
                     "toolCalling": bool(tool_calls),
+                    # Two calls in one turn. Not a pass/fail — some good models
+                    # answer one thing at a time — but it decides whether the
+                    # follow-up below tested the hard case or the easy one.
+                    "parallelTools": len(tool_calls) > 1,
+                    # The real verdict: did a second request survive carrying
+                    # the first one's tool round.
+                    "followUp": ("skipped" if not tool_calls
+                                 else "failed" if follow_err
+                                 else "ok" if follow.strip()
+                                 else "silent"),
+                    "followUpError": follow_err,
                     "reply": (text or "").strip()[:200],
                 }
             ),

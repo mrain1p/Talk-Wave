@@ -373,10 +373,16 @@ class TestTheCommitGateIsStillWiredUp(unittest.TestCase):
             for entry in data.get("hooks", {}).get("PreToolUse", [])
             for hook in entry.get("hooks", [])
         ]
-        gate = [c for c in commands if "test_sidecar" in c]
+        # Either name: run_tests.py runs the SAME suite as test_sidecar, in
+        # parallel, and is what the hook actually invokes. This used to match
+        # on "test_sidecar" alone, which meant it was really checking a phrase
+        # in the DENIAL MESSAGE rather than that anything ran — and it went
+        # red when that message was reworded (0.10.117).
+        gate = [c for c in commands
+                if "run_tests.py" in c or "test_sidecar" in c]
         self.assertTrue(
-            gate, "no PreToolUse hook runs test_sidecar any more — commits are "
-                  "no longer gated on the suite")
+            gate, "no PreToolUse hook runs the suite any more — commits are "
+                  "no longer gated on it")
 
         # It must filter on its own stdin: the `if` field alone does not
         # restrict, so without this the gate runs on every single Bash call.
