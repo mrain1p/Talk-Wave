@@ -740,6 +740,11 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
             # passing here (2026-08-12).
             guard.SETTLE_SECS = 0.01
             guard.lag_secs = 0.0
+            # …and the duck's close, 4.5 real seconds from 0.10.113. Left at
+            # its true value it outlasts this test's whole budget, which is
+            # how it passed on Windows (coarse sleep granularity) and failed
+            # on the CI runner.
+            guard.duck_pad = 0.01
             # The loop's own heartbeat, too — at its real 1s the test got
             # about three chances inside its budget, which is not a margin.
             guard.PUSH_TICK = 0.01
@@ -1577,7 +1582,7 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
     """
 
     def _guard(self):
-        from call.air import OnAirGuard
+        from call.air import DUCK_PAD_SECS, OnAirGuard
 
         g = OnAirGuard.__new__(OnAirGuard)
         g.quiet_secs = 30.0
@@ -1587,6 +1592,8 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         g._assumed_until = 0.0
         g._pending_until = 0.0
         g.on_air = False
+        # __new__ skips __init__, so the duck's close has to be set by hand.
+        g.duck_pad = OnAirGuard.__dict__.get("duck_pad", DUCK_PAD_SECS)
         return g
 
     def test_the_unconfirmed_window_is_survivable(self):

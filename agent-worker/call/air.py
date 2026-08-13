@@ -127,6 +127,11 @@ class OnAirGuard:
         # Last streamBufferSeconds the station reported on a voice push. 0
         # until one arrives; stream_buffer() falls back to the handoff lag.
         self._last_buf = 0.0
+        # The duck's close, per guard rather than as a bare module constant,
+        # for the same reason SETTLE_SECS and lag_secs are reachable: a test
+        # about the come-back LINE has to be able to compress every real
+        # second in the way, and this one is 4.5 of them.
+        self.duck_pad = DUCK_PAD_SECS
         # The voice.queued spell the caller has already been handed over
         # for, so one forecast never says the line twice.
         self._announced_id = ""
@@ -198,7 +203,7 @@ class OnAirGuard:
         really is that far behind the live edge and releasing sooner would
         put the DJ back over the top of what they are still hearing.
         """
-        return max(DUCK_PAD_SECS, self.stream_buffer())
+        return max(self.duck_pad, self.stream_buffer())
 
     def stream_buffer(self) -> float:
         """How far behind the live edge the caller is, as last measured."""
@@ -422,7 +427,7 @@ class OnAirGuard:
         if buf is None or buf <= 0:
             buf = 0.0
         # One pad for every branch below — see DUCK_PAD_SECS.
-        tail = max(DUCK_PAD_SECS, buf)
+        tail = max(getattr(self, "duck_pad", DUCK_PAD_SECS), buf)
         if phase == "queued":
             lead = float(d.get("airAt") or at) - now
             if lead > self.handover_secs:
