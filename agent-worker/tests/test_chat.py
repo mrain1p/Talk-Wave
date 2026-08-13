@@ -822,3 +822,78 @@ class TestTheReplyArrivesAtTheOperatorsPace(_TempStores):
             encoding="utf-8")
         self.assertIn("chatTypePace", widget)
         self.assertIn("chatReveal", widget)
+
+
+class TestAChatRecordShowsWhatTheDJActuallyDid(_TempStores):
+    """A chat used to write down only its SUCCESSES.
+
+    The record was built from the action ledger, which is the receipt-card
+    list — so a conversation the DJ spent talking around three rate-limited
+    requests wrote a record with an empty tools array, and read back as a DJ
+    who simply chatted. That is record 20260813-012417: fifteen turns of
+    "the queue's jammed", no evidence of anything having been attempted.
+    Every turn also carried the same timestamp, because they were all stamped
+    when the record was WRITTEN rather than when they happened.
+    """
+
+    def _chat(self):
+        from chat.session import ChatSession
+
+        return ChatSession("abcdef123456", "open")
+
+    def _written(self, chat):
+        import json
+        from pathlib import Path
+
+        from call import record as call_record
+
+        settings_store.save({"record_calls": True})
+        old_dir = call_record.CALLS_DIR
+        call_record.CALLS_DIR = Path(self._tmp.name) / "calls"
+        try:
+            chat.write_record("test")
+            fresh = call_record.CALLS_DIR
+        finally:
+            call_record.CALLS_DIR = old_dir
+        recs = [json.loads(p.read_text(encoding="utf-8"))
+                for p in fresh.glob("*.json")]
+        return recs[0]
+
+    def test_a_refused_tool_is_in_the_record_even_though_nothing_succeeded(self):
+        chat = self._chat()
+        chat.remember("caller", "play firestorm by kygo")
+        chat._note_tool("subwave_search_library", "No track by that name",
+                        args={"q": "firestorm kygo"})
+        chat._note_tool("subwave_request_song",
+                        "Your last request is still queued — it airs first.",
+                        args={"request": "firestorm kygo"}, failed=True)
+        chat.remember("dj", "queue's jammed solid, give it a few minutes")
+
+        rec = self._written(chat)
+        names = [t["name"] for t in rec["tools"]]
+        self.assertEqual(names, ["subwave_search_library",
+                                 "subwave_request_song"])
+        # The ARGUMENTS matter as much as the result: "search returned
+        # nothing" is only half an answer without what it searched for.
+        self.assertIn("firestorm kygo", rec["tools"][0]["result"])
+        self.assertTrue(rec["tools"][1]["failed"])
+        self.assertNotIn("failed", rec["tools"][0])
+
+    def test_turns_are_stamped_when_they_happened_not_when_written(self):
+        chat = self._chat()
+        chat.remember("caller", "first")
+        chat.turn_at[-1] -= 300           # five minutes earlier
+        chat.remember("dj", "second")
+
+        rec = self._written(chat)
+        stamps = [t["t"] for t in rec["turns"]]
+        self.assertEqual(len(set(stamps)), 2, "the whole chat shared one clock")
+        self.assertLess(stamps[0], stamps[1])
+
+    def test_a_turn_with_no_stamp_is_kept_rather_than_dropped(self):
+        # zip() would silently lose turns if the two lists ever disagreed. A
+        # bug here must look like a wrong clock, not a missing conversation.
+        chat = self._chat()
+        chat.turns.append(("caller", "orphan"))      # bypasses remember()
+        rec = self._written(chat)
+        self.assertEqual([t["text"] for t in rec["turns"]], ["orphan"])

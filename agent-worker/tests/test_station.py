@@ -633,3 +633,63 @@ class TestATimingOutStationKeepsTheRightVoice(unittest.TestCase):
         import station_config
 
         self.assertIsNone(station_config._recall_voices())
+
+
+class TestBothCancelRefusalsAre409(unittest.TestCase):
+    """The station tells "too late" and "never queued" apart by a `reason`
+    field in the body, NOT by the status code — both are 409.
+
+    Written from the live station, not from the source: this client first
+    read a 404 for not-queued, which the station never sends, so cancelling
+    something that was not in the queue would have reached the caller as
+    "too late, it's already on air" — plausible, confident, and wrong.
+    """
+
+    class _Resp:
+        def __init__(self, payload):
+            self.status_code = 409
+            self._payload = payload
+            self.text = ""
+            # _body() checks .content before parsing — an empty-bodied station
+            # answer must not become an exception.
+            self.content = b"{}"
+
+        def json(self):
+            return self._payload
+
+    def _cancel(self, payload):
+        import asyncio
+
+        from station import StationClient
+
+        client = StationClient.__new__(StationClient)
+
+        class _Http:
+            async def delete(self, *a, **kw):
+                return TestBothCancelRefusalsAre409._Resp(payload)
+
+        client._client = _Http()
+        from unittest import mock
+
+        import station_config
+
+        with mock.patch.object(station_config, "admin_credentials",
+                               return_value=("u", "p")):
+            return asyncio.run(client.cancel_queued_track("t1"))
+
+    def test_already_playing_is_named_as_too_late(self):
+        out = self._cancel({"error": "too late to cancel",
+                            "reason": "already-playing"})
+        self.assertEqual(out["reason"], "already-playing")
+        self.assertIn("on the way to air", out["error"])
+
+    def test_not_queued_is_not_reported_as_too_late(self):
+        out = self._cancel({"error": "track is not in the queue",
+                            "reason": "not-queued"})
+        self.assertEqual(out["reason"], "not-queued")
+        self.assertIn("isn't in the queue", out["error"])
+
+    def test_a_409_with_no_reason_is_treated_as_not_queued(self):
+        # The safer default: claiming "too late" invents a cause, while
+        # "wasn't there" is what a missing reason actually implies.
+        self.assertEqual(self._cancel({})["reason"], "not-queued")

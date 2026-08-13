@@ -30,6 +30,10 @@ class CallActions:
     # so a new action type can't ship with no label.
     LABELS = {
         "request": ("🎵", "Song request scheduled"),
+        # Its own row rather than folding into "request": a caller watching the
+        # card needs to see the undo land, and "Song request scheduled" for a
+        # cancellation is the exact confusion the receipts exist to prevent.
+        "cancel": ("🚫", "Queued track pulled"),
         "like": ("❤️", "Liked the track on air"),
         "unlike": ("🤍", "Removed the like"),
         "announcement": ("📢", "Message sent to air"),

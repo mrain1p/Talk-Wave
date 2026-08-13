@@ -16,10 +16,10 @@ from __future__ import annotations
 from brain.conduct import (
     DOORWAY,
     LANGUAGE_AND_MIMICRY,
-    _tools,
     running_the_call,
     say_the_true_thing,
 )
+from brain.tool_rules import _tools
 
 HOW_TO_TYPE = """\
 # How to type

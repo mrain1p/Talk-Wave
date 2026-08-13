@@ -158,7 +158,7 @@ class TestCallRecord(unittest.TestCase):
         neither said nor heard it. Counting it inflates callerTurns, which is
         what `callback_min_turns` reads to decide whether a call was worth
         mentioning on air."""
-        from call import handoff, lifecycle
+        from call import greeting, handoff
 
         class _Item:
             def __init__(self, role, content):
@@ -166,7 +166,7 @@ class TestCallRecord(unittest.TestCase):
 
         class _Session:
             history = type("H", (), {"items": [
-                _Item("user", lifecycle.CALL_OPENING_PRIME),
+                _Item("user", greeting.CALL_OPENING_PRIME),
                 _Item("assistant", "Yosemite FM, you're on with Dawn."),
                 _Item("user", "Can you play me a song?"),
             ]})()

@@ -368,6 +368,156 @@ class StationClient:
             log.warning("library search failed: %s", describe(e))
             return []
 
+    async def search_by_sound(self, description: str, limit: int = 12) -> list[dict]:
+        """"Sounds like" search: a description, matched against how tracks
+        actually sound. Admin-gated; empty list on failure.
+
+        The station embeds the phrase through the analyzer's CLAP text tower
+        and KNNs it against the stored per-track audio vectors — the same path
+        its own picker's searchBySound takes. This is the one search here that
+        is not a word match, and it is why the call line was previously unable
+        to answer "something dreamy and cinematic" with anything but a blind
+        request: /dj/search would have returned songs with "dreamy" in the
+        title.
+
+        503 is a real and expected answer, not a fault: the capability needs
+        the heavy analyzer running AND tracks that have been audio-analysed
+        (the station reports both under /library/coverage as
+        soundSearchAvailable). It lands here as an empty list, which the tool
+        turns into "this station can't do that" rather than "nothing matched"
+        — telling a caller their vibe has no music in it, when really the
+        feature is off, is the worse of the two lies.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get(
+                "/library/search-sound",
+                params={"q": description, "limit": max(1, int(limit))},
+                auth=httpx.BasicAuth(user, password),
+                # The station warns this shares a single-threaded analyzer
+                # with bulk passes, so it holds its own deadline rather than
+                # the default read timeout.
+                timeout=ACTION_TIMEOUT,
+            )
+            r.raise_for_status()
+            d = r.json()
+            items = d.get("results") if isinstance(d, dict) else d
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            log.warning("sound search failed: %s", describe(e))
+            return []
+
+    async def tracks_like(self, track_id: str) -> list[dict]:
+        """The station's own "what mixes well after this" neighbours.
+
+        /library/observatory/track/:id returns the track plus `mixNext` —
+        library.tracksLikeThis(), scored. Admin-gated; empty list on failure,
+        including the 404 for a track id the library does not hold.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password) or not track_id:
+            return []
+        try:
+            r = await self._client.get(
+                f"/library/observatory/track/{track_id}",
+                auth=httpx.BasicAuth(user, password),
+            )
+            r.raise_for_status()
+            d = r.json()
+            items = d.get("mixNext") if isinstance(d, dict) else None
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            log.warning("neighbours for %s failed: %s", track_id, describe(e))
+            return []
+
+    async def browse_library(self, moods: str = "", energy: str = "",
+                             genre: str = "", year_from=None, year_to=None,
+                             vocal: str = "", limit: int = 12) -> dict:
+        """Filtered browse over the tagged library — the station's own
+        Library tab, as a tool. Admin-gated; empty dict on failure.
+
+        Returns the rows AND the station's `moodVocab`, deliberately: the mood
+        list is a fixed seventeen-word vocabulary, and a caller-supplied word
+        outside it silently matches nothing (asking for "melancholy" returns
+        0 of 381,023 tracks — the station's word is "reflective"). The tool
+        hands the vocabulary back so the DJ can re-ask in the station's own
+        words instead of reporting an empty library.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        params: dict = {"limit": max(1, int(limit))}
+        for key, value in (("moods", moods), ("energy", energy),
+                           ("genre", genre), ("vocal", vocal)):
+            if value:
+                params[key] = value
+        for key, value in (("yearFrom", year_from), ("yearTo", year_to)):
+            if value:
+                params[key] = value
+        try:
+            r = await self._client.get(
+                "/library/browse", params=params,
+                auth=httpx.BasicAuth(user, password),
+            )
+            r.raise_for_status()
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.warning("library browse failed: %s", describe(e))
+            return {}
+
+    async def cancel_queued_track(self, track_id: str) -> dict:
+        """Pull a not-yet-aired track back out of the queue. Admin-only.
+
+        The station removes it from Liquidsoap's dj_queue over telnet FIRST
+        and only splices its own entry once that confirms, so a failure here
+        never half-cancels.
+
+        Both refusals come back as **409**, told apart only by `reason` in the
+        body — `already-playing` (the track has left dj_queue: on air, or being
+        prepared as the next source, and skip is the only tool for it) and
+        `not-queued`. Verified against the live station rather than assumed:
+        this was first written to read a 404 for the second case, which the
+        station never sends, so a cancel of something that was not there would
+        have been reported to the caller as "too late" — plausible, and wrong.
+        Both are normal answers, not errors, so both come back named.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not track_id:
+            return {"ok": False, "error": "no track id to cancel"}
+        try:
+            r = await self._client.delete(
+                f"/dj/queue/{track_id}",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 409:
+                reason = str((_body(r) or {}).get("reason") or "not-queued")
+                return {"ok": False, "reason": reason,
+                        "error": "that one's already on the way to air"
+                                 if reason == "already-playing"
+                                 else "that track isn't in the queue"}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            # No _sent_but_unconfirmed optimism here, unlike the other writes:
+            # reporting an unconfirmed cancel as done is how a caller gets told
+            # a track is gone and then hears it play.
+            log.warning("cancel of %s failed: %s", track_id, describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
     async def current_lyrics(self) -> dict:
         """The station's public read for the airing track's lyrics.
 

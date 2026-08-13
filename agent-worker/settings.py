@@ -121,6 +121,18 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # stranger still goes through the resolver and it leans on
     # `max_actions_per_call` to keep one code-holder in check.
     "allow_exact_queue":  (None, "guest"),
+    # Finding music by how it sounds, and by the station's own tags. Open, at
+    # the same tier as library search, because these are reads that change
+    # nothing and cost the station nothing a browse of its admin Library tab
+    # doesn't: what they change is whether the DJ has to GUESS. Off, a caller
+    # who describes what they want gets one blind request and whatever comes
+    # back; on, the DJ can offer three real records by name.
+    "allow_sound_search": (None, "open"),
+    # Taking a queued track back out. Guest tier rather than open: the queue is
+    # shared, so this can cancel a record somebody ELSE asked for — which is
+    # precisely why the station gives its listeners no cancel of their own. A
+    # code-holder undoing their own mistake is the case it is for.
+    "allow_cancel_queue": (None, "guest"),
     # The lowest-harm action there is: a like on the current record, exactly
     # what any listener taps in the app — no credentials, no audio changed.
     # Open: the station's own Likes toggle and per-IP rate limit are the
@@ -189,7 +201,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # operator who does not want that must be able to have it, and be able to
     # say how long anything kept sticks around.
     "record_calls":     (None, True),
-    "record_keep":      (None, 100),
+    "record_keep":      (None, 1000),
 
     # --- voicemail --------------------------------------------------------
     # A second, much smaller kind of call: greeting, beep, one caller
@@ -582,7 +594,9 @@ TIERED_PERMISSIONS = (
     "allow_chat",
     "allow_requests",
     "allow_library_search",
+    "allow_sound_search",
     "allow_exact_queue",
+    "allow_cancel_queue",
     "allow_favorite",
     "allow_unfavorite",
     "allow_announcements",
@@ -724,12 +738,14 @@ def mcp_tools_payload() -> list[dict]:
 SUPERGROUPS = [
     ("config",    "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
     ("safety",    "Permissions & safety", "What a caller may set in motion, and the limits around it."),
-    # "The booth" rather than the operator's first suggestion (Transmission):
-    # the dashboard's switch cluster already answers to TRANSMISSION, and one
-    # word meaning two things on one panel is the kind of confusion the rename
-    # was meant to remove. The id stays "dj" — it is a hash address now
-    # (/settings#dj), and renaming it would break bookmarks for a title change.
-    ("dj",        "The booth",            "What the booth knows, how it speaks, and what it writes down."),
+    # "Transmission" on the operator's second ask (2026-08-13), overriding the
+    # note that used to sit here. The objection was real and still stands: the
+    # dashboard's switch cluster is also captioned TRANSMISSION, so the word
+    # now means two things on one panel. Their call — but if it ever reads
+    # ambiguously, the cluster is the one to rename, not this page. The id
+    # stays "dj": it is a hash address (/settings#dj), and changing it would
+    # break bookmarks for a title change.
+    ("dj",        "Transmission",         "What the booth knows, how it speaks, and what it writes down."),
     ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
     ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
     ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
@@ -925,12 +941,28 @@ SCHEMA: dict[str, dict] = {
         help="Lets the DJ check a track exists before promising it. Works without "
              "station credentials; with them it also retries phrasing like "
              "'X by Y' before reporting a miss."),
+    "allow_sound_search": dict(group="perms", kind="select", tiered=True, label="Find music by how it sounds",
+        admin=True,
+        help="Two tools: a \"sounds like\" search over a description (\"dreamy "
+             "cinematic strings\"), and \"more like this\" off the track on air. "
+             "Both match the ANALYSED AUDIO rather than titles, so they answer the "
+             "asks a name search can't — and stop the DJ guessing. Needs the "
+             "station's heavy analyzer; without it the DJ is told plainly it can't, "
+             "rather than reporting an empty library. Reads only: nothing is queued "
+             "and nothing counts against Actions per call."),
     "allow_exact_queue": dict(group="perms", kind="select", tiered=True, label="Queue the exact track picked",
         admin=True,
         needs=("allow_library_search", TIERS),
         help="Queues the recording the caller chose out of the search results, "
              "rather than re-matching the words. Skips the station's request rate "
              "limit, so Actions per call is the only thing pacing it."),
+    "allow_cancel_queue": dict(group="perms", kind="select", tiered=True, label="Take a track back out of the queue",
+        admin=True,
+        help="Lets a caller undo a request before it airs — the station refuses "
+             "once the track is on air or cued up next, and the DJ says so rather "
+             "than pretending. OFF by default because the queue is shared: this can "
+             "pull a record somebody else asked for, which is why the station gives "
+             "listeners no cancel of their own. Counts against Actions per call."),
     "allow_favorite": dict(group="perms", kind="select", tiered=True, label="Like the track on air",
         help="Adds a like to the record playing now — the same heart a listener taps "
              "in the app, so it needs no station credentials and changes no one's "
@@ -2124,7 +2156,7 @@ def _lay_data_skeleton(data_dir) -> None:
 # lands); save() marks every store it writes with THIS ceiling, which is
 # what tells a store that merely never set a field apart from one written
 # before the field's default moved.
-STORE_REV = 3
+STORE_REV = 4
 
 
 def _migrate(stored: dict) -> dict:
@@ -2187,6 +2219,16 @@ def _migrate(stored: dict) -> dict:
     if _coerce(stored.get("_rev"), 1) < 3:
         if "tts_mode" not in stored:
             stored["tts_mode"] = "cloud"
+    # 0.10.104: the discovery tools arrive. The two READS (sound search and
+    # its neighbours tool, browse rides the existing library-search switch)
+    # follow the new default even on an old store — they change nothing, they
+    # only stop the DJ guessing, and withholding them is what the bad calls
+    # were made of. Cancelling a queued track is a WRITE that can pull a
+    # record somebody else asked for, so it is stamped off: the 0.9.61 rule
+    # is about powers, not about answers.
+    if _coerce(stored.get("_rev"), 1) < 4:
+        if "allow_cancel_queue" not in stored:
+            stored["allow_cancel_queue"] = TIER_OFF
     # 0.10.92: receipt placement stopped being chat-only — action_cards now
     # covers calls, texts and voicemail. A stored chat-era answer becomes the
     # operator's answer for every door; a store that never set it follows the

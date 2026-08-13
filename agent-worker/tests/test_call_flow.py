@@ -19,11 +19,12 @@ class TestCallStructure(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from call import lifecycle
+        from call import greeting, lifecycle
         from call.session import CallSession
 
         cls.CallSession = CallSession
         cls.lifecycle = lifecycle
+        cls.greeting = greeting
 
     def test_entrypoint_only_decides_whether_to_answer(self):
         # main.py's job is wiring. If this grows again, the call has started
@@ -104,7 +105,7 @@ class TestCallStructure(unittest.TestCase):
         playing), so the conversation has to start with a user turn."""
         import asyncio, inspect
 
-        src = inspect.getsource(self.lifecycle.greet)
+        src = inspect.getsource(self.greeting.greet)
         self.assertIn("user_input=", src)
 
         seen = {}
@@ -115,7 +116,7 @@ class TestCallStructure(unittest.TestCase):
             async def say(self, *a, **kw):
                 pass
 
-        asyncio.run(self.lifecycle.greet(FakeSession(), {}))
+        asyncio.run(self.greeting.greet(FakeSession(), {}))
         self.assertTrue(seen.get("user_input"), "no user turn seeded")
         self.assertTrue(seen.get("instructions"), "the greeting itself was lost")
 
@@ -318,7 +319,7 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
         import asyncio
         import types
 
-        from call import lifecycle
+        from call import greeting
 
         said = []
 
@@ -330,7 +331,7 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
                 said.append(a[0])
 
         record = types.SimpleNamespace(data={"turns": [], "tools": []})
-        asyncio.run(lifecycle.greet(_Session(), {}, record=record))
+        asyncio.run(greeting.greet(_Session(), {}, record=record))
         self.assertEqual(len(said), 1)
         self.assertIn("through to the booth", said[0])
 
@@ -339,7 +340,7 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
         said.clear()
         record = types.SimpleNamespace(
             data={"turns": [{"who": "dj", "text": "hi"}], "tools": []})
-        asyncio.run(lifecycle.greet(_Session(), {}, record=record))
+        asyncio.run(greeting.greet(_Session(), {}, record=record))
         self.assertEqual(said, [])
 
     def test_a_repeated_recoverable_error_apologises(self):
@@ -1340,3 +1341,211 @@ class TestCallReceiptCardsFollowTheLine(unittest.TestCase):
         self.assertEqual([], flushed, "a caller's line releases nothing")
         fire(types.SimpleNamespace(item=types.SimpleNamespace(role="assistant")))
         self.assertEqual([1], flushed)
+
+
+class TestAPromisedActionActuallyHappens(unittest.TestCase):
+    """"Let me have a look" and then nothing is the commonest broken call.
+
+    Measured 2026-08-13 by driving the real brain through the triage sweep:
+    of 33 turns where the DJ SPOKE a promise before acting, 30 emitted no
+    tool call at all. The cause is our own conduct rule — "say what you're
+    doing BEFORE you go quiet to do it" — which is right about dead air and
+    wrong about these models, where narration and tool-calling compete for
+    one turn and narration wins.
+
+    The TEXT line has nudged for this since 0.10.65. The voice line, which is
+    the primary surface, never did.
+    """
+
+    def _wire(self, record=None):
+        from call import promise_guard
+
+        handlers, replies = {}, []
+
+        class _Session:
+            def on(self, name, fn):
+                handlers[name] = fn
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+        promise_guard.attach_promise_guard(_Session(), record)
+        return handlers, replies
+
+    @staticmethod
+    def _said(text):
+        return types.SimpleNamespace(
+            item=types.SimpleNamespace(role="assistant", text_content=text))
+
+    @staticmethod
+    def _heard():
+        return types.SimpleNamespace(is_final=True, transcript="play something")
+
+    def test_a_promise_with_no_tool_call_gets_one_more_turn(self):
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said("Let me have a dig."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+            self.assertIn("call it NOW", replies[0]["user_input"])
+            # And it must not tell the caller anything twice.
+            self.assertIn("Do not say another word", replies[0]["user_input"])
+
+        asyncio.run(go())
+
+    def test_a_dj_that_actually_acted_is_left_alone(self):
+        # The correct behaviour must never be interrupted: the model that
+        # calls the tool and THEN speaks is the one we want.
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["function_tools_executed"](types.SimpleNamespace())
+            handlers["conversation_item_added"](
+                self._said("Let me have a look — right, got it, Africa by Toto."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_ordinary_conversation_is_not_nudged(self):
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("That one always reminds me of a wet Tuesday."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_it_fires_at_most_once_per_caller_turn(self):
+        # Otherwise a model that keeps promising loops against itself and the
+        # caller never gets the floor back.
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said("Hold on a sec."))
+            handlers["conversation_item_added"](self._said("Let me check."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+            # …and the next caller turn re-arms it.
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said("One moment."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 2)
+
+        asyncio.run(go())
+
+    def test_the_record_says_why_the_extra_turn_happened(self):
+        # An operator reading the transcript must not see a mystery turn.
+        class _Record:
+            def __init__(self):
+                self.problems = []
+
+            def problem(self, what):
+                self.problems.append(what)
+
+        async def go():
+            rec = _Record()
+            handlers, _ = self._wire(rec)
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said("I'll go and look."))
+            await asyncio.sleep(0.05)
+            self.assertTrue(rec.problems)
+            self.assertIn("ran no tool", rec.problems[0])
+            self.assertIn("proven tool routing", rec.problems[0])
+
+        asyncio.run(go())
+
+
+class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
+    """Ringing in mid-link used to put two of the same voice on at once.
+
+    Every other DJ turn has waited for clear air for versions; the greeting
+    never did, because the watch loop's first pass was deliberately written to
+    close the gate "without the greeting being cut off". That protected the
+    greeting FROM the guard — so the caller was picked up straight over a live
+    announcement and the audience heard both. Operator-reported, and
+    reproducible by calling while the station is mid-link.
+    """
+
+    class _Air:
+        def __init__(self, enabled=True, wait=0.0):
+            self.enabled, self._wait, self.asked = enabled, wait, []
+
+        async def wait_until_clear(self, timeout=None):
+            self.asked.append(timeout)
+            return self._wait
+
+    class _Session:
+        def __init__(self):
+            self.replies = []
+
+        async def generate_reply(self, **kw):
+            self.replies.append(kw)
+
+        async def say(self, *a, **k):
+            pass
+
+    def _greet(self, air, record=None):
+        import asyncio
+
+        from call import greeting
+
+        s = self._Session()
+        asyncio.run(greeting.greet(s, {}, record=record, air=air))
+        return s
+
+    def test_a_busy_broadcast_holds_the_greeting(self):
+        from call.greeting import GREET_HOLD_SECS
+
+        air = self._Air(wait=3.0)
+        self._greet(air)
+        self.assertEqual(air.asked, [GREET_HOLD_SECS])
+
+    def test_the_hold_is_much_shorter_than_a_mid_call_one(self):
+        # A caller held at pickup has no idea why: there is no conversation
+        # yet for the widget's on-air chip to explain. Silence straight after
+        # the ring reads as a failed call.
+        from call.air import OnAirGuard
+        from call.greeting import GREET_HOLD_SECS
+
+        self.assertLess(GREET_HOLD_SECS, OnAirGuard.MAX_HOLD / 2)
+
+    def test_the_guard_being_off_costs_nothing(self):
+        air = self._Air(enabled=False)
+        s = self._greet(air)
+        self.assertEqual(air.asked, [])
+        self.assertEqual(len(s.replies), 1)
+
+    def test_no_guard_at_all_still_greets(self):
+        # scripted_call and the tests call greet() with no air at all.
+        s = self._greet(None)
+        self.assertEqual(len(s.replies), 1)
+
+    def test_giving_up_on_the_hold_is_recorded(self):
+        # Timing out means the greeting DID go out over the top, which is the
+        # thing this exists to prevent — the operator should be able to find
+        # it without listening to the call.
+        import types
+
+        from call.greeting import GREET_HOLD_SECS
+
+        record = types.SimpleNamespace(
+            data={"turns": [{"who": "dj", "text": "hi"}], "tools": []},
+            problems=[])
+        record.problem = record.problems.append
+        self._greet(self._Air(wait=GREET_HOLD_SECS), record=record)
+        self.assertTrue(record.problems)
+        self.assertIn("still speaking", record.problems[0])
+
+    def test_a_short_wait_is_not_worth_a_problem_line(self):
+        import types
+
+        record = types.SimpleNamespace(
+            data={"turns": [{"who": "dj", "text": "hi"}], "tools": []},
+            problems=[])
+        record.problem = record.problems.append
+        self._greet(self._Air(wait=2.0), record=record)
+        self.assertEqual(record.problems, [])

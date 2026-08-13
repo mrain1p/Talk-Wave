@@ -3,6 +3,28 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.106
+
+**The DJ can find music properly now.** Until this release the call line had exactly two ways to find a record: a literal word-match on titles and artists, and a blind request the station resolved out of sight. That is why a caller who asked for "Firestorm by Kygo" was told the station didn't have it — the track is called *Firestone*, the library holds it, and one wrong letter was the whole difference. Three new tools close that gap, all of them things your station could already do and the phone could not reach.
+
+- **Find music by how it sounds.** Describe it — "dreamy cinematic strings, slow and sad" — and the DJ matches the actual audio rather than words in a title. Needs the station's analyser; without it the DJ says so plainly instead of claiming the library is empty. On by default, and free: looking costs nothing against Actions per call.
+- **More like this.** The station's own judgement of what sits closest to a record, with tempo and key. Works off whatever is on air, so "got anything else like this?" needs nothing from the caller.
+- **Browse the library.** Mood, energy, genre, era, vocal or instrumental. Moods come from the station's own seventeen-word vocabulary, so a caller asking for "melancholy" gets translated to "reflective" rather than being told there is nothing.
+- **Take a track back out of the queue.** The station has always had a cancel; the DJ was told requests could never be cancelled and dutifully passed that on. It now pulls a waiting track and says so — and when the track has already gone to air it says *that* instead of pretending. **Off by default**: the queue is shared, so this can pull a record somebody else asked for.
+
+**The DJ stops saying it will do something and then not doing it.** The commonest broken call was "let me have a look" followed by nothing. Measured across four sweeps: of 33 turns that opened that way, **30 never called a tool**. The cause was our own instruction to speak before acting — narration and tool-calling compete for one turn, and narration wins. The line now notices and gives the DJ one more turn to actually make the call. On the same ten test conversations, routing went from 4/10 to 9/10.
+
+**Calls no longer talk over the broadcast.** Ringing in while the on-air DJ was mid-link picked you up straight over the top, and the audience heard two of the same voice. Every other DJ turn had waited for clear air for versions; the greeting was the one exception, and it was the exception on purpose. It now waits up to twelve seconds — short, because silence right after a ring reads as a dropped call — and the transcript says so if it ever gives up and goes over anyway.
+
+**Text conversations are diagnosable again.** A chat only ever wrote down what SUCCEEDED, so a conversation the DJ spent talking around three refused requests was filed as a chat where nothing happened. Every tool call is now recorded with its arguments, its result and whether it failed, and each turn carries the time it actually happened instead of the time the record was written.
+
+**Smaller things.**
+
+- The settings page called **The booth** is now **Transmission**.
+- **Transcripts kept** defaults to 1000, up from 100 — a busy evening used to age out before you had read it back.
+- The activity charts open on a sensible span per unit: 7 days, 4 weeks, 12 months. Change one and it stays changed.
+- The panel's Station tools reference gained *How the DJ finds a record* — the five ways in and which one each kind of ask takes — and a list of what the station can do that the call line still doesn't use.
+
 ## 0.10.99
 
 - **The DJ types like a person now.** The typed reply used to appear at a fixed 30ms a character — about 400 words a minute, which reads as a machine dumping text. It is now a **Typing pace** you choose (slower, normal, faster, or instant), defaulting to a brisk human typist: a two-line reply takes about six seconds instead of three and a half. However slow the pace, a long reply still lands within a few seconds rather than crawling.

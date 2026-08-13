@@ -27,17 +27,6 @@ from .hangup import await_sign_off, end_call
 
 log = logging.getLogger("callin.agent")
 
-# The user turn the call opens with, so the DJ has something to answer.
-#
-# It is not something the caller said — it describes the situation to the
-# model — and anything that treats it as a caller turn gets the transcript
-# wrong; handoff.is_prime is what drops it (and every bracketed note like it)
-# on the way to the written record. Bracketed, so the speech filter strips it
-# if it ever reaches the voice.
-CALL_OPENING_PRIME = (
-    "[Call connected. The caller is on the line and has not spoken yet — "
-    "you speak first.]"
-)
 
 
 async def cancel(task: asyncio.Task) -> None:
@@ -511,74 +500,6 @@ def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict) -> None
 
     task = asyncio.create_task(_end_when_over_time())
     ctx.add_shutdown_callback(lambda: cancel(task))
-
-
-async def greet(session: AgentSession, cfg: dict, record=None) -> None:
-    """Pick up. Both styles stay in persona and carry the show; the toggle is
-    only whether the DJ opens with an invitation or lets the caller lead."""
-    if str(cfg.get("greeting_style") or "inviting").lower() == "in-world":
-        default_greeting = (
-            "Pick up the call in character, mid-world — you were just on air. If "
-            "something notable happened on the broadcast in the last little "
-            "while, let it colour how you answer. One short line, the way a real "
-            "DJ picks up mid-show. No question, no list of what you can do — "
-            "just be there, and let them say why they called."
-        )
-    else:
-        default_greeting = (
-            "Pick up the call in character — you were just on air, and if "
-            "something notable happened on the broadcast, let it colour the "
-            "greeting. One short line, then invite them in with a single open "
-            "question in your own voice: what's on their mind, or whether "
-            "there's something they'd like to hear. One question, not a menu, "
-            "and never a list of what you can do."
-        )
-    greeting = str(cfg.get("greeting") or "").strip() or default_greeting
-    try:
-        # The greeting is generated before the caller has said anything, and
-        # the DJ usually reaches for a tool while writing it ("what's playing
-        # right now?"). That leaves a function call as the FIRST turn in the
-        # conversation, and Gemini rejects the whole request outright:
-        #   "Please ensure that function call turn comes immediately after a
-        #    user turn or after a function response turn."  (400, fatal)
-        # Reproduced directly against the API: identical history with a user
-        # turn in front of it passes. So the call opens with one, describing
-        # the situation rather than putting words in the caller's mouth. It is
-        # never spoken — bracketed text is stripped on its way to the voice.
-        await session.generate_reply(
-            user_input=CALL_OPENING_PRIME,
-            instructions=greeting,
-        )
-    except Exception as e:
-        # A model outage at pickup used to mean the caller heard NOTHING until
-        # they gave up. A canned line through the TTS keeps the call alive —
-        # later turns may succeed once the provider recovers.
-        log.warning("greeting failed (%s) — using a canned pickup", e)
-        try:
-            await session.say(
-                "Hey — you're through to the booth. Bear with me a second, "
-                "the line's a bit rough tonight. What can I do for you?"
-            )
-        except Exception:
-            pass
-        return
-    # The exception branch above is only HALF the failure surface: the SDK
-    # swallows LLM errors it marks `recoverable` — generate_reply returns
-    # with no exception and no reply. Observed live (2026-08-11): three
-    # recoverable Gemini 504s in a row, 43 seconds of dead air, and the
-    # caller said "Hello" into silence. The record is the ground truth of
-    # whether the DJ actually spoke; if it says no, the canned line goes out.
-    if record is not None and not record.data.get("firstWordAt") and not any(
-        t.get("who") == "dj" for t in record.data.get("turns", ())
-    ):
-        log.warning("greeting produced no DJ audio — using a canned pickup")
-        try:
-            await session.say(
-                "Hey — you're through to the booth. Bear with me a second, "
-                "the line's a bit rough tonight. What can I do for you?"
-            )
-        except Exception:
-            pass
 
 
 async def release_call_slot(room: str) -> None:

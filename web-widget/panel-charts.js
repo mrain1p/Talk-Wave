@@ -25,9 +25,27 @@
   // Two independent multi-selects, both defaulting to everything — which
   // doors count, and which ratings count — applied to every chart at once.
   // (Replaced the single dimension+filter pair on the operator's ask.)
+  // A sensible span per unit, not one number for all three: seven days is a
+  // week, but seven months is over half a year and seven weeks is an odd
+  // shape nobody asks for. The operator's 2026-08-12 ask — that switching the
+  // unit must not silently change what the box means — is still honoured,
+  // because the count is REMEMBERED per unit rather than reset on every
+  // switch: change weeks to 6 and it stays 6.
+  const SHOW_DEFAULTS = { day: 7, week: 4, month: 12 };
   const state = Object.assign(
-    { range: 'week', show: 7, doors: DOORS.slice(), rates: RATES.slice() },
+    { range: 'week', shows: Object.assign({}, SHOW_DEFAULTS),
+      doors: DOORS.slice(), rates: RATES.slice() },
     stored);
+  // A store written before per-unit counts carries a single `show`; seed
+  // every unit from it so an upgrade does not silently re-scale their charts.
+  if (typeof state.show === 'number' && !stored.shows) {
+    state.shows = { day: state.show, week: state.show, month: state.show };
+  }
+  state.shows = Object.assign({}, SHOW_DEFAULTS, state.shows || {});
+  Object.defineProperty(state, 'show', {
+    get() { return this.shows[this.range]; },
+    set(v) { this.shows[this.range] = v; },
+  });
   state.doors = (Array.isArray(state.doors) ? state.doors : DOORS)
     .filter((d) => DOORS.indexOf(d) !== -1);
   state.rates = (Array.isArray(state.rates) ? state.rates : RATES)

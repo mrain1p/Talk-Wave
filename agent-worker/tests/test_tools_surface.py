@@ -133,7 +133,21 @@ class TestExposedSurface(unittest.TestCase):
         # wrapper. Same switch as search on purpose: both answer "what have
         # you got". Added 0.10.59.
         "subwave_recent_tracks": "allow_library_search",
+        # The three discovery tools, added 0.10.104. All REST-only at the
+        # station, all reads. They exist because the call line had exactly two
+        # ways to find music — a literal word match and a blind resolver — and
+        # a caller was told a track was missing that the library held one
+        # letter away. Sound search and its neighbours tool share one switch;
+        # browse rides library search, because it answers the same question.
+        "subwave_search_by_sound": "allow_sound_search",
+        "subwave_more_like_this": "allow_sound_search",
+        "subwave_browse_library": "allow_library_search",
         "subwave_queue_track": "allow_exact_queue",
+        # Its undo. The station has had DELETE /dj/queue/:id all along, while
+        # the prompt told the DJ a request could never be cancelled — so a
+        # caller who changed their mind was told it was impossible. Off by
+        # default: the queue is shared, so this can pull someone else's track.
+        "subwave_cancel_queued_track": "allow_cancel_queue",
         # The lowest-harm action: a like on the current record, the same heart
         # any listener taps. Public station endpoint, so no admin credentials.
         "subwave_like_track": "allow_favorite",

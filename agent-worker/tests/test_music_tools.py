@@ -314,9 +314,9 @@ class TestALateMatchStillReachesTheCaller(unittest.TestCase):
         return _Station(), _Session(), _Record()
 
     def _run(self, station, session, rec, delays=(0.01, 0.01)):
-        from call.tools import music
+        from call.tools import late_match
 
-        asyncio.run(music._surface_late_match(
+        asyncio.run(late_match._surface_late_match(
             station, "r1", get_session=lambda: session, record=rec,
             delays=delays))
 
@@ -359,17 +359,17 @@ class TestALateMatchStillReachesTheCaller(unittest.TestCase):
                             for p in rec.problems))
 
     def test_a_busy_line_is_never_talked_over(self):
-        from call.tools import music
+        from call.tools import late_match
 
         station, session, rec = self._bits(
             [{"track": {"title": "Spiders", "artist": "Moby"}}])
         session.user_state = "speaking"          # caller mid-word, forever
-        beats = music._QUIET_BEATS
+        beats = late_match._QUIET_BEATS
         try:
-            music._QUIET_BEATS = 1
+            late_match._QUIET_BEATS = 1
             self._run(station, session, rec)
         finally:
-            music._QUIET_BEATS = beats
+            late_match._QUIET_BEATS = beats
         self.assertEqual(session.said, [])
 
     def test_a_finished_call_is_left_alone(self):
@@ -377,9 +377,9 @@ class TestALateMatchStillReachesTheCaller(unittest.TestCase):
         # must end it quietly.
         station, _, rec = self._bits(
             [{"track": {"title": "Spiders", "artist": "Moby"}}])
-        from call.tools import music
+        from call.tools import late_match
 
-        asyncio.run(music._surface_late_match(
+        asyncio.run(late_match._surface_late_match(
             station, "r1", get_session=lambda: None, record=rec,
             delays=(0.01,)))
         self.assertTrue(rec.receipts)            # the receipt still lands
@@ -394,3 +394,87 @@ class TestALateMatchStillReachesTheCaller(unittest.TestCase):
         params = inspect.signature(build_library_tools).parameters
         for name in ("get_session", "air", "record"):
             self.assertIn(name, params)
+
+
+class TestAQueuedTrackCanComeBackOut(unittest.TestCase):
+    """The undo the line spent months telling callers did not exist.
+
+    Record 20260813-021212: the caller asked for a track back out of the
+    queue and was told "can't pull a track back once it's rolling down the
+    wire". The station has had DELETE /dj/queue/:trackId all along, and the
+    track had not started. These hold the tool honest in both directions —
+    it must not claim a cancel the station refused either.
+    """
+
+    def _tool(self, result, upcoming=(), cfg=None):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            def __init__(self):
+                self.cancelled = []
+
+            async def state(self):
+                return {"upcoming": list(upcoming)}
+
+            async def cancel_queued_track(self, track_id):
+                self.cancelled.append(track_id)
+                return result
+
+        st = _Station()
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False   # as if creds were set
+        try:
+            tools = build_library_tools(
+                cfg or {"allow_cancel_queue": True}, st, CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        tool = next((t for t in tools
+                     if t.info.name == "subwave_cancel_queued_track"), None)
+        return st, tool
+
+    def test_a_waiting_track_is_pulled_and_said_to_be_gone(self):
+        st, tool = self._tool({"ok": True})
+        out = asyncio.run(tool(id="t1", title="Firestone"))
+        self.assertEqual(st.cancelled, ["t1"])
+        self.assertIn("out of the queue", out)
+        self.assertIn("will not play", out)
+
+    def test_a_title_is_resolved_against_what_is_actually_queued(self):
+        # What the DJ has after "no, not that one" is the NAME it just said
+        # out loud, never an id. /state calls the field subsonic_id.
+        st, tool = self._tool(
+            {"ok": True},
+            upcoming=[{"subsonic_id": "q9", "title": "Bella"}])
+        out = asyncio.run(tool(title="bella"))
+        self.assertEqual(st.cancelled, ["q9"])
+        self.assertIn("Bella", out)
+
+    def test_a_track_that_is_not_queued_is_not_claimed_as_pulled(self):
+        st, tool = self._tool({"ok": True}, upcoming=[])
+        out = asyncio.run(tool(title="Firestone"))
+        self.assertEqual(st.cancelled, [])
+        self.assertIn("is in the queue", out)
+        self.assertIn("rather than saying you pulled it", out)
+
+    def test_the_stations_refusal_reaches_the_caller_as_too_late(self):
+        # 409 already-playing is a normal answer, not a fault: the track has
+        # left the player's queue. Skip is the only tool for that, and the DJ
+        # must be told so rather than inventing a reason.
+        st, tool = self._tool({"ok": False, "reason": "already-playing",
+                               "error": "on the way to air"})
+        out = asyncio.run(tool(id="t1", title="Bella"))
+        self.assertIn("Too late", out)
+        self.assertIn("CANNOT be pulled", out)
+        self.assertIn("skip", out)
+
+    def test_a_failure_is_never_dressed_up_as_a_cancel(self):
+        st, tool = self._tool({"ok": False, "error": "station said no"})
+        out = asyncio.run(tool(id="t1", title="Bella"))
+        self.assertIn("station said no", out)
+        self.assertIn("do NOT claim it's gone", out)
+
+    def test_the_tool_rides_its_own_switch(self):
+        _, tool = self._tool({"ok": True}, cfg={"allow_requests": True})
+        self.assertIsNone(tool)
