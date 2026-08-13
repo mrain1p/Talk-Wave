@@ -906,9 +906,16 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         verdict = guard._push_verdict(near, now)
         self.assertEqual(verdict[0], "busy")
         self.assertIn("Hold that thought", verdict[2])
-        # …and the hold releases once the forecast clip has played out.
-        played = dict(far, airAt=now - 10)
-        self.assertIsNone(guard._push_verdict(played, now))
+        # …and the hold releases once the forecast clip has played out AND
+        # the duck's close has run — 6s of clip plus DUCK_PAD_SECS.
+        from call.air import DUCK_PAD_SECS
+
+        self.assertIsNone(
+            guard._push_verdict(dict(far, airAt=now - (7 + DUCK_PAD_SECS)), now))
+        # Still held while the pad is running: releasing on the last syllable
+        # puts the DJ back over the tail of its own link.
+        self.assertEqual(
+            guard._push_verdict(dict(far, airAt=now - 7), now)[0], "busy")
 
     def test_measured_speech_is_held_for_its_length_plus_the_buffer(self):
         # voice.start is stamped at AIR time with the clip's measured length,

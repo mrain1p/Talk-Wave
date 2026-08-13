@@ -32,6 +32,16 @@ SETTINGS_PATH = Path(
     os.environ.get("SETTINGS_PATH", Path(__file__).parent.parent / "data" / "settings.json")
 )
 
+# The one number both ends of the on-air duck are sized from. Imported rather
+# than repeated: call/air.py owns the timing and this owns the default, and a
+# 5 here against a 4.5 there is how the two ends drifted apart in the first
+# place. Guarded because settings.py must import on a box with no LiveKit —
+# call.air pulls the agents SDK in at module scope.
+try:
+    from call.air import DUCK_PAD_SECS as _DUCK_PAD
+except Exception:                                          # noqa: BLE001
+    _DUCK_PAD = 4.5
+
 # field -> (env var, built-in default). The env var may be a tuple of names,
 # checked in order — used where a variable was renamed without breaking
 # existing .env files.
@@ -328,7 +338,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # just ahead of the voice, instead of gagging the call for the whole
     # queue wait. Needs ~2s of warning to say the hand-over line; with less,
     # the gate closes silently. 0 = hand over the moment the warning arrives.
-    "on_air_handover_secs": (None, 5),
+    # The duck's OPEN, and deliberately the same number as its close: the
+    # guard's DUCK_PAD_SECS. Two ends of one gesture, so they are derived from
+    # one constant rather than set to 5 here and 4.5 over there and left to
+    # drift apart, which is how the ducking got inconsistent in the first
+    # place. Zero disables the lead entirely — the hold then begins at the
+    # moment the voice lands, with no warning to the caller.
+    "on_air_handover_secs": (None, _DUCK_PAD),
     # Last, because it is the fallback: only an entry with no words at all
     # falls back to a fixed hold. The handoff lag that used to sit between
     # these two stopped being an operator's decision in 0.10.97 — see
