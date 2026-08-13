@@ -102,8 +102,11 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     "hasn't had its music analysed for sound yet, or the "
                     "analyser is offline — this is NOT evidence that the "
                     "library lacks that kind of music, so don't tell the "
-                    "caller it does. Fall back to a request in their own "
-                    "words and let the station's picker handle it."
+                    "caller it does. DO THIS NOW, in this same turn: call "
+                    "subwave_request_song with the caller's own words and let "
+                    "the station's picker handle it. Do not answer the caller "
+                    "until you have — a sentence about looking, with no second "
+                    "tool call behind it, leaves them with nothing."
                 )
             lines = [_fmt_track(t, with_id=True) for t in items]
             return (
@@ -142,9 +145,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             if not items:
                 return (
                     "The station has no neighbours on file for that one — it "
-                    "may not have been analysed yet. Say you'll pick something "
-                    "yourself rather than reporting a fault, and put a request "
-                    "in describing what they're after."
+                    "may not have been analysed yet. DO THIS NOW, in this same "
+                    "turn: put a request in describing what they're after. "
+                    "Don't report a fault and don't stop at saying you'll look."
                 )
             head = (f"Tracks closest to \"{reference}\""
                     if reference else "Tracks closest to that one")

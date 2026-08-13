@@ -3,6 +3,42 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.114
+
+Everything since 0.10.106, grouped by what it fixes. All of it came out of real calls.
+
+### Calls no longer collide with the broadcast
+
+- **The duck is one number now.** The hold was six separately-reasonable constants nobody had added up — a 12-second floor under the word estimate, a 25-second default for the DJ's own actions, a handoff lag, a fudge on two branches, the stream buffer, and a settle window. A one-line shoutout could hold the caller for half a minute. It is now **the length of the voice plus 4.5 seconds**, once, and the same number is the default lead before the DJ hands over — so the duck's open and close cannot drift apart.
+- **When the station says it has stopped, the caller comes back.** A measured `voice.end` used to lose to our own estimate, so the line stayed held for the remainder of a guess after the DJ had finished talking. The measurement wins now.
+- **The hold ends when the CALLER stops hearing the DJ, not when the encoder does.** Every timestamp the station sends is stamped at the encoder; the caller is listening to a stream that runs behind it, and the station has been telling us by how much all along. That gap is why the DJ came back mid-sentence *every* time rather than occasionally.
+- **A hold always ends.** An unconfirmed action could hold the line for 90 seconds, which was survivable when it only meant the DJ stayed quiet — and became a lockout once the caller's microphone was held too. The ceiling is 15 seconds, and the widget hands the microphone back after 20 whatever the worker says.
+- **You are told you are on hold.** The talk bar says so instead of continuing to invite you to tap it, and the microphone genuinely stops rather than recording into a line nobody is listening to.
+- **Ringing in mid-link no longer talks over the broadcast.** The greeting was the one DJ turn that never waited for clear air.
+
+### The DJ tells the truth
+
+- **A shoutout is "on its way", not "already heard".** The announce tool's own result told the DJ to say it was done, when it had only been handed to the booth.
+- **A DJ's name finds their show.** Asking for a real persona by name was answered "not on the roster" three times — the matcher only ever read show names, while the prompt had promised for months that a DJ's name would work.
+- **When it gets something wrong, that is its own.** Blaming the transmission for its own miss is now named as the invention it is, and booth talk ("not seeing a tool that fits that one") stays out of the caller's ear.
+- **It speaks as itself.** No more narrating its own actions in the third person.
+- **A refused request is not asked again.** The DJ fired the same request four times in one call, twice inside a second, collecting identical rate-limit refusals.
+- **A landed request keeps the conversation going**, and a call that has plainly ended gets closed without the caller having to ask "are you going to hang up?".
+
+### The panel
+
+- **Needs attention now covers a working install**, not only one that was never set up: a hand-over lead of zero, permissions switched on without the credentials they need, a paused line, transcripts off, container version skew, calls that received no audio, a model that keeps promising without acting, and a newer release being available.
+- **The activity charts say their numbers.** Dates are no longer clipped, every bar carries its value, time-to-first-word shows real dates instead of "oldest → latest", and the listener curve has a scale.
+- **Call records can be deleted one at a time** instead of all or nothing.
+- **The build number links to its own release notes** and flags a newer version.
+- **The line switch looks off when it is off**, and says so on the card when a press does not save.
+- Signing in during a chat no longer draws over the transcript, and has a way out. Text mode gets more room. Guest mode offers one door rather than two. **The booth page is now Transmission.** Transcripts default to 1000.
+
+### Under the hood
+
+- Three new ways to find music — by how it *sounds*, by what mixes well after the current track, and by mood, genre or era — plus taking a track back out of the queue before it airs.
+- Chat transcripts record every tool call with its arguments, result and failure, stamped when it happened.
+
 ## 0.10.106
 
 **The DJ can find music properly now.** Until this release the call line had exactly two ways to find a record: a literal word-match on titles and artists, and a blind request the station resolved out of sight. That is why a caller who asked for "Firestorm by Kygo" was told the station didn't have it — the track is called *Firestone*, the library holds it, and one wrong letter was the whole difference. Three new tools close that gap, all of them things your station could already do and the phone could not reach.

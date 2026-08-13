@@ -50,9 +50,18 @@ class CallRecord:
         # next to its own problem line saying "44s on the line", from the same
         # call. Two clocks, one of which the caller never experienced.
         self.started = started or time.time()
+        from version import APP_VERSION
+
         self.data: dict = {
             "room": room,
             "startedAt": _iso(self.started),
+            # Which WORKER answered. The two processes ship as one image and
+            # run as two containers, so a redeploy that recreates one and not
+            # the other leaves them skewed — and that has been completely
+            # invisible, because only the token server ever reported a
+            # version. The panel compares this against its own /health, which
+            # is the first read that can see both halves at once.
+            "appVersion": APP_VERSION,
             "persona": {"id": persona.get("id"), "name": persona.get("name")},
             "config": {
                 "llm": f"{cfg.get('llm_provider')}/{cfg.get('llm_model')}",
