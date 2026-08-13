@@ -10,10 +10,20 @@ doing at the time.
 
 The distinction that matters, and the one no log line carried: **encoder time
 is not caller time.** Every voice.* timestamp is stamped where the station
-mixes, and the caller is `streamBufferSeconds` behind that — 22 seconds on the
-operator's box, measured 2026-08-13. A hold placed on the encoder's clock is
-placed 22 seconds before the caller hears anything, which is why the duck has
-felt "right length, wrong moment" rather than simply too short.
+mixes, and the caller hears it later.
+
+By HOW MUCH is the open question, and `streamBufferSeconds` is not the answer
+it looks like. Measured 2026-08-13 against the operator's station: the value
+on the wire is 22, Icecast really does burst 22 seconds on connect (8 seconds
+of wall time delivered 30 seconds of audio), and the browser then throws most
+of that away — a plain `<audio>` element sat a rock-steady **2.3 seconds**
+behind the newest buffered byte for the whole run. The station's own comment
+says a listener is `streamBufferSeconds` behind, and for a `<audio>` element
+that is simply not true; it describes the burst SIZE, not the playhead.
+
+Which is why this file exists rather than another constant. `audibleIn` is
+recorded per push so the gap can be read off a real call instead of argued
+from a config value that turned out to be describing something else.
 
 Written for a person: the panel renders these rows as a strip under the
 transcript, so "held 11s before the voice was audible" is something you read
