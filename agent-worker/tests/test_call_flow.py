@@ -1610,10 +1610,19 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         g._pending_until = time.time() - 1        # ceiling already passed
         self.assertFalse(g._assess(None, poll_failed=False))
 
-    def test_our_own_action_covers_the_listeners_delay(self):
+    def test_our_own_action_outlasts_its_own_announcement(self):
         # The DJ said "right, I'm back" and its own announcement started a
-        # beat later, over the top of it — the assumed window was sized on the
-        # encoder's clock, and the caller hears the stream later than that.
+        # beat later, over the top of it: the hold has to outlast the speech.
+        #
+        # It used to be sized as speech + whatever streamBufferSeconds the
+        # station reported, on the reading that the caller is that far behind
+        # the live edge. Measured 2026-08-13 and the premise did not hold: the
+        # reported 22 is Icecast's BURST SIZE, and the plain `<audio>` element
+        # the widget tunes a caller in with plays 2.3 seconds behind the
+        # newest byte, not 22. What the old sizing bought was ~17 seconds of
+        # silence after the DJ had already finished — read off a real record,
+        # a 37.8s voice sizing a ~60s hold. So it is speech + ONE pad, and a
+        # station claiming a large buffer no longer inflates it.
         import time
 
         from call.air import OnAirGuard
@@ -1624,11 +1633,12 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         g.room = None
         g.stepped_away = False
         g.aired_text = ""
-        g._last_buf = 9.0
+        g._last_buf = 22.0                       # what this station reports
         before = time.time()
         OnAirGuard.mark_on_air(g, seconds=10.0)
-        # 10s of speech + 9s of buffer + the handoff lag, not 10 + lag.
-        self.assertGreaterEqual(g._assumed_until - before, 19.0)
+        held = g._assumed_until - before
+        self.assertGreater(held, 10.0, "the hold ends before the DJ does")
+        self.assertAlmostEqual(held, 10.0 + g.duck_pad, delta=1.0)
 
     def test_with_no_measurement_it_falls_back_rather_than_to_zero(self):
         from call.air import OnAirGuard
@@ -1700,9 +1710,10 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["what"], "hold opened")
         self.assertEqual(rows[0]["why"], "we put something on air")
-        # The two numbers the diagnosis needs: how long, and how far behind
-        # the caller is. 10s of words + a 22s tail (the buffer beats the pad).
-        self.assertAlmostEqual(rows[0]["forSecs"], 32.0, delta=1.0)
+        # 10s of words + ONE pad. The station reports a 22s buffer and it is
+        # recorded — a diagnosis needs to see what the station claimed — but
+        # it no longer sizes the hold; see tail().
+        self.assertAlmostEqual(rows[0]["forSecs"], 10.0 + 4.5, delta=1.0)
         self.assertEqual(rows[0]["bufSecs"], 22.0)
 
     def test_the_timeline_starts_at_the_call(self):

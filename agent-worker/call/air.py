@@ -207,15 +207,33 @@ class OnAirGuard:
     def tail(self) -> float:
         """How long to keep holding after the voice itself has finished.
 
-        The duck's close. Normally DUCK_PAD_SECS; a station that reports a
-        genuinely long stream buffer gets that instead, because the caller
-        really is that far behind the live edge and releasing sooner would
-        put the DJ back over the top of what they are still hearing.
+        The duck's close, and it is DUCK_PAD_SECS — the operator's own ask,
+        "a consistent 4-5 second duck at the beginning and close".
+
+        It used to be max(duck_pad, stream_buffer), on the reading that a
+        station reporting a long buffer means the caller is that far behind.
+        The premise was wrong, and only measuring showed it: streamBufferSecs
+        is 22 here and Icecast really does burst 22 seconds on connect, but
+        that is the burst SIZE, not the playhead. The widget tunes a caller in
+        with a plain `<audio>` element, and that element sat a steady 2.3
+        seconds behind the newest buffered byte for a full run — Chrome
+        discards nearly all of the burst. So the tail was padding by 22 for a
+        2.3s lag: about seventeen seconds of silence after the DJ had already
+        finished, on every hold where a push had been seen. Read off a record:
+        a 37.8s voice sizing a ~60s hold.
+
+        stream_buffer() stays because the TIMELINE still records what the
+        station claimed — a station that one day reports a real playhead
+        offset should be believed, and that row is where it would show up.
         """
-        return max(self.duck_pad, self.stream_buffer())
+        return self.duck_pad
 
     def stream_buffer(self) -> float:
-        """How far behind the live edge the caller is, as last measured."""
+        """What the station last said its listeners are behind by.
+
+        NOT the caller's playhead — see tail(). Recorded on the timeline and
+        used for nothing else.
+        """
         return self._last_buf if self._last_buf > 0 else self.lag_secs
 
     # An unconfirmed delivery is given this long to appear in the station's
@@ -442,8 +460,10 @@ class OnAirGuard:
             buf = None
         if buf is None or buf <= 0:
             buf = 0.0
-        # One pad for every branch below — see DUCK_PAD_SECS.
-        tail = max(getattr(self, "duck_pad", DUCK_PAD_SECS), buf)
+        # One pad for every branch below — see tail(). `buf` is what the
+        # station CLAIMED, and it is a burst size rather than a playhead, so
+        # it does not size the close here either.
+        tail = getattr(self, "duck_pad", DUCK_PAD_SECS)
         if phase == "queued":
             lead = float(d.get("airAt") or at) - now
             if lead > self.handover_secs:
