@@ -1520,6 +1520,10 @@
     const bar = $('pttBtn');
     if (bar) bar.disabled = on;
     if (muteBtn) muteBtn.disabled = on;
+    // Repaint the bar's own label — it is the control the caller is looking
+    // at, so it is the one that has to say "on hold" rather than go on
+    // telling them to tap it.
+    paintPtt();
     if (on) {
       // Shut whatever is open. A caller mid-press when the broadcast takes
       // the mic must not stay open behind the hold.
@@ -2974,8 +2978,13 @@
     // The Space hint only where a keyboard is plausible — a phone
     // advertising a key it does not have reads as broken. The operator's
     // own wording (word_ptt) still wins on every device.
+    // On hold the bar has to say so itself. Disabling it and leaving "Tap to
+    // talk" on the face is an instruction the caller cannot follow — they
+    // tap, nothing happens, and the only explanation is a line of status text
+    // somewhere else on the card (operator's ask, 2026-08-13).
     $('pttMain').textContent =
-      pttOpen ? "You're live — tap to go quiet"
+      djOnAir ? "You're on hold — the DJ is on the station mic"
+              : pttOpen ? "You're live — tap to go quiet"
               : word('ptt', matchMedia('(pointer: coarse)').matches
                   ? 'Tap to talk' : 'Tap to talk — or hold Space');
     // The meter tells the same story as the bar, in the vocabulary the mute
