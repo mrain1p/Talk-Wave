@@ -101,6 +101,9 @@ class TestExposedSurface(unittest.TestCase):
         # gated like the call records and logs it sits beside.
         "GET /stats/listeners": "admin",
         "DELETE /calls": "admin",
+        # One record rather than all of them. Same gate as clear-all — a
+        # transcript is a caller's words either way.
+        "DELETE /calls/{rid}": "admin",
         "DELETE /logs": "admin",
         "GET /hooks/recent": "admin",
         # Costs the station a round trip and reveals the receiver address.

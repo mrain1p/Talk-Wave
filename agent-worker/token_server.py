@@ -23,6 +23,7 @@ from api import wire
 from api.diagnostics import (
     handle_calls,
     handle_clear_calls,
+    handle_delete_call,
     handle_clear_logs,
     handle_logs,
     handle_prompt_preview,
@@ -102,6 +103,8 @@ def build_app() -> web.Application:
     # Operator housekeeping: the transcripts are a caller's words, so removing
     # them must not depend on enough new calls arriving to age them out.
     app.router.add_delete("/calls", handle_clear_calls)
+    # One record rather than all of them — see handle_delete_call.
+    app.router.add_delete("/calls/{rid}", handle_delete_call)
     app.router.add_delete("/logs", handle_clear_logs)
     app.router.add_options("/call-ended", handle_options)
     app.router.add_options("/call-feedback", handle_options)

@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import unittest
+
 from tests.support import _TempStores
 
 
@@ -615,3 +617,99 @@ class TestAVoicePushAnchorsTheAirGuard(_StationWebhooks):
         # the wanted list at all for a 1.8 station to send them.
         for e in ("voice.queued", "voice.start", "voice.end"):
             self.assertIn(e, self.hooks.WANTED_EVENTS)
+
+
+class TestTheCallerHearsTheStreamLate(unittest.TestCase):
+    """The ducking bug, and it was a constant offset rather than bad luck.
+
+    Every voice.* timestamp the station sends is stamped at the ENCODER. The
+    caller is listening to the stream, which runs `streamBufferSeconds`
+    behind it — so "the DJ has stopped" reached us while the caller still had
+    that many seconds of DJ left to hear, EVERY time, by the SAME amount. The
+    call DJ came back mid-sentence on every hold. The station has measured
+    and sent the offset since its #1114; we were dropping it on the floor.
+    """
+
+    def _verdict(self, entry, now_offset=0.0, buf_cfg=None):
+        import time
+
+        from call.air import OnAirGuard
+
+        g = OnAirGuard.__new__(OnAirGuard)
+        g.quiet_secs = 30.0
+        g.lag_secs = OnAirGuard.HANDOFF_LAG_SECS
+        g.handover_secs = 0.0
+        return g._push_verdict(entry, time.time() + now_offset)
+
+    def test_the_hold_outlasts_voice_end_by_the_buffer(self):
+        import time
+
+        now = time.time()
+        entry = {"v": 2, "phase": "clear", "at": now, "bufSecs": 8.0}
+        # Straight after voice.end the caller is still hearing the DJ, so the
+        # entry must prove nothing rather than prove quiet.
+        self.assertIsNone(self._verdict(entry, 1.0))
+        # Once the buffer has drained it is genuinely clear.
+        self.assertEqual(self._verdict(entry, 9.0), ("clear", "", ""))
+
+    def test_a_speaking_window_slides_by_the_buffer(self):
+        import time
+
+        now = time.time()
+        entry = {"v": 2, "phase": "speaking", "at": now, "durMs": 5000,
+                 "bufSecs": 6.0, "text": "hello"}
+        # 5s of speech + 6s of buffer: still busy at 8s in, which is where the
+        # old code had already let the call DJ back in.
+        self.assertEqual(self._verdict(entry, 8.0)[0], "busy")
+        self.assertIsNone(self._verdict(entry, 13.0))
+
+    def test_a_station_too_old_to_send_one_still_gets_a_tail(self):
+        # No bufSecs at all: fall back to the handoff lag rather than zero,
+        # which is what "held on exactly, with no lag" used to mean.
+        import time
+
+        from call.air import OnAirGuard
+
+        now = time.time()
+        entry = {"v": 2, "phase": "clear", "at": now}
+        self.assertIsNone(self._verdict(entry, OnAirGuard.HANDOFF_LAG_SECS / 2))
+        self.assertEqual(self._verdict(entry, OnAirGuard.HANDOFF_LAG_SECS + 1),
+                         ("clear", "", ""))
+
+    def test_the_receiver_records_what_the_station_measured(self):
+        import json
+        import tempfile
+        import time
+        from pathlib import Path
+        from unittest import mock
+
+        from api import hook_receiver
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hook-air.json"
+            with mock.patch.object(hook_receiver, "_air_path", lambda: path):
+                hook_receiver._remember_air(
+                    "voice.start",
+                    {"voiceId": "v1", "text": "hi", "durationMs": 4000,
+                     "streamBufferSeconds": 7.5})
+            d = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(d["bufSecs"], 7.5)
+        self.assertEqual(d["phase"], "speaking")
+
+    def test_a_nonsense_buffer_cannot_gag_the_call(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from api import hook_receiver
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hook-air.json"
+            with mock.patch.object(hook_receiver, "_air_path", lambda: path):
+                hook_receiver._remember_air(
+                    "voice.start",
+                    {"voiceId": "v1", "durationMs": 1000,
+                     "streamBufferSeconds": 99999})
+            d = json.loads(path.read_text(encoding="utf-8"))
+        self.assertLessEqual(d["bufSecs"], 30.0)

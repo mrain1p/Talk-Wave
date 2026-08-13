@@ -23,6 +23,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -313,6 +314,37 @@ def _prune(keep: int = KEEP) -> None:
     files = sorted(CALLS_DIR.glob("*.json"))
     for old in files[:-keep]:
         old.unlink(missing_ok=True)
+
+
+# What a record id may contain: the stamp and the room tail `write` builds it
+# from, and nothing else. Anchored, so no separator and no dot can ride in.
+_SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+
+
+def delete_one(record_id: str) -> bool:
+    """Delete ONE stored record by its id (the filename stem `recent` hands
+    the panel). True if it went.
+
+    Clear-all was the only way to remove a transcript, which made the honest
+    choice for one bad test call "throw away every conversation you have" —
+    and after a run of tests that is most of the evidence you were about to
+    read. The id is validated rather than trusted: it arrives from a browser,
+    it is used to build a path, and `../` in it would delete something that is
+    not a call record at all.
+    """
+    stem = str(record_id or "").strip()
+    if not stem or not _SAFE_ID.fullmatch(stem):
+        return False
+    path = CALLS_DIR / f"{stem}.json"
+    try:
+        # resolve() before the comparison: a symlink inside the directory
+        # would otherwise still point out of it.
+        if path.resolve().parent != CALLS_DIR.resolve():
+            return False
+        path.unlink()
+        return True
+    except OSError:
+        return False
 
 
 def clear() -> int:

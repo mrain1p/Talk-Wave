@@ -118,6 +118,64 @@ _hook_state: dict = {
 
 
 
+def _remember_air(event: str, body: dict) -> None:
+    """Write the one entry the worker's on-air guard reads.
+
+    Extracted from the handler at 0.10.108 so the air file's CONTENTS can
+    be tested directly — the ducking bug lived in a field this never
+    recorded, and nothing could have caught that through the HTTP layer.
+    """
+    entry = None
+    now = time.time()
+    if event in ("dj.say", "dj.link"):
+        entry = {"at": now, "event": event,
+                 "text": str(body.get("text") or "")[:2000]}
+    # How far the LISTENER is behind the live edge. The station measures
+    # it and puts it on voice.start for exactly this reason (its #1114):
+    # every voice.* timestamp is stamped at the encoder, and the person on
+    # the phone hears it this many seconds later. Dropping it was the
+    # ducking bug — the hold ended when the station stopped talking, not
+    # when the CALLER stopped hearing it, so the call DJ came back over
+    # the top every single time.
+    try:
+        buf = max(0.0, min(30.0, float(body.get("streamBufferSeconds") or 0)))
+    except (TypeError, ValueError):
+        buf = 0.0
+
+    if event == "voice.queued":
+        try:
+            lead = max(0.0, float(body.get("estimatedAirInMs") or 0) / 1000.0)
+        except (TypeError, ValueError):
+            lead = 0.0
+        entry = {"at": now, "event": event, "v": 2, "phase": "queued",
+                 "voiceId": str(body.get("voiceId") or "")[:64],
+                 "text": str(body.get("text") or "")[:2000],
+                 "durMs": int(body.get("durationMs") or 0),
+                 "bufSecs": buf,
+                 "airAt": now + lead}
+    elif event == "voice.start":
+        entry = {"at": now, "event": event, "v": 2, "phase": "speaking",
+                 "voiceId": str(body.get("voiceId") or "")[:64],
+                 "text": str(body.get("text") or "")[:2000],
+                 "bufSecs": buf,
+                 "durMs": int(body.get("durationMs") or 0)}
+    elif event == "voice.end":
+        # No text on purpose: a skewed old worker reads at+text, and an
+        # empty text makes it fall to the short fallback hold rather
+        # than sizing a fresh hold from words that just FINISHED.
+        entry = {"at": now, "event": event, "v": 2, "phase": "clear",
+                 "voiceId": str(body.get("voiceId") or "")[:64],
+                 "bufSecs": buf,
+                 "text": ""}
+    if entry is not None:
+        try:
+            path = _air_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(entry))
+        except Exception as e:                            # noqa: BLE001
+            log.debug("could not write the on-air push file: %s", e)
+
+
 async def handle_station_hook(request: web.Request) -> web.Response:
     """Receiver for the station's pushes.
 
@@ -173,40 +231,7 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     # the other generation's entry still errs toward holding, never toward
     # talking over the air.
     if expected and isinstance(body, dict):
-        entry = None
-        now = time.time()
-        if event in ("dj.say", "dj.link"):
-            entry = {"at": now, "event": event,
-                     "text": str(body.get("text") or "")[:2000]}
-        elif event == "voice.queued":
-            try:
-                lead = max(0.0, float(body.get("estimatedAirInMs") or 0) / 1000.0)
-            except (TypeError, ValueError):
-                lead = 0.0
-            entry = {"at": now, "event": event, "v": 2, "phase": "queued",
-                     "voiceId": str(body.get("voiceId") or "")[:64],
-                     "text": str(body.get("text") or "")[:2000],
-                     "durMs": int(body.get("durationMs") or 0),
-                     "airAt": now + lead}
-        elif event == "voice.start":
-            entry = {"at": now, "event": event, "v": 2, "phase": "speaking",
-                     "voiceId": str(body.get("voiceId") or "")[:64],
-                     "text": str(body.get("text") or "")[:2000],
-                     "durMs": int(body.get("durationMs") or 0)}
-        elif event == "voice.end":
-            # No text on purpose: a skewed old worker reads at+text, and an
-            # empty text makes it fall to the short fallback hold rather
-            # than sizing a fresh hold from words that just FINISHED.
-            entry = {"at": now, "event": event, "v": 2, "phase": "clear",
-                     "voiceId": str(body.get("voiceId") or "")[:64],
-                     "text": ""}
-        if entry is not None:
-            try:
-                path = _air_path()
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps(entry))
-            except Exception as e:                            # noqa: BLE001
-                log.debug("could not write the on-air push file: %s", e)
+        _remember_air(event, body)
 
     # Anything that changes what the card shows invalidates the cache — but not
     # more often than the cache would have expired anyway.

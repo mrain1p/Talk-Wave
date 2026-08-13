@@ -103,6 +103,23 @@
   // labels at the increments "within reason" — this is the reason).
   function tickEvery(n) { return n <= 12 ? 1 : Math.ceil(n / 10); }
 
+  // Labels and tooltips are built as HTML strings here, so anything derived
+  // from a record has to be escaped on the way in.
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // A short when for a single call: the date, plus the time when the window
+  // is a single day and the date alone would say nothing.
+  function stamp(ms) {
+    const d = new Date(ms);
+    return state.range === 'day' && clampShow(state.show) === 1
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : md(d);
+  }
+
   function buckets() {
     const out = [];
     const n = clampShow(state.show);
@@ -202,7 +219,8 @@
     const rows = calls.filter(matches);
     const per = bs.map((b) => {
       const inB = rows.filter((c) => when(c) >= b.start && when(c) < b.end);
-      return { n: inB.length, bad: inB.some(failedC), tick: b.tick };
+      return { n: inB.length, bad: inB.some(failedC), tick: b.tick,
+               label: b.label };
     });
     // Zero traffic in the window is an answer, not a fault: a sentence in
     // the frame instead of a row of invisible zero-height bars.
@@ -213,10 +231,17 @@
       return;
     }
     const max = Math.max(1, ...per.map((p) => p.n));
+    // Every bar says its own number. Reading the total off the caption and
+    // the shape off the bars left the actual values nowhere.
+    const dense = per.length > 14;
     $('doorsChart').innerHTML =
-      '<div class="actbars">' + per.map((p) =>
+      '<div class="actbars' + (dense ? ' dense' : '') + '">' + per.map((p) =>
         '<span class="actbar' + (p.bad ? ' bad' : '') + '" style="height:'
-        + (p.n ? Math.max(6, Math.round((p.n / max) * 100)) : 0) + '%"></span>'
+        + (p.n ? Math.max(6, Math.round((p.n / max) * 100)) : 0) + '%"'
+        + (p.n ? ' data-v="' + p.n + '"' : '')
+        + ' title="' + esc(p.label) + ': ' + p.n + ' '
+        + (p.n === 1 ? 'record' : 'records')
+        + (p.bad ? ' — one or more failed' : '') + '"></span>'
       ).join('') + '</div>'
       + '<div class="actaxis">' + per.map((p) =>
         '<span>' + p.tick + '</span>').join('') + '</div>';
@@ -303,12 +328,31 @@
         + p[1].toFixed(1)).join(' ')
       + ' ' + r[r.length - 1][0].toFixed(1) + ',' + H
       + ' ' + r[0][0].toFixed(1) + ',' + H + '" />').join('');
+    // The curve had no numbers on it at all — no scale, no per-point value,
+    // so "peak 7" in the caption was the only figure on a chart of 30
+    // points. A peak marker and an axis floor give it a scale to read
+    // against, and every bucket answers on hover.
+    const peakAt = per.indexOf(peak);
+    const dots = per.map((n, i) => n === null ? '' :
+      '<circle class="lisdot" r="1.4" cx="' + x(i).toFixed(1)
+      + '" cy="' + y(n).toFixed(1) + '"><title>' + esc(bs[i].label) + ': '
+      + n + ' listener' + (n === 1 ? '' : 's') + '</title></circle>').join('');
     $('lisChart').innerHTML =
-      '<svg class="lissvg" viewBox="0 0 ' + W + ' ' + H
+      '<div class="lisplot">'
+      + '<svg class="lissvg" viewBox="0 0 ' + W + ' ' + H
       + '" preserveAspectRatio="none">' + areas + lines + '</svg>'
+      + '<svg class="lisdots" viewBox="0 0 ' + W + ' ' + H
+      + '" preserveAspectRatio="none">' + dots + '</svg>'
+      + '<span class="lismax">' + peak + '</span>'
+      + '<span class="lismin">0</span>'
+      + '</div>'
       + '<div class="actaxis">' + bs.map((b) =>
         '<span>' + (b.tick || '') + '</span>').join('') + '</div>';
-    $('lisCap').textContent = 'peak ' + peak;
+    const seen = per.filter((n) => n !== null);
+    const avg = seen.reduce((a, n) => a + n, 0) / (seen.length || 1);
+    $('lisCap').textContent = 'peak ' + peak
+      + (peakAt >= 0 && bs[peakAt] ? ' on ' + bs[peakAt].label : '')
+      + ' · average ' + avg.toFixed(avg < 10 ? 1 : 0);
   }
 
   function renderTtfw(bs) {
@@ -342,8 +386,14 @@
         + '" style="height:' + Math.max(6, Math.round((r.secs / max) * 100))
         + '%" title="' + r.secs.toFixed(1) + 's"></span>').join('')
       + '</div>'
-      + '<div class="actaxis"><span>oldest</span><span>latest</span></div>';
-    $('ttfwCap').textContent = 'median ' + median.toFixed(1) + 's';
+      // "oldest → latest" named the direction and nothing else: no when, no
+      // how long, on a chart whose whole subject is seconds. The ends now
+      // carry the real dates and the caption carries the range.
+      + '<div class="actaxis"><span>' + esc(stamp(rows[0].t)) + '</span>'
+      + '<span>' + esc(stamp(rows[rows.length - 1].t)) + '</span></div>';
+    $('ttfwCap').textContent = 'median ' + median.toFixed(1) + 's · fastest '
+      + sorted[0].toFixed(1) + 's · slowest ' + max.toFixed(1) + 's · '
+      + rows.length + ' call' + (rows.length === 1 ? '' : 's');
   }
 
   function render() {

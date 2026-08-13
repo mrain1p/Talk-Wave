@@ -529,6 +529,13 @@
     const btn = $('pauseBtn'), note = $('pausedNote'), sub = $('pausedSub');
     if (btn) {
       btn.classList.toggle('paused', paused);
+      // ALSO `on`, the same class the three line buttons beneath it use.
+      // Without it the line card was the only switch on the dashboard that
+      // did not dim when it was off — it said "Paused" in words and stayed
+      // at full strength, so the one control that stops every caller looked
+      // identical whichever way it was set (operator-reported).
+      btn.classList.toggle('on', !paused);
+      btn.setAttribute('aria-pressed', paused ? 'false' : 'true');
       btn.title = paused ? 'Press to take calls again'
                          : 'Press to pause all calls immediately';
     }
@@ -1854,9 +1861,61 @@
     // footer also carries the build, which anchors every bug report over time.
     paintPage();
     if ($('footHost')) $('footHost').textContent = location.host;
-    fetch('/health').then((r) => r.json()).then((h) => {
-      $('versionLine').textContent = 'Talk Wave v' + (h.version || '?');
-    }).catch(() => {});
+    fetch('/health').then((r) => r.json()).then((h) => paintVersion(h.version))
+      .catch(() => {});
+  }
+
+  // The build number is the thing every bug report is anchored to, so it may
+  // as well take you to what actually changed — and tell you when the box is
+  // behind. GitHub's releases/latest redirects to the newest tag, so one
+  // unauthenticated call answers "is there a newer one" without a token and
+  // without the API's 60/hour anonymous rate limit mattering: this fires once
+  // per panel load. A failure is silent — an operator who is offline, or
+  // behind a proxy that blocks github.com, still gets their version, which is
+  // the part that was there before.
+  const REPO_URL = 'https://github.com/mrain1p/Talk-Wave';
+
+  function paintVersion(version) {
+    const el = $('versionLine');
+    if (!el) return;
+    const v = version || '?';
+    el.textContent = '';
+    const link = document.createElement('a');
+    link.href = REPO_URL + '/releases/tag/v' + v;
+    link.textContent = 'Talk Wave v' + v;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.title = 'Release notes for this build';
+    el.appendChild(link);
+    if (v === '?') return;
+    fetch('https://api.github.com/repos/mrain1p/Talk-Wave/releases/latest',
+          { headers: { Accept: 'application/vnd.github+json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((rel) => {
+        const tag = rel && String(rel.tag_name || '').replace(/^v/, '');
+        if (!tag || tag === v || !newer(tag, v)) return;
+        const flag = document.createElement('a');
+        flag.className = 'vnew';
+        flag.href = rel.html_url || (REPO_URL + '/releases/latest');
+        flag.target = '_blank';
+        flag.rel = 'noopener';
+        flag.textContent = 'v' + tag + ' available';
+        flag.title = 'A newer release is out — pull the image and restart';
+        el.appendChild(document.createTextNode(' '));
+        el.appendChild(flag);
+      })
+      .catch(() => {});
+  }
+
+  // Numeric, part by part: a string compare calls 0.10.9 newer than 0.10.10,
+  // which is the one comparison this has to get right.
+  function newer(a, b) {
+    const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
+    const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+    }
+    return false;
   }
 
   function showLoginGate(body) {

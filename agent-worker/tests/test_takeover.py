@@ -35,10 +35,19 @@ class _Station:
     """A station with two shows and a memory of what it was asked to do."""
 
     SHOWS = [
-        {"id": "s-late", "name": "The Late Show"},
-        {"id": "s-break", "name": "Breakfast"},
-        {"id": "s-night", "name": "Night Owls"},
+        {"id": "s-late", "name": "The Late Show", "personaId": "p-owl"},
+        {"id": "s-break", "name": "Breakfast", "personaId": "p-lark"},
+        {"id": "s-night", "name": "Night Owls", "personaId": "p-owl"},
     ]
+    # The takeover tool reads these too since 0.10.108 — a caller naming a DJ
+    # rather than a show is the commonest way it is asked.
+    PEOPLE = [
+        {"id": "p-owl", "name": "Wade"},
+        {"id": "p-lark", "name": "Dawn"},
+    ]
+
+    async def personas(self):
+        return list(self.PEOPLE)
 
     def __init__(self, ok: bool = True, error: str = "") -> None:
         self.ok = ok
@@ -305,3 +314,77 @@ class TestTheStationEndpointsAreTheOnesUpstreamServes(unittest.TestCase):
         # moves them, this is the line that has to be argued with.
         self.assertEqual(StationClient.TAKEOVER_MIN_MINUTES, 15)
         self.assertEqual(StationClient.TAKEOVER_MAX_MINUTES, 720)
+
+
+class TestADJsNameResolvesToTheirShow(unittest.TestCase):
+    """The conduct has promised this since 0.10.93 — "a DJ's name resolves to
+    their show" — and the matcher could not do it.
+
+    Real chat, 2026-08-13: the caller asked for "duke", then "Duke Sterling",
+    a persona genuinely on the roster whose show is The Alibi Room. The DJ
+    told them three times that no such name was on the books, recited a
+    roster it had invented from the SHOW names it could see, and only got
+    there when the caller named the show himself. The prompt promising a
+    capability the code lacks is the same shape as the takeover bug above.
+    """
+
+    SHOWS = [
+        {"id": "s1", "name": "The Alibi Room", "personaId": "p_a262b2"},
+        {"id": "s2", "name": "DONOVAN'S PUB · Irish Folk & Trad",
+         "personaId": "p_b69d0a"},
+        {"id": "s3", "name": "Up Stream · Deep Cuts", "personaId": "p_10cfa2"},
+        {"id": "s4", "name": "Late Feels", "personaId": "p_10cfa2"},
+    ]
+    PEOPLE = [
+        {"id": "p_a262b2", "name": "Duke Sterling"},
+        {"id": "p_b69d0a", "name": "Danny Boy"},
+        {"id": "p_10cfa2", "name": "Wade"},
+    ]
+
+    def _match(self, wanted):
+        from call.tools.broadcast import _match_show
+
+        return _match_show(self.SHOWS, wanted, self.PEOPLE)
+
+    def test_the_full_name_finds_the_show(self):
+        self.assertEqual(self._match("Duke Sterling")["id"], "s1")
+
+    def test_a_first_name_finds_it_too(self):
+        # "change dj to duke" is how it was actually asked.
+        self.assertEqual(self._match("duke")["id"], "s1")
+
+    def test_a_show_name_still_wins_over_a_person(self):
+        self.assertEqual(self._match("The Alibi Room")["id"], "s1")
+
+    def test_a_dj_with_several_shows_is_refused_not_guessed(self):
+        # Wade hosts three. Picking one would be a station-wide change
+        # nobody asked for — the same rule the show matcher already had.
+        self.assertIsNone(self._match("Wade"))
+
+    def test_a_name_on_neither_list_is_still_a_miss(self):
+        self.assertIsNone(self._match("Bananaman"))
+
+    def test_no_personas_supplied_behaves_exactly_as_before(self):
+        from call.tools.broadcast import _match_show
+
+        self.assertIsNone(_match_show(self.SHOWS, "duke"))
+        self.assertEqual(_match_show(self.SHOWS, "Late Feels")["id"], "s4")
+
+
+class TestTheDJDoesNotBlameTheWeatherForItsOwnMiss(unittest.TestCase):
+    """"Why didn't you get that the first time?" was answered with "the signal
+    comes in fuzzy when the wind hits the towers". Same invention as blaming
+    distance for an unsent dedication, and it followed three wrong denials."""
+
+    def test_both_mouths_are_told_to_own_it(self):
+        from brain import conduct, conduct_chat
+
+        for text in (conduct.rules({}), conduct_chat.rules({})):
+            self.assertIn("that is yours — not the transmitter's", text)
+            self.assertIn("wind hits the towers", text)      # the NO example
+
+    def test_booth_talk_stays_in_the_booth(self):
+        # "Not seeing a tool that fits that one" reached a caller verbatim.
+        from brain import conduct
+
+        self.assertIn("not seeing a tool that fits", conduct.rules({}))

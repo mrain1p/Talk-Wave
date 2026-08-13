@@ -1115,6 +1115,31 @@ async def handle_clear_calls(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"ok": True, "removed": gone}))
 
 
+async def handle_delete_call(request: web.Request) -> web.Response:
+    """Delete ONE stored record.
+
+    Clear-all was the only option, so removing a single bad test call meant
+    throwing away every conversation on the box — including the ones you were
+    about to read back.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    from call.record import delete_one
+
+    rid = request.match_info.get("rid", "")
+    if not delete_one(rid):
+        return _cors(request, web.json_response(
+            {"error": "no such call record"}, status=404))
+    # The mint-time context is keyed the same way and must go with it, or the
+    # panel could still say which browser rang for a transcript that no
+    # longer exists — the reason clear-all drops it too.
+    _mint_info.pop(rid, None)
+    log.info("call record %s deleted by the operator", rid)
+    return _cors(request, web.json_response({"ok": True}))
+
+
 async def handle_clear_logs(request: web.Request) -> web.Response:
     """Empty the log viewer's buffer.
 
