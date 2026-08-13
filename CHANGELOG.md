@@ -3,7 +3,28 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.114
+## 0.10.120
+
+Everything since 0.10.114. Mostly one story: the text line was quietly losing whole replies, and nothing in the panel said so.
+
+### Text chat is a conversation again
+
+- **A chat is one conversation, not a fresh DJ per message.** Every message built its own model connection and its own action ledger, which meant the per-conversation caps on what a caller could ask for reset on every line they typed — ask once and be refused, ask again and it worked. One session now runs the whole chat, and it is closed properly when the chat ends.
+- **A turn that uses more than one tool no longer dies.** Gemini 3 signs each tool call with an opaque token and refuses any later request that replays a call without one — and it does not sign them all: two calls in one reply, one token. So the *next* message of any multi-tool conversation was rejected outright, and the caller got "Line dropped a beat there — say that again for me?" while the real reason went nowhere. Tool results are now handed back as plain text, which every provider accepts and which is what they already were: the DJ's tools return sentences written to be read, never machine payloads. Measured against four alternatives on a live model; this is the only one that both survives and answers.
+
+### When something goes wrong, you find out
+
+- **A model provider that refuses us now appears in Needs attention**, quoting its own words, on the first occurrence. This is the part that actually cost the days: the failure above ran behind a panel that looked perfectly healthy, because a chat had no way to write down what went wrong and a phone call has had one for months. It does now, on the same rail, so the next provider that breaks differently is still visible.
+- **The LLM test runs the shape that breaks.** Testing one tool call proves a model can call a tool; it does not prove the model can carry a conversation, and the model in question passed the old test while failing every real chat. The test now offers two tools, replays the round exactly as a live chat would, and asks a follow-up — and a model that answers once and then refuses fails the test outright instead of passing with a footnote.
+
+### Calls
+
+- **The microphone comes back the way it went out.** A caller who was muted before the DJ went on air was unmuted when the hold lifted, and one who was talking was left muted. The hold now restores whichever state it interrupted.
+- **The card stops saying "Working the booth" after the DJ has come back.** The flag was cleared by setting it to an empty value, and an empty value deletes nothing — it was simply ignored, so the banner stayed up for the rest of the call.
+
+### The panel
+
+- **The activity strip shows what the line actually did.** The concurrent-listeners curve was replaced by a ranked breakdown of the DJ's actions — requests, shoutouts, searches, takeovers — over the same period, because how many people were listening at once was never a thing this box could affect, and what the DJ spent the week doing is.
 
 Everything since 0.10.106, grouped by what it fixes. All of it came out of real calls.
 
