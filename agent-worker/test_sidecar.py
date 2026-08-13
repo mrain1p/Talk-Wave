@@ -164,6 +164,8 @@ from tests.test_music_tools import (  # noqa: F401
     TestWhatsNewInTheLibrary,
 )
 from tests.test_takeover import (  # noqa: F401
+    TestADJsNameResolvesToTheirShow,
+    TestTheDJDoesNotBlameTheWeatherForItsOwnMiss,
     TestCancellingATakeover,
     TestNamingAShowTheCallerSaid,
     TestPinningAShow,
@@ -220,6 +222,7 @@ from tests.test_station import (  # noqa: F401
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestTheCallerHearsTheStreamLate,
     TestADeliveredPushIsProvedRatherThanAssumed,
     TestAVoicePushAnchorsTheAirGuard,
     TestARefusedRegistrationSaysWhichFieldWasWrong,

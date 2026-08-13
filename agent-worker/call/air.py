@@ -351,6 +351,23 @@ class OnAirGuard:
         phase = str(d.get("phase") or "")
         at = float(d.get("at") or 0)
         dur = max(0.0, float(d.get("durMs") or 0) / 1000.0)
+        # THE fix for "it always comes back mid-sentence". Every voice.*
+        # timestamp is stamped at the ENCODER; the caller is listening to the
+        # stream, which is this many seconds behind it. So the station's
+        # "I've stopped talking" is the caller's "he is still talking", every
+        # time, by the same amount — which is why the overlap was constant
+        # rather than occasional. The station measures the offset and sends it
+        # (streamBufferSeconds, its #1114); we just never read it.
+        #
+        # Falls back to the handoff lag when the station is too old to send
+        # one: better a two-second tail than none.
+        buf = d.get("bufSecs")
+        try:
+            buf = float(buf)
+        except (TypeError, ValueError):
+            buf = None
+        if buf is None or buf <= 0:
+            buf = self.lag_secs
         if phase == "queued":
             lead = float(d.get("airAt") or at) - now
             if lead > self.handover_secs:
@@ -360,18 +377,25 @@ class OnAirGuard:
             # arrive; this bound only matters if they never do).
             landed = float(d.get("airAt") or at) + (
                 dur or speaking_secs(text, int(self.quiet_secs) or 30))
-            if now < landed + 1.0:
+            if now < landed + buf + 1.0:
                 return ("busy", text,
                         "Hold that thought — I've got to go on air for a second.")
             return None
         if phase == "speaking":
             # Measured start; the clip length is measured too when present.
+            # Both are encoder-side, so the whole window slides by the buffer.
             held_for = dur or speaking_secs(text, int(self.quiet_secs) or 30)
-            if now - at < held_for + 1.0:
+            if now - at < held_for + buf + 1.0:
                 return ("busy", text,
                         "Hold on a second — I'm on the air.")
             return None
         if phase == "clear":
+            # voice.end fires when the encoder finished, not when the caller
+            # did. Until the buffer has drained they are still hearing it, so
+            # this entry does not prove quiet yet — say nothing and let the
+            # poll's estimate carry the tail.
+            if now - at < buf:
+                return None
             return ("clear", "", "")
         return None
 

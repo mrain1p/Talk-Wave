@@ -910,30 +910,38 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         played = dict(far, airAt=now - 10)
         self.assertIsNone(guard._push_verdict(played, now))
 
-    def test_measured_speech_is_held_exactly_with_no_lag(self):
-        # voice.start is stamped at AIR time with the clip's measured length
-        # — the handoff lag belongs to the old evidence only, and adding it
-        # here is how a 1.8 station's DJ would linger 2s after every link.
+    def test_measured_speech_is_held_for_its_length_plus_the_buffer(self):
+        # voice.start is stamped at AIR time with the clip's measured length,
+        # so the window is the clip — PLUS the caller's distance from the
+        # live edge. Until 0.10.108 this test said "with no lag" and the code
+        # obliged, which is precisely why the call DJ came back over the top
+        # of every link: the encoder had finished, the caller had not.
         import time
 
         guard = self._guard()
         now = time.time()
-        speaking = {"at": now - 5, "v": 2, "phase": "speaking",
+        speaking = {"at": now - 5, "v": 2, "phase": "speaking", "bufSecs": 4.0,
                     "voiceId": "v2", "text": "x", "durMs": 6000}
         self.assertEqual(guard._push_verdict(speaking, now)[0], "busy")
-        over = dict(speaking, at=now - 8)
-        self.assertIsNone(guard._push_verdict(over, now))
+        # 6s of clip + 4s of buffer: 8s in is still the caller's DJ talking,
+        # which the old rule called clear.
+        self.assertEqual(
+            guard._push_verdict(dict(speaking, at=now - 8), now)[0], "busy")
+        self.assertIsNone(guard._push_verdict(dict(speaking, at=now - 12), now))
 
-    def test_a_measured_end_reads_as_positively_clear(self):
-        # voice.end is the one push that can prove the air QUIET — the
-        # poll's word-sized estimate has no idea a link ran short, and
-        # before 1.8 nothing did.
+    def test_a_measured_end_reads_as_clear_once_the_buffer_has_drained(self):
+        # voice.end is still the one push that can prove the air QUIET — the
+        # poll's word-sized estimate has no idea a link ran short. But it
+        # proves it at the ENCODER, and the caller is behind that, so it
+        # cannot mean "clear" until their buffer has run out.
         import time
 
         guard = self._guard()
-        ended = {"at": time.time(), "v": 2, "phase": "clear",
+        now = time.time()
+        ended = {"at": now, "v": 2, "phase": "clear", "bufSecs": 5.0,
                  "voiceId": "v3", "text": ""}
-        self.assertEqual(guard._push_verdict(ended, time.time())[0], "clear")
+        self.assertIsNone(guard._push_verdict(ended, now + 1))
+        self.assertEqual(guard._push_verdict(ended, now + 6)[0], "clear")
 
     def test_the_hold_is_sized_to_what_the_station_is_saying(self):
         # One fixed number either reopened the gate while a minute-long
