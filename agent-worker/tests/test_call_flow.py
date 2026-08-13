@@ -649,6 +649,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         import asyncio
         import types
 
+        from call import comeback
         from call.air import OnAirGuard
 
         said = []
@@ -658,7 +659,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
                 said.append(str(kw.get("instructions", "")))
 
         guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertTrue(said)
         self.assertIn("back", said[0].lower())
 
@@ -666,6 +667,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         import asyncio
         import types
 
+        from call import comeback
         from call.air import OnAirGuard
 
         spoken = []
@@ -678,7 +680,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
                 spoken.append(text)
 
         guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertEqual(len(spoken), 1)
         self.assertIn("back", spoken[0].lower())
 
@@ -690,6 +692,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         import asyncio
         import types
 
+        from call import comeback
         from call.air import OnAirGuard
 
         said = []
@@ -700,10 +703,10 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
 
         guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
         guard.aired_text = "Big shout to Dave from the call line."
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertIn("Dave", said[0])
         self.assertEqual(guard.aired_text, "")
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertNotIn("Dave", said[1])
 
     def test_the_djs_own_action_gets_a_comeback_line_too(self):
@@ -817,25 +820,56 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # A banter break is several utterances back to back. Each voice.end
         # used to reopen the gate, so one break cost the caller a come-back
         # line and another hand-over line three times over (operator-reported
-        # from a real call, 2026-08-12). The settle window rides the gaps.
-        import time
+        # from a real call, 2026-08-12).
+        #
+        # That was fixed with a blanket 2s pad on every hold, which taxed every
+        # link that HAD finished in order to bridge the ones that had not, and
+        # only ever bridged gaps shorter than itself. Since 0.10.125 the return
+        # is a cancellable task: the loop keeps watching while the DJ comes
+        # back, and the next utterance cancels the return and leaves the hold
+        # up. Any length of gap, and a finished link pays nothing.
+        import asyncio
 
         from call.air import OnAirGuard
 
         guard = self._guard()
-        guard.on_air = True
-        now = time.time()
 
-        # The utterance ended a moment ago: still held, silently.
-        guard._quiet_since = now - (OnAirGuard.SETTLE_SECS / 2)
-        self.assertTrue(guard._settle(False, now))
-        # Long enough quiet that the break really is over: released.
-        guard._quiet_since = now - (OnAirGuard.SETTLE_SECS + 1)
-        self.assertFalse(guard._settle(False, now))
-        # A fresh voice inside the window clears the clock, so the NEXT gap
-        # gets a full settle window of its own rather than a stale one.
-        self.assertTrue(guard._settle(True, now))
-        self.assertEqual(guard._quiet_since, 0.0)
+        async def scenario():
+            started = asyncio.Event()
+            cancelled = asyncio.Event()
+
+            async def returning():
+                started.set()
+                try:
+                    await asyncio.sleep(30)      # the DJ, mid-sentence
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
+
+            guard._comeback = asyncio.create_task(returning())
+            await started.wait()
+            # The station speaks again: this is the SAME break.
+            same = guard._cancel_comeback()
+            await asyncio.sleep(0)
+            return same, cancelled.is_set()
+
+        same, was_cancelled = asyncio.run(scenario())
+        self.assertTrue(same, "a mid-return voice must read as the same break")
+        self.assertTrue(was_cancelled, "the return kept talking over the air")
+        # And the hand-over line is not said a second time — the caller was
+        # never told the hold was over.
+        self.assertIsNone(guard._comeback)
+
+    def test_a_finished_link_pays_no_settle_tax(self):
+        # The other half: with nothing in flight there is nothing to cancel,
+        # so a link that really has finished releases on its own timing.
+        from call.air import OnAirGuard
+
+        guard = self._guard()
+        guard._comeback = None
+        self.assertFalse(guard._cancel_comeback())
+        self.assertEqual(OnAirGuard.SETTLE_SECS, 0.0,
+                         "the blanket pad is back; see comeback.py")
 
     def test_the_settle_window_cannot_invent_a_busy_spell(self):
         # It only ever EXTENDS one: a caller who dialled into quiet air must

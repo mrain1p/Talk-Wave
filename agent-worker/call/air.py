@@ -17,6 +17,7 @@ from livekit.agents import Agent, AgentSession
 
 from station import StationClient
 
+from . import comeback
 from .background import spawn
 
 log = logging.getLogger("callin.agent")
@@ -94,19 +95,25 @@ class OnAirGuard:
     # turning.
     HANDOFF_LAG_SECS = 2.0
 
-    # One busy spell, not five. A banter break is several utterances back to
-    # back — voice.end, then voice.queued again a second later — and each gap
-    # used to reopen the gate, so the caller heard "right, where were we" and
-    # "hold on, I'm on air" three times over one break (operator-reported
-    # from a real call, 2026-08-12). Staying held across a gap this short
-    # makes the whole break ONE hand-over and ONE return.
+    # A banter break is several utterances back to back — voice.end, then
+    # voice.queued again a second later — and each gap used to reopen the
+    # gate, so the caller heard "right, where were we" and "hold on, I'm on
+    # air" three times over one break (operator-reported, 2026-08-12).
     #
-    # 2s is a deliberate floor, not a round number: it has to outlast the gap
-    # a mixer leaves between two utterances of one break, and every second of
-    # it is added to the silence after a link that really HAS finished — the
-    # same silence the operator called too long in that same report. Bridging
-    # the break still wins, because the alternative is heard three times.
-    SETTLE_SECS = 2.0
+    # That was fixed with a blanket 2s pad on the end of EVERY hold, which is
+    # the wrong shape: it taxed every link that had genuinely finished in
+    # order to bridge the ones that had not, and it only ever bridged gaps
+    # shorter than itself. Since 0.10.125 the come-back is a cancellable task
+    # instead (call/comeback.py) — the loop keeps watching while the DJ is
+    # returning, and a fresh voice cancels the return mid-sentence and leaves
+    # the hold up. No second hand-over line, because the caller was never told
+    # the hold was over. That bridges a gap of ANY length and costs a finished
+    # link nothing.
+    #
+    # Kept at 0 rather than deleted: _settle is still the one place that can
+    # extend a busy spell, and a station without the voice lifecycle may yet
+    # need a floor here.
+    SETTLE_SECS = 0.0
 
     def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
         self.station = station
@@ -162,6 +169,9 @@ class OnAirGuard:
         # The words that went out on air, for the come-back line to nod at in
         # passing rather than the DJ returning as if nothing happened.
         self.aired_text = ""
+        # The in-flight return, so a fresh voice can cancel it. See
+        # SETTLE_SECS for what this replaced.
+        self._comeback = None
         # This call's ducking timeline — see call/air_log.py. Attached by the
         # session; None on a guard nobody is recording.
         self.air_log = None
@@ -299,49 +309,6 @@ class OnAirGuard:
                         timeout or self.MAX_HOLD)
             self._clear.set()
         return time.time() - started
-
-    async def _come_back(self, session: AgentSession) -> None:
-        """Say something on the way back from the broadcast.
-
-        The hand-over line told the caller to hold; nothing told them the hold
-        was over. So the DJ went quiet mid-conversation, came back, and then
-        waited for the caller to speak first — from the caller's end that is
-        indistinguishable from the line having dropped, and it is the point at
-        which they hang up. Observed on the calls of 2026-08-06, where the
-        silences a caller could not account for are the whole story.
-
-        `generate_reply` rather than a canned line, because the useful version
-        picks the thread back up ("right, I'm back — you were saying about the
-        rock") and only the model knows what was being said. The canned line
-        is the fallback: coming back saying SOMETHING beats coming back
-        silently, which is the failure being fixed.
-        """
-        aired = (self.aired_text or "").strip()
-        self.aired_text = ""
-        nod = (
-            f" What went out on air was: \"{aired[:200]}\" — a passing nod to "
-            "it is fine, but don't read it back to them."
-        ) if aired else ""
-        try:
-            await session.generate_reply(instructions=(
-                "You just stepped away to let something go out on air, and "
-                "you're back on the call now. Say so in one short line — "
-                "\"alright, I'm back\" — and pick the conversation up where "
-                "you left it, in your own voice. Don't apologise at length, "
-                "don't recap, and don't start a new topic." + nod
-            ))
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            log.debug("could not generate the back-from-air line: %s", e)
-            try:
-                session.say(
-                    "Alright, I'm back — where were we?",
-                    allow_interruptions=True,
-                    add_to_chat_ctx=False,
-                )
-            except Exception:
-                pass
 
     def _assess(self, speech: tuple[float, str] | None,
                 poll_failed: bool = False) -> bool:
@@ -495,6 +462,21 @@ class OnAirGuard:
             return ("clear", "", "")
         return None
 
+    def _cancel_comeback(self) -> bool:
+        """Stop an in-flight return. True if there was one.
+
+        True means this busy edge is the NEXT PART of a break the caller is
+        already holding through, not a new one — so the hand-over line is
+        skipped. Saying it twice is the thing being fixed.
+        """
+        task, self._comeback = self._comeback, None
+        if task is None or task.done():
+            return False
+        task.cancel()
+        if getattr(self, "air_log", None):
+            self.air_log.note("the return was cancelled — same break")
+        return True
+
     def _settle(self, busy: bool, now: float) -> bool:
         """Ride out the gaps INSIDE a busy spell — see SETTLE_SECS.
 
@@ -603,7 +585,11 @@ class OnAirGuard:
                 self._publish(busy)
                 if busy:
                     self._clear.clear()
-                    log.info("on-air DJ is speaking — holding the call DJ back")
+                    # Coming back? Then this is the next part of one break, not
+                    # a new one. Cancel the return and stay held — silently.
+                    resumed = self._cancel_comeback()
+                    log.info("on-air DJ is speaking — holding the call DJ back"
+                             "%s", " (mid-return: same break)" if resumed else "")
                     if getattr(self, "air_log", None):
                         self.air_log.station(state or {})
                         self.air_log.replay((state or {}).get("recent") or [])
@@ -615,13 +601,16 @@ class OnAirGuard:
                     # One hand-over per forecast spell: the queued warning
                     # and the start it forecasts are the same busy edge.
                     vid = str((state or {}).get("voiceId") or "")
-                    if not first and (not vid or vid != self._announced_id):
+                    if not first and not resumed and (
+                            not vid or vid != self._announced_id):
                         if vid:
                             self._announced_id = vid
                         # Cut the call DJ off mid-sentence if need be: the whole
                         # point is that the broadcast never hears itself doubled.
                         try:
                             session.interrupt()
+                            if getattr(self, "air_log", None):
+                                self.air_log.said("hand-over line")
                             session.say(
                                 hand_line,
                                 allow_interruptions=False,
@@ -643,7 +632,13 @@ class OnAirGuard:
                             else "the estimate ran out")
                     if self.stepped_away:
                         self.stepped_away = False
-                        await self._come_back(session)
+                        # NOT awaited: the loop has to keep watching while the
+                        # DJ returns, or it cannot notice the next utterance of
+                        # a banter break — which is what the 2s pad was for.
+                        if getattr(self, "air_log", None):
+                            self.air_log.said("back-from-air line")
+                        self._comeback = asyncio.create_task(
+                            comeback.come_back(self, session))
             first = False
             tick += 1
             await asyncio.sleep(self.PUSH_TICK)

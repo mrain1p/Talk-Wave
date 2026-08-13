@@ -91,6 +91,26 @@ class AirLog:
         except Exception:                                      # noqa: BLE001
             pass
 
+    def said(self, what: str) -> None:
+        """The DJ's own hand-over or return line, stamped when it STARTS.
+
+        Both operator questions are about this gap and neither could be
+        answered without it: "how long from the DJ saying it has to go on air
+        until the first word actually goes out", and "how long after the
+        broadcast stops before the DJ is back with me". The hold rows bracket
+        the machinery; these two bracket what the CALLER experiences.
+        """
+        try:
+            self._add("dj said", why=what)
+        except Exception:                                      # noqa: BLE001
+            pass
+
+    def note(self, what: str) -> None:
+        try:
+            self._add("note", why=what)
+        except Exception:                                      # noqa: BLE001
+            pass
+
     # -- what the station was doing meanwhile -----------------------------
     def station(self, entry: dict) -> None:
         """One push from the station, as the guard saw it.
