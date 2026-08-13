@@ -1480,10 +1480,22 @@
     djOnAir = on;
     paintAgentState();
     document.querySelector('.card').classList.toggle('onair', on);
+    // The caller is on hold, and the controls have to say so — the card used
+    // to announce the DJ had stepped away while leaving the bar and the Mute
+    // button working exactly as before, so a caller kept talking to nobody.
+    const bar = $('pttBtn');
+    if (bar) bar.disabled = on;
+    if (muteBtn) muteBtn.disabled = on;
     if (on) {
+      // Shut whatever is open. A caller mid-press when the broadcast takes
+      // the mic must not stay open behind the hold.
+      if (pttOpen) setMicOpen(false);
       playSound('hold');
       addSystemLine('📻', 'Back on the broadcast',
-        'The DJ has the station mic for a moment — your call picks up straight after.');
+        'The DJ has the station mic for a moment — you’re on hold, and '
+        + 'your call picks up straight after.');
+    } else {
+      addSystemLine('🎙', 'Back with you', 'The line is yours again.');
     }
   }
 
@@ -2845,6 +2857,17 @@
   let micOp = Promise.resolve();
 
   function setMicOpen(open) {
+    // The broadcast has the microphone, so the caller does not. Until now the
+    // card said the DJ had stepped away and then let the caller carry on
+    // talking into a line nobody was listening to — everything said during
+    // the hold was transcribed against a DJ that could not answer, and the
+    // caller only found out when the reply ignored it (operator-reported).
+    // Refused HERE rather than at each of the three call sites because this
+    // is the single queue every mic switch already goes through.
+    if (open && djOnAir) {
+      setStatus('The DJ is on the station mic — hold on', 'info');
+      return micOp;
+    }
     const wasOpen = pttOpen;
     pttOpen = !!open;
     paintPtt();

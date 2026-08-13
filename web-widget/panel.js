@@ -529,6 +529,13 @@
     const btn = $('pauseBtn'), note = $('pausedNote'), sub = $('pausedSub');
     if (btn) {
       btn.classList.toggle('paused', paused);
+      // ALSO `on`, the same class the three line buttons beneath it use.
+      // Without it the line card was the only switch on the dashboard that
+      // did not dim when it was off — it said "Paused" in words and stayed
+      // at full strength, so the one control that stops every caller looked
+      // identical whichever way it was set (operator-reported).
+      btn.classList.toggle('on', !paused);
+      btn.setAttribute('aria-pressed', paused ? 'false' : 'true');
       btn.title = paused ? 'Press to take calls again'
                          : 'Press to pause all calls immediately';
     }
