@@ -690,6 +690,21 @@
     return fillWords(w[key] || fallback);
   }
 
+  // Who the transcript says is talking. "DJ" is the generic default; with
+  // transcript_dj_name on it is the persona's own name, which reads better on
+  // a station whose listeners know the roster and follows the name as the
+  // show changes (operator's ask, 2026-08-12). Falls back to DJ whenever the
+  // name is not known yet — a label that flickers to blank mid-call would be
+  // worse than the generic one.
+  function djLabel() {
+    const l = shown || live || {};
+    if (!l.transcriptDjName) return 'DJ';
+    // Same field the card's headline uses (`name`) — one source, so the
+    // transcript can never disagree with the name printed above it.
+    const name = String(l.name || '').trim();
+    return name || 'DJ';
+  }
+
   // What a door shows — its word, its icon, or both — read per feature from
   // /live (callShowWords / callShowEmoji, and the vm/chat pairs). The words
   // themselves are still the wording overrides; this only decides whether an
@@ -986,6 +1001,11 @@
     }
     callBtn.hidden = false;
     callBtn.dataset.vm = '';
+    // The text line's send button is written in the markup rather than set
+    // per state, so its override lands here — once /live has been read, on
+    // every repaint, which is where every other word on the card is decided.
+    const sendBtn = $('chatSendBtn');
+    if (sendBtn) sendBtn.textContent = word('send', 'Send');
     if (lineClosedNow) {
       // A closed line is a deliberate state, not a fault: one disabled
       // button, and the status line under the card says the booth is not
@@ -1672,7 +1692,7 @@
       node = document.createElement('p');
       node.className = 'cap ' + who;
       node.innerHTML = '<span class="who"></span><span class="said"></span>';
-      node.querySelector('.who').textContent = who === 'dj' ? 'DJ' : 'You';
+      node.querySelector('.who').textContent = who === 'dj' ? djLabel() : 'You';
       capBox.appendChild(node);
       capNodes.set(id, node);
       // Only a NEW turn rises in. An interim transcript rewrites the same
@@ -1924,7 +1944,7 @@
     setAgentState('initializing');
     startTimer();
     notifyHeight();
-    setStatus('Connecting…', 'connecting');
+    setStatus(word('connecting', 'Connecting…'), 'connecting');
     $('endedBar').hidden = true;
     $('rateBar').hidden = true;      // last call's verdict, not this one's
     capNodes.clear();
@@ -2166,7 +2186,7 @@
       // green On the line at the DJ's first word.
       document.querySelector('.card').classList.add('oncall');
       if (!rafId) tick();
-      setStatus('Connected — waiting for the DJ…', 'connected');
+      setStatus(word('waiting', 'Connected — waiting for the DJ…'), 'connected');
     } catch (err) {
       console.error(err);
       stopRinging();
@@ -2361,7 +2381,7 @@
     // showVmReceipt) and this is the fallback for a message that left no
     // transcribable words.
     setStatus(wasVm ? 'Message received — the DJ will review your request shortly.'
-                    : 'Call ended');
+                    : word('ended', 'Call ended'));
     // The card's idle truth — including the second button — comes back from
     // the next /live read rather than being reconstructed by hand here. The
     // burst catches a takeover this call may have set in motion, which airs at
@@ -2648,7 +2668,7 @@
         // next open sends a stale id the server can only refuse (0.10.57).
         localStorage.removeItem('callinChat');
         // Fold the card back to idle; the transcript stays in the drawer.
-        resetChatUI('Chat ended');
+        resetChatUI(word('ended', 'Chat ended'));
       }
     };
     chatWs.onclose = () => {
@@ -2674,7 +2694,7 @@
       try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
     }
     localStorage.removeItem('callinChat');
-    resetChatUI('Chat ended');
+    resetChatUI(word('ended', 'Chat ended'));
     // After the reset, which folds the card to idle — the bar sits under the
     // idle card exactly as it does after a call. Only a chat the caller
     // actually typed in: an untouched chat writes no record to rate.

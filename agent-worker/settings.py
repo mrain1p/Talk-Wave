@@ -499,6 +499,16 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "word_ptt":              (None, ""),
     "word_closed":           (None, ""),
     "word_message_only":     (None, ""),
+    # The four the card said in its own words with no way to change them
+    # (operator, 2026-08-12): the text line's send button, the line-dropped
+    # note, the connecting status, and what the transcript area says while
+    # the caller waits for the DJ's first word.
+    "word_send":             (None, ""),
+    "word_ended":            (None, ""),
+    "word_connecting":       (None, ""),
+    "word_waiting":          (None, ""),
+    # Whether the transcript labels the DJ's lines "DJ" or with their name.
+    "transcript_dj_name":    (None, False),
     "call_button_label":     (None, ""),
 
     # After the line drops, ask the caller whether that went well. Two
@@ -1228,6 +1238,25 @@ SCHEMA: dict[str, dict] = {
         placeholder="default: Line closed"),
     "word_message_only": dict(group="wording", kind="text", label="Voicemail-only line",
         placeholder="default: Message only"),
+    "word_send": dict(group="wording", kind="text", label="Send (text line)",
+        placeholder="default: Send"),
+    "word_connecting": dict(group="wording", kind="text", label="Connecting",
+        placeholder="default: Connecting…"),
+    "word_waiting": dict(group="wording", kind="text", label="Waiting for the DJ",
+        placeholder="default: Connected — waiting for the DJ…",
+        help="Shown in the transcript area between the line connecting and "
+             "the DJ's first word."),
+    "word_ended": dict(group="wording", kind="text", label="Conversation ended",
+        placeholder="default: Call ended",
+        help="Said when the line drops and when a text chat closes. The "
+             "voicemail receipt keeps its own wording."),
+    "transcript_dj_name": dict(group="wording", kind="check",
+        label="Name the DJ in the transcript",
+        help="The transcript labels each line with who said it. On, the DJ's "
+             "lines carry their name (ASH) instead of the generic DJ — which "
+             "reads better on a station whose listeners know the roster, and "
+             "follows the name as the show changes. The caller's own lines "
+             "stay YOU either way."),
     "call_button_mode": dict(group="wording", kind="select", label="Call button",
         help="“Call the DJ” is the honest label when the card shows whoever "
              "happens to be on air. The DJ's name reads better on a station "
