@@ -1533,6 +1533,13 @@
     // microphone back. The card keeps saying the DJ is on air, because it is.
     clearTimeout(holdTimer);
     if (on) {
+      // Remember whether they were mid-sentence, so the hold can hand the
+      // microphone back in the state it took it. Proven necessary by a real
+      // call (2026-08-13): the caller was live, the station spoke, we shut
+      // the mic — and when the air cleared 20s later the bar went back to
+      // "tap to talk" and the mic stayed SHUT. The DJ spent the rest of the
+      // call telling them to check their microphone and then hung up.
+      wasLiveBeforeHold = pttOpen;
       holdTimer = setTimeout(() => {
         if (!djOnAir) return;
         holdExpired = true;
@@ -1545,6 +1552,12 @@
       }, MAX_HOLD_MS);
     } else {
       holdExpired = false;
+      // The air is clear. Give the microphone back exactly as it was — a
+      // caller who was talking when the broadcast cut in is still in the
+      // middle of a sentence, and making them notice an unlit bar and tap it
+      // again is how a call dies quietly.
+      if (wasLiveBeforeHold && room && !pttOpen) setMicOpen(true);
+      wasLiveBeforeHold = false;
     }
     if (on) {
       // Shut whatever is open. A caller mid-press when the broadcast takes
@@ -2912,7 +2925,7 @@
   // shorter than the worker's own 90s unconfirmed-action ceiling: this is the
   // caller's escape hatch, not a mirror of the server's patience.
   const MAX_HOLD_MS = 20000;
-  let holdTimer = 0, holdExpired = false;
+  let holdTimer = 0, holdExpired = false, wasLiveBeforeHold = false;
 
   // Every mic switch goes through ONE queue, always driving toward the
   // LATEST intent. Firing setMicrophoneEnabled calls concurrently — a tap
