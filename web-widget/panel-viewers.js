@@ -261,6 +261,45 @@
       // arrows' vocabulary: direction, no cartoon.
       (c.rating === 'down' ? '\u25bc ' : c.rating === 'up' ? '\u25b2 ' : '')
       + v.note;
+    // Delete THIS one. Clear-all was the only way to remove a transcript,
+    // which after a run of test calls meant throwing away the evidence you
+    // were about to read. Lives on the summary so it is reachable without
+    // opening the record, and stops the click from toggling the <details>.
+    if (c.id) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'cdel';
+      del.textContent = '×';
+      del.title = 'Delete this record';
+      del.setAttribute('aria-label', 'Delete this call record');
+      del.onclick = async (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        if (del.dataset.armed !== '1') {
+          // Two presses, no modal: a transcript is a caller's words and one
+          // stray click should not take them, but a confirm() over a list
+          // you are working through is its own annoyance.
+          del.dataset.armed = '1';
+          del.textContent = 'Delete?';
+          del.classList.add('armed');
+          setTimeout(() => {
+            if (!del.isConnected || del.dataset.armed !== '1') return;
+            del.dataset.armed = ''; del.textContent = '×';
+            del.classList.remove('armed');
+          }, 4000);
+          return;
+        }
+        del.disabled = true;
+        try {
+          const r = await afetch('/calls/' + encodeURIComponent(c.id),
+                                 { method: 'DELETE' });
+          if (!r.ok) throw new Error('refused');
+          el.remove();
+        } catch (e) {
+          del.disabled = false; del.textContent = 'failed';
+        }
+      };
+      sum.appendChild(del);
+    }
     el.appendChild(sum);
     el.appendChild(callBody(c));
     return el;

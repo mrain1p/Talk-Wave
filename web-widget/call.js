@@ -62,7 +62,15 @@
     // at the top, or a line with nothing gated, never sees it. The
     // `!== false` form matches the other corner controls — show_signin
     // defaults off, so the server always sends an explicit true/false here.
-    set('signinBtn', c.signin !== false && !!(d && d.signinAvailable));
+    // …and never NEXT TO the sign-out button. A caller who has already used
+    // a code was offered both at once, which reads as two doors when there is
+    // only one: you cannot climb from guest to admin without dropping the
+    // guest code first anyway, because one field holds one code. So while a
+    // code is stored this is hidden and Forget the code stands alone; forget
+    // it and Sign in comes back, ready for the admin password (operator's
+    // ask, 2026-08-13).
+    set('signinBtn', c.signin !== false && !!(d && d.signinAvailable)
+        && !callKey());
     // First-run: the card itself asks for the admin password while none
     // exists (needsSetup rides /live per-request). Never in an embed — a
     // host page's visitors are not the operator.
@@ -1247,6 +1255,11 @@
     // signinMode keeps the gate open when the caller opened it themselves to
     // climb a tier — otherwise a poll's repaint would snap it shut mid-type.
     if (box) box.hidden = !signinMode && !(live && live.guestRequired && !callKey());
+    // The close button belongs to a VOLUNTARY sign-in only. When the line
+    // itself demands a code there is nothing behind the gate to go back to,
+    // and an X that reopens on the next poll is worse than no X at all.
+    const x = $('guestClose');
+    if (x) x.hidden = !signinMode;
     notifyHeight();
   }
 
@@ -1282,9 +1295,29 @@
     signinMode = true;
     const box = $('guestGate'), input = $('guestPw'), msg = $('guestMsg');
     if (box) box.hidden = false;
-    if (msg) msg.textContent = 'Enter the guest code or admin password to '
-      + 'unlock more of what you can ask for.';
+    // "The booth line is private" is the LOCKED-OUT wording and it read as a
+    // contradiction to someone already mid-conversation with the booth. When
+    // this is a voluntary sign-in, say what it is.
+    const label = $('guestLabel');
+    if (label) label.textContent = 'Sign in for more of what you can ask for.';
+    if (msg) msg.textContent = 'Enter the guest code or admin password.';
     if (input) { input.placeholder = 'Guest code or admin password'; input.focus(); }
+    // Nothing to close back to when the line itself demands a code — see
+    // closeSignin.
+    const x = $('guestClose');
+    if (x) x.hidden = false;
+    notifyHeight();
+  }
+
+  // Only ever closes a VOLUNTARY sign-in. A gate the line is demanding (no
+  // code, private line) has nothing behind it to go back to, so it has no
+  // close button at all — refreshLive puts it straight back up.
+  function closeSignin() {
+    signinMode = false;
+    const box = $('guestGate'), input = $('guestPw'), msg = $('guestMsg');
+    if (input) input.value = '';
+    if (msg) msg.textContent = '';
+    if (box) box.hidden = true;
     notifyHeight();
   }
 
@@ -1318,6 +1351,7 @@
   function gateSubmit() { return signinMode ? submitSignin() : submitGuestCode(); }
 
   if ($('signinBtn')) $('signinBtn').onclick = openSignin;
+  if ($('guestClose')) $('guestClose').onclick = closeSignin;
 
   if ($('guestBtn')) {
     $('guestBtn').onclick = gateSubmit;

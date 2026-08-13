@@ -147,7 +147,11 @@
       <p id="status"><span class="dot" id="dot"></span><span id="statusText"></span></p>
 
       <div class="guestgate" id="guestGate" hidden>
-        <span class="glabel">The booth line is private.</span>
+        <!-- A way back out. Opening this mid-chat used to be a one-way door:
+             the only exit was a reload, which ends the conversation. -->
+        <button type="button" id="guestClose" class="gclose"
+                aria-label="Close">&times;</button>
+        <span class="glabel" id="guestLabel">The booth line is private.</span>
         <span class="grow">
           <input type="password" id="guestPw" placeholder="access code" autocomplete="off" />
           <button id="guestBtn">Unlock</button>

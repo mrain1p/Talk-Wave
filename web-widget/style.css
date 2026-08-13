@@ -824,6 +824,29 @@
     display: flex; flex-direction: column; justify-content: center; gap: 7px;
   }
   .guestgate[hidden] { display: none; }
+  /* The gate sits absolutely OVER the line box, and until now it was
+     transparent — so opening it during or after a chat drew the password
+     prompt straight through the transcript and the two were unreadable
+     together (operator screenshots, 2026-08-13). It is a door, so it gets a
+     door's own surface. */
+  .guestgate:not([hidden]) {
+    background: var(--panel); z-index: 4;
+    inset: 0; padding: 9px 12px;
+  }
+  /* …and the conversation underneath goes quiet rather than showing through.
+     Not `display:none`: the transcript keeps its scroll position, so closing
+     the gate puts the caller back exactly where they were reading. */
+  .linebox:has(.guestgate:not([hidden])) .captions,
+  .linebox:has(.guestgate:not([hidden])) .ticker { visibility: hidden; }
+  /* Leaving without unlocking. There was no way out at all: open the gate by
+     accident mid-chat and the only exit was reloading the page, which ends
+     the chat. */
+  .guestgate .gclose {
+    position: absolute; top: 4px; right: 6px;
+    border: 0; background: transparent; color: var(--sage-dim);
+    font: 15px/1 var(--font-body); padding: 4px 6px; cursor: pointer;
+  }
+  .guestgate .gclose:hover { color: var(--alpenglow); }
   .guestgate .glabel { display: block; color: var(--sage); font-size: 11.5px; }
   .guestgate .grow { display: flex; gap: 9px; }
   .linebox:has(.guestgate:not([hidden])) #status { display: none; }
@@ -1049,9 +1072,18 @@
     height: var(--lines-h); flex: 1 1 auto;
   }
   /* Reading back a finished call is a deliberate click by somebody who wants
-     the room, and by then there is no call for the resize to interrupt. This
-     is the ONLY thing allowed to change this height. */
+     the room, and by then there is no call for the resize to interrupt. */
   .linebox.open { height: 200px; }
+  /* …and TEXT MODE is the other one. Two lines is right for a spoken turn,
+     which is gone the moment it is said; a typed conversation is something
+     you read back as it goes, and at two lines it looked barren with the
+     rest of the card's space unused beneath it (operator screenshot). The
+     resize hazard the fixed height exists to prevent does not apply: this
+     changes ONCE, when the caller opens the text line, not per message —
+     and by then there is no spoken call for a moving host page to interrupt.
+     Still a fixed height, so the transcript scrolls inside it as before. */
+  .card:has(.chatrow:not([hidden])) .linebox { height: 190px; }
+  .card:has(.chatrow:not([hidden])) .linebox.open { height: 240px; }
   .captions {
     display: none; height: 100%; overflow-y: auto; overflow-x: hidden;
     font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
@@ -2475,9 +2507,28 @@
        turn count, a fixed track cut chips off mid-word ("search…" and a bare
        clipped border, operator screenshot) while the note column beside it
        sat empty on every passing call. */
-    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr) 22px;
     gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
+  }
+  /* Delete this record. Invisible until the row is hovered — forty rows each
+     showing a delete affordance is a list that looks like a demolition site,
+     and the button is not what you came to the list for. */
+  .callrow > summary .cdel {
+    justify-self: end; align-self: center;
+    border: 1px solid transparent; background: transparent;
+    color: var(--dim); font: inherit; line-height: 1;
+    padding: 2px 5px; border-radius: 4px; cursor: pointer;
+    opacity: 0; transition: opacity .12s, color .12s, border-color .12s;
+  }
+  .callrow > summary:hover .cdel, .callrow > summary .cdel:focus-visible,
+  .callrow > summary .cdel.armed { opacity: 1; }
+  .callrow > summary .cdel:hover { color: var(--accent); border-color: var(--accent); }
+  /* Armed: the second press is the one that deletes, so it has to look like a
+     different button from the one that was just pressed. */
+  .callrow > summary .cdel.armed {
+    color: var(--accent); border-color: var(--accent);
+    font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
   }
   .callrow > summary::-webkit-details-marker { display: none; }
   .callrow > summary:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
@@ -3475,13 +3526,49 @@
   }
   body.panelpage .actbar.bad { background: var(--coral); }
   body.panelpage .actaxis { display: flex; margin-top: 4px; }
+  /* overflow VISIBLE, not hidden. Each cell is one bar wide — a few pixels
+     at thirty buckets — so "Aug 5" was clipped to "A" or to nothing at all,
+     which is the operator's "dates are being cut off". Only about one cell
+     in ten carries text (tickEvery), so letting those spill over their empty
+     neighbours costs nothing and is the whole reason the thinning exists. */
   body.panelpage .actaxis span {
-    flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center;
+    flex: 1 1 0; min-width: 0; overflow: visible; text-align: center;
     font: 700 8px/1.2 var(--font-mono); letter-spacing: .06em;
     color: var(--sage-dim); white-space: nowrap;
   }
   body.panelpage .actaxis span:first-child { text-align: left; }
   body.panelpage .actaxis span:last-child { text-align: right; }
+  /* The value on the bar. "20 doors last 7 days" told you the total and left
+     every individual bar unreadable — you could see the shape and not one
+     number in it. Printed above the bar when the buckets are few enough to
+     have room; the title attribute carries it at every width. */
+  body.panelpage .actbars { position: relative; }
+  body.panelpage .actbar { position: relative; }
+  body.panelpage .actbar::after {
+    content: attr(data-v); position: absolute; left: 50%; bottom: 100%;
+    transform: translateX(-50%); margin-bottom: 2px;
+    font: 700 8px/1 var(--font-mono); color: var(--sage);
+    pointer-events: none;
+  }
+  /* Too many bars to letter them: the tooltip still answers, and a smear of
+     overlapping numbers answers nothing. */
+  body.panelpage .actbars.dense .actbar::after { content: none; }
+  /* The listener curve needs a scale. It had none: a shape, and one number
+     in the caption. The floor and the peak are printed against the plot, and
+     every sampled point carries its own <title>. */
+  body.panelpage .lisplot { position: relative; }
+  body.panelpage .lisdots {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    overflow: visible;
+  }
+  body.panelpage .lisdot { fill: var(--coral); }
+  body.panelpage .lismax, body.panelpage .lismin {
+    position: absolute; right: 0; padding-left: 4px;
+    font: 700 8px/1 var(--font-mono); color: var(--sage-dim);
+    background: var(--panel); pointer-events: none;
+  }
+  body.panelpage .lismax { top: 0; }
+  body.panelpage .lismin { bottom: 0; }
   /* The mix: a flat 100% band — the ruled-newspaper answer to a donut. */
   body.panelpage .mixband {
     display: flex; height: 18px; border: 1px solid var(--edge);
@@ -3634,6 +3721,25 @@
     margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--edge);
     font: 700 11px/1 var(--font-mono); letter-spacing: .08em; color: var(--sage);
     text-transform: uppercase;
+  }
+  /* The build number is a link to its own release notes now. It stays a
+     footer line — same weight, same colour — and only announces itself on
+     hover; a footer that shouts is a footer nobody reads. */
+  body.panelpage .panelfoot a {
+    color: inherit; text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  body.panelpage .panelfoot a:hover {
+    color: var(--coral); border-bottom-color: var(--coral);
+  }
+  /* …except this one, which is the whole point of looking: the box is behind
+     the current release. Coral is the panel's "live/attention" colour. */
+  body.panelpage .panelfoot a.vnew {
+    color: var(--coral); border: 1px solid var(--coral);
+    padding: 2px 6px; margin-left: 8px;
+  }
+  body.panelpage .panelfoot a.vnew:hover {
+    background: color-mix(in srgb, var(--coral) 14%, transparent);
   }
 
   /* --- redesign polish pass ------------------------------------------------ */
