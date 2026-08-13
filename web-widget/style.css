@@ -1780,6 +1780,9 @@
   }
   .ctrlcard.kill.paused .ck, .ctrlcard.kill.paused .cn { color: var(--dim); }
   .ctrlcard.kill.paused .cv { color: var(--accent); }
+  /* A press that did not save says so on the card. Anything else puts the
+     reason at the bottom of the page while the operator is at the top. */
+  .ctrlcard .cn.failed { color: var(--accent); font-weight: 700; }
   /* The three lines wear smaller switches than the master — same vocabulary,
      lower rank. No padding-right: since 0.10.54 the switch sits in the grid's
      own right column, not absolutely over reserved padding. */

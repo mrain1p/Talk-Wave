@@ -540,7 +540,9 @@
                          : 'Press to pause all calls immediately';
     }
     if (note) note.textContent = paused ? 'Paused' : 'Open';
-    if (sub) {
+    // …unless it is currently showing why the last press did not save. That
+    // message has six seconds and paintDash runs several times inside them.
+    if (sub && !sub.classList.contains('failed')) {
       sub.textContent = paused
         ? 'callers are turned away — press to reopen'
         : 'press to pause every call at once';
@@ -792,6 +794,156 @@
                    label: 'Reach the station',
                    note: 'nothing answers at the SUB/WAVE station API address' });
     }
+    return items.concat(runningNeeds());
+  }
+
+  // ---- the other half: a WORKING install that has drifted -----------------
+  // Everything above answers "can this deployment place a call at all", which
+  // is a first-run question — so once you had set it up the box was blank for
+  // good, and the operator said so: "kind of blank if you've done what you're
+  // supposed to". These only appear on a deployment that already works, and
+  // every one is something that has actually gone wrong here and gone
+  // unnoticed because nothing on the page said it.
+  function runningNeeds() {
+    const items = [];
+    const num = (k) => {
+      const el = $(k);
+      const v = el && el.value !== '' ? el.value : resolved[k];
+      const n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    };
+    const on = (k) => {
+      const el = $(k);
+      return el ? (el.type === 'checkbox' ? el.checked : !!el.value)
+                : !!resolved[k];
+    };
+
+    // The duck with a close and no open. A stored 0 beats the default and
+    // nothing anywhere said so — the operator spent an evening on ducking
+    // that "felt off in general" with the lead silently disabled.
+    if (on('avoid_on_air_overlap') && num('on_air_handover_secs') === 0) {
+      items.push({ page: 'safety', group: 'onair',
+                   label: 'Set the hand-over lead',
+                   note: 'overlap protection is on but the lead is 0 — the DJ '
+                     + 'is cut off the instant the station speaks, with no '
+                     + 'warning to the caller. 5 is the default' });
+    }
+
+    // Switched on, credentialed for, and quietly impossible.
+    const needsStation = ['allow_exact_queue', 'allow_cancel_queue',
+                          'allow_sound_search', 'allow_announcements',
+                          'allow_skills', 'allow_skip_track',
+                          'allow_dj_segment', 'allow_takeover',
+                          'allow_unfavorite'];
+    const stationCreds = !!(secrets.subwave_admin_pass
+                            && secrets.subwave_admin_pass.set);
+    const armed = needsStation.filter((k) => {
+      const v = ($(k) && $(k).value) || resolved[k];
+      return v && v !== 'off';
+    });
+    if (armed.length && !stationCreds) {
+      items.push({ page: 'safety', group: 'security',
+                   label: 'Add the station admin credentials',
+                   note: armed.length + ' caller permission'
+                     + (armed.length === 1 ? ' is' : 's are')
+                     + ' switched on that cannot work without them — the DJ '
+                     + 'reaches for the tool and nothing happens' });
+    }
+
+    // The line is shut. It is on the switch, but the switch is a different
+    // part of the page from the one you read when you wonder why it is quiet.
+    if (on('calls_paused')) {
+      items.push({ page: 'safety', group: 'usage',
+                   label: 'The line is paused',
+                   note: 'every caller is being turned away — unpause it on '
+                     + 'the dashboard when you are ready' });
+    }
+
+    // Nothing to diagnose the next bad call with.
+    if (!on('record_calls')) {
+      items.push({ page: 'dj', group: 'record',
+                   label: 'Transcripts are off',
+                   note: 'nothing is written down, so a call that goes wrong '
+                     + 'leaves no record to read back' });
+    }
+
+    return items.concat(callHealthNeeds());
+  }
+
+  // What the last few calls actually did. The records already carried all of
+  // this; nothing was reading it back as a health signal.
+  let recentCalls = null;
+
+  async function loadRecentCalls() {
+    // One read on load, for the health checks only — the call VIEWER still
+    // fetches its own copy on demand. A dashboard that cannot see the last
+    // ten calls cannot tell you the last ten calls went badly, which is the
+    // most useful thing it could say.
+    try {
+      const d = await afetch('/calls').then((r) => r.json());
+      recentCalls = Array.isArray(d.calls) ? d.calls
+                    : Array.isArray(d) ? d : [];
+    } catch (e) {
+      recentCalls = [];    // never let this break the dashboard
+    }
+    paintNeeds();
+  }
+
+  function callHealthNeeds() {
+    const items = [];
+    if (newerRelease) {
+      items.push({ page: 'config', group: 'station',
+                   label: 'Version ' + newerRelease + ' is out',
+                   note: 'this box is on ' + (panelVersion || '?')
+                     + ' — pull the image and restart both containers' });
+    }
+    if (!recentCalls || !recentCalls.length) return items;
+    const recent = recentCalls.slice(0, 10);
+
+    // The two processes ship as one image and run as two containers, so a
+    // redeploy that recreates one and not the other leaves them skewed —
+    // invisible until now, because only the token server reported a version.
+    const workerV = (recent.find((c) => c.appVersion) || {}).appVersion;
+    if (workerV && panelVersion && workerV !== panelVersion) {
+      items.push({ page: 'config', group: 'station',
+                   label: 'The two containers disagree',
+                   note: 'this panel is ' + panelVersion + ' and the last call '
+                     + 'was answered by a worker on ' + workerV
+                     + ' — recreate both, they ship as one image' });
+    }
+
+    const hasProblem = (c, needle) => (c.problems || []).some(
+      (p) => String(p.what || '').toLowerCase().indexOf(needle) !== -1);
+
+    const silent = recent.filter((c) => hasProblem(c, 'no audio was ever'));
+    if (silent.length >= 2) {
+      items.push({ page: 'calls', group: 'onair',
+                   label: silent.length + ' of the last ' + recent.length
+                     + ' calls heard nothing',
+                   note: 'the caller\u2019s audio never arrived — off-LAN media, '
+                     + 'a blocked microphone, or a silent caller. Read the '
+                     + 'transcripts' });
+    }
+
+    // The promise guard writes this line when the DJ narrates an action and
+    // calls no tool. Once is the guard doing its job; a run of them is the
+    // model routing badly, and the line says so itself.
+    const narrated = recent.filter((c) => hasProblem(c, 'ran no tool'));
+    if (narrated.length >= 3) {
+      items.push({ page: 'config', group: 'brains',
+                   label: 'The DJ keeps promising without acting',
+                   note: narrated.length + ' of the last ' + recent.length
+                     + ' calls needed a nudge to make a tool call — try a '
+                     + 'model with better tool routing' });
+    }
+
+    const typed = recent.filter((c) => hasProblem(c, 'typed a tool call'));
+    if (typed.length) {
+      items.push({ page: 'config', group: 'brains',
+                   label: 'The model is typing tool calls',
+                   note: 'it wrote the call out as text instead of making it, '
+                     + 'so nothing ran — a model-side failure' });
+    }
     return items;
   }
 
@@ -975,6 +1127,17 @@
     } catch (e) {
       box.checked = before;
       $('saveMsg').textContent = 'Could not change the line — ' + e.message;
+      // …and ON THE CARD, which is where the operator is looking. saveMsg
+      // lives at the bottom of the page beside Save; the dashboard is at the
+      // top. So a refused pause reverted the switch and explained itself
+      // three screens away, which reads as "I clicked it and nothing
+      // happened" — reported as "you are not able to untick the line box".
+      const sub = $('pausedSub');
+      if (sub) {
+        sub.textContent = 'that did not save — ' + (e.message || 'refused');
+        sub.classList.add('failed');
+        setTimeout(() => { sub.classList.remove('failed'); paintDash(); }, 6000);
+      }
     } finally {
       btn.disabled = false;
       paintDash();
@@ -1863,6 +2026,10 @@
     if ($('footHost')) $('footHost').textContent = location.host;
     fetch('/health').then((r) => r.json()).then((h) => paintVersion(h.version))
       .catch(() => {});
+    // The health half of Needs attention. Fired here rather than awaited:
+    // the dashboard must paint at its normal speed and gain these rows a
+    // moment later, not wait on a disk read of forty transcripts.
+    loadRecentCalls();
   }
 
   // The build number is the thing every bug report is anchored to, so it may
@@ -1874,11 +2041,16 @@
   // behind a proxy that blocks github.com, still gets their version, which is
   // the part that was there before.
   const REPO_URL = 'https://github.com/mrain1p/Talk-Wave';
+  // Kept for the container-skew check, which is the only place the two
+  // halves' versions are ever compared.
+  let panelVersion = '', newerRelease = '';
 
   function paintVersion(version) {
     const el = $('versionLine');
     if (!el) return;
     const v = version || '?';
+    panelVersion = version || '';
+    paintNeeds();          // skew is only knowable once this is in
     el.textContent = '';
     const link = document.createElement('a');
     link.href = REPO_URL + '/releases/tag/v' + v;
@@ -1903,6 +2075,8 @@
         flag.title = 'A newer release is out — pull the image and restart';
         el.appendChild(document.createTextNode(' '));
         el.appendChild(flag);
+        newerRelease = tag;
+        paintNeeds();
       })
       .catch(() => {});
   }
