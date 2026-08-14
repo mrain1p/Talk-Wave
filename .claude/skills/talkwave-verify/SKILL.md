@@ -66,6 +66,19 @@ are often already taken by another session.
 - **The preview sandbox and the Bash tool cannot reach each other's ports.** A fake station
   started from Bash is invisible to a preview-started server, and Bash cannot fetch :8100 at
   all. Both sides must run under the same launcher or they may as well be on different machines.
+- **The preview serves the file on disk; the BROWSER may still hold the old one.** The stub
+  sends no cache headers, so an edited `style.css` can be served fresh and rendered stale — the
+  page picks up new markup and keeps the previous stylesheet. Symptom: a rule you can `grep` in
+  the file is absent from `document.styleSheets`. Navigate with a cache-buster
+  (`location.replace('/?cb=' + Date.now())`) rather than trusting a reload, and confirm by
+  fetching with `{cache: 'no-store'}` and checking the rule is in the text.
+- **A hidden pane freezes CSS TRANSITIONS, so computed colours lie.** With no compositing there
+  are no frames, so any property mid-transition reports its OLD value indefinitely. On this card
+  that is exactly `background-color`, `border-color` and `color` — the three the card
+  transitions — so a palette check reads as "every skin is identical" while radius, fonts and
+  `text-transform` (no transition) update correctly. Inject
+  `* { transition: none !important }` before measuring colour, and force a reflow
+  (`el.offsetHeight`) after flipping an attribute.
 - **The Browser pane is often hidden.** `computer` screenshots fail, `requestAnimationFrame`
   never fires (anything awaiting a frame hangs for 30s), and attribute-driven CSS may not
   recalc. To verify CSS, enumerate `document.styleSheets` rules instead of measuring computed
