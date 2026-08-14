@@ -3,6 +3,34 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.139
+
+The DJ stops telling you a thing is done when nothing was done, and the card gets sixteen experimental looks.
+
+### What the caller hears
+
+- **If you asked to change the DJ and a different one came on, that was this.** Reported twice: "I asked it to switch the DJ to Duke and it put on Cliff." It looked like a name-matching bug and was not — Duke Sterling resolves to his show correctly. What actually happened is on the record: the caller asked to change the DJ, the model pinned Cliff's show, the caller followed up with "to duke", and the DJ answered "I've got that queued up for you, Duke's show is on its way" **with no tool call at all**. Cliff stayed on air and nothing anywhere disagreed with the DJ.
+- **A finished-tense claim now has to be true.** The guard that catches "let me have a dig" and then nothing has watched only the future tense since it was added. A promise with no receipt is a dead line; a claim with no receipt is a lie the caller cannot catch, and on the on-air tools it is a lie about what the whole station is doing. The DJ now gets one more turn to make the claim true, or to say plainly that it did not go through.
+- **It fires on the words that are actually ours, not on conversation.** The pattern needs a completion marker *and* a station action in one sentence, because either half alone is ordinary talk. Measured against all 155 DJ lines in the live archive: three match, two of them had genuinely run a tool, and the third is the call above. Nothing else in the corpus fires.
+- **The phone and the text line stop disagreeing about it.** They carried separate copies of that word list and had drifted four phrasings apart, so the same sentence was guarded on the phone and waved through in a chat — and the conversation this was found on was a chat. One copy now, and a test fails if anyone re-copies it.
+
+### What the caller sees
+
+- **Sixteen skins for the card, marked experimental.** Switchboard, rack unit, console strip, shortwave, tape deck, terminal, amber CRT, datastream, vault, arcade, HUD, neon, paper, e-ink, classic Mac and Windows 95. Colour was already named in one place; this does the same for form — corners, borders, textures, type — so a skin is a short list of values rather than a fork of the stylesheet.
+- **Most of them put a picture in the transcript box between calls, and it disappears the moment somebody is on the line.** A platter that turns on the tape deck, a lit dial on the shortwave, a reticle on the HUD, a cursor blinking on the terminal. It sits behind everything in the box and is switched by the card's own mode, so it cannot move the layout and cannot be left on during a call.
+- **Nothing about your card changes unless you pick one.** The default is not one of the sixteen — it is the card as it has always been, and it is deliberately not described in the skins file at all, so there is no second copy of it to drift.
+- **A skin cannot break a call.** It is allowed to change surfaces and nothing else: no widths, no heights, no controls. Measured across all sixteen in a browser — every one renders at 620x544 with a 38px control height, the same as the default.
+
+### What you see in the panel
+
+- **Players → Player settings → Skin.** One choice, applied to your own page and to embeds alike, because an embed wearing a different look from the page it links to reads as two products.
+- **A skin brings its own colours**, so while one is on, the Colours setting and the viewer's light/dark toggle have nothing left to change. That is in the setting's own help rather than left to puzzle over. Your station's palette still outranks a skin, so a card on a station page still follows the show.
+
+### Under the hood
+
+- **Sixteen skins cost one set of tests, not sixteen.** The skins file may declare custom properties and nothing else, and the build fails if it says anything more — which is what puts the fixed card size, the single control height and the height reported to embeds out of a skin's reach by construction. A second test fails if the dropdown and the stylesheet ever disagree about which skins exist.
+- **Three faults the suite could not have found, all caught by opening the page.** A stray comment terminator left mid-edit turned the rest of that comment into live CSS and the parser silently ate the rule beneath it — braces balanced, every test green, and the element simply absent from the browser's stylesheet. In the `background` shorthand a size binds to the last layer only, so three of the platter's four rings were drawn at the size of the whole box. And a centred artefact drew straight through the idle board, with the terminal's cursor blinking inside the word "ARE". There is a test for comment faults now, and it fails on exactly the input that got through.
+
 ## 0.10.137
 
 The card on a phone: the two lines that overlapped are on separate rows, the music and the DJ come out of one speaker, and there is a link out of the card.
