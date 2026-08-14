@@ -65,6 +65,7 @@ from tests.test_widget import (  # noqa: F401
     TestAssetVersioning,
     TestASkinCannotReachPastItsTokens,
     TestWhoYouAreTalkingToDoesNotChangeUnderYou,
+    TestTheDoorsSitWhereTheOperatorPutThem,
     TestEverySkinOfferedActuallyExists,
     TestTheFinderIsNotAUsernameField,
     TestTheCallPageOffersFirstRunSetup,

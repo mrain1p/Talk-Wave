@@ -8,7 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    applySkin, skinForced,
+    applySkin, skinForced, LINK_ICONS,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
@@ -84,7 +84,14 @@
       const ok = c.link !== false && !!link.url;
       if (ok) {
         linkBtn.href = link.url;
-        linkBtn.textContent = link.icon || '📻';
+        // Drawn if we have it, typed if we don't. An emoji is the one thing on
+        // this card no theme and no skin can touch — full colour, rendered by
+        // the OS, in a row of three line-drawn controls in the card's own ink
+        // (operator-reported). A value that is not one of ours is still shown
+        // as text, so a deployment that stored an emoji keeps working.
+        const drawn = LINK_ICONS[String(link.icon || '').trim()];
+        if (drawn) linkBtn.innerHTML = drawn;
+        else linkBtn.textContent = link.icon || '';
         linkBtn.title = link.label || '';
         linkBtn.setAttribute('aria-label', link.label || 'Link');
       }
@@ -1028,6 +1035,20 @@
     if (card) card.dataset.mode = m;
   }
 
+  // Which way round the three doors sit. Written as flex `order` rather than
+  // by moving nodes: the row is a flex container, the buttons are shown and
+  // hidden by other rules that would fight a reparent, and an `order` write is
+  // idempotent — a poll that repeats it costs nothing and moves nothing. Hang
+  // up is not in the list; it takes the whole row on a live call.
+  function applyDoorOrder(order) {
+    const doors = { call: 'callBtn', chat: 'chatBtn', vm: 'vmBtn' };
+    (Array.isArray(order) && order.length ? order : ['call', 'chat', 'vm'])
+      .forEach((name, i) => {
+        const el = $(doors[name]);
+        if (el) el.style.order = String(i);
+      });
+  }
+
   // Is somebody actually mid-conversation on this card — a call, a voicemail
   // or an open text line? Read off the mode the card already keeps rather
   // than a second flag: `room` alone would miss the text line, which is the
@@ -1333,6 +1354,7 @@
         // would restart the idle artefact's animation on every read. A host
         // page that pinned ?skin= has already decided and is left alone.
         if (!skinForced) applySkin(d.skin);
+        applyDoorOrder(d.doorOrder);
         applyConfiguredTheme(d.theme, d.stationTheme);
         setupAskPopup(d.canAsk);
         applyControls(d);

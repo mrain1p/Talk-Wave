@@ -134,6 +134,7 @@
     radial-gradient(circle 15px at 50% 50%, rgba(217,112,74,.18) 96%, transparent 97%),
     radial-gradient(circle 33px at 50% 50%, transparent 95%, rgba(236,231,221,.28) 96%);
   --skin-art-size: 74px 74px;
+  --skin-art-pos: center;   /* it TURNS, so it has to turn about its own middle */
   --skin-art-anim: skinspin 9s linear infinite;
 }
 

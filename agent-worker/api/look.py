@@ -236,6 +236,11 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # skin is the operator's brand decision, and an embed wearing a
         # different one from the page it links to reads as two products.
         "skin": str(cfg.get("widget_skin") or "default"),
+        # The doors' left-to-right order, cleaned here rather than in the
+        # widget: an unknown id, a duplicate or a missing one would each be a
+        # different kind of wrong on the card, and the card is the last place
+        # that should be deciding what a bad setting means.
+        "doorOrder": door_order(cfg),
         "controls": corner_controls(cfg),
         "embedControls": corner_controls(cfg, embed=True),
         # One answer for both surfaces; which of them OFFERS it is in the two
@@ -309,3 +314,29 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # An embed sits flush by default; this is the opt-back-in outline.
         "embedOutline": bool(cfg.get("embed_card_outline")),
     }
+
+
+# The three doors, in the order the markup has always had them. Hang up is not
+# one: it replaces the whole row on a live call rather than sharing it.
+DOORS = ("call", "chat", "vm")
+
+
+def door_order(cfg: dict) -> list[str]:
+    """The doors left to right, always all three and always exactly once.
+
+    A stored order is a comma list an operator dragged into place, so it can be
+    short (a door added after they last saved), long, misspelled, or carry the
+    same id twice. Rather than trusting it, this keeps the ones it recognises in
+    the order given and appends whatever it did not mention — so a NEW door
+    always appears rather than silently vanishing from every card until somebody
+    opens the panel and saves.
+    """
+    raw = str(cfg.get("door_order") or "")
+    seen, out = set(), []
+    for part in raw.split(","):
+        name = part.strip().lower()
+        if name in DOORS and name not in seen:
+            seen.add(name)
+            out.append(name)
+    out += [d for d in DOORS if d not in seen]
+    return out

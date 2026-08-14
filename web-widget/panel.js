@@ -9,7 +9,7 @@
 (function () {
   const {
     $, ASKS, ASK_GROUPS, NEVER, CALL_KEY,
-    ctx, playSound, pack, setSounds, getVolume, THEME_ICONS,
+    ctx, playSound, pack, setSounds, getVolume, THEME_ICONS, LINK_ICONS,
   } = window.Callin;
 
   // The panel's own copy of /live. It used to read the call page's, which is
@@ -263,9 +263,11 @@
     SCHEMA = schema || { groups: [], fields: {} };
     const byKind = (k) => Object.keys(SCHEMA.fields).filter(
       (f) => SCHEMA.fields[f].kind === k && document.getElementById(f));
-    // `emoji` is a text field with a picker attached — it saves, loads and
-    // diffs exactly like one, and the grid below only writes into it.
-    TEXT_FIELDS = byKind('text').concat(byKind('emoji'));
+    // `emoji` and `order` are text fields with a control attached — they
+    // save, load and diff exactly like one, and the picker below only writes
+    // into them. `order`'s input is type=hidden, which is still a text field
+    // as far as every read and write here is concerned.
+    TEXT_FIELDS = byKind('text').concat(byKind('emoji'), byKind('order'));
     NUM_FIELDS = byKind('number');
     CHECK_FIELDS = byKind('check');
     SELECT_FIELDS = byKind('select');
@@ -277,51 +279,211 @@
     decorateFields();
     window.Panel.sounds.buildSlotCards();
     buildEmojiGrid();
+    buildDoorOrder();
   }
 
-  // THE ICON PICKER. A grid, not a dropdown: the whole question is what the
-  // button will LOOK like, and a list of names answers a different one. The
-  // field itself stays a text box beside it, so an operator who wants an emoji
-  // that isn't offered can paste one and it just works.
-  const CORNER_ICONS = [
-    '📻', '🎙️', '🎧', '🎵', '🎶', '📀', '💿', '📡',
-    '🏠', '🌐', '🔗', '📣', '⭐', '❤️', '☕', '🛒',
-    '📅', '🎟️', '💬', '📷', '🎬', '📝', '💡', '🍕',
+  // THE ICON PICKER. A popup over DRAWN icons, and both halves of that were
+  // corrections. It was two dozen emoji wrapped under the row — full-colour
+  // glyphs for a button that sits in a line of stroked controls in the card's
+  // own ink, in a grid that made the row three lines tall whether or not
+  // anyone was choosing. The icons come from shared.js so the panel and the
+  // card draw from ONE list; the field still takes a typed emoji, which is
+  // what keeps every deployment that stored one working.
+
+  // ------------------------------------------------------ the door order
+  // Three rows you drag. Native HTML5 drag-and-drop rather than a pointer-move
+  // implementation: it is ~30 lines instead of ~150, it gives keyboard users
+  // nothing, so the buttons beside each row do — an order you can only set by
+  // dragging is an order some people cannot set at all.
+  const DOORS = [
+    ['call', 'Call'],
+    ['chat', 'Text'],
+    ['vm', 'Message'],
   ];
+
+  function doorOrderValue() {
+    // The field, or what the layers below it resolved to. Reading `resolved`
+    // here rather than writing it into the field keeps invariant 2 intact:
+    // blank means "fall through", so an operator who never touches this saves
+    // nothing and stays on the default rather than pinning a copy of it.
+    const stored = (($('door_order') || {}).value || '')
+      || String(resolved.door_order || '');
+    const seen = [], known = DOORS.map((d) => d[0]);
+    stored.split(',').map((s) => s.trim().toLowerCase()).forEach((n) => {
+      if (known.includes(n) && !seen.includes(n)) seen.push(n);
+    });
+    // Anything the stored value did not mention goes on the end, so a door
+    // added in a later version appears rather than disappearing.
+    return seen.concat(known.filter((n) => !seen.includes(n)));
+  }
+
+  function writeDoorOrder(order) {
+    const field = $('door_order');
+    if (!field) return;
+    field.value = order.join(',');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    paintDoorOrder();
+  }
+
+  function paintDoorOrder() {
+    const list = $('doorOrderList');
+    if (!list) return;
+    const order = doorOrderValue();
+    list.innerHTML = '';
+    order.forEach((name, i) => {
+      const label = (DOORS.find((d) => d[0] === name) || [name, name])[1];
+      const li = document.createElement('li');
+      li.className = 'doorrow';
+      li.draggable = true;
+      li.dataset.door = name;
+      li.innerHTML = '<span class="doorgrip" aria-hidden="true">⣿</span>'
+        + '<span class="doorname"></span>';
+      li.querySelector('.doorname').textContent = label;
+
+      const move = (delta) => {
+        const now = doorOrderValue();
+        const at = now.indexOf(name);
+        const to = at + delta;
+        if (to < 0 || to >= now.length) return;
+        now.splice(to, 0, now.splice(at, 1)[0]);
+        writeDoorOrder(now);
+        const again = $('doorOrderList').querySelector(
+          '[data-door="' + name + '"] .doorup');
+        if (again) again.focus();
+      };
+      const btn = (cls, glyph, text, delta, disabled) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'doormove ' + cls;
+        b.textContent = glyph;
+        b.title = text;
+        b.setAttribute('aria-label', label + ': ' + text);
+        b.disabled = disabled;
+        b.onclick = () => move(delta);
+        return b;
+      };
+      li.appendChild(btn('doorup', '↑', 'move earlier', -1, i === 0));
+      li.appendChild(btn('doordown', '↓', 'move later', 1, i === order.length - 1));
+
+      li.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', name);
+        e.dataTransfer.effectAllowed = 'move';
+        li.classList.add('dragging');
+      });
+      li.addEventListener('dragend', () => li.classList.remove('dragging'));
+      li.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        li.classList.add('over');
+      });
+      li.addEventListener('dragleave', () => li.classList.remove('over'));
+      li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        li.classList.remove('over');
+        const dragged = e.dataTransfer.getData('text/plain');
+        if (!dragged || dragged === name) return;
+        const now = doorOrderValue();
+        now.splice(now.indexOf(name), 0,
+                   now.splice(now.indexOf(dragged), 1)[0]);
+        writeDoorOrder(now);
+      });
+      list.appendChild(li);
+    });
+  }
+
+  function buildDoorOrder() {
+    const field = $('door_order');
+    if (!field || field.dataset.built) return;
+    field.dataset.built = '1';
+    // Repainted when the value arrives from /settings too, not only on edit —
+    // the field is populated after the schema paints.
+    field.addEventListener('input', paintDoorOrder);
+    field.addEventListener('change', paintDoorOrder);
+    paintDoorOrder();
+  }
 
   function buildEmojiGrid() {
     const grid = $('cornerIconGrid');
     const field = $('corner_link_icon');
+    const trigger = $('cornerIconBtn');
     if (!grid || !field || grid.dataset.built) return;
     grid.dataset.built = '1';
-    CORNER_ICONS.forEach((glyph) => {
+    Object.keys(LINK_ICONS).forEach((name) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'emojibtn';
-      b.textContent = glyph;
-      b.title = glyph;
-      b.setAttribute('aria-label', 'Use ' + glyph);
+      b.className = 'iconbtn';
+      b.dataset.icon = name;
+      b.innerHTML = LINK_ICONS[name];
+      b.title = name;
+      b.setAttribute('aria-label', 'Use the ' + name + ' icon');
       b.onclick = () => {
-        field.value = glyph;
+        field.value = name;
         // The same event a typed edit fires, so Save sees it as one edit and
         // the picker cannot drift from the field it writes into.
         field.dispatchEvent(new Event('input', { bubbles: true }));
-        paintEmojiGrid();
+        closeIconPop();
+        if (trigger) trigger.focus();
       };
       grid.appendChild(b);
     });
     field.addEventListener('input', paintEmojiGrid);
+
+    if (trigger) {
+      trigger.onclick = () => {
+        const pop = $('cornerIconPop');
+        if (pop && pop.hidden) openIconPop(); else closeIconPop();
+      };
+    }
+    const close = $('cornerIconClose');
+    if (close) close.onclick = () => { closeIconPop(); if (trigger) trigger.focus(); };
+    // Click-away and Escape, the same two exits every other popup here has.
+    document.addEventListener('click', (e) => {
+      const pop = $('cornerIconPop');
+      if (!pop || pop.hidden) return;
+      if (pop.contains(e.target) || (trigger && trigger.contains(e.target))) return;
+      closeIconPop();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeIconPop();
+    });
     paintEmojiGrid();
+  }
+
+  function openIconPop() {
+    const pop = $('cornerIconPop'), trigger = $('cornerIconBtn');
+    if (!pop) return;
+    pop.hidden = false;
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    const on = pop.querySelector('.iconbtn.on') || pop.querySelector('.iconbtn');
+    if (on) on.focus();
+  }
+
+  function closeIconPop() {
+    const pop = $('cornerIconPop'), trigger = $('cornerIconBtn');
+    if (!pop) return;
+    pop.hidden = true;
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
   }
 
   function paintEmojiGrid() {
     const grid = $('cornerIconGrid');
     const field = $('corner_link_icon');
+    const trigger = $('cornerIconBtn');
     if (!grid || !field) return;
-    const now = (field.value || '').trim();
+    // Same rule as the order list: show what the card is actually using,
+    // without writing it into the field.
+    const now = ((field.value || '').trim()
+                 || String(resolved.corner_link_icon || '')).trim();
     [...grid.children].forEach((b) => {
-      b.classList.toggle('on', b.textContent === now);
+      b.classList.toggle('on', b.dataset.icon === now);
     });
+    // The trigger IS the answer to "what will the button look like", so it
+    // shows the drawn icon when we have one and the typed character when we
+    // do not — which is exactly what the card itself does with the value.
+    if (trigger) {
+      if (LINK_ICONS[now]) trigger.innerHTML = LINK_ICONS[now];
+      else trigger.textContent = now || '—';
+    }
   }
 
   // Starts empty rather than null: the panel now paints as soon as the
@@ -1696,6 +1858,10 @@
     SELECT_FIELDS.filter((f) => !hasChoices(f))
       .forEach((f) => { $(f).value = overrides[f] || ''; });
     TEXT_FIELDS.forEach((f) => {
+      // The order field is the one text field whose STORED value can be blank
+      // while the thing it controls has a real order — blank means "fall
+      // through", and the resolved value is what the card is actually using.
+      // Showing the operator an empty list to drag would be a lie.
       $(f).value = overrides[f] || '';
       // What an EMPTY box does is a real setting with real behaviour, so say
       // it: the resolved value if something lower down supplies one, else the
@@ -1709,6 +1875,9 @@
 
     syncModels();
     paintPermissions();
+    // Assigning .value fires no input event, so the control that renders this
+    // field has to be told the value moved underneath it.
+    paintDoorOrder();
     window.Panel.sounds.paintSlotCards();
     applyVisibility();
     setEmbedSnippet();

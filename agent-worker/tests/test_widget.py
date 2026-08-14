@@ -2451,3 +2451,61 @@ class TestWhoYouAreTalkingToDoesNotChangeUnderYou(unittest.TestCase):
         body = self._block(js, "function inConversation() {", "\n  }")
         self.assertIn("dataset.mode", body)
         self.assertNotIn("room", body)
+
+
+class TestTheDoorsSitWhereTheOperatorPutThem(unittest.TestCase):
+    """The caller's three buttons, in the operator's order.
+
+    The stored value is a comma list somebody dragged into place, so it can be
+    short, long, misspelled or repeat itself — and every one of those is a
+    different kind of wrong on the card. It is cleaned server-side so the card
+    is never the thing deciding what a bad setting means.
+    """
+
+    def _order(self, stored):
+        from api.look import door_order
+
+        return door_order({"door_order": stored})
+
+    def test_the_default_is_the_order_the_card_already_had(self):
+        # Nothing moves for a deployment that never touches this.
+        self.assertEqual(settings_store.FIELDS["door_order"][1], "call,chat,vm")
+        self.assertEqual(self._order("call,chat,vm"), ["call", "chat", "vm"])
+
+    def test_an_operators_order_is_kept(self):
+        self.assertEqual(self._order("vm,call,chat"), ["vm", "call", "chat"])
+
+    def test_a_door_the_stored_order_never_mentions_still_appears(self):
+        # The upgrade case, and the one that matters: a door added after the
+        # operator last saved must not vanish from every card until somebody
+        # opens the panel again.
+        self.assertEqual(self._order("chat,call"), ["chat", "call", "vm"])
+        self.assertEqual(self._order(""), ["call", "chat", "vm"])
+
+    def test_rubbish_cannot_duplicate_or_lose_a_door(self):
+        for stored in ("vm,vm,vm", "call,nonsense,chat", "  VM , call ,,",
+                       "call,call,chat,vm,vm", None):
+            with self.subTest(stored=stored):
+                got = self._order(stored)
+                self.assertEqual(sorted(got), ["call", "chat", "vm"],
+                                 "a door was lost or duplicated")
+
+    def test_the_widget_orders_by_flex_not_by_moving_nodes(self):
+        # Reparenting fights the rules that show and hide these buttons, and a
+        # 20-second poll that reparents is a poll that can move a button under
+        # a finger. An `order` write is idempotent.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("function applyDoorOrder(", js)
+        body = js[js.index("function applyDoorOrder("):]
+        body = body[:body.index("\n  }")]
+        self.assertIn("style.order", body)
+        for bad in ("appendChild", "insertBefore", "prepend"):
+            self.assertNotIn(bad, body, f"the order is applied by {bad}")
+
+    def test_the_panel_can_set_it_without_a_mouse(self):
+        # An order you can only set by dragging is an order some people cannot
+        # set at all.
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        self.assertIn("doormove", js)
+        self.assertIn("move earlier", js)
+        self.assertIn("move later", js)

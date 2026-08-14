@@ -420,6 +420,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # EXPERIMENTAL. "default" is the card as it has always looked, so every
     # deployment that never touches this sees exactly what it saw before.
     "widget_skin":      (None, "default"),
+    # Which way round the caller's three doors sit. The order the markup has
+    # always had, so nothing moves for a deployment that never touches it.
+    # Stored as a comma list of ids rather than three number fields: an order
+    # is one value, and three numbers can disagree with each other.
+    "door_order":       (None, "call,chat,vm"),
 
     # --- what the card shows, answered separately per surface -------------
     # The standalone page and an embed on somebody else's site are different
@@ -442,7 +447,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "corner_link_enabled": (None, False),
     "corner_link_url":     ("CALLIN_CORNER_LINK", ""),
     "corner_link_label":   (None, "The station"),
-    "corner_link_icon":    (None, "📻"),
+    # A DRAWN icon since 0.10.141, not an emoji: the emoji was the one
+    # element on the card no theme and no skin could touch. A stored emoji
+    # still renders as itself, so this changes only deployments that never
+    # picked one — which is the point of the change.
+    "corner_link_icon":    (None, "radio"),
     "show_corner_link":    (None, True),
     "embed_corner_link":   (None, True),
     # No `embed_settings_gear`. An embed never loads the panel's code, so a
@@ -1411,6 +1420,12 @@ SCHEMA: dict[str, dict] = {
         help="The same thumbs after a message is left. Off keeps the "
              "machine's receipt as the last word — asking “how was "
              "it?” over “message left” can read as fishing."),
+    "door_order": dict(group="player", kind="order", label="Button order",
+        help="Drag to reorder the three doors on the card. This is the order "
+             "they sit in left to right, on this page and in an embed alike; "
+             "a door you have switched off simply is not there, and the rest "
+             "close up. Hang up is not in the list — it replaces the whole "
+             "row during a call and has nowhere else to be."),
     "widget_skin": dict(group="player", kind="select", label="Skin (experimental)",
         help="A different look for the card, on this page and in embeds alike. "
              "A skin brings its own colours, so while one is on, the Colours "

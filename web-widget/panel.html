@@ -1339,11 +1339,27 @@
              names tells you nothing about what the button will look like.
              Filled by panel.js from one list, so the choices and the field
              cannot disagree, and the field still takes anything pasted. -->
-        <div class="row wrapped" data-field="corner_link_icon">
+        <div class="row" data-field="corner_link_icon">
           <label for="corner_link_icon">Icon</label>
-          <input type="text" id="corner_link_icon" autocomplete="off" maxlength="4" />
-          <div class="emojigrid" id="cornerIconGrid" role="group"
-               aria-label="Pick an icon"></div>
+          <input type="text" id="corner_link_icon" autocomplete="off" maxlength="24" />
+          <!-- The trigger shows the icon ITSELF, because that is the whole
+               question. The grid it opens is a popup rather than two dozen
+               boxes wrapped under the row: the row is one line again, and the
+               choices are only on screen while you are choosing. -->
+          <button type="button" class="iconpick" id="cornerIconBtn"
+                  aria-haspopup="true" aria-expanded="false"
+                  aria-label="Choose an icon"></button>
+          <div class="iconpop" id="cornerIconPop" hidden role="dialog"
+               aria-label="Choose an icon">
+            <div class="iconpop-head">
+              <strong>Icon</strong>
+              <button type="button" class="iconpop-close" id="cornerIconClose"
+                      aria-label="Close">&times;</button>
+            </div>
+            <div class="icongrid" id="cornerIconGrid" role="group"
+                 aria-label="Pick an icon"></div>
+            <p class="iconpop-note">Or type any emoji in the box.</p>
+          </div>
         </div>
         <div class="row" data-field="show_corner_link">
           <label for="show_corner_link">Show it on this page</label>
@@ -1393,6 +1409,19 @@
         <div class="row">
           <label for="widget_skin">Skin (experimental)</label>
           <select id="widget_skin"></select>
+        </div>
+
+        <h4 class="subhead">Button order</h4>
+        <!-- The field is the value; the list is how you edit it. Same shape as
+             the icon picker: a control writes into a plain input and fires the
+             input event, so Save, the dirty mark and the live preview all see
+             one ordinary edit and cannot drift from what is stored. The input
+             is hidden rather than absent — the panel's save path reads fields
+             by id, and a control with no field behind it saves nothing. -->
+        <div class="row wrapped" data-field="door_order">
+          <label for="door_order">Button order</label>
+          <input type="hidden" id="door_order" />
+          <ol class="doororder" id="doorOrderList" aria-label="Drag to reorder the caller's buttons"></ol>
         </div>
 
         <h4 class="subhead">On the caller's phone</h4>
