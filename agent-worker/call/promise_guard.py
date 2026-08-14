@@ -1,4 +1,4 @@
-"""The DJ said it was about to do something. Make sure it does.
+"""The DJ said it was about to do something — or that it already had. Make sure it did.
 
 Measured on 2026-08-13, driving the real brain through the triage sweep: when
 the DJ SPEAKS before acting, it usually does not act at all. Across four runs
@@ -6,6 +6,10 @@ on two models, of 33 turns that opened with "let me have a look" / "I'm
 pulling that up now" / "hold on", **30 emitted no tool call**. The caller hears
 the DJ promise to go and look, and then nothing happens — which is exactly the
 shape of the calls the operator reported.
+
+Since 0.10.138 this also catches the finished tense — "I've got that queued up for you" with
+no tool behind it — which is the same failure told as an accomplished fact. Why that is the
+worse half, and the call it was found on, is in `promises.py`.
 
 The cause is our own prompt. `conduct.running_the_call` says:
 
@@ -29,30 +33,49 @@ nothing new.
 from __future__ import annotations
 
 import logging
-import re
 
 from livekit.agents import AgentSession
 
+from promises import unbacked
+
 log = logging.getLogger("callin.agent")
 
-# The openers the conduct asks for by name, plus the plain futures they come
-# out as. Deliberately the same list the chat loop matches on, plus the three
-# phrasings the sweep caught that it missed ("pulling up", "have a look",
-# "dig out") — matching OUR OWN instruction rather than guessing at the model
-# is what keeps this from firing on ordinary conversation.
-PROMISES_ACTION = re.compile(
-    r"\b(let me|lemme|i'?ll\b|i am going to|i'?m going to|i'?m gonna|"
-    r"hold on|hang on|one sec|one moment|give me a|on it\b|"
-    r"checking|looking|digging|sending|queueing|queuing|getting that|"
-    r"pulling up|have a look|dig out|dig through)\b",
-    re.IGNORECASE)
+_NUDGE = {
+    "promise": (
+        "[You just told the caller you were about to do something, and no tool "
+        "ran. If it needs one of your tools, call it NOW. Do not say another word "
+        "to them first — they have already heard that line, and repeating it "
+        "reads as a stutter. If nothing actually needed doing, stay silent.]"
+    ),
+    # Worded apart from the promise on purpose. The caller has ALREADY been told this is
+    # done, so the repair is to make it true and say nothing — not to announce it twice.
+    # The last sentence matters as much as the first: every tool in this codebase ends by
+    # telling the DJ not to claim a failure worked, and a nudge that only said "call it now"
+    # would leave a refused action still sitting behind a sentence that said it went through.
+    "claim": (
+        "[You just told the caller that was already done, and no tool ran — so it is NOT "
+        "done. If one of your tools does it, call it NOW, and say nothing to them first: "
+        "they have already heard you say it, and hearing it again reads as a stutter. If it "
+        "comes back refused, or you have no tool for it, tell them plainly that it did not "
+        "go through — do not leave them believing it did.]"
+    ),
+}
 
-_NUDGE = (
-    "[You just told the caller you were about to do something, and no tool "
-    "ran. If it needs one of your tools, call it NOW. Do not say another word "
-    "to them first — they have already heard that line, and repeating it "
-    "reads as a stutter. If nothing actually needed doing, stay silent.]"
-)
+_PROBLEM = {
+    "promise": (
+        "The DJ told the caller it was about to do something and ran no tool. It was given "
+        "one more turn to actually make the call; if the next line still promises without a "
+        "receipt, the model is narrating actions instead of taking them — check the LLM "
+        "setting against one with proven tool routing."
+    ),
+    "claim": (
+        "The DJ told the caller something had ALREADY been done and ran no tool, so it had "
+        "not been. It was given one more turn to make the claim true. This is the shape that "
+        "does not announce itself on the call — the caller is told it worked and hangs up "
+        "believing it — so if it repeats, treat the model's tool routing as unfit rather "
+        "than as a rough edge."
+    ),
+}
 
 
 def attach_promise_guard(session: AgentSession, record=None) -> None:
@@ -88,22 +111,17 @@ def attach_promise_guard(session: AgentSession, record=None) -> None:
         text = str(getattr(item, "text_content", "") or "").strip()
         if not text or state["tools_ran"] or state["nudged"]:
             return
-        if not PROMISES_ACTION.search(text):
+        kind = unbacked(text)
+        if not kind:
             return
         state["nudged"] = True
-        log.info("promise with no tool call — nudging: %s", text[:80])
+        log.info("%s with no tool call — nudging: %s", kind, text[:80])
         if record:
-            record.problem(
-                "The DJ told the caller it was about to do something and ran "
-                "no tool. It was given one more turn to actually make the "
-                "call; if the next line still promises without a receipt, the "
-                "model is narrating actions instead of taking them — check "
-                "the LLM setting against one with proven tool routing."
-            )
+            record.problem(_PROBLEM[kind])
 
         async def _push() -> None:
             try:
-                await session.generate_reply(user_input=_NUDGE)
+                await session.generate_reply(user_input=_NUDGE[kind])
             except Exception as e:                             # noqa: BLE001
                 log.debug("promise nudge failed (harmless): %s", e)
 

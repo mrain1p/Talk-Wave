@@ -1703,6 +1703,111 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
 
         asyncio.run(go())
 
+    def test_a_finished_claim_with_no_tool_call_is_caught_too(self):
+        # The call this was found on (record ...084215, 2026-08-14): the caller
+        # asked to change the DJ, the model pinned THE OVERLOOK, the caller said
+        # "to duke", and the DJ answered this line with no tool call at all.
+        # Cliff stayed on air and the caller was told Duke was coming. The
+        # guard was watching for "let me" and never looked at the past tense.
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said(
+                "I've got that queued up for you. Duke's show, The Granite, is "
+                "on its way, and the station will be handing over the controls "
+                "to him as soon as this track clears the deck."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+            self.assertIn("call it NOW", replies[0]["user_input"])
+            # A claim is not a promise: the caller has already been told it is
+            # done, so the repair is to make it true, and to own it if it is
+            # not. Both halves are load-bearing.
+            self.assertIn("it is NOT done", replies[0]["user_input"])
+            self.assertIn("did not go through", replies[0]["user_input"])
+
+        asyncio.run(go())
+
+    def test_a_claim_that_really_did_run_a_tool_is_left_alone(self):
+        # The same sentence is CORRECT behaviour when the tool ran, and it is
+        # the commonest correct sentence on the line. Nudging it would cost a
+        # turn on every successful action.
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["function_tools_executed"](types.SimpleNamespace())
+            handlers["conversation_item_added"](self._said(
+                "Got it. The switch is made — THE OVERLOOK is coming up once "
+                "this record finishes."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_the_record_distinguishes_a_claim_from_a_promise(self):
+        # A promise with no receipt is a dead line; a claim with no receipt is
+        # something the caller cannot catch. The operator reading the record
+        # should be able to tell which one happened.
+        class _Record:
+            def __init__(self):
+                self.problems = []
+
+            def problem(self, what):
+                self.problems.append(what)
+
+        async def go():
+            rec = _Record()
+            handlers, _ = self._wire(rec)
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("I've got that queued up — it's on its way."))
+            await asyncio.sleep(0.05)
+            self.assertTrue(rec.problems)
+            self.assertIn("ALREADY been done", rec.problems[0])
+
+        asyncio.run(go())
+
+
+class TestTheWordsThatOweAReceipt(unittest.TestCase):
+    """Which sentences the guard reads as owing a tool call, and which it lets by.
+
+    Measured against every DJ line in the live archive on 2026-08-14 — 155 of them, across
+    80 call and chat records. The finished-tense pattern matches three; two of those had
+    genuinely run a tool (so the guard never fires on them) and the third is the Duke call.
+    Nothing else in the corpus fires, which is the whole reason the pattern is two-part:
+    a completion marker AND a station action, in one sentence.
+    """
+
+    def test_a_finished_claim_reads_as_a_claim(self):
+        from promises import unbacked
+
+        for said in ("I've got that queued up for you.",
+                     "Got it. The switch is made — THE OVERLOOK is coming up.",
+                     "Right, I've got that set up for you, it's lined up next.",
+                     "Consider it done — that's added to the queue."):
+            self.assertEqual("claim", unbacked(said), said)
+
+    def test_a_line_that_both_promises_and_claims_is_treated_as_a_promise(self):
+        # The softer nudge still gets the tool called, and telling a model it
+        # claimed something it only offered to do invites an apology the caller
+        # does not need.
+        from promises import unbacked
+
+        self.assertEqual("promise", unbacked("Got it, I'll queue that up now."))
+
+    def test_ordinary_talk_about_the_schedule_owes_nothing(self):
+        # These are the sentences that make a two-part pattern necessary. Each
+        # carries half of it, and a one-part match would nudge on all of them —
+        # spending a model turn, and inviting a tool call nobody asked for, in
+        # the middle of ordinary conversation.
+        from promises import unbacked
+
+        for chatter in ("Got it — that's a fine choice for a wet Tuesday.",
+                        "Coming up next is a bit of Billie Holiday.",
+                        "That one's been on the air all week.",
+                        "The Chieftains were on top form that year.",
+                        "Done and dusted, that era of radio."):
+            self.assertEqual("", unbacked(chatter), chatter)
+
 
 class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
     """Ringing in mid-link used to put two of the same voice on at once.
