@@ -55,9 +55,22 @@ class AirVerdict:
         if speech is None:
             return False
         since, text = speech
-        # lag_secs rides the tail: the entry is stamped at handoff, the sound
-        # starts lag_secs later, so the words finish lag_secs later too.
-        return since < self.lag_secs + speaking_secs(text, int(self.quiet_secs) or 30)
+        # In CALLER time, like every other branch since 0.10.129. The log entry
+        # is stamped at handoff and the caller hears it `caller_lag` later, so
+        # the audible window is [lag, lag + words] and NOT [0, words].
+        #
+        # This was the half 0.10.129 missed. The push verdicts were slid and
+        # the poll was not, so the poll went on opening holds the moment the
+        # station's log moved — measured on a call: the hold opened at +1.7s
+        # for a voice the caller would not hear until +23s, which is the
+        # operator's report exactly ("most of the on-call completes before the
+        # on-air commentary even airs").
+        # The hand-over lead is built in here rather than at the call sites:
+        # the poll and the legacy push branch both need it, and applying it at
+        # one of them was how the DJ stopped handing over out loud at all.
+        lag = self.caller_lag()
+        words = speaking_secs(text, int(self.quiet_secs) or 30)
+        return lag - self.handover_secs <= since < lag + words + self.duck_pad
 
     def _pushed_state(self) -> dict | None:
         """The last verified push, raw. Two generations live in the file:
