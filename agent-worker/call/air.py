@@ -132,10 +132,6 @@ class OnAirGuard(AirVerdict):
         # The in-flight return, so a fresh voice can cancel it. See
         # SETTLE_SECS for what this replaced.
         self._comeback = None
-        # How far behind the live edge THIS caller's player actually is,
-        # measured by the widget and pushed over talkwave.lag. 0 until one
-        # arrives — see caller_lag().
-        self._caller_lag = 0.0
         # This call's ducking timeline — see call/air_log.py. Attached by the
         # session; None on a guard nobody is recording.
         self.air_log = None
@@ -188,43 +184,26 @@ class OnAirGuard(AirVerdict):
     # for most of a minute.
     MAX_CALLER_LAG = 20.0
 
-    def note_caller_lag(self, secs: float) -> None:
-        """The widget's own measurement of how far behind the live edge it is.
-
-        `buffered.end - currentTime` on its own `<audio>` element, which is
-        exactly the distance between what the station has sent and what this
-        person is hearing. It is the only honest source for this: the station
-        can only report its BURST SIZE, which on the operator's box is 22
-        seconds while the browser plays 2.3 behind (measured 2026-08-13), and
-        a caller on a phone, a car head unit or a slower connection is a
-        different number again from the same station.
-        """
-        try:
-            v = float(secs)
-        except (TypeError, ValueError):
-            return
-        if 0.0 <= v <= self.MAX_CALLER_LAG:
-            first = not self._caller_lag
-            self._caller_lag = v
-            if first:
-                # Once, at INFO. The number now decides both ends of the duck,
-                # and a channel that silently never delivers looks exactly like
-                # a caller who is not tuned in — which is a legitimate state.
-                # Said out loud, the two can be told apart.
-                log.info("the caller reports they are %.1fs behind the live "
-                         "edge — the duck is placed on their clock", v)
-
     def caller_lag(self) -> float:
-        """How far behind the broadcast this caller is, as THEY measured it.
+        """How far behind the live edge the caller hears the broadcast.
 
-        0 when nobody has said — a caller listening on a car radio never loads
-        the widget's player, and inventing a number for them is how the 22
-        went wrong. Every user of this falls back to a constant instead.
+        The station's own `streamBufferSeconds` — its Icecast burst, which the
+        player receives on connect and then plays through at 1x, so it stays
+        that far behind for the whole connection.
+
+        0.10.127 replaced this with a number the widget measured and 0.10.129
+        put it back, because the widget was measuring the wrong quantity:
+        `buffered.end - currentTime` is buffer DEPTH, not distance behind the
+        live edge, and a player that started twenty seconds late and has been
+        playing at 1x ever since has a shallow buffer and a large lag. It read
+        2.3s where the operator's stopwatch, timing two hand-overs against the
+        audio, said seventeen and twenty. The station's 22 was right.
+
+        A browser cannot easily know its absolute position in a raw Icecast
+        stream, so there is nothing better to measure with; if that changes,
+        this is the one place to change.
         """
-        # getattr, like every other optional here: the suite drives these
-        # methods on bare guards built with object.__new__ to keep a timing
-        # test from needing a room, a station and a session.
-        return getattr(self, "_caller_lag", 0.0)
+        return self.stream_buffer()
 
     def tail(self) -> float:
         """How long to keep holding after the voice itself has finished.
@@ -248,12 +227,11 @@ class OnAirGuard(AirVerdict):
         station claimed — a station that one day reports a real playhead
         offset should be believed, and that row is where it would show up.
         """
-        # Now that the caller's own lag is measurable, the pad is a FLOOR
-        # rather than the whole answer: a caller further behind than 3 seconds
-        # gets a tail sized to them, which is the case the constant could
-        # never cover and the case where the DJ really does come back over the
-        # top of the last word.
-        return max(self.duck_pad, self.caller_lag() + self.TAIL_MARGIN_SECS)
+        # Just the pad. The lag is no longer padding here — it SHIFTS the
+        # whole window in air_verdict, which is what it always should have
+        # done: padding the close covered the end by accident while leaving
+        # the open seventeen seconds early.
+        return self.duck_pad
 
     def stream_buffer(self) -> float:
         """What the station last said its listeners are behind by.
@@ -261,7 +239,8 @@ class OnAirGuard(AirVerdict):
         NOT the caller's playhead — see tail(). Recorded on the timeline and
         used for nothing else.
         """
-        return self._last_buf if self._last_buf > 0 else self.lag_secs
+        buf = getattr(self, "_last_buf", 0.0)
+        return buf if buf > 0 else self.lag_secs
 
     # An unconfirmed delivery is given this long to appear in the station's
     # log. It used to be 90s, which was tolerable when a stuck hold only meant
