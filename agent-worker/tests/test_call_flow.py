@@ -649,6 +649,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         import asyncio
         import types
 
+        from call import comeback
         from call.air import OnAirGuard
 
         said = []
@@ -658,7 +659,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
                 said.append(str(kw.get("instructions", "")))
 
         guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertTrue(said)
         self.assertIn("back", said[0].lower())
 
@@ -666,6 +667,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         import asyncio
         import types
 
+        from call import comeback
         from call.air import OnAirGuard
 
         spoken = []
@@ -678,7 +680,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
                 spoken.append(text)
 
         guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertEqual(len(spoken), 1)
         self.assertIn("back", spoken[0].lower())
 
@@ -690,6 +692,7 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         import asyncio
         import types
 
+        from call import comeback
         from call.air import OnAirGuard
 
         said = []
@@ -700,10 +703,10 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
 
         guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
         guard.aired_text = "Big shout to Dave from the call line."
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertIn("Dave", said[0])
         self.assertEqual(guard.aired_text, "")
-        asyncio.run(guard._come_back(_Session()))
+        asyncio.run(comeback.come_back(guard, _Session()))
         self.assertNotIn("Dave", said[1])
 
     def test_the_djs_own_action_gets_a_comeback_line_too(self):
@@ -817,25 +820,85 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # A banter break is several utterances back to back. Each voice.end
         # used to reopen the gate, so one break cost the caller a come-back
         # line and another hand-over line three times over (operator-reported
-        # from a real call, 2026-08-12). The settle window rides the gaps.
+        # from a real call, 2026-08-12).
+        #
+        # That was fixed with a blanket 2s pad on every hold, which taxed every
+        # link that HAD finished in order to bridge the ones that had not, and
+        # only ever bridged gaps shorter than itself. Since 0.10.125 the return
+        # is a cancellable task: the loop keeps watching while the DJ comes
+        # back, and the next utterance cancels the return and leaves the hold
+        # up. Any length of gap, and a finished link pays nothing.
+        import asyncio
+
+        from call.air import OnAirGuard
+
+        guard = self._guard()
+
+        async def scenario():
+            started = asyncio.Event()
+            cancelled = asyncio.Event()
+
+            async def returning():
+                started.set()
+                try:
+                    await asyncio.sleep(30)      # the DJ, mid-sentence
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
+
+            guard._comeback = asyncio.create_task(returning())
+            await started.wait()
+            # The station speaks again: this is the SAME break.
+            same = guard._cancel_comeback()
+            await asyncio.sleep(0)
+            return same, cancelled.is_set()
+
+        same, was_cancelled = asyncio.run(scenario())
+        self.assertTrue(same, "a mid-return voice must read as the same break")
+        self.assertTrue(was_cancelled, "the return kept talking over the air")
+        # And the hand-over line is not said a second time — the caller was
+        # never told the hold was over.
+        self.assertIsNone(guard._comeback)
+
+
+    def test_a_queued_voice_while_holding_bridges_the_break(self):
+        # The bridge, and it is the station's own warning rather than a pad.
+        # Measured on a real call 2026-08-13: two voice.queued landed while the
+        # caller was already on hold, both forecast further out than the
+        # hand-over window, so the verdict was None, the estimate ran out and
+        # the line was RELEASED — then re-held five seconds later. One
+        # continuous break cost the caller a return line and a second
+        # hand-over line.
         import time
 
         from call.air import OnAirGuard
 
         guard = self._guard()
-        guard.on_air = True
         now = time.time()
+        # Forecast well beyond the hand-over window.
+        entry = {"at": now, "v": 2, "phase": "queued", "voiceId": "b2",
+                 "text": "the next part", "durMs": 6000,
+                 "airAt": now + guard.handover_secs + 30}
 
-        # The utterance ended a moment ago: still held, silently.
-        guard._quiet_since = now - (OnAirGuard.SETTLE_SECS / 2)
-        self.assertTrue(guard._settle(False, now))
-        # Long enough quiet that the break really is over: released.
-        guard._quiet_since = now - (OnAirGuard.SETTLE_SECS + 1)
-        self.assertFalse(guard._settle(False, now))
-        # A fresh voice inside the window clears the clock, so the NEXT gap
-        # gets a full settle window of its own rather than a stale one.
-        self.assertTrue(guard._settle(True, now))
-        self.assertEqual(guard._quiet_since, 0.0)
+        guard.on_air = False
+        self.assertIsNone(OnAirGuard._push_verdict(guard, entry, now),
+                          "a distant forecast must not gag a quiet line")
+
+        guard.on_air = True
+        verdict = OnAirGuard._push_verdict(guard, entry, now)
+        self.assertIsNotNone(verdict, "the break was dropped mid-way again")
+        self.assertEqual(verdict[0], "busy")
+
+    def test_a_finished_link_pays_no_settle_tax(self):
+        # The other half: with nothing in flight there is nothing to cancel,
+        # so a link that really has finished releases on its own timing.
+        from call.air import OnAirGuard
+
+        guard = self._guard()
+        guard._comeback = None
+        self.assertFalse(guard._cancel_comeback())
+        self.assertEqual(OnAirGuard.SETTLE_SECS, 0.0,
+                         "the blanket pad is back; see comeback.py")
 
     def test_the_settle_window_cannot_invent_a_busy_spell(self):
         # It only ever EXTENDS one: a caller who dialled into quiet air must
@@ -1800,4 +1863,44 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         log.replay("not a list")
         log.write(None)
         self.assertEqual(log.rows, [])
+
+class TestTheAirSplitHoldsItsShape(_TempStores):
+    """air.py was raised past its ratchet three times in one day before the
+    seam its SPLITTING entry had described since 0.10.113 was actually cut
+    (0.10.127). This is what keeps it cut.
+
+    The split is one-way by design: `air_verdict` reads evidence and knows
+    nothing about the session, the room or the come-back; `air.py` keeps the
+    live half. `air_timing` is a leaf holding the two names both need, because
+    a constant living in the module that imports you is how a split becomes a
+    circular import a week later.
+    """
+
+    def test_the_verdict_half_does_not_reach_back(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "air_verdict.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn("from .air import", src)
+        self.assertNotIn("import air\n", src)
+        # Nor does it touch anything live.
+        for live in ("AgentSession", "session.", "self.room", "comeback"):
+            self.assertNotIn(live, src, f"the verdict half reached for {live}")
+
+    def test_the_timing_leaf_imports_nothing_of_ours(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "air_timing.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn("from .", src)
+        self.assertNotIn("from call", src)
+
+    def test_the_names_still_arrive_where_callers_expect_them(self):
+        # Half the suite and three tool modules import these from call.air.
+        from call.air import DUCK_PAD_SECS, OnAirGuard, speaking_secs
+
+        self.assertEqual(DUCK_PAD_SECS, 4.5)
+        self.assertGreater(speaking_secs("one two three four five", 30), 0)
+        self.assertTrue(hasattr(OnAirGuard, "_push_verdict"))
+        self.assertTrue(hasattr(OnAirGuard, "_settle"))
 

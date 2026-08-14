@@ -222,6 +222,31 @@ def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
     ctx.room.on("data_received", _on_data)
 
 
+def attach_caller_lag(ctx, guard) -> None:
+    """Let the caller tell us how far behind the broadcast they actually are.
+
+    The duck has to know when this person HEARS the station, not when the
+    station airs it, and only their own player can answer that. The widget
+    samples `buffered.end - currentTime` on its `<audio>` element and pushes
+    it here; see OnAirGuard.note_caller_lag for why the station's own
+    streamBufferSeconds is not a substitute.
+
+    Silence is a valid answer. A caller listening on a car radio never loads
+    the player and never sends one, and the guard falls back to its constant
+    rather than to a guess.
+    """
+
+    def _on_data(packet) -> None:
+        if getattr(packet, "topic", "") != "talkwave.lag":
+            return
+        try:
+            guard.note_caller_lag(float(bytes(packet.data).decode("utf-8")))
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not read the caller's lag: %s", e)
+
+    ctx.room.on("data_received", _on_data)
+
+
 def attach_close_reason(session: AgentSession, ended: dict) -> None:
     """Record why the session closed.
 

@@ -520,6 +520,40 @@
     playFirstWorking(candidates, 0);
   }
 
+  // How far behind the live edge this player actually is, and telling the
+  // worker so the duck can be placed on the CALLER'S clock rather than the
+  // encoder's.
+  //
+  // Only the player can answer this. The station reports streamBufferSeconds,
+  // which is its Icecast burst SIZE — 22 on the operator's box — while this
+  // element plays 2.3 seconds behind it, because the browser discards most of
+  // the burst (measured 2026-08-13). Ducking on the station's number left two
+  // to three seconds of dead air between the hand-over line and the broadcast
+  // on every single hand-over, and would have silently overlapped any caller
+  // whose player buffers more deeply than the constant assumed.
+  //
+  // `buffered.end - currentTime` is exactly the distance between what has
+  // arrived and what is being heard. Sampled rather than measured once: a
+  // buffer grows after a stall, and the number that matters is the current one.
+  const LAG_TICK_MS = 5000;
+  let lagTimer = 0;
+
+  function reportLag() {
+    if (!streamEl || !room) return;
+    let lag = 0;
+    try {
+      const b = streamEl.buffered;
+      if (!b || !b.length) return;
+      lag = b.end(b.length - 1) - streamEl.currentTime;
+    } catch (e) { return; }
+    if (!(lag >= 0) || lag > 20) return;      // paused, seeking, or nonsense
+    try {
+      room.localParticipant.publishData(
+        new TextEncoder().encode(lag.toFixed(2)),
+        { reliable: false, topic: 'talkwave.lag' });
+    } catch (e) { /* the guard falls back to its constant */ }
+  }
+
   function playFirstWorking(urls, i) {
     if (i >= urls.length) {
       // Was console.info, which meant nobody ever found out. The commonest
@@ -548,6 +582,7 @@
         playFirstWorking(urls, i + 1);
       }, { once: true });
       streamEl = el;
+      if (!lagTimer) lagTimer = setInterval(reportLag, LAG_TICK_MS);
       el.play().catch(() => {
         if (streamEl !== el) return;
         streamEl = null;
@@ -560,6 +595,7 @@
   }
 
   function tuneOut() {
+    if (lagTimer) { clearInterval(lagTimer); lagTimer = 0; }
     if (!streamEl) return;
     try { streamEl.pause(); streamEl.src = ''; } catch (e) {}
     streamEl = null;

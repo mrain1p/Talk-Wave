@@ -126,6 +126,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheOnAirFlagIsAValueNotAPresence,
     TestAHoldAlwaysEnds,
     TestTheDuckWritesDownWhatItDid,
+    TestTheAirSplitHoldsItsShape,
     TestTheGreetingWaitsForTheOnAirDJ,
     TestAPromisedActionActuallyHappens,
     TestACallerWhoWasNeverHeardIsToldSo,
