@@ -3,6 +3,37 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.131
+
+The player is redesigned, and the on-air duck now runs on the caller's clock. If the hold and the broadcast never seemed to line up, or the card felt like four different sizes, this is that.
+
+### Calls no longer collide with the broadcast
+
+- **The duck is placed where the caller actually hears it.** If the DJ went off air, came back, and *then* the station started talking — or the hold ended before you heard a word of it — the hold was being placed on the encoder's clock. Your listeners are behind that: an Icecast burst puts them about 22 seconds back, and the station has been reporting the figure all along. The whole window slides by it now, rather than one end being padded. Timed on a live call before the fix: hand-over at 0:36, DJ back at 0:48, the commentary aired 0:53–1:03 — the hold and the broadcast never overlapped at all.
+- **A banter break is one hand-over, not three.** Several links back to back used to cost a return line and another hand-over line each time. The station warns before it speaks; that warning now bridges the gaps, whatever their length, instead of a blanket two-second pad on the end of every hold.
+- **You stop being handed the microphone mid-announcement.** The widget gave the line back after 20 seconds and said "the booth is taking a while" while the DJ still had fifteen seconds to go. That backstop is 75 seconds now — long enough to clear a station segment, short enough to rescue a genuinely stuck hold.
+- **A call record shows what the duck did.** When the line was held, why, for how long, and what the station was doing at the time — under the transcript in the panel. This took three hand diagnoses before it existed.
+
+### The card is one object at one size
+
+- **620×470, and it stays there.** It was ~940 wide and grew as you used it: a long transcript, a nine-line read-back and a text thread each made it taller, and on an embedded page that moved the host's layout under whoever was reading. Everything is fixed now except the conversation box, which scrolls. Embeds are 348×320, idle and mid-call.
+- **One control height per surface.** There were four (44 / 52 / 31 / 26), which is why a row of buttons read as three unrelated things. Every button and every text box is 38px on the player, 34 in an embed, 50 on a phone.
+- **The state chips moved into the DJ's row.** They had a band to themselves costing 38px for two 26px chips; the identity row beside them had the space for nothing. That 38px went to the conversation.
+- **Now playing has its own rail**, with the elapsed time and a progress hairline — it used to be squeezed into the right-hand 42% of the DJ block, where a real title ran out of room after four words. It dims and says "under the call" while you're on the line.
+- **The show name is legible.** It was the smallest, dimmest text on the card while the tagline beneath it was larger and brighter; the emphasis is the other way round now.
+- **The two level meters became one.** You grow leftward from the centre, the DJ rightward — so it reads as one conversation rather than two widgets either side of the volume.
+- **Push-to-talk says one thing.** It explained itself twice, on two lines; there is a keycap for the Space hint instead, and it hides itself on a phone that has no Space key.
+
+### Text chat
+
+- **A chat is one conversation**, not a fresh DJ per message — the per-conversation limits on what you can ask for were resetting on every line you typed.
+- **A turn that uses more than one tool no longer dies.** Gemini 3 signs each tool call and refuses to replay one it did not sign, and it does not sign them all — so the *next* message of any multi-tool conversation was rejected and you got "Line dropped a beat there". Tool results go back as plain text now, which every provider accepts.
+
+### When something goes wrong, you find out
+
+- **A model provider that refuses us appears in Needs attention**, quoting its own words, the first time it happens. The failure above ran for days behind a panel that looked perfectly healthy.
+- **The LLM test runs the shape that breaks.** Testing one tool call proves a model can call a tool; it does not prove it can carry a conversation, and the model in question passed the old test while failing every real chat.
+
 ## 0.10.120
 
 Everything since 0.10.114. Mostly one story: the text line was quietly losing whole replies, and nothing in the panel said so.
