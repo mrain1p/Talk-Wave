@@ -3,6 +3,32 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.137
+
+The card on a phone: the two lines that overlapped are on separate rows, the music and the DJ come out of one speaker, and there is a link out of the card.
+
+### What the caller hears
+
+- **The station and the DJ stop being two different kinds of sound.** The music was an ordinary web player and the call was WebRTC, which a phone treats as two separate things: the music on the media channel at media volume, the DJ on the voice channel at call volume. In a car they split in two — music through the speakers over Bluetooth audio, the DJ through the hands-free profile — at two unrelated levels. Both now go through one audio graph and out of one output, so one volume and one route covers them. A station served without CORS headers cannot join a Web Audio graph at all, so the stream is loaded once with them and retried plain if that fails: worst case is exactly what happened before, never a silent stream.
+- **The speaker switch reaches the married path too.** Where a browser lets a page choose its output at all, it is now asked for the graph as well as the element — otherwise the button moved an element that had been muted in favour of the graph, which is to say nothing anyone could hear.
+
+### What the caller sees
+
+- **The record and the call's state chips have a row each.** On a phone a long title ran under the two chips and they overlapped. The record moved up under the DJ's tagline, where it belongs — it says who is on — and the rail below is the call's own row. Same on the page and in an embed.
+- **The status prints under LINES ARE OPEN, like a line on a terminal.** Connecting, on the line, rang off. It used to be centred in the same box as the headline, so the two painted over each other.
+- **"How was it?" is one bar with the thumbs inside it**, the same shape as the transcript drawer beside it — it was a caption and two loose boxes, which read as three controls of two kinds for one question.
+- **The waveforms are in one box.** The outline was around each label, which framed the two words and left the instrument they name unframed. In voicemail, where there is only the caller's own meter, the same box closes up around it.
+- **A link out of the card, if you want one.** One more button in the top corner, going wherever you send it — your station's own page unless you say otherwise. Off until you switch it on, then visible per surface: the embed is the one that needs it most, since a caller who met the card on somebody else's page has no other way back to you.
+
+### What you see in the panel
+
+- **The link is under Players → Player settings**, with a grid of icons rather than a dropdown of emoji names — the question is entirely what the button will look like. Type any emoji instead if none of the two dozen fit. Everything below the switch is greyed out until the switch is on, so there is never an address filled in for a button that does not exist.
+- **The attention star follows you into the section.** The page picker pinned the page and then stopped, leaving you to guess which of eight folded sections it meant. The same mark now sits on the section itself, and clears itself when the item does.
+
+### Under the hood
+
+- Driven in headless Chrome at 620px, 380px and 390px-with-touch: the two rows measured 16px apart rather than overlapping, the status placed below the headline rather than on it, the picker gated in both directions, and a `javascript:` address refused server-side so it can never reach an href on somebody else's page.
+
 ## 0.10.136
 
 The card stops saying things twice, and the two bands that were holding space for nothing give it back. Every item here is something the operator saw on their own screen.

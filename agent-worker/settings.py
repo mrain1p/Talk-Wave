@@ -431,6 +431,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_caller_help":  (None, True),
     "show_theme_toggle":  (None, True),
     "embed_theme_toggle": (None, True),
+    # A link out of the card, to wherever the operator wants a caller to go —
+    # the station's own page by default, since that is where a caller who came
+    # in through an embed most often wants to end up. Off until it is set up:
+    # a corner button that goes nowhere is worse than an empty corner, so the
+    # two visibility ticks below are gated on the link existing at all.
+    "corner_link_enabled": (None, False),
+    "corner_link_url":     ("CALLIN_CORNER_LINK", ""),
+    "corner_link_label":   (None, "The station"),
+    "corner_link_icon":    (None, "📻"),
+    "show_corner_link":    (None, True),
+    "embed_corner_link":   (None, True),
     # No `embed_settings_gear`. An embed never loads the panel's code, so a
     # gear there opens nothing — offering the operator a switch for it would
     # be offering a switch that does nothing whichever way it is set.
@@ -1173,6 +1184,40 @@ SCHEMA: dict[str, dict] = {
         label="Light / dark toggle (embed)",
         help="Usually worth off: a caller flipping the card to light on a dark "
              "host page gets a bright rectangle in the middle of it."),
+    # THE LINK OUT. Declared before its own visibility ticks so the panel
+    # draws them under it, and every tick `needs` the switch above: an
+    # operator cannot set where a button nobody can see would go, which is the
+    # same shape the sound slots and the voicemail rows already use.
+    "corner_link_enabled": dict(group="player", kind="check",
+        label="Link out of the card",
+        help="One more button in the card's top corner, going wherever you "
+             "send it — your station's own page by default. Off until you fill "
+             "the address in below."),
+    "corner_link_url": dict(group="player", kind="text", label="Where it goes",
+        needs=("corner_link_enabled", True),
+        placeholder="default: your station's address",
+        help="Left blank this follows the SUB/WAVE station this line answers "
+             "for, so it keeps up if the station moves. Opens in a new tab, "
+             "which for an embed means the host's page keeps its caller."),
+    "corner_link_label": dict(group="player", kind="text", label="What it says",
+        needs=("corner_link_enabled", True),
+        placeholder="The station",
+        help="The tooltip, and what a screen reader announces. The button "
+             "itself is the icon."),
+    "corner_link_icon": dict(group="player", kind="emoji", label="Icon",
+        needs=("corner_link_enabled", True),
+        help="Pick one, or type any emoji. It sits beside the other corner "
+             "controls, at their size and in their ink."),
+    "show_corner_link": dict(group="player", kind="check",
+        label="Show it on this page",
+        needs=("corner_link_enabled", True),
+        help="The card at /. Both of these are greyed out until the link "
+             "itself is switched on — there is nothing to show or hide yet."),
+    "embed_corner_link": dict(group="player", kind="check",
+        label="Show it in an embed",
+        needs=("corner_link_enabled", True),
+        help="Worth keeping ON for an embed: a caller who found the card on "
+             "somebody else's page has no other way back to you."),
     "show_settings_gear": dict(group="surface", kind="check",
         label="Settings gear",
         help="The way into this panel from the card. Off secures nothing — "

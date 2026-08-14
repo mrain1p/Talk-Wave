@@ -263,7 +263,9 @@
     SCHEMA = schema || { groups: [], fields: {} };
     const byKind = (k) => Object.keys(SCHEMA.fields).filter(
       (f) => SCHEMA.fields[f].kind === k && document.getElementById(f));
-    TEXT_FIELDS = byKind('text');
+    // `emoji` is a text field with a picker attached — it saves, loads and
+    // diffs exactly like one, and the grid below only writes into it.
+    TEXT_FIELDS = byKind('text').concat(byKind('emoji'));
     NUM_FIELDS = byKind('number');
     CHECK_FIELDS = byKind('check');
     SELECT_FIELDS = byKind('select');
@@ -274,6 +276,52 @@
     bindFieldEvents();
     decorateFields();
     window.Panel.sounds.buildSlotCards();
+    buildEmojiGrid();
+  }
+
+  // THE ICON PICKER. A grid, not a dropdown: the whole question is what the
+  // button will LOOK like, and a list of names answers a different one. The
+  // field itself stays a text box beside it, so an operator who wants an emoji
+  // that isn't offered can paste one and it just works.
+  const CORNER_ICONS = [
+    '📻', '🎙️', '🎧', '🎵', '🎶', '📀', '💿', '📡',
+    '🏠', '🌐', '🔗', '📣', '⭐', '❤️', '☕', '🛒',
+    '📅', '🎟️', '💬', '📷', '🎬', '📝', '💡', '🍕',
+  ];
+
+  function buildEmojiGrid() {
+    const grid = $('cornerIconGrid');
+    const field = $('corner_link_icon');
+    if (!grid || !field || grid.dataset.built) return;
+    grid.dataset.built = '1';
+    CORNER_ICONS.forEach((glyph) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'emojibtn';
+      b.textContent = glyph;
+      b.title = glyph;
+      b.setAttribute('aria-label', 'Use ' + glyph);
+      b.onclick = () => {
+        field.value = glyph;
+        // The same event a typed edit fires, so Save sees it as one edit and
+        // the picker cannot drift from the field it writes into.
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        paintEmojiGrid();
+      };
+      grid.appendChild(b);
+    });
+    field.addEventListener('input', paintEmojiGrid);
+    paintEmojiGrid();
+  }
+
+  function paintEmojiGrid() {
+    const grid = $('cornerIconGrid');
+    const field = $('corner_link_icon');
+    if (!grid || !field) return;
+    const now = (field.value || '').trim();
+    [...grid.children].forEach((b) => {
+      b.classList.toggle('on', b.textContent === now);
+    });
   }
 
   // Starts empty rather than null: the panel now paints as soon as the
@@ -1006,6 +1054,15 @@
     const pages = new Set(items.map((it) => it.page));
     document.querySelectorAll('#panelNav a[data-page]').forEach((a) => {
       a.classList.toggle('attn', pages.has(a.dataset.page));
+    });
+    // …and on the SECTION the item is actually in. The picker's pin got you to
+    // the right page and then stopped, leaving you to guess which of eight
+    // folded sections it meant (operator's ask). Every item already names its
+    // group, which is the section's own id — so the same mark, one level down,
+    // and it clears itself the moment the item does.
+    const groups = new Set(items.map((it) => it.group));
+    document.querySelectorAll('details.sec[data-group]').forEach((sec) => {
+      sec.classList.toggle('attn', groups.has(sec.dataset.group));
     });
   }
 

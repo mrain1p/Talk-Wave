@@ -352,18 +352,18 @@
        edge is the one band with a title of unbounded length in it. */
     overflow: hidden;
   }
-  /* Between calls this band shows NOTHING: the track inherits the rig's
-     reserved-hidden visibility, so an idle card ruled off 30px for a line
-     nobody can read, and then 10px more of margin under it. That is the whole
-     of the "wasted space" on the player page. It collapses unless it has
-     something to show — a chip while a call is up, or the track once the rig
-     is live — and comes back the moment it does. */
-  .rig:not(.on) .nprail:not(:has(.pill:not([hidden]))) { display: none; }
-  .nprail:has(#npTrack:empty):not(:has(.pill:not([hidden]))) { display: none; }
+  /* The rail is the CHIPS' row now — the track moved up under the identity it
+     describes, because on a phone the two overlapped. So it collapses whenever
+     no chip is up, which between calls is always: an idle card was ruling off
+     30px, plus 10px of margin, for a row with nothing in it. That is the whole
+     of the "wasted space" on the player page. */
+  .nprail:not(:has(.pill:not([hidden]))) { display: none; }
+  /* The record, in the identity block under the tagline. Same treatment as it
+     had on the rail — the only thing that changed is which row it is on. */
   .track {
     font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700;
-    color: var(--sage); margin: 0; min-width: 0; flex: 1;
+    color: var(--sage); margin: 3px 0 0; min-width: 0; max-width: 100%;
     white-space: nowrap; overflow: hidden;
     /* FADES rather than clipping to an ellipsis: a title cut with "…" reads
        as an error, a title running out of light reads as a title too long
@@ -387,8 +387,10 @@
     transition: width .9s linear;
   }
   /* On a live call the music is not the subject — but knowing it kept
-     playing is still worth a line, so the rail dims rather than leaving. */
-  .rig.on .nprail .track { color: var(--sage-dim); }
+     playing is still worth a line, so it dims rather than leaving. Keyed on
+     the card, not on the rig: the track sits in the identity block now, which
+     is outside the rig entirely. */
+  .card.oncall .track { color: var(--sage-dim); }
   /* …and swaps the timer for UNDER THE CALL. Done in CSS because it needs no
      data: the label is the same in every call. The elapsed figure itself is
      still empty — /live sends the track as a title string with no position or
@@ -410,9 +412,6 @@
     font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
     white-space: nowrap; color: var(--sage-dim);
   }
-  /* …and the title yields the room for it, rather than the label overlapping
-     a long track name. */
-  .rig.on .nprail .track { max-width: calc(100% - 130px); }
 
   /* The settings panel keeps the old button shape — it is full-page only and
      ~450 lines are written against it. Inside the card there are exactly TWO
@@ -841,19 +840,22 @@
      What the duplex layout keeps from that pass is the PAIRING — the two
      meters sit next to each other where they can be read against one
      another, instead of being split by the volume rail between them. */
+  /* ONE BOX ROUND THE WHOLE INSTRUMENT — labels, both waveforms and the tick
+     between them. The outline was on each label instead, which drew two small
+     chips at the far ends of the band and left the thing they name unframed
+     (operator: "I meant around the whole block"). In voicemail the DJ meter
+     and the volume are display:none, so the same box closes up around the
+     caller's own meter with nothing to change. */
   .duplex {
     display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+    padding: 5px 8px; border: 1px solid var(--hairline);
   }
-  /* CHIPS, not loose words. Two bare labels at the far ends of a wide band
-     read as stray text rather than as the two ends of one instrument — the
-     operator's word for the band was "messed up". A hairline box each, the
-     card's own chip shape, ties each label to the waveform beside it. */
+  /* The labels are bare again — the box is round the whole block above. */
   .duplex .mlabel {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
     white-space: nowrap; margin: 0;
-    display: inline-flex; align-items: center; height: 18px; padding: 0 7px;
-    border: 1px solid var(--hairline);
+    display: inline-flex; align-items: center;
     /* SHRINKABLE to nothing rather than gated on a breakpoint. They were
        flex:0 0 auto and escaped a 300px card by 14px; a breakpoint that hid
        them would be a number to get wrong later, and letting them give up
@@ -863,8 +865,11 @@
   }
   /* --sage-dim, never --edge: --edge is a border token and measures 1.3:1 as
      text. Lit to each voice's own colour while a call is up. */
-  .rig.on .duplex .mlabel.you { color: var(--amber); border-color: var(--amber); }
-  .rig.on .duplex .mlabel.dj  { color: var(--coral); border-color: var(--coral); }
+  .rig.on .duplex .mlabel.you { color: var(--amber); }
+  .rig.on .duplex .mlabel.dj  { color: var(--coral); }
+  /* The box itself lifts while a call is up, so the instrument reads as live
+     rather than as a frame drawn round nothing. */
+  .rig.on .duplex { border-color: var(--edge); }
   /* The two waveforms share the row evenly and never collapse: squeezed by
      the volume rail, the You meter once shrank until the DJ meter left the
      row entirely (operator's live call). */
@@ -1257,10 +1262,17 @@
   .callended.open .chev { transform: rotate(90deg); }
   .callended .when { display: none; }
 
-  /* Was that any good? Two small buttons on the strip's right, findable but
-     ignorable — a caller who has just been hung up on by a robot should not
+  /* Was that any good? ONE BAR, the transcript drawer's own shape, with the
+     thumbs inside it — it was a bare caption and two loose boxes sitting next
+     to the drawer, so a strip that is one thought read as three separate
+     controls of two different kinds (operator's ask). Findable but ignorable
+     either way: a caller who has just been hung up on by a robot should not
      also be blocked by a modal about it. */
-  .rate { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+  .rate {
+    display: inline-flex; align-items: center; gap: 0; margin-left: auto;
+    height: 24px; padding: 0 0 0 9px;
+    background: var(--granite); border: 1px solid var(--hairline);
+  }
   .rate[hidden] { display: none; }
   /* nowrap because "HOW WAS IT?" broke onto three stacked lines and stood the
      whole strip up beside the thumbs (operator screenshot, 2026-08-12), and
@@ -1277,15 +1289,18 @@
      words fit; what did not fit was the label at its old size beside two
      44px buttons, and both of those have since come down. */
   @media (max-width: 430px) { .rate .rlabel { font-size: 10px; } }
-  .rate .rbtns { display: inline-flex; gap: 6px; }
+  .rate .rbtns { display: inline-flex; gap: 0; margin-left: 9px; }
   .rate .rbtns[hidden] { display: none; }
+  /* Inside the bar: no box of their own, a hairline between them, and the
+     bar's own height. Same idea as the drawer's × — a control that belongs to
+     a bar is part of it, not a second thing parked beside it. */
   .card .rate button {
-    height: 24px; width: auto; padding: 0 8px; line-height: 1; font-size: 12px;
-    border: 1px solid var(--edge); background: var(--granite); color: var(--sage);
+    height: 22px; width: auto; padding: 0 9px; line-height: 1; font-size: 12px;
+    border: 0; border-left: 1px solid var(--hairline);
+    background: transparent; color: var(--sage);
   }
   .card .rate button:hover:not(:disabled) {
-    border-color: var(--coral); color: var(--coral);
-    background: var(--granite); filter: none;
+    color: var(--coral); background: transparent; filter: none;
   }
   /* While the strip is up, the last transcript line and the box's own message
      must not run underneath it. */
@@ -1305,14 +1320,23 @@
     padding: 4px 0;
   }
   .idleboard[hidden] { display: none; }
-  /* A MESSAGE OUTRANKS THE PLACEHOLDER. #status is absolutely positioned and
-     vertically centred in this box, so anything it had to say — "Opening the
-     text line…", "No answer" — landed exactly on top of LINES ARE OPEN and
-     the two were legible only as one another (operator-reported). The board
-     is what the box says when it has nothing better to say, and a message is
-     something better. Mirrors the rules above that hide #status when speech,
-     the ticker or the guest gate own the box. */
-  .linebox:has(#statusText:not(:empty)) .idleboard { display: none; }
+  /* THE STATUS PRINTS UNDER THE HEADLINE, like a line on a terminal — this is
+     the operator's shape: LINES ARE OPEN, and beneath it what is happening
+     right now (Connecting… · On the line, go ahead · They rang off). It was
+     absolutely positioned and vertically centred in this box, which put every
+     message exactly on top of the headline and made both illegible. In the
+     board it is a normal flow child of a centred column, so the two read as
+     one small display instead of fighting for the middle of the box. */
+  .linebox:has(.idleboard:not([hidden])) #status {
+    /* Just under the headline, which is centred in the box: the board's rule
+       and head come to about 30px, so half the box plus a little clears it.
+       Still absolute — the board owns the box's height and a flow sibling
+       would be pushed out of it — but placed rather than centred. */
+    inset: calc(50% + 22px) 12px auto 12px;
+    justify-content: center; text-align: center;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--sage-dim);
+  }
 
   /* The transcript drawer's way out — PART OF THE BAR, not a box bolted to
      its side. Its own border and 1.35 line-height made a second, taller
@@ -1648,6 +1672,15 @@
      which would otherwise wash these in the primary button's coral tint. */
   .card .gear:hover:not(:disabled) { background: transparent; color: var(--alpenglow); }
   .card #helpBtn { font-weight: 700; }
+  /* The link out is an <a>, and anchors inherit none of the button chrome the
+     other corner controls get — same box, by hand, or it reads as a stray
+     glyph beside four boxed ones. An emoji is a colour glyph, so the ink here
+     is the platform's, not the card's; the box is the card's. */
+  .card a.gear {
+    display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none; font-size: 15px;
+  }
+  .card a.gear[hidden] { display: none; }
 
   /* "What can I ask?" — a fixed overlay rather than a box inside the card.
      Absolutely positioning it inside the widget meant it was squeezed into
@@ -1822,10 +1855,17 @@
   }
   .needrow .nn { font-size: 11.5px; color: var(--dim); }
   /* The picker's pin: a red asterisk in a ring on any page with an item. */
-  .panelnav a.attn::after {
+  .panelnav a.attn::after,
+  details.sec.attn > summary .secname::after {
     content: "✱"; display: inline-grid; place-items: center;
     width: 13px; height: 13px; margin-left: 7px; font-size: 8px;
     color: var(--coral); border: 1px solid var(--coral); border-radius: 999px;
+  }
+  /* The same mark on the section itself, so the pin that got you to the page
+     does not abandon you in front of eight folded sections. Inline-grid needs
+     the name to be an inline-flex box for the marker to sit on its baseline. */
+  details.sec.attn > summary .secname {
+    display: inline-flex; align-items: center;
   }
 
   /* The dashboard's own band — the same voice as a super-group heading, but
@@ -2542,6 +2582,30 @@
   }
   details.sec > .body > .subhead:first-child { margin-top: 4px; padding-top: 0; border-top: none; }
 
+  /* THE ICON PICKER. Rows and columns of the actual glyphs, in the panel's own
+     control shape — a dropdown of emoji names would be a list of words for a
+     question that is entirely about what the thing looks like. It wraps, so
+     the number of choices is not a layout decision. */
+  /* A row that carries something under its control as well as beside it. */
+  .row.wrapped { flex-wrap: wrap; }
+  .row.wrapped .emojigrid { flex: 1 0 100%; }
+  .emojigrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+    gap: 6px; margin: 4px 0 2px;
+  }
+  .emojigrid .emojibtn {
+    height: 34px; padding: 0; font-size: 17px; line-height: 1;
+    border: 1px solid var(--line2); background: var(--panel); color: var(--text);
+    cursor: pointer; border-radius: 0;
+  }
+  .emojigrid .emojibtn:hover { border-color: var(--accent); }
+  /* The one in the field, marked the way every other chosen thing in the panel
+     is: the accent on the border, not a second colour scheme. */
+  .emojigrid .emojibtn.on {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
   /* The boundary of what a caller can ever do, shown with the things they
      can — otherwise every blocked action looks like one toggle away. */
   .asklist li.nevergroup { margin-top: 12px; padding-top: 11px;
@@ -3074,8 +3138,8 @@
       display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
     }
     .track {
-      flex: 1 0 100%; max-width: 100%; text-align: left; padding-left: 0;
-      margin: 7px 0 0; white-space: normal; overflow: hidden;
+      max-width: 100%; text-align: left; padding-left: 0;
+      margin: 5px 0 0; white-space: normal; overflow: hidden;
       text-overflow: clip; font-size: 10px; letter-spacing: .12em;
       /* ONE line, always. It was two, on the reasoning that a remix credit
          needs the room — but two lines is 18px of empty row under every

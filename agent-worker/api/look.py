@@ -77,6 +77,39 @@ def corner_controls(cfg: dict, embed: bool = False) -> dict:
         # `signinAvailable`, because that answer depends on the X-Call-Key and
         # cannot ride the cached payload.
         "signin": bool(cfg.get("embed_signin" if embed else "show_signin")),
+        # The operator's own link out. Two gates again: the feature has to be
+        # on AND this surface has to want it — an embed is usually the one that
+        # needs it most, since a caller who met the card on somebody else's
+        # page has no other way back to the station.
+        "link": bool(
+            cfg.get("corner_link_enabled")
+            and cfg.get("embed_corner_link" if embed else "show_corner_link")
+        ),
+    }
+
+
+def corner_link(cfg: dict) -> dict:
+    """Where the corner link goes, what it says, and what it looks like.
+
+    Separate from corner_controls because that answers "is it offered" per
+    surface while this is one answer for both. Blank falls through to the
+    station this line answers for, so an operator who moves the station does
+    not have to remember they typed its address in a second place.
+    """
+    url = str(cfg.get("corner_link_url") or "").strip()
+    if not url:
+        base = str(settings_store.station_base_url() or "").strip()
+        # The station's REST root ends in /api; a caller wants the site.
+        url = base[:-4] if base.endswith("/api") else base
+    # Only http(s) reaches the card. This is an operator-set string that ends
+    # up in an href, and `javascript:` there would be a stored XSS on every
+    # caller's page — including inside somebody else's embed.
+    if not url.lower().startswith(("http://", "https://")):
+        url = ""
+    return {
+        "url": url,
+        "label": str(cfg.get("corner_link_label") or "").strip() or "The station",
+        "icon": str(cfg.get("corner_link_icon") or "").strip() or "📻",
     }
 
 
@@ -201,6 +234,9 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         "theme": str(cfg.get("widget_theme") or "auto"),
         "controls": corner_controls(cfg),
         "embedControls": corner_controls(cfg, embed=True),
+        # One answer for both surfaces; which of them OFFERS it is in the two
+        # control blocks above.
+        "cornerLink": corner_link(cfg),
         "card": card_identity(cfg),
         "embedCard": card_identity(cfg, embed=True),
         "avatarStyle": (
