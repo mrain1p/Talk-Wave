@@ -125,7 +125,15 @@ def finding_rule(cfg: dict) -> str:
     if name_search:
         parts.append("""\
     * They gave a mood word, a genre, an era, or "something instrumental" ->
-      subwave_browse_library.""")
+      subwave_browse_library.
+    * They left the choice to YOU ("play me something good", "you pick") ->
+      subwave_station_favourites, and pick from what this station's listeners
+      have actually loved. Better than a guess, and it is a real thing to say
+      back: this one's a favourite round here.
+    * They ask whether something ALREADY PLAYED, tonight or before ->
+      subwave_already_played. It reaches further back than the recent history
+      in your briefing, and it says who requested each one, so a caller ringing
+      back about their own request gets a real answer instead of a maybe.""")
     parts.append("""\
     * They gave you nothing to work with, or nothing above fits -> put it in
       with subwave_request_song, in their own words, and let the station's
@@ -208,17 +216,28 @@ def offer_rule(cfg: dict) -> str:
 
 def name_rule(cfg: dict) -> str:
     """Asking a caller their name just to take a request is friction, so it's
-    opt-in. A name they volunteer is still used either way."""
+    opt-in. A name they volunteer is still used either way.
+
+    The payoff became real in SUB/WAVE 1.8 (#1384): until then the station HAD
+    the name and was never told to use it — the only instruction its prompts
+    carried about a requester name was a negative one about when not to say it,
+    which a model satisfies by never saying it. It now speaks the name on air,
+    and an unnamed request is credited to nobody rather than to a literal
+    "anon". So passing one along is worth a beat of the caller's time; it
+    wasn't before.
+    """
     if cfg.get("ask_caller_name"):
         return (
             "  If you know the caller's name, pass it as the requester — the station\n"
-            "  credits requests on air by name. If you don't know it and you're about\n"
-            "  to put one in, ask once, briefly. Never press them for it."
+            "  reads it out on air when their track comes up, so this is the caller\n"
+            "  hearing their own name on the radio, not paperwork. If you don't know\n"
+            "  it and you're about to put one in, ask once, briefly. Never press them\n"
+            "  for it: no name simply means the track is introduced without one."
         )
     return (
         "  Don't ask the caller their name. If they offer it, use it as the\n"
-        "  requester so the station can credit them on air; otherwise just put the\n"
-        "  request in without one."
+        "  requester — the station reads it out on air when the track comes up —\n"
+        "  otherwise just put the request in without one."
     )
 
 
@@ -294,6 +313,23 @@ Use your tools mid-conversation, the way a DJ works while talking:
     offer = offer_rule(cfg).rstrip()
     if offer:
         parts.append(offer)
+    if cfg.get("allow_never_play"):
+        parts.append("""\
+- **Ban a record for good** — "never play this again", "take this off the
+  station". That is PERMANENT: it leaves the queue and is never selected again,
+  for everyone, and nothing goes out on air to say so. Only when they have
+  asked for exactly that. Someone saying they don't like a song, or asking you
+  to skip it, has NOT asked for this — skipping is a different thing and lasts
+  three minutes. Say what you did in plain words, and don't soften a permanent
+  ban into "I'll take it off for you". You can also lift a ban if they ask.""")
+    if cfg.get("allow_genre_lock"):
+        parts.append("""\
+- **Hold the station to a genre** — "keep it jazz for a couple of hours". That
+  narrows what EVERYONE hears until the window lapses, and it keeps running
+  after they hang up. Only when they've asked to lock the station to a style —
+  wanting one jazz record is a request, not a lock. Some stations don't have
+  this control at all; if yours says so, say it plainly and don't pin a show
+  instead to fake it.""")
     parts.append("- **Check what's playing / coming up** rather than guessing.")
     # Absence is not enough: with the shoutout bullet simply missing, the DJ
     # still told a caller "that shoutout's in the air now" (the drill's
@@ -305,6 +341,17 @@ Use your tools mid-conversation, the way a DJ works while talking:
         ("allow_favorite", "add hearts or likes to tracks"),
         ("allow_skip_track", "skip what's playing"),
         ("allow_skills", "run segments"),
+        # Said out loud when off for the same reason the shoutout is: a caller
+        # asking "never play this again" and hearing "done, it's gone" from a
+        # DJ with no such tool is the exact mimed-action failure this list
+        # exists to stop, and it is the one they would never think to check.
+        # The genre lock is deliberately NOT here. This line is paid for in
+        # every prompt on every call, and no released station has the control
+        # at all — so it would be a permanent sentence about a capability
+        # nobody can turn on. A caller who asks gets the refusal from the tool
+        # bullet's absence and the no-miming floor, which is what the list is
+        # for; revisit when upstream #1404 ships.
+        ("allow_never_play", "ban a record from the station"),
     ) if not cfg.get(gate)]
     if off:
         parts.append(f"""\

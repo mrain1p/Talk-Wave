@@ -1422,12 +1422,24 @@
   // per segment per meter per animation frame. paintMeter writes one only when
   // the rounded value actually changed, which in practice is a handful of the
   // sixteen on any given frame.
-  // No segment elements any more. The meter was a 16-band SPECTRUM per side,
-  // which is a lot of machinery to answer the only question the row is asked:
-  // is there a voice here, and whose. It is one centre-out LEVEL now — You
-  // grows leftward from the centre tick, the DJ rightward — and the segment
-  // ticks are a repeating-linear-gradient in the trough, so a frame is one
-  // width write per side instead of thirty-two height writes.
+  // A WAVEFORM per side, 16 bands each, not a level bar.
+  //
+  // 0.10.131 replaced this with one centre-out bar on the reasoning that the
+  // only question the row is asked is "is there a voice here, and whose". The
+  // operator put it back and was right about why: the product is called Talk
+  // Wave, the waveform IS the thing, and a bar that grows is the shape of a
+  // download. A voice moving across sixteen bands reads as a voice; the same
+  // voice as one width reads as a progress meter.
+  //
+  // The cost that got the spectrum removed the FIRST time is paid the way it
+  // always was — a segment is written only when its rounded height actually
+  // changed, so silence costs nothing.
+  const SEGMENTS = 16;
+  function buildBars(host) {
+    host.innerHTML = '';
+    for (let i = 0; i < SEGMENTS; i++) host.appendChild(document.createElement('i'));
+  }
+  buildBars($('barsYou')); buildBars($('barsDj'));
 
   function analyserFor(mediaStreamTrack) {
     if (!mediaStreamTrack) return null;
@@ -1445,31 +1457,47 @@
   const bufYou = new Uint8Array(128), bufDj = new Uint8Array(128);
 
 
+  // The floor a silent segment sits at, as a percentage of the meter's
+  // height. Not zero: the meter's own shape has to be visible before anyone
+  // speaks, or the row looks broken until it isn't. It reads as silence
+  // rather than as quiet because off-call the segments are the trough colour
+  // — a CSS rule keyed on .rig.on, not something painted here.
+  const FLOOR = 12;
+
   // Only the bottom half of the FFT is worth looking at: speech has next to
   // nothing above ~8kHz, and mapping the whole range put six dead segments on
   // the right of every meter.
   const BAND_TOP = 64;
 
-  // Returns the level 0..1, and sets this side's fill as a side effect. One
-  // pass over the buffer for both — the caller needs the level for the avatar
-  // glow and the fill for the meter, and reading the analyser twice per frame
-  // is how they used to disagree.
+  // Returns the overall level, 0..1, and paints the bands as a side effect.
+  // One pass over the buffer for both — the caller needs the level for the
+  // avatar glow and the bands for the meter, and reading the analyser twice
+  // per frame is how they used to disagree.
   function paintMeter(host, an, buf, active) {
+    const kids = host.children;
     if (!an || !active) {
-      if (host.style.width !== '0%') host.style.width = '0%';
+      for (let i = 0; i < kids.length; i++) {
+        if (kids[i].style.height !== FLOOR + '%') kids[i].style.height = FLOOR + '%';
+      }
       return 0;
     }
     an.getByteFrequencyData(buf);
-    let sum = 0;
-    for (let i = 0; i < BAND_TOP; i++) sum += buf[i];
-    const level = Math.min(1, ((sum / BAND_TOP) / 255) * 2.6);
-    // Rounded to whole percent before it is compared: the analyser jitters in
-    // the third decimal even in silence, and without this the fill is a style
-    // write on every frame — the cost that got the spectrum removed the first
-    // time, and the reason this one is a single width.
-    const pct = Math.round(level * 100) + '%';
-    if (host.style.width !== pct) host.style.width = pct;
-    return level;
+    const per = BAND_TOP / SEGMENTS;
+    let total = 0;
+    for (let s = 0; s < SEGMENTS; s++) {
+      let sum = 0;
+      const from = Math.floor(s * per), to = Math.floor((s + 1) * per);
+      for (let i = from; i < to; i++) sum += buf[i];
+      const band = (sum / Math.max(1, to - from)) / 255;
+      total += band;
+      // Rounded to whole percent before it is compared: the analyser jitters
+      // in the third decimal even in silence, and without this every segment
+      // is a style write on every frame.
+      const h = Math.round(FLOOR + Math.min(1, band * 2.6) * (100 - FLOOR));
+      const px = h + '%';
+      if (kids[s].style.height !== px) kids[s].style.height = px;
+    }
+    return Math.min(1, (total / SEGMENTS) * 2.6);
   }
 
   function tick() {

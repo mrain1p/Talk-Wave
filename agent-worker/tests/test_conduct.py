@@ -120,7 +120,7 @@ class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
             self.assertIn("shoutouts", bare)
             everything = rules({g: True for g in (
                 "allow_requests", "allow_announcements", "allow_favorite",
-                "allow_skip_track", "allow_skills")})
+                "allow_skip_track", "allow_skills", "allow_never_play")})
             self.assertNotIn("Not on this line tonight", everything)
 
 
@@ -250,6 +250,14 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
         "subwave_skip_track", "subwave_dj_segment",
         "subwave_takeover_show", "subwave_cancel_takeover",
         "subwave_like_track", "subwave_unlike_track",
+        # Same again: each carries its own bullet in _tools() written in the
+        # words a caller uses ("Ban a record for good", "Hold the station to a
+        # genre") rather than a bare tool name. Both are things the DJ must
+        # understand the CONSEQUENCE of before reaching for, and a tool name in
+        # a list teaches neither that a ban is permanent nor that a lock
+        # outlives the call.
+        "subwave_never_play_track", "subwave_allow_track_again",
+        "subwave_genre_lock", "subwave_clear_genre_lock",
     }
 
     def test_every_unlocked_tool_is_named_or_deliberately_not(self):

@@ -316,15 +316,52 @@ class TestMainToolLogic(_TempStores):
     def test_search_results_carry_the_stations_mood_data(self):
         # The station returns moods and energy on every hit; dropping them left
         # the DJ describing a record purely from its title.
+        #
+        # `energy` is the SHAPE THE STATION ACTUALLY SENDS: a word, one of
+        # low/medium/high. This test used to pass a float, and the formatter
+        # only handled floats — so it went green for two months while the field
+        # was silently dropped from every real row. A fixture the station has
+        # never produced proves nothing about the station (2026-08-14).
         out = self.music._fmt_track({
             "title": "Open Eye Signal", "artist": "Jon Hopkins",
-            "moods": ["hypnotic", "nocturnal"], "energy": 0.7,
+            "moods": ["hypnotic", "nocturnal"], "energy": "high",
         })
         self.assertIn("hypnotic", out)
         self.assertIn("nocturnal", out)
         self.assertIn("high energy", out)
+        # A number is still read, for a hand-built row or an older station —
+        # dropping the field on the way back in would be the same bug again.
+        self.assertIn("low energy", self.music._fmt_track(
+            {"title": "T", "artist": "A", "energy": 0.2}))
         # And stays clean when the station sends nothing.
         self.assertNotIn("energy", self.music._fmt_track({"title": "T", "artist": "A"}))
+
+    def test_the_analysis_columns_reach_the_dj(self):
+        # bpm and key ride every search, recent and browse row (the station
+        # merges its library index into all three), and they are the DJ's own
+        # vocabulary — "same tempo, in the relative minor" is a statement
+        # rather than a claim. They used to be read on neighbour rows only.
+        out = self.music._fmt_track({
+            "title": "Hammer Orchid", "artist": "Will Slater",
+            "bpm": 152.4, "musicalKey": "Am", "instrumental": True,
+        })
+        self.assertIn("152 bpm", out)
+        self.assertIn("Am", out)
+        self.assertIn("instrumental", out)
+
+    def test_a_never_play_row_can_never_read_as_available(self):
+        # Belt and braces behind the filtering: the tools drop blocked rows
+        # before the DJ sees them, but anything that slips through must not
+        # look queueable, because the queue gate answers 409 and the DJ will
+        # already have promised it.
+        out = self.music._fmt_track({
+            "title": "Banned", "artist": "X",
+            "blockedBy": {"kind": "rule", "field": "genre",
+                          "label": "no Christmas in July", "seasonal": True},
+        })
+        self.assertIn("NEVER-PLAY", out)
+        self.assertIn("no Christmas in July", out)
+        self.assertIn("cannot be queued", out)
 
     def test_the_hangup_floor_is_configurable(self):
         # Asked for directly: "is there a setting for it?" There wasn't. The
@@ -615,3 +652,110 @@ class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):
         # The DJ must not be handed a duration it would read out loud.
         self.assertNotIn("seconds", out)
         self.assertIn("slow to confirm", out)
+
+
+class TestOnlyThisDJsSegmentsCanBeRun(unittest.TestCase):
+    """The station's manual trigger is an operator OVERRIDE: `POST /dj/skill`
+    runs a segment even when it is switched off, ignoring cooldowns and the
+    frequency gate. Until 0.10.132 the call line handed the model the whole
+    catalogue and passed whatever came back straight to it — so a caller could
+    run a segment the operator had turned off, or one belonging to another
+    DJ's show. Found on the 2026-08-14 upstream pass.
+    """
+
+    CATALOGUE = [
+        {"name": "weather", "label": "Weather", "enabled": True, "ready": True},
+        {"name": "news", "label": "News", "enabled": False, "ready": True},
+        {"name": "web-search", "label": "Search", "enabled": True, "ready": False},
+        {"name": "storytime", "label": "Story", "enabled": True, "ready": True},
+    ]
+
+    def _runnable(self, assigned):
+        from station_config import runnable_skills
+
+        return [s["name"] for s in runnable_skills(self.CATALOGUE, assigned)]
+
+    def test_a_switched_off_segment_is_not_offered(self):
+        self.assertNotIn("news", self._runnable(None))
+
+    def test_a_segment_missing_its_api_key_is_not_offered(self):
+        # Offering it buys one confident "let me get that" and then a failure.
+        self.assertNotIn("web-search", self._runnable(None))
+
+    def test_no_assignment_means_this_dj_runs_everything(self):
+        # Absent and null both mean unrestricted on the station's side: its
+        # seeded roster carries no `skills` key until the operator saves
+        # personas once. Reading that as "runs nothing" would leave a fresh
+        # station's DJ with no segments at all.
+        self.assertEqual(self._runnable(None), ["weather", "storytime"])
+
+    def test_another_djs_segment_is_withheld(self):
+        self.assertEqual(self._runnable(["weather"]), ["weather"])
+
+    def test_an_empty_assignment_is_not_read_as_all(self):
+        # [] is a real answer — this DJ is assigned nothing — and is NOT the
+        # same as the absent key above.
+        self.assertEqual(self._runnable([]), [])
+
+    def test_a_cron_only_segment_is_withheld_when_the_station_says_so(self):
+        # Upstream #1379 withholds a clock-pinned skill from the station's own
+        # random picks; `skillCatalog()` does not publish the field yet, so
+        # this is read in advance. The day it appears, a segment written for
+        # 7:10am stops being firable by a caller at one in the afternoon with
+        # no change on this side.
+        from station_config import runnable_skills
+
+        pinned = [{"name": "dawn", "enabled": True, "ready": True,
+                   "cronOnly": True}]
+        self.assertEqual(runnable_skills(pinned, None), [])
+
+    def test_the_tool_refuses_a_segment_that_is_not_ours_tonight(self):
+        import asyncio
+
+        from call.actions import CallActions
+        from call.air import OnAirGuard
+        from call.tools.broadcast import build_on_air_tools
+
+        class _Station:
+            def __init__(self):
+                self.ran = []
+
+            async def run_skill(self, name):
+                self.ran.append(name)
+                return {"ok": True, "spoken": "..."}
+
+        station = _Station()
+        guard = OnAirGuard(station, {})
+        tools = {t.info.name: t for t in build_on_air_tools(
+            {"allow_skills": True}, station, CallActions(5), guard,
+            guarded=False, skills=["weather"])}
+        out = asyncio.run(tools["subwave_run_skill"](name="news"))
+
+        # Refused HERE, because the station would have run it.
+        self.assertEqual(station.ran, [])
+        self.assertIn("weather", out)          # names the real list
+        self.assertIn("not a segment you can run", out)
+
+    def test_an_empty_roster_is_said_plainly_rather_than_attempted(self):
+        import asyncio
+
+        from call.actions import CallActions
+        from call.air import OnAirGuard
+        from call.tools.broadcast import build_on_air_tools
+
+        class _Station:
+            def __init__(self):
+                self.ran = []
+
+            async def run_skill(self, name):
+                self.ran.append(name)
+                return {"ok": True, "spoken": "..."}
+
+        station = _Station()
+        tools = {t.info.name: t for t in build_on_air_tools(
+            {"allow_skills": True}, station, CallActions(5),
+            OnAirGuard(station, {}), guarded=False, skills=[])}
+        out = asyncio.run(tools["subwave_run_skill"](name="weather"))
+
+        self.assertEqual(station.ran, [])
+        self.assertIn("no segments to run", out)

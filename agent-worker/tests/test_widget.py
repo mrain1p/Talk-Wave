@@ -668,7 +668,22 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # the height itself and there is nothing left to overspend.
         self.assertIn("THE HEIGHT BUDGET", self.css)
         card = self.css.split("body.compact .card {")[1].split("}")[0]
-        self.assertIn("height: 320px", card)
+        # A DECLARED fixed height, and one a host column can live with. The
+        # exact number is not the invariant and has moved once already: 320
+        # was the spec's, and the operator called the resulting embed too
+        # short after seeing it — at 320 the conversation box is 111px.
+        #
+        # The old ~356 ceiling came from a station page that gave its player
+        # column 400px; 380 spends 24 of the 44 that were spare. Past ~400
+        # that page starts showing blank space again, so this is the ceiling
+        # the number may not cross without the operator seeing it first.
+        import re
+        m = re.search(r"height: (\d+)px", card)
+        self.assertTrue(m, "the embed must declare a fixed height")
+        self.assertLessEqual(int(m.group(1)), 400,
+                             "past 400 the station page shows blank space "
+                             "under the card again")
+        self.assertGreaterEqual(int(m.group(1)), 320)
         # flex:none, or the frame's own column stretches it back out and the
         # fixed height means nothing.
         self.assertIn("flex: none", card)

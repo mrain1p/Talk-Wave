@@ -306,7 +306,13 @@
     // under it (makeIframe sets display:block) — restoring the frame to its
     // CONTAINER's height once compounded 3px per open-and-close of the ask
     // list; see baseHeight/baseSlot below.
-    iframe.style.height = height || (compact ? "190px" : "420px");
+    // Match the card's own fixed height, so the frame does not visibly jump
+    // from a guess to the truth on first paint. The widget still posts its
+    // height (states change what the card needs); these are only the value
+    // before the first message arrives. 190 was the old elastic embed's
+    // resting size and left a 190px window onto a 380px card until the
+    // message landed — which is exactly what the operator photographed.
+    iframe.style.height = height || (compact ? "400px" : "544px");
 
     el.appendChild(iframe);
 

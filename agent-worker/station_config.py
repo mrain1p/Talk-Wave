@@ -225,6 +225,69 @@ def _extract_persona_voices(settings: dict) -> dict[str, str]:
     return found
 
 
+def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
+    """Which segment slugs a persona is assigned, or None for "all of them".
+
+    The station stores this as `personas[].skills`. **Absent and null both mean
+    "runs everything"** — its seeded roster carries no `skills` key at all until
+    the operator saves personas once, and every reader on its side treats falsy
+    as unrestricted. A strict `is None` check here would read a fresh station's
+    roster as "this DJ runs nothing".
+    """
+    if not persona_id:
+        return None
+    for persona in (settings.get("personas") or []):
+        if not isinstance(persona, dict) or persona.get("id") != persona_id:
+            continue
+        assigned = persona.get("skills")
+        if not isinstance(assigned, list):
+            return None
+        return [str(s) for s in assigned if isinstance(s, str)]
+    return None
+
+
+def runnable_skills(catalogue: list[dict],
+                    assigned: list[str] | None) -> list[dict]:
+    """The segments this DJ may actually run, out of the station's catalogue.
+
+    The catalogue is every skill the station HAS. Three things in it are not
+    things this caller should be offered, and until 0.10.132 the call line
+    honoured none of them — it put the whole catalogue in the prompt and let
+    `POST /dj/skill` run whatever came back, which is an operator override that
+    fires a skill *even when it is switched off*:
+
+      * `enabled: false` — the operator turned it off. A caller could still run
+        it, which is the operator's own switch being ignored on their own
+        station.
+      * `ready: false` — it needs an API key that isn't set. Offering it buys
+        one confident "let me get the news" and then a failure.
+      * assigned to other personas — SUB/WAVE lets a skill belong to some DJs
+        and not others, so a caller could make tonight's host run a segment
+        that belongs to someone else's show.
+
+    `cronOnly` is checked too, and deliberately in advance: upstream #1379 added
+    it to withhold a clock-pinned skill from the station's own random picks, but
+    `skillCatalog()` does not publish the field, so nothing here can see it yet.
+    Reading it now means the day the station starts sending it, a segment
+    written for 7:10am stops being firable by a caller at one in the afternoon —
+    with no change on this side.
+    """
+    allowed = None if assigned is None else {str(s) for s in assigned}
+    out: list[dict] = []
+    for skill in (catalogue or []):
+        if not isinstance(skill, dict):
+            continue
+        if skill.get("enabled") is False or skill.get("ready") is False:
+            continue
+        if skill.get("cronOnly") is True:
+            continue
+        name = str(skill.get("name") or skill.get("kind") or "")
+        if allowed is not None and name and name not in allowed:
+            continue
+        out.append(skill)
+    return out
+
+
 class StationConfig:
     """Reads the station's own config. Every method is best-effort — a call
     must still connect if the station is mid-restart or creds are absent."""
@@ -286,6 +349,19 @@ class StationConfig:
         """Admin-only, so it needs THIS client to be carrying credentials —
         not merely for some to exist in the store."""
         return await self._get("/settings") if self._authed else {}
+
+    async def persona_skills(self, persona_id: str) -> list[str] | None:
+        """The segment slugs assigned to one persona, or None for "all".
+
+        Rides the same cached `/settings` read the voice mirror already warms,
+        so on a call this costs no network at all. None is also what an
+        unreadable station gives back — the safe answer, because it means "do
+        not narrow the catalogue" rather than "this DJ runs nothing".
+        """
+        station = await self.settings()
+        if not station:
+            return None
+        return _persona_skills_from(station, persona_id)
 
     async def persona_voices(self) -> dict[str, str]:
         """persona_id -> voice id, mirrored from the station when possible."""

@@ -103,7 +103,6 @@
       <span class="chips" id="stateRow">
         <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
         <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
-        <span class="micchip" id="micChip" hidden></span>
       </span>
     </div>
 
@@ -224,7 +223,11 @@
         <div class="duplex" id="duplex">
           <span class="mlabel you" id="youLabel">You</span>
           <div class="trough">
-            <div class="meter you" id="meterYou"><div class="bars" id="barsYou"></div></div>
+            <div class="meter you" id="meterYou"><div class="bars" id="barsYou"></div><!-- MUTED / MIC OFF, written across the caller's own waveform.
+                 It was a chip beside the clock and it was the one that
+                 pushed the others off a narrow card; the state belongs on
+                 the thing it is about, and there it costs no width. -->
+            <span class="micchip" id="micChip" hidden></span></div>
             <span class="tick" aria-hidden="true"></span>
             <div class="meter dj" id="meterDj"><div class="bars" id="barsDj"></div></div>
           </div>

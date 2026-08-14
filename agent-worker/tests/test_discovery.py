@@ -17,11 +17,18 @@ class _Station:
     """A station that answers, and remembers what it was asked."""
 
     def __init__(self, sound=None, neighbours=None, browse=None,
-                 now=None) -> None:
+                 now=None, liked=None, history=None, genres=None,
+                 sound_available=None) -> None:
         self._sound = sound if sound is not None else []
         self._neighbours = neighbours if neighbours is not None else []
         self._browse = browse if browse is not None else {}
         self._now = now or {}
+        self._liked = liked if liked is not None else []
+        self._history = history if history is not None else []
+        self._genres = genres if genres is not None else []
+        # None is the station declining to say, which must read as "assume it
+        # works" — the same default the tool takes.
+        self._sound_available = sound_available
         self.asked: list[tuple] = []
 
     async def search_by_sound(self, description, limit=12):
@@ -38,6 +45,22 @@ class _Station:
 
     async def now_playing(self):
         return self._now
+
+    async def sound_search_available(self):
+        self.asked.append(("coverage", None))
+        return self._sound_available
+
+    async def library_genres(self, limit=40):
+        self.asked.append(("genres", limit))
+        return self._genres
+
+    async def liked_tracks(self, limit=12):
+        self.asked.append(("liked", limit))
+        return self._liked
+
+    async def play_history(self, limit=12):
+        self.asked.append(("history", limit))
+        return self._history
 
 
 def _build(cfg, station):
@@ -164,7 +187,8 @@ class TestDiscoveryToolsRideTheirSwitches(unittest.TestCase):
             ["subwave_more_like_this", "subwave_search_by_sound"])
         self.assertEqual(
             sorted(_build({"allow_library_search": "open"}, _Station())),
-            ["subwave_browse_library"])
+            ["subwave_already_played", "subwave_browse_library",
+             "subwave_station_favourites"])
 
     def test_no_station_credentials_means_no_tools_at_all(self):
         # Every endpoint behind these is admin-only, so without credentials
@@ -197,3 +221,99 @@ class TestDiscoveryToolsRideTheirSwitches(unittest.TestCase):
                 ALL_ON, station, actions)}
         asyncio.run(tools["subwave_search_by_sound"](description="anything"))
         self.assertEqual(actions.count, 0)
+
+
+class TestNeverPlayTracksNeverReachACaller(unittest.TestCase):
+    """The station returns blocked rows on PURPOSE — its operator has to be
+    able to find one to review it — and stamps each with `blockedBy`. A caller
+    is not an operator: read one out and the DJ has promised a record the
+    queue gate answers 409 for. Found on the 2026-08-14 upstream pass.
+    """
+
+    BLOCKED = {"id": "b1", "title": "Banned", "artist": "X",
+               "blockedBy": {"kind": "entry", "type": "track", "id": "b1",
+                             "name": "Banned"}}
+    CLEAR = {"id": "c1", "title": "Fine", "artist": "Y"}
+
+    def test_a_blocked_row_is_not_offered(self):
+        tools = _build(ALL_ON, _Station(sound=[self.BLOCKED, self.CLEAR]))
+        out = asyncio.run(tools["subwave_search_by_sound"](description="dreamy"))
+        self.assertIn("Fine", out)
+        self.assertNotIn("Banned", out)
+
+    def test_all_blocked_is_not_reported_as_an_empty_library(self):
+        # The worst of the two lies: the library HAS the music. Saying it
+        # doesn't is something the caller can check.
+        tools = _build(ALL_ON, _Station(sound=[self.BLOCKED]))
+        out = asyncio.run(tools["subwave_search_by_sound"](description="dreamy"))
+        self.assertIn("never-play", out.lower())
+        self.assertIn("EXISTS", out)
+
+    def test_browse_says_how_many_it_withheld(self):
+        # A DJ told "1 result" for a browse that found two, with one it may not
+        # offer, is a DJ that will offer it anyway when the caller pushes.
+        station = _Station(browse={"rows": [self.BLOCKED, self.CLEAR],
+                                   "moodVocab": ["calm"]})
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](moods="calm"))
+        self.assertIn("Fine", out)
+        self.assertNotIn("Banned", out)
+        self.assertIn("never-play", out.lower())
+
+
+class TestTheStationsOwnWordsForAMiss(unittest.TestCase):
+    """An empty answer has more than one cause, and the station will say which.
+    Guessing the wrong one tells a caller something untrue about their taste.
+    """
+
+    def test_an_unanalysed_station_is_not_a_taste_problem(self):
+        station = _Station(sound=[], sound_available=False)
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_search_by_sound"](description="dreamy"))
+        self.assertIn("STATION", out)
+        self.assertIn("subwave_request_song", out)
+        self.assertIn(("coverage", None), station.asked)
+
+    def test_a_genre_miss_hands_back_the_real_spellings(self):
+        # "Hip Hop" and "Hip-Hop" are different words to the station, and only
+        # one of them is in any given library — the same trap the mood
+        # vocabulary was fixed for, one field along.
+        station = _Station(browse={"rows": [], "moodVocab": []},
+                           genres=["Hip-Hop", "Jazz"])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="Hip Hop"))
+        self.assertIn("Hip-Hop", out)
+        self.assertIn("do NOT tell them", out)
+
+
+class TestTheStationsFavouritesAndItsMemory(unittest.TestCase):
+    """Two reads the station has served all along and the call line never
+    used: what the audience actually likes, and what has actually aired."""
+
+    def test_favourites_are_offered_as_the_audiences_pick(self):
+        tools = _build(ALL_ON, _Station(
+            liked=[{"id": "l1", "title": "Loved", "artist": "Z"}]))
+        out = asyncio.run(tools["subwave_station_favourites"]())
+        self.assertIn("Loved", out)
+        self.assertIn("audience", out.lower())
+
+    def test_history_names_who_asked_for_it(self):
+        # The commonest reason this gets read is somebody ringing back to ask
+        # whether their request aired. "Yes, yours" is the answer.
+        tools = _build(ALL_ON, _Station(
+            history=[{"title": "Aired", "artist": "Q", "requester": "María",
+                      "source": "request"}]))
+        out = asyncio.run(tools["subwave_already_played"]())
+        self.assertIn("Aired", out)
+        self.assertIn("María", out)
+
+    def test_an_anon_row_is_not_read_out_as_a_name(self):
+        # 'anon' is the station's LEDGER value for an unsigned request, not
+        # somebody's name — upstream stopped it reaching aired copy in #1384
+        # and it must not reach a caller's ear through us either.
+        tools = _build(ALL_ON, _Station(
+            history=[{"title": "Aired", "artist": "Q", "requester": "anon",
+                      "source": "request"}]))
+        out = asyncio.run(tools["subwave_already_played"]())
+        self.assertNotIn("anon", out)
+        self.assertIn("request", out)

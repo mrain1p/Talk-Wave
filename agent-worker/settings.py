@@ -173,6 +173,15 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # outlives the call: it puts a different show — a different DJ — on air
     # for an hour by default. Admin, for the obvious reason.
     "allow_takeover":     (None, "admin"),
+    # The same reach as a takeover and quieter: it narrows what the station is
+    # allowed to play for a bounded window. Admin, and it needs a station new
+    # enough to have the control at all (upstream #1404).
+    "allow_genre_lock":   (None, "admin"),
+    # The only PERMANENT thing on a call line. Everything else here is over
+    # when the window lapses or the record ends; a never-play entry outlives
+    # the call, the show and the operator's memory of the call, and nothing
+    # goes out on air to say it happened. Admin.
+    "allow_never_play":   (None, "admin"),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -620,6 +629,8 @@ TIERED_PERMISSIONS = (
     "allow_skip_track",
     "allow_dj_segment",
     "allow_takeover",
+    "allow_genre_lock",
+    "allow_never_play",
 )
 
 # Offered to the panel so the three columns are named in one place.
@@ -1026,6 +1037,22 @@ SCHEMA: dict[str, dict] = {
              "it keeps running after they hang up, and the DJ can also cancel a "
              "takeover you set yourself from the station's admin page. Lands at the "
              "end of the record playing at the time."),
+    "allow_genre_lock": dict(group="perms", kind="select", tiered=True, admin=True,
+        label="Lock the station to a genre",
+        help="Holds the station to one genre or a few — \"only jazz for the next two "
+             "hours\" — using the station's own genre-lock control, so it needs a "
+             "SUB/WAVE new enough to have one; older stations answer that they can't "
+             "rather than failing. Same 15–720 minute window as a takeover and it "
+             "ends by itself. Quieter than a takeover, which is the risk: a pinned "
+             "show announces itself on air, a narrowed playlist doesn't."),
+    "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
+        label="Ban a track for good",
+        help="Puts the track playing now on the station's never-play list: out of the "
+             "queue, out of the fallback playlist, never selected again. The only "
+             "PERMANENT thing a caller can do — it outlives the call and nothing goes "
+             "out on air to say it happened. The same switch also lets a caller LIFT "
+             "a ban, including one you set yourself, so that a mistake made here has "
+             "a way back that doesn't depend on you noticing."),
 
     # --- call length ---
     "max_call_seconds": dict(group="closing", kind="number", label="Hang up after (s)",
@@ -2172,7 +2199,7 @@ def _lay_data_skeleton(data_dir) -> None:
 # lands); save() marks every store it writes with THIS ceiling, which is
 # what tells a store that merely never set a field apart from one written
 # before the field's default moved.
-STORE_REV = 4
+STORE_REV = 5
 
 
 def _migrate(stored: dict) -> dict:
@@ -2245,6 +2272,15 @@ def _migrate(stored: dict) -> dict:
     if _coerce(stored.get("_rev"), 1) < 4:
         if "allow_cancel_queue" not in stored:
             stored["allow_cancel_queue"] = TIER_OFF
+    # 0.10.132: the genre lock and the never-play ban. Both are POWERS, and the
+    # 0.9.61 rule says a power is never handed out by an upgrade — an operator
+    # who has never seen these settings must not find that tonight's caller can
+    # narrow the station's playlist or ban a record from it permanently. Stamped
+    # off; the panel is where they get turned on, deliberately.
+    if _coerce(stored.get("_rev"), 1) < 5:
+        for field in ("allow_genre_lock", "allow_never_play"):
+            if field not in stored:
+                stored[field] = TIER_OFF
     # 0.10.92: receipt placement stopped being chat-only — action_cards now
     # covers calls, texts and voicemail. A stored chat-era answer becomes the
     # operator's answer for every door; a store that never set it follows the

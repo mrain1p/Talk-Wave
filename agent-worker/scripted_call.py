@@ -250,6 +250,29 @@ async def fake_clear_pin(self):
     return {"ok": True}
 
 
+# The never-play ban, and the one write here with NO expiry at all. A pinned
+# show lapses in an hour and a skipped record is gone in three minutes; a real
+# block from a scripted run would take a track out of the operator's station
+# permanently, drop it from the queue and rebuild the fallback playlist — with
+# nothing on air to say it happened and nothing to notice later. It is exactly
+# the kind of thing this file's docstring promises cannot happen.
+async def fake_block(self, track_id):
+    STATION_CALLS.append(("block_track", {"trackId": track_id}))
+    return {"ok": True, "purged": 0}
+
+
+async def fake_unblock(self, track_id):
+    STATION_CALLS.append(("unblock_track", {"trackId": track_id}))
+    return {"ok": True}
+
+
+# The genre lock: a takeover by another name on the station's side, so it
+# leaves the same kind of pin behind after the script has finished.
+async def fake_genre_lock(self, genres, minutes):
+    STATION_CALLS.append(("set_genre_lock", {"genres": genres, "minutes": minutes}))
+    return {"ok": True, "genres": genres}
+
+
 async def fake_like(self, song_id):
     STATION_CALLS.append(("like_track", {"songId": song_id}))
     return {"ok": True, "count": 1, "title": "the current track"}
@@ -326,6 +349,9 @@ def muzzle_the_station() -> None:
     StationClient.search_by_sound = fake_sound
     StationClient.tracks_like = fake_like_this
     StationClient.browse_library = fake_browse
+    StationClient.block_track = fake_block
+    StationClient.unblock_track = fake_unblock
+    StationClient.set_genre_lock = fake_genre_lock
 
 
 # The MCP-served half of the surface is reads, all of it — every write is

@@ -957,6 +957,246 @@ class StationClient:
             log.warning("un-like failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
+    async def library_genres(self, limit: int = 40) -> list[str]:
+        """The genre words this library actually files under, commonest first.
+
+        Read only when a genre browse comes back empty. A genre is free text on
+        the station's side — "Hip Hop" and "Hip-Hop" are different words, and
+        only one of them is in any given library — so an empty result is far
+        more often the wrong spelling than an absent genre. Same reasoning as
+        the mood vocabulary browse already hands back, one field along.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get(
+                "/library/genres", auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            rows = _body(r).get("genres") or []
+            names = [str(g.get("value") or "").strip() for g in rows
+                     if isinstance(g, dict) and str(g.get("value") or "").strip()]
+            return names[:max(1, int(limit))]
+        except Exception as e:
+            log.info("library genres unavailable: %s", describe(e))
+            return []
+
+    async def liked_tracks(self, limit: int = 12) -> list[dict]:
+        """What this station's listeners have actually hearted. Admin-only.
+
+        The station's own Liked view, sourced from the likes store rather than
+        the tagged index — deliberately, on its side: a liked track may never
+        have been walked or tagged, because listeners heart whatever is on air,
+        and a tagged-only read would hide exactly those.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get(
+                "/library/liked",
+                params={"limit": max(1, int(limit)), "sort": "count"},
+                auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            d = _body(r)
+            items = d.get("rows") or d.get("results") or []
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            log.info("liked tracks unavailable: %s", describe(e))
+            return []
+
+    async def play_history(self, limit: int = 12) -> list[dict]:
+        """What has actually aired, newest first. Admin-only.
+
+        Distinct from the recent history on /state, which is the live queue's
+        short memory and resets with it: this is the station's durable play
+        log, one row per aired track, stamped with the source (ai/request/auto),
+        the requester and the show that was on. It is the only way to answer
+        "did you play it earlier?" for anything longer ago than the last few
+        records — a question callers ask constantly and the DJ used to guess at.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return []
+        try:
+            r = await self._client.get(
+                "/library/history", params={"limit": max(1, int(limit))},
+                auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            rows = _body(r).get("rows") or []
+            return rows if isinstance(rows, list) else []
+        except Exception as e:
+            log.info("play history unavailable: %s", describe(e))
+            return []
+
+    async def sound_search_available(self) -> bool | None:
+        """Whether this station can answer a sound search at all.
+
+        `None` means "couldn't tell" — the station is old, unreachable, or
+        doesn't publish coverage — and the caller of this must treat that as
+        "assume it can", not as a no. The distinction matters because an empty
+        sound search has two completely different causes: an analyser that has
+        never run (nothing this station can do about the caller's vibe) and a
+        vibe with genuinely no music behind it. Telling a caller their taste
+        isn't in the library, when really the feature is switched off, is the
+        worse of the two lies.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return None
+        try:
+            r = await self._client.get(
+                "/library/coverage", auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            d = _body(r)
+            value = d.get("soundSearchAvailable")
+            return bool(value) if isinstance(value, bool) else None
+        except Exception as e:
+            log.info("library coverage unavailable: %s", describe(e))
+            return None
+
+    async def block_track(self, track_id: str) -> dict:
+        """Put a track on the station's never-play list. Admin-only.
+
+        `{type: 'track', trackId}` is the station's own UI flow: it resolves
+        the album/artist ids and the display snapshot itself, so nothing here
+        has to know a track's shape. Blocking is not just a list entry — the
+        station drops the track from the upcoming queue and rebuilds the
+        fallback playlist, which is why an already-blocked track answering 409
+        is a success from a caller's point of view and is reported as one.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not track_id:
+            return {"ok": False, "error": "nothing identifiable to block"}
+        try:
+            r = await self._client.post(
+                "/library/blocklist",
+                json={"type": "track", "trackId": track_id},
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 409:
+                return {"ok": True, "already": True}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("block slow to confirm (%s) — treating as done", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("block %s failed: %s", track_id, describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    async def unblock_track(self, track_id: str) -> dict:
+        """Take a track back off the never-play list. Admin-only.
+
+        The station reverses its own side-effects (it re-admits the track to
+        selection, and #1402 will also lift a Navidrome-level exclusion), so
+        there is nothing to undo here beyond the DELETE.
+        """
+        from station_config import admin_credentials
+
+        from urllib.parse import quote
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not track_id:
+            return {"ok": False, "error": "nothing identifiable to unblock"}
+        try:
+            r = await self._client.delete(
+                f"/library/blocklist/track/{quote(str(track_id), safe='')}",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {"ok": True, "already": True}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("unblock slow to confirm (%s) — treating as done", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("unblock %s failed: %s", track_id, describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    # The station's own caps on a genre lock (GENRE_LOCK_GENRES_MAX and
+    # GENRE_LOCK_GENRE_MAX upstream). Mirrored for the same reason the takeover
+    # window is: an over-long list comes back as a 400, which reaches the caller
+    # as "that didn't work" for something we could have trimmed ourselves.
+    GENRE_LOCK_MAX_GENRES = 15
+    GENRE_LOCK_MAX_GENRE_LEN = 64
+
+    async def set_genre_lock(self, genres: list[str], minutes: int) -> dict:
+        """Hard-filter the station to a genre or few, for a bounded window.
+
+        Upstream's quick control (PR #1404): it upserts one reserved show
+        carrying the genre filter and pins it exactly like a takeover, so the
+        window bounds are the takeover's own and re-posting replaces rather
+        than stacks.
+
+        **Not merged upstream yet.** A station that hasn't got it answers 404,
+        which is reported here as a capability gap rather than a failure — the
+        same posture as the lyrics read. When it lands this starts working with
+        no change on this side.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        clean: list[str] = []
+        for genre in genres or []:
+            word = str(genre or "").strip()[:self.GENRE_LOCK_MAX_GENRE_LEN]
+            # De-duplicated case-insensitively in first-seen order, the way the
+            # station's own schema does it, so "Jazz, jazz" is one genre here
+            # too rather than two that the station silently folds.
+            if word and word.lower() not in {c.lower() for c in clean}:
+                clean.append(word)
+        if not clean:
+            return {"ok": False, "error": "no genre named"}
+        try:
+            r = await self._client.post(
+                "/schedule/genre-lock",
+                json={"genres": clean[:self.GENRE_LOCK_MAX_GENRES],
+                      "minutes": int(minutes)},
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {"ok": False, "unsupported": True,
+                        "error": "this station's software has no genre lock yet"}
+            if r.status_code == 409:
+                return {"ok": False, "error": _body(r).get("error")
+                        or "the station refused the lock"}
+            r.raise_for_status()
+            return {"ok": True, "genres": clean, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("genre lock slow to confirm (%s) — treating as set", e)
+                return {"ok": True, "unconfirmed": True, "genres": clean}
+            log.warning("genre lock failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
     async def active_show(self, now_playing: dict | None = None,
                           schedule: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).
