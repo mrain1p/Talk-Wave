@@ -7,94 +7,45 @@ commit-by-commit detail is in git history.
 
 The face is held with the name, the corner row is even again, and the settings gear belongs to the operator.
 
-### What the caller sees
-
-- **If the show changed mid-conversation and the photo changed with it, that was this.** The name, show and tagline have been held for the length of a conversation since 0.10.140 — the avatar was not, so a handover left the old DJ's name sitting above a new DJ's face. The initials fallback had it worse: it reads the live name, so a new presenter with no picture put *their* initials in the ring beside the previous DJ's name. The whole identity block is held now, and catches up on the first poll after the line clears.
-- **The corner controls are evenly spaced again**, which they were not in 0.10.144. Sizing the drawn link icon with `display:block` was the wrong tool: a button centres *inline* content, and a block-level child gets laid out at the left of the box instead — so every drawn control shifted left inside its 34px box. Each control centres its own contents now; measured, every glyph sits dead centre.
-- **The settings gear is only offered to an operator.** Nothing was ever exposed — every endpoint behind `/settings` checks admin auth for itself, and the panel shows a locked gate to anyone else — but a signed-in guest was seeing a sign-out lock, a sign-in chip and a settings gear at once, which is three controls telling one person three different stories about who they are. A box with no admin password yet still shows it, because until one exists nobody can *be* admin and hiding it would leave a first-run operator with no route to the panel from the card.
-
-### What the DJ can do
-
-- **If you asked for a DJ by name and a different show went on, the receipt is why.** Seen twice: the caller said "change the dj to duke", the model passed a show name it had chosen itself — THE OVERLOOK, which is Cliff's — the pin worked exactly as asked, and the DJ announced "Duke is taking over with The Overlook". Nothing in the loop could catch it: the argument *was* a real show, so resolving it was correct, and the receipt only ever said which SHOW was pinned. It names the presenter now, and when the caller named a person it tells the DJ what to do if that is not who they asked for.
-- Worth knowing what the logs were showing: a takeover that appears to run twice in one conversation is usually not a double fire. It is one wrong takeover and then the correction.
-
-### Under the hood
-
-- The test that guards the held identity reads **every** guarded region rather than the first. Reading only the first is how the avatar went unguarded for five versions.
+- **The DJ's photo now stays put for the length of a conversation**, the way the name and show already did — a handover mid-chat was leaving one DJ's name above another DJ's face.
+- **The corner controls are evenly spaced again.** Mine to fix: 0.10.144 sized the link icon in a way that shifted every drawn control left inside its box.
+- **The settings gear is only offered to an operator.** Nothing was ever exposed, but a signed-in guest was being shown a door with their name not on it. A box with no admin password yet still shows it, or a first-run operator would have no route to the panel.
+- **Fine tuning on the takeover, so the DJ stops announcing the wrong presenter.** The receipt now says whose show was pinned, and tells the DJ what to do when that is not the person the caller asked for. Related: a takeover that looks like it ran twice is usually one wrong pin followed by the correction, not a double fire.
 
 ## 0.10.144
 
 The link icon stops standing a head taller than the controls beside it.
 
-### What the caller sees
-
-- **In a row of five corner controls the radio was visibly larger than the other four.** Measured: 33px against 13px. The four icons in the page carry their size on the tag; the link's cannot, because the settings panel draws the same drawing at picker size, so its size has to come from CSS at each place that draws it — and the card's rule was the one missing. An inline SVG that carries only a viewBox has no intrinsic size, so rather than defaulting to something sensible it filled its 34px box.
-
-### Under the hood
-
-- Three checks, because "a rule exists" was not the failure: the shared drawing must not pin its own size, all three drawing sites must have a rule, and the card's rule has to be the same 13px as the glyphs beside it.
+- **It was rendering at 33px in a row of 13px glyphs.** Sized properly now, at all three places that draw it.
 
 ## 0.10.143
 
 LINES ARE OPEN belongs to the skin it is sitting in.
 
-### What the caller sees
-
-- **A green headline on the brass switchboard was the visible half of a colour left at its default on ten skins.** That colour is not decoration: it carries LINES ARE OPEN, the connection dot, the "listening" chip and the Call button once the line is live, while the accent is the button you press and the warning amber is ringing. Nine skins were moved into their own palette — moss for the switchboard's brass, a warmer green for the tape deck, instrument greens for the rack and the desk, bottle green for the shortwave's cream and for paper.
-- **On the three monochrome terminals, "the line is live" and "this is the control" were the same colour.** Identical, in fact. They are a paler phosphor now, which keeps the one-colour look and still tells the two apart.
-
-### Under the hood
-
-- Writing the check found a tenth that had escaped the eye: the amber CRT had live and ringing both set to the same value, so a caller could not tell them apart. The rule is a test now, with e-ink and classic Mac named as deliberately monochrome — they carry state by shape and label. A second check fails if that list ever names a skin that no longer exists.
+- **The "line is open" colour now sits in each skin's own palette** instead of a default green on brass, cream and phosphor. It carries the connection dot and the live Call button too, so it had to stay tellable apart from the accent and from ringing.
+- **On the monochrome terminals it was the same colour as the accent**, so "the line is live" and "this is the button" were indistinguishable — as were live and ringing on the amber CRT.
 
 ## 0.10.142
 
 The experimental skins get drawings that are actually drawings, plus glass, a screensaver and a blueprint.
 
-### What the caller sees
-
-- **If a skin's artefact looked like "a bunch of lines or a circle in the middle of the screen", the cause was mechanical rather than a matter of taste.** The drawing feeds a CSS property that cannot carry per-layer position or size, so every skin that tried to place its own pieces had its whole declaration thrown out as invalid. Measured in the browser: it came back empty on **thirteen of the nineteen** skins. What survived was whatever could be drawn as one centred tile — which is precisely a circle in the middle for no reason.
-- **Thirteen skins became objects.** A jackfield with two lines patched, a vent panel between two rack screws, a channel strip with a fader and a six-LED ladder, a dial with ticks and a needle, a prompt with a chevron and a blinking cursor, an invader with its eyes punched out of the card's own ground, a target box with corner brackets, a drafting dimension line, a Windows resize grip.
-- **The turntable stops floating, and stops moving the scrollbar.** Two faults in one drawing: its grooves were a repeating tile, so the tile's square corners showed as a grey box around the record; and a spinning layer the size of the whole transcript box overflowed a box that scrolls, so a scrollbar appeared and changed width as it turned. Drawings can have their own box now, so the record turns on its own centre in the lower half, clear of the words.
-- **Three new skins.** Glass — frosted and light, one light source, a lens streak low on the box. Screensaver — no drawing at all: your show's name bounces the box on two sweeps of different lengths, which is why the corner is rare. Blueprint — a drafting grid on navy with a dimensioned line. Twenty in total, and **all of them are still experimental**: the default card is untouched and is deliberately not described in the skins file at all, so there is no second copy of it to drift.
-
-### Under the hood
-
-- Checked across all twenty in a browser: every one renders at the card's fixed size with the same control height, and the transcript box's scroll height equals its client height on every one of them, so nothing has anything to scroll.
+- **If a skin's artefact looked like a stray circle or a few lines, it was being discarded as invalid before it ever drew** — on thirteen of the nineteen skins. They are objects now: a jackfield, a vent panel, a channel strip, a dial, a prompt, an invader, a target box, a dimension line, a resize grip.
+- **The turntable turns in place below the words**, and no longer makes the transcript box grow a scrollbar that moved as it spun.
+- **Three new skins: Glass, Screensaver (your show's name bouncing the box) and Blueprint.** Twenty in all, **still experimental** — the default card is untouched and is not described in the skins file at all, so there is no second copy of it to drift.
 
 ## 0.10.141
 
 The doors go where you drag them, the link icon joins the rest of the card, and the platter stops moving the scrollbar.
 
-### What the caller sees
-
-- **The Call, Text and Message buttons sit in the order you choose**, on your own page and in an embed alike.
-- **The link icon is drawn rather than an emoji.** It was the one element on the card that no theme and no skin could touch: a full-colour glyph rendered by the operating system, sitting in a row of three stroked controls in the card's own ink. Twenty line icons now, defined once so the panel's picker and the card cannot disagree. A stored emoji still renders as itself, so this changes only the deployments that never picked one.
-
-### What you see in the panel
-
-- **Players → Player settings → Button order: three rows you drag.** Every row also has up and down buttons, because an order you can only set by dragging is an order some people cannot set at all.
-- **The icon picker is a popup**, rather than two dozen boxes wrapped under the row making a one-line setting three lines tall whether or not anyone was choosing. The trigger shows the icon itself, since that is the entire question.
-- Both new controls show the *resolved* value while leaving the field empty, so a blank still means "fall through" and an operator who never touches either saves nothing.
-
-### Under the hood
-
-- The stored button order is cleaned server-side rather than in the card: an order can be short, long, misspelled or repeat itself, and each of those is a different kind of wrong on a card. Unrecognised names are dropped and anything the order never mentions is appended — so a door added in a later version appears rather than silently vanishing from every card until somebody opens the panel and saves.
-- The order is applied as a layout property rather than by moving the buttons around. Reparenting fights the rules that show and hide them, and a 20-second poll that reparents can move a button under a finger.
+- **Call, Text and Message sit in the order you choose**, on your own page and in an embed alike. Players → Player settings → Button order: three rows you drag, each with up and down buttons so it works without a mouse.
+- **The link icon is drawn in the card's own ink rather than an emoji**, so a theme or a skin can finally touch it, and the picker is a popup instead of two dozen boxes wrapped under the row. An emoji you typed yourself still renders as itself.
 
 ## 0.10.140
 
 The DJ you rang is the DJ you finish with.
 
-### What the caller hears
-
-- **If you asked for a show takeover mid-chat and the DJ changed under you, that was this.** A different persona, mid-subject, with no goodbye — often from a takeover the caller had just asked for themselves. The text line resolved the DJ again on every single message; it resolves once now and holds for the length of the conversation. A station that was down for the opening message is asked again rather than pinning the chat to "The DJ" for ten minutes.
-- The comment explaining the old behaviour had the reasoning backwards: it said the text line re-resolved "the same rule the phone follows", and the phone follows the opposite rule — a call fixes its persona *and its voice* at pickup and cannot change either without dropping the call.
-
-### What the caller sees
-
-- **The card stops repainting the DJ's name, show and tagline while a conversation is live.** This was the half that actually showed: the voice never changed mid-call, but the poll rewrote the identity above it, so the card disagreed with the person talking.
-- Deliberately narrow. The record, the clock, the now-playing rail, the corner controls and the station's palette all still follow the station mid-conversation — only who you are talking to is held, and it catches up on the first poll after the line clears.
+- **Ask for a takeover mid-chat and the DJ no longer changes under you.** The text line resolved the DJ again on every message; it now holds one for the conversation, the way a call always has.
+- **The card stops rewriting the DJ's name, show and tagline while a conversation is live.** The record, the clock and the station's colours still follow the station — only who you are talking to is held.
 
 ## 0.10.139
 
