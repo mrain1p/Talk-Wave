@@ -50,7 +50,10 @@
     const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
-    set('gearBtn', c.settings !== false && !compact);
+    // Admin only. `isAdmin` rides the per-request half of /live, so an
+    // older worker that does not send it leaves this exactly as it was —
+    // `!== false` rather than a truthy test, deliberately.
+    set('gearBtn', c.settings !== false && !compact && d.canOpenSettings !== false);
     // Forget-the-code, shown whenever THIS device holds a stored code and
     // there was a reason to enter one — the line demanded it (kiosks), or
     // sign-in is on offer and the caller climbed a tier. Without the second
@@ -1454,37 +1457,51 @@
       // later has no business overruling them.
       if (!room) { onSpeaker = d.speakerDefault !== false; paintSpeakerBtn(); }
 
-      const img = $('djAvatar'), mono = $('djMono');
-      // Initials in the ring when there's no usable image. showMono is also the
-      // fallback for the station's 1x1 placeholder: it is a valid PNG, so it
-      // LOADS rather than erroring, and without the size check below it stretched
-      // one pixel across the whole avatar and read as an empty circle
-      // (radio.drearburh.uk, a persona with no image — diagnosed 2026-08-10).
-      const showMono = () => {
-        img.classList.add('hidden');
-        if (mono) {
-          const ini = monogram(d.name);
-          mono.textContent = ini;
-          mono.classList.toggle('hidden', !ini);
-        }
-      };
-      const showImg = () => { if (mono) mono.classList.add('hidden'); img.classList.remove('hidden'); };
-      if (parts.avatar === false) {
-        // Avatar turned off for this surface — no image AND no initials.
-        img.classList.add('hidden');
-        if (mono) mono.classList.add('hidden');
-      } else if (d.avatar) {
-        img.alt = d.name || 'DJ';
-        img.onerror = showMono;
-        img.onload = () =>
-          (img.naturalWidth <= 2 || img.naturalHeight <= 2) ? showMono() : showImg();
-        if (img.dataset.pid !== d.personaId) {
-          img.dataset.pid = d.personaId || '';
-          img.src = d.avatar + '?v=' + (d.personaId || '');  // fires onload/onerror
-        } else if (img.complete && img.src) {
-          img.onload();   // src unchanged on a poll repaint — re-judge in place
-        }
-      } else { showMono(); }
+      // THE PHOTOGRAPH IS IDENTITY TOO. The name, show and tagline have been
+      // held for the length of a conversation since 0.10.140, and this block
+      // was not — so a show handover mid-chat left the old DJ's name above a
+      // NEW DJ's face (operator screenshot, 0.10.145). The initials path had
+      // the same fault twice over: monogram() reads the live name, so a new
+      // persona with no picture put their initials in the ring beside the
+      // previous DJ's name.
+      //
+      // The whole block, not just the src: which surface shows a photo at all
+      // is an operator setting, but it decides it from `parts`, and half a
+      // repaint is how the two halves disagreed in the first place. It
+      // catches up on the first poll after the line clears, like the rest.
+      if (!inConversation()) {
+        const img = $('djAvatar'), mono = $('djMono');
+        // Initials in the ring when there's no usable image. showMono is also the
+        // fallback for the station's 1x1 placeholder: it is a valid PNG, so it
+        // LOADS rather than erroring, and without the size check below it stretched
+        // one pixel across the whole avatar and read as an empty circle
+        // (radio.drearburh.uk, a persona with no image — diagnosed 2026-08-10).
+        const showMono = () => {
+          img.classList.add('hidden');
+          if (mono) {
+            const ini = monogram(d.name);
+            mono.textContent = ini;
+            mono.classList.toggle('hidden', !ini);
+          }
+        };
+        const showImg = () => { if (mono) mono.classList.add('hidden'); img.classList.remove('hidden'); };
+        if (parts.avatar === false) {
+          // Avatar turned off for this surface — no image AND no initials.
+          img.classList.add('hidden');
+          if (mono) mono.classList.add('hidden');
+        } else if (d.avatar) {
+          img.alt = d.name || 'DJ';
+          img.onerror = showMono;
+          img.onload = () =>
+            (img.naturalWidth <= 2 || img.naturalHeight <= 2) ? showMono() : showImg();
+          if (img.dataset.pid !== d.personaId) {
+            img.dataset.pid = d.personaId || '';
+            img.src = d.avatar + '?v=' + (d.personaId || '');  // fires onload/onerror
+          } else if (img.complete && img.src) {
+            img.onload();   // src unchanged on a poll repaint — re-judge in place
+          }
+        } else { showMono(); }
+      }
 
       // One place decides what the Call button says and whether it works.
       // Split across two blocks, the later one silently undid the earlier.

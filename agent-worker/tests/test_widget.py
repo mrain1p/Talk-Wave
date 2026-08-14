@@ -2429,10 +2429,29 @@ class TestWhoYouAreTalkingToDoesNotChangeUnderYou(unittest.TestCase):
         start = js.index(opener) + len(opener)
         return js[start:js.index(closer, start)]
 
+    @staticmethod
+    def _guarded(js):
+        """Every region held back while a conversation is running. There is
+        more than one — the identity text and the photograph are painted in
+        different parts of the poll — and reading only the first is how the
+        avatar went unguarded for five versions."""
+        return re.findall(r"if \(!inConversation\(\)\) \{(.*?)\n      \}", js, re.S)
+
     def test_the_identity_is_only_repainted_from_an_idle_card(self):
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        guarded = self._block(js, "if (!inConversation()) {", "\n      }")
+        guarded = "".join(self._guarded(js))
         for el in ("djName", "djShow", "djTagline"):
+            self.assertIn(el, guarded, f"{el} escaped the guard")
+
+    def test_the_photograph_is_held_with_the_name(self):
+        # Operator screenshot, 0.10.145: the name and show stayed put for the
+        # length of a chat and the PHOTO changed, so the card showed one DJ's
+        # name over another DJ's face. The initials fallback had it worse —
+        # monogram() reads the live name, so a new persona with no picture put
+        # their initials in the ring beside the previous DJ's name.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        guarded = "".join(self._guarded(js))
+        for el in ("djAvatar", "monogram(", "img.src"):
             self.assertIn(el, guarded, f"{el} escaped the guard")
 
     def test_the_record_and_the_palette_are_not_frozen_with_it(self):
@@ -2440,7 +2459,7 @@ class TestWhoYouAreTalkingToDoesNotChangeUnderYou(unittest.TestCase):
         # the clock and the station's colours following the show, which is
         # exactly what the operator asked to keep.
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        guarded = self._block(js, "if (!inConversation()) {", "\n      }")
+        guarded = "".join(self._guarded(js))
         for el in ("npTrack", "followStationPalette", "paintNowPlaying"):
             self.assertNotIn(el, guarded, f"{el} was frozen along with the DJ")
 

@@ -58,6 +58,7 @@ from tests.test_http import (  # noqa: F401
     TestJoinTokensExpire,
     TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
+    TestTheSettingsGearIsForTheOperator,
 )
 from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,

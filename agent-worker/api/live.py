@@ -144,6 +144,26 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
         (tier == "open" and (guest_door or admin_set))
         or (tier == "guest" and admin_set)
     )
+    # THE SETTINGS GEAR IS FOR THE OPERATOR, and until 0.10.145 it was offered
+    # to whoever loaded the page. Nothing leaked — every endpoint behind
+    # /settings checks admin auth for itself, and the panel shows a locked gate
+    # to anyone else — but a guest was being shown a door with their name not
+    # on it, next to a sign-in chip and a sign-out lock, which is three
+    # controls telling one person three different stories about who they are
+    # (operator-reported).
+    #
+    # Per request rather than in the cached payload for the same reason as
+    # signinAvailable: it depends on the X-Call-Key this caller sent, and the
+    # rest of /live is shared across every caller for thirty seconds. The
+    # operator's own switch still applies on top — this only ever SUBTRACTS.
+    out["isAdmin"] = tier == "admin"
+    # …and the GATE, which is not quite the same fact. Until an admin password
+    # exists nobody can be admin, and hiding the gear then would leave a
+    # first-run operator with no way to the panel from the card at all. Same
+    # trust model as the setup nudge two lines up: an unconfigured box belongs
+    # to whoever reaches it first, and it stops being one the moment a hash is
+    # stored.
+    out["canOpenSettings"] = out["isAdmin"] or out["needsSetup"]
     return out
 
 

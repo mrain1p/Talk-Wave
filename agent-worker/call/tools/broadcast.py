@@ -354,6 +354,14 @@ def build_on_air_tools(
                     "that name. Do NOT tell them a name is missing from the "
                     "roster unless it is absent from BOTH lists above."
                 )
+            # Whose show it is. The station knows; the DJ was guessing, and
+            # guessed wrong on air — see the note on the receipt below.
+            who = ""
+            pid = str(picked.get("personaId") or "")
+            for person in personas:
+                if str(person.get("id") or "") == pid:
+                    who = str(person.get("name") or "").strip()
+                    break
 
             asked = int(minutes or 0) or 60
             window = max(StationClient.TAKEOVER_MIN_MINUTES,
@@ -378,12 +386,28 @@ def build_on_air_tools(
                     f"{StationClient.TAKEOVER_MAX_MINUTES} minutes, so it's "
                     f"{window}. Say the real number."
                 )
+            # WHOSE show, in the receipt. Observed twice, 2026-08-14: the
+            # caller said "change the dj to duke", the model passed a show
+            # name it had picked itself (THE OVERLOOK — Cliff's), the pin
+            # worked exactly as asked, and the DJ then told the caller "Duke
+            # is taking over with The Overlook". Nothing in the loop could
+            # catch it: the argument was a real show, so `_match_show` was
+            # right to resolve it, and the receipt only ever said which SHOW
+            # was pinned. The station knows who presents it, so say so here
+            # and the model can check its own work against the thing it was
+            # actually asked for.
+            whose = f" That is {who}'s show." if who else ""
+            check = (
+                f" The caller asked for a DJ — if {who} is not who they named, "
+                "you have pinned the wrong show: tell them plainly and put the "
+                "right one on." if who else "")
             return (
                 f"Done — {name} is pinned for the next {window} minutes, and the "
-                f"schedule picks up again after that.{corrected} It takes over at "
-                "the end of the record that's playing now, not this second, so "
-                "don't say it has already started. Everyone listening is about to "
-                "get a different show, so say so in your own words."
+                f"schedule picks up again after that.{whose}{corrected} It takes "
+                "over at the end of the record that's playing now, not this "
+                "second, so don't say it has already started. Everyone listening "
+                "is about to get a different show, so say so in your own words — "
+                f"and name whose show it is, not whose you assumed.{check}"
             )
 
         tools.append(takeover_show)

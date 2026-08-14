@@ -112,6 +112,32 @@ class TestPinningAShow(unittest.TestCase):
         asyncio.run(_tools(station)["subwave_takeover_show"](show="Breakfast"))
         self.assertEqual(station.pinned, ("s-break", 60))
 
+    def test_the_receipt_says_whose_show_was_pinned(self):
+        # Observed twice on air, 2026-08-14: the caller said "change the dj to
+        # duke", the model passed a show name it had chosen itself, the pin
+        # worked exactly as asked, and the DJ announced the wrong presenter.
+        # Nothing could catch it — the argument WAS a real show, so resolving
+        # it was correct, and the receipt only named the show. It names the
+        # presenter now, so the model can check its own work.
+        station = _Station()
+        out = asyncio.run(_tools(station)["subwave_takeover_show"](show="Breakfast"))
+        self.assertIn("Dawn", out, "the receipt does not say whose show it is")
+        self.assertIn("wrong show", out,
+                      "the receipt does not tell the DJ what to do when the "
+                      "presenter is not the one the caller named")
+
+    def test_a_show_with_no_presenter_still_reads_cleanly(self):
+        # A show whose personaId matches nobody must not produce "That is 's
+        # show." — the station has had orphaned ids before.
+        class _Orphan(_Station):
+            SHOWS = [{"id": "s-x", "name": "Ghost Hour", "personaId": "p-gone"}]
+
+        station = _Orphan()
+        out = asyncio.run(_tools(station)["subwave_takeover_show"](show="Ghost Hour"))
+        self.assertIn("Ghost Hour", out)
+        self.assertNotIn("That is", out)
+        self.assertNotIn("None", out)
+
     def test_a_longer_window_is_passed_through_when_they_ask_for_one(self):
         station = _Station()
         asyncio.run(

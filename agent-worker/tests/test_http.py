@@ -635,3 +635,48 @@ class TestAnEmptyRoomIsNotAFaultWhenCallersTuneIn(unittest.TestCase):
         self.assertIn("refuses song requests", v["detail"])
         # The warning must point at the toggle that solves it, not just moan.
         self.assertIn("Tune the caller in", v["detail"])
+
+
+class TestTheSettingsGearIsForTheOperator(_TempStores):
+    """A guest was being offered a door with their name not on it.
+
+    Nothing leaked — every endpoint behind /settings checks admin auth for
+    itself, and the panel shows a locked gate to anyone else. But the card was
+    showing a signed-in guest a sign-out lock, a sign-in chip AND a settings
+    gear at once: three controls telling one person three different stories
+    about who they are (operator-reported, 0.10.145).
+
+    The answer rides the per-request half of /live, not the cached payload —
+    it depends on the key this caller sent, and the rest of /live is shared
+    across every caller for thirty seconds.
+    """
+
+    def _payload(self, tier, configured=True):
+        from unittest import mock
+
+        from api import live as api_live
+
+        base = {"canAsk": {}, "askTiers": {}}
+        with mock.patch.object(api_live, "caller_tier", return_value=tier), \
+             mock.patch("api.auth._auth_configured", return_value=configured):
+            return api_live._for_this_caller(_FakeRequest(), base)
+
+    def test_only_an_admin_is_offered_the_gear(self):
+        self.assertTrue(self._payload("admin")["canOpenSettings"])
+        for tier in ("guest", "open"):
+            with self.subTest(tier=tier):
+                self.assertFalse(self._payload(tier)["canOpenSettings"],
+                                 "a non-admin was offered the settings gear")
+
+    def test_a_box_with_no_password_yet_still_shows_it(self):
+        # Until an admin password exists nobody can BE admin, and hiding the
+        # gear then would leave a first-run operator with no way to the panel
+        # from the card. Same trust model as the card's setup nudge.
+        self.assertTrue(
+            self._payload("open", configured=False)["canOpenSettings"],
+            "a first-run box hides the only route to its own settings")
+
+    def test_the_tier_itself_is_still_reported_honestly(self):
+        # The gate is not the fact. isAdmin stays true only for an admin, so
+        # anything else reading it is not told a first-run guest is one.
+        self.assertFalse(self._payload("open", configured=False)["isAdmin"])

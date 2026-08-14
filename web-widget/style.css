@@ -1856,12 +1856,19 @@
      that resolve to --control-h and the corner icons are not among them. The
      check means the things a caller PRESSES to make something happen. */
   .card .gear {
+    /* Centred by the box, not by the button's default text alignment. A
+       <button> centres INLINE content; a block-level child is laid out at the
+       left of the content box instead — which is what `display:block` on the
+       icon did in 0.10.144: every drawn corner control shifted left inside its
+       34px box and the row read as unevenly spaced (operator screenshot). */
+    display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 34px; padding: 0; border-radius: 0;
     border: 1px solid transparent;
     background: transparent; color: var(--sage);
     font-family: var(--font-mono); font-size: 16px; line-height: 1;
     letter-spacing: 0;
   }
+  .card .gear[hidden] { display: none; }
   .card .gear:hover:not(:disabled) { border-color: var(--hairline); }
   /* :not(:disabled) only to out-specify `.card button:hover:not(:disabled)`,
      which would otherwise wash these in the primary button's coral tint. */
@@ -1874,17 +1881,13 @@
      size and fills its box instead — which is exactly what shipped: the radio
      stood a head taller than the four controls beside it (operator screenshot,
      0.10.144). Sized here so the one list can serve both surfaces. */
-  .card .gear svg { width: 13px; height: 13px; display: block; }
+  .card .gear svg { width: 13px; height: 13px; }
   /* The link out is an <a>, and anchors inherit none of the button chrome the
      other corner controls get — same box, by hand, or it reads as a stray
      glyph beside four boxed ones. Since 0.10.141 the icon is a drawn path on
      currentColor rather than an emoji, so the INK is the card's now too; an
      operator who typed an emoji of their own still gets the platform's. */
-  .card a.gear {
-    display: inline-flex; align-items: center; justify-content: center;
-    text-decoration: none; font-size: 15px;
-  }
-  .card a.gear[hidden] { display: none; }
+  .card a.gear { text-decoration: none; font-size: 15px; }
 
   /* "What can I ask?" — a fixed overlay rather than a box inside the card.
      Absolutely positioning it inside the widget meant it was squeezed into
