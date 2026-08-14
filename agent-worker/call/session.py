@@ -45,6 +45,7 @@ from .record import CallRecord
 from .providers import build_llm, build_stt, build_tts
 from .tools import (
     build_call_control_tools,
+    build_curation_tools,
     build_discovery_tools,
     build_library_tools,
     build_on_air_tools,
@@ -139,6 +140,9 @@ class CallSession:
         self.station_cfg = StationConfig()
 
         self.persona: dict = {}
+        # The segments THIS DJ may run, narrowed in prepare(). Empty until then,
+        # and empty is honest: with no station read there is nothing to offer.
+        self.skills: list[str] = []
         self.voice = ""
         self.instructions = ""
         self.session: AgentSession | None = None
@@ -201,6 +205,23 @@ class CallSession:
         )
         self.persona = self._resolve_persona(snap)
 
+        # The catalogue the station returned is every skill it HAS. Narrow it to
+        # what this DJ may actually run before it reaches either the prompt or
+        # the tool — the station's manual trigger is an operator override that
+        # ignores its own enabled flag, so an un-narrowed list is a caller
+        # running segments the operator switched off. Both consumers read the
+        # same filtered list, because a prompt and a tool that disagree about
+        # what exists is how the DJ ends up offering something it is then
+        # refused. Rides the /settings read persona_voices just warmed.
+        if snap.get("skills"):
+            from station_config import runnable_skills
+
+            assigned = await self.station_cfg.persona_skills(
+                str(self.persona.get("id") or ""))
+            snap["skills"] = runnable_skills(snap["skills"], assigned)
+        self.skills = [str(s.get("name") or s.get("kind") or "")
+                       for s in (snap.get("skills") or [])]
+
         # Whose voice this is, so the model writing "Francesca:" as a script
         # label never gets read out as part of the line.
         speech_filter.set_speaker(self.persona.get("name", ""))
@@ -258,7 +279,8 @@ class CallSession:
     def _build_tools(self) -> tuple[list[str], list]:
         guarded = bool(self.cfg.get("avoid_on_air_overlap"))
         local = build_on_air_tools(
-            self.cfg, self.station, self.actions, self.air, guarded=guarded
+            self.cfg, self.station, self.actions, self.air, guarded=guarded,
+            skills=self.skills,
         )
         # Same reason as the hang-up tool below: the session doesn't exist yet,
         # so the late-match announcer is handed a way to read it later.
@@ -267,6 +289,7 @@ class CallSession:
             get_session=lambda: self.session, air=self.air, record=self.record,
         )
         local += build_discovery_tools(self.cfg, self.station, self.actions)
+        local += build_curation_tools(self.cfg, self.station, self.actions)
         # The AgentSession doesn't exist yet — tools are built first — so the
         # hang-up tool is handed a way to read it later, not the thing itself.
         local += build_call_control_tools(

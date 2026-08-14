@@ -42,6 +42,23 @@ async def build_system_prompt(
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.
     snap = snapshot or await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
+    if snapshot is None and snap.get("skills"):
+        # Only when we fetched it ourselves: the call path narrows the
+        # catalogue to the on-air DJ before handing it over (session.prepare),
+        # and doing it twice would cost a second /settings read. This covers the
+        # chat line and the operator previews, which build their own snapshot —
+        # a preview that lists segments the DJ cannot run is exactly the
+        # disagreement the narrowing exists to remove.
+        from station_config import StationConfig, runnable_skills
+
+        sc = StationConfig()
+        try:
+            assigned = await sc.persona_skills(str(persona.get("id") or ""))
+        except Exception:                                     # noqa: BLE001
+            assigned = None
+        finally:
+            await sc.aclose()
+        snap["skills"] = runnable_skills(snap["skills"], assigned)
     show = await station.active_show(snap["now_playing"], snap.get("schedule"))
 
     # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it

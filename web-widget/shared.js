@@ -379,6 +379,10 @@ window.Callin = (function () {
       why: 'Puts a different DJ on air for everyone, for an hour, from the end of this record.' },
     { group: 'show', need: 'allow_takeover', say: '“Actually, put it back to normal.”',
       why: 'Cancels a show takeover early and hands the schedule back — same permission as setting one.' },
+    { group: 'show', need: 'allow_genre_lock', say: '“Keep it to jazz for the next couple of hours.”',
+      why: 'Holds the whole station to a genre for a bounded window, then it lifts by itself. Needs a station with the genre-lock control.' },
+    { group: 'show', need: 'allow_never_play', say: '“Never play this one again.”',
+      why: 'Bans the current record from the station permanently — it leaves the queue and is never picked again. The same permission can lift a ban.' },
     // --- leave a message ---
     { group: 'message', need: 'allow_voicemail', say: '“Can I leave a message for the DJ?”',
       why: 'The answering machine — available wherever the voicemail switches allow it.' },

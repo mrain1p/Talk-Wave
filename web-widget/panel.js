@@ -834,6 +834,7 @@
                           'allow_sound_search', 'allow_announcements',
                           'allow_skills', 'allow_skip_track',
                           'allow_dj_segment', 'allow_takeover',
+                          'allow_genre_lock', 'allow_never_play',
                           'allow_unfavorite'];
     const stationCreds = !!(secrets.subwave_admin_pass
                             && secrets.subwave_admin_pass.set);

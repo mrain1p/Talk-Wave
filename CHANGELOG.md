@@ -3,6 +3,31 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.132
+
+An alignment pass against SUB/WAVE. The DJ stops offering records the station will refuse, stops running segments you switched off, and gains three things the station has been able to do all along.
+
+### What the caller hears
+
+- **The DJ no longer offers a record it can't play.** If you keep a never-play list, its tracks were coming back in searches looking perfectly available — the station returns them on purpose, marked, so *you* can find one to review. The DJ read the mark as nothing, offered the track, took the caller's pick and only then met the refusal at the queue gate, having already promised it. Blocked tracks now never reach a caller, and when *everything* matching is blocked the DJ says so as taste — "not one we play" — rather than claiming the library hasn't got it, which is the version a caller can check.
+- **"You pick" gets a real answer.** Ask the DJ to choose and it can now look at what this station's listeners have actually hearted, instead of guessing. It says so, too: this one's a favourite round here.
+- **"Did you play my song earlier?" is answerable.** The DJ could only see the last few records. It now reads the station's durable play log, which reaches back further and records who requested each track — so a caller ringing back about their own request gets a yes, not a maybe.
+- **Records are described with what the station knows about them.** Every search result carries an energy rating, and it was being dropped from every single one: the station files energy as a word (*low*, *medium*, *high*) and this expected a number. The tempo, key and whether a track is instrumental now come through as well.
+- **A vibe search that finds nothing says which kind of nothing.** "No music like that" and "this station has never had its music analysed" are different sentences, and the station will tell us which is true. The DJ was guessing, and it guessed the one that tells a caller their taste isn't in the library.
+- **The caller's name is worth asking for again.** SUB/WAVE 1.8 started actually reading requester names on air — before that it had the name and was never told to use it. Ask-the-caller's-name has always been a setting; turning it on now means the caller hears their own name on the radio.
+
+### What you control
+
+- **A caller can only run segments that are switched on and belong to tonight's DJ.** The station's manual trigger is an operator override: it runs a segment *even when you have turned it off*, ignoring cooldowns and the frequency gate. The call line was handing the model your entire skill catalogue and passing back whatever it named — so a caller could run a segment you'd disabled, one missing its API key, or one belonging to a different DJ's show. All three are filtered now, and the prompt only lists what tonight's host can actually run, which makes it shorter as well as truer.
+- **"Never play this again", if you allow it.** A new permission lets a caller ban the record on air: out of the queue, out of the fallback playlist, never selected again. It is off by default and admin-tier, and it deserves the caution — it is the only thing on a call line with no expiry, and nothing goes out on air to say it happened. The same switch lets a caller *lift* a ban, including one you set yourself, deliberately: a mistake made from the phone needs a way back that doesn't depend on you noticing a record has stopped coming round.
+- **A genre lock, ready for the station that can take one.** "Keep it jazz for the next two hours" — the whole station, for a bounded window, on the same machinery as a show takeover. SUB/WAVE's own control for this is still an open pull request upstream, so today every station answers that it hasn't got one, and the DJ says exactly that rather than reporting a fault or faking it by pinning a show. Off by default. It starts working the day you upgrade the station.
+- **Two upgrade-safe defaults.** Neither new permission is handed out by upgrading: both arrive off on an existing install, whatever the fresh-install default is. A power you have never seen a setting for should not become something tonight's caller can do.
+
+### Under the hood
+
+- **The upstream alignment skill now checks the surface, not just the pull requests.** Three of the four problems above were invisible in the upstream changelog — they only showed up by reading the station's live handlers field by field against what we do with the response. A green test proved nothing about the energy bug, because the fixture had invented a value the station has never sent.
+- **Nothing the station's tool surface exposes has changed.** All seventeen MCP tools, and every one of the two dozen REST endpoints this sidecar calls, still exist with the same shapes.
+
 ## 0.10.131
 
 The player is redesigned, and the on-air duck now runs on the caller's clock. If the hold and the broadcast never seemed to line up, or the card felt like four different sizes, this is that.

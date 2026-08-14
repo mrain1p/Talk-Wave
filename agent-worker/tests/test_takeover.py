@@ -388,3 +388,120 @@ class TestTheDJDoesNotBlameTheWeatherForItsOwnMiss(unittest.TestCase):
         from brain import conduct
 
         self.assertIn("not seeing a tool that fits", conduct.rules({}))
+
+
+class _LockStation(_Station):
+    """A station that can also take a genre lock — or can't, which is the
+    interesting case: upstream #1404 is not in a released SUB/WAVE yet."""
+
+    def __init__(self, ok: bool = True, error: str = "",
+                 unsupported: bool = False, override=None) -> None:
+        super().__init__(ok=ok, error=error)
+        self.unsupported = unsupported
+        self.locked = None
+        self._override = override
+
+    async def schedule(self) -> dict:
+        d = {"shows": list(self.SHOWS)}
+        if self._override is not None:
+            d["override"] = self._override
+        return d
+
+    async def set_genre_lock(self, genres, minutes) -> dict:
+        self.locked = (list(genres), minutes)
+        if self.unsupported:
+            return {"ok": False, "unsupported": True,
+                    "error": "this station's software has no genre lock yet"}
+        if not self.ok:
+            return {"ok": False, "error": self.error}
+        return {"ok": True, "genres": list(genres)}
+
+
+def _lock_tools(station, limit: int = 5) -> dict:
+    actions = CallActions(limit)
+    built = build_on_air_tools(
+        {"allow_genre_lock": True}, station, actions, _Guard(), guarded=False)
+    return {t.info.name: t for t in built}
+
+
+class TestLockingTheStationToAGenre(unittest.TestCase):
+    """The same reach as a takeover, and quieter: a pinned show announces
+    itself on air in a voice listeners recognise, a narrowed playlist doesn't.
+    Built against upstream #1404, which no released station carries yet — so
+    the case that matters most is the one where the station says it can't.
+    """
+
+    def test_it_rides_its_own_switch(self):
+        built = build_on_air_tools({"allow_takeover": True}, _LockStation(),
+                                   CallActions(5), _Guard(), guarded=False)
+        names = {t.info.name for t in built}
+        self.assertNotIn("subwave_genre_lock", names)
+        self.assertIn("subwave_genre_lock", _lock_tools(_LockStation()))
+
+    def test_a_station_without_the_control_is_not_reported_as_a_failure(self):
+        # "That didn't work" sends the DJ round again; "this station hasn't got
+        # one" is the truth and ends the attempt.
+        tools = _lock_tools(_LockStation(unsupported=True))
+        out = asyncio.run(tools["subwave_genre_lock"](genres="Jazz"))
+        self.assertIn("doesn't have a genre lock", out)
+        self.assertIn("do NOT retry", out)
+        # And it must not reach for the takeover to fake it — that would pin a
+        # real show on a caller who asked about a genre.
+        self.assertIn("do NOT", out.replace("Do NOT", "do NOT"))
+
+    def test_the_window_is_clamped_like_a_takeover_and_said_out_loud(self):
+        station = _LockStation()
+        tools = _lock_tools(station)
+        out = asyncio.run(tools["subwave_genre_lock"](genres="Jazz", minutes=5000))
+        self.assertEqual(station.locked[1], StationClient.TAKEOVER_MAX_MINUTES)
+        self.assertIn(str(StationClient.TAKEOVER_MAX_MINUTES), out)
+        self.assertIn("Say the real number", out)
+
+    def test_a_comma_list_becomes_several_genres(self):
+        station = _LockStation()
+        tools = _lock_tools(station)
+        asyncio.run(tools["subwave_genre_lock"](genres="Jazz, Soul , Funk"))
+        self.assertEqual(station.locked[0], ["Jazz", "Soul", "Funk"])
+
+    def test_naming_no_genre_asks_rather_than_locking_nothing(self):
+        station = _LockStation()
+        tools = _lock_tools(station)
+        out = asyncio.run(tools["subwave_genre_lock"](genres="  ,  "))
+        self.assertIsNone(station.locked)
+        self.assertIn("Ask the caller", out)
+
+    def test_the_handover_is_never_described_as_instant(self):
+        # The station pins it exactly like a takeover: it lands at the end of
+        # the record playing now. A caller told otherwise checks immediately.
+        tools = _lock_tools(_LockStation())
+        out = asyncio.run(tools["subwave_genre_lock"](genres="Jazz"))
+        self.assertIn("end of the record", out)
+
+
+class TestLiftingALockIsNotLiftingSomeoneElsesTakeover(unittest.TestCase):
+    """On the station's side a genre lock and a show takeover are the SAME
+    pin, cleared by the same DELETE. Clearing blind would cancel a takeover the
+    operator set, for a caller who only asked about a genre."""
+
+    def test_a_show_takeover_is_not_cleared_by_the_genre_tool(self):
+        station = _LockStation(override={"showId": "s-late"})
+        tools = _lock_tools(station)
+        out = asyncio.run(tools["subwave_clear_genre_lock"]())
+        self.assertFalse(station.cleared)
+        self.assertIn("subwave_cancel_takeover", out)
+
+    def test_the_reserved_lock_show_is_cleared(self):
+        from call.tools.broadcast import GENRE_LOCK_SHOW_ID
+
+        station = _LockStation(override={"showId": GENRE_LOCK_SHOW_ID})
+        tools = _lock_tools(station)
+        out = asyncio.run(tools["subwave_clear_genre_lock"]())
+        self.assertTrue(station.cleared)
+        self.assertIn("can play anything", out)
+
+    def test_nothing_pinned_is_said_plainly(self):
+        station = _LockStation(override=None)
+        tools = _lock_tools(station)
+        out = asyncio.run(tools["subwave_clear_genre_lock"]())
+        self.assertFalse(station.cleared)
+        self.assertIn("Nothing is pinned", out)

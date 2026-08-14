@@ -145,6 +145,14 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_search_by_sound": "allow_sound_search",
         "subwave_more_like_this": "allow_sound_search",
         "subwave_browse_library": "allow_library_search",
+        # Two reads the station had served all along and the call line never
+        # used, taken up on the 2026-08-14 upstream pass. Both ride the
+        # library-search switch: "what does this station love" and "what has it
+        # already played" are the same "what have you got" question from two
+        # more directions, and an operator happy with one has no reason to
+        # withhold these.
+        "subwave_station_favourites": "allow_library_search",
+        "subwave_already_played": "allow_library_search",
         "subwave_queue_track": "allow_exact_queue",
         # Its undo. The station has had DELETE /dj/queue/:id all along, while
         # the prompt told the DJ a request could never be cancelled — so a
@@ -157,6 +165,13 @@ class TestExposedSurface(unittest.TestCase):
         # Its admin-only counterpart: un-hearts the operator's own curation
         # like (the public like has none), so station admin creds and admin tier.
         "subwave_unlike_track": "allow_unfavorite",
+        # The one PERMANENT thing on a call line: a never-play entry outlives
+        # the call, the show and the operator's memory of it, and nothing goes
+        # out on air to say it happened. Off by default, admin tier, and the
+        # lift shares the switch so a mistake has a way back that doesn't
+        # depend on the operator noticing.
+        "subwave_never_play_track": "allow_never_play",
+        "subwave_allow_track_again": "allow_never_play",
         "subwave_dj_announce": "allow_announcements",
         "subwave_list_skills": "allow_skills",
         "subwave_run_skill": "allow_skills",
@@ -171,6 +186,12 @@ class TestExposedSurface(unittest.TestCase):
         # over admin REST only — so these two are ours end to end.
         "subwave_takeover_show": "allow_takeover",
         "subwave_cancel_takeover": "allow_takeover",
+        # The same reach as a takeover and quieter — a pinned show announces
+        # itself on air, a narrowed playlist doesn't. Built against upstream
+        # #1404, which is not in a released station yet: a station without it
+        # answers plainly that it can't rather than failing.
+        "subwave_genre_lock": "allow_genre_lock",
+        "subwave_clear_genre_lock": "allow_genre_lock",
         "subwave_refresh_playlist": "never",
         "subwave_list_sfx": "never",
         "subwave_play_sfx": "never",
@@ -525,14 +546,18 @@ class TestTellingTheCallerWhenTheirSongPlays(unittest.TestCase):
 
 
 class TestTheDJDescribesRecordsItHasInformationAbout(unittest.TestCase):
-    """The station returns mood tags and an energy score on every hit.
+    """The station returns mood tags and an energy word on every hit.
     Dropping them left the DJ describing records purely from the title."""
 
     def test_moods_and_energy_reach_the_model(self):
         from call.tools.music import _fmt_track
 
+        # 'low' — a WORD, which is what the station sends. The float this used
+        # to pass was invented by the fixture, and the formatter handled only
+        # floats, so the field was dropped from every real row while both
+        # tests that covered it stayed green (2026-08-14).
         out = _fmt_track({"title": "Roads", "artist": "Portishead",
-                          "moods": ["moody", "nocturnal"], "energy": 0.2})
+                          "moods": ["moody", "nocturnal"], "energy": "low"})
         self.assertIn("moody", out)
         self.assertIn("nocturnal", out)
         self.assertIn("low energy", out)

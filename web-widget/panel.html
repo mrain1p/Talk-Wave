@@ -642,14 +642,18 @@
         <h4 class="subhead">Station-wide</h4>
         <p class="alert wide"><strong>These change the station, not the call.</strong>
           Everything above happens to the caller who asked; these land on
-          <em>everyone listening</em>. All three need the station admin
-          credentials, all three are off by default, and Actions per call is the
-          only thing pacing them.</p>
+          <em>everyone listening</em>. Every one of them needs the station admin
+          credentials, all are off by default, and Actions per call is the
+          only thing pacing them. The last two outlive the call:
+          <strong>a genre lock</strong> keeps running after they hang up, and
+          <strong>a ban</strong> never lapses at all.</p>
         <div class="permgrid" id="permGridStation">
           <div class="phead"><span>On the whole station</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
           <div class="row permrow" data-perm="allow_skip_track"><select id="allow_skip_track"></select></div>
           <div class="row permrow" data-perm="allow_dj_segment"><select id="allow_dj_segment"></select></div>
           <div class="row permrow" data-perm="allow_takeover"><select id="allow_takeover"></select></div>
+          <div class="row permrow" data-perm="allow_genre_lock"><select id="allow_genre_lock"></select></div>
+          <div class="row permrow" data-perm="allow_never_play"><select id="allow_never_play"></select></div>
         </div>
         <p class="hint wide">Sound effects and playlist rebuilds stay unavailable
           to callers whatever you set here — “Test station + tools” prints the

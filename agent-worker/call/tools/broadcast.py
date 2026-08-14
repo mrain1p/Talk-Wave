@@ -17,6 +17,13 @@ from ..air import OnAirGuard, speaking_secs
 
 log = logging.getLogger("callin.agent")
 
+# The reserved show the station's genre lock pins (GENRE_LOCK_SHOW_ID upstream).
+# Mirrored because clearing a lock and clearing a takeover are the same DELETE:
+# without knowing which show id means "lock", lifting one would cancel the
+# other, and the caller who asked about a genre would have undone the
+# operator's takeover.
+GENRE_LOCK_SHOW_ID = "genre_lock"
+
 
 def _match_show(shows: list[dict], wanted: str,
                 personas: list[dict] | None = None) -> dict | None:
@@ -79,6 +86,7 @@ def build_on_air_tools(
     actions: CallActions,
     guard: OnAirGuard,
     guarded: bool = True,
+    skills: list[str] | None = None,
 ) -> list:
     """On-air actions that keep the call and the broadcast from colliding.
 
@@ -184,12 +192,37 @@ def build_on_air_tools(
         tools.append(announce)
 
     if cfg.get("allow_skills"):
+        # The segments this DJ may run, as prepare() narrowed them: enabled,
+        # ready, and assigned to the persona on air. The station's own manual
+        # trigger honours NONE of that — it is documented as an operator
+        # override and runs a skill even when it is switched off — so this is
+        # the only place the operator's intent survives a caller asking.
+        runnable = [str(s) for s in (skills or []) if str(s or "").strip()]
+
         @lk_llm.function_tool(name="subwave_run_skill")
         async def run_skill(name: str) -> str:
             """Run one of the station's own segments on air by name — for
             example weather, news, dedication, shoutout, storytime."""
             if actions.at_limit():
                 return actions.refusal()
+            wanted = str(name or "").strip()
+            if runnable and wanted not in runnable:
+                # Refused HERE rather than at the station, which would have run
+                # it: the station's manual trigger ignores the enabled flag on
+                # purpose. Naming the real list matters — a bare "no" sends the
+                # model round again with a synonym.
+                return (
+                    f"'{wanted}' is not a segment you can run tonight. Yours "
+                    f"are: {', '.join(runnable)}. Either run one of those or "
+                    "tell the caller it isn't part of this show — do NOT try "
+                    "another name for the same thing."
+                )
+            if not runnable:
+                return (
+                    "You have no segments to run on this show — the station's "
+                    "list came back empty or none are assigned to you tonight. "
+                    "Say so plainly rather than guessing at a name."
+                )
             waited = await wait_for_clear_air()
             result = await station.run_skill(name)
             if not result.get("ok"):
@@ -377,6 +410,114 @@ def build_on_air_tools(
             )
 
         tools.append(cancel_takeover)
+
+    if cfg.get("allow_genre_lock"):
+        # The station's own quick control (SUB/WAVE #1404): it pins one
+        # reserved show carrying a genre filter, using the same takeover
+        # machinery — so the window bounds, the "re-post to replace" contract
+        # and the next-track-boundary handover are the takeover's, already
+        # documented above. Kept on its own switch rather than folded into
+        # takeover: pinning a SHOW puts a named DJ on air and a listener can
+        # hear whose it is, while this silently narrows what the station is
+        # allowed to play, which is harder to notice and harder to attribute.
+        @lk_llm.function_tool(name="subwave_genre_lock")
+        async def genre_lock(genres: str, minutes: int = 60) -> str:
+            """Hold the station to one genre or a few, for a while — "only
+            jazz for the next two hours". `genres` is a comma-separated list in
+            the caller's own words. This changes what EVERYONE hears and
+            outlasts the call, like a takeover, so use it only when they have
+            actually asked to lock the station to a style. For a single record,
+            queue that record instead."""
+            if actions.at_limit():
+                return actions.refusal()
+            wanted = [g.strip() for g in str(genres or "").split(",") if g.strip()]
+            if not wanted:
+                return ("No genre in that. Ask the caller which style they "
+                        "mean and try again.")
+            asked = int(minutes or 0) or 60
+            window = max(StationClient.TAKEOVER_MIN_MINUTES,
+                         min(StationClient.TAKEOVER_MAX_MINUTES, asked))
+            result = await station.set_genre_lock(wanted, window)
+            if result.get("unsupported"):
+                # Not a failure and not the caller's fault: this station is
+                # running a release without the control. Saying "that didn't
+                # work" would send the DJ round again.
+                return (
+                    "This station's software doesn't have a genre lock yet, so "
+                    "there is nothing to switch on. Tell the caller it isn't "
+                    "something you can do here — do NOT retry, and do NOT "
+                    "improvise it by pinning a show instead. You can still "
+                    "queue records in that style one at a time."
+                )
+            if not result.get("ok"):
+                return (
+                    f"That genre lock didn't go through: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            locked = result.get("genres") or wanted
+            spoken = ", ".join(str(g) for g in locked)
+            actions.note("genre lock", f"{spoken} for {window} min")
+            corrected = ""
+            if window != asked:
+                corrected = (
+                    f" They asked for {asked}; the desk only allows "
+                    f"{StationClient.TAKEOVER_MIN_MINUTES}–"
+                    f"{StationClient.TAKEOVER_MAX_MINUTES} minutes, so it's "
+                    f"{window}. Say the real number."
+                )
+            dropped = ""
+            if len(locked) < len(wanted):
+                dropped = (" Some of what they named was a repeat or over the "
+                           "station's limit, so the list is shorter than they "
+                           "said — read back the ones that stuck.")
+            return (
+                f"Done — the station is locked to {spoken} for the next {window} "
+                f"minutes.{corrected}{dropped} Like a takeover it lands at the end "
+                "of the record playing now, not this second, and it ends by itself. "
+                "Everyone listening is affected, so say so in your own words."
+            )
+
+        tools.append(genre_lock)
+
+        @lk_llm.function_tool(name="subwave_clear_genre_lock")
+        async def clear_genre_lock() -> str:
+            """Lift a genre lock early and let the station play anything again.
+            Use when the caller asks to undo one, or asks for normal
+            programming back."""
+            if actions.at_limit():
+                return actions.refusal()
+            # Checked before clearing, because the lock and an ordinary show
+            # takeover are the SAME pin on the station's side: clearing blind
+            # would cancel a takeover the operator set, from a caller who only
+            # asked about a genre.
+            pinned = (await station.schedule()).get("override") or {}
+            show_id = str(pinned.get("showId") or "")
+            if not show_id:
+                return ("Nothing is pinned — there's no genre lock to lift. "
+                        "Say so rather than implying you undid something.")
+            if show_id != GENRE_LOCK_SHOW_ID:
+                return (
+                    "What's pinned right now is a SHOW takeover, not a genre "
+                    "lock, so this won't lift it. If they want the schedule "
+                    "back, that is subwave_cancel_takeover — check they mean "
+                    "that before undoing someone else's takeover."
+                )
+            result = await station.clear_pinned_show()
+            if not result.get("ok"):
+                return (
+                    f"That didn't lift: "
+                    f"{result.get('error') or 'the station refused it'}. "
+                    "Tell the caller plainly — do not claim it worked."
+                )
+            actions.note("genre lock", "lifted")
+            return (
+                "Done — the genre lock is off and the station can play anything "
+                "again. It lands at the end of the current record rather than "
+                "this second. Say so in your own words."
+            )
+
+        tools.append(clear_genre_lock)
 
     return tools
 

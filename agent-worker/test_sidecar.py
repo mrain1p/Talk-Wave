@@ -164,7 +164,6 @@ from tests.test_music_tools import (  # noqa: F401
     TestAMoodIsNotASearch,
     TestAQueuedTrackCanComeBackOut,
     TestCurrentLyricsAreARead,
-    TestLikingTheTrackOnAir,
     TestSearchPagesLikeTheStation,
     TestSearchingForWhatTheCallerActuallySaid,
     TestWhatsNewInTheLibrary,
@@ -210,6 +209,23 @@ from tests.test_discovery import (  # noqa: F401
     TestBrowsingSpeaksTheStationsOwnVocabulary,
     TestDiscoveryToolsRideTheirSwitches,
     TestFindingMusicByHowItSounds,
+    TestNeverPlayTracksNeverReachACaller,
+    TestTheStationsFavouritesAndItsMemory,
+    TestTheStationsOwnWordsForAMiss,
+)
+from tests.test_curation import (  # noqa: F401
+    TestBanningARecordIsTheOnePermanentThing,
+    TestLikingTheTrackOnAir,
+)
+from tests.test_takeover import (  # noqa: F401
+    TestLiftingALockIsNotLiftingSomeoneElsesTakeover,
+    TestLockingTheStationToAGenre,
+)
+from tests.test_station import (  # noqa: F401
+    TestTheNeverPlayWritesAndTheGenreLock,
+)
+from tests.test_tools_logic import (  # noqa: F401
+    TestOnlyThisDJsSegmentsCanBeRun,
 )
 from tests.test_speech_filter import (  # noqa: F401
     TestATypedToolCallNeverReachesTheSpeaker,

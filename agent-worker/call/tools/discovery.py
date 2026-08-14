@@ -33,8 +33,8 @@ import logging
 from station import StationClient
 
 from ..actions import CallActions
-from .music import _fmt_track
 from .registry import library_search_needs_mcp
+from .rows import _drop_blocked, _fmt_track
 
 log = logging.getLogger("callin.agent")
 
@@ -43,22 +43,11 @@ log = logging.getLogger("callin.agent")
 # for on every later turn of the call.
 _PAGE = 8
 
-
-def _fmt_neighbour(t: dict) -> str:
-    """A neighbour row, with the two numbers that justify it being next.
-
-    bpm and key are what make "this mixes well after that" a statement rather
-    than a claim, and they are the DJ's own vocabulary — a DJ who can say "same
-    tempo, and it's in the relative minor" sounds like one.
-    """
-    line = _fmt_track(t, with_id=True)
-    extra = []
-    bpm = t.get("bpm")
-    if isinstance(bpm, (int, float)) and bpm:
-        extra.append(f"{round(float(bpm))} bpm")
-    if t.get("musicalKey"):
-        extra.append(str(t["musicalKey"])[:12])
-    return line + (f" [{', '.join(extra)}]" if extra else "")
+# bpm and key used to be added here, for neighbour rows only — they were the
+# two numbers that justify "this mixes well after that". The station merges its
+# analysis columns into EVERY listing row (search, recent and browse as well as
+# neighbours), so they moved into `_fmt_track` at 0.10.132 and this helper had
+# nothing left to add.
 
 
 def build_discovery_tools(cfg: dict, station: StationClient,
@@ -92,6 +81,24 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             request in, whenever the caller describes rather than names."""
             items = await station.search_by_sound(description, limit=_PAGE)
             if not items:
+                # Empty has two completely different causes and the station
+                # will tell us which: /library/coverage reports whether sound
+                # search is available at all. When it says NO, the library's
+                # contents are not the story and the DJ should stop implying
+                # they might be. When it says yes, the vibe genuinely found
+                # nothing and a re-word is worth a turn. None means the station
+                # wouldn't say — treat that as "assume it works", which lands
+                # on the cautious wording below either way.
+                if await station.sound_search_available() is False:
+                    return (
+                        "This station has never had its music analysed for "
+                        "sound, so this tool cannot work here at all — that is "
+                        "a fact about the STATION, not about the library or "
+                        "the caller's taste. Do not say there's nothing like "
+                        "that and do not try this tool again this call. DO "
+                        "THIS NOW, in the same turn: call subwave_request_song "
+                        "with the caller's own words."
+                    )
                 # The station answers 503 when the analyzer is down or nothing
                 # has been audio-analysed yet, and both arrive here as an empty
                 # list. "Nothing sounds like that" would be a lie about the
@@ -108,9 +115,20 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     "until you have — a sentence about looking, with no second "
                     "tool call behind it, leaves them with nothing."
                 )
+            items, withheld = _drop_blocked(items)
+            if not items:
+                return (
+                    "Everything that sounds like that is on this station's "
+                    "never-play list, so none of it can be queued. The music "
+                    "EXISTS — don't tell the caller the library lacks it. Say "
+                    "it isn't what this station plays, and offer to try a "
+                    "different feel."
+                )
             lines = [_fmt_track(t, with_id=True) for t in items]
             return (
-                f"{len(lines)} track(s) that SOUND like \"{description}\":\n"
+                f"{len(lines)} track(s) that SOUND like \"{description}\""
+                + (f" ({withheld} more matched but are never-play — do not "
+                   "offer them)" if withheld else "") + ":\n"
                 + "\n".join(lines)
                 + "\nThese are matched on the audio itself, so trust them over "
                 "the titles. Offer one or two by name; queue the exact one they "
@@ -149,11 +167,18 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     "turn: put a request in describing what they're after. "
                     "Don't report a fault and don't stop at saying you'll look."
                 )
+            items, _withheld = _drop_blocked(items)
+            if not items:
+                return (
+                    "Every neighbour of that one is on the station's never-play "
+                    "list. Say so as taste rather than as a fault — this station "
+                    "doesn't play them — and offer to look another way."
+                )
             head = (f"Tracks closest to \"{reference}\""
                     if reference else "Tracks closest to that one")
             return (
                 head + ", by how they actually sound:\n"
-                + "\n".join(_fmt_neighbour(t) for t in items[:_PAGE])
+                + "\n".join(_fmt_track(t, with_id=True) for t in items[:_PAGE])
                 + "\nQueue whichever they pick with subwave_queue_track."
             )
 
@@ -193,17 +218,109 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                             + ". If one of them is close to what the caller "
                             "means, try again with it — do NOT tell them the "
                             "library has nothing.")
-                elif not moods:
+                elif genre:
+                    # The same trap the mood vocabulary was fixed for, one
+                    # field along: a genre is free text on the station's side,
+                    # so "Hip Hop" and "Hip-Hop" are different words and only
+                    # one of them is in this library. Reading the real list
+                    # back turns a dead end into a second try, and it is only
+                    # read on the miss — no cost on a browse that worked.
+                    known = await station.library_genres(limit=40)
+                    if known:
+                        hint = (" The genres this library actually files under "
+                                "are: " + ", ".join(known)
+                                + ". If one is what the caller meant, try again "
+                                "with it spelled that way — do NOT tell them the "
+                                "library has none.")
+                if not hint:
                     hint = (" Try loosening it — one filter at a time — or put "
                             "the caller's own words in as a request instead.")
                 return "Nothing in the library matches that combination." + hint
+            rows, withheld = _drop_blocked(rows)
+            if not rows:
+                return (
+                    "Everything matching that is on the station's never-play "
+                    "list, so none of it can be queued. The library HAS music "
+                    "like that — say it isn't what this station plays rather "
+                    "than that there's none of it."
+                )
             total = d.get("total")
             head = f"{len(rows)} of {total} matching track(s)" if isinstance(
                 total, int) else f"{len(rows)} matching track(s)"
+            if withheld:
+                head += (f" ({withheld} more matched but are never-play — do "
+                         "not offer them)")
             return (head + ":\n"
                     + "\n".join(_fmt_track(t, with_id=True) for t in rows)
                     + "\nQueue the one they pick with subwave_queue_track.")
 
         tools.append(browse_library)
+
+        @lk_llm.function_tool(name="subwave_station_favourites")
+        async def station_favourites() -> str:
+            """What THIS station's listeners have actually loved — the most
+            hearted records, commonest first. Use for "what do people like on
+            here", "what's popular", "play something everyone loves", or when a
+            caller leaves the choice to you and you'd rather pick something the
+            audience has already voted for than guess."""
+            items = await station.liked_tracks(limit=_PAGE + 4)
+            if not items:
+                return (
+                    "Nobody has hearted anything on this station yet, or the "
+                    "likes list isn't readable. Say you haven't got a "
+                    "favourites list to go on rather than inventing one."
+                )
+            items, _withheld = _drop_blocked(items)
+            if not items:
+                return (
+                    "Every one of the station's most-liked records is on the "
+                    "never-play list now. Say there's nothing there you can "
+                    "spin rather than reading out records that can't be played."
+                )
+            return (
+                "The station's most-liked records:\n"
+                + "\n".join(_fmt_track(t, with_id=True) for t in items[:_PAGE])
+                + "\nThese are the audience's picks, not yours — say so if you "
+                "offer one. Queue whichever they choose with subwave_queue_track."
+            )
+
+        tools.append(station_favourites)
+
+        @lk_llm.function_tool(name="subwave_already_played")
+        async def already_played() -> str:
+            """What has ALREADY aired, most recent first — the station's
+            durable play log, not just the last couple of records. Use to
+            answer "did you play X earlier?", "what was that one before?", or
+            to avoid queueing something the station has just had on. This
+            reaches back further than the recent history you were briefed
+            with."""
+            rows = await station.play_history(limit=12)
+            if not rows:
+                return (
+                    "The station's play log isn't readable just now, so you "
+                    "can only go on the recent history you were given. Don't "
+                    "claim a record did or didn't air beyond that."
+                )
+            lines = []
+            for row in rows[:10]:
+                line = _fmt_track(row)
+                # Who asked for it, when the station knows: a caller ringing
+                # back to ask whether their request aired is the commonest
+                # reason this gets read, and "yes, yours" is the answer.
+                who = str(row.get("requester") or "").strip()
+                source = str(row.get("source") or "").strip()
+                if who and who.lower() != "anon":
+                    line += f"  (requested by {who[:40]})"
+                elif source:
+                    line += f"  ({source})"
+                lines.append(line)
+            return (
+                "Already played, most recent first:\n" + "\n".join(lines)
+                + "\nThis is what actually went out. If they ask whether "
+                "something aired and it isn't here, say you can't see it "
+                "rather than that it definitely didn't."
+            )
+
+        tools.append(already_played)
 
     return tools

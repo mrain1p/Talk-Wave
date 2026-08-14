@@ -7,7 +7,8 @@ copies of. These wrappers make good phrasing unnecessary — the tool itself
 retries, and refuses a search that was never a search.
 
 Searching by NAME is only one way into a library, and for a while it was the
-only one the call line had. `discovery.py` holds the others.
+only one the call line had. `discovery.py` holds the others, and `rows.py`
+holds the shaping every one of them shares.
 """
 
 from __future__ import annotations
@@ -22,97 +23,15 @@ from ..actions import CallActions
 from ..background import spawn
 from .late_match import _surface_late_match
 from .registry import library_search_needs_mcp
+# Re-exported, not merely used: `music._fmt_track` is a name several tests and
+# call sites already reach for, and moving the helpers to their own module is
+# not a reason to make every one of them move too.
+from .rows import (  # noqa: F401
+    _blocked_reason, _drop_blocked, _fmt_track, _query_variants,
+    looks_like_a_vibe,
+)
 
 log = logging.getLogger("callin.agent")
-
-
-def _query_variants(q: str) -> list[str]:
-    """The station's search requires EVERY word to match, so the natural
-    phrase "Let It Be by The Beatles" returns nothing — "by" appears in no
-    title or artist. Try as given, then with the last " by " connector
-    removed, then the left side alone. Rightmost split keeps titles that
-    themselves contain "by" ("Stand by Me by Ben E. King") intact."""
-    variants = [q]
-    idx = q.lower().rfind(" by ")
-    if idx > 0:
-        variants.append(q[:idx] + " " + q[idx + 4:])
-        variants.append(q[:idx])
-    return variants
-
-
-# Words that describe how music FEELS rather than what it's called. A caller
-# saying one of these wants the station's picker, not a title match — but the
-# model reaches for the search tool anyway, and "fun" dutifully returns
-# "Fun, Fun, Fun" by The Beach Boys. Observed on a real call.
-_VIBE_WORDS = {
-    "fun", "upbeat", "happy", "sad", "chill", "chilled", "chillout", "relaxing",
-    "calm", "mellow", "moody", "dark", "bright", "energetic", "energy", "hype",
-    "party", "dance", "dancey", "slow", "slower", "fast", "faster", "romantic",
-    "sexy", "angry", "aggressive", "soft", "loud", "quiet", "dreamy", "nostalgic",
-    "uplifting", "feelgood", "feel-good", "summery", "wintry", "rainy", "sunny",
-    "night", "nighttime", "morning", "driving", "workout", "study", "sleep",
-    "groovy", "funky", "smooth", "heavy", "light", "epic", "emotional", "vibe",
-    "vibes", "mood", "something", "anything", "good", "nice", "cool",
-    # The station's own request-slip vocabulary, so the two agree on what
-    # counts as a description.
-    "sustained", "surprise", "random", "afternoon", "evening", "late-night",
-    "latenight", "upbeat", "downbeat", "banger", "bangers", "classic",
-    "classics", "oldies", "newer", "older", "similar", "this", "that",
-}
-# Filler that shouldn't count either way when judging a query.
-_VIBE_FILLER = {"a", "an", "the", "some", "me", "for", "and", "or", "of", "to",
-                "songs", "song", "music", "track", "tracks", "tune", "tunes",
-                "play", "find", "get", "want", "like", "really", "very", "more"}
-
-
-def looks_like_a_vibe(q: str) -> bool:
-    """True when a search query describes a feeling rather than names a track.
-
-    Deliberately conservative: it only fires when EVERY meaningful word is a
-    mood word, so "Fun House by The Stooges" and "Mr. Blue Sky" are untouched.
-    """
-    import re as _re
-
-    words = [w for w in _re.findall(r"[a-z'-]+", (q or "").lower())
-             if w not in _VIBE_FILLER]
-    if not words or len(words) > 4:
-        return False
-    return all(w in _VIBE_WORDS for w in words)
-
-
-def _fmt_track(t: dict, with_id: bool = False) -> str:
-    # Every one of these fields comes from the station and goes into the
-    # prompt, where length is latency on every turn for the rest of the call
-    # and is paid for per token. The count is capped at 8 results; nothing
-    # capped the size of one, so a single malformed record — a title that is
-    # really a description, a tag dump in an album field — could dwarf the
-    # rest of the briefing. A track that needs more than this to name itself
-    # is not one the DJ can read out anyway.
-    def f(key: str, limit: int = 120) -> str:
-        return str(t.get(key) or "")[:limit].strip()
-
-    bits = f"\"{f('title') or '?'}\" by {f('artist') or '?'}"
-    if f("album"):
-        bits += f" ({f('album')}" + (f", {f('year', 12)})" if f("year", 12) else ")")
-    # The station stores mood tags and an energy score per track and returns
-    # them on every search hit. Dropping them left the DJ describing records it
-    # had real information about purely from the title.
-    feel = []
-    moods = t.get("moods") or []
-    if isinstance(moods, list) and moods:
-        feel.extend(str(m)[:40] for m in moods[:3])
-    energy = t.get("energy")
-    if isinstance(energy, (int, float)):
-        feel.append("high energy" if energy >= 0.66
-                    else "low energy" if energy <= 0.33 else "mid energy")
-    if feel:
-        bits += " — " + ", ".join(feel)
-    # The exact-queue tool needs the id the search returned. Without it in the
-    # text the model has nothing to pass and silently falls back to guessing.
-    if with_id and f("id", 64):
-        bits += f"  [id: {f('id', 64)}]"
-    return bits
-
 
 # How long a station refusal stands before the wrapper will pass another
 # request through. Short enough that a caller who waits is not blocked, long
@@ -240,6 +159,24 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 items = await station.search_library(
                     attempt, offset=(page - 1) * PAGE, limit=PAGE + 1)
                 if items:
+                    # Page detection reads the RAW count: the extra row is
+                    # fetched to prove another page exists, and a blocked row
+                    # still proves it.
+                    raw = len(items)
+                    items, withheld = _drop_blocked(items)
+                    if not items:
+                        # The library holds it; this station has decided never
+                        # to air it. Saying "we haven't got it" would be a lie
+                        # the caller can check, and sending the DJ off to
+                        # re-phrase or to the request tool just walks it into
+                        # the same refusal at the queue gate.
+                        return (
+                            f"Every match for '{attempt}' is on this station's "
+                            "never-play list, so none of them can be queued. The "
+                            "library HAS the music — don't tell the caller it "
+                            "doesn't. Say it isn't one this station plays, and "
+                            "offer to find something else."
+                        )
                     note = "" if attempt == q else (
                         f" (matched on '{attempt}' — the library needs every word to match)"
                     )
@@ -247,11 +184,17 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                              for t in items[:PAGE]]
                     more = (f"\n…more beyond this page — call again with "
                             f"page={page + 1} if none of these are it"
-                            ) if len(items) > PAGE else ""
+                            ) if raw > PAGE else ""
                     joined = "\n".join(lines)
                     head = f"{len(lines)} result(s){note}"
                     if page > 1:
                         head += f", page {page}"
+                    if withheld:
+                        # Named rather than silent: the DJ hearing "8 results"
+                        # for a search that really found ten, with two it may
+                        # not offer, is how it ends up promising one anyway.
+                        head += (f" ({withheld} more matched but are on the "
+                                 "station's never-play list — do not offer them)")
                     return head + ":\n" + joined + more
             if page > 1:
                 # An empty deeper page means the results ran out, not that the
@@ -297,6 +240,14 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     "The station didn't say what's new — the recently-added "
                     "shelf may be empty or unreachable right now. Tell the "
                     "caller you can't see the new arrivals; don't invent any."
+                )
+            items, _withheld = _drop_blocked(items)
+            if not items:
+                return (
+                    "Everything on the new-arrivals shelf is on this station's "
+                    "never-play list, so there is nothing here you can offer. "
+                    "Say there's nothing new worth spinning rather than reading "
+                    "out records that cannot be played."
                 )
             # 8 lines, like a search page: enough to browse down a phone
             # line, small enough not to weigh on every later turn.
@@ -495,65 +446,6 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             )
 
         tools.append(request_song)
-
-    if cfg.get("allow_favorite"):
-        @lk_llm.function_tool(name="subwave_like_track")
-        async def like_track() -> str:
-            """Add a like to the track playing RIGHT NOW — the same heart a
-            listener taps in the app. Use it when the caller says they love
-            this one, or asks to favourite what's on. It likes the CURRENT
-            record only: there is no way to like some other track from here,
-            and no un-like, so don't offer either."""
-            if actions.at_limit():
-                return actions.refusal()
-            np = await station.now_playing()
-            track = (np or {}).get("nowPlaying") or {}
-            song_id = str(track.get("id") or track.get("songId") or "")
-            res = await station.like_track(song_id)
-            if not res.get("ok"):
-                return (
-                    f"That like didn't go through: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — don't claim it worked."
-                )
-            name = _fmt_track(track) if track.get("title") else "the current track"
-            actions.note("like", name)
-            if res.get("alreadyLiked"):
-                return (
-                    f"Already liked — {name} was on the board already, so the count "
-                    "didn't move. Say so warmly."
-                )
-            count = res.get("count")
-            tail = f" That's {count} now." if isinstance(count, int) and count else ""
-            return f"Done — added a like to {name}.{tail} Say it back in your own voice."
-
-        tools.append(like_track)
-
-    if cfg.get("allow_unfavorite") and not library_search_needs_mcp():
-        @lk_llm.function_tool(name="subwave_unlike_track")
-        async def unlike_track() -> str:
-            """Remove the operator's heart from the track playing RIGHT NOW.
-            Admin only. This undoes the OPERATOR's own curation heart on the
-            current record — not a listener's public like, which cannot be
-            undone. Use it when a signed-in operator asks to un-favourite what's
-            on. Likes the current track only; there is no arbitrary song here."""
-            if actions.at_limit():
-                return actions.refusal()
-            np = await station.now_playing()
-            track = (np or {}).get("nowPlaying") or {}
-            song_id = str(track.get("id") or track.get("songId") or "")
-            res = await station.unlike_track(song_id)
-            if not res.get("ok"):
-                return (
-                    f"That didn't go through: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — don't claim it worked."
-                )
-            name = _fmt_track(track) if track.get("title") else "the current track"
-            actions.note("unlike", name)
-            return f"Done — took the heart off {name}. Say it back in your own voice."
-
-        tools.append(unlike_track)
 
     return tools
 

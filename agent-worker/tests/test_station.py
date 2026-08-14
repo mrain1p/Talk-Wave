@@ -699,3 +699,124 @@ class TestBothCancelRefusalsAre409(unittest.TestCase):
         # The safer default: claiming "too late" invents a cause, while
         # "wasn't there" is what a missing reason actually implies.
         self.assertEqual(self._cancel({})["reason"], "not-queued")
+
+
+class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
+    """The three station writes added on the 2026-08-14 upstream pass. Each has
+    a status code that is a SUCCESS from the caller's point of view rather than
+    a failure, and getting that wrong makes the DJ report a fault for something
+    that is exactly as the caller wanted it."""
+
+    class _Resp:
+        def __init__(self, status=200, payload=None):
+            self.status_code = status
+            self._payload = payload if payload is not None else {}
+            self.content = b"{}"
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise AssertionError(
+                    f"raise_for_status reached for {self.status_code} — the "
+                    "code should have been handled before this")
+
+        def json(self):
+            return self._payload
+
+    def _client(self, resp, method="post"):
+        from station import StationClient
+
+        client = StationClient.__new__(StationClient)
+        sent = {}
+
+        class _Http:
+            async def post(self, path, json=None, **kw):
+                sent["path"], sent["json"] = path, json
+                return resp
+
+            async def delete(self, path, **kw):
+                sent["path"] = path
+                return resp
+
+        client._client = _Http()
+        return client, sent
+
+    def _run(self, client, coro_factory):
+        import asyncio
+        from unittest import mock
+
+        import station_config
+
+        with mock.patch.object(station_config, "admin_credentials",
+                               return_value=("u", "p")):
+            return asyncio.run(coro_factory(client))
+
+    def test_a_block_sends_the_stations_own_track_form(self):
+        # {type, trackId} lets the station resolve the album/artist ids and the
+        # display snapshot itself, so nothing here has to know a track's shape.
+        client, sent = self._client(self._Resp(201, {"entry": {}, "purged": 2}))
+        out = self._run(client, lambda c: c.block_track("t1"))
+        self.assertEqual(sent["path"], "/library/blocklist")
+        self.assertEqual(sent["json"], {"type": "track", "trackId": "t1"})
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["purged"], 2)
+
+    def test_an_already_blocked_track_is_a_success_not_a_failure(self):
+        # 409 "already blocked" is precisely the state the caller asked for.
+        # Reporting it as an error would have the DJ apologise for a ban that
+        # is already in place.
+        client, _ = self._client(self._Resp(409, {"error": "already blocked"}))
+        out = self._run(client, lambda c: c.block_track("t1"))
+        self.assertTrue(out["ok"])
+        self.assertTrue(out["already"])
+
+    def test_unblocking_something_never_blocked_is_a_success(self):
+        client, sent = self._client(self._Resp(404), method="delete")
+        out = self._run(client, lambda c: c.unblock_track("t1"))
+        self.assertTrue(out["ok"])
+        self.assertTrue(out["already"])
+        self.assertIn("/library/blocklist/track/t1", sent["path"])
+
+    def test_a_track_id_is_escaped_on_its_way_into_the_path(self):
+        client, sent = self._client(self._Resp(200), method="delete")
+        self._run(client, lambda c: c.unblock_track("a/b?c"))
+        self.assertNotIn("a/b", sent["path"])
+        self.assertIn("a%2Fb%3Fc", sent["path"])
+
+    def test_nothing_identifiable_never_reaches_the_station(self):
+        client, sent = self._client(self._Resp(200))
+        out = self._run(client, lambda c: c.block_track(""))
+        self.assertFalse(out["ok"])
+        self.assertEqual(sent, {})
+
+    def test_a_station_without_the_genre_lock_says_so_rather_than_failing(self):
+        # Upstream #1404 is not in a released SUB/WAVE. A 404 here is a
+        # capability gap, and the tool depends on being able to tell it from a
+        # refusal — the two get completely different words on air.
+        client, _ = self._client(self._Resp(404))
+        out = self._run(client, lambda c: c.set_genre_lock(["Jazz"], 60))
+        self.assertFalse(out["ok"])
+        self.assertTrue(out["unsupported"])
+
+    def test_genres_dedupe_case_insensitively_in_first_seen_order(self):
+        # The station's own schema does this; doing it here too means the list
+        # the DJ reads back is the list that was actually set.
+        client, sent = self._client(self._Resp(200, {}))
+        out = self._run(
+            client, lambda c: c.set_genre_lock(["Jazz", "jazz", "Soul", "JAZZ"], 60))
+        self.assertEqual(sent["json"]["genres"], ["Jazz", "Soul"])
+        self.assertEqual(out["genres"], ["Jazz", "Soul"])
+
+    def test_an_over_long_list_is_trimmed_rather_than_400ing(self):
+        from station import StationClient
+
+        client, sent = self._client(self._Resp(200, {}))
+        many = [f"g{i}" for i in range(StationClient.GENRE_LOCK_MAX_GENRES + 5)]
+        self._run(client, lambda c: c.set_genre_lock(many, 60))
+        self.assertEqual(len(sent["json"]["genres"]),
+                         StationClient.GENRE_LOCK_MAX_GENRES)
+
+    def test_an_empty_genre_list_never_reaches_the_station(self):
+        client, sent = self._client(self._Resp(200, {}))
+        out = self._run(client, lambda c: c.set_genre_lock(["  ", ""], 60))
+        self.assertFalse(out["ok"])
+        self.assertEqual(sent, {})

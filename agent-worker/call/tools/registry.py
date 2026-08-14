@@ -151,7 +151,22 @@ TOOLS: tuple[Tool, ...] = (
          "switch: it answers the same \"what have you got\" question from the "
          "other end. Moods come from the station's own fixed vocabulary, "
          "which the tool hands to the DJ rather than letting it invent a word "
-         "that matches nothing.",
+         "that matches nothing — and on an empty genre browse it hands back "
+         "the station's real genre spellings for the same reason.",
+         needs_station_admin=True),
+    Tool("subwave_station_favourites", "allow_library_search", LOCAL,
+         "The records this station's listeners have hearted most.",
+         "Station admin credentials required. Shares the library-search "
+         "switch: it is another answer to \"what have you got\", sorted by "
+         "what the audience already voted for. Gives the DJ something better "
+         "than a guess when a caller says \"you pick\".",
+         needs_station_admin=True),
+    Tool("subwave_already_played", "allow_library_search", LOCAL,
+         "What has actually aired, further back than the briefing reaches.",
+         "Station admin credentials required. The station's durable play log, "
+         "not the queue's short memory — it carries the requester and the "
+         "show, so \"did my song play?\" from someone ringing back has a real "
+         "answer instead of a guess.",
          needs_station_admin=True),
     Tool("subwave_like_track", "allow_favorite", LOCAL,
          "Adds a like to the track playing now — the same heart a listener taps.",
@@ -166,6 +181,22 @@ TOOLS: tuple[Tool, ...] = (
          "curation heart, not the public listener like, and the public like has "
          "no un-like. It only means anything to a caller who signed in as the "
          "operator, so leave it at the admin tier. Counts against Actions per call.",
+         needs_station_admin=True),
+    Tool("subwave_never_play_track", "allow_never_play", LOCAL,
+         "Bans the track playing now from the station for good.",
+         "Station admin credentials required. OFF by default, and the most "
+         "permanent thing on a call line: the station takes it out of the "
+         "queue, rebuilds the fallback playlist and never selects it again — "
+         "for every listener, from one caller's sentence, with nothing on air "
+         "to say it happened. It does not stop the copy already playing. "
+         "Counts against Actions per call.",
+         needs_station_admin=True),
+    Tool("subwave_allow_track_again", "allow_never_play", LOCAL,
+         "Takes a track back off the never-play list.",
+         "Same switch as the ban, deliberately: a caller who can impose a "
+         "permanent judgement on the operator's library must be able to lift "
+         "one too — including a ban the operator set themselves — or the only "
+         "way back is the operator noticing it.",
          needs_station_admin=True),
 
     # --- the broadcast ----------------------------------------------------
@@ -222,6 +253,25 @@ TOOLS: tuple[Tool, ...] = (
          "Cancels a takeover and hands the schedule back.",
          "Same switch as the pin, deliberately: a caller who can undo the "
          "operator's own takeover is making a station-wide change too.",
+         needs_station_admin=True),
+
+    Tool("subwave_genre_lock", "allow_genre_lock", LOCAL,
+         "Holds the station to one genre or a few, for a bounded window.",
+         "Station admin credentials required, and NOT YET IN A RELEASED "
+         "STATION — it needs SUB/WAVE's genre-lock control (upstream #1404). "
+         "A station without it answers plainly that it can't, rather than "
+         "failing. OFF by default: it reaches every listener and outlives the "
+         "call like a takeover, but where a takeover puts a named DJ on air "
+         "that anyone can hear, this quietly narrows what the station may "
+         "play. Same 15–720 minute window as a takeover, and it lands at the "
+         "next track boundary.",
+         needs_station_admin=True),
+    Tool("subwave_clear_genre_lock", "allow_genre_lock", LOCAL,
+         "Lifts a genre lock early.",
+         "Checks what is actually pinned first: on the station's side a genre "
+         "lock and a show takeover are the same pin, so clearing blind would "
+         "cancel a takeover the operator set for a caller who only asked "
+         "about a genre.",
          needs_station_admin=True),
 
     # --- never on a call line ---------------------------------------------
