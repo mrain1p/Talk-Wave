@@ -2149,6 +2149,33 @@ class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
         # so a balanced-but-broken file still has to keep it intact.
         self.assertIn("body.measuring", css)
 
+    def test_no_comment_is_left_open_or_closed_twice(self):
+        # The other half of the same accident, and the braces check cannot see
+        # it: editing the prose above a rule left a `*/` in the middle of a
+        # comment, so the tail of that comment became live CSS and the parser
+        # ate the rule underneath it. Braces still balanced, 23 modules still
+        # green, and .skinart was simply not in the browser's stylesheet
+        # (2026-08-14, caught by looking at the page rather than the suite).
+        for name in ("style.css", "skins.css"):
+            css = (REPO / "web-widget" / name).read_text(encoding="utf-8")
+            depth, i, faults = 0, 0, []
+            while i < len(css):
+                nxt_open, nxt_close = css.find("/*", i), css.find("*/", i)
+                if nxt_open == -1 and nxt_close == -1:
+                    break
+                if nxt_open != -1 and (nxt_close == -1 or nxt_open < nxt_close):
+                    if depth:
+                        faults.append(("nested /*", css.count("\n", 0, nxt_open) + 1))
+                    depth, i = 1, nxt_open + 2
+                else:
+                    if not depth:
+                        faults.append(("stray */", css.count("\n", 0, nxt_close) + 1))
+                    depth, i = 0, nxt_close + 2
+            self.assertEqual(faults, [], f"{name}: comment faults at these lines "
+                                         f"— the CSS after each one is not what "
+                                         f"you think it is: {faults}")
+            self.assertFalse(depth, f"{name} ends inside an unclosed comment")
+
 
 class TestHiddenActuallyHides(unittest.TestCase):
     """An author `display` beats the UA's [hidden] rule, and this codebase
@@ -2195,7 +2222,11 @@ class TestHiddenActuallyHides(unittest.TestCase):
                 # The ATTRIBUTE, not the word: class="avatar hidden" names a
                 # CSS class that hides by rule, not the browser attribute.
                 bare = attrs.replace(cls.group(0), "") if cls else attrs
-                if not re.search(r"\bhidden\b", bare):
+                # NOT \b: a word boundary treats the dash in aria-hidden as one,
+                # so every decorative element carrying aria-hidden="true" read
+                # as shipping hidden and was reported unhideable. Latent until
+                # the first one with a class rule behind it (.skinart, 0.10.139).
+                if not re.search(r"(?<![-\w])hidden\b", bare):
                     continue
                 if not cls:
                     continue
@@ -2247,3 +2278,135 @@ class TestTheCallerIsNotRescuedMidAnnouncement(_TempStores):
         # Still a backstop, not an eternity.
         self.assertLessEqual(secs, 120.0)
 
+
+
+# --------------------------------------------------------------------- skins
+#
+# Sixteen skins would be sixteen times the testing if a skin could reach the
+# card. It cannot: skins.css is custom properties only, and these tests are
+# what makes that a fact rather than an intention. The card's own geometry —
+# the fixed 620×544, the one control height, the height reported to embed.js —
+# is then out of a skin's reach BY CONSTRUCTION, which is the only reason this
+# feature is affordable to own.
+
+def _skins_css() -> str:
+    return (REPO / "web-widget" / "skins.css").read_text(encoding="utf-8")
+
+
+def _skin_blocks() -> dict[str, str]:
+    """{skin id: the body of its block}. Comments stripped first, so a colour
+    written in prose inside a comment can never read as a declaration."""
+    css = re.sub(r"/\*.*?\*/", "", _skins_css(), flags=re.S)
+    return {m.group(1): m.group(2) for m in
+            re.finditer(r':root\[data-skin="([a-z0-9]+)"\]\s*\{(.*?)\}', css, re.S)}
+
+
+class TestASkinCannotReachPastItsTokens(unittest.TestCase):
+    """The one rule in skins.css: custom properties, and nothing else.
+
+    This is the whole containment story. A skin that could write `height` or
+    `padding` could break the fixed card, the embed's reported height, or the
+    single control height — three things that took the player redesign and two
+    releases to make true. Rather than re-checking those on sixteen skins, the
+    stylesheet is not allowed to say anything that could affect them.
+    """
+
+    def test_every_declaration_is_a_custom_property(self):
+        offenders = []
+        for skin, body in _skin_blocks().items():
+            for decl in body.split(";"):
+                decl = decl.strip()
+                if not decl:
+                    continue
+                prop = decl.split(":", 1)[0].strip()
+                if not prop.startswith("--"):
+                    offenders.append(f"{skin}: {decl[:60]}")
+        self.assertEqual(
+            offenders, [],
+            "skins.css may only declare custom properties — anything else can "
+            "reach the card's layout, which is exactly what skins are not "
+            f"allowed to do: {offenders}")
+
+    def test_the_file_contains_no_selector_but_a_skin_root(self):
+        # An @media, an @keyframes or a bare `.card` rule would all escape the
+        # containment above by being outside a skin block entirely.
+        css = re.sub(r"/\*.*?\*/", "", _skins_css(), flags=re.S)
+        css = re.sub(r':root\[data-skin="[a-z0-9]+"\]\s*\{.*?\}', "", css, flags=re.S)
+        self.assertEqual(
+            css.strip(), "",
+            "skins.css has something in it that is not a :root[data-skin] "
+            "block; skins may not declare selectors, media queries or "
+            "keyframes of their own")
+
+    def test_no_skin_sets_a_token_the_card_never_reads(self):
+        # A misspelled --skin-radiius does nothing, silently, and the skin
+        # ships three-quarters applied. Every --skin-* name a skin sets must
+        # be one style.css actually declares a default for.
+        style = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        known = set(re.findall(r"(--skin-[a-z-]+)\s*:", style))
+        self.assertTrue(known, "style.css declares no --skin-* tokens at all")
+        unknown = sorted({
+            name for body in _skin_blocks().values()
+            for name in re.findall(r"(--skin-[a-z-]+)\s*:", body)} - known)
+        self.assertEqual(unknown, [], f"tokens no rule in style.css reads: {unknown}")
+
+    def test_every_animation_a_skin_asks_for_exists(self):
+        # A skin cannot declare @keyframes, so one naming an animation
+        # style.css never defined is a skin whose artefact silently sits still.
+        style = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        defined = set(re.findall(r"@keyframes\s+([A-Za-z0-9_-]+)", style))
+        for skin, body in _skin_blocks().items():
+            m = re.search(r"--skin-art-anim:\s*([A-Za-z0-9_-]+)", body)
+            if m and m.group(1) != "none":
+                self.assertIn(m.group(1), defined,
+                              f"{skin} asks for an animation nothing defines")
+
+
+class TestEverySkinOfferedActuallyExists(unittest.TestCase):
+    """The offer and the stylesheet, in both directions.
+
+    A skin in the dropdown with no block behind it selects, saves, and paints
+    the default card — the operator picks Neon and nothing happens, with no
+    error anywhere. A block with no offer is a skin nobody can reach. Both are
+    the silent-unreachable shape this repo has shipped twice.
+    """
+
+    def test_the_dropdown_and_the_stylesheet_agree(self):
+        offered = {v for v, _ in settings_store.STATIC_CHOICES["widget_skin"]}
+        drawn = set(_skin_blocks())
+        # `default` is the shipped card — style.css's own :root — so it is
+        # deliberately NOT a block in skins.css.
+        self.assertNotIn("default", drawn,
+                         "there must be no `default` block: the default card is "
+                         "style.css, and a block claiming to be it would be a "
+                         "second copy that can drift")
+        self.assertEqual(offered - {"default"}, drawn)
+
+    def test_the_default_is_the_card_as_it_shipped(self):
+        # The most consequential line in the change: every deployment that
+        # never opens this setting must look exactly as it did before.
+        self.assertEqual(settings_store.FIELDS["widget_skin"][1], "default")
+
+    def test_the_card_carries_the_artefact_and_the_stylesheet(self):
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="/skins.css"', html,
+                      "the call page does not load skins.css, so no skin can "
+                      "ever apply")
+        self.assertIn('class="skinart"', html,
+                      "the idle artefact's element is missing; --skin-art has "
+                      "nothing to paint on")
+
+    def test_the_artefact_is_idle_only_and_cannot_move_the_layout(self):
+        # The two promises that make the artefact free: it is behind
+        # everything, and it is gone the moment a call starts.
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        m = re.search(r"\.skinart\s*\{(.*?)\}", css, re.S)
+        self.assertTrue(m, ".skinart has no rule")
+        body = m.group(1)
+        self.assertIn("position: absolute", body)
+        self.assertIn("z-index: -1", body)
+        self.assertIn("pointer-events: none", body)
+        self.assertIn("display: none", body)
+        self.assertIn('.card[data-mode="idle"] .skinart { display: block; }', css,
+                      "the artefact is not restricted to the idle card, so it "
+                      "would sit behind a live transcript")

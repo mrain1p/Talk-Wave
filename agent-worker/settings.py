@@ -417,6 +417,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # light  / dark   force one, and hide the toggle
     # inherit  match the page the widget is embedded in
     "widget_theme":     (None, "auto"),
+    # EXPERIMENTAL. "default" is the card as it has always looked, so every
+    # deployment that never touches this sees exactly what it saw before.
+    "widget_skin":      (None, "default"),
 
     # --- what the card shows, answered separately per surface -------------
     # The standalone page and an embed on somebody else's site are different
@@ -1408,6 +1411,13 @@ SCHEMA: dict[str, dict] = {
         help="The same thumbs after a message is left. Off keeps the "
              "machine's receipt as the last word — asking “how was "
              "it?” over “message left” can read as fishing."),
+    "widget_skin": dict(group="player", kind="select", label="Skin (experimental)",
+        help="A different look for the card, on this page and in embeds alike. "
+             "A skin brings its own colours, so while one is on, the Colours "
+             "setting and the viewer's light/dark toggle have nothing left to "
+             "change — pick Default to get them back. Skins cannot change the "
+             "card's size or its controls, only its surface, so none of them "
+             "can break a call."),
     "widget_theme": dict(group="player", kind="select", label="Colours",
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
@@ -1814,6 +1824,29 @@ STATIC_CHOICES = {
         ("request", "Sent to the station as a song request"),
         ("air", "Handed to the on-air DJ to mention"),
         ("triage", "Triaged by the model — request, mention, or a segment"),
+    ],
+    # EXPERIMENTAL, and grouped the way an operator would look for them
+    # rather than alphabetically. Every id here must have a matching block in
+    # web-widget/skins.css; TestEverySkinOfferedActuallyExists fails the build
+    # if one is offered that the stylesheet never draws.
+    "widget_skin": [
+        ("default", "Default — the card as it ships"),
+        ("switchboard", "Switchboard — lamps and jack labels"),
+        ("rack", "Rack unit — brushed steel and vents"),
+        ("console", "Console strip — one channel of the desk"),
+        ("shortwave", "Shortwave — wood and a lit dial"),
+        ("tape", "Tape deck — the platter turns between calls"),
+        ("terminal", "Terminal — green phosphor"),
+        ("amber", "Amber CRT — the other phosphor"),
+        ("datastream", "Datastream — phosphor, raining"),
+        ("vault", "Vault — green tube behind a heavy frame"),
+        ("arcade", "Arcade — 8-bit"),
+        ("hud", "HUD — cyan instruments"),
+        ("neon", "Neon — after dark, everything glowing"),
+        ("paper", "Paper — a note left on the desk"),
+        ("eink", "E-ink — greyscale, nothing moving"),
+        ("mac", "Classic Mac — 1-bit and dithered"),
+        ("win95", "Windows 95 — bevels and system grey"),
     ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),

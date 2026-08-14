@@ -61,6 +61,11 @@
      stacks in style.css carry that anywhere. If the exact faces are ever
      wanted back, self-host them here rather than reintroducing the CDN. -->
 <link rel="stylesheet" href="/style.css">
+<!-- EXPERIMENTAL card skins. A second sheet rather than more of style.css:
+     every rule in it is custom properties only, which is what a test can check
+     and what keeps a skin from reaching the card's layout. Nothing applies
+     until <html data-skin> is set. -->
+<link rel="stylesheet" href="/skins.css">
 </head>
 <body>
   <div class="card" data-mode="idle">
@@ -161,6 +166,11 @@
          own, because every band that appears after a call used to grow the
          card and move the host page under whoever was reading it. -->
     <div class="linebox" id="lineBox">
+      <!-- The skin's idle artefact — a platter, a dial, a reticle. Empty and
+           invisible unless a skin fills --skin-art in, absolutely positioned
+           BEHIND everything here, and shown only while the card is idle. It
+           cannot move the layout and it is gone the moment a call starts. -->
+      <div class="skinart" id="skinArt" aria-hidden="true"></div>
       <!-- What the box says when there is no conversation in it: which
            doors are open, in the card's own voice. See paintBoard. -->
       <div class="idleboard" id="idleBoard" hidden></div>

@@ -8,6 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
+    applySkin, skinForced,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
@@ -1318,6 +1319,11 @@
       // A preview repaint passes first=true deliberately: changing those
       // choices IS what it is for.
       if (first) {
+        // The operator's skin, EXPERIMENTAL. Here rather than in the poll for
+        // the same reason as the theme: re-applying it every few seconds
+        // would restart the idle artefact's animation on every read. A host
+        // page that pinned ?skin= has already decided and is left alone.
+        if (!skinForced) applySkin(d.skin);
         applyConfiguredTheme(d.theme, d.stationTheme);
         setupAskPopup(d.canAsk);
         applyControls(d);

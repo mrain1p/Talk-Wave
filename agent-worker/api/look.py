@@ -232,6 +232,10 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
     """
     return {
         "theme": str(cfg.get("widget_theme") or "auto"),
+        # EXPERIMENTAL. One answer for both surfaces, unlike controls/card: a
+        # skin is the operator's brand decision, and an embed wearing a
+        # different one from the page it links to reads as two products.
+        "skin": str(cfg.get("widget_skin") or "default"),
         "controls": corner_controls(cfg),
         "embedControls": corner_controls(cfg, embed=True),
         # One answer for both surfaces; which of them OFFERS it is in the two

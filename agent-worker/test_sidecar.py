@@ -63,6 +63,8 @@ from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
+    TestASkinCannotReachPastItsTokens,
+    TestEverySkinOfferedActuallyExists,
     TestTheFinderIsNotAUsernameField,
     TestTheCallPageOffersFirstRunSetup,
     TestDiagnosticsResultsKeepTheirScrollSkin,
