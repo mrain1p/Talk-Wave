@@ -596,12 +596,15 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # carries display:flex now, to flex the transcript to one footprint —
         # but the space-reserving visibility:hidden is the part under test.)
         self.assertRegex(
-            self.css, r'\.rig \{ visibility: hidden;[^}]*\}',
+            self.css, r'\.rig \{\s+visibility: hidden;',
             "the rig must reserve its space with visibility:hidden")
-        for rule in (".pill[hidden] { visibility: hidden; }",
-                     ".ticker[hidden] { display: grid; visibility: hidden; }"):
-            with self.subTest(rule=rule):
-                self.assertIn(rule, self.css)
+        # The chips are NOT in this list any more. Reserved-but-invisible was
+        # right while they had a band of their own whose height had to be
+        # held; in the identity row there is nothing to reserve — the row is
+        # 60px of avatar either way — so they collapse instead.
+        self.assertIn(".ticker[hidden] { display: grid; visibility: hidden; }",
+                      self.css)
+        self.assertIn(".pill[hidden] { display: none; }", self.css)
 
     def test_the_line_area_is_the_only_thing_that_flexes(self):
         # The invariant has never been the number, it is that the frame does
@@ -655,15 +658,21 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
     def test_the_compact_card_fits_a_station_page_column(self):
         # The real page this embeds in gives its player column 400px and
         # stretches its own marquee to match the frame — every pixel this
-        # card reports over ~356 (400 minus the host's caption row) came
+        # card reported over ~356 (400 minus the host's caption row) came
         # back as BLANK SPACE between the sleeve and "Up next" on a live
-        # station page, twice. The budget block is the fix; this pins its
-        # load-bearing pieces so a future band can't quietly regrow it.
+        # station page, twice.
+        #
+        # That used to be defended by a budget of individual savings — a 30px
+        # eyebrow, a hidden tagline, 14px bars — each of which a future band
+        # could quietly spend. The embed is a FIXED 320 now, so the budget is
+        # the height itself and there is nothing left to overspend.
         self.assertIn("THE HEIGHT BUDGET", self.css)
-        for pinned in ("body.compact .eyebrow { height: 30px",
-                       "body.compact .tagline { display: none; }",
-                       "body.compact .bars { height: 14px; }"):
-            self.assertIn(pinned, self.css)
+        card = self.css.split("body.compact .card {")[1].split("}")[0]
+        self.assertIn("height: 320px", card)
+        # flex:none, or the frame's own column stretches it back out and the
+        # fixed height means nothing.
+        self.assertIn("flex: none", card)
+        self.assertIn("body.compact .bars { height: 14px; }", self.css)
 
     def test_the_post_call_chrome_lives_inside_the_line_area(self):
         # The transcript drawer and the how-was-it buttons used to be bands
@@ -1431,9 +1440,11 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
     def test_chat_mode_hides_every_call_control(self):
         import re
 
-        # The four bands that made the card huge in chat: if any stops being
+        # The bands that made the card huge in chat: if any stops being
         # hidden in chat mode, the input is back among controls for a call.
-        for band in (".staterow", ".meters", ".talkrow", ".actionrow"):
+        # .staterow is not one of them any more — the chips moved into the
+        # identity row, which chat mode keeps.
+        for band in (".meters", ".talkrow", ".actionrow"):
             self.assertRegex(
                 self.css,
                 r'\.card\[data-mode="chat"\][^{]*' + re.escape(band),
@@ -1974,9 +1985,12 @@ class TestTheEmbedIsJustTheCard(unittest.TestCase):
         cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
 
     def test_no_inset_and_no_rounded_corners_in_a_frame(self):
-        block = self.css.split("body.compact {")[1][:600]
+        # Read the RULE, not a fixed slice of characters after it — a slice
+        # measures comment length, so writing down why a declaration is there
+        # could push the declaration out of the window and fail the test.
+        block = self.css.split("body.compact {")[1].split("}")[0]
         self.assertIn("padding: 0", block)
-        card = self.css.split("body.compact .card {")[1][:400]
+        card = self.css.split("body.compact .card {")[1].split("}")[0]
         self.assertIn("border-radius: 0", card)
 
     def test_the_overlay_offset_carries_no_dead_inset(self):

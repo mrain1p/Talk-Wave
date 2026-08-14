@@ -102,6 +102,33 @@
     --shadow: 0 1px 2px rgba(0,0,0,.05);
   }
 
+  /* LIGHT IS NOT A TINT OF DARK. On cream the same greys that read as
+     "quiet" on black read as "broken": labels step up a rank, the line box
+     becomes an inset well rather than a darker patch, and a quiet button
+     takes a white fill so it still reads as something you can press.
+     Scoped to the surfaces that need it, not applied as a blanket filter. */
+  @media (prefers-color-scheme: light) {
+    .duplex .mlabel, .micchip.off, .track { color: var(--sage); }
+    .linebox {
+      background: var(--granite-hi);
+      box-shadow: inset 0 1px 0 rgba(27,26,24,.05);
+    }
+    .actionrow #chatBtn:not([hidden]), .actionrow #vmBtn:not([hidden]) {
+      background: var(--granite);
+    }
+  }
+  :root[data-theme="light"] .duplex .mlabel,
+  :root[data-theme="light"] .micchip.off,
+  :root[data-theme="light"] .track { color: var(--sage); }
+  :root[data-theme="light"] .linebox {
+    background: var(--granite-hi);
+    box-shadow: inset 0 1px 0 rgba(27,26,24,.05);
+  }
+  :root[data-theme="light"] .actionrow #chatBtn:not([hidden]),
+  :root[data-theme="light"] .actionrow #vmBtn:not([hidden]) {
+    background: var(--granite);
+  }
+
   /* Micro-type: every label, button, chip and timer in the card. One spec,
      used by name, so they cannot drift apart again. */
   /* --- base and typography ----------------------------------------------- */
@@ -138,10 +165,17 @@
      rendering fault. */
   /* --- the call card: identity, and what is on air ----------------------- */
   .card {
-    width: min(620px, 100%); padding: 0 16px 16px; position: relative;
+    width: min(620px, 100%); height: 470px; padding: 0 16px 16px;
+    position: relative; display: flex; flex-direction: column;
     border: 1px solid var(--edge); border-radius: 16px;
     background: var(--granite); box-shadow: var(--shadow);
   }
+  /* A FIXED height, which HOST-STYLE-GUIDE §7.1 forbade. The rule existed so
+     the frame would not jump mid-call; it bought that with an elastic card
+     and a reserved transcript, and three separate heights had to agree to
+     keep the promise. A fixed card with one scrolling band keeps it by
+     construction — and §7.2 still holds, the height is still reported, it
+     just only changes when the MODE does. See the note added to §7. */
   /* Flush mode, embeds only (call.js applyControls): the host page shows
      through where the card's own sheet was. The inner surfaces — transcript
      box, buttons, meters — keep their skins; it is the outer shell that
@@ -161,6 +195,21 @@
     padding: 7px 0; border-bottom: 1px solid var(--hairline);
   }
   .who-row .meta { min-width: 0; flex: 1; }
+  /* The spacer pins the chips right whatever else is in the row, the same
+     way the eyebrow's does — a margin on .meta would move the moment the
+     meta block changed shape. */
+  .who-row .spacer { flex: 1 1 auto; }
+  /* Two 26px chips stack inside the 60px identity row for free, so the row
+     does not get taller and the 38px .staterow band goes to the line box.
+     Wraps rather than squeezing: on a narrow card the timer drops under the
+     state chip instead of both of them truncating. */
+  .who-row .chips {
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 6px; flex-wrap: wrap; flex: 0 1 auto; min-width: 0;
+  }
+  /* Idle the row still says something — Line open, and a dimmed clock — so
+     nothing appears from nowhere when a call starts. Hidden chips collapse. */
+  .who-row .chips .pill[hidden], .who-row .chips .micchip[hidden] { display: none; }
 
   /* --- status --- */
   /* The header band is 34px, which is also the height of the corner controls
@@ -172,7 +221,7 @@
   .eyebrow {
     font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--coral);
-    height: 34px; margin: 0;
+    height: var(--control-h); margin: 0; flex: none;
     display: flex; align-items: center; gap: 8px;
   }
   /* The corner controls are pinned right by a spacer that eats the free
@@ -234,7 +283,7 @@
      captions to one line, and the caller couldn't read what the DJ said
      (operator-reported, mobile). The name still ellipsises; the caption wraps. */
   .who-row .dj {
-    font-family: var(--font-body); font-size: 15px; font-weight: 600;
+    font-family: var(--font-body); font-size: 17px; font-weight: 600;
     color: var(--alpenglow); margin: 0 0 2px; letter-spacing: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -248,22 +297,69 @@
      it. The header sits above a transcript that flexes, so a second line here
      costs the transcript a little room, not the card its shape. The DJ name
      itself still ellipsises (a name is one line). */
+  /* The SHOW is the thing a caller is dialling into, and it read as the
+     smallest, dimmest text on the card while the tagline — which is flavour —
+     was larger and brighter. Emphasis swapped: the show line steps up to
+     11px in the identity colour, the tagline steps down and back to
+     --sage-dim. One line at every width the card supports, so it truncates
+     rather than wrapping the identity block taller. */
   .who-row .show {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
-    text-transform: uppercase; color: var(--sage-dim); font-weight: 700; margin: 0;
-    white-space: normal; overflow-wrap: anywhere;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--alpenglow); font-weight: 700; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tagline {
-    font-size: 12.5px; line-height: 1.45; color: var(--sage); margin: 2px 0 0;
+    font-size: 11.5px; line-height: 1.4; color: var(--sage-dim); margin: 2px 0 0;
     white-space: normal; overflow-wrap: anywhere;
   }
-  /* Now-playing sits in the spare space to the right of the DJ block. */
+  /* Now-playing is a rail of its own, full width, between the identity block
+     and the line box. It used to live in the spare space right of the DJ,
+     capped at 42% of the row, where a real title ellipsised after four words.
+     The bottom edge carries a 1px progress hairline. */
+  .nprail {
+    flex: none; display: flex; align-items: center; gap: 10px;
+    height: 30px; padding: 0 2px;
+    border-bottom: 1px solid var(--hairline); position: relative;
+  }
   .track {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700;
-    color: var(--sage-dim); margin: 0 0 0 auto;
-    padding-left: 14px; max-width: 42%; text-align: right; align-self: center;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--sage); margin: 0; min-width: 0; flex: 1;
+    white-space: nowrap; overflow: hidden;
+    /* FADES rather than clipping to an ellipsis: a title cut with "…" reads
+       as an error, a title running out of light reads as a title too long
+       for the space, which is what it is. */
+    /* #000 here is an ALPHA value, not a colour: in a mask, black means
+       fully opaque and transparent means cut away. Nothing paints it, so it
+       is not a literal the theming contract cares about. */
+    mask-image: linear-gradient(90deg, #000 88%, transparent);
+  }
+  .npclock {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    letter-spacing: .12em; color: var(--amber); flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  /* The progress hairline. Width is set from the script when the station
+     reports a position; 0 until then, so it is simply absent rather than
+     lying about where the record is. */
+  .nprail::after {
+    content: ''; position: absolute; left: 0; bottom: -1px; height: 1px;
+    width: var(--np-progress, 0%); background: var(--coral);
+    transition: width .9s linear;
+  }
+  /* On a live call the music is not the subject — but knowing it kept
+     playing is still worth a line, so the rail dims rather than leaving. */
+  .rig.on .nprail .track { color: var(--sage-dim); }
+  /* …and swaps the timer for UNDER THE CALL. Done in CSS because it needs no
+     data: the label is the same in every call. The elapsed figure itself is
+     still empty — /live sends the track as a title string with no position or
+     duration, so there is nothing to count. The progress hairline stays at 0
+     for the same reason: absent rather than lying about where the record is.
+     Both want one field from the station; see the handoff note. */
+  .rig.on .nprail .npclock { color: var(--sage-dim); letter-spacing: .16em; font-size: 0; }
+  .rig.on .nprail .npclock::after {
+    content: 'Under the call'; font-size: 10.5px; letter-spacing: .14em;
+    text-transform: uppercase;
   }
 
   /* The settings panel keeps the old button shape — it is full-page only and
@@ -364,7 +460,17 @@
      bands below have been cut to what they actually need instead. */
   /* A flex column so the transcript can flex to fill the working area and hold
      the card to one footprint across every mode — see the mode block above. */
-  .rig { visibility: hidden; display: flex; flex-direction: column; }
+  .rig {
+    visibility: hidden; display: flex; flex-direction: column;
+    /* Fills whatever the fixed card has left after the eyebrow, the identity
+       row and the rail. min-height:0 so its own flexing child may shrink. */
+    flex: 1; min-height: 0;
+  }
+  /* Nothing but the line box grows. Stated once, here, rather than as a
+     height on each band — the bands that used to carry their own reserved
+     heights are exactly the ones that drifted apart. */
+  .rig > .meters, .rig > .talkrow, .rig > .chatrow, .rig > .actionrow,
+  .rig > .nprail { flex: none; }
   .rig.on { visibility: visible; }
   /* The rows that hold their place AND stay visible between calls: the line
      area (it carries the card's own messages), the meters band (idle the
@@ -418,7 +524,6 @@
        chat       the transcript and the input only — no meters, no talk
                   bar, no state pills, and no Call/Message doors (Close
                   lives in the input row) */
-  .card[data-mode="chat"] .staterow,
   .card[data-mode="chat"] .meters,
   .card[data-mode="chat"] .talkrow,
   .card[data-mode="chat"] .actionrow { display: none !important; }
@@ -450,7 +555,10 @@
   /* 284, up from 272 by exactly what the header band and the who-row gave
      back — the linebox is the only child that flexes, so the whole 12px
      lands in the transcript and the card's overall height is unchanged. */
-  body:not(.compact) .rig { min-height: 284px; }
+  /* The rig's reserved min-height is gone: the card is a fixed size now and
+     the rig takes what is left of it, so a number here would be a second
+     answer to the same question — and the one that used to be wrong when a
+     band changed. */
   /* Chat opens the transcript drawer (.open) the call reading-back uses, but
      here the flex fill owns the height — so drop .open's fixed 44vh back to the
      normal basis and let the rig's spare room size it, same as every mode. */
@@ -514,6 +622,20 @@
   .actionrow #callBtn.icononly,
   .actionrow #chatBtn.icononly,
   .actionrow #vmBtn.icononly { flex: 0 1 auto; }
+  /* QUIET, and clearly not the action. Text and Message were coral-outlined
+     beside a coral-filled Call, which reads as three peers with one of them
+     shouting — the caller has to compare fills to find the door. A hairline
+     box in --sage says "also available" on sight, and the hover is where the
+     accent lives. Exactly one filled button in any state; that is Call. */
+  .actionrow #chatBtn:not([hidden]), .actionrow #vmBtn:not([hidden]) {
+    background: transparent; color: var(--sage);
+    border: 1px solid var(--edge);
+  }
+  .actionrow #chatBtn:not([hidden]):hover,
+  .actionrow #vmBtn:not([hidden]):hover {
+    color: var(--coral); border-color: var(--coral); background: transparent;
+    filter: none;
+  }
   /* The icon on a button: a line drawing in the button's own ink (it inherits
      currentColor), so it is neutral by construction — no filter can make an
      emoji glyph behave the way this does across OSes. Sized a touch larger
@@ -526,9 +648,13 @@
   /* Square, transparent, hairline-bordered, control height. Colour carries
      state; fill never does (§4.4) — the only filled thing in any state is the
      one primary button. */
+  /* Chips are the one thing on the card that is NOT --control-h: they are
+     read, not pressed, and at full control height two of them tower over the
+     identity row they now sit in. Never a fill either — colour carries the
+     state, the border stays --hairline-weight. */
   .pill {
-    display: inline-flex; align-items: center; gap: 7px; height: var(--control-h);
-    padding: 0 12px; border-radius: 0;
+    display: inline-flex; align-items: center; gap: 7px; height: var(--chip-h);
+    padding: 0 9px; border-radius: 0;
     background: transparent; border: 1px solid var(--hairline); color: var(--sage-dim);
     font: 700 11px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase;
     transition: color .2s, border-color .2s;
@@ -540,10 +666,31 @@
   /* Same reservation as the rig, for the same reason: these wrap onto a
      second row in a narrow embed, so appearing at pickup would move
      everything below them by a whole control height. */
-  .pill[hidden] { visibility: hidden; }
+  /* Reserved-but-invisible made sense when the chips had a band of their own
+     whose height had to be held. In the identity row there is nothing to
+     reserve — the row is 60px of avatar either way — so they collapse. */
+  .pill[hidden] { display: none; }
   /* The elapsed timer is data, not a warning — it only takes a colour once
      the call is genuinely near its limit. Amber from 0:00 taught you to
      ignore amber by the time it meant something. */
+  /* Square like every other chip. This was the last rounded element on the
+     card — 999px on a surface where every other corner is a right angle
+     (operator-reported). It sits in the identity row with the other two now
+     rather than glued to the You meter's label, where "You — mic off" as one
+     string overflowed and collided with the DJ label on a narrow phone. */
+  .micchip {
+    display: inline-flex; align-items: center; height: var(--chip-h);
+    padding: 0 8px; border: 1px solid currentColor; border-radius: 0;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em;
+    text-transform: uppercase; font-weight: 700; line-height: 1;
+    color: var(--coral); white-space: nowrap; flex: 0 0 auto;
+  }
+  .micchip[hidden] { display: none; }
+  /* Mic off on a push-to-talk card is the resting state, not an alarm — dim
+     it. Mute is a deliberate act, so that one stays coral and loud. */
+  .micchip.off { color: var(--sage-dim); }
+  .micchip.muted { color: var(--coral); }
+
   .timechip { letter-spacing: .1em; font-variant-numeric: tabular-nums; }
   .timechip .tmax { color: var(--sage-dim); font-weight: 400; margin-left: 4px; }
   .timechip.warn { color: var(--amber); border-color: var(--amber); }
@@ -587,67 +734,61 @@
      meter's own shape has to be visible before anyone speaks, or the row
      looks broken until it isn't. */
   /* --- level meters ------------------------------------------------------ */
-  .meters { display: flex; gap: var(--band-gap); padding: 9px 0 0; flex-wrap: nowrap; }
-  /* Volume sits to the LEFT, so the two WAVEFORMS — YOU and DJ — sit next to
-     each other where they can be read as a pair, rather than split by the
-     volume rail between them (operator's ask). Order only; the DOM keeps the
-     you/vol/dj sequence the reservation logic relies on. */
-  .meters .vol { order: -1; }
-  .meters .meter.you { order: 0; }
-  .meters .meter.dj { order: 1; }
-  /* Floors, not just flex: squeezed by the volume rail, the You meter once
-     shrank until "MIC OFF" wrapped into a two-line tower and the DJ meter
-     left the row entirely. From the operator's live call. */
-  .meter { flex: 1 1 90px; text-align: left; min-width: 72px; }
-  .meter .mlabel { white-space: nowrap; }
-  .meter .mlabel {
+  .meters {
+    display: flex; align-items: center; gap: var(--band-gap);
+    padding: 9px 0 0; flex-wrap: nowrap;
+  }
+  /* ONE duplex strip. It was two spectrum meters either side of a volume
+     rail — three widgets in a row to answer one question, and the pair got
+     split by the rail between them so they could not be read against each
+     other at all. Now: volume left, then a single centre-out level. You
+     grows LEFTWARD from the centre tick, the DJ rightward, so the two are
+     one gesture and whose voice it is comes from the direction. */
+  .duplex {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+  }
+  .duplex .mlabel {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
-    margin-bottom: 4px;
+    flex: 0 0 auto; white-space: nowrap; margin: 0;
   }
-  /* Label and mic-state chip on one line above the bars. The chip carries
-     "MIC OFF" / "MUTED" so the label never has to grow to hold it. */
-  .meter.you .mtop {
-    display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 4px;
+  /* --sage-dim, never --edge: --edge is a border token and measures 1.3:1
+     as text. The label is the only thing naming which half is whose. */
+  .duplex .mlabel.you { color: var(--sage-dim); }
+  .duplex .mlabel.dj  { color: var(--sage-dim); }
+  .rig.on .duplex .mlabel.you { color: var(--amber); }
+  .rig.on .duplex .mlabel.dj  { color: var(--coral); }
+  /* The trough carries the segment ticks as a gradient rather than as
+     elements: 32 divs was the cost that got the spectrum removed the first
+     time, and a frame is now one width write per side. */
+  .trough {
+    flex: 1; min-width: 0; height: 14px; display: flex; align-items: stretch;
+    background-image: repeating-linear-gradient(90deg,
+      var(--hairline) 0 2px, transparent 2px 5px);
+    background-color: var(--granite-hi); position: relative;
   }
-  .meter.you .mtop .mlabel { margin-bottom: 0; }
-  /* Square, like the state pill, the timer, the pips and the bars beside it.
-     This was the one rounded element left on the card — 999px on a surface
-     where every other corner is a right angle (operator-reported). */
-  .micchip {
-    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .12em;
-    text-transform: uppercase; font-weight: 700; line-height: 1;
-    padding: 2px 5px; border: 1px solid currentColor; border-radius: 0;
-    color: var(--coral); white-space: nowrap; flex: 0 0 auto;
+  .trough .tick {
+    width: 1px; background: var(--edge); flex: 0 0 auto;
   }
-  .micchip[hidden] { display: none; }
-  /* Mic off on a push-to-talk card is the resting state, not an alarm — dim
-     it. Mute is a deliberate act, so that one stays coral and loud. */
-  .micchip.off { color: var(--sage-dim); }
-  .micchip.muted { color: var(--coral); }
+  /* Two halves of one meter. The left is mirrored so its fill grows out of
+     the centre and its gradient phase matches the right. */
+  .trough .meter { flex: 1; min-width: 0; overflow: hidden; display: flex; }
+  .trough .meter.you { transform: scaleX(-1); }
   .bars {
-    display: flex; align-items: flex-end; gap: 2px;
-    height: 18px; border-radius: 0;
+    width: 0%; height: 100%;
+    background-image: linear-gradient(90deg,
+      color-mix(in srgb, currentColor 55%, transparent), currentColor);
+    transition: width .08s linear;
   }
-  /* A 22% floor, not 12: at 16px the idle segments were 1.9px of a
-     near-transparent hairline, and the operator reported the DJ meter as
-     MISSING. A meter's shape has to be visible before anyone speaks. */
-  .bars i {
-    flex: 1 1 0; min-width: 0; height: 22%;
-    background: currentColor; border-radius: 0;
-    transition: height .08s linear;
-  }
-  /* You and the DJ never share a colour — the two meters sit side by side and
-     the whole point is telling at a glance which one is moving. */
-  .meter.you { color: var(--cool); }
+  /* You and the DJ never share a colour — the whole point is telling at a
+     glance which direction is moving. Amber is the caller's identity colour
+     everywhere else on the card; coral is the DJ's. */
+  .meter.you { color: var(--amber); }
   .meter.dj { color: var(--coral); }
-  /* Off the call the segments are the trough colour, not a dimmed voice: a
-     dead meter must not look like a quiet one. Keyed on the rig rather than
-     a class of their own, so there is nothing for JS to forget to clear. */
-  .meter .bars i { background: var(--hairline); }
-  .rig.on .meter .bars i { background: currentColor; }
-  .meter.muted .mlabel { color: var(--coral); }
-  .rig.on .meter.muted .bars i { background: var(--hairline); }
+  /* Off the call the strip is trough only: a dead meter must not look like a
+     quiet one. Keyed on the rig, so there is nothing for JS to forget. */
+  .rig:not(.on) .bars { width: 0% !important; }
+  .meter.muted .bars { background-image: none; background: var(--hairline); }
 
   /* --- volume ------------------------------------------------------------
      Lives INSIDE the meters band since 0.9.134 — you | vol | DJ. It had a
@@ -716,13 +857,14 @@
   /* Open mic is a state like muted, not a second primary — the fill only
      arrives while the bar is genuinely live. */
   .card .pttbar {
-    /* 36px here, 60px on phones (media block below). The "hard to press"
-       report that grew this bar was about THUMBS — the operator later
-       clarified desktop was never the problem — so the tall target is a
-       phone-only treatment and regular screens keep the ordinary height. */
-    flex: 1 1 auto; min-width: 0; height: 36px; padding: 0;
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 3px;
+    /* --control-h like every other control. It was 36 here and 60 on phones,
+       which was the "hard to press" report answered twice — the phone's
+       thumb-sized target is now just what --control-h IS on a phone (50px),
+       so the exception is gone rather than special-cased. Row, not column:
+       there is one line of copy and a keycap beside it, not two lines. */
+    flex: 1 1 auto; min-width: 0; height: var(--control-h); padding: 0;
+    display: flex; flex-direction: row; align-items: center;
+    justify-content: center; gap: 8px;
     border: 1px solid var(--amber); background: transparent; color: var(--amber);
     /* touch-action: NONE, not manipulation. `manipulation` still lets the
        browser claim a held touch for scrolling/panning, which fires
@@ -739,7 +881,7 @@
   }
   .card .pttbar.on {
     background: var(--amber); color: var(--pine);
-    box-shadow: 0 0 18px color-mix(in srgb, var(--amber) 35%, transparent);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--amber) 34%, transparent);
   }
   /* Held: the broadcast has the microphone. Quiet and clearly not pressable,
      but NOT the greyed-out look of a broken control — the bar says "you're on
@@ -753,31 +895,32 @@
     font: 700 11.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: uppercase;
   }
-  .pttbar .pttsub {
-    font: 700 8px/1 var(--font-mono); letter-spacing: .1em;
-    text-transform: uppercase; opacity: .7;
+  /* A keycap, not a second line of copy. The bar used to explain itself
+     twice — "Tap to talk" over "or hold it down · space works too" — and was
+     the only two-line control on the card. The key is drawn in the shape of
+     the key it names, which says the same thing in one line's height. */
+  .pttbar .keycap {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; padding: 3px 6px;
+    border: 1px solid currentColor; border-bottom-width: 2px;
+    opacity: .75; flex: 0 0 auto;
   }
+  /* A phone advertising a key it does not have reads as broken. */
+  @media (pointer: coarse) { .pttbar .keycap { display: none; } }
   /* The bar owns the wire while it is up; Mute would be a second switch on
      the same circuit. */
   .card.ptt .talkrow #muteBtn { display: none; }
 
-  /* The state row sits above the words it describes. One line, always: the
-     state chip gives up room first (its text ellipsises) so the elapsed timer
-     beside it keeps its own place instead of being shoved off the row. */
-  .staterow { display: flex; align-items: center; gap: 9px; padding: 9px 0 0; flex-wrap: nowrap; }
-  .staterow .statechip { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-  .staterow .statechip #stateText {
+  /* The state chips are in the identity row now (see .who-row .chips) — the
+     band they had cost 38px of card for two 26px chips while the 60px row
+     beside them had the space for free. The state chip still gives up room
+     first, its text ellipsising, so the elapsed timer keeps its place instead
+     of being shoved onto a second line. */
+  .who-row .chips .statechip { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .who-row .chips .statechip #stateText {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
   }
-  .staterow .timechip { flex: 0 0 auto; }
-  /* On the STANDALONE page — never an embed — an empty state row is just
-     blank space above the words (operator-reported, the gap over "Reaching
-     the booth"). The reserved-height trick that keeps it exists to stop an
-     EMBED jumping inside a host layout; the full page has no host to protect,
-     so collapse the row when idle. The small shift when a call starts is
-     invisible on a page that is only this card. Embeds keep the reservation. */
-  body:not(.compact) .staterow .pill[hidden] { display: none; }
-  body:not(.compact) .staterow:not(:has(.pill:not([hidden]))) { padding: 0; }
+  .who-row .chips .timechip { flex: 0 0 auto; }
 
   /* Same reasoning as the volume slider above: these rows' heights are
      paid for on every idle embed, whether or not anybody is on a call. */
@@ -1073,6 +1216,7 @@
        A top fade rather than a scrollbar: the box is the card's subject and a
        gutter down its edge reads as chrome. */
     flex: 1; min-height: 0; overflow-y: auto;
+    /* #000 is mask ALPHA, not paint — see the rail's fade. */
     mask-image: linear-gradient(180deg, transparent 0, #000 12px);
   }
   /* The drawer no longer changes the box's height — it scrolls inside it. */
@@ -1085,10 +1229,14 @@
      and by then there is no spoken call for a moving host page to interrupt.
      Still a fixed height, so the transcript scrolls inside it as before. */
   .card:has(.chatrow:not([hidden])) .linebox { height: 190px; }
+  /* NOT a scroller of its own any more. It used to be height:100% with its
+     own overflow-y, which meant two nested scrolling boxes for one
+     conversation — and the line box, which is the thing with the mask fade
+     and the flex, never actually scrolled. The box scrolls; this is just the
+     text in it. 13.5px sentence case, the prose spec. */
   .captions {
-    display: none; height: 100%; overflow-y: auto; overflow-x: hidden;
-    font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
-    scrollbar-width: thin; scrollbar-color: var(--edge) transparent;
+    display: none; font-family: var(--font-body); font-size: 13.5px;
+    line-height: 1.5;
   }
   .captions.on { display: block; }
   /* The one message surface. "No answer — the booth didn't pick up" and
@@ -1248,7 +1396,7 @@
      These are the same tokens the door-code input uses. Full width, its own
      row (order:1, 100% basis), a comfortable typing height. */
   .chatrow input {
-    order: 1; flex: 1 1 100%; min-width: 0; height: 40px;
+    order: 1; flex: 1 1 100%; min-width: 0; height: var(--control-h);
     background: var(--granite-hi); color: var(--alpenglow);
     border: 1px solid var(--hairline); border-radius: 0;
     padding: 0 12px; font-family: var(--font-body); font-size: 14px;
@@ -1258,7 +1406,10 @@
   /* The button row beneath the box: Close on the left, Send filling the rest,
      both at the slim action height so they match the card's other doors
      rather than towering over the message. */
-  .chatrow #chatEndBtn { order: 2; flex: 0 0 auto; }
+  /* A FIXED 112px, not content width. It was flex:0 0 auto beside a
+     flex:1 1 auto Send, which is the same shape as a spacer — the hole in
+     the middle of that row was the wasted space the redesign is removing. */
+  .chatrow #chatEndBtn { order: 2; flex: 0 0 112px; }
   .chatrow #chatSendBtn { order: 3; flex: 1 1 auto; }
   .chatrow button { height: var(--control-h); padding: 0 14px; }
   /* Close is a quiet exit, never competing with Send: no fill, muted ink.
@@ -1274,8 +1425,11 @@
      type — chrome so quiet that the theme toggle was reported missing while
      it was on screen. Still chrome (no fill, no border at rest), but sized
      like a control and a step brighter. */
+  /* Square, and the same height as everything else — they sit in the eyebrow,
+     which is --control-h tall, so a different number here would be the fourth
+     control height this redesign exists to remove. */
   .card .gear {
-    width: 34px; height: 34px; padding: 0; border-radius: 0;
+    width: var(--control-h); height: var(--control-h); padding: 0; border-radius: 0;
     border: 1px solid transparent;
     background: transparent; color: var(--sage);
     font-family: var(--font-mono); font-size: 16px; line-height: 1;
@@ -2656,7 +2810,26 @@
      side rather than simply being narrower. */
   @media (max-width: 1200px) { .panel { width: 100%; } }
   @media (max-width: 600px) {
-    .avatar { width: 52px; height: 52px; }
+    /* A phone is a bigger target, not a smaller design: one control height
+       again, just the thumb-sized one. */
+    :root { --control-h: 50px; --chip-h: 28px; }
+    /* The card is the viewport here — safe-area padded below. */
+    body:not(.compact) .card { height: 100dvh; border: 0; border-radius: 0; }
+    /* 76px in every state EXCEPT idle, which is the portrait hero at 140.
+       The point is that switching between a call, voicemail and text moves
+       nothing above the line box. */
+    .avatar { width: 76px; height: 76px; }
+    body:not(.compact) .card[data-mode="idle"] .avatar { width: 140px; height: 140px; }
+    /* Idle is the portrait hero; every OTHER state shares one header, so
+       switching between a call, voicemail and text moves nothing above the
+       line box. */
+    .who-row .dj { font-size: 22px; }
+    body:not(.compact) .card[data-mode="idle"] .who-row {
+      flex-direction: column; text-align: center; gap: 10px;
+    }
+    body:not(.compact) .card[data-mode="idle"] .who-row .dj { font-size: 28px; }
+    body:not(.compact) .card[data-mode="idle"] .who-row .meta { text-align: center; }
+    body:not(.compact) .card[data-mode="idle"] .who-row .spacer { display: none; }
     /* Was 19px, which is two steps off the scale and the largest thing in the
        widget by a distance. The scale is 9.5 / 11 / 12.5 / 15 and the name is
        already the top of it — a narrow screen is a reason to spend the width
@@ -2735,7 +2908,12 @@
        the inset shows as a white ring around the card. The operator's
        page wore exactly that ring. The card IS the frame now. */
     padding: 0; background: transparent;
-    min-height: 100vh; display: flex; flex-direction: column;
+    /* min-height, not height: the frame reports OUR size to the host and the
+       host sizes to it, so stretching to the viewport would make the card
+       whatever the host guessed rather than the 320 it asks for. The card
+       inside is flex:none at its own height; this just stops a short body
+       collapsing. */
+    min-height: 0; display: flex; flex-direction: column;
     /* One height for every control in an embed, and one for its chips. The
        card is 348 wide here; 38px controls in that width read as a toolbar
        rather than as the two or three doors they are. */
@@ -2747,7 +2925,12 @@
     overflow: hidden;
   }
   body.compact .card {
-    width: 100%; flex: 1 0 auto; display: flex; flex-direction: column;
+    /* 348x320. Fixed like the player's, for the same reason: the line box is
+       the only elastic band, so the frame the host sized stops moving. The
+       width still follows the frame — a host that gave us 300 gets 300 —
+       but the HEIGHT is ours, and it is what the host's min-height sizes to. */
+    width: 100%; height: 320px; flex: none;
+    display: flex; flex-direction: column;
     /* Square in a frame: the rounded corners exposed the frame backdrop
        at all four corners, and the host page's own controls are square. */
     border-radius: 0;
@@ -2786,13 +2969,13 @@
   body.compact .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
   body.compact .actionrow #chatBtn:not([hidden]),
   body.compact .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 auto; width: auto; min-width: 0; height: 44px;
+    flex: 1 1 auto; width: auto; min-width: 0; height: var(--control-h);
     font-size: 11px; padding: 0 10px; letter-spacing: .05em;
   }
   body.compact .actionrow #callBtn.icononly,
   body.compact .actionrow #chatBtn.icononly,
   body.compact .actionrow #vmBtn.icononly { flex: 0 1 auto; }
-  body.compact #hangBtn { height: 44px; flex: 1 1 auto; }
+  body.compact #hangBtn { height: var(--control-h); flex: 1 1 auto; }
   body.compact .ticker .line { -webkit-line-clamp: 2; }
   /* THE HEIGHT BUDGET. A real station page gives its player column 400px and
      stretches its own marquee to match whatever this frame reports — every
@@ -2802,13 +2985,13 @@
      what it shows. Pinned also means a call cannot change any of them: the
      in-call controls appear INSIDE these fixed rows, never as new ones. */
   body.compact .card { padding-bottom: 10px; }
-  body.compact .eyebrow { height: 30px; font-size: 10px; }
+  body.compact .eyebrow { font-size: 10px; }
   /* Two lines, at EVERY width: name + show inline on the first, the track
      clamped to one on the second. The row's height must never depend on how
      wide the host made the frame — at 300px the track used to wrap under
      the meta block and hand the card 22px it then owed the host page. */
   body.compact .who-row { padding: 6px 0; row-gap: 3px; }
-  body.compact .who-row .avatar { width: 30px; height: 30px; }
+  body.compact .who-row .avatar { width: 34px; height: 34px; }
   body.compact .who-row .avatar-mono { font-size: 12px; }
   /* The tagline is the host page's own line on most embeds — the station
      page already introduces the show in its own type one column over. */
@@ -2823,20 +3006,36 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   body.compact .dj, body.compact .who-row .show { white-space: nowrap; }
-  body.compact .track {
-    flex: 1 1 100%; margin-top: 0; font-size: 10px;
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;
-    overflow: hidden;
+  /* The line-clamp box here predates the rail: it existed to keep a wrapping
+     title to one line when the track sat inside .who-row. In the rail the
+     base rule already does that with nowrap + a mask fade, and -webkit-box
+     UNDOES the nowrap — measured, the title wrapped to seven lines inside a
+     15px box. Size only now. */
+  body.compact .track { font-size: 10px; }
+  /* THE EMBED IS DIFFERENT HERE, and only here. At 348px there is no room
+     for chips beside a 34px avatar without starving the show line — measured,
+     it drops to 89px and truncates. So in an embed they go in the EYEBROW
+     instead, replacing ON AIR NOW: the host page has already written its own
+     heading above the frame, so that row had a spare 22px doing nothing.
+     This is the design meeting a width, not a second design — the guide's
+     "there is no second design" holds everywhere else. */
+  body.compact .eyebrow #eyebrowText { display: none; }
+  /* Lifted into the eyebrow's line by position, not by reparenting: the
+     chips stay one element in one place in the DOM, which keeps call.js and
+     the widget contract test looking at the same node on both surfaces. The
+     card is position:relative, the eyebrow is its first band and 34px tall,
+     so top:0/height:34px puts them exactly on that line. Left of the corner
+     controls, clear of the pip. */
+  body.compact .who-row .chips {
+    position: absolute; top: 0; left: 30px; right: 96px;
+    height: 34px; justify-content: flex-start; flex-wrap: nowrap;
+    z-index: 1; pointer-events: none;
   }
-  body.compact .staterow { padding: 4px 0 0; min-height: 24px; }
-  body.compact .staterow .pill { height: 20px; padding: 0 8px; font-size: 9px; }
   body.compact .meters { padding: 5px 0 0; }
   body.compact .bars { height: 14px; }
   body.compact .talkrow { padding: 5px 0 0; }
-  body.compact .card .pttbar { height: 31px; }
-  body.compact .pttbar .pttsub { display: none; }
-  body.compact .card .talkrow #spkBtn,
-  body.compact .card .talkrow #muteBtn { height: 31px; }
+
+
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
@@ -2952,9 +3151,9 @@
     /* Push-to-talk is the control a thumb rests on for a whole sentence, so on
        a phone it is the tallest thing on the card — bigger than the 52px doors.
        The operator called the old bar hard to press. */
-    body:not(.compact) .card .pttbar { height: 60px; gap: 4px; }
+    /* The phone's thumb-sized target IS --control-h here (50px), so the
+       old 60px exception is gone rather than special-cased. */
     body:not(.compact) .pttbar .pttmain { font-size: 13px; }
-    body:not(.compact) .pttbar .pttsub { font-size: 8.5px; }
     /* The meters WRAP here: volume takes its own row, and the two waveforms
        (You / DJ) sit side by side on the next — otherwise, squeezed onto one
        narrow row with volume, "YOU — MIC OFF" ran straight over the DJ label
