@@ -2410,3 +2410,44 @@ class TestEverySkinOfferedActuallyExists(unittest.TestCase):
         self.assertIn('.card[data-mode="idle"] .skinart { display: block; }', css,
                       "the artefact is not restricted to the idle card, so it "
                       "would sit behind a live transcript")
+
+
+class TestWhoYouAreTalkingToDoesNotChangeUnderYou(unittest.TestCase):
+    """A show handover mid-conversation used to rewrite the card's DJ.
+
+    Operator-reported 2026-08-14: a takeover during a text chat — often one
+    the caller had just asked for — swapped the name, show and tagline on the
+    next 20-second poll, while the voice they were actually talking to,
+    resolved once when the conversation began, carried on unchanged. The card
+    was the half that was lying. Everything else still follows the station;
+    the operator's words were "I don't mind if the UI colour changes".
+    """
+
+    @staticmethod
+    def _block(js, opener, closer):
+        """The body between `opener` and the first line equal to `closer`."""
+        start = js.index(opener) + len(opener)
+        return js[start:js.index(closer, start)]
+
+    def test_the_identity_is_only_repainted_from_an_idle_card(self):
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        guarded = self._block(js, "if (!inConversation()) {", "\n      }")
+        for el in ("djName", "djShow", "djTagline"):
+            self.assertIn(el, guarded, f"{el} escaped the guard")
+
+    def test_the_record_and_the_palette_are_not_frozen_with_it(self):
+        # The point is narrow. Freezing the whole card would stop the record,
+        # the clock and the station's colours following the show, which is
+        # exactly what the operator asked to keep.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        guarded = self._block(js, "if (!inConversation()) {", "\n      }")
+        for el in ("npTrack", "followStationPalette", "paintNowPlaying"):
+            self.assertNotIn(el, guarded, f"{el} was frozen along with the DJ")
+
+    def test_a_text_line_counts_as_a_conversation(self):
+        # `room` alone would have missed the text line, which is the surface
+        # the report came from — the predicate reads the card's mode instead.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        body = self._block(js, "function inConversation() {", "\n  }")
+        self.assertIn("dataset.mode", body)
+        self.assertNotIn("room", body)

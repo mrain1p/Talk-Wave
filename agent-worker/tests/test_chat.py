@@ -993,6 +993,75 @@ class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
         asyncio.run(chat.aclose())        # must not raise
         self.assertIsNone(chat._llm)
 
+    def test_the_dj_does_not_change_under_the_caller_mid_chat(self):
+        # Operator-reported 2026-08-14: ask for a show takeover in the middle
+        # of a text conversation and the DJ you were talking to became
+        # somebody else on the very next line, mid-subject, with no goodbye —
+        # often from a takeover the caller had just requested themselves. The
+        # phone has never done this (a call resolves its persona and its voice
+        # once at pickup), so this makes the text line behave the same way.
+        import asyncio
+
+        resolved = []
+
+        class _Station:
+            async def resolve_live_persona(self):
+                # The station genuinely hands back a different DJ the second
+                # time — a handover, exactly as the takeover produces.
+                resolved.append(1)
+                return ({"id": "p_a262b2", "name": "Duke Sterling"} if len(resolved) == 1
+                        else {"id": "p_fed292", "name": "Cliff"})
+
+        chat = self._chat()
+        station = _Station()
+
+        async def one_message():
+            # The two lines ask() runs, in order, for each message.
+            persona = chat.persona
+            if not (persona or {}).get("id") and not (persona or {}).get("name"):
+                persona = await station.resolve_live_persona()
+                chat.persona = persona
+            chat.persona_name = persona.get("name") or chat.persona_name
+            return chat.persona_name
+
+        first = asyncio.run(one_message())
+        second = asyncio.run(one_message())
+        third = asyncio.run(one_message())
+        self.assertEqual(first, "Duke Sterling")
+        self.assertEqual(second, "Duke Sterling",
+                         "the handover changed the DJ mid-conversation")
+        self.assertEqual(third, "Duke Sterling")
+        self.assertEqual(len(resolved), 1,
+                         "the station was asked again after the DJ was settled")
+
+    def test_a_station_that_was_down_at_hello_is_asked_again(self):
+        # The other direction: pinning the conversation to nothing because the
+        # station happened to be restarting on the opening message would leave
+        # a caller talking to "The DJ" for ten minutes.
+        import asyncio
+
+        tries = []
+
+        class _Station:
+            async def resolve_live_persona(self):
+                tries.append(1)
+                return {} if len(tries) == 1 else {"id": "p_x", "name": "Ash"}
+
+        chat = self._chat()
+        station = _Station()
+
+        async def one_message():
+            persona = chat.persona
+            if not (persona or {}).get("id") and not (persona or {}).get("name"):
+                persona = await station.resolve_live_persona()
+                chat.persona = persona
+            chat.persona_name = persona.get("name") or chat.persona_name
+            return chat.persona_name
+
+        asyncio.run(one_message())
+        self.assertEqual(asyncio.run(one_message()), "Ash")
+        self.assertEqual(len(tries), 2, "an empty persona was treated as settled")
+
     def test_the_action_cap_spans_the_conversation(self):
         from call.actions import CallActions
 

@@ -153,6 +153,9 @@ class ChatSession:
         # record that knows only "Ash" cannot be grouped by persona the
         # way the calls beside it can (operator-spotted, 2026-08-12).
         self.persona_id = ""
+        # The whole persona dict, resolved once and then held for the life of
+        # the conversation — see ask(). None until the first message.
+        self.persona: dict | None = None
         # One message in flight per chat: two tabs racing the same id would
         # interleave two tool loops through one transcript.
         self.lock = asyncio.Lock()
@@ -207,9 +210,22 @@ class ChatSession:
         fragments, then {"type": "done", "text": <full reply>}.
 
         Settings are re-read here — the per-message equivalent of the
-        per-call invariant — and the persona is whoever is on air NOW, so a
-        chat that spans a handover changes DJ mid-conversation, the same rule
-        the phone follows.
+        per-call invariant. The PERSONA is not: it is resolved once, on the
+        first message, and rides out the rest of the conversation.
+
+        It used to be re-resolved every message, on the reasoning that the DJ
+        should be whoever is on air now. In practice that meant a takeover
+        mid-chat — often one the caller had just asked for themselves —
+        swapped the person they were talking to between one line and the
+        next, mid-subject, with no goodbye (operator-reported, 2026-08-14).
+        The phone never did this: a call resolves its persona and its VOICE
+        once at pickup and cannot change either without dropping the call, so
+        "the same rule the phone follows" was the opposite of what the old
+        comment here claimed. This makes the text line behave like the phone.
+
+        The station keeps changing underneath either way — the record, the
+        schedule and the palette all still follow it. Only who you are talking
+        to is held.
         """
         from livekit.agents import llm as lk_llm
 
@@ -232,7 +248,14 @@ class ChatSession:
             str(cfg.get("action_cards") or "after"), on_event)
         station = StationClient()
         try:
-            persona = await station.resolve_live_persona()
+            # Once per conversation. Re-resolved only if the first attempt
+            # came back with nothing to hold on to — a station that was down
+            # for the opening message must not pin the chat to "The DJ" for
+            # the next ten minutes.
+            persona = self.persona
+            if not (persona or {}).get("id") and not (persona or {}).get("name"):
+                persona = await station.resolve_live_persona()
+                self.persona = persona
             self.persona_name = persona.get("name") or self.persona_name
             self.persona_id = persona.get("id") or self.persona_id
             prompt = await build_system_prompt(station, persona, cfg=cfg,

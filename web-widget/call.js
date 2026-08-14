@@ -1028,6 +1028,15 @@
     if (card) card.dataset.mode = m;
   }
 
+  // Is somebody actually mid-conversation on this card — a call, a voicemail
+  // or an open text line? Read off the mode the card already keeps rather
+  // than a second flag: `room` alone would miss the text line, which is the
+  // surface the DJ-changed-under-me report came from.
+  function inConversation() {
+    const card = document.querySelector('.card');
+    return !!card && card.dataset.mode !== 'idle';
+  }
+
   // ------------------------------------------------------- embed height
   // A host page sizes its iframe before the widget knows whether it has to
   // ask for a door code, warn about the microphone, or open captions — so a
@@ -1370,9 +1379,20 @@
       // call, per surface. Emptied rather than hidden — these are text nodes
       // whose parent collapses on its own once they carry nothing.
       const parts = cardParts(d);
-      $('djName').textContent = d.name || 'The DJ';
-      $('djShow').textContent = parts.show === false ? '' : (d.show || '');
-      $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
+      // WHO YOU ARE TALKING TO DOES NOT CHANGE UNDER YOU. A show handover
+      // mid-conversation used to rewrite the name, show and tagline on the
+      // next poll, so the person you were three lines into a chat with became
+      // somebody else while the voice — resolved once when the conversation
+      // started — carried on as the DJ you rang. The card was the half that
+      // was lying. Identity is repainted only from an idle card; the record,
+      // the clock, the palette and everything else keep following the
+      // station, which is the operator's ask: the colours may change, the DJ
+      // may not. It catches up on the first poll after the line clears.
+      if (!inConversation()) {
+        $('djName').textContent = d.name || 'The DJ';
+        $('djShow').textContent = parts.show === false ? '' : (d.show || '');
+        $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
+      }
       $('npTrack').textContent =
         (parts.track === false || !d.track) ? '' : '♪ ' + d.track;
       // The rail's clock and progress hairline. /live sends WHEN the record
