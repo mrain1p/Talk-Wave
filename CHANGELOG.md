@@ -3,6 +3,50 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.135
+
+A model that is merely slow no longer kills the call — and the panel stops calling a fatal number "laggy". All of this came out of one tester's afternoon on a self-hosted Ollama.
+
+### What the caller hears
+
+- **If the DJ kept answering "the line's giving me trouble on my end", that was the model running out of time, not your network.** LiveKit allows 10 seconds per attempt, and for a streamed reply that is a ceiling on the *first token* — miss it and the turn is thrown away, four times over, and the caller gets the canned apology about twenty seconds after they stopped speaking. A self-hosted provider (Ollama, an OpenAI-compatible server, locca) now gets 30 seconds and one retry instead. A model that was merely slow is now a DJ that answers slowly, which is a thing you can hear and decide about.
+- **When it does happen, the apology comes sooner.** One "recoverable" provider error used to be absorbed in silence before the DJ said anything. That grace makes sense for a cloud blip measured in milliseconds; on a box that has already spent its whole 30-second budget it just adds another 30 seconds of nothing. A model out of time now speaks up the first time.
+- **Cloud providers are unchanged.** Ten seconds with three retries is right for a provider having an outage rather than a slow think.
+
+### What you see in the panel
+
+- **The model check now measures what a call actually costs.** It sent an empty system prompt and two toy tools; a real turn carries the station briefing, the persona and every allowlisted tool schema, and on self-hosted hardware reading that prompt *is* most of the wait. Expect your number to read higher than it did — that number is the one the caller experiences. The line says which it measured, and falls back gracefully when the station won't answer.
+- **The verdict says what the number means, and the metric is still right there.** Under the 1.5s target it passes as before. Above it, a warning that the caller hears a pause before every reply, and what this box will wait. Over the budget it now **fails** — "every turn times out and the caller hears the trouble line" — and names the fix. The tester read "6185ms to first token — the call will lag" off a green-ish row while not one of his turns was completing.
+- **A call the model kept waiting says so in its own transcript.** One line at the end, next to the config it ran under: how many replies went over the target, the worst, the typical. The voice has had this for a while; the model leg was the half nobody could see.
+- **A rate-limited station stops being reported as wrong credentials.** SUB/WAVE's login limiter answers 429 for fifteen minutes, and the pipeline's Station admin stage read that as a rejection — sending an operator off to change a password that was right all along. It now says what it is, the way the Test button already did, and the genuine rejection names what it costs you: library search, on-air announcements and the back-to-air handoff.
+
+### Under the hood
+
+- **A new page, [What to run](docs/models.md), for the decision this release is about.** Ideal, OK and minimal for the model and for the voice, the three numbers that decide a call, and a table matching what a caller experiences to the number behind it. Including the one that cost this tester the most: on Ollama, a model unloads after five idle minutes, so the first call after a quiet hour pays the load as well.
+- **A documentation audit, and the drift it found.** Recent conversations was documented as keeping 100 transcripts (it lists 20, and keeps 1000); the settings reference described a tool surface of "17 MCP tools" plus eight wrappers, where the registry holds 33; two "calling from outside your network" links pointed at a section that lives on another page; the provider lists omitted the two keyless self-hosted options; and the voice-effect list named four of ten. All corrected, and three of those five classes now have a test: links between docs must resolve, and the tool numbers in the reference must match the registry.
+- **The target lives in one place.** `llm_pace.py` owns what a caller can absorb, what each kind of provider may spend, and the meter that reports it — read by the call, by the test endpoints and by the panel, so the three cannot drift apart again.
+
+## 0.10.134
+
+The operator's second visual pass, on a phone and on the station page.
+
+### What the caller sees
+
+- **The idle box is a board now, and it says which lines are open.** It has been a permanent grey "Not connected" that read as a fault on host pages, then nothing at all, then one sentence — in a box two hundred pixels tall. It now shows the state in the card's own voice and the doors that are actually open beneath it, each checked twice: whether it is offered, and whether it works right now. A machine set to answer only when the booth is shut reads as struck through while the booth is open, because listing a way in that the card will refuse is worse than listing nothing.
+- **A tool receipt is one line.** "SHOW TAKEOVER SET" over "THE OVERLOOK · After Dark for 60 min" spent three lines saying one thing; it is one sentence at one size now, with the colour carrying the difference.
+- **The photograph opens.** It is the only image on the card and it is small by necessity, so a tap gives it the room the card cannot — inside the card rather than over the page, because in an embed the page is not ours.
+- **"How was it?" is back on a phone.** It was hidden under 430px, which left the rating strip as two unexplained thumbs.
+- **A resumed text thread opens behind the transcript drawer** rather than over the card's idle state, and the drawer has a way out as well as a way in. The voicemail icon is a cassette rather than an envelope, which is email.
+
+### What you see in the panel
+
+- **The embed stops being a second design.** 0.10.131 hid ON AIR NOW and lifted the chips onto the eyebrow because at 348px there was no room beside the avatar. Stacking the name and show gave that room back, so the chips return to the identity row and the eyebrow keeps its words — the pip was glowing with nothing beside it, which reads as a bug. The code field and its button stack rather than splitting 348px, and the volume rail gives up width before the waveforms do, where it had been pushing the DJ's waveform off the card.
+- **The action row gives the primary door two thirds and splits the rest** — unless all three doors carry a word, when equal thirds is the honest answer.
+
+### Under the hood
+
+- Measured after, at 390 / 768 / 1280 / 348 / 300, idle / call / text: nothing paints past the card, and nothing wraps that should not.
+
 ## 0.10.133
 
 The waveform is back, and the player stops overflowing on a phone. Everything here came out of looking at 0.10.131 on a real handset.

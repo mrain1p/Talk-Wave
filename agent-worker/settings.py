@@ -889,8 +889,10 @@ SCHEMA: dict[str, dict] = {
              "you have a key for are listed — add one below and it appears "
              "here. Ollama runs on your own network and needs none."),
     "llm_model": dict(group="brains", kind="select", label="Model",
-        help="Read live from the provider. Over ~1.5s to first token sounds "
-             "laggy on a call."),
+        help="Read live from the provider. Over ~1.5s to first token, the "
+             "caller hears a pause before every reply; a self-hosted model "
+             "that needs more than 30s cannot carry a call at all. Test it — "
+             "the check measures with a real call's prompt and tools."),
     "llm_base_url": dict(group="brains", kind="text", label="Endpoint",
         needs=("llm_provider", ("ollama", "openai", "openrouter",
                                 "deepseek", "requesty", "gateway",

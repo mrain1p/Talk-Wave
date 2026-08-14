@@ -13,6 +13,143 @@ import speech_filter
 from tests.support import _TempStores
 
 
+class TestASlowModelGetsRoomRatherThanFailing(unittest.TestCase):
+    """A tester's calls all died on ollama/qwen2.5:7b (2026-08-13) while every
+    stage in the panel was green or yellow. The SDK's default patience is 10s
+    per attempt, and for a streamed completion that is the ceiling on TIME TO
+    FIRST TOKEN — so a self-hosted model that is merely slow fails every turn.
+    Nothing here is a preference; each number is what a caller can survive."""
+
+    def test_a_self_hosted_provider_may_take_longer_and_retries_less(self):
+        import llm_pace
+        from call.providers import llm_conn_options
+
+        for provider in llm_pace.SELF_HOSTED:
+            opts = llm_conn_options({"llm_provider": provider})
+            self.assertEqual(opts.timeout, 30.0, provider)
+            # Retrying a local model that is still thinking queues the same
+            # generation again; three retries buy nothing and cost the caller
+            # half a minute of silence.
+            self.assertEqual(opts.max_retry, 1, provider)
+
+    def test_a_cloud_provider_keeps_the_sdks_own_defaults(self):
+        from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
+
+        from call.providers import llm_conn_options
+
+        for provider in ("openai", "google", "anthropic", "deepseek", ""):
+            opts = llm_conn_options({"llm_provider": provider})
+            self.assertEqual(opts.timeout, DEFAULT_API_CONNECT_OPTIONS.timeout, provider)
+            self.assertEqual(opts.max_retry, DEFAULT_API_CONNECT_OPTIONS.max_retry, provider)
+
+    def test_the_budget_actually_reaches_the_session(self):
+        # Source, because building an AgentSession needs a room, a worker and
+        # three live providers. The failure this guards is silent in exactly
+        # the way the original was: pass no conn_options and every deployment
+        # quietly gets the cloud default back.
+        import inspect
+
+        from call.session import CallSession
+
+        src = inspect.getsource(CallSession.start)
+        self.assertIn("conn_options=SessionConnectOptions(", src)
+        self.assertIn("llm_conn_options(self.cfg)", src)
+
+
+class TestTheRecordSaysWhenTheCallerWasKeptWaiting(unittest.TestCase):
+    """Slow-but-working had no symptom anywhere: no exception, nothing in the
+    transcript, and an operator left saying calls "felt off". Same reasoning as
+    the TTS pace meter, one leg earlier."""
+
+    def setUp(self):
+        import llm_pace
+
+        self.llm_pace = llm_pace
+        self.meter = llm_pace.ThinkMeter(label="ollama/qwen2.5:7b", budget=30.0)
+
+    def test_a_model_that_keeps_up_says_nothing(self):
+        for _ in range(4):
+            self.meter.note(0.6)
+        self.assertEqual(self.meter.report(), "")
+
+    def test_a_call_with_no_turns_says_nothing(self):
+        # A caller who hung up during the ring must not produce a verdict about
+        # a model that was never asked anything.
+        self.assertEqual(self.meter.report(), "")
+
+    def test_the_pause_before_every_reply_is_named_and_counted(self):
+        self.meter.note(0.4)
+        self.meter.note(3.0)
+        self.meter.note(5.0)
+        said = self.meter.report()
+        self.assertIn("2 of 3", said)
+        self.assertIn("5.0s", said)          # the worst one
+        self.assertIn("ollama/qwen2.5:7b", said)
+
+    def test_a_turn_thrown_away_outranks_a_slow_one(self):
+        # Both happened on the same call: the report has to lead with the one
+        # the caller actually heard, which is the apology.
+        self.meter.note(4.0)
+        self.meter.gave_up()
+        said = self.meter.report()
+        self.assertIn("30s", said)
+        self.assertIn("retried", said)
+
+    def test_the_target_is_one_number_for_every_surface(self):
+        # The module claims one target shared by the meter, the panel's help
+        # and the pipeline verdict. Two of those live in files this test can
+        # read; the third is this constant.
+        from tests.support import REPO
+
+        self.assertEqual(self.llm_pace.DESIRED_FIRST_TOKEN, 1.5)
+        panel = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        # The server sends the real number; this is the fallback the panel uses
+        # if an older worker answers, and it must not disagree.
+        self.assertIn("d.desiredMs || 1500", panel)
+
+
+class TestTheRecordNamesWhichLegFailed(unittest.TestCase):
+    """`LLMError type='llm_error' label='...'` was the operator's first sight of
+    a failed call, and it says nothing about what to do."""
+
+    def _err(self, kind, inner):
+        return types.SimpleNamespace(type=kind, error=inner, recoverable=True)
+
+    def test_a_model_out_of_time_is_told_apart_from_a_model_that_broke(self):
+        from livekit.agents import APITimeoutError
+
+        from call import lifecycle
+
+        self.assertTrue(lifecycle._model_gave_up(self._err("llm_error", APITimeoutError())))
+        self.assertFalse(lifecycle._model_gave_up(self._err("llm_error", ValueError("nope"))))
+        # A voice that timed out is not the model running out of time, and the
+        # fix for it is a different one.
+        self.assertFalse(lifecycle._model_gave_up(self._err("tts_error", APITimeoutError())))
+
+    def test_the_timeout_line_says_the_budget_and_what_the_caller_heard(self):
+        import llm_pace
+        from livekit.agents import APITimeoutError
+
+        from call import lifecycle
+
+        said = lifecycle._in_plain_words(
+            self._err("llm_error", APITimeoutError()),
+            llm_pace.ThinkMeter(budget=30.0),
+        )
+        self.assertIn("30s", said)
+        self.assertIn("apology", said)
+
+    def test_every_other_failure_still_names_its_leg(self):
+        from call import lifecycle
+
+        self.assertTrue(
+            lifecycle._in_plain_words(self._err("tts_error", ValueError("no voice")))
+            .startswith("The voice failed:"))
+        self.assertTrue(
+            lifecycle._in_plain_words(self._err("stt_error", ValueError("deaf")))
+            .startswith("Speech-to-text failed:"))
+
+
 class TestCallStructure(unittest.TestCase):
     """The call is an object with phases, not a 334-line function. These pin
     the seams so a future edit can't quietly put the call back in one place."""

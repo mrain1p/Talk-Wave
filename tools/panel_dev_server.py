@@ -112,6 +112,23 @@ PIPELINE_ENV = {
     "tts": {"ok": True, "detail": "local · -Cliff1"},
 }
 
+# The model check, with the numbers its verdict is graded against. 6185ms is a
+# real reading from a tester's ollama/qwen2.5:7b (2026-08-13), the one the panel
+# used to call "the call will lag" while every turn on that box was in fact
+# timing out — so the fixture ships in the state that was reported wrong.
+LLM_TEST = {
+    "ok": True, "provider": "ollama", "model": "qwen2.5:7b",
+    "firstTokenMs": 6185, "totalMs": 8102, "toolCalling": True,
+    "parallelTools": True, "followUp": "ok", "followUpError": "",
+    "reply": "Dreams by Fleetwood Mac, coming up.",
+    "measuredWith": "measured with the DJ's real prompt and 17 station tool(s)",
+    "promptChars": 7400, "toolCount": 19, "desiredMs": 1500, "budgetMs": 30000,
+}
+
+TTS_TEST = {
+    "ok": True, "voice": "-Cliff1", "firstAudioMs": 420, "realtimeFactor": 0.31,
+}
+
 # Flip `ok` to see the other branch: a station that took the registration but
 # cannot route back to the receiver, which from the panel looks identical to
 # working until something asks.
@@ -404,6 +421,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(dict(PIPELINE_ENV))
         if path == "/test/station":
             return self._json({"ok": True, "liveDj": "Francesca", "toolCount": 9})
+        # The two stages that were NOT stubbed, so the pipeline check could
+        # never be read end to end here — and they are the two whose verdicts
+        # have bands rather than a yes/no. Edit LLM_TEST's firstTokenMs to see
+        # each: under desiredMs passes, over it warns, at or over budgetMs
+        # fails outright.
+        if path == "/test/llm":
+            return self._json(dict(LLM_TEST))
+        if path == "/test/tts":
+            return self._json(dict(TTS_TEST))
         # Registration only ever proved the station accepted a row; this is the
         # station pushing back at us, which is the half that fails in the wild.
         if path == "/hooks/test":

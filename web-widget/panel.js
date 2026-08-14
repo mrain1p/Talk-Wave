@@ -2903,7 +2903,14 @@
         }
         return;
       }
-      const slow = d.firstTokenMs > 1500;
+      // Both numbers come from the server, which is the only side that knows
+      // what a call will actually tolerate — the panel used to hold a bare
+      // 1500 and grade against nothing else, so a model that could never
+      // finish a turn was reported as one that would "feel laggy".
+      const desired = d.desiredMs || 1500;
+      const budget = d.budgetMs || 10000;
+      const slow = d.firstTokenMs > desired;
+      const hopeless = d.firstTokenMs >= budget;
       // A second round is the one that catches a provider which passes the
       // easy test and then dies mid-conversation, so it counts toward the
       // verdict rather than sitting underneath it as a note.
@@ -2911,6 +2918,7 @@
       showResult(out, d.toolCalling && carries && !slow,
         withNote(d.provider + ' / ' + d.model +
         '\nfirst token ' + d.firstTokenMs + 'ms, total ' + d.totalMs + 'ms' +
+        (d.measuredWith ? '\n' + d.measuredWith : '') +
         '\ntool calling: ' + (d.toolCalling ? '✓ works' : '✗ model did not call the tool')
         + (d.toolCalling ? ' (' + (d.parallelTools ? 'two at once' : 'one at a time') + ')' : '') +
         (d.followUp === 'skipped' ? '' :
@@ -2919,7 +2927,15 @@
               : d.followUp === 'silent' ? '⚠ replied with nothing'
                 : '✗ ' + (d.followUpError || 'the provider rejected the follow-up'))) +
         (d.reply ? '\nreply: ' + d.reply : '') +
-        (slow ? '\n⚠ Slow to first token — the call will feel laggy.' : '') +
+        (hopeless
+          ? '\n✗ Over the ' + Math.round(budget / 1000) + 's a call allows — the turn '
+            + 'is thrown away and the caller hears the trouble line instead of a reply. '
+            + 'Try a smaller model, or a cloud provider.'
+          : slow
+            ? '\n⚠ Above the ' + desired + 'ms target, so the caller hears a pause before '
+              + 'every reply. Calls still complete: this box waits up to '
+              + Math.round(budget / 1000) + 's.'
+            : '') +
         (d.followUp === 'failed'
           ? '\n✗ It answers once, then refuses the next request — every '
             + 'conversation will lose a reply. Try another model.' : '') +
@@ -3585,11 +3601,29 @@
           return { status: 'fail',
             detail: d.model + ' answered but never called the tool — it could never submit a request' };
         }
-        if (d.firstTokenMs > 1500) {
-          return { status: 'warn',
-            detail: d.model + ' · tools OK but ' + d.firstTokenMs + 'ms to first token — the call will lag' };
+        // The metric stays; what changed is that it is now graded against what
+        // a call tolerates rather than against one hardcoded number. A tester
+        // read "6185ms — the call will lag" off this line while every turn on
+        // his box was timing out and the caller heard the apology (2026-08-13).
+        const desired = d.desiredMs || 1500;
+        const budget = d.budgetMs || 10000;
+        const measured = d.measuredWith ? ' · ' + d.measuredWith : '';
+        if (d.firstTokenMs >= budget) {
+          return { status: 'fail',
+            detail: d.model + ' · tools OK, but ' + d.firstTokenMs + 'ms to first token is over '
+              + 'the ' + Math.round(budget / 1000) + 's a call allows — every turn times out and '
+              + 'the caller hears the trouble line. A smaller model, or a cloud one, is the fix'
+              + measured };
         }
-        return { status: 'pass', detail: d.model + ' · tools OK · ' + d.firstTokenMs + 'ms' };
+        if (d.firstTokenMs > desired) {
+          return { status: 'warn',
+            detail: d.model + ' · tools OK · ' + d.firstTokenMs + 'ms to first token, above the '
+              + desired + 'ms target — calls complete (this box waits up to '
+              + Math.round(budget / 1000) + 's) but the caller hears a pause before every reply'
+              + measured };
+        }
+        return { status: 'pass',
+          detail: d.model + ' · tools OK · ' + d.firstTokenMs + 'ms' + measured };
       },
     },
     {
