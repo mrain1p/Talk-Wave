@@ -2509,3 +2509,42 @@ class TestTheDoorsSitWhereTheOperatorPutThem(unittest.TestCase):
         self.assertIn("doormove", js)
         self.assertIn("move earlier", js)
         self.assertIn("move later", js)
+
+
+class TestASkinCannotLoseTheStateChannel(unittest.TestCase):
+    """On the card, `--ok` is not decoration.
+
+    It colours LINES ARE OPEN, the connection dot, the "listening" chip and the
+    Call button once the line is live — while `--coral` is the button you press
+    and `--amber` is ringing. A skin that paints two of those the same colour
+    has not changed a shade, it has removed a signal: live and ringing, or live
+    and "this is the control", stop being tellable apart.
+
+    Three skins are monochrome ON PURPOSE and are listed rather than excused —
+    they carry state by shape and label instead, which is a design decision
+    somebody made, not an accident to be caught later.
+    """
+
+    MONOCHROME = {"eink", "mac"}
+
+    def test_live_is_never_the_same_colour_as_the_accent_or_the_warning(self):
+        clashes = []
+        for skin, body in _skin_blocks().items():
+            if skin in self.MONOCHROME:
+                continue
+            got = {name: value for name, value in
+                   re.findall(r"--(ok|coral|amber):\s*(#[0-9a-fA-F]{3,8})", body)}
+            if "ok" not in got:
+                continue        # inherits the default palette's, which is fine
+            for other in ("coral", "amber"):
+                if got.get(other, "").lower() == got["ok"].lower():
+                    clashes.append(f"{skin}: --ok and --{other} are both {got['ok']}")
+        self.assertEqual(
+            clashes, [],
+            "these skins paint two different states the same colour, so a "
+            f"caller cannot tell them apart: {clashes}")
+
+    def test_the_monochrome_list_only_names_skins_that_exist(self):
+        # A list of exceptions that outlives the thing it excuses is how a rule
+        # quietly stops applying.
+        self.assertLessEqual(self.MONOCHROME, set(_skin_blocks()))

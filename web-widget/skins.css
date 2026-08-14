@@ -54,7 +54,8 @@
   --alpenglow: #f0e6d4; --sage: #a8977c; --sage-dim: #7b6c55;
   --coral: #e8913a; --amber: #d9c15a;
   --hairline: #302619; --edge: #3d3020;
-  --ok: #6fae5a; --cool: #6a8f92;
+  /* moss, so the lamp reads warm against the brass */
+  --ok: #86b464; --cool: #6a8f92;
   --shadow: 0 2px 0 rgba(0,0,0,.5);
   --font-mono: "Courier New", ui-monospace, Consolas, monospace;
   --skin-radius: 4px; --skin-radius-ctl: 2px; --skin-border: 2px;
@@ -82,7 +83,8 @@
   --alpenglow: #e8ecef; --sage: #98a1a8; --sage-dim: #6b747b;
   --coral: #4fb0c9; --amber: #d2a63f;
   --hairline: #2a2e32; --edge: #3a4046;
-  --ok: #58b87a; --cool: #4fb0c9;
+  /* clear green, well clear of the cyan accent */
+  --ok: #6ecf72; --cool: #4fb0c9;
   --shadow: 0 1px 0 rgba(255,255,255,.06), 0 3px 8px rgba(0,0,0,.5);
   --skin-radius: 3px; --skin-radius-ctl: 2px; --skin-border: 1px;
   /* Brushed metal is a very fine vertical grain, not a gradient. */
@@ -109,7 +111,8 @@
   --alpenglow: #eef1f4; --sage: #93a0ad; --sage-dim: #66707c;
   --coral: #e04f6a; --amber: #efc75e;
   --hairline: #262b31; --edge: #333a42;
-  --ok: #5fc98a; --cool: #56a8c4;
+  /* the desk's own meter green */
+  --ok: #57d18c; --cool: #56a8c4;
   --shadow: 0 2px 6px rgba(0,0,0,.45);
   --skin-radius: 2px; --skin-radius-ctl: 1px; --skin-border: 1px;
   --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.05), transparent 30%);
@@ -134,7 +137,8 @@
   --alpenglow: #2b2016; --sage: #6b5a42; --sage-dim: #8d7c62;
   --coral: #a8442a; --amber: #7a5410;
   --hairline: #cbb994; --edge: #a98f63;
-  --ok: #3f7a45; --cool: #3d6a72;
+  /* bottle green, period-correct and legible on cream */
+  --ok: #3d6b3a; --cool: #3d6a72;
   --shadow: 0 2px 5px rgba(80,60,30,.25);
   --font-body: "Iowan Old Style", Georgia, "Times New Roman", serif;
   --skin-radius: 12px; --skin-radius-ctl: 3px; --skin-border: 2px;
@@ -158,7 +162,8 @@
   --alpenglow: #ece7dd; --sage: #a49d92; --sage-dim: #77716a;
   --coral: #d9704a; --amber: #cfa94e;
   --hairline: #322e38; --edge: #423d4a;
-  --ok: #5aa878; --cool: #5b8a99;
+  /* a warmer green for the plastic and orange label */
+  --ok: #63b184; --cool: #5b8a99;
   --shadow: 0 3px 10px rgba(0,0,0,.5);
   --skin-radius: 8px; --skin-radius-ctl: 2px; --skin-border: 1px;
   --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.05), transparent 35%);
@@ -189,7 +194,8 @@
   --alpenglow: #7dffb0; --sage: #3fbf78; --sage-dim: #2a8a55;
   --coral: #4dff9b; --amber: #9dff6a;
   --hairline: #0d3d24; --edge: #135633;
-  --ok: #4dff9b; --cool: #35c9a0;
+  /* paler phosphor, so live is not the accent */
+  --ok: #9dffc4; --cool: #35c9a0;
   --shadow: none;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   --font-body: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
@@ -212,7 +218,10 @@
   --alpenglow: #ffc45e; --sage: #c98f2c; --sage-dim: #8f6519;
   --coral: #ffb02e; --amber: #ffd77a;
   --hairline: #3d2708; --edge: #573809;
-  --ok: #ffd77a; --cool: #d99a3c;
+  /* The palest phosphor, because the mid one is already --amber: on a
+     single-phosphor skin ringing and live were the SAME COLOUR, which is
+     the state channel gone rather than a shade off. */
+  --ok: #ffe9b8; --cool: #d99a3c;
   --shadow: none;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   --font-body: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -235,7 +244,8 @@
   --alpenglow: #8fff9c; --sage: #34c04a; --sage-dim: #1f8030;
   --coral: #57ff6a; --amber: #b6ff57;
   --hairline: #0a3312; --edge: #10501c;
-  --ok: #57ff6a; --cool: #2fc98d;
+  /* paler phosphor, so live is not the accent */
+  --ok: #b6ffc0; --cool: #2fc98d;
   --shadow: none;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --font-body: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -262,7 +272,8 @@
   --alpenglow: #6fffa8; --sage: #35c072; --sage-dim: #218a4d;
   --coral: #4dffa0; --amber: #8dff7a;
   --hairline: #0d4a29; --edge: #1c6b3c;
-  --ok: #4dffa0; --cool: #2fbf9a;
+  /* paler phosphor, so live is not the accent */
+  --ok: #a8ffcf; --cool: #2fbf9a;
   --shadow: inset 0 0 40px rgba(0,0,0,.75);
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --font-body: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -423,7 +434,8 @@
   --alpenglow: #211d17; --sage: #5d574c; --sage-dim: #857e70;
   --coral: #9c3b23; --amber: #7a5a12;
   --hairline: #ded5c2; --edge: #c9bfa8;
-  --ok: #3d6b3f; --cool: #3a5f66;
+  /* ink green rather than a screen green */
+  --ok: #3f6b42; --cool: #3a5f66;
   --shadow: 0 1px 3px rgba(60,50,30,.16);
   --font-mono: "Courier New", Courier, ui-monospace, monospace;
   --font-body: "Iowan Old Style", Georgia, "Times New Roman", serif;
