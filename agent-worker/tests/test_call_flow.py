@@ -814,7 +814,10 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         lag = OnAirGuard.HANDOFF_LAG_SECS
         # A no-words entry holds quiet_secs (30) plus the lag.
         self.assertTrue(guard._log_says_busy((30.0 + lag - 1, "")))
-        self.assertFalse(guard._log_says_busy((30.0 + lag + 1, "")))
+        # Since 0.10.129 the window is [lag - handover, lag + words + pad]
+        # in CALLER time, so the far edge moved out by the pad.
+        self.assertFalse(
+            guard._log_says_busy((30.0 + lag + guard.duck_pad + 1, "")))
 
     def test_a_gap_inside_a_banter_break_does_not_return_the_caller(self):
         # A banter break is several utterances back to back. Each voice.end
@@ -970,20 +973,31 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         far = {"at": now, "v": 2, "phase": "queued", "voiceId": "v1",
                "text": "coming up", "durMs": 6000, "airAt": now + 20}
         self.assertIsNone(guard._push_verdict(far, now))
+        # Inside the window in CALLER time: a clip airing in 4s is heard in
+        # 4 + lag, so the hand-over is still lag seconds away. This is the
+        # "stop ducking early" fix — the operator timed a hold that opened
+        # seventeen seconds before the caller heard anything.
         near = dict(far, airAt=now + 4)
-        verdict = guard._push_verdict(near, now)
+        self.assertIsNone(guard._push_verdict(near, now))
+        verdict = guard._push_verdict(near, now + guard.caller_lag())
         self.assertEqual(verdict[0], "busy")
         self.assertIn("Hold that thought", verdict[2])
         # …and the hold releases once the forecast clip has played out AND
         # the duck's close has run — 6s of clip plus DUCK_PAD_SECS.
         from call.air import DUCK_PAD_SECS
 
-        self.assertIsNone(
-            guard._push_verdict(dict(far, airAt=now - (7 + DUCK_PAD_SECS)), now))
+        # Every bound is in CALLER time since 0.10.129 — airAt is the encoder's
+        # instant and they hear it caller_lag later, so the whole window slides
+        # rather than the close being padded. With no bufSecs on these entries
+        # the lag falls back to HANDOFF_LAG_SECS.
+        lag = guard.caller_lag()
+        self.assertIsNone(guard._push_verdict(
+            dict(far, airAt=now - (7 + DUCK_PAD_SECS + lag)), now))
         # Still held while the pad is running: releasing on the last syllable
         # puts the DJ back over the tail of its own link.
         self.assertEqual(
-            guard._push_verdict(dict(far, airAt=now - 7), now)[0], "busy")
+            guard._push_verdict(dict(far, airAt=now - (7 + lag)), now)[0],
+            "busy")
 
     def test_measured_speech_is_held_for_its_length_plus_the_buffer(self):
         # voice.start is stamped at AIR time with the clip's measured length,
@@ -1002,7 +1016,12 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # which the old rule called clear.
         self.assertEqual(
             guard._push_verdict(dict(speaking, at=now - 8), now)[0], "busy")
-        self.assertIsNone(guard._push_verdict(dict(speaking, at=now - 12), now))
+        # Clear only once the clip AND the buffer AND the pad have run: the
+        # caller starts hearing it 4s after the encoder did, so 12s in they
+        # are still two seconds from the end of it.
+        self.assertEqual(
+            guard._push_verdict(dict(speaking, at=now - 12), now)[0], "busy")
+        self.assertIsNone(guard._push_verdict(dict(speaking, at=now - 20), now))
 
     def test_a_measured_end_reads_as_clear_once_the_buffer_has_drained(self):
         # voice.end is still the one push that can prove the air QUIET — the
@@ -1015,8 +1034,10 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         now = time.time()
         ended = {"at": now, "v": 2, "phase": "clear", "bufSecs": 5.0,
                  "voiceId": "v3", "text": ""}
+        # 5s of buffer, then the pad: at +6 the caller is still hearing it.
         self.assertIsNone(guard._push_verdict(ended, now + 1))
-        self.assertEqual(guard._push_verdict(ended, now + 6)[0], "clear")
+        self.assertIsNone(guard._push_verdict(ended, now + 6))
+        self.assertEqual(guard._push_verdict(ended, now + 11)[0], "clear")
 
     def test_the_hold_is_sized_to_what_the_station_is_saying(self):
         # One fixed number either reopened the gate while a minute-long
@@ -1030,8 +1051,8 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         # No words at all falls back to on_air_quiet_secs (30 here), plus the
         # handoff lag that rides every poll-shaped verdict's tail.
         self.assertTrue(guard._log_says_busy((20.0, "")))
-        self.assertFalse(
-            guard._log_says_busy((31.0 + guard.HANDOFF_LAG_SECS, "")))
+        self.assertFalse(guard._log_says_busy(
+            (31.0 + guard.caller_lag() + guard.duck_pad, "")))
         self.assertFalse(guard._log_says_busy(None))
 
     def test_dead_air_is_worse_than_an_overlap(self):
@@ -1152,7 +1173,11 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
     def test_the_air_going_busy_mid_call_hands_over_out_loud(self):
         # Clear first (no transition), then busy — that one is not the first
         # pass, so the caller is told why the DJ has stopped.
-        session = self._watch([None, 1, 1, 1], stop_when=lambda s: s.said)
+        #
+        # The "seconds since the log entry" must be inside the CALLER'S
+        # audible window since 0.10.129: a one-second-old entry is not
+        # something they can hear yet when the stream runs behind.
+        session = self._watch([None, 6, 6, 6], stop_when=lambda s: s.said)
         self.assertTrue(session.said, "the DJ went quiet without telling the caller")
         self.assertGreaterEqual(session.interrupted, 1)
 

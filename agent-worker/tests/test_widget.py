@@ -596,36 +596,42 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # carries display:flex now, to flex the transcript to one footprint —
         # but the space-reserving visibility:hidden is the part under test.)
         self.assertRegex(
-            self.css, r'\.rig \{ visibility: hidden;[^}]*\}',
+            self.css, r'\.rig \{\s+visibility: hidden;',
             "the rig must reserve its space with visibility:hidden")
-        for rule in (".pill[hidden] { visibility: hidden; }",
-                     ".ticker[hidden] { display: grid; visibility: hidden; }"):
-            with self.subTest(rule=rule):
-                self.assertIn(rule, self.css)
+        # The chips are NOT in this list any more. Reserved-but-invisible was
+        # right while they had a band of their own whose height had to be
+        # held; in the identity row there is nothing to reserve — the row is
+        # 60px of avatar either way — so they collapse instead.
+        self.assertIn(".ticker[hidden] { display: grid; visibility: hidden; }",
+                      self.css)
+        self.assertIn(".pill[hidden] { display: none; }", self.css)
 
-    def test_the_line_area_is_reserved_at_a_fixed_height(self):
-        # Reserved from first paint at a fixed height — the invariant is that
-        # the box NEVER resizes mid-call, not the particular number. Four
-        # lines of 12.5px/1.45 plus 9px padding each side plus the border on
-        # the standalone card (was three; the operator asked for more of the
-        # conversation on screen, 2026-08-09); the embed keeps two, because
-        # its height is a promise to the host page's layout.
+    def test_the_line_area_is_the_only_thing_that_flexes(self):
+        # The invariant has never been the number, it is that the frame does
+        # not resize as speech arrives. Until the player redesign that was
+        # bought with a RESERVED height (--lines-h) that three separate rules
+        # had to agree on; it is bought now with a fixed card and one elastic
+        # band, which is stronger — a nine-line read-back and a full text
+        # thread scroll in here instead of growing anything.
         # Anchor on the BASE rule (2-space indent, its own line), not a
         # descendant selector that merely ends in ".linebox {" — the chat mode
         # legitimately overrides this to grow with the conversation, and that
         # override must not be mistaken for the base reservation.
         block = self.css.split("\n  .linebox {")[1].split("}")[0]
-        self.assertIn("height: var(--lines-h)", block)
+        self.assertIn("flex: 1", block)
+        self.assertIn("min-height: 0", block)
+        self.assertIn("overflow-y: auto", block)
         self.assertNotIn("height: auto", block)
-        self.assertIn("--lines-h: 93px", self.css)
-        # No per-surface override left except compact's own value: one
-        # height per surface, chosen once.
-        self.assertNotIn("body:not(.compact) { --lines-h", self.css)
+        # The reserved-height machinery is gone, not merely unused: a stale
+        # --lines-h would be a second answer to the same question.
+        self.assertNotIn("--lines-h:", self.css)
+        self.assertNotIn("--action-h:", self.css)
 
-    def test_only_reading_back_a_finished_call_may_change_it(self):
-        # A deliberate click, by somebody who wants the room, when there is no
-        # call left for the resize to interrupt.
-        self.assertIn(".linebox.open { height: 200px; }", self.css)
+    def test_reading_back_a_finished_call_scrolls_rather_than_grows(self):
+        # It used to open the box to 200px, which was safe only because there
+        # was no call left for the resize to interrupt. The box scrolls now, so
+        # the drawer costs the card nothing and the rule is gone.
+        self.assertNotIn(".linebox.open { height", self.css)
 
     def test_the_action_row_is_the_last_row_of_the_card(self):
         # Bottom-up: the Call button (and in-call, the state it becomes) is
@@ -652,15 +658,21 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
     def test_the_compact_card_fits_a_station_page_column(self):
         # The real page this embeds in gives its player column 400px and
         # stretches its own marquee to match the frame — every pixel this
-        # card reports over ~356 (400 minus the host's caption row) came
+        # card reported over ~356 (400 minus the host's caption row) came
         # back as BLANK SPACE between the sleeve and "Up next" on a live
-        # station page, twice. The budget block is the fix; this pins its
-        # load-bearing pieces so a future band can't quietly regrow it.
+        # station page, twice.
+        #
+        # That used to be defended by a budget of individual savings — a 30px
+        # eyebrow, a hidden tagline, 14px bars — each of which a future band
+        # could quietly spend. The embed is a FIXED 320 now, so the budget is
+        # the height itself and there is nothing left to overspend.
         self.assertIn("THE HEIGHT BUDGET", self.css)
-        for pinned in ("body.compact .eyebrow { height: 30px",
-                       "body.compact .tagline { display: none; }",
-                       "body.compact .bars { height: 14px; }"):
-            self.assertIn(pinned, self.css)
+        card = self.css.split("body.compact .card {")[1].split("}")[0]
+        self.assertIn("height: 320px", card)
+        # flex:none, or the frame's own column stretches it back out and the
+        # fixed height means nothing.
+        self.assertIn("flex: none", card)
+        self.assertIn("body.compact .bars { height: 14px; }", self.css)
 
     def test_the_post_call_chrome_lives_inside_the_line_area(self):
         # The transcript drawer and the how-was-it buttons used to be bands
@@ -1428,9 +1440,11 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
     def test_chat_mode_hides_every_call_control(self):
         import re
 
-        # The four bands that made the card huge in chat: if any stops being
+        # The bands that made the card huge in chat: if any stops being
         # hidden in chat mode, the input is back among controls for a call.
-        for band in (".staterow", ".meters", ".talkrow", ".actionrow"):
+        # .staterow is not one of them any more — the chips moved into the
+        # identity row, which chat mode keeps.
+        for band in (".meters", ".talkrow", ".actionrow"):
             self.assertRegex(
                 self.css,
                 r'\.card\[data-mode="chat"\][^{]*' + re.escape(band),
@@ -1490,12 +1504,17 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
             self.css,
             r'\.rig \{[^}]*display:\s*flex[^}]*flex-direction:\s*column',
             "the rig must be a flex column so the transcript can flex to fill")
+        # This used to also require a min-height on the working area. The
+        # player redesign buys the footprint at the card instead — fixed size,
+        # every band flex:none, one elastic box — so a reserved height on the
+        # rig is a second answer to the same question.
         self.assertRegex(
-            self.css, r'body:not\(\.compact\) \.rig \{[^}]*min-height:',
-            "the working area needs a consistent min-height for one footprint")
+            self.css, r'\n  \.linebox \{[^}]*flex:\s*1',
+            "the line box must absorb the working area's spare room")
         self.assertRegex(
-            self.css, r'\n  \.linebox \{[^}]*flex:\s*1 1 auto',
-            "the transcript must flex to absorb the working area's spare room")
+            self.css, r'\n  \.linebox \{[^}]*min-height:\s*0',
+            "without min-height:0 a flex child refuses to shrink below its "
+            "content and the card grows after all")
 
     def test_a_refused_call_returns_the_card_to_idle(self):
         # The card flips to .oncall + Hang up the instant Call/Voicemail is
@@ -1655,10 +1674,12 @@ class TestTheTextLineIsShapedForTyping(unittest.TestCase):
             "the chat input must span the row (flex-basis 100%) so Close/Send "
             "fall beneath it rather than squeezing it into the middle")
 
-    def test_close_and_send_are_the_slim_action_height(self):
-        # --action-h, not the old towering 44px.
+    def test_close_and_send_are_the_one_control_height(self):
+        # One height for every button and input on a surface. The card used to
+        # carry four (44 / 52 / 31 / 26), which is what made a row of controls
+        # read as three unrelated things.
         self.assertRegex(
-            self.css, r'\.chatrow button\s*\{[^}]*height:\s*var\(--action-h\)')
+            self.css, r'\.chatrow button\s*\{[^}]*height:\s*var\(--control-h\)')
 
     def test_the_end_control_is_there_from_the_press(self):
         # startCall shows Hang up / End message and flips to .oncall BEFORE it
@@ -1964,9 +1985,12 @@ class TestTheEmbedIsJustTheCard(unittest.TestCase):
         cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
 
     def test_no_inset_and_no_rounded_corners_in_a_frame(self):
-        block = self.css.split("body.compact {")[1][:600]
+        # Read the RULE, not a fixed slice of characters after it — a slice
+        # measures comment length, so writing down why a declaration is there
+        # could push the declaration out of the window and fail the test.
+        block = self.css.split("body.compact {")[1].split("}")[0]
         self.assertIn("padding: 0", block)
-        card = self.css.split("body.compact .card {")[1][:400]
+        card = self.css.split("body.compact .card {")[1].split("}")[0]
         self.assertIn("border-radius: 0", card)
 
     def test_the_overlay_offset_carries_no_dead_inset(self):

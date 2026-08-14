@@ -820,7 +820,9 @@ class TestTheReplyArrivesAtTheOperatorsPace(_TempStores):
     def test_the_widget_is_told_both(self):
         # The reveal happens in the caller's browser, so /live has to carry
         # them or the settings are unreachable however well they are stored.
-        src = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        # They ride in look_payload, which moved to api/look.py at 0.10.131 —
+        # /live still sends it, this just reads where it is written.
+        src = (AGENT_WORKER / "api" / "look.py").read_text(encoding="utf-8")
         self.assertIn("chatReveal", src)
         self.assertIn("chatTypePace", src)
         widget = (AGENT_WORKER.parent / "web-widget" / "call.js").read_text(

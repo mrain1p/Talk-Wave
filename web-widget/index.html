@@ -93,7 +93,18 @@
         <p class="show" id="djShow"></p>
         <p class="tagline" id="djTagline"></p>
       </div>
-      <p class="track" id="npTrack"></p>
+      <span class="spacer"></span>
+      <!-- The state chips live IN the identity row. They had a band of their
+           own (.staterow) costing 38px of card for two 26px chips, while the
+           60px identity row beside them had the room for free. The id stays
+           `stateRow` — call.js and the widget contract test both know it, and
+           it still means the same thing: where the call's state is shown.
+           In an embed these move to the eyebrow instead; see style.css. -->
+      <span class="chips" id="stateRow">
+        <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+        <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+        <span class="micchip" id="micChip" hidden></span>
+      </span>
     </div>
 
     <!-- Opened by the ? button. Built from the same list the panel shows the
@@ -124,13 +135,16 @@
          declare its own, so the always-visible rows say `visible` and the
          reservation still applies to the rest. -->
     <div class="rig" id="rig">
-      <!-- The call's state, above the words it describes — the operator
-           moved it here from the bottom row, and they were right: you read
-           "on the line · listening" and then the line below shows what was
-           heard. Reserved like every in-call band. -->
-      <div class="staterow" id="stateRow">
-        <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
-        <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+      <!-- What is on the station, as its own rail. It used to sit in the
+           spare space right of the DJ block, capped at 42% of the row, where
+           a real title ellipsised after four words. Full width it fits, and
+           the elapsed figure has somewhere to be.
+           On a live call this dims and swaps the timer for UNDER THE CALL —
+           the music is not the subject then, but knowing it kept playing is
+           still worth a line. -->
+      <div class="nprail" id="npRail">
+        <p class="track" id="npTrack"></p>
+        <span class="npclock" id="npElapsed"></span>
       </div>
 
     <!-- The line area. One box, one job: whatever this card has to say to
@@ -193,26 +207,28 @@
            row of its own, and on an embed that row was ~41px of mostly air —
            the exact height that was stretching a host page's player column.
            Everything here is level-shaped, so one band reads as one thing. -->
+      <!-- ONE duplex strip: volume on the left, then a single centre-out
+           level meter — You grows leftward from the centre tick, the DJ
+           rightward. Two separate meters either side of the volume read as
+           two unrelated widgets and cost two labels, two troughs and two
+           sets of segments to say one thing: there is a voice here, and
+           whose. The mic chip moved up to the identity row with the others.
+           #micChip's old wrapper (.mtop) is gone; #youLabel and #djLabel stay
+           where the script expects them, either side of the trough. -->
       <div class="meters">
-        <div class="meter you" id="meterYou">
-          <!-- The mic state is a chip beside the label, not text glued onto it.
-               "You — mic off" as one string overflowed the meter and collided
-               with the DJ label on a narrow phone; the chip carries the state
-               on its own and simply hides when the mic is live. -->
-          <div class="mtop">
-            <span class="mlabel" id="youLabel">You</span>
-            <span class="micchip" id="micChip" hidden></span>
-          </div>
-          <div class="bars" id="barsYou"></div>
-        </div>
         <div class="vol">
           <label for="volSlider">Vol</label>
           <input type="range" id="volSlider" min="0" max="100" value="100" />
           <span class="pct" id="volPct">100%</span>
         </div>
-        <div class="meter dj" id="meterDj">
-          <div class="mlabel" id="djLabel">DJ</div>
-          <div class="bars" id="barsDj"></div>
+        <div class="duplex" id="duplex">
+          <span class="mlabel you" id="youLabel">You</span>
+          <div class="trough">
+            <div class="meter you" id="meterYou"><div class="bars" id="barsYou"></div></div>
+            <span class="tick" aria-hidden="true"></span>
+            <div class="meter dj" id="meterDj"><div class="bars" id="barsDj"></div></div>
+          </div>
+          <span class="mlabel dj" id="djLabel">DJ</span>
         </div>
       </div>
 
@@ -220,9 +236,13 @@
            it), with Mute and the speaker switch beside it — the controls
            that shape being HEARD, one row above the one that ends the call. -->
       <div class="talkrow">
+        <!-- One line of copy. The second line ("or hold it down · space works
+             too") explained the control twice and was the only two-line
+             control on the card; the keycap says the same thing in the shape
+             of the key it names. -->
         <button class="pttbar" id="pttBtn" type="button" aria-pressed="false">
-          <span class="pttmain" id="pttMain">Tap to talk</span>
-          <span class="pttsub">or hold it down · space works too</span>
+          <span class="pttmain" id="pttMain">Hold to talk</span>
+          <span class="keycap" id="pttKey" aria-hidden="true">Space</span>
         </button>
         <button id="spkBtn" title="Loudspeaker or earpiece" aria-pressed="true">Speaker</button>
         <button id="muteBtn">Mute</button>

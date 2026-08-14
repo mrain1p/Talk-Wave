@@ -55,9 +55,22 @@ class AirVerdict:
         if speech is None:
             return False
         since, text = speech
-        # lag_secs rides the tail: the entry is stamped at handoff, the sound
-        # starts lag_secs later, so the words finish lag_secs later too.
-        return since < self.lag_secs + speaking_secs(text, int(self.quiet_secs) or 30)
+        # In CALLER time, like every other branch since 0.10.129. The log entry
+        # is stamped at handoff and the caller hears it `caller_lag` later, so
+        # the audible window is [lag, lag + words] and NOT [0, words].
+        #
+        # This was the half 0.10.129 missed. The push verdicts were slid and
+        # the poll was not, so the poll went on opening holds the moment the
+        # station's log moved — measured on a call: the hold opened at +1.7s
+        # for a voice the caller would not hear until +23s, which is the
+        # operator's report exactly ("most of the on-call completes before the
+        # on-air commentary even airs").
+        # The hand-over lead is built in here rather than at the call sites:
+        # the poll and the legacy push branch both need it, and applying it at
+        # one of them was how the DJ stopped handing over out loud at all.
+        lag = self.caller_lag()
+        words = speaking_secs(text, int(self.quiet_secs) or 30)
+        return lag - self.handover_secs <= since < lag + words + self.duck_pad
 
     def _pushed_state(self) -> dict | None:
         """The last verified push, raw. Two generations live in the file:
@@ -125,53 +138,62 @@ class AirVerdict:
         # station CLAIMED, and it is a burst size rather than a playhead, so
         # it does not size the close here either.
         tail = getattr(self, "duck_pad", DUCK_PAD_SECS)
+        # EVERY branch below works in CALLER time. The station's timestamps
+        # are stamped at the encoder and the caller hears them `lag` seconds
+        # later, so a window computed on the encoder's clock is simply the
+        # wrong window — and the operator timed exactly that, twice:
+        #
+        #   0:36 hand-over, 0:48 back, and the commentary aired 0:53-1:03.
+        #   1:10 hand-over, 1:18 back, and it aired 1:30-1:39.
+        #
+        # The hold and the broadcast never overlapped AT ALL. The duck ran
+        # while the caller could still hear music and finished before they
+        # heard a word of it.
+        #
+        # This was hidden for a while by tail() padding the close with the
+        # station's 22, which covered the end by accident while still opening
+        # seventeen seconds early — the operator's original "starts much too
+        # early". 0.10.124 removed the pad on a measurement that turned out to
+        # be reading buffer DEPTH rather than latency, which took the accident
+        # away and left both ends wrong. Shifting the whole window is what
+        # either end needed all along.
+        lag = self.caller_lag()
+        audible_from = float(d.get("airAt") or at) + lag
         if phase == "queued":
-            lead = float(d.get("airAt") or at) - now
-            # The hand-over window is measured against when the CALLER hears
-            # it, not when the encoder airs it. They are `caller_lag` apart,
-            # and ducking on the encoder's clock spent that whole gap as dead
-            # air: the hand-over line, then two or three seconds of nothing,
-            # then the broadcast. Shrinking the window by the lag lands the
-            # line where it belongs — just before they actually hear it.
-            window = max(0.0, self.handover_secs - self.caller_lag())
-            if lead > window and not self.on_air:
-                return None          # the call keeps flowing until it's close
-            # ALREADY holding and the station has queued another one? Then this
-            # break is not over, however far out the forecast is, and the hold
-            # continues. THE bridge for a multi-part break, and it is driven by
-            # the station's own warning rather than by a blanket pad.
-            #
-            # Measured 2026-08-13, a real call: two voice.queued landed at
-            # +12.6s while the caller was already on hold, the forecast was
-            # further out than the hand-over window, so this returned None, the
-            # estimate ran out 0.2s later and the line was released — then
-            # re-held at +17.8s. The caller got a return line and a second
-            # hand-over line for one continuous break. The hand-over window is
-            # about when to START a hold from quiet; it was never meant to
-            # decide whether to END one while more speech is queued.
-            # Inside the window: hold from here until the voice has landed
-            # and played out (voice.start/end refine this the moment they
-            # arrive; this bound only matters if they never do).
-            landed = float(d.get("airAt") or at) + (
+            # A queued voice while ALREADY holding means this break is not
+            # over, however far out the forecast is — the bridge, driven by
+            # the station's own warning rather than a blanket pad. The
+            # hand-over window is about when to step away from a QUIET line;
+            # it was never meant to decide whether to end a hold with more
+            # speech queued. (Measured 2026-08-13: two voice.queued landed
+            # mid-hold, were discarded as too distant, and the caller got a
+            # return line and a second hand-over line for one break.)
+            if self.on_air:
+                return ("busy", text,
+                        "Hold that thought — I've got to go on air for a second.")
+            audible_to = audible_from + (
                 dur or speaking_secs(text, int(self.quiet_secs) or 30))
-            if now < landed + tail:
+            if now < audible_from - self.handover_secs:
+                return None      # the call keeps flowing; they cannot hear it yet
+            if now < audible_to + tail:
                 return ("busy", text,
                         "Hold that thought — I've got to go on air for a second.")
             return None
         if phase == "speaking":
-            # Measured start; the clip length is measured too when present.
-            # Both are encoder-side, so the whole window slides by the buffer.
-            held_for = dur or speaking_secs(text, int(self.quiet_secs) or 30)
-            if now - at < held_for + tail:
-                return ("busy", text,
-                        "Hold on a second — I'm on the air.")
+            # Measured start, and measured length when the station sends one.
+            # Both are encoder-side, so the whole window slides by the lag.
+            audible_to = audible_from + (
+                dur or speaking_secs(text, int(self.quiet_secs) or 30))
+            if now < audible_from - self.handover_secs:
+                return None
+            if now < audible_to + tail:
+                return ("busy", text, "Hold on a second — I'm on the air.")
             return None
         if phase == "clear":
-            # voice.end fires when the encoder finished, not when the caller
-            # did. Until the buffer has drained they are still hearing it, so
-            # this entry does not prove quiet yet — say nothing and let the
-            # poll's estimate carry the tail.
-            if now - at < tail:
+            # voice.end fires when the ENCODER finished. The caller is still
+            # hearing it for `lag` seconds after that, so this proves nothing
+            # until their copy has played out.
+            if now < at + lag + tail:
                 return None
             return ("clear", "", "")
         return None

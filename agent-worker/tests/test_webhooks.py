@@ -633,12 +633,15 @@ class TestTheCallerHearsTheStreamLate(unittest.TestCase):
     def _verdict(self, entry, now_offset=0.0, buf_cfg=None):
         import time
 
-        from call.air import OnAirGuard
+        from call.air import DUCK_PAD_SECS, OnAirGuard
 
         g = OnAirGuard.__new__(OnAirGuard)
         g.quiet_secs = 30.0
         g.lag_secs = OnAirGuard.HANDOFF_LAG_SECS
         g.handover_secs = 0.0
+        g.on_air = False
+        g.duck_pad = DUCK_PAD_SECS
+        g._last_buf = 0.0
         return g._push_verdict(entry, time.time() + now_offset)
 
     def test_the_hold_outlasts_voice_end_by_the_buffer(self):
@@ -648,9 +651,14 @@ class TestTheCallerHearsTheStreamLate(unittest.TestCase):
         entry = {"v": 2, "phase": "clear", "at": now, "bufSecs": 8.0}
         # Straight after voice.end the caller is still hearing the DJ, so the
         # entry must prove nothing rather than prove quiet.
+        # Since 0.10.129 the lag SHIFTS the window rather than serving as the
+        # tail, so clear waits for the buffer to drain AND the pad to run.
+        from call.air import DUCK_PAD_SECS
+
         self.assertIsNone(self._verdict(entry, 1.0))
-        # Once the buffer has drained it is genuinely clear.
-        self.assertEqual(self._verdict(entry, 9.0), ("clear", "", ""))
+        self.assertIsNone(self._verdict(entry, 9.0))
+        self.assertEqual(self._verdict(entry, 8.0 + DUCK_PAD_SECS + 1),
+                         ("clear", "", ""))
 
     def test_a_speaking_window_slides_by_the_buffer(self):
         import time
@@ -660,8 +668,13 @@ class TestTheCallerHearsTheStreamLate(unittest.TestCase):
                  "bufSecs": 6.0, "text": "hello"}
         # 5s of speech + 6s of buffer: still busy at 8s in, which is where the
         # old code had already let the call DJ back in.
+        from call.air import DUCK_PAD_SECS
+
         self.assertEqual(self._verdict(entry, 8.0)[0], "busy")
-        self.assertIsNone(self._verdict(entry, 13.0))
+        # 6s of buffer before they hear a word of it, then 5s of speech, then
+        # the pad — 13s in they are still listening.
+        self.assertEqual(self._verdict(entry, 13.0)[0], "busy")
+        self.assertIsNone(self._verdict(entry, 6.0 + 5.0 + DUCK_PAD_SECS + 1))
 
     def test_a_station_too_old_to_send_one_still_gets_a_tail(self):
         # No bufSecs at all: fall back to the handoff lag rather than zero,
@@ -673,9 +686,14 @@ class TestTheCallerHearsTheStreamLate(unittest.TestCase):
         now = time.time()
         from call.air import DUCK_PAD_SECS
 
+        # A station too old to send streamBufferSeconds still gets a tail: the
+        # lag falls back to HANDOFF_LAG_SECS, and since 0.10.129 the lag SHIFTS
+        # the window rather than padding the close, so "clear" waits for the
+        # fallback lag AND the pad.
         entry = {"v": 2, "phase": "clear", "at": now}
+        fallback = OnAirGuard.HANDOFF_LAG_SECS
         self.assertIsNone(self._verdict(entry, DUCK_PAD_SECS / 2))
-        self.assertEqual(self._verdict(entry, DUCK_PAD_SECS + 1),
+        self.assertEqual(self._verdict(entry, DUCK_PAD_SECS + fallback + 1),
                          ("clear", "", ""))
 
     def test_the_receiver_records_what_the_station_measured(self):

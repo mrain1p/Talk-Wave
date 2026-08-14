@@ -359,7 +359,6 @@ class CallSession:
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
 
         lifecycle.attach_close_reason(session, self.ended)
-        lifecycle.attach_caller_lag(self.ctx, self.air)
         lifecycle.attach_error_recovery(session, self.record)
         lifecycle.attach_first_word(session, self.record)
         lifecycle.attach_turn_commit(ctx, session)
