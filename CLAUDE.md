@@ -148,24 +148,31 @@ prose devalues the numbers that mark shipped behaviour.
 ### Release notes
 
 `CHANGELOG.md` is written for the operator deciding whether to pull, not for whoever wrote the
-code. One entry per push to `main`. Four rules, and the last one is the one people skip:
+code. Five rules, and the last two are the ones people skip:
 
 1. **A one-line headline under the version**, before any section. What this release is about.
-2. **Sections are outcomes, not components.** "Calls no longer collide with the broadcast", not
-   "Bug fixes" or "call/ changes" — a reader can skip an outcome in two seconds if it isn't
-   theirs, while a "fixes" bucket has to be read in full to find that out. The wording is
-   yours; the ORDER is fixed, so the shape is predictable even when the headers are not:
-   what the caller hears → what you see in the panel → what the DJ can do → under the hood.
-   Skip any that don't apply, and file a fix under the outcome it restores rather than in a
-   bucket of its own.
-3. **Bold the claim, then give the evidence.** The bold part is a complete sentence that stands
+   Say which versions it covers if it covers several.
+2. **Group by TOPIC, and name the topics yourself.** "Added: experimental skins", "Player
+   fixes", "Updated: player settings", "On air", "Access". There is no fixed set and no fixed
+   order — the shape follows what actually changed, the way SUB/WAVE's own notes do. This
+   replaced a rotation of four standing headers (what the caller hears → the panel → the DJ →
+   under the hood) repeated for every version, which the operator's verdict was "very stiff and
+   undynamic": six consecutive releases each carrying the same three headings tells a reader
+   nothing about which one to read.
+3. **One entry may cover several versions.** When a run of releases ships in an afternoon, an
+   entry per push means the same topic split across six headings. Group them under the newest
+   version and say so in the headline.
+4. **Bold the claim, then give the evidence.** The bold part is a complete sentence that stands
    alone — "**The microphone comes back the way it went out.**" — not a label like
-   "**Microphone:**". The sentences after it are why anyone should believe it: the measurement,
-   the call it was heard on, the number that was wrong.
-4. **Lead with the symptom where there is one**, in the words the operator would use. People
+   "**Microphone:**". Keep the evidence to the line that earns belief: the measurement, the
+   call it was heard on, the number that was wrong. Not the mechanism — an operator deciding
+   whether to pull does not need to know which CSS property was invalid.
+5. **Lead with the symptom where there is one**, in the words the operator would use. People
    read release notes to find out whether their problem is fixed. "If you heard the DJ come
    back while the broadcast was still talking, that was this" earns its sentence; a description
    of the internal cause, on its own, does not.
+
+**No emojis.** Not in the headings, not in the bullets.
 
 One unwrapped source line per bullet — GitHub renders hard wraps as a narrow column.
 
