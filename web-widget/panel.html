@@ -1308,12 +1308,52 @@
             <input type="checkbox" id="embed_signin" aria-label="Sign-in button in an embed" />
           </div>
         </div>
+
       </div>
     </details>
 
     <details data-group="player" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
       <div class="body">
+        <!-- THE LINK OUT. The switch comes first and everything under it
+             `needs` that switch, so an operator cannot fill in an address —
+             or tick a surface — for a button that is off. Same shape as the
+             voicemail rows and the sound slots. -->
+        <h4 class="subhead">Link out of the card</h4>
+        <div class="row" data-field="corner_link_enabled">
+          <label for="corner_link_enabled">Link out of the card</label>
+          <input type="checkbox" id="corner_link_enabled" />
+        </div>
+        <div class="row" data-field="corner_link_url">
+          <label for="corner_link_url">Where it goes</label>
+          <input type="text" id="corner_link_url" autocomplete="off" />
+        </div>
+        <div class="row" data-field="corner_link_label">
+          <label for="corner_link_label">What it says</label>
+          <input type="text" id="corner_link_label" autocomplete="off" />
+        </div>
+        <!-- The picker lives INSIDE the icon row, not beside it: the row is
+             what the panel's `needs` rule hides when the link is switched off,
+             and a grid of icons for a button that does not exist was the one
+             piece left on screen. A grid, not a dropdown — a list of emoji
+             names tells you nothing about what the button will look like.
+             Filled by panel.js from one list, so the choices and the field
+             cannot disagree, and the field still takes anything pasted. -->
+        <div class="row wrapped" data-field="corner_link_icon">
+          <label for="corner_link_icon">Icon</label>
+          <input type="text" id="corner_link_icon" autocomplete="off" maxlength="4" />
+          <div class="emojigrid" id="cornerIconGrid" role="group"
+               aria-label="Pick an icon"></div>
+        </div>
+        <div class="row" data-field="show_corner_link">
+          <label for="show_corner_link">Show it on this page</label>
+          <input type="checkbox" id="show_corner_link" />
+        </div>
+        <div class="row" data-field="embed_corner_link">
+          <label for="embed_corner_link">Show it in an embed</label>
+          <input type="checkbox" id="embed_corner_link" />
+        </div>
+
         <!-- What each door SHOWS: its word, its icon, or both. One row per
              feature, two ticks each — the old single "Button style" select
              could not say "Call worded, the two secondary doors as bare
@@ -1347,6 +1387,12 @@
         <div class="row">
           <label for="widget_theme">Colours</label>
           <select id="widget_theme"></select>
+        </div>
+        <!-- Under Colours because that is what it mostly replaces: a skin
+             brings its own palette, so the two are read together. -->
+        <div class="row">
+          <label for="widget_skin">Skin (experimental)</label>
+          <select id="widget_skin"></select>
         </div>
 
         <h4 class="subhead">On the caller's phone</h4>
@@ -1600,8 +1646,9 @@
         <button class="runbtn" id="speedBtn">Run</button></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">How long each leg takes to
-          produce its first audio. Anything over about 1.5s to first token
-          sounds laggy on a call.</p>
+          produce its first audio, measured with the prompt and tools a real
+          call carries. Over about 1.5s to first token, the caller hears a
+          pause before every reply.</p>
         <div class="result" id="speedResult"></div>
       </div>
     </details>

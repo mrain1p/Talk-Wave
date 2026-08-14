@@ -263,7 +263,9 @@
     SCHEMA = schema || { groups: [], fields: {} };
     const byKind = (k) => Object.keys(SCHEMA.fields).filter(
       (f) => SCHEMA.fields[f].kind === k && document.getElementById(f));
-    TEXT_FIELDS = byKind('text');
+    // `emoji` is a text field with a picker attached — it saves, loads and
+    // diffs exactly like one, and the grid below only writes into it.
+    TEXT_FIELDS = byKind('text').concat(byKind('emoji'));
     NUM_FIELDS = byKind('number');
     CHECK_FIELDS = byKind('check');
     SELECT_FIELDS = byKind('select');
@@ -274,6 +276,52 @@
     bindFieldEvents();
     decorateFields();
     window.Panel.sounds.buildSlotCards();
+    buildEmojiGrid();
+  }
+
+  // THE ICON PICKER. A grid, not a dropdown: the whole question is what the
+  // button will LOOK like, and a list of names answers a different one. The
+  // field itself stays a text box beside it, so an operator who wants an emoji
+  // that isn't offered can paste one and it just works.
+  const CORNER_ICONS = [
+    '📻', '🎙️', '🎧', '🎵', '🎶', '📀', '💿', '📡',
+    '🏠', '🌐', '🔗', '📣', '⭐', '❤️', '☕', '🛒',
+    '📅', '🎟️', '💬', '📷', '🎬', '📝', '💡', '🍕',
+  ];
+
+  function buildEmojiGrid() {
+    const grid = $('cornerIconGrid');
+    const field = $('corner_link_icon');
+    if (!grid || !field || grid.dataset.built) return;
+    grid.dataset.built = '1';
+    CORNER_ICONS.forEach((glyph) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'emojibtn';
+      b.textContent = glyph;
+      b.title = glyph;
+      b.setAttribute('aria-label', 'Use ' + glyph);
+      b.onclick = () => {
+        field.value = glyph;
+        // The same event a typed edit fires, so Save sees it as one edit and
+        // the picker cannot drift from the field it writes into.
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        paintEmojiGrid();
+      };
+      grid.appendChild(b);
+    });
+    field.addEventListener('input', paintEmojiGrid);
+    paintEmojiGrid();
+  }
+
+  function paintEmojiGrid() {
+    const grid = $('cornerIconGrid');
+    const field = $('corner_link_icon');
+    if (!grid || !field) return;
+    const now = (field.value || '').trim();
+    [...grid.children].forEach((b) => {
+      b.classList.toggle('on', b.textContent === now);
+    });
   }
 
   // Starts empty rather than null: the panel now paints as soon as the
@@ -1006,6 +1054,15 @@
     const pages = new Set(items.map((it) => it.page));
     document.querySelectorAll('#panelNav a[data-page]').forEach((a) => {
       a.classList.toggle('attn', pages.has(a.dataset.page));
+    });
+    // …and on the SECTION the item is actually in. The picker's pin got you to
+    // the right page and then stopped, leaving you to guess which of eight
+    // folded sections it meant (operator's ask). Every item already names its
+    // group, which is the section's own id — so the same mark, one level down,
+    // and it clears itself the moment the item does.
+    const groups = new Set(items.map((it) => it.group));
+    document.querySelectorAll('details.sec[data-group]').forEach((sec) => {
+      sec.classList.toggle('attn', groups.has(sec.dataset.group));
     });
   }
 
@@ -2903,7 +2960,14 @@
         }
         return;
       }
-      const slow = d.firstTokenMs > 1500;
+      // Both numbers come from the server, which is the only side that knows
+      // what a call will actually tolerate — the panel used to hold a bare
+      // 1500 and grade against nothing else, so a model that could never
+      // finish a turn was reported as one that would "feel laggy".
+      const desired = d.desiredMs || 1500;
+      const budget = d.budgetMs || 10000;
+      const slow = d.firstTokenMs > desired;
+      const hopeless = d.firstTokenMs >= budget;
       // A second round is the one that catches a provider which passes the
       // easy test and then dies mid-conversation, so it counts toward the
       // verdict rather than sitting underneath it as a note.
@@ -2911,6 +2975,7 @@
       showResult(out, d.toolCalling && carries && !slow,
         withNote(d.provider + ' / ' + d.model +
         '\nfirst token ' + d.firstTokenMs + 'ms, total ' + d.totalMs + 'ms' +
+        (d.measuredWith ? '\n' + d.measuredWith : '') +
         '\ntool calling: ' + (d.toolCalling ? '✓ works' : '✗ model did not call the tool')
         + (d.toolCalling ? ' (' + (d.parallelTools ? 'two at once' : 'one at a time') + ')' : '') +
         (d.followUp === 'skipped' ? '' :
@@ -2919,7 +2984,15 @@
               : d.followUp === 'silent' ? '⚠ replied with nothing'
                 : '✗ ' + (d.followUpError || 'the provider rejected the follow-up'))) +
         (d.reply ? '\nreply: ' + d.reply : '') +
-        (slow ? '\n⚠ Slow to first token — the call will feel laggy.' : '') +
+        (hopeless
+          ? '\n✗ Over the ' + Math.round(budget / 1000) + 's a call allows — the turn '
+            + 'is thrown away and the caller hears the trouble line instead of a reply. '
+            + 'Try a smaller model, or a cloud provider.'
+          : slow
+            ? '\n⚠ Above the ' + desired + 'ms target, so the caller hears a pause before '
+              + 'every reply. Calls still complete: this box waits up to '
+              + Math.round(budget / 1000) + 's.'
+            : '') +
         (d.followUp === 'failed'
           ? '\n✗ It answers once, then refuses the next request — every '
             + 'conversation will lose a reply. Try another model.' : '') +
@@ -3585,11 +3658,29 @@
           return { status: 'fail',
             detail: d.model + ' answered but never called the tool — it could never submit a request' };
         }
-        if (d.firstTokenMs > 1500) {
-          return { status: 'warn',
-            detail: d.model + ' · tools OK but ' + d.firstTokenMs + 'ms to first token — the call will lag' };
+        // The metric stays; what changed is that it is now graded against what
+        // a call tolerates rather than against one hardcoded number. A tester
+        // read "6185ms — the call will lag" off this line while every turn on
+        // his box was timing out and the caller heard the apology (2026-08-13).
+        const desired = d.desiredMs || 1500;
+        const budget = d.budgetMs || 10000;
+        const measured = d.measuredWith ? ' · ' + d.measuredWith : '';
+        if (d.firstTokenMs >= budget) {
+          return { status: 'fail',
+            detail: d.model + ' · tools OK, but ' + d.firstTokenMs + 'ms to first token is over '
+              + 'the ' + Math.round(budget / 1000) + 's a call allows — every turn times out and '
+              + 'the caller hears the trouble line. A smaller model, or a cloud one, is the fix'
+              + measured };
         }
-        return { status: 'pass', detail: d.model + ' · tools OK · ' + d.firstTokenMs + 'ms' };
+        if (d.firstTokenMs > desired) {
+          return { status: 'warn',
+            detail: d.model + ' · tools OK · ' + d.firstTokenMs + 'ms to first token, above the '
+              + desired + 'ms target — calls complete (this box waits up to '
+              + Math.round(budget / 1000) + 's) but the caller hears a pause before every reply'
+              + measured };
+        }
+        return { status: 'pass',
+          detail: d.model + ' · tools OK · ' + d.firstTokenMs + 'ms' + measured };
       },
     },
     {

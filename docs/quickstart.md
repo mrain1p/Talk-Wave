@@ -10,7 +10,7 @@ From nothing to a working call in about ten minutes.
 
 - A machine running **Docker** with compose (a NAS is fine — that is where this was built).
 - A running **[SUB/WAVE](https://github.com/perminder-klair/subwave)** station. Talk Wave is its companion phone line, not a standalone radio.
-- **One LLM API key** (OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or a local Ollama, which needs none). Speech-to-text ships in the box; everything else has a working default.
+- **One LLM API key** (OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway) — or your own box, which needs none: Ollama, an OpenAI-compatible server, or the station's locca. Speech-to-text ships in the box; everything else has a working default. Which model and voice actually carry a call: [what to run](models.md).
 
 ## The one-command version
 

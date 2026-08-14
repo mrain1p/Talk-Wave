@@ -16,6 +16,7 @@ Keep it that way; the whole thing is served as static files by `token_server.py`
 | `panel-viewers.js` | `/panel-viewers.js` | Reading back what happened: the log and call viewers |
 | `panel-charts.js` | `/panel-charts.js` | The ACTIVITY strip: four charts over /calls + /stats/listeners |
 | `style.css` | `/style.css` | Both pages. Themed by `data-theme` on `<html>` |
+| `skins.css` | `/skins.css` | The call page. EXPERIMENTAL card skins, keyed by `data-skin` on `<html>` |
 | `embed.js` | — | Drop-in `<script>` for third-party pages |
 | `embed-test.html` | — | Local harness for the embed path |
 
@@ -82,7 +83,16 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
 ## Things that will bite
 
 - **Query params are the config surface.** `?compact=1`, `?captions=full|ticker|off`,
-  `?theme=light|dark`. Embeds default to the ticker so the widget stays small.
+  `?theme=light|dark`, `?skin=<name>`. Embeds default to the ticker so the widget stays small.
+- **A skin may declare custom properties and nothing else.** `skins.css` is form — corners,
+  borders, textures, type, the idle artefact — and the containment is the whole feature:
+  because no skin can write a width, a height or a `display`, the fixed card, the one control
+  height and the height reported to `embed.js` cannot be reached from a skin at all. That is
+  what makes sixteen of them cost one set of tests instead of sixteen.
+  `TestASkinCannotReachPastItsTokens` fails the build if a rule in there says anything else,
+  and `TestEverySkinOfferedActuallyExists` fails if the dropdown and the stylesheet disagree.
+  There is deliberately no `default` block: the default card is `style.css`'s own `:root`.
+  The station's palette still outranks a skin — `swtv:theme` sets the same properties inline.
 - **`?theme=inherit` is resolved by `embed.js` before the frame loads.** A cross-origin iframe
   cannot read its host page, so if `inherit` ever reaches `call.js` unresolved, there is nothing
   to inherit from and auto is the honest answer.

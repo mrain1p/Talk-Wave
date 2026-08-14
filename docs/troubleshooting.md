@@ -9,8 +9,8 @@ Known limitations, the failures that actually happen, how to read a call back af
 ## Known limitations
 
 - **IPv4-only callers can't connect** without a forwarded port or a relay — see
-  [Calling from outside your network](#calling-from-outside-your-network).
-  Roughly half of users, and it fails silently from their side.
+  [Calling from outside your network](networking.md). Roughly half of users,
+  and it fails silently from their side.
 - **Local TTS may not keep pace with playback.** Above ~1.0× realtime, audio
   gaps mid-sentence. The speed test measures it.
 - **One station per deployment** — everything is discovered from a single
@@ -23,7 +23,8 @@ Known limitations, the failures that actually happen, how to read a call back af
 - **Two shared passwords, not user accounts.** One admin, one optional guest,
   each a single secret shared by everyone who has it. No per-person identity,
   so nothing attributes an action to a particular operator.
-- **Recent conversations keeps the newest 100 (the default).** A diagnostic aid, not an archive.
+- **Recent conversations lists the newest 20.** The disk keeps as many as *How
+  many transcripts to keep* says (1000 by default). A diagnostic aid, not an archive.
 - **The panel is not built for hostile exposure.** It assumes an operator on a
   trusted network who has set a password.
 
@@ -36,6 +37,14 @@ names the fix. The classics:
   address the browser can't reach. Set `HOST_IP` and recreate the container;
   the same cause shows as webhooks on a `172.x` address. Check the firewall
   allows **UDP 7882** and TCP 7881.
+- **The DJ keeps saying "the line's giving me trouble on my end"** — the model
+  is not producing its first token inside the time a call allows (30s on a
+  self-hosted provider, 10s on a cloud one), so the turn is thrown away and the
+  caller gets the apology instead of a reply. It is the model, not the network.
+  Run *Model + tools* in the pipeline check: it measures with a real call's
+  prompt and tools and says outright whether that model can carry a call. See
+  [What to run](models.md). On Ollama, also set `OLLAMA_KEEP_ALIVE=-1` — a
+  model unloaded after five idle minutes pays its load time on the next call.
 - **"This page can't use the microphone"** — the page is on plain
   `http://<lan-ip>`, where browsers refuse capture. Use the TLS page.
 - **…but the widget IS on https and still says so** — then the page *embedding*
@@ -77,7 +86,7 @@ names the fix. The classics:
   (cloud names and local ids aren't interchangeable). *Reload voice list* after
   switching backend.
 - **Works on the LAN, not outside** — see [Calling from outside your
-  network](#calling-from-outside-your-network). Chrome may also ask LAN
+  network](networking.md). Chrome may also ask LAN
   visitors to "connect to devices on your local network"; that's Private
   Network Access, one-time and harmless.
 
@@ -89,8 +98,8 @@ tool with its result, the config it ran under, and anything that failed.
 
 That file is a transcript of a stranger's conversation sitting on your disk, so
 it is a choice: **Keep transcripts** under *The booth* turns it off
-entirely, and **Transcripts to keep** decides how long the ones you do keep
-stick around (100 by default, deleted oldest-first as new ones land). With it
+entirely, and **How many transcripts to keep** decides how long the ones you do
+keep stick around (1000 by default, deleted oldest-first as new ones land). With it
 off, nothing is written and Recent conversations only shows what is already
 there — you are then diagnosing from the container logs, which is what this
 section exists to stop you doing.
@@ -106,11 +115,13 @@ section exists to stop you doing.
 
 The tool column is the point: the DJ saying it did something is a claim, that
 line is the receipt. The config line ties a bad call to the setting that caused
-it. Files live in `data/calls/`, the newest **Transcripts to keep** of them (100 by default).
+it. Files live in `data/calls/` — the newest **How many transcripts to keep** of
+them (1000 by default); the panel lists the most recent 20.
 
 The other rows: **Full pipeline check** names the first thing that would break;
-**Speed test** reports time to first audio per leg (over ~1.5s sounds laggy);
-**Server logs** shows recent activity.
+**Speed test** reports time to first audio per leg, measured with the prompt and
+tools a real call carries (over ~1.5s to first token and the caller hears a pause
+before every reply); **Server logs** shows recent activity.
 
 ## Logs and tests
 

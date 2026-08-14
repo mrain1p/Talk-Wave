@@ -29,12 +29,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import time
 import uuid
 
 import settings as settings_store
 from chat import openers
+from promises import unbacked
 from station import StationClient
 
 log = logging.getLogger("callin.chat")
@@ -48,15 +48,26 @@ MAX_TOOL_ROUNDS = 4
 # the conversation's living end.
 PROMPT_TURNS = 30
 
-# The openers the chat conduct asks for by name ("hold on, let me dig through
-# the racks", "on it — checking what we've got"), plus the plain futures they
-# come out as. Matching our own instruction rather than guessing at the model:
-# see the nudge in _tool_loop for what this is used to catch.
-_PROMISES_ACTION = re.compile(
-    r"\b(let me|lemme|i'?ll\b|i am going to|i'?m going to|i'?m gonna|"
-    r"hold on|hang on|one sec|one moment|give me a|on it\b|"
-    r"checking|looking|digging|sending|queueing|queuing|getting that)\b",
-    re.IGNORECASE)
+# What the DJ said about an action, and whether it owes a receipt — the openers the chat
+# conduct asks for by name ("hold on, let me dig through the racks"), and since 0.10.138 the
+# finished tense too ("I've got that queued up for you"). Shared with the phone rather than
+# copied: this file's copy had fallen four phrasings behind call/promise_guard.py's, so the
+# same sentence was guarded on the phone and waved through here. See promises.py.
+_NUDGE = {
+    "promise": (
+        "[You just told the caller you were about to do "
+        "something. If it needs one of your tools, call "
+        "it NOW. Do not type another word to them — they "
+        "have already read that line, and a second copy "
+        "of it reads as a stutter. If nothing actually "
+        "needs doing, answer with nothing at all.]"),
+    "claim": (
+        "[You just told the caller that was already done, and no tool ran — so it is NOT "
+        "done. If one of your tools does it, call it NOW, and type nothing to them first: "
+        "they have already read it. If it comes back refused, or you have no tool for it, "
+        "tell them plainly that it did not go through — do not leave them believing it "
+        "did.]"),
+}
 
 def route_action_cards(mode: str, on_event):
     """Where a tool run's receipt card goes, by the action_cards setting.
@@ -304,16 +315,11 @@ class ChatSession:
                 # ever sent (operator-reported, 2026-08-12). One extra
                 # pass, only when the words match the opener the conduct
                 # asked for, and only once per message.
-                if nudge_left and tools and _PROMISES_ACTION.search(text_out):
+                kind = unbacked(text_out) if (nudge_left and tools) else ""
+                if kind:
                     nudge_left = False
                     ctx.add_message(role="assistant", content=text_out)
-                    ctx.add_message(role="user", content=(
-                        "[You just told the caller you were about to do "
-                        "something. If it needs one of your tools, call "
-                        "it NOW. Do not type another word to them — they "
-                        "have already read that line, and a second copy "
-                        "of it reads as a stutter. If nothing actually "
-                        "needs doing, answer with nothing at all.]"))
+                    ctx.add_message(role="user", content=_NUDGE[kind])
                     continue
                 break
             # Tool results go back as TEXT, not as function_call /

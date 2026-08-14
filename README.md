@@ -40,10 +40,10 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 - Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did.
 
 **Speech, both directions**
-- **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or Ollama, no key at all.
+- **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or your own box with no key at all: Ollama, any OpenAI-compatible server (llama.cpp, vLLM, LM Studio), or the station's locca. [What to run](docs/models.md) says which actually carry a call.
 - **STT**: bundled Whisper (no key, no network) or cloud ears (Deepgram, OpenAI, Google). Echo cancellation on by default.
 - **TTS**: any OpenAI-compatible endpoint via JSON adapters — ElevenLabs, Fish Audio, and the station's own `/speak` in the box.
-- **Voice effects**: telephone, CB, shortwave, lo-fi — per persona, with an intensity dial.
+- **Voice effects**: ten colours — telephone, CB, walkie-talkie, AM, megaphone, underwater, stadium PA, intercom, shortwave, lo-fi — per persona, with an intensity dial.
 
 **A player people actually use**
 - Installs to a phone like an app, and reads like one.
@@ -68,7 +68,7 @@ What a deployment actually needs, so nothing surprises you at step three:
 
 - **A SUB/WAVE station, running.** Talk Wave is its companion phone line, not a standalone radio — personas, cards, voices and tools all come from the station.
 - **A Docker host on the same network** — a NAS is fine; that is where this was built. (Windows-local without Docker also works, for development.)
-- **One LLM API key** — or a local Ollama, which needs none. Calls spend **your** key: the usage caps exist so a stranger can't spend it for you, and they're on by default.
+- **One LLM API key** — or a local Ollama, which needs none. Calls spend **your** key: the usage caps exist so a stranger can't spend it for you, and they're on by default. [What to run](docs/models.md) is the short version of which model and voice actually carry a call.
 - **HTTPS is non-negotiable for calls** — browsers only grant the microphone to secure origins. The bundled Caddy gives you that on a LAN with zero config (one certificate screen, once); a real domain removes even that. See [networking](docs/networking.md).
 - **LAN first.** Get a call working on your own network before exposing anything — and when you do expose it, [security](docs/security.md) is the checklist, with a guest code and the admin password set before the port opens.
 - **Callers from outside your network** need one router rule (a single UDP port) and one compose line — [networking](docs/networking.md) walks it.
@@ -137,6 +137,7 @@ The README is the short version. The detail lives here:
 | | |
 |---|---|
 | **[Quick start](docs/quickstart.md)** | Nothing to a working call in ten minutes |
+| **[What to run](docs/models.md)** | Which model and voice, ideal to minimal, and where a caller notices |
 | **[Settings reference](docs/settings.md)** | Every setting, its default, and what it changes |
 | **[Calling from outside your network](docs/networking.md)** | The topologies, the TLS front door, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |

@@ -8,6 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
+    applySkin, skinForced,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
@@ -71,6 +72,24 @@
     // ask, 2026-08-13).
     set('signinBtn', c.signin !== false && !!(d && d.signinAvailable)
         && !callKey());
+    // The operator's link out. `link` is already both gates (the feature and
+    // this surface); an address that survived the server's http(s) check is
+    // the third — a button that goes nowhere is worse than an empty corner.
+    const link = (d && d.cornerLink) || {};
+    const linkBtn = $('linkBtn');
+    if (linkBtn) {
+      // `!== false` like the other corner controls, and the ADDRESS is the
+      // second gate: an older worker sends neither key, and then there is no
+      // url either, so the button stays away rather than pointing at nothing.
+      const ok = c.link !== false && !!link.url;
+      if (ok) {
+        linkBtn.href = link.url;
+        linkBtn.textContent = link.icon || '📻';
+        linkBtn.title = link.label || '';
+        linkBtn.setAttribute('aria-label', link.label || 'Link');
+      }
+      linkBtn.hidden = !ok;
+    }
     // First-run: the card itself asks for the admin password while none
     // exists (needsSetup rides /live per-request). Never in an embed — a
     // host page's visitors are not the operator.
@@ -493,6 +512,9 @@
   let signinMode = false;                     // the gate opened to climb a tier
   let lastCanAsk = null;                       // rebuild the menu only on a tier change
   let djEl = null, rafId = null, streamEl = null;
+  // The DJ's own track, kept so the station can pull the voice into the shared
+  // audio graph whichever of the two arrives second. See mixStation.
+  let djTrack = null;
 
   // The now-playing rail: when the record started (unix seconds, from the
   // station) and how long it runs. Both 0 when the station has not said, and
@@ -547,6 +569,13 @@
     // The headline follows the doors, not the pause switch alone: a line
     // nobody can use is closed however the switch is set, and one with the
     // machine on is not "closed" just because the booth is empty.
+    // ONE LINE, since 0.10.136. The board listed the doors under the headline
+    // and named who picks up, and the operator's answer was that the card
+    // already says all of it: the doors are the buttons on the action row an
+    // inch below, and the DJ's name is at the top of the card in bold beside
+    // their photograph. Three ways of saying it is not three times as clear.
+    // The doors are still WORKED OUT above, because the headline is derived
+    // from them — a line nobody can use is closed however the switch is set.
     const anyLive = ways.some((w) => w[1]);
     const head = anyLive ? 'Lines are open'
       : paused ? 'Lines are closed' : 'Nobody in the booth';
@@ -557,22 +586,6 @@
     h.className = 'bdhead' + (paused ? ' shut' : '');
     h.textContent = head;
     box.appendChild(rule()); box.appendChild(h); box.appendChild(rule());
-    const list = document.createElement('ul');
-    list.className = 'bdways';
-    ways.forEach(([name, live]) => {
-      const li = document.createElement('li');
-      if (!live || paused) li.className = 'off';
-      li.textContent = name;
-      list.appendChild(li);
-    });
-    if (ways.length) box.appendChild(list);
-    // Who picks up, under the board rather than instead of it.
-    if (!paused && dj && dj !== '…' && onAir) {
-      const who = document.createElement('span');
-      who.className = 'bdwho';
-      who.textContent = dj + ' picks up.';
-      box.appendChild(who);
-    }
     box.hidden = false;
   }
 
@@ -615,6 +628,10 @@
   // isn't pulling the stream — so without this, the people most likely to
   // request something are the ones who can't. Muted by default so it doesn't
   // talk over the DJ.
+  // Which URL has already had its CORS attempt refused, so the retry below is
+  // one deep rather than a loop.
+  let lastPlainAttempt = '';
+
   function tuneIn() {
     const s = live && live.stream;
     if (!s || !s.tuneIn || !s.url || streamEl) return;
@@ -639,10 +656,17 @@
       return;
     }
     try {
-      // No crossOrigin: the stream is never read through Web Audio, and
-      // asking for CORS makes a station that doesn't send the headers fail
-      // for no benefit.
-      const el = new Audio(urls[i]);
+      // crossOrigin FIRST, because a CORS-clean element is the one that can
+      // join the call's own audio graph — see mixStation. A station that does
+      // not send the headers fails to load with it set, and the error handler
+      // below retries the same URL plain before moving on to the next mount:
+      // the worst case is the behaviour this has always had, on its own
+      // output, rather than a silent stream.
+      const plain = urls[i] === lastPlainAttempt;
+      const el = new Audio();
+      if (!plain) el.crossOrigin = 'anonymous';
+      el.dataset.cors = plain ? 'no' : 'ok';
+      el.src = urls[i];
       // Scaled by the caller's own volume from the start — see applyVolume.
       el.volume = stationLevel();
       el.muted = stationLevel() <= 0;
@@ -650,10 +674,22 @@
         if (streamEl !== el) return;
         try { el.pause(); } catch (e) {}
         streamEl = null;
-        playFirstWorking(urls, i + 1);
+        // The CORS attempt failing is not this mount failing — try it plain
+        // once before giving up on it.
+        if (el.dataset.cors === 'ok') {
+          lastPlainAttempt = urls[i];
+          playFirstWorking(urls, i);
+        } else {
+          playFirstWorking(urls, i + 1);
+        }
       }, { once: true });
       streamEl = el;
-      el.play().catch(() => {
+      el.play().then(() => {
+        // Into the call's own graph if it will go. Only while a call is up:
+        // between calls there is nothing to marry it to, and an element
+        // inside an AudioContext cannot be given back.
+        if (streamEl === el && room) mixStation(el);
+      }).catch(() => {
         if (streamEl !== el) return;
         streamEl = null;
         playFirstWorking(urls, i + 1);
@@ -666,6 +702,7 @@
 
   function tuneOut() {
     if (!streamEl) return;
+    unmixStation();
     try { streamEl.pause(); streamEl.src = ''; } catch (e) {}
     streamEl = null;
   }
@@ -722,6 +759,16 @@
     if (onSpeaker && djEl && typeof djEl.setSinkId === 'function') {
       try { await djEl.setSinkId(''); moved = true; } catch (e) { /* no */ }
     }
+    // …and the graph, when the voices are married into it — the element is
+    // muted then, so routing it alone would move nothing anybody can hear.
+    // AudioContext.setSinkId is Chromium-only; elsewhere this is a no-op and
+    // the honest answer is the one `moved` already carries.
+    if (onSpeaker && fx) {
+      const c = ctx();
+      if (c && typeof c.setSinkId === 'function') {
+        try { await c.setSinkId(''); moved = true; } catch (e) { /* no */ }
+      }
+    }
 
     paintSpeakerBtn();
     return moved;
@@ -749,7 +796,10 @@
   function platformCanRoute() {
     return audioSessionSupported()
       || (window.HTMLMediaElement
-          && typeof HTMLMediaElement.prototype.setSinkId === 'function');
+          && typeof HTMLMediaElement.prototype.setSinkId === 'function')
+      // The graph's own sink, for the calls where both voices are inside it.
+      || (window.AudioContext
+          && typeof window.AudioContext.prototype.setSinkId === 'function');
   }
 
   function offerSpeakerButton() {
@@ -1269,6 +1319,11 @@
       // A preview repaint passes first=true deliberately: changing those
       // choices IS what it is for.
       if (first) {
+        // The operator's skin, EXPERIMENTAL. Here rather than in the poll for
+        // the same reason as the theme: re-applying it every few seconds
+        // would restart the idle artefact's animation on every read. A host
+        // page that pinned ?skin= has already decided and is left alone.
+        if (!skinForced) applySkin(d.skin);
         applyConfiguredTheme(d.theme, d.stationTheme);
         setupAskPopup(d.canAsk);
         applyControls(d);
@@ -2096,9 +2151,65 @@
     };
   }
 
+  // ONE OUTPUT FOR BOTH VOICES.
+  //
+  // The station is an <audio> element and the DJ is a WebRTC track, and a
+  // phone treats those as two different KINDS of sound: the music goes out on
+  // the media session at media volume, the call goes out on the voice session
+  // at call volume. On a handset that is merely odd. In a car it splits in
+  // two — the music on A2DP through the speakers, the DJ through the
+  // hands-free profile — at two unrelated levels, which is what the operator
+  // heard.
+  //
+  // The web has no API for "put this element on the voice session", so the
+  // only way to marry them is to stop being two players: both sources go into
+  // ONE AudioContext and out of one destination. The effect graph already did
+  // this for the DJ; this extends it to the station and makes it the path
+  // whenever both are audible at once.
+  //
+  // Two things can refuse. A stream served without CORS headers cannot enter
+  // Web Audio at all (createMediaElementSource on a tainted element outputs
+  // silence, which would be a call with no station and no error), so the
+  // element is loaded with crossOrigin first and retried plain if that fails —
+  // and a plain one is never mixed. And AudioContext.setSinkId is Chromium-
+  // only, so where it is missing the speaker switch keeps working on the
+  // element path instead. Both fall back to exactly what happened before.
+  let stationMix = null;      // { src, gain } while the station is in the graph
+
+  function mixStation(el) {
+    if (stationMix || !el || el.dataset.cors !== 'ok') return false;
+    try {
+      const c = ctx();
+      const src = c.createMediaElementSource(el);
+      const gain = c.createGain();
+      gain.gain.value = stationLevel();
+      src.connect(gain); gain.connect(c.destination);
+      // The element's own volume stops being the lever once it is a source —
+      // the gain node is, so applyVolume and the duck both write there.
+      el.volume = 1; el.muted = false;
+      stationMix = { src, gain };
+      // The DJ may already be playing on their own element — the two arrive in
+      // whichever order the room gives them. Bring them in now, or the station
+      // is in the graph on its own and nothing has been married.
+      if (!fx && djTrack && wirePlainVoice(djTrack) && djEl) djEl.muted = true;
+      return true;
+    } catch (e) {
+      console.warn('Talk Wave: the station stays on its own output —', e);
+      return false;
+    }
+  }
+
+  function unmixStation() {
+    if (!stationMix) return;
+    try { stationMix.src.disconnect(); stationMix.gain.disconnect(); } catch (e) {}
+    stationMix = null;
+  }
+
   function wireEffect(track) {
     const spec = fxSpec();
-    if (!spec) return false;
+    // No effect, but the station is in the graph: the DJ has to join it, or
+    // the two are back on separate outputs and nothing has been fixed.
+    if (!spec) return stationMix ? wirePlainVoice(track) : false;
     try {
       const c = ctx();
       const src = c.createMediaStreamSource(
@@ -2128,6 +2239,23 @@
     }
   }
 
+  // The DJ, through the same context, with no colour on the voice.
+  function wirePlainVoice(track) {
+    try {
+      const c = ctx();
+      const src = c.createMediaStreamSource(
+        new MediaStream([track.mediaStreamTrack]));
+      const gain = c.createGain();
+      gain.gain.value = Math.min(1, getVolume() / 100);
+      src.connect(gain); gain.connect(c.destination);
+      fx = { src, gain };
+      return true;
+    } catch (e) {
+      console.warn('Talk Wave: the DJ stays on their own output —', e);
+      return false;
+    }
+  }
+
   function dropEffect() {
     if (!fx) return;
     try { fx.src.disconnect(); } catch (e) {}
@@ -2147,7 +2275,11 @@
     $('volSlider').style.setProperty('--vol', getVolume() + '%');
     if (fx) fx.gain.gain.value = Math.min(1, getVolume() / 100);
     else if (djEl) djEl.volume = Math.min(1, getVolume() / 100);
-    if (streamEl) {
+    if (stationMix) {
+      // In the graph the gain node is the lever; the element's own volume is
+      // ignored once it is a source node.
+      stationMix.gain.gain.value = stationLevel();
+    } else if (streamEl) {
       const level = stationLevel();
       streamEl.volume = level;
       streamEl.muted = level <= 0;
@@ -2389,6 +2521,7 @@
           catch (e) { /* an orphaned element beats a crashed pickup */ }
         }
         dropEffect();
+        djTrack = track;
         djEl = track.attach();
         djEl.volume = Math.min(1, getVolume() / 100);
         if (wireEffect(track)) djEl.muted = true;
@@ -2605,7 +2738,7 @@
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     dropEffect();
-    anYou = anDj = null; djEl = null;
+    anYou = anDj = null; djEl = null; djTrack = null;
     djOnAir = false; djHasSpoken = false;
     document.querySelector('.card').classList.remove('onair');
     clearMeters();
@@ -2743,9 +2876,20 @@
 
   $('endedBar').onclick = (e) => {
     const bar = $('endedBar');
-    // The × always closes, whatever state the bar is in; the rest toggles.
-    const open = e.target.classList.contains('dclose')
-      ? false : !capBox.classList.contains('on');
+    // The × DISMISSES the drawer — bar and all. It used to merely set the
+    // drawer closed, so pressing × on an already-closed drawer changed
+    // nothing on screen at all and read as a dead button (operator-reported).
+    // An exit that leaves the thing it exits on the card is not an exit.
+    if (e.target.classList.contains('dclose')) {
+      capBox.classList.remove('on');
+      bar.classList.remove('open');
+      bar.hidden = true;
+      $('lineBox').classList.remove('open');
+      paintBoard(live);
+      notifyHeight();
+      return;
+    }
+    const open = !capBox.classList.contains('on');
     capBox.classList.toggle('on', open);
     bar.classList.toggle('open', open);
     // The line area is three lines while a call is running and nothing is
@@ -2918,6 +3062,12 @@
   function openChat() {
     if (chatOpen || previewMode) return;
     chatOpen = true;
+    // Repainted HERE, not left to the next /live poll. The board is only
+    // painted when the card is idle, and the poll runs every 20 seconds — so
+    // opening the text line left LINES ARE OPEN sitting behind the first
+    // messages for as long as it took the poll to come round (operator saw
+    // 5-10 seconds of it). Whoever changes the card's state repaints it.
+    paintBoard(live);
     // Start the transcript clean: a chat opened after a previous one closed
     // would otherwise show the old conversation's lines under the new
     // greeting. A resumed chat repaints its own turns from the server's
@@ -2959,7 +3109,12 @@
         if (msg.turns && msg.turns.length) collapseTranscript();
         setStatus(msg.turns && msg.turns.length
           ? 'Back on the text line' : 'Texting the booth — go ahead', 'connected');
-        $('chatInput').focus();
+        // NOT on a touch screen. Focusing the input summons the on-screen
+        // keyboard the instant the line opens, which covers half the card
+        // before the caller has decided to type anything (operator-reported on
+        // a phone). On a pointer device the focus costs nothing and saves a
+        // click, so it stays there.
+        if (!window.matchMedia('(pointer: coarse)').matches) $('chatInput').focus();
       } else if (msg.type === 'refused') {
         // A refused RESUME usually means the old chat aged out server-side:
         // drop the id and let the next attempt start fresh.

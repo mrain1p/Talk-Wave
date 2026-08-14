@@ -417,6 +417,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # light  / dark   force one, and hide the toggle
     # inherit  match the page the widget is embedded in
     "widget_theme":     (None, "auto"),
+    # EXPERIMENTAL. "default" is the card as it has always looked, so every
+    # deployment that never touches this sees exactly what it saw before.
+    "widget_skin":      (None, "default"),
 
     # --- what the card shows, answered separately per surface -------------
     # The standalone page and an embed on somebody else's site are different
@@ -431,6 +434,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "embed_caller_help":  (None, True),
     "show_theme_toggle":  (None, True),
     "embed_theme_toggle": (None, True),
+    # A link out of the card, to wherever the operator wants a caller to go —
+    # the station's own page by default, since that is where a caller who came
+    # in through an embed most often wants to end up. Off until it is set up:
+    # a corner button that goes nowhere is worse than an empty corner, so the
+    # two visibility ticks below are gated on the link existing at all.
+    "corner_link_enabled": (None, False),
+    "corner_link_url":     ("CALLIN_CORNER_LINK", ""),
+    "corner_link_label":   (None, "The station"),
+    "corner_link_icon":    (None, "📻"),
+    "show_corner_link":    (None, True),
+    "embed_corner_link":   (None, True),
     # No `embed_settings_gear`. An embed never loads the panel's code, so a
     # gear there opens nothing — offering the operator a switch for it would
     # be offering a switch that does nothing whichever way it is set.
@@ -889,8 +903,10 @@ SCHEMA: dict[str, dict] = {
              "you have a key for are listed — add one below and it appears "
              "here. Ollama runs on your own network and needs none."),
     "llm_model": dict(group="brains", kind="select", label="Model",
-        help="Read live from the provider. Over ~1.5s to first token sounds "
-             "laggy on a call."),
+        help="Read live from the provider. Over ~1.5s to first token, the "
+             "caller hears a pause before every reply; a self-hosted model "
+             "that needs more than 30s cannot carry a call at all. Test it — "
+             "the check measures with a real call's prompt and tools."),
     "llm_base_url": dict(group="brains", kind="text", label="Endpoint",
         needs=("llm_provider", ("ollama", "openai", "openrouter",
                                 "deepseek", "requesty", "gateway",
@@ -1171,6 +1187,40 @@ SCHEMA: dict[str, dict] = {
         label="Light / dark toggle (embed)",
         help="Usually worth off: a caller flipping the card to light on a dark "
              "host page gets a bright rectangle in the middle of it."),
+    # THE LINK OUT. Declared before its own visibility ticks so the panel
+    # draws them under it, and every tick `needs` the switch above: an
+    # operator cannot set where a button nobody can see would go, which is the
+    # same shape the sound slots and the voicemail rows already use.
+    "corner_link_enabled": dict(group="player", kind="check",
+        label="Link out of the card",
+        help="One more button in the card's top corner, going wherever you "
+             "send it — your station's own page by default. Off until you fill "
+             "the address in below."),
+    "corner_link_url": dict(group="player", kind="text", label="Where it goes",
+        needs=("corner_link_enabled", True),
+        placeholder="default: your station's address",
+        help="Left blank this follows the SUB/WAVE station this line answers "
+             "for, so it keeps up if the station moves. Opens in a new tab, "
+             "which for an embed means the host's page keeps its caller."),
+    "corner_link_label": dict(group="player", kind="text", label="What it says",
+        needs=("corner_link_enabled", True),
+        placeholder="The station",
+        help="The tooltip, and what a screen reader announces. The button "
+             "itself is the icon."),
+    "corner_link_icon": dict(group="player", kind="emoji", label="Icon",
+        needs=("corner_link_enabled", True),
+        help="Pick one, or type any emoji. It sits beside the other corner "
+             "controls, at their size and in their ink."),
+    "show_corner_link": dict(group="player", kind="check",
+        label="Show it on this page",
+        needs=("corner_link_enabled", True),
+        help="The card at /. Both of these are greyed out until the link "
+             "itself is switched on — there is nothing to show or hide yet."),
+    "embed_corner_link": dict(group="player", kind="check",
+        label="Show it in an embed",
+        needs=("corner_link_enabled", True),
+        help="Worth keeping ON for an embed: a caller who found the card on "
+             "somebody else's page has no other way back to you."),
     "show_settings_gear": dict(group="surface", kind="check",
         label="Settings gear",
         help="The way into this panel from the card. Off secures nothing — "
@@ -1361,6 +1411,13 @@ SCHEMA: dict[str, dict] = {
         help="The same thumbs after a message is left. Off keeps the "
              "machine's receipt as the last word — asking “how was "
              "it?” over “message left” can read as fishing."),
+    "widget_skin": dict(group="player", kind="select", label="Skin (experimental)",
+        help="A different look for the card, on this page and in embeds alike. "
+             "A skin brings its own colours, so while one is on, the Colours "
+             "setting and the viewer's light/dark toggle have nothing left to "
+             "change — pick Default to get them back. Skins cannot change the "
+             "card's size or its controls, only its surface, so none of them "
+             "can break a call."),
     "widget_theme": dict(group="player", kind="select", label="Colours",
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
@@ -1767,6 +1824,29 @@ STATIC_CHOICES = {
         ("request", "Sent to the station as a song request"),
         ("air", "Handed to the on-air DJ to mention"),
         ("triage", "Triaged by the model — request, mention, or a segment"),
+    ],
+    # EXPERIMENTAL, and grouped the way an operator would look for them
+    # rather than alphabetically. Every id here must have a matching block in
+    # web-widget/skins.css; TestEverySkinOfferedActuallyExists fails the build
+    # if one is offered that the stylesheet never draws.
+    "widget_skin": [
+        ("default", "Default — the card as it ships"),
+        ("switchboard", "Switchboard — lamps and jack labels"),
+        ("rack", "Rack unit — brushed steel and vents"),
+        ("console", "Console strip — one channel of the desk"),
+        ("shortwave", "Shortwave — wood and a lit dial"),
+        ("tape", "Tape deck — the platter turns between calls"),
+        ("terminal", "Terminal — green phosphor"),
+        ("amber", "Amber CRT — the other phosphor"),
+        ("datastream", "Datastream — phosphor, raining"),
+        ("vault", "Vault — green tube behind a heavy frame"),
+        ("arcade", "Arcade — 8-bit"),
+        ("hud", "HUD — cyan instruments"),
+        ("neon", "Neon — after dark, everything glowing"),
+        ("paper", "Paper — a note left on the desk"),
+        ("eink", "E-ink — greyscale, nothing moving"),
+        ("mac", "Classic Mac — 1-bit and dithered"),
+        ("win95", "Windows 95 — bevels and system grey"),
     ],
     "widget_theme": [
         ("auto", "Auto — follow the viewer, keep the toggle"),

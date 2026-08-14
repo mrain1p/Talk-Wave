@@ -26,9 +26,13 @@ import random
 import time
 
 from livekit.agents import AgentSession, JobContext, mcp
+# Not re-exported from livekit.agents or livekit.agents.voice in this SDK — the
+# dataclass only exists on the module that defines it.
+from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.agents.voice.room_io import RoomOptions
 
 import brain
+import llm_pace
 import settings as settings_store
 import speech_filter
 from log_setup import describe
@@ -42,7 +46,7 @@ from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
 from .record import CallRecord
-from .providers import build_llm, build_stt, build_tts
+from .providers import build_llm, build_stt, build_tts, llm_conn_options
 from .tools import (
     build_call_control_tools,
     build_curation_tools,
@@ -160,6 +164,13 @@ class CallSession:
         self.ended = {"reason": ""}
         # Filled in once the persona is known — see prepare().
         self.record: CallRecord | None = None
+        # What the caller waited for the model, turn by turn. Built here rather
+        # than in start() so the budget it reports is the one this call ran
+        # under even if the call never gets that far.
+        self.think = llm_pace.ThinkMeter(
+            label=f"{self.cfg.get('llm_provider')}/{self.cfg.get('llm_model')}",
+            budget=llm_pace.attempt_budget(self.cfg.get("llm_provider", ""))[0],
+        )
 
         ctx.add_shutdown_callback(self.station.aclose)
         ctx.add_shutdown_callback(self.station_cfg.aclose)
@@ -357,6 +368,11 @@ class CallSession:
             # One dict, and it must stay one dict — see turn_handling() for
             # what passing these alongside it silently did.
             turn_handling=turn_handling(self.cfg),
+            # Only the LLM leg is overridden. STT and TTS keep the SDK's
+            # defaults: they stream continuously, so a stall there shows up as
+            # a gap rather than as a turn that never starts.
+            conn_options=SessionConnectOptions(
+                llm_conn_options=llm_conn_options(self.cfg)),
         )
 
         await self.session.start(
@@ -382,7 +398,8 @@ class CallSession:
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
 
         lifecycle.attach_close_reason(session, self.ended)
-        lifecycle.attach_error_recovery(session, self.record)
+        lifecycle.attach_error_recovery(session, self.record, self.think)
+        lifecycle.attach_think_pace(session, self.think)
         lifecycle.attach_first_word(session, self.record)
         lifecycle.attach_turn_commit(ctx, session)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
@@ -457,6 +474,21 @@ class CallSession:
             log.warning("%s", said)
             self.record.problem(said)
 
+    def _note_if_the_model_kept_the_caller_waiting(self) -> None:
+        """Say so, in the record, when the caller waited on the model.
+
+        The companion to the check above, one leg earlier. Both exist because
+        the same class of failure — everything works, slowly enough to ruin the
+        call — leaves no trace anywhere else: no exception, no line in the
+        transcript, nothing an operator can point at. See llm_pace.
+        """
+        if not self.record:
+            return
+        said = self.think.report()
+        if said:
+            log.warning("%s", said)
+            self.record.problem(said)
+
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
@@ -493,6 +525,7 @@ class CallSession:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []
             self._note_if_nothing_was_heard(duration, final)
+            self._note_if_the_model_kept_the_caller_waiting()
             self._note_if_the_voice_fell_behind()
             if self.cfg.get("record_calls", True):
                 self.record.write(reason=reason,

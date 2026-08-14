@@ -45,3 +45,10 @@ notes-archive/
 # and removes its stub entry per session); tracking it shipped one session's
 # leftovers to everybody (untracked 0.10.81).
 .claude/launch.json
+
+# Headless-Chrome scratch from the live-call harness and the layout probes
+# (tools/livecall). A 171MB browser profile reached the repo root once and
+# sat there untracked for days, one careless `git add -A` from a permanent
+# commit to a public repo.
+chromeprofile*/
+chrome*.log

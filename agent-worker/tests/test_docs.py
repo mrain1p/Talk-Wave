@@ -70,6 +70,61 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
                 broken.append(target)
         self.assertEqual(broken, [], f"README links to missing files: {broken}")
 
+    def test_every_link_between_the_docs_resolves(self):
+        # The README's own links were checked; the links docs make to EACH
+        # OTHER were not, and two of them were broken for months — an anchor
+        # pointing at a section that lives on a different page, so the reader
+        # clicked and stayed exactly where they were. Covers relative file
+        # links and same-page anchors, in every doc at once.
+        import re
+
+        broken = []
+        pages = [REPO / "README.md", *sorted((REPO / "docs").glob("*.md"))]
+        for page in pages:
+            text = page.read_text(encoding="utf-8")
+            headings = {
+                # GitHub's slug, near enough: lowercased, punctuation dropped,
+                # spaces to hyphens.
+                re.sub(r"[^a-z0-9\s-]", "", line.lstrip("# ").strip().lower())
+                   .replace(" ", "-")
+                for line in text.splitlines() if line.startswith("#")
+            }
+            for target in re.findall(r"\]\(([^)\s]+)\)", text):
+                if target.startswith(("http://", "https://", "mailto:")):
+                    continue
+                if target.startswith("#"):
+                    if target[1:] not in headings:
+                        broken.append(f"{page.name} -> {target} (no such section)")
+                    continue
+                path = (page.parent / target.split("#", 1)[0]).resolve()
+                if not path.exists():
+                    broken.append(f"{page.name} -> {target}")
+        self.assertEqual(broken, [], f"broken links: {broken}")
+
+    def test_the_tool_surface_the_docs_describe_is_the_one_that_exists(self):
+        # The settings reference used to say "the 17 MCP tools plus the entries
+        # we serve ourselves" and then name eight of them, while the registry
+        # held 33 and served 23 locally — a number nobody could have known was
+        # wrong without counting. Counting is this test's job now.
+        from call.tools.registry import LOCAL, MCP, NEVER, NONE, TOOLS
+
+        counts = {
+            "total": len(TOOLS),
+            "mcp": len([t for t in TOOLS if t.served == MCP]),
+            "local": len([t for t in TOOLS if t.served == LOCAL]),
+            "never": len([t for t in TOOLS if t.served == NONE]),
+        }
+        self.assertEqual(counts["total"],
+                         counts["mcp"] + counts["local"] + counts["never"])
+        settings_doc = (REPO / "docs" / "settings.md").read_text(encoding="utf-8")
+        row = next(ln for ln in settings_doc.splitlines() if "**Station tools**" in ln)
+        for what, n in counts.items():
+            self.assertIn(str(n), row,
+                          f"docs/settings.md no longer says how many tools are {what} "
+                          f"({n}) — the registry moved and the sentence did not")
+        # And the gate the row promises: the destructive ones are never served.
+        self.assertTrue(all(t.gate == NEVER for t in TOOLS if t.served == NONE))
+
     def test_every_doc_links_back_to_the_readme(self):
         # Landed on from a search engine, a page in docs/ has to say what it is
         # part of, or it is a fragment of a manual with no manual.

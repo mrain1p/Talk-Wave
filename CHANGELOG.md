@@ -3,6 +3,126 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.139
+
+The DJ stops telling you a thing is done when nothing was done, and the card gets sixteen experimental looks.
+
+### What the caller hears
+
+- **If you asked to change the DJ and a different one came on, that was this.** Reported twice: "I asked it to switch the DJ to Duke and it put on Cliff." It looked like a name-matching bug and was not — Duke Sterling resolves to his show correctly. What actually happened is on the record: the caller asked to change the DJ, the model pinned Cliff's show, the caller followed up with "to duke", and the DJ answered "I've got that queued up for you, Duke's show is on its way" **with no tool call at all**. Cliff stayed on air and nothing anywhere disagreed with the DJ.
+- **A finished-tense claim now has to be true.** The guard that catches "let me have a dig" and then nothing has watched only the future tense since it was added. A promise with no receipt is a dead line; a claim with no receipt is a lie the caller cannot catch, and on the on-air tools it is a lie about what the whole station is doing. The DJ now gets one more turn to make the claim true, or to say plainly that it did not go through.
+- **It fires on the words that are actually ours, not on conversation.** The pattern needs a completion marker *and* a station action in one sentence, because either half alone is ordinary talk. Measured against all 155 DJ lines in the live archive: three match, two of them had genuinely run a tool, and the third is the call above. Nothing else in the corpus fires.
+- **The phone and the text line stop disagreeing about it.** They carried separate copies of that word list and had drifted four phrasings apart, so the same sentence was guarded on the phone and waved through in a chat — and the conversation this was found on was a chat. One copy now, and a test fails if anyone re-copies it.
+
+### What the caller sees
+
+- **Sixteen skins for the card, marked experimental.** Switchboard, rack unit, console strip, shortwave, tape deck, terminal, amber CRT, datastream, vault, arcade, HUD, neon, paper, e-ink, classic Mac and Windows 95. Colour was already named in one place; this does the same for form — corners, borders, textures, type — so a skin is a short list of values rather than a fork of the stylesheet.
+- **Most of them put a picture in the transcript box between calls, and it disappears the moment somebody is on the line.** A platter that turns on the tape deck, a lit dial on the shortwave, a reticle on the HUD, a cursor blinking on the terminal. It sits behind everything in the box and is switched by the card's own mode, so it cannot move the layout and cannot be left on during a call.
+- **Nothing about your card changes unless you pick one.** The default is not one of the sixteen — it is the card as it has always been, and it is deliberately not described in the skins file at all, so there is no second copy of it to drift.
+- **A skin cannot break a call.** It is allowed to change surfaces and nothing else: no widths, no heights, no controls. Measured across all sixteen in a browser — every one renders at 620x544 with a 38px control height, the same as the default.
+
+### What you see in the panel
+
+- **Players → Player settings → Skin.** One choice, applied to your own page and to embeds alike, because an embed wearing a different look from the page it links to reads as two products.
+- **A skin brings its own colours**, so while one is on, the Colours setting and the viewer's light/dark toggle have nothing left to change. That is in the setting's own help rather than left to puzzle over. Your station's palette still outranks a skin, so a card on a station page still follows the show.
+
+### Under the hood
+
+- **Sixteen skins cost one set of tests, not sixteen.** The skins file may declare custom properties and nothing else, and the build fails if it says anything more — which is what puts the fixed card size, the single control height and the height reported to embeds out of a skin's reach by construction. A second test fails if the dropdown and the stylesheet ever disagree about which skins exist.
+- **Three faults the suite could not have found, all caught by opening the page.** A stray comment terminator left mid-edit turned the rest of that comment into live CSS and the parser silently ate the rule beneath it — braces balanced, every test green, and the element simply absent from the browser's stylesheet. In the `background` shorthand a size binds to the last layer only, so three of the platter's four rings were drawn at the size of the whole box. And a centred artefact drew straight through the idle board, with the terminal's cursor blinking inside the word "ARE". There is a test for comment faults now, and it fails on exactly the input that got through.
+
+## 0.10.137
+
+The card on a phone: the two lines that overlapped are on separate rows, the music and the DJ come out of one speaker, and there is a link out of the card.
+
+### What the caller hears
+
+- **The station and the DJ stop being two different kinds of sound.** The music was an ordinary web player and the call was WebRTC, which a phone treats as two separate things: the music on the media channel at media volume, the DJ on the voice channel at call volume. In a car they split in two — music through the speakers over Bluetooth audio, the DJ through the hands-free profile — at two unrelated levels. Both now go through one audio graph and out of one output, so one volume and one route covers them. A station served without CORS headers cannot join a Web Audio graph at all, so the stream is loaded once with them and retried plain if that fails: worst case is exactly what happened before, never a silent stream.
+- **The speaker switch reaches the married path too.** Where a browser lets a page choose its output at all, it is now asked for the graph as well as the element — otherwise the button moved an element that had been muted in favour of the graph, which is to say nothing anyone could hear.
+
+### What the caller sees
+
+- **The record and the call's state chips have a row each.** On a phone a long title ran under the two chips and they overlapped. The record moved up under the DJ's tagline, where it belongs — it says who is on — and the rail below is the call's own row. Same on the page and in an embed.
+- **The status prints under LINES ARE OPEN, like a line on a terminal.** Connecting, on the line, rang off. It used to be centred in the same box as the headline, so the two painted over each other.
+- **"How was it?" is one bar with the thumbs inside it**, the same shape as the transcript drawer beside it — it was a caption and two loose boxes, which read as three controls of two kinds for one question.
+- **The waveforms are in one box.** The outline was around each label, which framed the two words and left the instrument they name unframed. In voicemail, where there is only the caller's own meter, the same box closes up around it.
+- **A link out of the card, if you want one.** One more button in the top corner, going wherever you send it — your station's own page unless you say otherwise. Off until you switch it on, then visible per surface: the embed is the one that needs it most, since a caller who met the card on somebody else's page has no other way back to you.
+
+### What you see in the panel
+
+- **The link is under Players → Player settings**, with a grid of icons rather than a dropdown of emoji names — the question is entirely what the button will look like. Type any emoji instead if none of the two dozen fit. Everything below the switch is greyed out until the switch is on, so there is never an address filled in for a button that does not exist.
+- **The attention star follows you into the section.** The page picker pinned the page and then stopped, leaving you to guess which of eight folded sections it meant. The same mark now sits on the section itself, and clears itself when the item does.
+
+### Under the hood
+
+- Driven in headless Chrome at 620px, 380px and 390px-with-touch: the two rows measured 16px apart rather than overlapping, the status placed below the headline rather than on it, the picker gated in both directions, and a `javascript:` address refused server-side so it can never reach an href on somebody else's page.
+
+## 0.10.136
+
+The card stops saying things twice, and the two bands that were holding space for nothing give it back. Every item here is something the operator saw on their own screen.
+
+### What the caller sees
+
+- **The idle box says LINES ARE OPEN, and stops there.** It also listed the doors and named who picks up — but the doors are the buttons an inch below it and the DJ's name is at the top of the card in bold beside their photograph. Three ways of saying the same thing is not three times as clear.
+- **A message no longer lands on top of it.** The status line is centred in that box, so "Opening the text line…" and LINES ARE OPEN were painted over one another and neither was legible. The placeholder now yields to anything with something to say.
+- **The idle card no longer has a scrollbar.** The caption ticker was reserving two lines of invisible height so an embed's frame could not jump when the first line arrived — 36px of nothing inside a box that scrolls, in a card that has been a fixed height since 0.10.131 and cannot jump anyway. Measured: 255px of content in a 219px box, and the difference was exactly that.
+- **The empty rail above the conversation is gone.** The now-playing band reserved 30px between calls for a track that is invisible until a call starts, so every idle card was ruled off for a line nobody could read. It collapses when it holds nothing and comes back when it does — which is where the state chips now live.
+- **The state chips moved off the DJ's name.** They sat beside it, competing for width with the one thing a call card must always be able to say, and every narrow-card fix was a way of losing that argument more gracefully. On the track's rail they are level with the call they describe and nothing is squeezed.
+- **YOU and DJ are chips, not loose words.** Two bare labels at the far ends of a wide band read as stray text rather than as the two ends of one instrument; each now has the card's own hairline box, lit to that voice's colour while a call is up.
+- **The waveforms have their width back on an embed.** The volume rail was hidden between calls but still holding its box, which squeezed the two meters into 65px of a 348px card. It now gives up the width as well as the ink: 244px, measured, and the band is the same height either way.
+- **The main door really is two thirds of the row.** With two icon-only alternates beside it the primary was taking 93% and they were hugging their glyphs at 36px. It is 61/18/18 now — two thirds, and the other two sharing the last third, which is what was asked for.
+- **The transcript drawer's × closes it.** It set the drawer closed and left the bar sitting there, so pressing × on an already-closed drawer changed nothing on screen at all. It dismisses the whole thing now, and the button itself sits inside the bar behind a hairline instead of standing proud of it as a second, taller box.
+- **The text line no longer opens over the placeholder.** LINES ARE OPEN stayed behind the first messages for up to twenty seconds, because the board was only repainted by the poll that refreshes the card. Whoever changes the card's state repaints it now.
+- **Opening the text line on a phone no longer summons the keyboard.** Focusing the input covered half the card before the caller had decided to type anything. On a pointer device the focus stays — it costs nothing there and saves a click.
+
+### Under the hood
+
+- Driven and measured in headless Chrome at 620px, 380px and 390px-with-touch, in idle, on a call and with the drawer open — which is how six of the ten were found as numbers rather than as impressions.
+
+## 0.10.135
+
+A model that is merely slow no longer kills the call — and the panel stops calling a fatal number "laggy". All of this came out of one tester's afternoon on a self-hosted Ollama.
+
+### What the caller hears
+
+- **If the DJ kept answering "the line's giving me trouble on my end", that was the model running out of time, not your network.** LiveKit allows 10 seconds per attempt, and for a streamed reply that is a ceiling on the *first token* — miss it and the turn is thrown away, four times over, and the caller gets the canned apology about twenty seconds after they stopped speaking. A self-hosted provider (Ollama, an OpenAI-compatible server, locca) now gets 30 seconds and one retry instead. A model that was merely slow is now a DJ that answers slowly, which is a thing you can hear and decide about.
+- **When it does happen, the apology comes sooner.** One "recoverable" provider error used to be absorbed in silence before the DJ said anything. That grace makes sense for a cloud blip measured in milliseconds; on a box that has already spent its whole 30-second budget it just adds another 30 seconds of nothing. A model out of time now speaks up the first time.
+- **Cloud providers are unchanged.** Ten seconds with three retries is right for a provider having an outage rather than a slow think.
+
+### What you see in the panel
+
+- **The model check now measures what a call actually costs.** It sent an empty system prompt and two toy tools; a real turn carries the station briefing, the persona and every allowlisted tool schema, and on self-hosted hardware reading that prompt *is* most of the wait. Expect your number to read higher than it did — that number is the one the caller experiences. The line says which it measured, and falls back gracefully when the station won't answer.
+- **The verdict says what the number means, and the metric is still right there.** Under the 1.5s target it passes as before. Above it, a warning that the caller hears a pause before every reply, and what this box will wait. Over the budget it now **fails** — "every turn times out and the caller hears the trouble line" — and names the fix. The tester read "6185ms to first token — the call will lag" off a green-ish row while not one of his turns was completing.
+- **A call the model kept waiting says so in its own transcript.** One line at the end, next to the config it ran under: how many replies went over the target, the worst, the typical. The voice has had this for a while; the model leg was the half nobody could see.
+- **A rate-limited station stops being reported as wrong credentials.** SUB/WAVE's login limiter answers 429 for fifteen minutes, and the pipeline's Station admin stage read that as a rejection — sending an operator off to change a password that was right all along. It now says what it is, the way the Test button already did, and the genuine rejection names what it costs you: library search, on-air announcements and the back-to-air handoff.
+
+### Under the hood
+
+- **A new page, [What to run](docs/models.md), for the decision this release is about.** Ideal, OK and minimal for the model and for the voice, the three numbers that decide a call, and a table matching what a caller experiences to the number behind it. Including the one that cost this tester the most: on Ollama, a model unloads after five idle minutes, so the first call after a quiet hour pays the load as well.
+- **A documentation audit, and the drift it found.** Recent conversations was documented as keeping 100 transcripts (it lists 20, and keeps 1000); the settings reference described a tool surface of "17 MCP tools" plus eight wrappers, where the registry holds 33; two "calling from outside your network" links pointed at a section that lives on another page; the provider lists omitted the two keyless self-hosted options; and the voice-effect list named four of ten. All corrected, and three of those five classes now have a test: links between docs must resolve, and the tool numbers in the reference must match the registry.
+- **The target lives in one place.** `llm_pace.py` owns what a caller can absorb, what each kind of provider may spend, and the meter that reports it — read by the call, by the test endpoints and by the panel, so the three cannot drift apart again.
+
+## 0.10.134
+
+The operator's second visual pass, on a phone and on the station page.
+
+### What the caller sees
+
+- **The idle box is a board now, and it says which lines are open.** It has been a permanent grey "Not connected" that read as a fault on host pages, then nothing at all, then one sentence — in a box two hundred pixels tall. It now shows the state in the card's own voice and the doors that are actually open beneath it, each checked twice: whether it is offered, and whether it works right now. A machine set to answer only when the booth is shut reads as struck through while the booth is open, because listing a way in that the card will refuse is worse than listing nothing.
+- **A tool receipt is one line.** "SHOW TAKEOVER SET" over "THE OVERLOOK · After Dark for 60 min" spent three lines saying one thing; it is one sentence at one size now, with the colour carrying the difference.
+- **The photograph opens.** It is the only image on the card and it is small by necessity, so a tap gives it the room the card cannot — inside the card rather than over the page, because in an embed the page is not ours.
+- **"How was it?" is back on a phone.** It was hidden under 430px, which left the rating strip as two unexplained thumbs.
+- **A resumed text thread opens behind the transcript drawer** rather than over the card's idle state, and the drawer has a way out as well as a way in. The voicemail icon is a cassette rather than an envelope, which is email.
+
+### What you see in the panel
+
+- **The embed stops being a second design.** 0.10.131 hid ON AIR NOW and lifted the chips onto the eyebrow because at 348px there was no room beside the avatar. Stacking the name and show gave that room back, so the chips return to the identity row and the eyebrow keeps its words — the pip was glowing with nothing beside it, which reads as a bug. The code field and its button stack rather than splitting 348px, and the volume rail gives up width before the waveforms do, where it had been pushing the DJ's waveform off the card.
+- **The action row gives the primary door two thirds and splits the rest** — unless all three doors carry a word, when equal thirds is the honest answer.
+
+### Under the hood
+
+- Measured after, at 390 / 768 / 1280 / 348 / 300, idle / call / text: nothing paints past the card, and nothing wraps that should not.
+
 ## 0.10.133
 
 The waveform is back, and the player stops overflowing on a phone. Everything here came out of looking at 0.10.131 on a real handset.

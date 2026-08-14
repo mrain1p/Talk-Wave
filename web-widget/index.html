@@ -61,6 +61,11 @@
      stacks in style.css carry that anywhere. If the exact faces are ever
      wanted back, self-host them here rather than reintroducing the CDN. -->
 <link rel="stylesheet" href="/style.css">
+<!-- EXPERIMENTAL card skins. A second sheet rather than more of style.css:
+     every rule in it is custom properties only, which is what a test can check
+     and what keeps a skin from reaching the card's layout. Nothing applies
+     until <html data-skin> is set. -->
+<link rel="stylesheet" href="/skins.css">
 </head>
 <body>
   <div class="card" data-mode="idle">
@@ -79,7 +84,7 @@
 
          The connection state is NOT in this row any more; it lives in the
          line area at the bottom of the card. See there. -->
-    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Theme" aria-label="Change the theme" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg></button><button class="gear" id="signinBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="lockBtn" title="Sign out — forget the code on this device" aria-label="Sign out — forget the code on this device" hidden><svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1" y="5.5" width="9" height="6.5" rx="1"/><path d="M3 5.5V3.8a2.5 2.5 0 0 1 5 0v1.7"/></svg></button><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
+    <div class="eyebrow" id="eyebrow"><span class="pip"></span><span id="eyebrowText">Checking…</span><span class="spacer"></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Theme" aria-label="Change the theme" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg></button><button class="gear" id="signinBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="lockBtn" title="Sign out — forget the code on this device" aria-label="Sign out — forget the code on this device" hidden><svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1" y="5.5" width="9" height="6.5" rx="1"/><path d="M3 5.5V3.8a2.5 2.5 0 0 1 5 0v1.7"/></svg></button><a class="gear" id="linkBtn" href="#" target="_blank" rel="noopener noreferrer" title="" hidden></a><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -92,18 +97,14 @@
         <h1 class="dj" id="djName">…</h1>
         <p class="show" id="djShow"></p>
         <p class="tagline" id="djTagline"></p>
+        <!-- What is on the station, under the identity it belongs to. It had
+             the rail below to itself and then had to share it with the call's
+             state chips, which on a phone put a long title under two chips and
+             overlapped them. Both fit if they stop competing for one row: the
+             record is part of WHO IS ON, and the chips are part of the call.
+             Same on the page and in an embed. -->
+        <p class="track" id="npTrack"></p>
       </div>
-      <span class="spacer"></span>
-      <!-- The state chips live IN the identity row. They had a band of their
-           own (.staterow) costing 38px of card for two 26px chips, while the
-           60px identity row beside them had the room for free. The id stays
-           `stateRow` — call.js and the widget contract test both know it, and
-           it still means the same thing: where the call's state is shown.
-           In an embed these move to the eyebrow instead; see style.css. -->
-      <span class="chips" id="stateRow">
-        <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
-        <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
-      </span>
     </div>
 
     <!-- Opened by the ? button. Built from the same list the panel shows the
@@ -141,9 +142,19 @@
            On a live call this dims and swaps the timer for UNDER THE CALL —
            the music is not the subject then, but knowing it kept playing is
            still worth a line. -->
+      <!-- The state chips live HERE now, not in the identity row. They were
+           beside the DJ's name, competing with it for width on exactly the
+           cards that had none, and this band was often empty anyway — the
+           operator's ask was to put them where the track is and collapse the
+           row when it holds neither. The id stays `stateRow`: call.js and the
+           widget contract test both know it, and it still means the same
+           thing, which is where the call's state is shown. -->
       <div class="nprail" id="npRail">
-        <p class="track" id="npTrack"></p>
         <span class="npclock" id="npElapsed"></span>
+        <span class="chips" id="stateRow">
+          <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+          <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+        </span>
       </div>
 
     <!-- The line area. One box, one job: whatever this card has to say to
@@ -155,6 +166,11 @@
          own, because every band that appears after a call used to grow the
          card and move the host page under whoever was reading it. -->
     <div class="linebox" id="lineBox">
+      <!-- The skin's idle artefact — a platter, a dial, a reticle. Empty and
+           invisible unless a skin fills --skin-art in, absolutely positioned
+           BEHIND everything here, and shown only while the card is idle. It
+           cannot move the layout and it is gone the moment a call starts. -->
+      <div class="skinart" id="skinArt" aria-hidden="true"></div>
       <!-- What the box says when there is no conversation in it: which
            doors are open, in the card's own voice. See paintBoard. -->
       <div class="idleboard" id="idleBoard" hidden></div>

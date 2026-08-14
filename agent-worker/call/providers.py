@@ -17,9 +17,10 @@ import logging
 import os
 from pathlib import Path
 
-from livekit.agents.types import NOT_GIVEN
+from livekit.agents.types import NOT_GIVEN, APIConnectOptions
 from livekit.plugins import anthropic, deepgram, google, openai
 
+import llm_pace
 import secrets_store
 import settings as settings_store
 from tts_adapter import AdapterTTS, resolve_adapter
@@ -251,6 +252,19 @@ def build_llm(cfg: dict, *, use_stored_key: bool = True):
         )
 
     raise ValueError(f"Unsupported llm_provider: {provider}")
+
+
+def llm_conn_options(cfg: dict) -> APIConnectOptions:
+    """How long this provider may take before a turn is abandoned.
+
+    The SDK's default — 10s per attempt, three retries — is a cloud number, and
+    passing nothing meant every deployment got it. On a self-hosted box that is
+    not patience, it is a hard ceiling on how long the model may take to produce
+    its FIRST token, and a model that misses it fails every turn rather than
+    running slowly. See llm_pace for the incident and the arithmetic.
+    """
+    timeout, retries = llm_pace.attempt_budget(cfg.get("llm_provider", ""))
+    return APIConnectOptions(timeout=timeout, max_retry=retries)
 
 
 def build_tts(cfg: dict, voice: str) -> AdapterTTS:

@@ -112,6 +112,36 @@ window.Callin = (function () {
     };
   })();
 
+  // --------------------------------------------------------------- the skin
+  // EXPERIMENTAL. A skin is form — corners, borders, textures, the idle
+  // artefact — and it arrives from the operator's setting on /live, not from
+  // the viewer. There is deliberately no viewer toggle for it: the theme
+  // toggle is the viewer's control and a skin is the operator's, the same
+  // split as every other look setting on the card.
+  //
+  // ?skin= is here for the two callers that need to decide BEFORE /live has
+  // answered: an embed carrying the host's data-skin, and anyone testing one
+  // without saving it. It is applied at first paint for the same reason the
+  // theme bootstrap above is — otherwise a skinned card shows the default
+  // card's colours for as long as the first /live takes.
+  const skinForced = !!params.get('skin');
+  (function skin() {
+    const wanted = params.get('skin') || '';
+    if (wanted) applySkin(wanted);
+  })();
+
+  // The one writer. `default` and an empty string both mean the shipped card,
+  // and both REMOVE the attribute rather than setting data-skin="default" —
+  // there is no `default` block in skins.css, because the default is
+  // style.css's own :root, so an attribute naming it would be a skin that
+  // does not exist.
+  function applySkin(name) {
+    const root = document.documentElement;
+    const clean = String(name || '').trim().toLowerCase();
+    if (!clean || clean === 'default') root.removeAttribute('data-skin');
+    else root.setAttribute('data-skin', clean);
+  }
+
   // ------------------------------------------------------------ sound state
   // The sound engine used to read `live.sounds` directly off the call page's
   // own copy of /live. Both surfaces now fetch /live for themselves and feed
@@ -410,6 +440,7 @@ window.Callin = (function () {
 
   return {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
+    applySkin, skinForced,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,

@@ -440,16 +440,27 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
     def test_ordinary_chat_is_not_given_an_extra_round(self):
         # The nudge costs a model round, so it fires only on the openers the
         # conduct asks for — never on a reply that was simply conversation.
-        from chat.session import _PROMISES_ACTION
+        from promises import unbacked
 
         for promise in ("Let me dig through the racks",
                         "hold on, checking what we've got",
                         "On it — I'll get that queued"):
-            self.assertTrue(_PROMISES_ACTION.search(promise), promise)
+            self.assertEqual("promise", unbacked(promise), promise)
         for chatter in ("That's a grand one for a mate.",
                         "The Chieftains were on top form that year.",
                         "Nice — good taste."):
-            self.assertFalse(_PROMISES_ACTION.search(chatter), chatter)
+            self.assertEqual("", unbacked(chatter), chatter)
+
+    def test_the_text_line_guards_the_same_words_the_phone_does(self):
+        # These two lists were separate copies until 0.10.138 and had drifted:
+        # the phone had gained "pulling up", "have a look", "dig out" and "dig
+        # through" and the text line never did, so the same sentence was caught
+        # on one surface and waved through on the other. One import now — this
+        # test is here to fail if somebody re-copies it.
+        import chat.session as chat_session
+        from call import promise_guard
+
+        self.assertIs(chat_session.unbacked, promise_guard.unbacked)
 
 
 class TestTheTextLineFeelsLikeAConversation(_TempStores):

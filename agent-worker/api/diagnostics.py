@@ -17,6 +17,7 @@ import httpx
 from aiohttp import web
 from livekit import api
 
+import llm_pace
 import secrets_store
 import settings as settings_store
 from api.auth import _write_allowed
@@ -345,6 +346,78 @@ async def _models_offered(base_url: str) -> list[str]:
         return []
 
 
+async def _station_tool_schemas(cfg: dict) -> list:
+    """The station's allowlisted tools, as the model would be given them.
+
+    Their SCHEMAS are the point, not their behaviour — a bench must never
+    invoke a station tool. Together they are most of what a model has to read
+    before it may answer, which is why a bench without them under-reports.
+    """
+    from livekit.agents import mcp as lk_mcp
+
+    import station_config as station_config_mod
+
+    from call.tools import mcp_allowlist
+
+    try:
+        server = lk_mcp.MCPServerHTTP(
+            url=settings_store.station_mcp_url(),
+            transport_type="streamable_http",
+            allowed_tools=mcp_allowlist(cfg) or ["__none__"],
+            headers=station_config_mod.mcp_headers() or None,
+            # The call's own budget, for the same reason it has one: a station
+            # that cannot answer in 7s must not hold up the thing measuring it.
+            client_session_timeout_seconds=7,
+        )
+        try:
+            await server.initialize()
+            return await server.list_tools()
+        finally:
+            await server.aclose()
+    except Exception as e:                                     # noqa: BLE001
+        log.info("bench: no station tools (%s)", _plain_error(e)[:120])
+        return []
+
+
+async def _a_calls_worth_of_context(cfg: dict) -> tuple[str, list, str]:
+    """The prompt and the tools a real call carries. `(prompt, tools, measured)`.
+
+    The bench used to send an empty system prompt and two toy tools. A tester
+    read 6185ms off it, believed the panel's "the call will lag", and in fact
+    every turn on that box timed out — because a call also carries the station
+    briefing, the persona and every allowlisted tool schema, on EVERY turn, and
+    on self-hosted hardware evaluating that prompt IS most of the time to first
+    token. A number measured without it is a best case no caller ever gets.
+
+    Degrades rather than fails, and says which it managed: a station that will
+    not answer is a reason to measure less, not a reason to refuse to measure.
+    """
+    import brain
+
+    prompt, tools, parts = "", [], []
+    station = StationClient()
+    try:
+        snap = await station.snapshot()
+        override = str(cfg.get("persona_override") or "").strip()
+        roster = {p.get("id"): p for p in snap["personas"]}
+        persona = roster.get(override) or station.persona_from(snap["dj"], snap["personas"])
+        prompt = await brain.build_system_prompt(station, persona, snapshot=snap)
+        parts.append("the DJ's real prompt")
+    except Exception as e:                                     # noqa: BLE001
+        log.info("bench: no station prompt (%s)", _plain_error(e)[:120])
+    finally:
+        await station.aclose()
+
+    tools = await _station_tool_schemas(cfg)
+    if tools:
+        parts.append(f"{len(tools)} station tool(s)")
+
+    if not parts:
+        return "", [], ("a short prompt only — the station did not answer, so this "
+                        "is faster than a real call will be")
+    return prompt, tools, "measured with " + " and ".join(parts)
+
+
 async def handle_test_llm(request: web.Request) -> web.Response:
     """Two short rounds, with two tools offered.
 
@@ -403,8 +476,15 @@ async def handle_test_llm(request: web.Request) -> web.Response:
             """What is on air right now."""
             return "Rhiannon by Fleetwood Mac"
 
-        tools = [request_song, now_playing]
+        # The two probes stay: they are what proves a tool call actually
+        # happens, and a station tool cannot be safely invoked from a test
+        # button. The station's own tools ride alongside them for their WEIGHT
+        # — they are most of what the model has to read before it may answer.
+        prompt, station_tools, measured = await _a_calls_worth_of_context(cfg)
+        tools = [request_song, now_playing, *station_tools]
         ctx = lk_llm.ChatContext.empty()
+        if prompt:
+            ctx.add_message(role="system", content=prompt)
         # Both tools are wanted, so a model that CAN fan out will — and the
         # replay below then carries a parallel group, which is the case that
         # actually breaks.
@@ -464,6 +544,15 @@ async def handle_test_llm(request: web.Request) -> web.Response:
                     "firstTokenMs": round((first or 0) * 1000),
                     "totalMs": round((_time.perf_counter() - t0) * 1000),
                     "toolCalling": bool(tool_calls),
+                    # What the number above was measured against, and what the
+                    # call will do with it. Without these the panel is grading
+                    # a millisecond count against thresholds it invented.
+                    "measuredWith": measured,
+                    "promptChars": len(prompt),
+                    "toolCount": len(tools),
+                    "desiredMs": round(llm_pace.DESIRED_FIRST_TOKEN * 1000),
+                    "budgetMs": round(
+                        llm_pace.attempt_budget(cfg.get("llm_provider", ""))[0] * 1000),
                     # Two calls in one turn. Not a pass/fail — some good models
                     # answer one thing at a time — but it decides whether the
                     # follow-up below tested the hard case or the easy one.
@@ -646,11 +735,18 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
         model_obj = build_llm(cfg, use_stored_key=llm_key_ok)
         ctx = lk_llm.ChatContext.empty()
+        # The prompt this stage measured two stages ago, and the tools the DJ
+        # is given, because the caller pays for both on every turn. Sending
+        # "say one short sentence" against an empty context measured a machine
+        # nobody calls: on self-hosted hardware, reading the prompt IS the wait.
+        if prompt:
+            ctx.add_message(role="system", content=prompt)
+        bench_tools = await _station_tool_schemas(cfg)
         ctx.add_message(role="user", content="Say one short sentence about the weather.")
 
         t0 = _time.perf_counter()
         first = None
-        stream = model_obj.chat(chat_ctx=ctx)
+        stream = model_obj.chat(chat_ctx=ctx, tools=bench_tools)
         async for chunk in stream:
             if first is None:
                 delta = getattr(chunk, "delta", None)
@@ -658,7 +754,10 @@ async def handle_speed_test(request: web.Request) -> web.Response:
                     first = (_time.perf_counter() - t0) * 1000
         await stream.aclose()
         llm_ms = first or (_time.perf_counter() - t0) * 1000
-        record("LLM first token", llm_ms, f"{cfg.get('llm_provider')} / {cfg.get('llm_model')}")
+        record("LLM first token", llm_ms,
+               f"{cfg.get('llm_provider')} / {cfg.get('llm_model')}"
+               + (f" · {len(prompt)//4} tokens of prompt, {len(bench_tools)} tools"
+                  if prompt or bench_tools else " · short prompt, no tools"))
     except Exception as e:
         record("LLM first token", 0, f"failed: {e}"[:110])
 
@@ -955,7 +1054,23 @@ async def handle_test_env(request: web.Request) -> web.Response:
             async with httpx.AsyncClient(timeout=6.0) as c:
                 r = await c.get(f"{base}/listeners", auth=httpx.BasicAuth(user, password))
             if r.status_code == 401:
-                result["admin"] = {"ok": False, "detail": "station rejected these credentials"}
+                result["admin"] = {
+                    "ok": False,
+                    "detail": "station rejected these credentials — library search, "
+                              "on-air announcements and the back-to-air handoff will "
+                              "all be refused",
+                }
+            elif r.status_code == 429:
+                # Mirrors the Test button's own answer. Without this the pipeline
+                # reported a rate-limited station as WRONG CREDENTIALS, which is
+                # the one reading that makes an operator go and change a password
+                # that was right all along.
+                result["admin"] = {
+                    "ok": False,
+                    "detail": "station login rate limiter is active — wait 15 minutes "
+                              "(or restart the station) and check again; this does not "
+                              "mean the credentials are wrong",
+                }
             else:
                 r.raise_for_status()
                 result["admin"] = {"ok": True, "detail": "accepted by the station"}

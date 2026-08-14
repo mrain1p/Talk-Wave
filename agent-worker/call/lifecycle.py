@@ -18,7 +18,7 @@ import logging
 import os
 import time
 
-from livekit.agents import AgentSession, JobContext
+from livekit.agents import AgentSession, APITimeoutError, JobContext
 
 import speech_filter
 
@@ -27,6 +27,38 @@ from .hangup import await_sign_off, end_call
 
 log = logging.getLogger("callin.agent")
 
+
+# Which leg of the call an error came from, in the words the panel shows. The
+# raw event renders as its pydantic repr — `type='llm_error' label='...'` — and
+# that string was the operator's first sight of a failed call.
+_LEGS = {"llm_error": "The model", "stt_error": "Speech-to-text",
+         "tts_error": "The voice", "realtime_model_error": "The model"}
+
+
+def _model_gave_up(err) -> bool:
+    """True when the model ran out of time producing its first token.
+
+    Worth telling apart from every other provider failure: the others are
+    something going wrong, and this one is the box being asked for more than it
+    can do. It is also the only one where the fix is a different model.
+    """
+    if getattr(err, "type", "") != "llm_error":
+        return False
+    return isinstance(getattr(err, "error", None), APITimeoutError)
+
+
+def _in_plain_words(err, think=None) -> str:
+    """One line for the call record. Read by an operator, not by a debugger."""
+    if _model_gave_up(err):
+        budget = float(getattr(think, "budget", 0) or 0)
+        return (
+            f"The model did not start answering within {budget:.0f}s, so the turn was "
+            "thrown away and retried. The caller heard silence for that whole time, "
+            "and then the apology line."
+        )
+    inner = getattr(err, "error", None) or err
+    leg = _LEGS.get(getattr(err, "type", ""), "The call")
+    return f"{leg} failed: {type(inner).__name__}: {inner}"[:400]
 
 
 async def cancel(task: asyncio.Task) -> None:
@@ -42,7 +74,7 @@ async def cancel(task: asyncio.Task) -> None:
         pass
 
 
-def attach_error_recovery(session: AgentSession, record=None) -> None:
+def attach_error_recovery(session: AgentSession, record=None, think=None) -> None:
     """When a provider gives up after all its retries (observed: Gemini
     flash-lite 503ing under load), the caller must never get dead air. The DJ
     can't THINK without the LLM, but it can still SPEAK — say() drives the TTS
@@ -54,13 +86,21 @@ def attach_error_recovery(session: AgentSession, record=None) -> None:
     def _on_session_error(ev) -> None:
         err = getattr(ev, "error", None)
         log.warning("session error (source=%s): %s", getattr(ev, "source", "?"), err)
+        slow = _model_gave_up(err)
+        if slow and think is not None:
+            think.gave_up()
         if record:
-            record.problem(f"{type(err).__name__ if err else 'error'}: {err}")
-        if getattr(err, "recoverable", False):
+            record.problem(_in_plain_words(err, think))
+        if getattr(err, "recoverable", False) and not slow:
             # One recoverable error is the SDK's to absorb. A SECOND inside
             # the window means "recoverable" is not recovering — three
             # recoverable Gemini 504s in a row once left a caller in 43s of
             # dead air with no apology, because this returned every time.
+            #
+            # A model that ran out of time is exempt from that grace: the
+            # caller has ALREADY been silent for the whole budget (30s on a
+            # self-hosted box) by the time this fires, so absorbing the first
+            # one quietly is how you get a minute of nothing.
             now = time.time()
             recoverable_at.append(now)
             del recoverable_at[: max(0, len(recoverable_at) - 5)]
@@ -87,6 +127,29 @@ def attach_error_recovery(session: AgentSession, record=None) -> None:
         spawn(_apologise())
 
     session.on("error", _on_session_error)
+
+
+def attach_think_pace(session: AgentSession, think) -> None:
+    """Measure what the caller waits for the model, on every turn.
+
+    The SDK stamps each assistant message with its own `llm_node_ttft`, which
+    is the same number the settings panel benches — so for the first time the
+    record and the panel are measuring the same thing and can be held against
+    each other. (`metrics_collected` carries it too and is deprecated in this
+    SDK; subscribing to it logs a warning on every call.)
+    """
+
+    def _on_item(ev) -> None:
+        item = getattr(ev, "item", None)
+        if getattr(item, "role", None) != "assistant":
+            return
+        try:
+            metrics = getattr(item, "metrics", None) or {}
+            think.note(float(metrics.get("llm_node_ttft") or 0))
+        except Exception:
+            pass  # a measurement must never cost the turn it is measuring
+
+    session.on("conversation_item_added", _on_item)
 
 
 def attach_first_word(session: AgentSession, record=None) -> None:

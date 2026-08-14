@@ -13,6 +13,143 @@ import speech_filter
 from tests.support import _TempStores
 
 
+class TestASlowModelGetsRoomRatherThanFailing(unittest.TestCase):
+    """A tester's calls all died on ollama/qwen2.5:7b (2026-08-13) while every
+    stage in the panel was green or yellow. The SDK's default patience is 10s
+    per attempt, and for a streamed completion that is the ceiling on TIME TO
+    FIRST TOKEN — so a self-hosted model that is merely slow fails every turn.
+    Nothing here is a preference; each number is what a caller can survive."""
+
+    def test_a_self_hosted_provider_may_take_longer_and_retries_less(self):
+        import llm_pace
+        from call.providers import llm_conn_options
+
+        for provider in llm_pace.SELF_HOSTED:
+            opts = llm_conn_options({"llm_provider": provider})
+            self.assertEqual(opts.timeout, 30.0, provider)
+            # Retrying a local model that is still thinking queues the same
+            # generation again; three retries buy nothing and cost the caller
+            # half a minute of silence.
+            self.assertEqual(opts.max_retry, 1, provider)
+
+    def test_a_cloud_provider_keeps_the_sdks_own_defaults(self):
+        from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
+
+        from call.providers import llm_conn_options
+
+        for provider in ("openai", "google", "anthropic", "deepseek", ""):
+            opts = llm_conn_options({"llm_provider": provider})
+            self.assertEqual(opts.timeout, DEFAULT_API_CONNECT_OPTIONS.timeout, provider)
+            self.assertEqual(opts.max_retry, DEFAULT_API_CONNECT_OPTIONS.max_retry, provider)
+
+    def test_the_budget_actually_reaches_the_session(self):
+        # Source, because building an AgentSession needs a room, a worker and
+        # three live providers. The failure this guards is silent in exactly
+        # the way the original was: pass no conn_options and every deployment
+        # quietly gets the cloud default back.
+        import inspect
+
+        from call.session import CallSession
+
+        src = inspect.getsource(CallSession.start)
+        self.assertIn("conn_options=SessionConnectOptions(", src)
+        self.assertIn("llm_conn_options(self.cfg)", src)
+
+
+class TestTheRecordSaysWhenTheCallerWasKeptWaiting(unittest.TestCase):
+    """Slow-but-working had no symptom anywhere: no exception, nothing in the
+    transcript, and an operator left saying calls "felt off". Same reasoning as
+    the TTS pace meter, one leg earlier."""
+
+    def setUp(self):
+        import llm_pace
+
+        self.llm_pace = llm_pace
+        self.meter = llm_pace.ThinkMeter(label="ollama/qwen2.5:7b", budget=30.0)
+
+    def test_a_model_that_keeps_up_says_nothing(self):
+        for _ in range(4):
+            self.meter.note(0.6)
+        self.assertEqual(self.meter.report(), "")
+
+    def test_a_call_with_no_turns_says_nothing(self):
+        # A caller who hung up during the ring must not produce a verdict about
+        # a model that was never asked anything.
+        self.assertEqual(self.meter.report(), "")
+
+    def test_the_pause_before_every_reply_is_named_and_counted(self):
+        self.meter.note(0.4)
+        self.meter.note(3.0)
+        self.meter.note(5.0)
+        said = self.meter.report()
+        self.assertIn("2 of 3", said)
+        self.assertIn("5.0s", said)          # the worst one
+        self.assertIn("ollama/qwen2.5:7b", said)
+
+    def test_a_turn_thrown_away_outranks_a_slow_one(self):
+        # Both happened on the same call: the report has to lead with the one
+        # the caller actually heard, which is the apology.
+        self.meter.note(4.0)
+        self.meter.gave_up()
+        said = self.meter.report()
+        self.assertIn("30s", said)
+        self.assertIn("retried", said)
+
+    def test_the_target_is_one_number_for_every_surface(self):
+        # The module claims one target shared by the meter, the panel's help
+        # and the pipeline verdict. Two of those live in files this test can
+        # read; the third is this constant.
+        from tests.support import REPO
+
+        self.assertEqual(self.llm_pace.DESIRED_FIRST_TOKEN, 1.5)
+        panel = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        # The server sends the real number; this is the fallback the panel uses
+        # if an older worker answers, and it must not disagree.
+        self.assertIn("d.desiredMs || 1500", panel)
+
+
+class TestTheRecordNamesWhichLegFailed(unittest.TestCase):
+    """`LLMError type='llm_error' label='...'` was the operator's first sight of
+    a failed call, and it says nothing about what to do."""
+
+    def _err(self, kind, inner):
+        return types.SimpleNamespace(type=kind, error=inner, recoverable=True)
+
+    def test_a_model_out_of_time_is_told_apart_from_a_model_that_broke(self):
+        from livekit.agents import APITimeoutError
+
+        from call import lifecycle
+
+        self.assertTrue(lifecycle._model_gave_up(self._err("llm_error", APITimeoutError())))
+        self.assertFalse(lifecycle._model_gave_up(self._err("llm_error", ValueError("nope"))))
+        # A voice that timed out is not the model running out of time, and the
+        # fix for it is a different one.
+        self.assertFalse(lifecycle._model_gave_up(self._err("tts_error", APITimeoutError())))
+
+    def test_the_timeout_line_says_the_budget_and_what_the_caller_heard(self):
+        import llm_pace
+        from livekit.agents import APITimeoutError
+
+        from call import lifecycle
+
+        said = lifecycle._in_plain_words(
+            self._err("llm_error", APITimeoutError()),
+            llm_pace.ThinkMeter(budget=30.0),
+        )
+        self.assertIn("30s", said)
+        self.assertIn("apology", said)
+
+    def test_every_other_failure_still_names_its_leg(self):
+        from call import lifecycle
+
+        self.assertTrue(
+            lifecycle._in_plain_words(self._err("tts_error", ValueError("no voice")))
+            .startswith("The voice failed:"))
+        self.assertTrue(
+            lifecycle._in_plain_words(self._err("stt_error", ValueError("deaf")))
+            .startswith("Speech-to-text failed:"))
+
+
 class TestCallStructure(unittest.TestCase):
     """The call is an object with phases, not a 334-line function. These pin
     the seams so a future edit can't quietly put the call back in one place."""
@@ -1565,6 +1702,111 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
             self.assertIn("proven tool routing", rec.problems[0])
 
         asyncio.run(go())
+
+    def test_a_finished_claim_with_no_tool_call_is_caught_too(self):
+        # The call this was found on (record ...084215, 2026-08-14): the caller
+        # asked to change the DJ, the model pinned THE OVERLOOK, the caller said
+        # "to duke", and the DJ answered this line with no tool call at all.
+        # Cliff stayed on air and the caller was told Duke was coming. The
+        # guard was watching for "let me" and never looked at the past tense.
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said(
+                "I've got that queued up for you. Duke's show, The Granite, is "
+                "on its way, and the station will be handing over the controls "
+                "to him as soon as this track clears the deck."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+            self.assertIn("call it NOW", replies[0]["user_input"])
+            # A claim is not a promise: the caller has already been told it is
+            # done, so the repair is to make it true, and to own it if it is
+            # not. Both halves are load-bearing.
+            self.assertIn("it is NOT done", replies[0]["user_input"])
+            self.assertIn("did not go through", replies[0]["user_input"])
+
+        asyncio.run(go())
+
+    def test_a_claim_that_really_did_run_a_tool_is_left_alone(self):
+        # The same sentence is CORRECT behaviour when the tool ran, and it is
+        # the commonest correct sentence on the line. Nudging it would cost a
+        # turn on every successful action.
+        async def go():
+            handlers, replies = self._wire()
+            handlers["user_input_transcribed"](self._heard())
+            handlers["function_tools_executed"](types.SimpleNamespace())
+            handlers["conversation_item_added"](self._said(
+                "Got it. The switch is made — THE OVERLOOK is coming up once "
+                "this record finishes."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_the_record_distinguishes_a_claim_from_a_promise(self):
+        # A promise with no receipt is a dead line; a claim with no receipt is
+        # something the caller cannot catch. The operator reading the record
+        # should be able to tell which one happened.
+        class _Record:
+            def __init__(self):
+                self.problems = []
+
+            def problem(self, what):
+                self.problems.append(what)
+
+        async def go():
+            rec = _Record()
+            handlers, _ = self._wire(rec)
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("I've got that queued up — it's on its way."))
+            await asyncio.sleep(0.05)
+            self.assertTrue(rec.problems)
+            self.assertIn("ALREADY been done", rec.problems[0])
+
+        asyncio.run(go())
+
+
+class TestTheWordsThatOweAReceipt(unittest.TestCase):
+    """Which sentences the guard reads as owing a tool call, and which it lets by.
+
+    Measured against every DJ line in the live archive on 2026-08-14 — 155 of them, across
+    80 call and chat records. The finished-tense pattern matches three; two of those had
+    genuinely run a tool (so the guard never fires on them) and the third is the Duke call.
+    Nothing else in the corpus fires, which is the whole reason the pattern is two-part:
+    a completion marker AND a station action, in one sentence.
+    """
+
+    def test_a_finished_claim_reads_as_a_claim(self):
+        from promises import unbacked
+
+        for said in ("I've got that queued up for you.",
+                     "Got it. The switch is made — THE OVERLOOK is coming up.",
+                     "Right, I've got that set up for you, it's lined up next.",
+                     "Consider it done — that's added to the queue."):
+            self.assertEqual("claim", unbacked(said), said)
+
+    def test_a_line_that_both_promises_and_claims_is_treated_as_a_promise(self):
+        # The softer nudge still gets the tool called, and telling a model it
+        # claimed something it only offered to do invites an apology the caller
+        # does not need.
+        from promises import unbacked
+
+        self.assertEqual("promise", unbacked("Got it, I'll queue that up now."))
+
+    def test_ordinary_talk_about_the_schedule_owes_nothing(self):
+        # These are the sentences that make a two-part pattern necessary. Each
+        # carries half of it, and a one-part match would nudge on all of them —
+        # spending a model turn, and inviting a tool call nobody asked for, in
+        # the middle of ordinary conversation.
+        from promises import unbacked
+
+        for chatter in ("Got it — that's a fine choice for a wet Tuesday.",
+                        "Coming up next is a bit of Billie Holiday.",
+                        "That one's been on the air all week.",
+                        "The Chieftains were on top form that year.",
+                        "Done and dusted, that era of radio."):
+            self.assertEqual("", unbacked(chatter), chatter)
 
 
 class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):

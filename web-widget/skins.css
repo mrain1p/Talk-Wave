@@ -1,0 +1,357 @@
+/* Skins — EXPERIMENTAL. One block per skin, and nothing but custom properties.
+
+   The default card is not in here. It is style.css's `:root`, and every token below
+   falls back to it, so a skin is only its DIFFERENCES from the shipped card. That is
+   deliberate: the default cannot be broken by a skin, because no skin describes it.
+
+   THE ONE RULE, and a test enforces it (TestASkinCannotReachPastItsTokens):
+
+       a skin may declare custom properties and nothing else.
+
+   No selectors of its own, no widths, no paddings, no `display`. The whole point is
+   that skins cost testing ONCE, on the token surface, rather than sixteen times on the
+   card — the card's fixed 620×544 (embed 348×320), its one control height and the
+   height it reports to embed.js cannot be reached from this file at all. A skin that
+   wants a heavy bezel draws it inside the box it was given, with a border and a
+   gradient, and the layout never hears about it.
+
+   Colour: a skin brings its own palette, and most of these only make sense in one —
+   Terminal is not a light look and Paper is not a dark one — so the light/dark toggle
+   does nothing while a skin is on. That is said in the setting's own help text rather
+   than left for a caller to wonder about. The STATION's palette still wins over
+   everything here: `swtv:theme` sets these same properties inline on :root, which
+   outranks any rule in this file.
+
+   Art: `--skin-art` is a picture in the transcript box while there is no conversation
+   in it, and it disappears the moment a call starts (style.css, `.skinart`). Anything
+   that moves uses one of the three keyframes style.css defines — skinspin, skinblink and
+   skinpulse — because a skin cannot declare a @keyframes of its own here either. */
+
+/* --- broadcast and telephony ------------------------------------------------------
+   The station's own furniture. These read as equipment rather than as costume, which
+   is why they are first: the widget IS a piece of studio gear. */
+
+/* Switchboard — the operator's plate. Lamps for lines, jack labels, a warm plate. */
+:root[data-skin="switchboard"] {
+  --pine: #14100c; --granite: #1c1712; --granite-hi: #241d16;
+  --alpenglow: #f0e6d4; --sage: #a8977c; --sage-dim: #7b6c55;
+  --coral: #e8913a; --amber: #d9c15a;
+  --hairline: #302619; --edge: #3d3020;
+  --ok: #6fae5a; --cool: #6a8f92;
+  --shadow: 0 2px 0 rgba(0,0,0,.5);
+  --skin-radius: 4px; --skin-radius-ctl: 2px; --skin-border: 2px;
+  --skin-card-bg: linear-gradient(180deg, rgba(255,224,170,.06), transparent 40%);
+  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.35), transparent);
+  --skin-glow: 0 0 10px rgba(232,145,58,.45);
+  /* The lamp row: five line lamps, lit and unlit, the way the jackfield reads. */
+  --skin-art:
+    radial-gradient(circle 5px at 14% 50%, rgba(232,145,58,.85) 60%, transparent 62%),
+    radial-gradient(circle 5px at 32% 50%, rgba(120,100,70,.5) 60%, transparent 62%),
+    radial-gradient(circle 5px at 50% 50%, rgba(232,145,58,.85) 60%, transparent 62%),
+    radial-gradient(circle 5px at 68% 50%, rgba(120,100,70,.5) 60%, transparent 62%),
+    radial-gradient(circle 5px at 86% 50%, rgba(120,100,70,.5) 60%, transparent 62%);
+  --skin-art-size: 180px 14px;
+}
+
+/* Rack unit — 1U of brushed steel with the screws still in it. */
+:root[data-skin="rack"] {
+  --pine: #0e0f10; --granite: #1a1c1e; --granite-hi: #131517;
+  --alpenglow: #e8ecef; --sage: #98a1a8; --sage-dim: #6b747b;
+  --coral: #4fb0c9; --amber: #d2a63f;
+  --hairline: #2a2e32; --edge: #3a4046;
+  --ok: #58b87a; --cool: #4fb0c9;
+  --shadow: 0 1px 0 rgba(255,255,255,.06), 0 3px 8px rgba(0,0,0,.5);
+  --skin-radius: 3px; --skin-radius-ctl: 2px; --skin-border: 1px;
+  /* Brushed metal is a very fine vertical grain, not a gradient. */
+  --skin-card-bg:
+    repeating-linear-gradient(90deg,
+      rgba(255,255,255,.035) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgba(255,255,255,.07), transparent 55%);
+  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.4), transparent 60%);
+  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.18));
+  /* Vent slots, which is what most of a rack face actually is. */
+  --skin-art: repeating-linear-gradient(180deg,
+    rgba(255,255,255,.07) 0 3px, transparent 3px 8px);
+  --skin-art-size: 150px 44px;
+}
+
+/* Console strip — one channel of the desk: fader, ladder, silkscreen. */
+:root[data-skin="console"] {
+  --pine: #101215; --granite: #171a1e; --granite-hi: #1e2228;
+  --alpenglow: #eef1f4; --sage: #93a0ad; --sage-dim: #66707c;
+  --coral: #e04f6a; --amber: #efc75e;
+  --hairline: #262b31; --edge: #333a42;
+  --ok: #5fc98a; --cool: #56a8c4;
+  --shadow: 0 2px 6px rgba(0,0,0,.45);
+  --skin-radius: 2px; --skin-radius-ctl: 1px; --skin-border: 1px;
+  --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.05), transparent 30%);
+  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.15));
+  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.2));
+  /* A fader in its slot, at unity. */
+  --skin-art:
+    linear-gradient(90deg, transparent 48%, rgba(255,255,255,.12) 48% 52%, transparent 52%),
+    linear-gradient(180deg, transparent 44%, rgba(239,199,94,.7) 44% 50%, transparent 50%);
+  --skin-art-size: 26px 120px;
+}
+
+/* Shortwave — wood, cream dial, and the needle sitting on a band. */
+:root[data-skin="shortwave"] {
+  --pine: #efe3c8; --granite: #f7eed9; --granite-hi: #e6d7b6;
+  --alpenglow: #2b2016; --sage: #6b5a42; --sage-dim: #8d7c62;
+  --coral: #a8442a; --amber: #8a6414;
+  --hairline: #cbb994; --edge: #a98f63;
+  --ok: #3f7a45; --cool: #3d6a72;
+  --shadow: 0 2px 5px rgba(80,60,30,.25);
+  --skin-radius: 10px; --skin-radius-ctl: 3px; --skin-border: 2px;
+  --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.5), transparent 45%);
+  --skin-well-bg: linear-gradient(180deg, rgba(255,255,255,.55), transparent);
+  /* The dial: a scale of ticks with the needle parked on one. */
+  --skin-art:
+    linear-gradient(90deg, transparent 49.4%, rgba(168,68,42,.9) 49.4% 50.6%, transparent 50.6%),
+    repeating-linear-gradient(90deg,
+      rgba(43,32,22,.45) 0 1px, transparent 1px 12px);
+  --skin-art-size: 190px 30px;
+}
+
+/* Tape deck — the two hubs, and they turn. The operator's own example: the platter is
+   there between calls and gone the moment somebody is on the line. */
+:root[data-skin="tape"] {
+  --pine: #17161a; --granite: #201e24; --granite-hi: #2a272f;
+  --alpenglow: #ece7dd; --sage: #a49d92; --sage-dim: #77716a;
+  --coral: #d9704a; --amber: #cfa94e;
+  --hairline: #322e38; --edge: #423d4a;
+  --ok: #5aa878; --cool: #5b8a99;
+  --shadow: 0 3px 10px rgba(0,0,0,.5);
+  --skin-radius: 8px; --skin-radius-ctl: 2px; --skin-border: 1px;
+  --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.05), transparent 35%);
+  --skin-well-bg: radial-gradient(120% 100% at 50% 0%, rgba(255,255,255,.05), transparent);
+  /* One platter, centred, with a label and a single radial mark — the mark is
+     what makes the rotation visible at all. Two hubs side by side would orbit
+     each other, because .skinart is ONE box and this turns the whole of it. */
+  --skin-art:
+    linear-gradient(90deg, transparent 49%, rgba(236,231,221,.35) 49% 51%, transparent 51%),
+    radial-gradient(circle 5px at 50% 50%, rgba(217,112,74,.75) 70%, transparent 72%),
+    radial-gradient(circle 15px at 50% 50%, rgba(217,112,74,.18) 96%, transparent 97%),
+    radial-gradient(circle 33px at 50% 50%, transparent 95%, rgba(236,231,221,.28) 96%);
+  --skin-art-size: 74px 74px;
+  --skin-art-anim: skinspin 9s linear infinite;
+}
+
+/* --- screen and terminal ----------------------------------------------------------
+   One family, four palettes. If the token surface can carry these, it can carry
+   anything anyone asks for next. */
+
+/* Terminal — phosphor green, scanlines, a cursor waiting for you. */
+:root[data-skin="terminal"] {
+  --pine: #020705; --granite: #05100b; --granite-hi: #071a10;
+  --alpenglow: #7dffb0; --sage: #3fbf78; --sage-dim: #2a8a55;
+  --coral: #4dff9b; --amber: #9dff6a;
+  --hairline: #0d3d24; --edge: #135633;
+  --ok: #4dff9b; --cool: #35c9a0;
+  --shadow: none;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --font-body: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 1px;
+  --skin-texture: repeating-linear-gradient(180deg,
+    rgba(0,0,0,.32) 0 1px, transparent 1px 3px);
+  --skin-glow: 0 0 9px rgba(77,255,155,.55);
+  --skin-art: linear-gradient(90deg, rgba(77,255,155,.8) 0 100%);
+  --skin-art-size: 11px 20px;
+  --skin-art-anim: skinblink 1.1s steps(1, end) infinite;
+}
+
+/* Amber CRT — the same tube, the other phosphor. */
+:root[data-skin="amber"] {
+  --pine: #0a0500; --granite: #140c02; --granite-hi: #1d1204;
+  --alpenglow: #ffc45e; --sage: #c98f2c; --sage-dim: #8f6519;
+  --coral: #ffb02e; --amber: #ffd77a;
+  --hairline: #3d2708; --edge: #573809;
+  --ok: #ffd77a; --cool: #d99a3c;
+  --shadow: none;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --font-body: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 1px;
+  --skin-texture: repeating-linear-gradient(180deg,
+    rgba(0,0,0,.34) 0 1px, transparent 1px 3px);
+  --skin-glow: 0 0 10px rgba(255,176,46,.55);
+  --skin-art: linear-gradient(90deg, rgba(255,176,46,.85) 0 100%);
+  --skin-art-size: 11px 20px;
+  --skin-art-anim: skinblink 1.1s steps(1, end) infinite;
+}
+
+/* Datastream — the same tube with the rain coming down it. */
+:root[data-skin="datastream"] {
+  --pine: #000402; --granite: #020a05; --granite-hi: #04140a;
+  --alpenglow: #8fff9c; --sage: #34c04a; --sage-dim: #1f8030;
+  --coral: #57ff6a; --amber: #b6ff57;
+  --hairline: #0a3312; --edge: #10501c;
+  --ok: #57ff6a; --cool: #2fc98d;
+  --shadow: none;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-body: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 1px;
+  --skin-texture: repeating-linear-gradient(90deg,
+    rgba(87,255,106,.05) 0 1px, transparent 1px 4px);
+  --skin-glow: 0 0 8px rgba(87,255,106,.5);
+  /* Columns falling. skinscan slides the background, so the rain moves without
+     anything on the card moving with it. */
+  --skin-art: repeating-linear-gradient(180deg,
+    rgba(87,255,106,.55) 0 6px, transparent 6px 22px);
+  --skin-art-size: 120px 220px;
+  --skin-art-anim: skinpulse 2.4s ease-in-out infinite;
+}
+
+/* Vault — green mono behind a heavy moulded frame and a curved tube. */
+:root[data-skin="vault"] {
+  --pine: #04140b; --granite: #071f10; --granite-hi: #0a2a16;
+  --alpenglow: #6fffa8; --sage: #35c072; --sage-dim: #218a4d;
+  --coral: #4dffa0; --amber: #8dff7a;
+  --hairline: #0d4a29; --edge: #1c6b3c;
+  --ok: #4dffa0; --cool: #2fbf9a;
+  --shadow: inset 0 0 40px rgba(0,0,0,.75);
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --skin-radius: 14px; --skin-radius-ctl: 3px; --skin-border: 6px;
+  --skin-texture:
+    radial-gradient(120% 120% at 50% 50%, transparent 55%, rgba(0,0,0,.65)),
+    repeating-linear-gradient(180deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px);
+  --skin-glow: 0 0 12px rgba(77,255,160,.5);
+  --skin-art:
+    radial-gradient(circle 34px at 50% 50%, transparent 96%, rgba(77,255,160,.3) 97%),
+    radial-gradient(circle 22px at 50% 50%, transparent 95%, rgba(77,255,160,.22) 96%),
+    radial-gradient(circle 10px at 50% 50%, rgba(77,255,160,.25) 60%, transparent 62%);
+  --skin-art-size: 90px 90px;
+  --skin-art-pos: center;   /* frames the board's text rather than sitting under it */
+}
+
+/* Arcade — 8-bit. Hard pixels, no blur, primaries that never existed on a CRT. */
+:root[data-skin="arcade"] {
+  --pine: #0b0320; --granite: #140831; --granite-hi: #1d0f45;
+  --alpenglow: #f4f4ff; --sage: #9a8ce0; --sage-dim: #6d5fb0;
+  --coral: #ff3b6b; --amber: #ffd23f;
+  --hairline: #2a1a5e; --edge: #3f2a86;
+  --ok: #3fe06b; --cool: #3fc9e0;
+  --shadow: 0 4px 0 rgba(0,0,0,.6);
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 3px;
+  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.1), transparent);
+  --skin-glow: 0 0 0 2px rgba(255,59,107,.35);
+  /* A pixel creature, drawn the only way a background can: hard-stop gradients. */
+  --skin-art:
+    linear-gradient(90deg, transparent 20%, rgba(63,224,107,.9) 20% 80%, transparent 80%),
+    linear-gradient(180deg, transparent 30%, rgba(63,224,107,.9) 30% 70%, transparent 70%);
+  --skin-art-size: 46px 46px;
+}
+
+/* --- screens that are not tubes ---------------------------------------------------- */
+
+/* HUD — angular, cyan, and busy with instrument furniture. */
+:root[data-skin="hud"] {
+  --pine: #030a0e; --granite: #06131a; --granite-hi: #081d27;
+  --alpenglow: #d7f6ff; --sage: #6fb9d1; --sage-dim: #46829c;
+  --coral: #35e0ff; --amber: #ffd166;
+  --hairline: #0e3242; --edge: #17506a;
+  --ok: #4dffb8; --cool: #35e0ff;
+  --shadow: none;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 1px;
+  --skin-card-bg: linear-gradient(180deg, rgba(53,224,255,.06), transparent 30%);
+  --skin-glow: 0 0 10px rgba(53,224,255,.5);
+  --skin-texture: repeating-linear-gradient(180deg,
+    rgba(53,224,255,.04) 0 2px, transparent 2px 6px);
+  /* A reticle: two rings and a cross. */
+  --skin-art:
+    radial-gradient(circle 30px at 50% 50%, transparent 96%, rgba(53,224,255,.45) 97%),
+    radial-gradient(circle 16px at 50% 50%, transparent 94%, rgba(53,224,255,.3) 95%),
+    linear-gradient(90deg, transparent 49%, rgba(53,224,255,.35) 49% 51%, transparent 51%),
+    linear-gradient(180deg, transparent 49%, rgba(53,224,255,.35) 49% 51%, transparent 51%);
+  --skin-art-size: 76px 76px;
+  --skin-art-pos: center;   /* frames the board's text rather than sitting under it */
+}
+
+/* Neon — after dark, wet pavement, everything glowing. */
+:root[data-skin="neon"] {
+  --pine: #0a0417; --granite: #120826; --granite-hi: #1a0d36;
+  --alpenglow: #f6e9ff; --sage: #b98ce6; --sage-dim: #8560ac;
+  --coral: #ff3ea5; --amber: #47e8ff;
+  --hairline: #2a1450; --edge: #3d1d72;
+  --ok: #4dffc3; --cool: #47e8ff;
+  --shadow: 0 0 24px rgba(255,62,165,.25);
+  --skin-radius: 12px; --skin-radius-ctl: 999px; --skin-border: 1px;
+  --skin-card-bg: linear-gradient(180deg, rgba(255,62,165,.09), transparent 45%);
+  --skin-glow: 0 0 14px rgba(255,62,165,.65);
+  --skin-art: radial-gradient(circle 30px at 50% 50%,
+    transparent 92%, rgba(255,62,165,.5) 93%, transparent 97%);
+  --skin-art-size: 80px 80px;
+  --skin-art-pos: center;   /* frames the board's text rather than sitting under it */
+  --skin-art-anim: skinpulse 3.2s ease-in-out infinite;
+}
+
+/* --- paper, ink and old windows ---------------------------------------------------- */
+
+/* Paper — a note left on the desk. Sentence case: the mono shouting is the one thing
+   that stops this reading as paper at all. */
+:root[data-skin="paper"] {
+  --pine: #efe9dc; --granite: #fbf7ee; --granite-hi: #f2ecdd;
+  --alpenglow: #211d17; --sage: #5d574c; --sage-dim: #857e70;
+  --coral: #9c3b23; --amber: #7a5a12;
+  --hairline: #ded5c2; --edge: #c9bfa8;
+  --ok: #3d6b3f; --cool: #3a5f66;
+  --shadow: 0 1px 3px rgba(60,50,30,.16);
+  --font-mono: ui-monospace, "Courier New", Courier, monospace;
+  --font-body: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --skin-label-case: none;
+  --skin-radius: 2px; --skin-radius-ctl: 2px; --skin-border: 1px;
+  --skin-well-bg: repeating-linear-gradient(180deg,
+    transparent 0 21px, rgba(33,29,23,.09) 21px 22px);
+  /* The ring somebody's coffee left on it. */
+  --skin-art: radial-gradient(circle 26px at 50% 50%,
+    transparent 88%, rgba(120,80,40,.22) 89%, transparent 95%);
+  --skin-art-size: 74px 74px;
+}
+
+/* E-ink — greyscale, no glow, nothing moving. The legible one. */
+:root[data-skin="eink"] {
+  --pine: #e8e8e6; --granite: #f7f7f5; --granite-hi: #e2e2df;
+  --alpenglow: #14140f; --sage: #4a4a45; --sage-dim: #6e6e68;
+  --coral: #14140f; --amber: #3a3a34;
+  --hairline: #c4c4bf; --edge: #9a9a94;
+  --ok: #2f2f2a; --cool: #4a4a45;
+  --shadow: none;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 2px;
+  --skin-label-case: none;
+  /* Deliberately no art and no glow: the whole idea is a page that does nothing. */
+}
+
+/* Classic Mac — 1-bit, dithered, striped. */
+:root[data-skin="mac"] {
+  --pine: #b8b8b8; --granite: #ffffff; --granite-hi: #e8e8e8;
+  --alpenglow: #000000; --sage: #333333; --sage-dim: #5c5c5c;
+  --coral: #000000; --amber: #333333;
+  --hairline: #000000; --edge: #000000;
+  --ok: #000000; --cool: #333333;
+  --shadow: 2px 2px 0 rgba(0,0,0,1);
+  --font-body: "Charcoal", "Geneva", Verdana, sans-serif;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 2px;
+  --skin-label-case: none;
+  --skin-card-bg: repeating-linear-gradient(180deg,
+    rgba(0,0,0,.12) 0 1px, transparent 1px 2px);
+  /* The dither pattern, which on a 1-bit screen is what grey WAS. */
+  --skin-art: repeating-linear-gradient(45deg,
+    rgba(0,0,0,.55) 0 2px, transparent 2px 4px);
+  --skin-art-size: 72px 40px;
+}
+
+/* Windows 95 — outset bevels, system grey, the title bar's blue. */
+:root[data-skin="win95"] {
+  --pine: #008080; --granite: #c0c0c0; --granite-hi: #ffffff;
+  --alpenglow: #000000; --sage: #404040; --sage-dim: #808080;
+  --coral: #000080; --amber: #7f0000;
+  --hairline: #808080; --edge: #dfdfdf;
+  --ok: #008000; --cool: #000080;
+  --shadow: inset -1px -1px 0 #0a0a0a, inset 1px 1px 0 #ffffff,
+            inset -2px -2px 0 #808080, inset 2px 2px 0 #dfdfdf;
+  --font-body: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
+  --skin-label-case: none;
+  --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 2px;
+  --skin-ctl-bg: linear-gradient(180deg, #ffffff 0 2px, #c0c0c0 2px);
+  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.12) 0 2px, transparent 2px);
+}
