@@ -20,8 +20,8 @@
 > | — | Square everything | Controls stay square. Only the card and the ask popup are rounded |
 > | 2 | Palette tuned to the host's own values | Light and dark are **neutral**. Station colour is a third theme the host posts in over `setCallinTheme()`, layered on the neutral base |
 > | 4.4 | Live states are coral; green is not in the palette | Green means the line is open, amber the DJ is thinking, coral the DJ is talking. Collapsing open and talking into one colour stopped the chip reporting the transition a caller waits on |
-> | — | `body.compact` is a smaller second design | There is no second design. The embed **is** the call page, minus the settings gear and defaulting to the ticker |
-> | 4.3 | Avatar: square, 44px | Round, 60px, and the shape is the operator's answer (`avatar_style`). The square rule is about controls and chips; the one photograph on the card is a person, and 44px is a favicon of a face |
+> | — | `body.compact` is a smaller second design | There is no second design. The embed **is** the call page, minus the settings gear and defaulting to the ticker — **with one measured exception since the player redesign**: at 348px the state chips move into the eyebrow, because beside a 34px avatar they starve the show line (measured: it drops to 89px and truncates). The eyebrow had a spare 22px there, the host page having already written its own heading above the frame. That is the design meeting a width, not a second design; it is done by position, not by reparenting, so both surfaces keep one element in one place in the DOM |
+> | 4.3 | Avatar: square, 44px | Round, 60px, and the shape is the operator's answer (`avatar_style`). The square rule is about controls and chips; the one photograph on the card is a person, and 44px is a favicon of a face. **The player redesign asked for square again and was overruled again, deliberately**: shape is a control an operator ships, and hardcoding it would leave a dead select in the panel. Its *sizes* were taken — 60 player, 34 embed, 140 PWA idle, 76 PWA in-call — and they apply to whichever shape is chosen |
 > | 4.5 | The connection line is its own line | It is not a line any more, it is the **line area** — the box at the foot of the card that carries speech while a call runs and the card's own messages the rest of the time. A message in the header while the words are at the bottom is two places to watch |
 > | 4.6 | A 3px trough and one fill | A 16-segment spectrum. A horizontal bar that grows is the shape of a download; what the meter has to say is "there is a voice here". The cost that got the spectrum removed the first time is paid by writing a segment only when its height actually changed |
 > | 5 | The transcript is the caption surface | Still true, and it is now **three lines**, not fourteen. During a call the card's subject is the last thing that was said; reading back the rest is a click on the drawer, which is the one thing allowed to change that height |
@@ -357,10 +357,24 @@ frame must not resize *per line of speech*.
 
 ## 7. Do not break these
 
-1. **Never set a fixed or maximum height on the widget root or the frame.** The host sizes
-   the iframe with `min-height: 100%`, which fills the column when the widget is short and
-   gets out of the way when it needs more. Capping it makes the in-call view scroll inside
-   its own frame.
+1. ~~**Never set a fixed or maximum height on the widget root or the frame.**~~ **Reversed by
+   the player redesign.** The card is now a fixed **620×470** (embed **348×320**, PWA the
+   viewport), and the line box is the only elastic band.
+
+   This rule existed so the frame would not jump mid-call. It bought that with an elastic card
+   and a reserved transcript, and **three separate heights had to agree** to keep the promise —
+   `--lines-h`, `.rig`'s `min-height`, and `.linebox.open`. They drifted, as three numbers
+   meaning one thing do. A fixed card with one scrolling band keeps the same promise by
+   construction: measured across ten transcript lines arriving one at a time, a nine-line
+   read-back, and idle/call/chat, the card reports one size.
+
+   The rule's stated fear — *"capping it makes the in-call view scroll inside its own frame"* —
+   is now the intent, confined to `#lineBox`. Nothing else on the card scrolls; that is one of
+   the acceptance checks.
+
+   **§7.2 still holds and is not optional.** The widget still reports its height to `embed.js`
+   on every state change. Reserving made that report *stable*; fixing makes it stable and
+   cheap, because it only changes when the MODE does.
 2. **Keep reporting height to `embed.js` on every state change.** Reserving the transcript
    makes that report *stable*; it doesn't make it unnecessary.
 3. **Station theming must repaint without reloading the frame.** A reload drops an active
