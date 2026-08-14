@@ -666,11 +666,24 @@
      (operator-reported from an embed). The [hidden]-aware guard is still what
      stops a hidden door from stealing the row. They never wrap to a second
      row. */
-  .actionrow #callBtn:not(.ringing):not(.answering):not(.live),
+  /* THE PROPORTIONS. Three equal thirds made the two alternates as loud as
+     the thing the card is for, and on a phone it made all three too small to
+     read — the operator's word: "the voicemail and text buttons are too
+     small, the main action should really be 2/3 of the row".
+     So: the primary takes two thirds and the alternates split the rest…
+     …UNLESS all three carry a word as well as an icon, in which case there
+     is no room to be generous and equal thirds is the honest answer. That is
+     the `.hasword` case below, set by setBtn. */
+  .actionrow #callBtn:not(.ringing):not(.answering):not(.live) {
+    flex: 2 1 0; min-width: 0;
+  }
   .actionrow #chatBtn:not([hidden]),
   .actionrow #vmBtn:not([hidden]) {
-    flex: 1 1 auto; min-width: 0;
+    flex: 1 1 0; min-width: 0;
   }
+  .actionrow.allworded #callBtn:not(.ringing):not(.answering):not(.live),
+  .actionrow.allworded #chatBtn:not([hidden]),
+  .actionrow.allworded #vmBtn:not([hidden]) { flex: 1 1 0; }
   /* Icon-only: natural width, no growing — two bare icons must not eat the
      space a worded door needs. */
   .actionrow #callBtn.icononly,
@@ -798,6 +811,12 @@
     display: flex; align-items: center; gap: var(--band-gap);
     padding: 9px 0 0; flex-wrap: nowrap;
   }
+  /* The volume block gives room before the waveforms do. It was sized by its
+     own content — label, rail, percentage — and at embed widths that pushed
+     the DJ's waveform off the card entirely (operator: "the volume bar is too
+     large causing the waveform to its right to go out of frame"). */
+  .meters .vol { flex: 0 1 auto; min-width: 0; }
+  .meters .vol input[type=range] { min-width: 40px; }
   /* Two WAVEFORMS on one band — You on the left, the DJ on the right, the
      volume beside them. 0.10.131 collapsed both into a single centre-out bar
      and the operator put the waveform back: the product is called Talk Wave,
@@ -1234,7 +1253,12 @@
     text-transform: uppercase; color: var(--sage-dim);
     white-space: nowrap; flex: 0 0 auto;
   }
-  @media (max-width: 430px) { .rate .rlabel { display: none; } }
+  /* The label stays. It was hidden under 430px, so on a phone the strip was
+     two bare thumbs with nothing saying what they were for (operator: "I
+     don't see the how was the call text just the up down arrows"). Three
+     words fit; what did not fit was the label at its old size beside two
+     44px buttons, and both of those have since come down. */
+  @media (max-width: 430px) { .rate .rlabel { font-size: 10px; } }
   .rate .rbtns { display: inline-flex; gap: 6px; }
   .rate .rbtns[hidden] { display: none; }
   .card .rate button {
@@ -1251,6 +1275,82 @@
   .linebox:has(.rate:not([hidden])) .captions { padding-bottom: 30px; }
   .linebox:has(.callended:not([hidden])) #status,
   .linebox:has(.rate:not([hidden])) #status { bottom: 39px; }
+
+  /* THE IDLE BOARD. A rule, the state, a rule, then the doors that are
+     actually open. The box is two hundred pixels tall between calls and used
+     to hold one grey sentence; this uses it, in the card's own mono voice,
+     and it is drawn from the same /live flags as the buttons so it can never
+     advertise a way in the card does not offer. */
+  .idleboard {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 7px; height: 100%; text-align: center;
+    padding: 4px 0;
+  }
+  .idleboard[hidden] { display: none; }
+
+  /* The transcript drawer's way out. Right-aligned, hairline, quiet — it is
+     an exit, not an action. */
+  .callended .dclose {
+    margin-left: 8px; padding: 0 6px; border: 1px solid var(--hairline);
+    color: var(--sage-dim); font: 400 14px/1.35 var(--font-mono);
+  }
+  .callended .dclose:hover { color: var(--alpenglow); border-color: var(--edge); }
+  .idleboard .bdrule {
+    display: block; width: 74%; max-width: 260px; height: 1px;
+    background: var(--hairline);
+  }
+  .idleboard .bdhead {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    letter-spacing: .28em; text-transform: uppercase; color: var(--ok);
+  }
+  .idleboard .bdhead.shut { color: var(--sage-dim); }
+  .idleboard .bdways {
+    list-style: none; margin: 2px 0 0; padding: 0;
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  }
+  .idleboard .bdways li {
+    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--sage);
+  }
+  /* A door that exists but cannot be used right now reads as struck through
+     rather than missing — "voicemail, but nobody is on air" is information. */
+  .idleboard .bdways li.off {
+    color: var(--sage-dim); text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  .idleboard .bdwho {
+    font-family: var(--font-body); font-size: 12px; color: var(--sage-dim);
+    margin-top: 2px;
+  }
+
+  /* The photograph, opened. It is the one image on the card and it is small
+     by necessity; a tap gives it the room the card cannot. Inside the card
+     rather than over the page, because in an embed the page is not ours. */
+  .portraitpop {
+    position: absolute; inset: 0; z-index: 40;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; padding: 18px;
+    background: color-mix(in srgb, var(--pine) 92%, transparent);
+    border-radius: inherit;
+  }
+  .portraitpop[hidden] { display: none; }
+  .portraitpop img {
+    max-width: min(78%, 320px); max-height: 68%; object-fit: contain;
+    border: 1px solid var(--hairline); background: var(--granite-hi);
+  }
+  .portraitpop .ppname {
+    font-family: var(--font-body); font-size: 15px; font-weight: 600;
+    color: var(--alpenglow);
+  }
+  .portraitpop .ppclose {
+    position: absolute; top: 8px; right: 8px;
+    width: 30px; height: 30px; padding: 0; border-radius: 0;
+    background: transparent; border: 1px solid var(--hairline);
+    color: var(--sage); font: 400 17px/1 var(--font-mono);
+  }
+  .portraitpop .ppclose:hover { color: var(--alpenglow); border-color: var(--edge); }
+  /* The photograph says it can be opened. */
+  .avatar { cursor: zoom-in; }
 
   /* --- captions --- */
   /* Captions: speaker in a narrow left column so the transcript reads as a
@@ -1405,14 +1505,23 @@
     align-items: start;
   }
   .cap.sys .ico { font-size: 12.5px; line-height: 1.2; text-align: center; }
+  /* ONE LINE, wrapping. The name and the detail were two blocks at two sizes,
+     which spent three lines and a lot of card on "SHOW TAKEOVER SET" over
+     "THE OVERLOOK · After Dark for 60 min". They are one sentence — what
+     happened, and to what — so they run on, at one size, and the COLOUR
+     carries the difference (operator's ask). A receipt should be the most
+     compact thing in the transcript, not the tallest. */
   .cap.sys .what {
-    display: block; color: var(--coral); font-weight: 700;
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    display: inline; color: var(--coral); font-weight: 700;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
     text-transform: uppercase;
   }
   .cap.sys .detail {
-    display: block; color: var(--sage); font-size: 12.5px; margin-top: 3px;
+    display: inline; color: var(--sage); font-weight: 400;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
   }
+  /* The gap between them, without a space that a copy-paste would keep. */
+  .cap.sys .detail:not(:empty)::before { content: '  '; white-space: pre; }
   /* A schedule the DJ laid out as a Markdown table on the text line, rendered
      as a real table inside a card — the same receipt look as a tool result, so
      a roster reads at a glance instead of as a run-on sentence. It scrolls
@@ -3084,14 +3193,20 @@
   /* The tagline is the host page's own line on most embeds — the station
      page already introduces the show in its own type one column over. */
   body.compact .tagline { display: none; }
-  body.compact .dj { font-size: 14px; display: inline; margin: 0; }
-  body.compact .who-row .show { display: inline; margin-left: 7px; }
+  /* STACKED, not inline. The name and the show ran together on one line —
+     "Cliff THE OVERLOOK · AFTER DARK" — which reads as one long label rather
+     than as a person and the programme they are on, and it truncated the show
+     first. Two lines beside the picture is the same shape as the player, and
+     the row was already taller than one line of type (operator's ask). */
+  body.compact .dj { font-size: 14px; display: block; margin: 0; }
+  body.compact .who-row .show { display: block; margin-left: 0; font-size: 10px; }
   /* One line however long the show's name runs — an inline pair that wraps
      hands the row back its width-dependence through the side door. On the
      children too: the phone media block sets them back to `normal`, and an
      inherited nowrap loses to that. */
   body.compact .who-row .meta {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0; flex: 1;
   }
   body.compact .dj, body.compact .who-row .show { white-space: nowrap; }
   /* The line-clamp box here predates the rail: it existed to keep a wrapping
@@ -3107,18 +3222,30 @@
      heading above the frame, so that row had a spare 22px doing nothing.
      This is the design meeting a width, not a second design — the guide's
      "there is no second design" holds everywhere else. */
-  body.compact .eyebrow #eyebrowText { display: none; }
-  /* Lifted into the eyebrow's line by position, not by reparenting: the
-     chips stay one element in one place in the DOM, which keeps call.js and
-     the widget contract test looking at the same node on both surfaces. The
-     card is position:relative, the eyebrow is its first band and 34px tall,
-     so top:0/height:34px puts them exactly on that line. Left of the corner
-     controls, clear of the pip. */
+  /* THE EMBED IS NOT DIFFERENT ANY MORE. 0.10.131 hid ON AIR NOW and lifted
+     the chips onto the eyebrow's line, because at 348px there was no room
+     beside a 34px avatar without starving a show line that shared its row
+     with the name. Stacking the name over the show gave that room back, and
+     what the divergence cost was worse than what it bought: the pip glowed
+     with no word next to it, which the operator read as a bug ("I see the on
+     air button glowing but there is no text next to it").
+     One design again, per HOST-STYLE-GUIDE's own rule. */
   body.compact .who-row .chips {
-    position: absolute; top: 0; left: 30px; right: 96px;
-    height: 34px; justify-content: flex-start; flex-wrap: nowrap;
-    z-index: 1; pointer-events: none;
+    flex: 0 1 auto; justify-content: flex-end; flex-wrap: nowrap;
+    align-self: center;
   }
+  /* The code field and its button STACK in an embed. Side by side at 348px
+     the field was ~200px and the button ~120, so a long placeholder and a
+     long label were both squeezed for no reason — there is a whole column of
+     room under them (operator: "wouldn't it make sense to put the login
+     button below the field, better spacing"). */
+  body.compact .guestgate .grow {
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  }
+  body.compact .guestgate .grow #guestPw,
+  body.compact .guestgate .grow #guestBtn { width: 100%; flex: 0 0 auto; }
+  body.compact .guestgate { gap: 10px; }
+
   body.compact .meters { padding: 5px 0 0; }
   body.compact .bars { height: 14px; }
   body.compact .talkrow { padding: 5px 0 0; }

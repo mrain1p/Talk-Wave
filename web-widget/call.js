@@ -500,6 +500,82 @@
   // a guessed one is not.
   let npStart = 0, npLength = 0;
 
+  // THE IDLE BOARD. What the box says when there is no conversation in it.
+  //
+  // It has been three things. A permanent grey "Not connected", which
+  // restated the eyebrow and the Call button and read as a FAULT on host
+  // pages. Then nothing at all, which read as unfinished once the box became
+  // the card's whole subject. Then one sentence, which was honest but did not
+  // use a box that is now two hundred pixels tall.
+  //
+  // This is the operator's shape: a rule, the state in the card's own mono
+  // voice, a rule, and then WHICH DOORS ARE ACTUALLY OPEN under it — a line
+  // per way in, drawn from the same /live flags the buttons are drawn from,
+  // so the board cannot advertise a door the card does not offer.
+  function paintBoard(d) {
+    const box = $('idleBoard');
+    if (!box) return;
+    // Only when the box has nothing better to do. Any speech, any message,
+    // any door — the board is the emptiest state, not an overlay.
+    const busy = !!room || chatOpen
+      || (capBox.classList.contains('on') && capBox.children.length)
+      || !$('guestGate').hidden || !$('setupNudge').hidden
+      || !$('endedBar').hidden;
+    if (busy) { box.hidden = true; return; }
+
+    const paused = !!(d && d.callsPaused);
+    const dj = (($('djName').textContent) || '').trim();
+    const onAir = !!(d && d.onAir);
+    // Each door twice: is it OFFERED at all, and is it usable right now. The
+    // second is what earns the strike-through — a board that lists a way in
+    // the card will refuse is worse than one that lists nothing.
+    const ways = [];
+    if (d && d.liveCalls !== false) {
+      ways.push(['Calls', !paused && !!dj && dj !== '…' && onAir]);
+    }
+    if (d && (framed ? d.embedChatBtn : d.chatBtn) !== false && d.chatEnabled) {
+      ways.push(['Texts', !paused]);
+    }
+    // 'never' is not offered; 'closed' is offered only when the booth is shut,
+    // which is exactly when the machine is the point. 'always' is always.
+    const vm = d && d.voicemailWhen;
+    if (vm && vm !== 'never') {
+      const shut = paused || !onAir;
+      ways.push(['Voicemail', vm === 'always' ? true : shut]);
+    }
+
+    // The headline follows the doors, not the pause switch alone: a line
+    // nobody can use is closed however the switch is set, and one with the
+    // machine on is not "closed" just because the booth is empty.
+    const anyLive = ways.some((w) => w[1]);
+    const head = anyLive ? 'Lines are open'
+      : paused ? 'Lines are closed' : 'Nobody in the booth';
+    box.innerHTML = '';
+    const rule = () => { const r = document.createElement('span');
+      r.className = 'bdrule'; return r; };
+    const h = document.createElement('span');
+    h.className = 'bdhead' + (paused ? ' shut' : '');
+    h.textContent = head;
+    box.appendChild(rule()); box.appendChild(h); box.appendChild(rule());
+    const list = document.createElement('ul');
+    list.className = 'bdways';
+    ways.forEach(([name, live]) => {
+      const li = document.createElement('li');
+      if (!live || paused) li.className = 'off';
+      li.textContent = name;
+      list.appendChild(li);
+    });
+    if (ways.length) box.appendChild(list);
+    // Who picks up, under the board rather than instead of it.
+    if (!paused && dj && dj !== '…' && onAir) {
+      const who = document.createElement('span');
+      who.className = 'bdwho';
+      who.textContent = dj + ' picks up.';
+      box.appendChild(who);
+    }
+    box.hidden = false;
+  }
+
   function paintNowPlaying() {
     const clock = $('npElapsed'), rail = $('npRail');
     if (!clock || !rail) return;
@@ -765,9 +841,51 @@
   // inherit currentColor, scale cleanly, and read identically everywhere.
   const BTN_ICONS = {
     phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
-    mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+    mail: '<circle cx="6" cy="14" r="4"/><circle cx="18" cy="14" r="4"/><line x1="6" y1="10" x2="18" y2="10"/>',
     chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   };
+  // The photograph opens. It is the one image on the card and it is small
+  // by necessity — the identity row has three lines of type to carry beside
+  // it — so a tap gives it the room the card cannot (operator's ask, every
+  // view). Built once, on demand, and closed by anything: the backdrop, the
+  // button, or Escape.
+  function openPortrait() {
+    const img = $('djAvatar');
+    if (!img || img.classList.contains('hidden') || !img.src) return;
+    let pop = document.getElementById('portraitPop');
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.id = 'portraitPop';
+      pop.className = 'portraitpop';
+      pop.innerHTML = '<button class="ppclose" aria-label="Close">&times;</button>'
+        + '<img alt="" /><span class="ppname"></span>';
+      document.querySelector('.card').appendChild(pop);
+      pop.addEventListener('click', (e) => {
+        if (e.target === pop || e.target.classList.contains('ppclose')) closePortrait();
+      });
+    }
+    pop.querySelector('img').src = img.src;
+    pop.querySelector('.ppname').textContent = $('djName').textContent || '';
+    pop.hidden = false;
+    document.addEventListener('keydown', portraitEsc);
+  }
+  function closePortrait() {
+    const pop = document.getElementById('portraitPop');
+    if (pop) pop.hidden = true;
+    document.removeEventListener('keydown', portraitEsc);
+  }
+  function portraitEsc(e) { if (e.key === 'Escape') closePortrait(); }
+  ['djAvatar', 'djMono'].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener('click', openPortrait);
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPortrait(); }
+    });
+  });
+
   function iconSvg(name) {
     return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" '
       + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
@@ -800,6 +918,18 @@
     // same width). The class lets the CSS size the two cases apart.
     el.classList.toggle('icononly', st.emoji && !st.words);
     if (st.words) fitLabel(el);
+    // If every door on the row carries a WORD as well as an icon, there is no
+    // room for the primary to take two thirds and equal thirds is the honest
+    // answer. Decided here rather than in a media query, because what fits is
+    // a function of the labels the operator typed. See .actionrow.allworded.
+    const row = el.closest('.actionrow');
+    if (row) {
+      const doors = ['callBtn', 'chatBtn', 'vmBtn']
+        .map((id) => document.getElementById(id))
+        .filter((b) => b && !b.hidden);
+      row.classList.toggle('allworded',
+        doors.length === 3 && doors.every((b) => b.textContent.trim().length));
+    }
   }
 
   // Long wording SHRINKS to fit rather than ellipsising away (operator's ask,
@@ -1266,24 +1396,9 @@
           // it was. Deliberate state, quiet colour, never 'error'.
           setStatus("The booth isn't taking calls at the moment", '');
         } else {
-          // One sentence, and it is the LINE BEING OPEN — the redesign's §4.
-          //
-          // Worth reading the history before changing this back. A permanent
-          // grey sentence used to sit here saying "Not connected", which
-          // restated what the eyebrow and the Call button already said
-          // between them and read as a FAULT on every host page it was
-          // embedded in; it was removed for that, and an empty box was the
-          // right answer while the box had nothing else to be.
-          //
-          // The box is the card's whole subject now, and an empty one reads
-          // as unfinished rather than as quiet. This says the opposite thing
-          // to "Not connected" — the line is open, and who will answer — so
-          // it invites the call instead of reporting a problem. Delete the
-          // two lines below to go back to silence.
-          const dj = ($('djName').textContent || '').trim();
-          setStatus(d.lineOpen === false || !dj || dj === '…' ? ''
-            : 'The line is open. ' + dj + ' picks up.', '');
+          setStatus('');
         }
+        paintBoard(d);
       }
     } catch (e) {
       // A repaint that throws must not take the poll down with it — the next
@@ -2581,7 +2696,12 @@
     // announcement of the same fact — which is what made the two of them read
     // as an error message.
     bar.innerHTML = '<span class="chev">▶</span><span>Transcript · ' + lines
-      + ' line' + (lines === 1 ? '' : 's') + '</span><span class="when">' + t + '</span>';
+      + ' line' + (lines === 1 ? '' : 's') + '</span><span class="when">' + t + '</span>'
+      // A way OUT of the transcript, not only into it. Opening it was a
+      // labelled click and closing it was the same unlabelled bar again;
+      // the × says which way this one goes (operator's ask).
+      + '<span class="dclose" role="button" aria-label="Close the transcript"'
+      + ' title="Close the transcript">&times;</span>';
     notifyHeight();
   }
 
@@ -2621,9 +2741,11 @@
     notifyHeight();
   }
 
-  $('endedBar').onclick = () => {
+  $('endedBar').onclick = (e) => {
     const bar = $('endedBar');
-    const open = !capBox.classList.contains('on');
+    // The × always closes, whatever state the bar is in; the rest toggles.
+    const open = e.target.classList.contains('dclose')
+      ? false : !capBox.classList.contains('on');
     capBox.classList.toggle('on', open);
     bar.classList.toggle('open', open);
     // The line area is three lines while a call is running and nothing is
@@ -2631,6 +2753,9 @@
     // exception, because it is a deliberate click by someone who wants the
     // room — and by then there is no call for the resize to interrupt.
     $('lineBox').classList.toggle('open', open);
+    // Closing the drawer hands the box back to the board — otherwise the
+    // card sits on an empty rectangle with a bar at the top of it.
+    if (!open) paintBoard(live);
     notifyHeight();
   };
 
@@ -2824,6 +2949,14 @@
       if (msg.type === 'ready') {
         localStorage.setItem('callinChat', msg.chat || '');
         (msg.turns || []).forEach((t) => chatSay(t.who === 'dj' ? 'dj' : 'you', t.text));
+        // A RESUMED thread goes behind the drawer rather than filling the box.
+        // The chat id lives in localStorage so a browser can pick a
+        // conversation back up, which is right — but it meant a refresh
+        // reopened yesterday's transcript over the card's idle state, and the
+        // operator did not want to see it there ("these should not persist a
+        // page refresh... shouldn't it have a button to show previous
+        // transcript?"). It is one click away, and the click is labelled.
+        if (msg.turns && msg.turns.length) collapseTranscript();
         setStatus(msg.turns && msg.turns.length
           ? 'Back on the text line' : 'Texting the booth — go ahead', 'connected');
         $('chatInput').focus();
