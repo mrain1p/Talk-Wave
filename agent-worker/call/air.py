@@ -9,61 +9,21 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
-from pathlib import Path
 
 from livekit.agents import Agent, AgentSession
 
 from station import StationClient
 
 from . import comeback
+from .air_timing import DUCK_PAD_SECS, speaking_secs
+from .air_verdict import AirVerdict, _air_path  # noqa: F401
 from .background import spawn
 
 log = logging.getLogger("callin.agent")
 
 
-def _air_path() -> Path:
-    """Twin of api/hooks._air_path — the web process writes the last verified
-    dj.say/dj.link push there, this process reads it. Duplicated rather than
-    imported so the worker does not pull the HTTP surface in for one path
-    string; TestThePushFileHasOneAddress pins the two derivations together."""
-    return Path(os.environ.get("CALLIN_HOOK_AIR_PATH")
-                or Path(os.environ.get("CALLIN_HOOK_SECRET_PATH")
-                        or Path(__file__).parent.parent.parent
-                        / "data" / "hook-secret.json").with_name("hook-air.json"))
-
-
-# The duck, at each end, in seconds. The operator's number, and the only
-# padding in this file — every hold is "as long as the voice actually runs,
-# plus this". It replaced a pile of separately-reasonable constants (a 2s
-# handoff lag, a +1s fudge on two branches, a 12s floor under the word
-# estimate, a 25s default for our own actions) which were individually small
-# and stacked into holds of half a minute. One number you can turn.
-DUCK_PAD_SECS = 4.5
-
-
-def speaking_secs(spoken: str, fallback: int) -> int:
-    """How long the on-air DJ will be talking, sized from the words themselves.
-
-    A fixed hold was the wrong shape: an announcement is a sentence and a
-    segment can run a minute or more, so one number either reopens the gate
-    mid-delivery or gags the DJ long after the air is clear — both were heard
-    on real calls. The station's own voice serialiser holds its channel the
-    same way (word count at ~140wpm, padded), so count the words: about 2.4 a
-    second, plus a beat either side.
-    """
-    words = len(str(spoken or "").split())
-    if not words:
-        return fallback
-    # No 12s floor any more: it meant a four-word station ID gagged the call
-    # for twelve seconds and the caller sat through most of it in silence.
-    # The pad is added by the caller (DUCK_PAD_SECS), once, so it is not
-    # baked in here as well.
-    return max(2, min(180, int(words / 2.4)))
-
-
-class OnAirGuard:
+class OnAirGuard(AirVerdict):
     """Shared "is the broadcast actually talking right now" state for one call.
 
     This is the single place that decides whether the air is busy; the reply
@@ -172,6 +132,10 @@ class OnAirGuard:
         # The in-flight return, so a fresh voice can cancel it. See
         # SETTLE_SECS for what this replaced.
         self._comeback = None
+        # How far behind the live edge THIS caller's player actually is,
+        # measured by the widget and pushed over talkwave.lag. 0 until one
+        # arrives — see caller_lag().
+        self._caller_lag = 0.0
         # This call's ducking timeline — see call/air_log.py. Attached by the
         # session; None on a guard nobody is recording.
         self.air_log = None
@@ -214,6 +178,45 @@ class OnAirGuard:
                                     until=self._assumed_until,
                                     buf=self.stream_buffer(), text=spoken)
 
+    # A tail is the caller's lag plus enough margin that a wobble in their
+    # buffer cannot put the DJ over the top of the last word.
+    TAIL_MARGIN_SECS = 1.5
+
+    # Nobody is 40 seconds behind a live stream; a number like that is a stuck
+    # element or a hostile page, and believing it would hold a caller silent
+    # for most of a minute.
+    MAX_CALLER_LAG = 20.0
+
+    def note_caller_lag(self, secs: float) -> None:
+        """The widget's own measurement of how far behind the live edge it is.
+
+        `buffered.end - currentTime` on its own `<audio>` element, which is
+        exactly the distance between what the station has sent and what this
+        person is hearing. It is the only honest source for this: the station
+        can only report its BURST SIZE, which on the operator's box is 22
+        seconds while the browser plays 2.3 behind (measured 2026-08-13), and
+        a caller on a phone, a car head unit or a slower connection is a
+        different number again from the same station.
+        """
+        try:
+            v = float(secs)
+        except (TypeError, ValueError):
+            return
+        if 0.0 <= v <= self.MAX_CALLER_LAG:
+            self._caller_lag = v
+
+    def caller_lag(self) -> float:
+        """How far behind the broadcast this caller is, as THEY measured it.
+
+        0 when nobody has said — a caller listening on a car radio never loads
+        the widget's player, and inventing a number for them is how the 22
+        went wrong. Every user of this falls back to a constant instead.
+        """
+        # getattr, like every other optional here: the suite drives these
+        # methods on bare guards built with object.__new__ to keep a timing
+        # test from needing a room, a station and a session.
+        return getattr(self, "_caller_lag", 0.0)
+
     def tail(self) -> float:
         """How long to keep holding after the voice itself has finished.
 
@@ -236,7 +239,12 @@ class OnAirGuard:
         station claimed — a station that one day reports a real playhead
         offset should be believed, and that row is where it would show up.
         """
-        return self.duck_pad
+        # Now that the caller's own lag is measurable, the pad is a FLOOR
+        # rather than the whole answer: a caller further behind than 3 seconds
+        # gets a tail sized to them, which is the case the constant could
+        # never cover and the case where the DJ really does come back over the
+        # top of the last word.
+        return max(self.duck_pad, self.caller_lag() + self.TAIL_MARGIN_SECS)
 
     def stream_buffer(self) -> float:
         """What the station last said its listeners are behind by.
@@ -346,134 +354,6 @@ class OnAirGuard:
         if poll_failed and not assumed_or_pending:
             return self.on_air
         return log_busy or assumed_or_pending
-
-    def _log_says_busy(self, speech: tuple[float, str] | None) -> bool:
-        """Whether the station's log says its DJ is still talking.
-
-        The log records when an utterance STARTED and what was said — never
-        when it finished — so the end is sized from the words themselves
-        (`speaking_secs`), the same way the station's own voice serialiser
-        holds its channel. `on_air_quiet_secs` is only the fallback for an
-        entry with no words: as a fixed hold it either reopened the gate while
-        a long segment was still mid-delivery or gagged the call for most of a
-        minute over a one-line station ID.
-        """
-        if speech is None:
-            return False
-        since, text = speech
-        # lag_secs rides the tail: the entry is stamped at handoff, the sound
-        # starts lag_secs later, so the words finish lag_secs later too.
-        return since < self.lag_secs + speaking_secs(text, int(self.quiet_secs) or 30)
-
-    def _pushed_state(self) -> dict | None:
-        """The last verified push, raw. Two generations live in the file:
-        legacy dj.say/dj.link entries (handoff-stamped, no "v") and the 1.8
-        voice lifecycle ("v": 2 with a phase — queued / speaking / clear).
-        """
-        try:
-            d = json.loads(_air_path().read_text())
-            if float(d.get("at") or 0) <= 0:
-                return None
-            return d
-        except Exception:                                     # noqa: BLE001
-            return None
-
-    # What one push entry proves about the air, at `now`.
-    #   ("busy", text, line)  — hold; `line` is the hand-over sentence when
-    #                            this edge deserves one of its own
-    #   ("clear", "", "")     — POSITIVELY quiet (voice.end): outranks the
-    #                            poll's word-sized estimate for the same
-    #                            utterance, which has no idea it ended early
-    #   None                  — this entry proves nothing right now (too old,
-    #                            or a forecast still outside the hand-over
-    #                            window; the poll's verdict stands)
-    def _push_verdict(self, d: dict, now: float) -> tuple[str, str, str] | None:
-        if not isinstance(d, dict):
-            return None
-        text = str(d.get("text") or "")
-        if int(d.get("v") or 0) < 2:
-            # Legacy handoff-stamped entry: busy while the words (plus the
-            # handoff lag) are still airing — exactly the old behaviour.
-            since = now - float(d.get("at") or 0)
-            if self._log_says_busy((since, text)):
-                return ("busy", text,
-                        "Hold on a second — let me let that go out on air first.")
-            return None
-        phase = str(d.get("phase") or "")
-        at = float(d.get("at") or 0)
-        dur = max(0.0, float(d.get("durMs") or 0) / 1000.0)
-        # THE fix for "it always comes back mid-sentence". Every voice.*
-        # timestamp is stamped at the ENCODER; the caller is listening to the
-        # stream, which is this many seconds behind it. So the station's
-        # "I've stopped talking" is the caller's "he is still talking", every
-        # time, by the same amount — which is why the overlap was constant
-        # rather than occasional. The station measures the offset and sends it
-        # (streamBufferSeconds, its #1114); we just never read it.
-        #
-        # Falls back to the handoff lag when the station is too old to send
-        # one: better a two-second tail than none.
-        buf = d.get("bufSecs")
-        # Remembered for mark_on_air: our own actions get no push until the
-        # station airs them, so without this they would size their hold from
-        # the encoder's clock and come back before the caller had heard a word.
-        try:
-            if float(d.get("bufSecs") or 0) > 0:
-                self._last_buf = float(d["bufSecs"])
-        except (TypeError, ValueError):
-            pass
-        try:
-            buf = float(buf)
-        except (TypeError, ValueError):
-            buf = None
-        if buf is None or buf <= 0:
-            buf = 0.0
-        # One pad for every branch below — see tail(). `buf` is what the
-        # station CLAIMED, and it is a burst size rather than a playhead, so
-        # it does not size the close here either.
-        tail = getattr(self, "duck_pad", DUCK_PAD_SECS)
-        if phase == "queued":
-            lead = float(d.get("airAt") or at) - now
-            if lead > self.handover_secs and not self.on_air:
-                return None          # the call keeps flowing until it's close
-            # ALREADY holding and the station has queued another one? Then this
-            # break is not over, however far out the forecast is, and the hold
-            # continues. THE bridge for a multi-part break, and it is driven by
-            # the station's own warning rather than by a blanket pad.
-            #
-            # Measured 2026-08-13, a real call: two voice.queued landed at
-            # +12.6s while the caller was already on hold, the forecast was
-            # further out than the hand-over window, so this returned None, the
-            # estimate ran out 0.2s later and the line was released — then
-            # re-held at +17.8s. The caller got a return line and a second
-            # hand-over line for one continuous break. The hand-over window is
-            # about when to START a hold from quiet; it was never meant to
-            # decide whether to END one while more speech is queued.
-            # Inside the window: hold from here until the voice has landed
-            # and played out (voice.start/end refine this the moment they
-            # arrive; this bound only matters if they never do).
-            landed = float(d.get("airAt") or at) + (
-                dur or speaking_secs(text, int(self.quiet_secs) or 30))
-            if now < landed + tail:
-                return ("busy", text,
-                        "Hold that thought — I've got to go on air for a second.")
-            return None
-        if phase == "speaking":
-            # Measured start; the clip length is measured too when present.
-            # Both are encoder-side, so the whole window slides by the buffer.
-            held_for = dur or speaking_secs(text, int(self.quiet_secs) or 30)
-            if now - at < held_for + tail:
-                return ("busy", text,
-                        "Hold on a second — I'm on the air.")
-            return None
-        if phase == "clear":
-            # voice.end fires when the encoder finished, not when the caller
-            # did. Until the buffer has drained they are still hearing it, so
-            # this entry does not prove quiet yet — say nothing and let the
-            # poll's estimate carry the tail.
-            if now - at < tail:
-                return None
-            return ("clear", "", "")
-        return None
 
     def _cancel_comeback(self) -> bool:
         """Stop an in-flight return. True if there was one.

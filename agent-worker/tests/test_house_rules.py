@@ -603,16 +603,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Deliberately NOT cut in the same change as the timing fix. The
         # operator is on a broken deployment; moving this logic and altering
         # it at once means a regression has two candidate causes.
-        # Raised 629 -> 650 at 0.10.121 for the timeline hooks, and 650 -> 670
-        # at 0.10.124 for the tail() rewrite, whose comment carries the
-        # measurement that overturned the old premise. This is the
-        # file that has been diagnosed by hand three times, and the twenty
-        # lines that make a duck readable from a call record are worth more
-        # than the twenty lines of headroom. The seam below is unchanged.
-        "agent-worker/call/air.py": (680, "a verdict module (speaking_secs, "
-                                          "DUCK_PAD_SECS, _push_verdict, "
-                                          "_assess, _settle) split from the "
-                                          "live guard and its watch loop"),
+
         # api/hooks.py was here from 0.10.69 until 0.10.89, when the voice
         # lifecycle grew the receiver past the ratchet and the recorded seam
         # was cut for real: the receiver (push verification, the air file,

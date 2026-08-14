@@ -1864,3 +1864,43 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         log.write(None)
         self.assertEqual(log.rows, [])
 
+class TestTheAirSplitHoldsItsShape(_TempStores):
+    """air.py was raised past its ratchet three times in one day before the
+    seam its SPLITTING entry had described since 0.10.113 was actually cut
+    (0.10.127). This is what keeps it cut.
+
+    The split is one-way by design: `air_verdict` reads evidence and knows
+    nothing about the session, the room or the come-back; `air.py` keeps the
+    live half. `air_timing` is a leaf holding the two names both need, because
+    a constant living in the module that imports you is how a split becomes a
+    circular import a week later.
+    """
+
+    def test_the_verdict_half_does_not_reach_back(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "air_verdict.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn("from .air import", src)
+        self.assertNotIn("import air\n", src)
+        # Nor does it touch anything live.
+        for live in ("AgentSession", "session.", "self.room", "comeback"):
+            self.assertNotIn(live, src, f"the verdict half reached for {live}")
+
+    def test_the_timing_leaf_imports_nothing_of_ours(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "air_timing.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn("from .", src)
+        self.assertNotIn("from call", src)
+
+    def test_the_names_still_arrive_where_callers_expect_them(self):
+        # Half the suite and three tool modules import these from call.air.
+        from call.air import DUCK_PAD_SECS, OnAirGuard, speaking_secs
+
+        self.assertEqual(DUCK_PAD_SECS, 4.5)
+        self.assertGreater(speaking_secs("one two three four five", 30), 0)
+        self.assertTrue(hasattr(OnAirGuard, "_push_verdict"))
+        self.assertTrue(hasattr(OnAirGuard, "_settle"))
+
