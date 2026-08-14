@@ -547,6 +547,13 @@
     // The headline follows the doors, not the pause switch alone: a line
     // nobody can use is closed however the switch is set, and one with the
     // machine on is not "closed" just because the booth is empty.
+    // ONE LINE, since 0.10.136. The board listed the doors under the headline
+    // and named who picks up, and the operator's answer was that the card
+    // already says all of it: the doors are the buttons on the action row an
+    // inch below, and the DJ's name is at the top of the card in bold beside
+    // their photograph. Three ways of saying it is not three times as clear.
+    // The doors are still WORKED OUT above, because the headline is derived
+    // from them — a line nobody can use is closed however the switch is set.
     const anyLive = ways.some((w) => w[1]);
     const head = anyLive ? 'Lines are open'
       : paused ? 'Lines are closed' : 'Nobody in the booth';
@@ -557,22 +564,6 @@
     h.className = 'bdhead' + (paused ? ' shut' : '');
     h.textContent = head;
     box.appendChild(rule()); box.appendChild(h); box.appendChild(rule());
-    const list = document.createElement('ul');
-    list.className = 'bdways';
-    ways.forEach(([name, live]) => {
-      const li = document.createElement('li');
-      if (!live || paused) li.className = 'off';
-      li.textContent = name;
-      list.appendChild(li);
-    });
-    if (ways.length) box.appendChild(list);
-    // Who picks up, under the board rather than instead of it.
-    if (!paused && dj && dj !== '…' && onAir) {
-      const who = document.createElement('span');
-      who.className = 'bdwho';
-      who.textContent = dj + ' picks up.';
-      box.appendChild(who);
-    }
     box.hidden = false;
   }
 
@@ -2743,9 +2734,20 @@
 
   $('endedBar').onclick = (e) => {
     const bar = $('endedBar');
-    // The × always closes, whatever state the bar is in; the rest toggles.
-    const open = e.target.classList.contains('dclose')
-      ? false : !capBox.classList.contains('on');
+    // The × DISMISSES the drawer — bar and all. It used to merely set the
+    // drawer closed, so pressing × on an already-closed drawer changed
+    // nothing on screen at all and read as a dead button (operator-reported).
+    // An exit that leaves the thing it exits on the card is not an exit.
+    if (e.target.classList.contains('dclose')) {
+      capBox.classList.remove('on');
+      bar.classList.remove('open');
+      bar.hidden = true;
+      $('lineBox').classList.remove('open');
+      paintBoard(live);
+      notifyHeight();
+      return;
+    }
+    const open = !capBox.classList.contains('on');
     capBox.classList.toggle('on', open);
     bar.classList.toggle('open', open);
     // The line area is three lines while a call is running and nothing is
@@ -2918,6 +2920,12 @@
   function openChat() {
     if (chatOpen || previewMode) return;
     chatOpen = true;
+    // Repainted HERE, not left to the next /live poll. The board is only
+    // painted when the card is idle, and the poll runs every 20 seconds — so
+    // opening the text line left LINES ARE OPEN sitting behind the first
+    // messages for as long as it took the poll to come round (operator saw
+    // 5-10 seconds of it). Whoever changes the card's state repaints it.
+    paintBoard(live);
     // Start the transcript clean: a chat opened after a previous one closed
     // would otherwise show the old conversation's lines under the new
     // greeting. A resumed chat repaints its own turns from the server's
@@ -2959,7 +2967,12 @@
         if (msg.turns && msg.turns.length) collapseTranscript();
         setStatus(msg.turns && msg.turns.length
           ? 'Back on the text line' : 'Texting the booth — go ahead', 'connected');
-        $('chatInput').focus();
+        // NOT on a touch screen. Focusing the input summons the on-screen
+        // keyboard the instant the line opens, which covers half the card
+        // before the caller has decided to type anything (operator-reported on
+        // a phone). On a pointer device the focus costs nothing and saves a
+        // click, so it stays there.
+        if (!window.matchMedia('(pointer: coarse)').matches) $('chatInput').focus();
       } else if (msg.type === 'refused') {
         // A refused RESUME usually means the old chat aged out server-side:
         // drop the id and let the next attempt start fresh.

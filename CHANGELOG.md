@@ -3,6 +3,28 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.10.136
+
+The card stops saying things twice, and the two bands that were holding space for nothing give it back. Every item here is something the operator saw on their own screen.
+
+### What the caller sees
+
+- **The idle box says LINES ARE OPEN, and stops there.** It also listed the doors and named who picks up — but the doors are the buttons an inch below it and the DJ's name is at the top of the card in bold beside their photograph. Three ways of saying the same thing is not three times as clear.
+- **A message no longer lands on top of it.** The status line is centred in that box, so "Opening the text line…" and LINES ARE OPEN were painted over one another and neither was legible. The placeholder now yields to anything with something to say.
+- **The idle card no longer has a scrollbar.** The caption ticker was reserving two lines of invisible height so an embed's frame could not jump when the first line arrived — 36px of nothing inside a box that scrolls, in a card that has been a fixed height since 0.10.131 and cannot jump anyway. Measured: 255px of content in a 219px box, and the difference was exactly that.
+- **The empty rail above the conversation is gone.** The now-playing band reserved 30px between calls for a track that is invisible until a call starts, so every idle card was ruled off for a line nobody could read. It collapses when it holds nothing and comes back when it does — which is where the state chips now live.
+- **The state chips moved off the DJ's name.** They sat beside it, competing for width with the one thing a call card must always be able to say, and every narrow-card fix was a way of losing that argument more gracefully. On the track's rail they are level with the call they describe and nothing is squeezed.
+- **YOU and DJ are chips, not loose words.** Two bare labels at the far ends of a wide band read as stray text rather than as the two ends of one instrument; each now has the card's own hairline box, lit to that voice's colour while a call is up.
+- **The waveforms have their width back on an embed.** The volume rail was hidden between calls but still holding its box, which squeezed the two meters into 65px of a 348px card. It now gives up the width as well as the ink: 244px, measured, and the band is the same height either way.
+- **The main door really is two thirds of the row.** With two icon-only alternates beside it the primary was taking 93% and they were hugging their glyphs at 36px. It is 61/18/18 now — two thirds, and the other two sharing the last third, which is what was asked for.
+- **The transcript drawer's × closes it.** It set the drawer closed and left the bar sitting there, so pressing × on an already-closed drawer changed nothing on screen at all. It dismisses the whole thing now, and the button itself sits inside the bar behind a hairline instead of standing proud of it as a second, taller box.
+- **The text line no longer opens over the placeholder.** LINES ARE OPEN stayed behind the first messages for up to twenty seconds, because the board was only repainted by the poll that refreshes the card. Whoever changes the card's state repaints it now.
+- **Opening the text line on a phone no longer summons the keyboard.** Focusing the input covered half the card before the caller had decided to type anything. On a pointer device the focus stays — it costs nothing there and saves a click.
+
+### Under the hood
+
+- Driven and measured in headless Chrome at 620px, 380px and 390px-with-touch, in idle, on a call and with the drawer open — which is how six of the ten were found as numbers rather than as impressions.
+
 ## 0.10.135
 
 A model that is merely slow no longer kills the call — and the panel stops calling a fatal number "laggy". All of this came out of one tester's afternoon on a self-hosted Ollama.

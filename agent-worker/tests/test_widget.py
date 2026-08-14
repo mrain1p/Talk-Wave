@@ -598,13 +598,21 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         self.assertRegex(
             self.css, r'\.rig \{\s+visibility: hidden;',
             "the rig must reserve its space with visibility:hidden")
-        # The chips are NOT in this list any more. Reserved-but-invisible was
-        # right while they had a band of their own whose height had to be
-        # held; in the identity row there is nothing to reserve — the row is
-        # 60px of avatar either way — so they collapse instead.
-        self.assertIn(".ticker[hidden] { display: grid; visibility: hidden; }",
-                      self.css)
+        # The TICKER no longer reserves, and that is the point of the fixed
+        # card: it used to hold two lines of empty grid so the frame could not
+        # jump when the first caption arrived, and inside a line box that
+        # scrolls that reservation was 36px of invisible content — an idle
+        # card with nothing in it grew a scrollbar (measured: scrollHeight 255
+        # against a 219px box). The card's own fixed height keeps the promise
+        # now, which is what the rig assertion above pins.
+        self.assertIn(".ticker[hidden] { display: none; }", self.css)
         self.assertIn(".pill[hidden] { display: none; }", self.css)
+        # The chips collapse rather than reserve, wherever they live — and
+        # since 0.10.136 they live on the track's rail, not in the identity
+        # row, so the row that must always be able to say who answers is not
+        # sharing its width with them.
+        self.assertIn(".nprail .chips", self.css)
+        self.assertNotIn(".who-row .chips", self.css)
 
     def test_the_line_area_is_the_only_thing_that_flexes(self):
         # The invariant has never been the number, it is that the frame does
