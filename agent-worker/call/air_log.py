@@ -69,7 +69,7 @@ class AirLog:
 
     # -- the hold ---------------------------------------------------------
     def opened(self, why: str, until: float = 0.0, buf: float = 0.0,
-               text: str = "") -> None:
+               lag: float = 0.0, text: str = "") -> None:
         """The line was held. `why` is the branch that decided it, which is
         the field that separates "our own action assumed it" from "the station
         told us" — they fail differently and used to look identical."""
@@ -78,6 +78,12 @@ class AirLog:
             self._add("hold opened", why=why,
                       forSecs=round(max(0.0, until - time.time()), 1) or None,
                       bufSecs=round(buf, 1) or None,
+                      # What the CALLER'S own player says it is behind by, as
+                      # against bufSecs, which is what the station claims. The
+                      # two disagreeing by twenty seconds is the whole story of
+                      # 0.10.124; recording only one of them is how that took
+                      # three days to find.
+                      callerLag=round(lag, 1) or None,
                       text=(text or "")[:120] or None)
         except Exception:                                      # noqa: BLE001
             pass

@@ -176,7 +176,8 @@ class OnAirGuard(AirVerdict):
             if getattr(self, "air_log", None):
                 self.air_log.opened("we put something on air",
                                     until=self._assumed_until,
-                                    buf=self.stream_buffer(), text=spoken)
+                                    buf=self.stream_buffer(),
+                                    lag=self.caller_lag(), text=spoken)
 
     # A tail is the caller's lag plus enough margin that a wobble in their
     # buffer cannot put the DJ over the top of the last word.
@@ -203,7 +204,15 @@ class OnAirGuard(AirVerdict):
         except (TypeError, ValueError):
             return
         if 0.0 <= v <= self.MAX_CALLER_LAG:
+            first = not self._caller_lag
             self._caller_lag = v
+            if first:
+                # Once, at INFO. The number now decides both ends of the duck,
+                # and a channel that silently never delivers looks exactly like
+                # a caller who is not tuned in — which is a legitimate state.
+                # Said out loud, the two can be told apart.
+                log.info("the caller reports they are %.1fs behind the live "
+                         "edge — the duck is placed on their clock", v)
 
     def caller_lag(self) -> float:
         """How far behind the broadcast this caller is, as THEY measured it.
@@ -488,7 +497,7 @@ class OnAirGuard(AirVerdict):
                         self.air_log.replay((state or {}).get("recent") or [])
                         self.air_log.opened(
                             "the station is on air", buf=self.stream_buffer(),
-                            text=aired_now)
+                            lag=self.caller_lag(), text=aired_now)
                     if aired_now:
                         self.aired_text = aired_now
                     # One hand-over per forecast spell: the queued warning
