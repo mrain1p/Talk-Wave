@@ -494,6 +494,35 @@
   let lastCanAsk = null;                       // rebuild the menu only on a tier change
   let djEl = null, rafId = null, streamEl = null;
 
+  // The now-playing rail: when the record started (unix seconds, from the
+  // station) and how long it runs. Both 0 when the station has not said, and
+  // the rail then shows a title and nothing else — an empty clock is honest,
+  // a guessed one is not.
+  let npStart = 0, npLength = 0;
+
+  function paintNowPlaying() {
+    const clock = $('npElapsed'), rail = $('npRail');
+    if (!clock || !rail) return;
+    if (!npStart) {
+      clock.textContent = '';
+      rail.style.setProperty('--np-progress', '0%');
+      return;
+    }
+    const secs = Math.max(0, Math.floor(Date.now() / 1000 - npStart));
+    // Clamped: a station that reports a stale start (a stopped mixer, a clock
+    // out of step) would otherwise count on for ever, and a rail reading 94:12
+    // is more obviously broken than one that simply stops at the end.
+    const shown = npLength ? Math.min(secs, npLength) : secs;
+    clock.textContent = Math.floor(shown / 60) + ':' +
+      String(shown % 60).padStart(2, '0');
+    rail.style.setProperty('--np-progress',
+      npLength ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%');
+  }
+  // One second is the right cadence for a clock that shows whole seconds, and
+  // it costs one text write; the progress hairline has its own CSS transition
+  // so it glides between ticks rather than stepping.
+  setInterval(paintNowPlaying, 1000);
+
   // `live` is what the server last said. `shown` is what is on the card,
   // which is `live` with the settings panel's unsaved preview laid over it —
   // the same object in every case except inside the panel's preview frame.
@@ -923,6 +952,9 @@
     $('djTagline').textContent = reason === 'offline'
       ? 'Cannot reach the station.' : 'No DJ is live right now.';
     $('npTrack').textContent = '';
+    // …and the clock with it. A rail counting up under "Nobody on air" is the
+    // card insisting a record is playing while it says the station is dark.
+    npStart = 0; npLength = 0; paintNowPlaying();
     $('djAvatar').classList.add('hidden');
     // Off air is exactly what the answering machine is for — but not
     // offline: an unreachable station cannot take delivery either. And not
@@ -1158,6 +1190,14 @@
       $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
       $('npTrack').textContent =
         (parts.track === false || !d.track) ? '' : '♪ ' + d.track;
+      // The rail's clock and progress hairline. /live sends WHEN the record
+      // started and how long it runs; the elapsed figure is counted here
+      // rather than sent, because /live is cached across every caller for a
+      // few seconds — a baked-in elapsed would be stale by up to that much
+      // and would tick backwards on the next poll.
+      npStart = (parts.track === false || !d.track) ? 0 : (d.trackStartedAt || 0);
+      npLength = d.trackSeconds || 0;
+      paintNowPlaying();
 
       // Shape is one answer for both surfaces — an embed and the page show
       // the same photograph, and nobody has ever wanted it round in one and
@@ -1225,12 +1265,24 @@
           // button — "Line closed" alone left callers wondering whose fault
           // it was. Deliberate state, quiet colour, never 'error'.
           setStatus("The booth isn't taking calls at the moment", '');
-        } else if (statusText.textContent.startsWith('Station responding slowly')
-                   || statusText.textContent.startsWith("The booth isn't taking calls")) {
-          // Back to quiet, not back to "Not connected": an idle card with
-          // nothing wrong has nothing to say, and the permanent grey sentence
-          // read as a fault on every host page it was embedded in.
-          setStatus('');
+        } else {
+          // One sentence, and it is the LINE BEING OPEN — the redesign's §4.
+          //
+          // Worth reading the history before changing this back. A permanent
+          // grey sentence used to sit here saying "Not connected", which
+          // restated what the eyebrow and the Call button already said
+          // between them and read as a FAULT on every host page it was
+          // embedded in; it was removed for that, and an empty box was the
+          // right answer while the box had nothing else to be.
+          //
+          // The box is the card's whole subject now, and an empty one reads
+          // as unfinished rather than as quiet. This says the opposite thing
+          // to "Not connected" — the line is open, and who will answer — so
+          // it invites the call instead of reporting a problem. Delete the
+          // two lines below to go back to silence.
+          const dj = ($('djName').textContent || '').trim();
+          setStatus(d.lineOpen === false || !dj || dj === '…' ? ''
+            : 'The line is open. ' + dj + ' picks up.', '');
         }
       }
     } catch (e) {
@@ -1370,12 +1422,12 @@
   // per segment per meter per animation frame. paintMeter writes one only when
   // the rounded value actually changed, which in practice is a handful of the
   // sixteen on any given frame.
-  const SEGMENTS = 16;
-  function buildBars(host) {
-    host.innerHTML = '';
-    for (let i = 0; i < SEGMENTS; i++) host.appendChild(document.createElement('i'));
-  }
-  buildBars($('barsYou')); buildBars($('barsDj'));
+  // No segment elements any more. The meter was a 16-band SPECTRUM per side,
+  // which is a lot of machinery to answer the only question the row is asked:
+  // is there a voice here, and whose. It is one centre-out LEVEL now — You
+  // grows leftward from the centre tick, the DJ rightward — and the segment
+  // ticks are a repeating-linear-gradient in the trough, so a frame is one
+  // width write per side instead of thirty-two height writes.
 
   function analyserFor(mediaStreamTrack) {
     if (!mediaStreamTrack) return null;
@@ -1392,48 +1444,32 @@
   let anYou = null, anDj = null;
   const bufYou = new Uint8Array(128), bufDj = new Uint8Array(128);
 
-  // The floor a silent segment sits at, as a percentage of the meter's
-  // height. Not zero: the meter's own shape has to be visible before anyone
-  // speaks, or the row looks broken until it isn't. It reads as silence
-  // rather than as quiet because off-call the segments are the trough colour
-  // — that is a CSS rule keyed on .rig.on, not something painted here.
-  const FLOOR = 12;
 
   // Only the bottom half of the FFT is worth looking at: speech has next to
   // nothing above ~8kHz, and mapping the whole range put six dead segments on
   // the right of every meter.
   const BAND_TOP = 64;
 
-  // Returns the overall level, 0..1, and paints the segments as a side
-  // effect. One pass over the buffer for both — the caller needs the level
-  // for the avatar glow and the bands for the meter, and reading the analyser
-  // twice per frame is how they used to disagree.
+  // Returns the level 0..1, and sets this side's fill as a side effect. One
+  // pass over the buffer for both — the caller needs the level for the avatar
+  // glow and the fill for the meter, and reading the analyser twice per frame
+  // is how they used to disagree.
   function paintMeter(host, an, buf, active) {
-    const kids = host.children;
     if (!an || !active) {
-      for (let i = 0; i < kids.length; i++) {
-        if (kids[i].style.height !== FLOOR + '%') kids[i].style.height = FLOOR + '%';
-      }
+      if (host.style.width !== '0%') host.style.width = '0%';
       return 0;
     }
     an.getByteFrequencyData(buf);
-    const per = BAND_TOP / SEGMENTS;
-    let total = 0;
-    for (let s = 0; s < SEGMENTS; s++) {
-      let sum = 0;
-      const from = Math.floor(s * per), to = Math.floor((s + 1) * per);
-      for (let i = from; i < to; i++) sum += buf[i];
-      const band = (sum / Math.max(1, to - from)) / 255;
-      total += band;
-      // Rounded to whole percent before it is compared: the analyser jitters
-      // in the third decimal even in silence, and without this every segment
-      // is a style write on every frame — which is the cost that got the
-      // spectrum removed the first time.
-      const h = Math.round(FLOOR + Math.min(1, band * 2.6) * (100 - FLOOR));
-      const px = h + '%';
-      if (kids[s].style.height !== px) kids[s].style.height = px;
-    }
-    return Math.min(1, (total / SEGMENTS) * 2.6);
+    let sum = 0;
+    for (let i = 0; i < BAND_TOP; i++) sum += buf[i];
+    const level = Math.min(1, ((sum / BAND_TOP) / 255) * 2.6);
+    // Rounded to whole percent before it is compared: the analyser jitters in
+    // the third decimal even in silence, and without this the fill is a style
+    // write on every frame — the cost that got the spectrum removed the first
+    // time, and the reason this one is a single width.
+    const pct = Math.round(level * 100) + '%';
+    if (host.style.width !== pct) host.style.width = pct;
+    return level;
   }
 
   function tick() {
@@ -3037,19 +3073,20 @@
     bar.classList.toggle('on', pttOpen);
     bar.setAttribute('aria-pressed', pttOpen ? 'true' : 'false');
     // No "wait for the beep" state: the machine hears the bar from pickup.
-    // The Space hint only where a keyboard is plausible — a phone
-    // advertising a key it does not have reads as broken. The operator's
-    // own wording (word_ptt) still wins on every device.
-    // On hold the bar has to say so itself. Disabling it and leaving "Tap to
+    // ONE line of copy. The Space hint used to be half of it ("Tap to talk —
+    // or hold Space"), which made the label explain the control twice; the
+    // keycap beside it says the same thing in the shape of the key, and hides
+    // itself on a coarse pointer where a phone advertising a key it does not
+    // have reads as broken. The operator's own wording (word_ptt) still wins.
+    // On hold the bar has to say so itself. Disabling it and leaving "Hold to
     // talk" on the face is an instruction the caller cannot follow — they
     // tap, nothing happens, and the only explanation is a line of status text
     // somewhere else on the card (operator's ask, 2026-08-13).
     $('pttMain').textContent =
       (djOnAir && !holdExpired)
               ? "You're on hold — the DJ is on the station mic"
-              : pttOpen ? "You're live — tap to go quiet"
-              : word('ptt', matchMedia('(pointer: coarse)').matches
-                  ? 'Tap to talk' : 'Tap to talk — or hold Space');
+              : pttOpen ? 'Release to send'
+              : word('ptt', 'Hold to talk');
     // The meter tells the same story as the bar, in the vocabulary the mute
     // button already taught it.
     if (room && pttOn()) {
