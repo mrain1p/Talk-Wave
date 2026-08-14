@@ -2548,3 +2548,55 @@ class TestASkinCannotLoseTheStateChannel(unittest.TestCase):
         # A list of exceptions that outlives the thing it excuses is how a rule
         # quietly stops applying.
         self.assertLessEqual(self.MONOCHROME, set(_skin_blocks()))
+
+
+class TestTheCornerControlsAreAllOneSize(unittest.TestCase):
+    """Five controls in that row, and they have to look like five of a kind.
+
+    The four in index.html carry `width="13" height="13"` on the tag. The
+    LINK's icon cannot: it comes from shared.js and the panel's picker draws
+    the very same markup at 16px and 17px, so the size has to come from CSS at
+    each site. Miss the card's rule and an inline <svg> with only a viewBox has
+    no intrinsic size and simply fills its box — which is what shipped in
+    0.10.141: the radio stood a head taller than the four beside it, measured
+    33px against 13px (operator screenshot).
+    """
+
+    def test_the_shared_icons_carry_no_size_of_their_own(self):
+        js = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+        block = js[js.index("const LINK_ICONS = {"):]
+        block = block[:block.index("\n  };")]
+        # The OPENING TAG only — the shapes inside legitimately carry width and
+        # height, in viewBox units.
+        tags = re.findall(r"<svg[^>]*>", block)
+        self.assertTrue(tags, "LINK_ICONS holds no svg markup")
+        for tag in tags:
+            # The BARE attribute: `stroke-width` is not a size, and a plain
+            # substring match reads it as one — the same dash that made
+            # aria-hidden look like hidden a few tests up.
+            pinned = re.findall(r'(?<![-\w])(width|height)="', tag)
+            self.assertEqual(pinned, [],
+                             "a LINK_ICONS entry pins its own size, so the "
+                             "panel cannot draw it at picker size")
+
+    def test_every_surface_that_draws_them_says_how_big(self):
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        for selector in (".card .gear svg",        # the card's corner row
+                         ".iconpick svg",          # the panel's trigger
+                         ".icongrid .iconbtn svg"):  # the panel's picker
+            self.assertIn(selector, css,
+                          f"{selector} has no size rule, so the icon will fill "
+                          "its box instead")
+
+    def test_the_card_draws_them_at_the_same_size_as_its_other_glyphs(self):
+        # 13px is what the four inline SVGs in index.html are set to; this is
+        # the number that has to agree, not just exist.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        inline = set(re.findall(r'<svg width="(\d+)" height="\1"', html))
+        self.assertIn("13", inline, "the corner glyphs are no longer 13px")
+        rule = css[css.index(".card .gear svg"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("13px", rule,
+                      "the drawn corner icon is sized differently from the "
+                      "glyphs beside it")

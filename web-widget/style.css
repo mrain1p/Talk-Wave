@@ -1867,10 +1867,19 @@
      which would otherwise wash these in the primary button's coral tint. */
   .card .gear:hover:not(:disabled) { background: transparent; color: var(--alpenglow); }
   .card #helpBtn { font-weight: 700; }
+  /* Every corner glyph is 13px. The four in index.html say so on the tag; the
+     LINK's icon comes from shared.js and deliberately carries no width or
+     height, because the panel's picker draws the same markup at 16 and 17px.
+     Without a rule here an inline <svg> with only a viewBox has no intrinsic
+     size and fills its box instead — which is exactly what shipped: the radio
+     stood a head taller than the four controls beside it (operator screenshot,
+     0.10.144). Sized here so the one list can serve both surfaces. */
+  .card .gear svg { width: 13px; height: 13px; display: block; }
   /* The link out is an <a>, and anchors inherit none of the button chrome the
      other corner controls get — same box, by hand, or it reads as a stray
-     glyph beside four boxed ones. An emoji is a colour glyph, so the ink here
-     is the platform's, not the card's; the box is the card's. */
+     glyph beside four boxed ones. Since 0.10.141 the icon is a drawn path on
+     currentColor rather than an emoji, so the INK is the card's now too; an
+     operator who typed an emoji of their own still gets the platform's. */
   .card a.gear {
     display: inline-flex; align-items: center; justify-content: center;
     text-decoration: none; font-size: 15px;
