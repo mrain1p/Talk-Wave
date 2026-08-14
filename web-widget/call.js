@@ -494,6 +494,35 @@
   let lastCanAsk = null;                       // rebuild the menu only on a tier change
   let djEl = null, rafId = null, streamEl = null;
 
+  // The now-playing rail: when the record started (unix seconds, from the
+  // station) and how long it runs. Both 0 when the station has not said, and
+  // the rail then shows a title and nothing else — an empty clock is honest,
+  // a guessed one is not.
+  let npStart = 0, npLength = 0;
+
+  function paintNowPlaying() {
+    const clock = $('npElapsed'), rail = $('npRail');
+    if (!clock || !rail) return;
+    if (!npStart) {
+      clock.textContent = '';
+      rail.style.setProperty('--np-progress', '0%');
+      return;
+    }
+    const secs = Math.max(0, Math.floor(Date.now() / 1000 - npStart));
+    // Clamped: a station that reports a stale start (a stopped mixer, a clock
+    // out of step) would otherwise count on for ever, and a rail reading 94:12
+    // is more obviously broken than one that simply stops at the end.
+    const shown = npLength ? Math.min(secs, npLength) : secs;
+    clock.textContent = Math.floor(shown / 60) + ':' +
+      String(shown % 60).padStart(2, '0');
+    rail.style.setProperty('--np-progress',
+      npLength ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%');
+  }
+  // One second is the right cadence for a clock that shows whole seconds, and
+  // it costs one text write; the progress hairline has its own CSS transition
+  // so it glides between ticks rather than stepping.
+  setInterval(paintNowPlaying, 1000);
+
   // `live` is what the server last said. `shown` is what is on the card,
   // which is `live` with the settings panel's unsaved preview laid over it —
   // the same object in every case except inside the panel's preview frame.
@@ -923,6 +952,9 @@
     $('djTagline').textContent = reason === 'offline'
       ? 'Cannot reach the station.' : 'No DJ is live right now.';
     $('npTrack').textContent = '';
+    // …and the clock with it. A rail counting up under "Nobody on air" is the
+    // card insisting a record is playing while it says the station is dark.
+    npStart = 0; npLength = 0; paintNowPlaying();
     $('djAvatar').classList.add('hidden');
     // Off air is exactly what the answering machine is for — but not
     // offline: an unreachable station cannot take delivery either. And not
@@ -1158,6 +1190,14 @@
       $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
       $('npTrack').textContent =
         (parts.track === false || !d.track) ? '' : '♪ ' + d.track;
+      // The rail's clock and progress hairline. /live sends WHEN the record
+      // started and how long it runs; the elapsed figure is counted here
+      // rather than sent, because /live is cached across every caller for a
+      // few seconds — a baked-in elapsed would be stale by up to that much
+      // and would tick backwards on the next poll.
+      npStart = (parts.track === false || !d.track) ? 0 : (d.trackStartedAt || 0);
+      npLength = d.trackSeconds || 0;
+      paintNowPlaying();
 
       // Shape is one answer for both surfaces — an embed and the page show
       // the same photograph, and nobody has ever wanted it round in one and
