@@ -1411,6 +1411,17 @@
       // station, which is the operator's ask: the colours may change, the DJ
       // may not. It catches up on the first poll after the line clears.
       if (!inConversation()) {
+        // The word the screensaver skin bounces. The station does not send its
+        // own name, so the SHOW is the closest thing to a station brand the
+        // card has — "THE PIAZZA" out of "THE PIAZZA · Golden-Era Pop" — and
+        // the DJ's name backs it up when there is no show. Written even when
+        // no skin displays it: it costs one assignment and it means turning
+        // the skin on never has to wait for the next poll to say anything.
+        const word = $('skinWord');
+        if (word) {
+          word.textContent = String(d.show || d.name || 'ON AIR')
+            .split('·')[0].trim().slice(0, 22);
+        }
         $('djName').textContent = d.name || 'The DJ';
         $('djShow').textContent = parts.show === false ? '' : (d.show || '');
         $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');

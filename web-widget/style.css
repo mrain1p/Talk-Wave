@@ -107,6 +107,38 @@
        drawing is meant to FRAME the text (a reticle, a tube's rings) sets
        `center` and gets the middle back. */
     --skin-art-pos: center 78%;
+    /* THE FULL FORM, for a drawing whose pieces are in different places.
+       `--skin-art` feeds background-IMAGE, and an image list cannot carry
+       per-layer position or size — write one there and the whole declaration
+       is invalid and the drawing silently disappears. That is exactly what
+       happened to thirteen of the first nineteen skins: measured in the
+       browser, `background-image` came back `none` on every one that had tried
+       to place its own pieces, which is why so many of them were "a bunch of
+       lines or a circle in the middle" — the parts that made them a PICTURE
+       were the parts being dropped.
+
+       So a skin has two paths. The simple one is `--skin-art` plus the pos and
+       size above, for a single tile. The full one is this: a complete
+       `background` shorthand, where every layer states its own
+       `<pos> / <size> <repeat>` and the coordinates are the whole box. */
+    --skin-art-bg: var(--skin-art) var(--skin-art-pos)
+                   / var(--skin-art-size) no-repeat;
+    /* WHERE THE DRAWING'S OWN BOX IS, which only matters when it turns. A
+       rotation spins the layer about the centre of ITS box, so a spinning
+       record drawn at the middle of the transcript box turns on the spot but
+       sits on the headline, and one drawn low ORBITS the middle instead —
+       which is what "the turntable just floating around" was. Giving the
+       drawing its own box (here, the bottom half) lets it do both: turn on its
+       own centre, below the words. Default 0 — the whole box. */
+    --skin-art-inset: 0;
+    /* The WORD, for a skin whose artefact is type rather than shape. Off by
+       default: `none` means the element is not rendered at all, so this costs
+       the shipped card nothing. call.js fills the text; a skin can only turn
+       it on and dress it. */
+    --skin-word-display: none;
+    --skin-word-size: 15px;
+    --skin-word-ink: var(--coral);
+    --skin-word-anim: none;
     --skin-art-anim: none;
 
     /* Legacy aliases — settings panel only. */
@@ -1418,18 +1450,31 @@
      rather than to the box, so a rotation sweeps ~1.4x the art's own width
      instead of 1.4x the whole transcript area. */
   .skinart::before {
-    content: ""; position: absolute; inset: 0;
-    /* Longhand, NOT the `background: … center/size no-repeat` shorthand: most
-       of these artefacts are several gradient layers, and in the shorthand a
-       position/size pair binds to the LAST layer only. Measured — a four-layer
-       platter came back `auto, auto, auto, 74px 74px`, so three of its four
-       rings were drawn at the size of the whole box. As separate properties a
-       single value is repeated across every layer, which is what was meant. */
-    background-image: var(--skin-art);
-    background-position: var(--skin-art-pos);
-    background-size: var(--skin-art-size);
-    background-repeat: no-repeat;
+    content: ""; position: absolute; inset: var(--skin-art-inset);
+    /* One value for every layer in the simple form: --skin-art-bg spells the
+       position and size ONCE and the browser repeats them across the layers,
+       which is what the old `background: … center/size` shorthand did not do —
+       it bound them to the last layer only, so a four-layer platter drew three
+       of its rings at the size of the whole box. */
+    /* The SHORTHAND, so a skin that needs per-layer placement can have it.
+       Longhands after this would flatten every layer back to one position,
+       which is the trap that made the simple form the only form. */
+    background: var(--skin-art-bg);
     animation: var(--skin-art-anim);
+  }
+  /* A WORD, for the skins whose artefact is type rather than shape — the
+     bouncing screensaver, and anything after it that wants the station's own
+     name in the box. call.js fills it; skins.css cannot set text, only turn it
+     on. Absolutely positioned inside the clipped frame like the drawing, so it
+     is under the same guarantee: it cannot move the card. */
+  .skinword {
+    position: absolute; left: 0; top: 0;
+    display: var(--skin-word-display);
+    font: 700 var(--skin-word-size)/1 var(--font-mono);
+    letter-spacing: .18em; text-transform: uppercase;
+    color: var(--skin-word-ink);
+    white-space: nowrap; opacity: .85;
+    animation: var(--skin-word-anim);
   }
   .card[data-mode="idle"] .skinart { display: block; }
   @media (prefers-reduced-motion: reduce) {
@@ -1442,6 +1487,23 @@
   @keyframes skinspin { to { transform: rotate(360deg); } }
   @keyframes skinblink { 50% { opacity: 0; } }
   @keyframes skinpulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+  /* The screensaver, and it is two animations rather than one: a horizontal
+     sweep and a vertical sweep on different durations, both alternating. That
+     is exactly how the real thing worked, and it is why the corner is rare —
+     the two axes only line up occasionally. `calc(100% - …)` is measured
+     against the WORD, so it turns at the edge of the box whatever it says. */
+  @keyframes skinbouncex {
+    from { left: 0; transform: translateX(0); }
+    to   { left: 100%; transform: translateX(-100%); }
+  }
+  /* Y needs no transform, which is the point: two animations cannot both own
+     `transform` (the second would simply replace the first), so the horizontal
+     sweep gets it and the vertical one works in `top` alone. 1.3em is the line
+     box, so the word turns on its own bottom edge rather than half-leaving. */
+  @keyframes skinbouncey {
+    from { top: 0; }
+    to   { top: calc(100% - 1.3em); }
+  }
 
   .idleboard {
     display: flex; flex-direction: column; align-items: center;
