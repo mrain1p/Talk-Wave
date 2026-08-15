@@ -549,7 +549,12 @@
     if (!box) return;
     // Only when the box has nothing better to do. Any speech, any message,
     // any door — the board is the emptiest state, not an overlay.
+    // `.oncall` and not just `room`: the card flips to Hang up the instant the
+    // button is pressed, but `room` is only assigned after the token mint, so
+    // a board keyed on `room` alone sat over a connected call — the operator
+    // saw LINES ARE OPEN above a live transcript at 0:17.
     const busy = !!room || chatOpen
+      || document.querySelector('.card').classList.contains('oncall')
       || (capBox.classList.contains('on') && capBox.children.length)
       || !$('guestGate').hidden || !$('setupNudge').hidden
       || !$('endedBar').hidden;
@@ -2406,6 +2411,11 @@
     hangBtn.hidden = false;
     const card = document.querySelector('.card');
     card.classList.add('oncall');
+    // Repainted HERE, like openChat does — the board is only painted when the
+    // card is idle and the /live poll runs every 20 seconds, so LINES ARE OPEN
+    // stayed up through connecting, pickup and the DJ's first words. Whoever
+    // changes the card's state repaints it.
+    paintBoard(live);
     // Voicemail is push-to-talk too (operator's ask): show the bar from the
     // press so the caller has a mic control immediately instead of a dead
     // "MIC OFF" with nothing to hold. Follows the same per-surface PTT switch
@@ -2484,6 +2494,9 @@
         // here forgot the message button, and one refused call left the
         // card without its one working door until a reload.
         paintIdleButtons(live || {});
+        // And the board with them: the press took it down, so a refusal that
+        // did not put it back left an empty box until the next poll.
+        paintBoard(live);
         // A busy live line is exactly when the text line earns its keep, so
         // offer it here even if the operator didn't put the permanent button
         // on this surface — the same distinction voicemail draws between its
