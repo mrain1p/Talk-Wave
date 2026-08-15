@@ -76,6 +76,31 @@ machine. Give the operator these two cards, watch the records land, and grade.
 - go silent and count to twenty — the idle nudge should come once, in fresh words
 - "that's everything, thanks — bye" — the DJ should wrap up and the line actually close
 
+**Four guards have never met real audio** (all added 0.10.146/147, all measured only against
+typed turns). This is the leg that can falsify them, so listen for the failure each would make
+rather than for it working:
+
+1. **The promise/claim guard** gives the model an extra turn when it says it did something and
+   ran no tool. Typed turns cannot show what an extra generated turn does to TURN-TAKING —
+   listen for the nudge landing on top of you while you are still speaking, or the DJ saying
+   the same line twice.
+2. **The door guard** puts one note in front of the model when the last line ended by asking
+   whether you wanted anything else. Ask for one song, acknowledge it, and keep talking: the DJ
+   should stop asking, and it should sound like it moved on, NOT like it was told off. A DJ
+   that suddenly goes clipped and formal is this guard being too loud.
+3. **The floor** stops two of the DJ's own turns starting at once. Hardest to trigger
+   deliberately: ring in while the station is mid-link, say something that promises an action,
+   and listen to the come-back — you want one voice, not two starting together.
+4. **The air holds** on the promise nudge and the time-limit sign-off. Let a call run to
+   `max_call_seconds` while the station is talking; the goodbye should wait for clear air
+   rather than going out over the top.
+
+**Then read the record**, which now says things it could not before. Under Diagnostics → Recent
+calls, the problems list will name: how many turns had to be steered off the door, whether two
+turns wanted the floor at once, and — the new one — any ask that needed a tool and got no
+action afterwards. An unanswered ask on a call that felt fine is the interesting case: either
+the detector is too eager or something really was dropped, and the transcript says which.
+
 **Voicemail** (press Voicemail): wait through the greeting for the beep, then one message with
 a request in it ("hi, it's <name> — can you play <track> later?"), then hang up. The greeting
 must precede the beep, the widget must show the machine hearing them, and the receipt must say

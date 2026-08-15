@@ -166,6 +166,20 @@ Without the correction the DJ also reached for `end_call` — it did not merely 
 
 The prose it replaces has deliberately NOT been deleted yet — that is the next measured step, and doing it in that order is the point.
 
+## What each section is worth
+
+Every block is priceable; four now have a set behind them, and the results do not follow size.
+
+| Section | Share | Measured against | With | Without |
+|---|---|---|---|---|
+| `LANGUAGE_AND_MIMICRY` | 4% | `SCENARIO_SET=mimicry` | 11/11 | **5/11** |
+| `CLOSING_DOOR` | 4% | `SCENARIO_SET=closing` | 1/3 first occurrence | 0/3 |
+| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` | 14/15 | **14/14** |
+
+The smallest block is the only thing stopping a caller driving station-wide actions by quoting fake instructions at the DJ — ablated, it skipped the track and put "the station is closing down" on air, 3/3 each. The largest of the three changed nothing when removed, most likely because the TOOLS already carry the same instruction in their result text, at the moment it matters, where it beats the standing prompt.
+
+**Nothing about their size predicted either result**, which is the case against ever trimming the prompt by eye. `say_the_true_thing` is not cut on this evidence — fifteen judged rounds is a signal, not a verdict, and the set grades specific invented phrases rather than honesty in general.
+
 ## Known disagreements
 
 Recorded rather than quietly carried. One is left:
