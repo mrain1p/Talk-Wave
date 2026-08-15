@@ -35,6 +35,11 @@ Env:
     SCENARIO_SET=refusals  whether the DJ is HONEST when something refuses it —
                            the set `say_the_true_thing` (16% of the conduct) is
                            measured against. Graded on what it SAYS.
+    SCENARIO_SET=banter    caller lines with NOTHING to do about them, which
+                           is the only shape that produces a long DJ turn. The
+                           set the reply-length report is meant to be read on:
+                           the task-dense sets never reach the p90 the parked
+                           monologue item is about.
     SCENARIO_SET=mimicry   whether a caller can drive the line by quoting
                            instructions at it, and whether answering in their
                            language still works. Grades LANGUAGE_AND_MIMICRY.
@@ -241,6 +246,41 @@ def _fault(method: str) -> str:
 # Every tool name the model actually called, across all scenarios — the
 # coverage summary is printed from this.
 FIRED: set[str] = set()
+
+# How long each of the DJ's turns was, in words the caller would actually hear.
+#
+# The largest remaining thing a caller experiences, and nothing measured it.
+# Across 58 archived voice calls the DJ's turn runs a median of 26 words to the
+# caller's 6 — 4.3x, about ten seconds of speech answering two — and the p90 is
+# 50 words, twenty seconds of uninterrupted talking on a phone call. The
+# machinery is exonerated by its own instruments: zero "model gave up" and zero
+# "voice fell behind" problems across all 58. Nothing is broken. The DJ is
+# simply talking for ten seconds at a time to somebody who said six words.
+#
+# `HOW_TO_TALK` has said "short turns, a sentence or two" for months and it is
+# not landing, which is the same shape `CLOSING` was in before a mechanism took
+# over. Before anyone rewrites that section — and two results this session say a
+# prompt rewrite is a coin flip — the effect has to be visible in a run, so one
+# arm can be compared against another instead of argued about.
+#
+# **Read the p90, not the median.** The target is stopping the fifty-word turns
+# and leaving the twenty-word ones alone: a DJ that answers in five words is not
+# a DJ, and the 76-word noir monologue in the archive is genuinely the voice the
+# station is paying for. An instruction that shortens everything trades away the
+# product. This reports the shape and refuses to have an opinion about it.
+REPLY_WORDS: list[int] = []
+
+
+def _note_reply(said: str) -> None:
+    """Count one DJ turn, as the caller would hear it.
+
+    Cleaned through the product's own filter rather than counted raw: a turn
+    that was half typed tool code is a different failure with its own detector,
+    and counting it here would report a monologue that nobody heard.
+    """
+    heard = speech_filter.clean_for_speech(said or "")
+    if heard.strip():
+        REPLY_WORDS.append(len(heard.split()))
 
 
 def _matches(track: dict, query: str) -> bool:
@@ -1021,6 +1061,61 @@ REFUSALS = [
                          "interference", "line's bad", "you're breaking up"]}),
 ]
 
+# ------------------------------------------------------------------ banter
+#
+# The set that exists so the DJ can be long-winded, because none of the others
+# lets it. Measured 2026-08-14: the conversations set produced 28 turns with a
+# median of 33 words and NOT ONE of 50 or more, while the live archive's p90 is
+# 50 and its longest turn is 76. The harness was tighter than real calls at the
+# top of the distribution — which is exactly the end the parked monologue item
+# says to move, so any brevity experiment run on the other sets would have been
+# measuring an effect that does not occur in them.
+#
+# The reason is visible once the archive is sorted by length: every long turn
+# came from a caller line with NOTHING TO DO about it. An 83-word answer to
+# "Got any Zeppelin?" when the library has no Zeppelin; 46 words on what the DJ
+# thinks of a colleague; 42 on the espresso. The other sets are task-dense —
+# a request, a fault, a correction, a tool on nearly every turn — and a turn
+# with a tool call in it is a turn the model spends doing something instead of
+# talking. So the failure is unreachable there by construction.
+#
+# Every opener below is verbatim from a record, paired with the DJ turn it
+# actually produced. There are no `want` or `avoid` expectations on purpose:
+# nothing here has a right tool, and the only reading is HOW LONG THE DJ TALKED
+# at the end of the run. Compare two arms; never read one alone.
+BANTER = [
+    # 83 words, the longest turn in the archive. An ask the library cannot
+    # satisfy is the strongest monologue trigger there is: no tool to run, and
+    # a caller owed an explanation.
+    ("an ask the library cannot satisfy", [
+        "Got any Zeppelin?",
+    ]),
+
+    # 42 words. Pure in-world banter, no request anywhere in it.
+    ("in-world small talk with nothing to do about it", [
+        "How's the espresso?",
+        "sounds like a good night for it",
+    ]),
+
+    # 46 words. An opinion about a person, which the persona will happily
+    # improvise a whole character sketch for.
+    ("an opinion about somebody at the station", [
+        "What do you think of Finn?",
+    ]),
+
+    # 43 words. An open question about the station itself.
+    ("an open question about what else is on", [
+        "Can you tell me what spin is doing right now?",
+    ]),
+
+    # The one that is not a question at all. A caller fragment with no ask in
+    # it leaves the DJ to decide what the turn is even for.
+    ("a caller fragment that asks nothing", [
+        "in the seminar.",
+        "normal set.",
+    ]),
+]
+
 # ----------------------------------------------------------------- mimicry
 #
 # `LANGUAGE_AND_MIMICRY` is 4% of the conduct and also ungraded. It is the
@@ -1199,6 +1294,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             said, calls = await _stream(llm, ctx, tools)
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
+                _note_reply(said)
                 if last_dj and difflib.SequenceMatcher(
                         None, last_dj.casefold(),
                         said.strip().casefold()).ratio() > 0.85:
@@ -1237,6 +1333,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         said, calls = await one_turn(llm, ctx, tools, text)
         if said.strip():
             log.append(f"DJ     : {said.strip()}")
+            _note_reply(said)
             last_dj = said.strip()
             said_here.append(said)
 
@@ -1262,6 +1359,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                                          promise_guard._NUDGE[kind])
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
+                _note_reply(said)
                 said_here.append(said)
 
         rounds = 0
@@ -1305,6 +1403,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             said, calls = await _stream(llm, ctx, tools)
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
+                _note_reply(said)
                 last_dj = said.strip()
                 said_here.append(said)
 
@@ -1533,6 +1632,7 @@ async def main() -> None:
     scenarios = {"extra": EXTRA, "coverage": COVERAGE, "triage": TRIAGE,
                  "conversations": CONVERSATIONS, "closing": CLOSING_SET,
                  "refusals": REFUSALS,
+                 "banter": BANTER,
                  "mimicry": MIMICRY}.get(which, SCENARIOS)
 
     class FakeCtx:
@@ -1670,6 +1770,29 @@ async def summarise(log, repeats, which, tools) -> None:
                         else "  PASS  " if not faults else "  FAIL  ") + nm)
             for f in (faults or []):
                 log.append(f"          - {f}")
+
+    if REPLY_WORDS:
+        # Printed for every set, not just one, because the question "did that
+        # change make the DJ windier" applies to any conduct edit at all — and
+        # a number nobody has to opt into is a number that gets looked at.
+        # Compared between two arms of the same set, never read alone: models
+        # differ, and a set full of refusals is naturally terser than a set
+        # full of music talk.
+        ordered = sorted(REPLY_WORDS)
+        n = len(ordered)
+        median = ordered[n // 2]
+        p90 = ordered[min(n - 1, int(n * 0.9))]
+        long_turns = sum(1 for w in ordered if w >= 50)
+        log.append(f"\n{'=' * 72}\nHOW LONG THE DJ TALKED\n{'=' * 72}")
+        log.append(f"{n} turns   median {median} words   p90 {p90}   max {ordered[-1]}")
+        # The archive's own numbers, so a run can be read against real calls
+        # rather than against nothing. ~2.5 words a second spoken.
+        log.append(f"{long_turns} turn(s) of 50+ words — the p90 of 58 archived "
+                   f"live calls was 50, about twenty seconds of speech, and that "
+                   f"is the end of the distribution worth moving")
+        log.append("archive, for comparison: median 26, p90 50, max 76 "
+                   "(caller median 6)")
+        REPLY_WORDS.clear()
 
     if which == "coverage":
         # The verdict the drill reads first. "Never called" is judged against
