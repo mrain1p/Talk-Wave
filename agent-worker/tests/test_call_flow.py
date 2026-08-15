@@ -659,6 +659,94 @@ class TestACallerWhoWasNeverHeardIsToldSo(unittest.TestCase):
         self.assertIn("microphone", " ".join(lines).lower())
 
 
+class TestTheCheckInWindowIsTheNumberTheOperatorTyped(unittest.TestCase):
+    """A question in the DJ's last line must not lengthen the wait.
+
+    It used to triple it — thinking time for a caller weighing up an answer,
+    after a call where the DJ asked "Still with me?" twice while somebody chose
+    between two versions of a track. The exception then ate the rule: this DJ
+    hands the turn back at the end of nearly every line, so on the call that
+    got it looked at (2026-08-15 15:27) all three DJ turns ended in a question
+    mark and the tripled window was the only one a caller who had spoken could
+    ever get. 20 seconds configured meant 60 seconds on the line; the caller
+    waited 56 and gave up first.
+
+    The test drives the OLD trigger on purpose: if a question-watching
+    subscription ever comes back, this hands it a question and then holds the
+    code to the configured window anyway.
+    """
+
+    def _first_check_in_after(self, question: str) -> float:
+        import asyncio
+        import time
+        import types
+
+        from call import lifecycle
+
+        fired = []
+        subs = {}
+
+        class _Session:
+            agent_state = "listening"
+
+            def on(self, name, fn=None):
+                subs[name] = fn
+
+            async def generate_reply(self, **kw):
+                fired.append(time.time())
+
+            async def say(self, *a, **k):
+                fired.append(time.time())
+
+        ctx = types.SimpleNamespace(
+            add_shutdown_callback=lambda *a: None,
+            api=types.SimpleNamespace(room=types.SimpleNamespace(
+                delete_room=_noop_async)),
+            room=types.SimpleNamespace(name="callin-test"),
+            shutdown=lambda **k: None,
+        )
+
+        async def go():
+            started = time.time()
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": 2},
+                heard={"n": 3},          # this caller HAS been heard
+            )
+            # The DJ's last line, ending in a question — the old path's
+            # trigger. Nothing subscribes to this any more; if something does
+            # again, it gets fed exactly what it is watching for.
+            note = subs.get("conversation_item_added")
+            if note:
+                note(types.SimpleNamespace(item=types.SimpleNamespace(
+                    role="assistant", text_content=question)))
+            for _ in range(50):
+                await asyncio.sleep(0.1)
+                if fired:
+                    break
+            return (fired[0] - started) if fired else float("inf")
+
+        return asyncio.run(go())
+
+    # The watcher polls once a second, so a 1s window lands the check-in
+    # somewhere in 1-2s and a tripled one could not arrive before 3. 2.5
+    # separates them with room for a slow machine on either side.
+    LIMIT = 2.5
+
+    def test_a_question_does_not_buy_the_caller_a_longer_silence(self):
+        waited = self._first_check_in_after("What can I do for you today?")
+        self.assertLess(
+            waited, self.LIMIT,
+            "the check-in came after %.1fs on a 1s window — a question in the "
+            "DJ's last line is lengthening the wait again" % waited)
+
+    def test_a_line_with_no_question_is_unchanged(self):
+        # The control: same window, same behaviour, so the test above is
+        # measuring the question and not the clock.
+        waited = self._first_check_in_after("That was Clairo, trailing off.")
+        self.assertLess(waited, self.LIMIT)
+
+
 class TestTheSignOffIsHeardBeforeTheLineCloses(unittest.TestCase):
     """The DJ's last word was being cut off every time it hung up itself.
 

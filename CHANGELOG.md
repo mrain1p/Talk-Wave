@@ -3,12 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.157
+## 0.10.159
 
-A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.157.
+A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.159.
 
 ### What the caller hears
 
+- **The DJ checks in after the number of seconds you set, not three times that.** If you have sat in silence waiting to be asked whether you are still there and nothing came, this was it: a question mark at the end of the DJ's last line tripled the wait, so "check in after 20 seconds" meant a minute on the line. It was meant as thinking time for a caller weighing up an answer, but this DJ ends nearly every line with a question, so the exception had become the rule. Caught on a call where the caller waited 56 seconds and gave up first.
 - **The DJ stops telling callers a request is on its way when the station refused it.** Measured twice out of two on the deployed brain: the station said no, and the DJ said "it'll head out onto the airwaves just as soon as that track clears". Nothing had been queued, and the caller had no way to know.
 - **"That one's in" now needs something to actually have gone in.** A turn that only looked something up could still claim it had queued it — reproduced one call in three.
 - **The DJ stops asking whether you want anything else while you are still talking.** Eight of the 162 DJ lines in the archive ended by offering the door to a caller who had not said they were finished; one call did it three times while the caller was describing a friend's bad week.

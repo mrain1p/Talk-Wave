@@ -161,6 +161,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheCloseReasonIsReadable,
     TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack,
     TestTheIdleClockDoesNotRunWhileTheDJIsWorking,
+    TestTheCheckInWindowIsTheNumberTheOperatorTyped,
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )
 from tests.test_tools_surface import (  # noqa: F401

@@ -78,22 +78,25 @@ def attach_idle_watch(
     being present; the clock starts each time the DJ finishes talking (a
     caller quietly listening isn't idle).
 
+    The window is `idle_prompt_secs` and nothing lengthens it — see the note
+    at the wait, which is where an exception for questions used to live.
+
     `heard` is the call's own "has anything ever arrived from this caller"
-    counter, and it separates two situations this used to treat as one. A
-    caller who has been talking and then stops is thinking, or distracted, and
-    deserves the patient ladder. A caller who has NEVER been heard is a broken
-    media path, a blocked microphone, or a wrong device — the commonest
-    outcome on this deployment by some distance — and the patient ladder is
-    exactly wrong for them: on 2026-08-06 that call ran 133 seconds, produced
-    one "Still with me?", and the caller hung up before the goodbye ever came.
-    Nothing the DJ said named the problem, and nothing arrived in time to be
-    heard.
+    counter, and it separates two situations this used to treat as one — now
+    in what the DJ SAYS rather than in how long it waits. A caller who has been
+    talking and then stops is thinking, or distracted, and gets "still with
+    me?". A caller who has NEVER been heard is a broken media path, a blocked
+    microphone, or a wrong device — the commonest outcome on this deployment by
+    some distance — and needs to be told that: on 2026-08-06 a call ran 133
+    seconds, produced one "Still with me?", and the caller hung up before the
+    goodbye ever came. Nothing the DJ said named the problem, which the caller
+    was the only person who could fix.
     """
     idle_secs = int(cfg.get("idle_prompt_secs") or 0)
     if idle_secs <= 0:
         return
     max_nudges = int(cfg.get("idle_max_nudges") or 0)
-    state = {"last_words": time.time(), "nudges": 0, "asked": False}
+    state = {"last_words": time.time(), "nudges": 0}
 
     def never_heard() -> bool:
         return heard is not None and not heard.get("n")
@@ -103,26 +106,8 @@ def attach_idle_watch(
         if text.strip():
             state["last_words"] = time.time()
             state["nudges"] = 0
-            state["asked"] = False
 
     session.on("user_input_transcribed", _on_transcript)
-
-    def _note_question(ev) -> None:
-        """Did the DJ just ask the caller something?
-
-        Observed on a real call: the DJ offered a choice of two versions of a
-        track and then asked "Still with me?" twice while the caller was
-        deciding. A caller weighing up an answer is not an absent caller, so a
-        question buys them considerably longer before anyone checks on them.
-        """
-        item = getattr(ev, "item", None)
-        if getattr(item, "role", None) != "assistant":
-            return
-        text = str(getattr(item, "text_content", "") or "").strip()
-        if text:
-            state["asked"] = text.endswith("?")
-
-    session.on("conversation_item_added", _note_question)
 
     async def _idle_watch() -> None:
         while True:
@@ -152,19 +137,23 @@ def attach_idle_watch(
             if actions is not None and actions.is_working():
                 state["last_words"] = time.time()
                 continue
-            # Thinking time, not dead air: give a caller who was just asked
-            # something three times as long before checking on them.
+            # THE WINDOW IS THE SETTING. It used to triple when the DJ's last
+            # line ended in a question — thinking time for a caller weighing up
+            # an answer, after a call where the DJ asked "Still with me?" twice
+            # while somebody chose between two versions of a track.
             #
-            # Except when nothing has ever arrived from them. The greeting
-            # ends in a question on every call, so `asked` is true from the
-            # first second, and tripling the window is what made the first
-            # check-in land 63 seconds into a call whose caller was never
-            # audible. There is no answer coming to a question they cannot
-            # hear being asked.
+            # Removed at 0.10.159, because the exception had eaten the rule.
+            # This DJ hands the turn back at the end of almost every line: on
+            # the call that got this looked at (2026-08-15 15:27), all three DJ
+            # turns ended in a question mark, so the tripled window was not the
+            # occasional allowance — it was the only window a caller who had
+            # spoken could ever get. 20 seconds configured meant 60 seconds in
+            # practice, and the caller sat through 56 of them and gave up
+            # waiting: "it shouldn't triple to 60 seconds just because it ended
+            # in a question mark". The setting now means what it says, and
+            # `idle_max_nudges` is what stops the check-ins piling up.
             dead_line = never_heard()
-            wait_for = (
-                idle_secs if dead_line or not state["asked"] else idle_secs * 3
-            )
+            wait_for = idle_secs
             if time.time() - state["last_words"] < wait_for:
                 continue
             if state["nudges"] >= max_nudges:
