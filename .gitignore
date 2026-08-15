@@ -25,6 +25,9 @@ talkwave-panel-spec.md
 # issue is filed, and one reached a public branch by being the only
 # working note here without a rule (0.10.99).
 UPSTREAM-REQUEST-*.md
+# Session handovers: written for whoever picks the work up next, and they
+# name the operator's own box. Same rule as the drafts above.
+HANDOVER*.md
 subwave-openapi.json
 # Worked-off notes retire here rather than sitting beside the live ones
 # looking like open work (the three audit docs moved 2026-08-11, ~95% done,
