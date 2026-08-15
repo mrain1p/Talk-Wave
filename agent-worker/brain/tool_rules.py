@@ -179,7 +179,17 @@ def finding_rule(cfg: dict) -> str:
 def vague_rule(cfg: dict) -> str:
     """What to do with "something fun". Either act on it, or come back with
     real options first — but never both, and never an open question, which
-    is how a caller ends up being asked what kind of fun they meant twice."""
+    is how a caller ends up being asked what kind of fun they meant twice.
+
+    The ASKING-FOR-A-RECOMMENDATION half was added 2026-08-15, off a chat the
+    operator ran: they asked what the DJ would recommend, and it named a record
+    and queued it in the same turn — 74 seconds in, cancelled two minutes
+    later. The shaped branch already said to come back with options, and the
+    model still acted, because "ONE round: whatever they say next" reads as
+    satisfied by the DJ's own suggestion. Nothing here distinguished a QUESTION
+    about what to play from a REQUEST to play something, and that distinction
+    is the whole of it: naming a record is an answer, not an instruction.
+    """
     if cfg.get("shape_vague_requests"):
         return (
             "  When the ask is a FEELING rather than a track — \"something fun\",\n"
@@ -189,7 +199,12 @@ def vague_rule(cfg: dict) -> str:
             "  fun, or eighties-cheese fun?\"). Concrete options, in one breath —\n"
             "  never an open \"what kind of fun?\", which puts the work back on\n"
             "  them. Search first if you need to; don't invent names. ONE round:\n"
-            "  whatever they say next, act on it and put the request in."
+            "  whatever they say next, act on it and put the request in.\n"
+            "  **A QUESTION IS NOT A REQUEST.** \"What would you recommend?\",\n"
+            "  \"what should I listen to?\", \"any suggestions?\" — answer it.\n"
+            "  Name what you'd play and why, and STOP there. Queueing the thing\n"
+            "  you just recommended is answering a question they didn't ask; it\n"
+            "  is their pick that starts a request, not yours."
         )
     return (
         "  And don't interrogate them about it. One vibe is enough to act on:\n"

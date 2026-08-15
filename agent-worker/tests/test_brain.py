@@ -140,6 +140,30 @@ class TestBrainSplit(_TempStores):
                 self.assertIn(present, text)
                 self.assertNotIn(absent, text)
 
+    def test_a_question_about_what_to_play_is_not_a_request(self):
+        """Asking the DJ what it would recommend must not queue anything.
+
+        From the operator's chat of 2026-08-15: they asked what it recommends,
+        it named "Swinging on a Star" and queued it in the same turn (18:15:18
+        in the web log, cancelled at 18:17:12). `shape_vague_requests` was ON
+        the whole time — the shaped branch says to come back with options, and
+        the model still acted, because "ONE round: whatever they say next"
+        reads as satisfied by the DJ's own suggestion. The rule now separates a
+        question from an instruction; without that line this section says
+        nothing about the difference.
+        """
+        text = conduct.rules({"allow_requests": True,
+                              "shape_vague_requests": True})
+        self.assertIn("A QUESTION IS NOT A REQUEST", text)
+        self.assertIn("What would you recommend?", text)
+        # And it is part of the SHAPED branch, not a standing rule: with
+        # shaping off the DJ is deliberately told to act on one vibe, and two
+        # instructions pulling opposite ways is the failure this pairs against.
+        self.assertNotIn(
+            "A QUESTION IS NOT A REQUEST",
+            conduct.rules({"allow_requests": True,
+                           "shape_vague_requests": False}))
+
     def test_offering_a_segment_needs_both_switches(self):
         self.assertNotIn("Offering a segment", conduct.rules({"offer_skills": True}))
         self.assertNotIn("Offering a segment", conduct.rules({"allow_skills": True}))

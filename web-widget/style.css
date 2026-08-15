@@ -1783,8 +1783,10 @@
     padding: 7px 9px; margin: 9px 0;
     /* display here, not inherited: .cap stopped being a grid when the
        speech labels went inline, and this card's icon column still is one. */
-    display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 9px;
-    align-items: start;
+    /* 18px and a 7px gutter, not 20 and 9: the icon is one glyph, and the 6px
+       this returns is a word of the title back on every wrapped line. */
+    display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px;
+    align-items: start; line-height: 1.45;
   }
   .cap.sys .ico { font-size: 12.5px; line-height: 1.2; text-align: center; }
   /* ONE LINE, wrapping. The name and the detail were two blocks at two sizes,
@@ -1795,12 +1797,28 @@
      compact thing in the transcript, not the tallest. */
   .cap.sys .what {
     display: inline; color: var(--coral); font-weight: 700;
-    font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
     text-transform: var(--skin-label-case);
   }
+  /* THE DETAIL IS CONTENT, NOT A LABEL — so it is set like content. It was
+     mono at 11px with .1em of tracking, which is the label's dress on a record
+     title, and the width that tracking costs is what broke "Swinging on a Star"
+     across three lines inside its own card (operator screenshot: "the view of
+     the action card looks like it could do a better job of fitting the text in
+     there"). Sans, no tracking, and 12.5px against the transcript's 13.5 — the
+     receipt reads a step quieter than the conversation it sits in, which is the
+     other half of the same ask. The label keeps its mono uppercase: that IS a
+     label, and the colour and the face are what say which half is which. */
   .cap.sys .detail {
     display: inline; color: var(--sage); font-weight: 400;
-    font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em;
+    /* RELATIVE to the transcript, not a number of its own: the conversation is
+       13.5px on the page and 12.5 on a phone, so a fixed 12.5 here reads a
+       step quieter in one place and exactly level in the other. An em keeps
+       the receipt below the conversation at every width. */
+    font-family: var(--font-body); font-size: .92em; letter-spacing: 0;
+    /* A track title has no spaces to break at when it is one long word, and a
+       card that overflows its own border is worse than an ugly break. */
+    overflow-wrap: anywhere;
   }
   /* The gap between them, without a space that a copy-paste would keep. */
   .cap.sys .detail:not(:empty)::before { content: '  '; white-space: pre; }
