@@ -3,9 +3,9 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.10.156
+## 0.10.157
 
-A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.156.
+A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.157.
 
 ### What the caller hears
 
@@ -16,9 +16,11 @@ A DJ who stops promising records the station refused, a call you can mark good o
 
 ### The card
 
-- **The transcript box makes room for the picture.** LINES ARE OPEN sits in the bottom third now, so a skin's turntable, dial or reticle has the space above it instead of drawing through the words.
 - **LINES ARE OPEN no longer sits over a live call.** If you saw it above your own conversation — with the transcript pushed below it and a scrollbar to reach your own words — that was this. It went as late as 0:17 into a call.
-- **The volume slider takes at most a third of its row.** It was taking about half, and the You and DJ waveforms beside it were squeezed to a pair of dashes on a narrow card.
+- **No scrollbar down the side of an empty transcript.** The box had nothing to scroll and offered the bar anyway.
+- **The line stays centred, and only drops low when a skin gives it a reason to.** On a skin with a turntable, dial or reticle in the box it moves into the bottom third and the drawing gets the space above it, instead of the two being drawn on top of each other.
+- **The volume slider takes at most a third of its row.** It was taking about half, and the You and DJ waveforms beside it were squeezed to a pair of dashes on a narrow card. Its knob also stays inside the rail now, rather than sliding into the gap beside it at either end.
+- **YOU and DJ are the same size again.** In an embed the DJ's meter label was rendering half a size up and filling the instrument's box to its border, and DJ captions were a size bigger than the caller's. One rule meant for the DJ's name was catching everything else called DJ.
 
 ### Reading back what happened
 

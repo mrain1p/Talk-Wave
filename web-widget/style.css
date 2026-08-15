@@ -1029,8 +1029,16 @@
      next to the two controls that matter.
      The element keeps a taller box than the trough so there is still
      something a finger can hit. */
+  /* The 5px of side padding is what keeps the KNOB inside the control. A range
+     input centres its thumb on the value's position along the full width of
+     the track, so at 0 and at 100 — where this sits almost always — half the
+     knob paints outside the element, into the gap it shares with the
+     percentage and the waveforms beside it (operator: "slight overlap on the
+     volume bar and speaker wavelengths"). Padding insets the track by the
+     thumb's own half-width, so the ends of the rail are the ends of the
+     control. */
   .vol input[type=range] {
-    flex: 1; min-width: 0; height: 18px;
+    flex: 1; min-width: 0; height: 18px; padding: 0 5px; box-sizing: border-box;
     -webkit-appearance: none; appearance: none;
     background: transparent; cursor: pointer;
   }
@@ -1511,30 +1519,48 @@
     to   { top: calc(100% - 1.3em); }
   }
 
+  /* CENTRED, and out of the flow. Absolute rather than a `height: 100%` flow
+     child: the line box scrolls, and a full-height child of a scrolling box is
+     one rounding error away from overflowing it — which is what put a
+     scrollbar down the side of an EMPTY transcript (operator screenshot). An
+     absolutely-placed child cannot contribute to scroll height at all, which
+     is why the status line and the skin artefact in this same box are placed
+     the same way. */
   .idleboard {
+    position: absolute; inset: 0; z-index: 1;
     display: flex; flex-direction: column; align-items: center;
-    gap: 7px; height: 100%; text-align: center;
-    padding: 4px 0;
+    justify-content: center; gap: 7px; text-align: center;
+    padding: 4px 0; pointer-events: none;
   }
-  /* LOW IN THE BOX, not centred on it. The board and a skin's idle artefact
-     were drawn in the middle of the same rectangle, so the platter, the dial
-     or the reticle had nowhere to be that the headline was not already sitting
-     on top of. The headline takes the bottom third and the art gets the two
-     thirds above it (operator's ask).
+  .idleboard[hidden] { display: none; }
+  /* LOW ONLY WHEN A SKIN EARNS IT (operator's ask). The board and a skin's
+     idle artefact were drawn in the middle of the same rectangle, so the
+     platter, the dial and the reticle had nowhere to be that the headline was
+     not already sitting on — but on the shipped card there is no drawing, and
+     a headline pushed down the box for a picture that does not exist just
+     looks off-centre. `data-skin` is REMOVED for the default card (shared.js),
+     so this is exactly "a skin is on".
      Two spacers rather than a bottom padding, because the line box is the
      card's one ELASTIC band: a fixed padding sits the headline against the
      bottom edge of a tall card and halfway up a short one, and a percentage
      padding would resolve against the box's WIDTH. Flex grow is the only unit
      here that means a third of the height. */
-  .idleboard::before { content: ""; flex: 3 1 0; }
-  .idleboard::after  { content: ""; flex: 1 1 0; }
-  .idleboard[hidden] { display: none; }
-  /* And the art keeps the two thirds ABOVE the headline while the board is up
-     — otherwise moving the board down just moved it on top of the drawing
-     instead of out from under it. Only while the board is showing: with the
-     door code or the setup nudge in the box there is no headline to make room
-     for, and the drawing should have the box. */
-  .linebox:has(.idleboard:not([hidden])) .skinart { bottom: 34%; }
+  :root[data-skin] .idleboard { justify-content: flex-start; }
+  :root[data-skin] .idleboard::before { content: ""; flex: 3 1 0; }
+  :root[data-skin] .idleboard::after  { content: ""; flex: 1 1 0; }
+  /* …and then the art keeps the two thirds ABOVE the headline — otherwise
+     moving the board down just moved it on top of the drawing instead of out
+     from under it. Only while the board is showing: with the door code or the
+     setup nudge in the box there is no headline to make room for, and the
+     drawing should have the box. */
+  :root[data-skin] .linebox:has(.idleboard:not([hidden])) .skinart { bottom: 34%; }
+  /* The status follows the headline down, and is anchored to the BOTTOM rather
+     than measured from the top: with the board low, its position is a
+     proportion of an elastic box and the two would have to be kept in
+     agreement at every height. */
+  :root[data-skin] .linebox:has(.idleboard:not([hidden])) #status {
+    inset: auto 12px 6px 12px;
+  }
   /* THE STATUS PRINTS UNDER THE HEADLINE, like a line on a terminal — this is
      the operator's shape: LINES ARE OPEN, and beneath it what is happening
      right now (Connecting… · On the line, go ahead · They rang off). It was
@@ -1543,12 +1569,11 @@
      board it is a normal flow child of a centred column, so the two read as
      one small display instead of fighting for the middle of the box. */
   .linebox:has(.idleboard:not([hidden])) #status {
-    /* Under the headline, which now sits low in the box — so this is anchored
-       to the BOTTOM rather than measured down from the top: the headline's own
-       position is a proportion of a box that is elastic, and the two would
-       have to be kept in agreement at every height. Still absolute — the board
-       owns the box's height and a flow sibling would be pushed out of it. */
-    inset: auto 12px 6px 12px;
+    /* Just under the headline, which is centred in the box: the board's rule
+       and head come to about 30px, so half the box plus a little clears it.
+       Still absolute — the board is placed over the box and a flow sibling
+       would be pushed out of it — but placed rather than centred. */
+    inset: calc(50% + 22px) 12px auto 12px;
     justify-content: center; text-align: center;
     font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
@@ -3455,8 +3480,11 @@
     /* Was 19px, which is two steps off the scale and the largest thing in the
        widget by a distance. The scale is 9.5 / 11 / 12.5 / 15 and the name is
        already the top of it — a narrow screen is a reason to spend the width
-       differently, not to introduce a fifth size. */
-    .dj { font-size: 15px; }
+       differently, not to introduce a fifth size.
+       Scoped, like every other rule that thought `.dj` meant the name: bare,
+       it also set a DJ CAPTION to 15px against the caller's 13.5 and the
+       meter's label to 15 against YOU's 9.5. */
+    .who-row .dj { font-size: 15px; }
     /* Idle, the call button IS the page's action — give it the full row.
        Height stays --control-h: the spec has no exceptions to that, and a
        taller-on-mobile button was one of the four treatments this replaced.
@@ -3628,7 +3656,14 @@
      than as a person and the programme they are on, and it truncated the show
      first. Two lines beside the picture is the same shape as the player, and
      the row was already taller than one line of type (operator's ask). */
-  body.compact .dj { font-size: 14px; display: block; margin: 0; }
+  /* .who-row .dj, NOT bare .dj — the third time this file has had to say so
+     (see the header rule and the phone block). `.dj` is the DJ's NAME here,
+     but the same class names the DJ's METER LABEL and a DJ caption line, so
+     the bare form rendered "DJ" beside the waveform at 14px against "YOU" at
+     9.5 — a label a size and a half bigger than the one it is paired with,
+     filling the instrument's box to its border. Operator-reported off an
+     embed, which is the only surface this rule applies to. */
+  body.compact .who-row .dj { font-size: 14px; display: block; margin: 0; }
   body.compact .who-row .show { display: block; margin-left: 0; font-size: 10px; }
   /* One line however long the show's name runs — an inline pair that wraps
      hands the row back its width-dependence through the side door. On the
@@ -3638,7 +3673,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     min-width: 0; flex: 1;
   }
-  body.compact .dj, body.compact .who-row .show { white-space: nowrap; }
+  body.compact .who-row .dj, body.compact .who-row .show { white-space: nowrap; }
   /* The line-clamp box here predates the rail: it existed to keep a wrapping
      title to one line when the track sat inside .who-row. In the rail the
      base rule already does that with nowrap + a mask fade, and -webkit-box
