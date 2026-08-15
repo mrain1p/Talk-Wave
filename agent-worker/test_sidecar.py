@@ -340,6 +340,7 @@ from tests.test_house_rules import (  # noqa: F401
     TestNoFileGrowsWithoutSomebodyDeciding,
     TestTheCallHarnessOnlyDialsLocal,
     TestTheDrillHarnessTracksTheModulesItDrives,
+    TestTheHarnessCanBeInjectedIntoAnOlderImage,
     TestTheRetiredEvalStaysRetired,
     TestTheCommitGateIsStillWiredUp,
     TestTheLogKeepsTheLinesThatMatter,

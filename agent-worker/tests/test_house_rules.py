@@ -1004,3 +1004,103 @@ class TestTheInstallerTellsTheTruth(unittest.TestCase):
         # the installer exists to do for people.
         self.assertIn("REPLACE_WITH_A_FRESH_SECRET", self.script)
         self.assertIn("LIVEKIT_API_SECRET=", self.script)
+
+
+class TestTheHarnessCanBeInjectedIntoAnOlderImage(unittest.TestCase):
+    """`scripted_call.py` is piped into whatever image is deployed, and the
+    modules it overrides go in by hand — so the injection list IS the contract.
+
+    Both rules below were bought on 2026-08-15 and each cost a full run against
+    the operator's box, which is roughly eight minutes and a slice of their LLM
+    bill. Neither is checkable by running the harness (it needs a live station
+    and a provider key, which the suite must never touch), so both are read off
+    the source.
+    """
+
+    HARNESS = AGENT_WORKER / "scripted_call.py"
+
+    def _injection_pairs(self):
+        """The (NEW_VAR, module.path) pairs, in the order they are installed."""
+        import re
+
+        src = self.HARNESS.read_text(encoding="utf-8")
+        start = src.index("for _var, _path in (")
+        body = src[start:src.index("):", start)]
+        return re.findall(r'\("(NEW_[A-Z_]+)",\s*"([\w.]+)"\)', body)
+
+    def test_the_scan_found_the_injection_list(self):
+        # Guard the guard: an empty list would make the order test vacuous.
+        pairs = self._injection_pairs()
+        self.assertGreaterEqual(len(pairs), 2, "no injection pairs parsed — "
+                                "the loop has been rewritten and these tests "
+                                "are reading the wrong thing")
+
+    def test_a_module_is_installed_before_anything_that_imports_it(self):
+        """Leaves first, or a dependent binds to the image's old copy.
+
+        `call.promise_guard` imports `promises` and `spoken_rules`. Installed
+        in the wrong order it took the DEPLOYED `promises`, whose `unbacked`
+        had never heard of the "refused" kind, and the run died three scenarios
+        in with `KeyError: 'refused'` — after spending the model calls.
+        """
+        order = [path for _var, path in self._injection_pairs()]
+        index = {p: i for i, p in enumerate(order)}
+        # (a module, the modules it imports). Only first-party pairs that are
+        # actually in the list are checked, so adding an injection does not
+        # oblige anyone to edit this.
+        for dependent, needs in (
+            ("call.promise_guard", ("promises", "spoken_rules")),
+            ("brain.conduct", ("brain.tool_rules",)),
+            ("brain.conduct_chat", ("brain.tool_rules",)),
+            ("promises", ("spoken_rules",)),
+        ):
+            if dependent not in index:
+                continue
+            for leaf in needs:
+                if leaf in index:
+                    self.assertLess(
+                        index[leaf], index[dependent],
+                        f"{leaf} is injected after {dependent}, which imports "
+                        f"it — {dependent} will bind to the image's copy and "
+                        "the run fails partway through, having already spent "
+                        "the model calls",
+                    )
+
+    def test_every_injectable_module_actually_exists(self):
+        for _var, path in self._injection_pairs():
+            candidate = AGENT_WORKER / (path.replace(".", "/") + ".py")
+            self.assertTrue(candidate.is_file(),
+                            f"{path} is in the injection list but there is no "
+                            f"{candidate.name} to inject")
+
+    def test_every_scenario_set_the_docstring_offers_can_be_selected(self):
+        """A set defined and never wired up falls back to the default silently.
+
+        `SCENARIO_SET=banter` would have run the ordinary scenarios and
+        reported reply lengths for the wrong thing — the shape of failure that
+        looks like a result.
+        """
+        import re
+
+        src = self.HARNESS.read_text(encoding="utf-8")
+        offered = set(re.findall(r"SCENARIO_SET=(\w+)", src))
+        # `[,}]` and not just a comma: the last entry of the table carries the
+        # closing brace instead, and matching only commas silently exempted it.
+        selectable = set(re.findall(r'"(\w+)":\s*[A-Z_]+\s*[,}]', src))
+        # `extra` is the fallback the dict resolves to, not a key in it.
+        missing = offered - selectable - {"extra"}
+        self.assertEqual(
+            set(), missing,
+            f"named in the docstring but not in the sets table: {sorted(missing)} "
+            "— SCENARIO_SET would fall back to the default set and the run "
+            "would report numbers for scenarios nobody asked for")
+
+    def test_a_scenario_whose_fault_never_fires_is_not_scored(self):
+        """The 0.10.150 lesson, pinned so it cannot quietly regress.
+
+        A scenario that arms a refusal the DJ never walks into graded the happy
+        path, and a happy path scores the same in both arms of an ablation.
+        """
+        src = self.HARNESS.read_text(encoding="utf-8")
+        self.assertIn("FAULTS_FIRED", src)
+        self.assertIn("the fault this scenario", src)
