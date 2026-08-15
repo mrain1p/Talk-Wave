@@ -64,7 +64,13 @@ _MAX_ATTEMPTS = 5
 # How long a test fire waits for the push to come back. The station awaits its
 # own POST before answering us, so this is slack for the event loop rather
 # than a network budget.
-_DELIVERY_WAIT = 3.0
+# How long to wait for the station's own POST to land after it says it sent
+# one. Raised from 3.0 at 0.10.157: three seconds is generous against a healthy
+# station and tight against a struggling one, and the operator's box was doing
+# both on 2026-08-15 — the webhook row failed while the same station was timing
+# out `/state` reads during a live call. A button that takes a few seconds
+# longer is cheaper than a row that reports a network fault there isn't one.
+_DELIVERY_WAIT = 8.0
 
 def _lan_ip() -> str:
     """The address the NAS can reach this box on — NOT localhost."""
@@ -413,9 +419,24 @@ async def fire_test_hook() -> dict:
                               "warm tick"}
         await asyncio.sleep(0.05)
 
+    # NOT "it cannot reach this address", which is what this said until
+    # 0.10.157 and is a cause the probe never established. Checked on the
+    # operator's box while the panel was showing exactly this row: a `wget
+    # http://192.168.1.245:8100/health` from INSIDE the station's own
+    # container answered 200. The address was reachable the whole time; the
+    # station was simply slower than the window, on a night it was also timing
+    # out `/state` reads mid-call.
+    #
+    # A probe that names a cause it cannot see sends the operator to check
+    # firewalls and docker networks that were never wrong. Say what happened,
+    # name the candidates, and say plainly that nothing is broken meanwhile.
     return {"ok": False, "fired": True, "url": url,
-            "detail": f"the station accepted the test but nothing arrived at {url} — "
-                      "it cannot reach this address"}
+            "detail": f"the station accepted the test but nothing arrived at {url} "
+                      f"within {_DELIVERY_WAIT:g}s. Either it cannot reach that "
+                      "address, or it is answering slowly right now — this test "
+                      "cannot tell which from here. The card falls back to 20s "
+                      "polling either way, so the panel stays correct; it is the "
+                      "instant updates that are missing."}
 
 
 async def keep_station_warm(app: web.Application) -> None:

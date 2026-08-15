@@ -503,11 +503,16 @@ class TestADeliveredPushIsProvedRatherThanAssumed(_StationWebhooks):
     def test_a_station_that_cannot_reach_us_is_not_reported_as_working(self):
         station = self.register(_FakeStation())     # accepts, never pushes
         self.hooks._admin_client = station
-        self.hooks._DELIVERY_WAIT = 0.05
+        # Restored to what it FOUND, not to a literal. Putting 3.0 back here
+        # meant this test silently rewrote the shipped constant for every test
+        # after it — so when the real value moved to 8.0, the sibling that
+        # checks the shipped value read 3.0 and failed for a reason that had
+        # nothing to do with the code it was testing.
+        was, self.hooks._DELIVERY_WAIT = self.hooks._DELIVERY_WAIT, 0.05
         try:
             result = asyncio.run(self.hooks.fire_test_hook())
         finally:
-            self.hooks._DELIVERY_WAIT = 3.0
+            self.hooks._DELIVERY_WAIT = was
         self.assertFalse(result["ok"], result)
         self.assertTrue(result["fired"])
         self.assertIn("192.0.2.7", result["detail"])
@@ -836,3 +841,130 @@ class TestTheHandoffEventDoesNotOutrankTheLifecycle(_TempStores):
             hook_receiver.LIFECYCLE_TRUST_SECS = old
         self.assertEqual(self._read()["event"], "dj.say")
 
+
+
+class TestAProbeNamesOnlyWhatItSaw(_StationWebhooks):
+    """The webhook row told the operator the station could not reach us.
+
+    Checked on the live box while the panel was showing exactly that row: a
+    `wget http://<sidecar>/health` from INSIDE the station's own container
+    answered 200. The address was reachable the whole time — the station was
+    slower than the three-second window, on a night it was also timing out
+    `/state` reads mid-call.
+
+    A probe that names a cause it never established sends the operator to check
+    firewalls and docker networks that were never wrong, which is worse than
+    reporting less.
+    """
+
+    def _timed_out_verdict(self):
+        """Fire the test against a station that accepts it and pushes nothing."""
+        import asyncio
+
+        class _Accepts:
+            def __call__(self, user, password):
+                return self
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, path):
+                return type("R", (), {"status_code": 200, "text": "ok"})()
+
+        self.hooks._admin_client = _Accepts()
+        self.hooks._hook_state.update(registered=True, id=self.hooks.HOOK_ID,
+                                      url="http://192.0.2.7:8100/hooks/station",
+                                      received=0, rejected=0)
+        # Shortened for the test and PUT BACK: leaving it patched leaked into
+        # the sibling test that checks the shipped value, which then read
+        # 0.05 and failed for a reason that had nothing to do with the code.
+        was, self.hooks._DELIVERY_WAIT = self.hooks._DELIVERY_WAIT, 0.05
+        try:
+            return asyncio.run(self.hooks.fire_test_hook())
+        finally:
+            self.hooks._DELIVERY_WAIT = was
+
+    def test_the_verdict_does_not_claim_the_station_cannot_reach_us(self):
+        said = self._timed_out_verdict()["detail"]
+        self.assertNotIn("it cannot reach this address", said,
+                         "the verdict is asserting a cause the probe cannot "
+                         "see — it knows only that nothing arrived in time")
+
+    def test_the_verdict_offers_slowness_as_the_other_candidate(self):
+        said = self._timed_out_verdict()["detail"].lower()
+        self.assertIn("slowly", said)
+
+    def test_the_verdict_says_what_still_works(self):
+        # A row the operator reads as "calls are broken" when the card is
+        # merely a little less live is a false alarm with a real cost.
+        said = self._timed_out_verdict()["detail"].lower()
+        self.assertIn("polling", said)
+
+    def test_the_wait_is_long_enough_for_a_slow_station(self):
+        from api import hooks
+
+        self.assertGreaterEqual(
+            hooks._DELIVERY_WAIT, 5.0,
+            "three seconds was measured too tight against a station that was "
+            "also timing out reads; a slower button beats a false fault")
+
+
+class TestAFailedProbeQuotesTheProvider(unittest.TestCase):
+    """"failed to generate LLM completion after 4 attempts" is the SDK's retry
+    wrapper — true, and useless.
+
+    Shown on the operator's panel 2026-08-15 as the one red row on the pipeline
+    check, above the words "a call will not work until that is fixed". One link
+    down the exception chain sat the answer: a 429 reading "Your prepayment
+    credits are depleted." Nothing was wrong with the code, the config, or the
+    network, and the panel could not say so.
+
+    `_plain_error` already walked exception GROUPS for exactly this reason
+    (0.10.82, "the real cause was one level down the whole time"). It did not
+    walk a plain `raise ... from ...` chain, which is the shape every retrying
+    client library produces.
+    """
+
+    def _chain(self):
+        inner = RuntimeError(
+            "message='gemini llm: client error', status_code=429, "
+            'retryable=True, request_id=abc123, body={\n  "error": {\n'
+            '    "code": 429,\n    "message": "Your prepayment credits are '
+            'depleted. Please go to AI Studio to manage your billing.",\n'
+            '    "status": "RESOURCE_EXHAUSTED"\n  }\n}')
+        try:
+            try:
+                raise inner
+            except Exception as cause:
+                raise ConnectionError(
+                    "failed to generate LLM completion after 4 attempts") from cause
+        except Exception as e:
+            return e
+
+    def test_the_cause_reaches_the_operator(self):
+        from api.diagnostics import _plain_error
+
+        said = _plain_error(self._chain())
+        self.assertIn("prepayment credits are depleted", said)
+
+    def test_the_json_body_is_not_dumped_into_the_panel(self):
+        from api.diagnostics import _plain_error
+
+        said = _plain_error(self._chain())
+        self.assertNotIn("RESOURCE_EXHAUSTED", said)
+        self.assertNotIn("\n", said)
+
+    def test_a_chain_that_loops_does_not_hang(self):
+        from api.diagnostics import _plain_error
+
+        a, b = ValueError("first"), ValueError("second")
+        a.__cause__, b.__cause__ = b, a
+        self.assertIn("first", _plain_error(a))
+
+    def test_an_ordinary_error_is_unchanged(self):
+        from api.diagnostics import _plain_error
+
+        self.assertEqual("nope", _plain_error(ValueError("nope")))

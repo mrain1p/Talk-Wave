@@ -9,8 +9,10 @@ what callers said.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 import time
 
 import httpx
@@ -44,8 +46,12 @@ def _plain_error(e: BaseException) -> str:
     (0.10.82); the real cause was one level down the whole time.
     """
     seen: list[str] = []
+    visited: set[int] = set()
 
     def walk(x: BaseException) -> None:
+        if x is None or id(x) in visited:
+            return
+        visited.add(id(x))
         sub = getattr(x, "exceptions", None)
         if sub:
             for s in sub:
@@ -66,10 +72,44 @@ def _plain_error(e: BaseException) -> str:
         msg = (str(x).strip() or worded.get(type(x).__name__)
                or type(x).__name__)
         if msg not in seen:
-            seen.append(msg)
+            seen.append(_provider_said(msg))
+        # And the exception this one was RAISED FROM. Groups were handled
+        # above; a plain chain was not, and that is where the answer usually
+        # is when a client library retries. The LLM probe told the operator
+        # "failed to generate LLM completion after 4 attempts" — the SDK's
+        # retry wrapper, true and useless — while one link down sat a 429
+        # reading "Your prepayment credits are depleted." Same lesson as the
+        # exception groups above, one link further along.
+        walk(x.__cause__ or x.__context__)
 
     walk(e)
     return "; ".join(seen[:3])
+
+
+def _provider_said(msg: str) -> str:
+    """The provider's own sentence, lifted out of the body it arrived in.
+
+    An SDK error stringifies with the whole HTTP body glued on — status codes,
+    a request id, and then a JSON blob. The operator needs the one sentence
+    inside it, and a panel row is no place for a pretty-printed payload.
+    """
+    marker = msg.find("body=")
+    start = msg.find("{", marker if marker >= 0 else 0)
+    if start < 0:
+        return msg
+    blob = msg[start:]
+    try:
+        said = json.loads(blob).get("error", {}).get("message", "")
+    except Exception:                                          # noqa: BLE001
+        # Not valid JSON on its own — the SDK often truncates it, or trails
+        # more text after the closing brace. Reach for the field directly.
+        found = re.search(r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', blob)
+        said = found.group(1).replace('\\"', '"') if found else ""
+    said = " ".join(str(said).split())
+    if not said:
+        return msg
+    head = " ".join(msg[:start].replace("body=", "").split()).rstrip(", ")
+    return f"{said} ({head})" if head else said
 
 
 # --- test endpoints -------------------------------------------------------
