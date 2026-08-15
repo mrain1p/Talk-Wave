@@ -123,6 +123,19 @@ def report_ablations(cfg: dict) -> None:
         saved = base - len(conduct.rules(cfg, drop={name}))
         print(f"    -{saved:6,}  ({100.0 * saved / base:4.1f}%)  {name}")
 
+    # tool_rules is 39% of the prompt and `blocks()` returns it whole, so the
+    # line above prices it as one indivisible lump — which is exactly why it
+    # went a year unmeasured. These are its parts, indented under it because
+    # they are not peers of the sections above: they nest inside the largest
+    # one. `tool_finding` is the triage table and is here to be priced, not
+    # proposed — it measured 30/30 on the deployed model.
+    from brain import tool_rules
+
+    print(f"\n    within tool_rules")
+    for name in getattr(tool_rules, "SECTIONS", ()):
+        saved = base - len(conduct.rules(cfg, drop={name}))
+        print(f"      -{saved:6,}  ({100.0 * saved / base:4.1f}%)  {name}")
+
 
 async def report_live() -> None:
     """The whole assembled prompt against the real station, so the identity

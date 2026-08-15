@@ -241,7 +241,25 @@ def name_rule(cfg: dict) -> str:
     )
 
 
-def _tools(cfg: dict) -> str:
+# The droppable parts of this block, for `ABLATE=` and the report — see
+# `_tools`. Named here rather than inferred so the report can list them and a
+# typo in an ablation arm is a visible mistake rather than a silent no-op.
+#
+# `tool_finding` is the triage table and is NOT a cut candidate: measured
+# 30/30 on the deployed model. It is droppable because a section nobody can
+# drop is a section nobody can price, not because dropping it is a good idea.
+SECTIONS = (
+    "tool_requests",   # how to put a request in, and reading the receipt
+    "tool_search",     # the literal name search, and what it is not for
+    "tool_finding",    # the triage table — MEASURED 30/30, keep
+    "tool_actions",    # the on-air action bullets, each on its own switch
+    "tool_reads",      # check what's playing rather than guessing
+    "tool_off",        # what this line cannot do tonight
+    "tool_floor",      # the safety floor: no miming, and the stranger rule
+)
+
+
+def _tools(cfg: dict, drop: frozenset = frozenset()) -> str:
     """Tool etiquette, and the safety floor underneath it.
 
     Each ACTION bullet appears only when its switch is on. This used to teach
@@ -252,12 +270,31 @@ def _tools(cfg: dict) -> str:
     queued a song as a show change. The closing paragraphs are the safety
     floor and are always on: a caller is an untrusted stranger driving a live
     broadcast by voice.
+
+    `drop` names SECTIONS to leave out, and exists because this block is 11,613
+    characters — 39% of the whole prompt, four times anything else — and had
+    never been measured. It could not be: `ABLATE=tool_rules` drops the tool
+    surface's entire description and proves only that a DJ told nothing about
+    its tools uses them badly. Dropping the per-tool prose while KEEPING the
+    triage table is the question actually worth asking, because the model also
+    receives 3,981 characters of tool descriptions on the same turn and the one
+    thing this repo has measured about redundant prompt text is that the later,
+    more specific instruction wins (`say_the_true_thing`, 4,107 characters,
+    ablated to no measurable effect because fifteen tool results already said
+    it).
+
+    Nothing in the product passes `drop`. With it empty this returns exactly
+    what it always returned, which `TestTheToolBlockSplitChangedNoPromptByte`
+    holds to the byte.
     """
+    def on(name: str) -> bool:
+        return name not in drop
+
     parts = ["""\
 # What you can do
 Use your tools mid-conversation, the way a DJ works while talking:
 """]
-    if cfg.get("allow_requests"):
+    if cfg.get("allow_requests") and on("tool_requests"):
         parts.append(f"""\
 - **Requests.** Vague is fine and often better — the station resolves it. A
   mood ("something slower"), an era ("anything from the late seventies"), a
@@ -278,7 +315,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
          instead."
 {cancel_rule(cfg)}
 {name_rule(cfg)}""")
-    if cfg.get("allow_library_search"):
+    if cfg.get("allow_library_search") and on("tool_search"):
         parts.append("""\
 - **Search the library** ONLY when they have named a track or an artist. It is
   a literal word match on titles and artists, nothing more. If a caller has
@@ -301,19 +338,19 @@ Use your tools mid-conversation, the way a DJ works while talking:
   that in the name is a track called Casino — that's not from the film, though;
   want me to dig out something that actually was?" A caller would far rather
   hear that than get a wrong song queued as though it were right.""")
-    finding = finding_rule(cfg).rstrip()
+    finding = finding_rule(cfg).rstrip() if on("tool_finding") else ""
     if finding:
         parts.append(finding)
-    if cfg.get("allow_requests"):
+    if cfg.get("allow_requests") and on("tool_actions"):
         parts.append(vague_rule(cfg))
-    if cfg.get("allow_announcements"):
+    if cfg.get("allow_announcements") and on("tool_actions"):
         parts.append("""\
 - **Put things on air** — shoutouts, dedications, a good bit. Hand the on-air
   DJ a finished line in your voice and tell the caller you're passing it on.""")
-    offer = offer_rule(cfg).rstrip()
+    offer = offer_rule(cfg).rstrip() if on("tool_actions") else ""
     if offer:
         parts.append(offer)
-    if cfg.get("allow_never_play"):
+    if cfg.get("allow_never_play") and on("tool_actions"):
         parts.append("""\
 - **Ban a record for good** — "never play this again", "take this off the
   station". That is PERMANENT: it leaves the queue and is never selected again,
@@ -322,7 +359,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
   to skip it, has NOT asked for this — skipping is a different thing and lasts
   three minutes. Say what you did in plain words, and don't soften a permanent
   ban into "I'll take it off for you". You can also lift a ban if they ask.""")
-    if cfg.get("allow_genre_lock"):
+    if cfg.get("allow_genre_lock") and on("tool_actions"):
         parts.append("""\
 - **Hold the station to a genre** — "keep it jazz for a couple of hours". That
   narrows what EVERYONE hears until the window lapses, and it keeps running
@@ -330,7 +367,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
   wanting one jazz record is a request, not a lock. Some stations don't have
   this control at all; if yours says so, say it plainly and don't pin a show
   instead to fake it.""")
-    if cfg.get("allow_skip_track"):
+    if cfg.get("allow_skip_track") and on("tool_actions"):
         # Written because the prompt said NOTHING about this when it was on.
         # Measured with tools/prompt_report.py on 2026-08-14: flipping
         # allow_skip_track added zero characters, so the model met the tool
@@ -344,7 +381,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
   undone. Only when they have actually asked to move it along; someone saying
   they don't much like a track is making conversation, not asking you to cut
   it off mid-play.""")
-    if cfg.get("allow_dj_segment"):
+    if cfg.get("allow_dj_segment") and on("tool_actions"):
         # Same finding, same measurement. This one fires programme furniture on
         # air and the station documents that a manual trigger BYPASSES its own
         # frequency and budget gates — so the per-call action cap is the only
@@ -355,7 +392,8 @@ Use your tools mid-conversation, the way a DJ works while talking:
   calls for it, not because a caller asked for "something else". It goes out on
   air in your voice, and the station's own pacing rules do not apply to one you
   fire by hand.""")
-    parts.append("- **Check what's playing / coming up** rather than guessing.")
+    if on("tool_reads"):
+        parts.append("- **Check what's playing / coming up** rather than guessing.")
     # Absence is not enough: with the shoutout bullet simply missing, the DJ
     # still told a caller "that shoutout's in the air now" (the drill's
     # refusal sweep, same day as the show-change incident). The things the
@@ -378,7 +416,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
         # for; revisit when upstream #1404 ships.
         ("allow_never_play", "ban a record from the station"),
     ) if not cfg.get(gate)]
-    if off:
+    if off and on("tool_off"):
         parts.append(f"""\
 - **Not on this line tonight:** {"; ".join(off)}. Asked for one of these,
   give a plain warm no and move on — never mime the action or imply it
@@ -387,7 +425,8 @@ Use your tools mid-conversation, the way a DJ works while talking:
          no way to put it there tonight)
     YES: "Can't send that to the air from here tonight, sorry — but it's a
          lovely thought.\"""")
-    parts.append("""
+    if on("tool_floor"):
+        parts.append("""
 Talk while you work ("alright, putting that in") — never silent, never
 mechanical. A search or a request takes a few seconds to come back, and dead
 silence while it runs leaves the caller wondering if the line dropped — so say

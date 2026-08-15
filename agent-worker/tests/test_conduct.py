@@ -13,6 +13,7 @@ Prompt-side only — the tool SURFACE for each switch is test_tools_surface's
 subject.
 """
 
+import inspect
 import unittest
 
 
@@ -258,79 +259,6 @@ class TestTriageIsStatedInOnePlace(unittest.TestCase):
         text = self._rules(allow_sound_search=False)
         self.assertIn("Finding the record", text)
         self.assertIn("subwave_request_song", text)
-
-
-class TestThePromptBudgetIsMeasurable(unittest.TestCase):
-    """Every section of the prompt has to be priceable, or the budget is an
-    opinion.
-
-    The plan carried "~20k characters" as the working figure for a year while
-    the real assembled prompt reached 28,715 (measured on the live deployment,
-    2026-08-14). Nobody was careless: there was simply no instrument, so each
-    paragraph was argued on its own merits — which is always "cheap" — and
-    never against the total. `tools/prompt_report.py` prices the sections, and
-    it prices them from `blocks()`, which is only honest while `rules()` has no
-    text of its own.
-
-    So this is the invariant that keeps the instrument pointed at the real
-    prompt: a section added straight into `rules()` would be sent to the model,
-    paid for on every turn, and invisible to the report. It has to go through
-    `blocks()` and get a name.
-    """
-
-    def _cfg(self):
-        from call.tools.registry import TOOLS, NEVER
-
-        return {t.gate: True for t in TOOLS if t.gate not in ("read", NEVER)}
-
-    def test_neither_mouth_assembles_text_the_report_cannot_see(self):
-        from brain import conduct, conduct_chat
-
-        cfg = self._cfg()
-        for mod in (conduct, conduct_chat):
-            self.assertEqual(
-                mod.rules(cfg),
-                "\n\n".join(text for _name, text in mod.blocks(cfg)),
-                f"{mod.__name__}.rules() is assembling text that is not in "
-                "blocks(), so tools/prompt_report.py cannot price it and a "
-                "section can grow unmeasured — the exact way this got to 28k",
-            )
-
-    def test_every_section_has_a_name_and_no_two_share_one(self):
-        from brain import conduct, conduct_chat
-
-        cfg = self._cfg()
-        for mod in (conduct, conduct_chat):
-            names = [name for name, _ in mod.blocks(cfg)]
-            self.assertTrue(all(names), f"{mod.__name__} has an unnamed section")
-            self.assertEqual(
-                sorted(names), sorted(set(names)),
-                f"{mod.__name__} has two sections with one name — the report "
-                "would price them as one and an ablation would drop both")
-
-    def test_a_section_can_be_dropped_for_measurement(self):
-        # The ablation lever phase 3 runs on. If `drop` stops working, the
-        # prompt stops being testable and the next cut is a matter of taste.
-        from brain import conduct
-
-        cfg = self._cfg()
-        whole = conduct.rules(cfg)
-        for name, text in conduct.blocks(cfg):
-            without = conduct.rules(cfg, drop={name})
-            self.assertLess(len(without), len(whole),
-                            f"dropping {name} changed nothing")
-            self.assertNotIn(text, without)
-
-    def test_the_report_exists_and_reads_both_mouths(self):
-        # Keeps the dev script named in the suite — the coverage floor every
-        # module owes — and fails if it stops covering a mouth.
-        from tests.support import REPO
-
-        src = (REPO / "tools" / "prompt_report.py").read_text(encoding="utf-8")
-        for needle in (".blocks(", "conduct_chat", "--live", "CHARS_PER_TOKEN"):
-            self.assertIn(needle, src,
-                          f"prompt_report.py no longer mentions {needle!r} — "
-                          "the budget instrument has changed shape")
 
 
 class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):

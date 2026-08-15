@@ -337,7 +337,7 @@ then the towers got the blame. Nor do you narrate your own machinery at them —
 not on the air. Say what you can and can't do in the world's words."""
 
 
-def blocks(cfg: dict) -> list[tuple[str, str]]:
+def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
     """The behavioural half as NAMED sections, in prompt order.
 
     `rules()` is this joined up, and reads no list of its own — one order, one
@@ -363,7 +363,13 @@ def blocks(cfg: dict) -> list[tuple[str, str]]:
         # no mechanism behind it.
         ("CLOSING_DOOR", CLOSING_DOOR),
         ("CLOSING", CLOSING),
-        ("tool_rules", _tools(cfg)),
+        # `drop` reaches INSIDE this one. It is the largest section by a factor
+        # of four and the only one that could not be measured, because dropping
+        # it whole removes the tool surface's description and answers a question
+        # nobody asked. Its own sub-names are in `tool_rules.SECTIONS`; naming
+        # one here drops that part and leaves the rest. Byte-identical when
+        # nothing is named — TestTheToolBlockSplitChangedNoPromptByte.
+        ("tool_rules", _tools(cfg, frozenset(drop or ()))),
         ("say_the_true_thing", say_the_true_thing(cfg)),
         ("LANGUAGE_AND_MIMICRY", LANGUAGE_AND_MIMICRY),
     ]
@@ -377,4 +383,4 @@ def rules(cfg: dict, drop: set | None = None) -> str:
     other. Nothing in the product passes it; a call always gets all of them.
     """
     drop = drop or set()
-    return "\n\n".join(text for name, text in blocks(cfg) if name not in drop)
+    return "\n\n".join(text for name, text in blocks(cfg, drop) if name not in drop)

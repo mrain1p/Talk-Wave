@@ -91,6 +91,7 @@ import asyncio
 import difflib
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -135,7 +136,7 @@ def _install_injected(path: str, source: str) -> None:
     print(f"[installed {path} — the image does not carry it]")
 
 
-for _var, _path in (("NEW_DOOR", "call.door"),):
+for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_RULES", "spoken_rules")):
     _source = globals().get(_var)
     if _source:
         _install_injected(_path, _source)
@@ -143,6 +144,14 @@ for _var, _path in (("NEW_DOOR", "call.door"),):
 import secrets_store
 import settings as settings_store
 import speech_filter
+
+try:
+    # Newer than some deployed images. The harness is piped into whatever is
+    # running, so a missing module means "no fault names this run", not a
+    # crash — the same tolerance ABLATE already applies to blocks().
+    import spoken_rules
+except ImportError:                                            # noqa: BLE001
+    spoken_rules = None
 from call import door as call_door
 from call import promise_guard
 from chat.session import _tool_report
@@ -271,6 +280,42 @@ FIRED: set[str] = set()
 REPLY_WORDS: list[int] = []
 
 
+# Named faults seen across the run — {fault: count}. Reported beside the reply
+# lengths, and the reason is the 2026-08-14 refusals round that passed while
+# telling a caller a refused request was "coming up right after this": a rate
+# says how often a model was wrong, and only a fault name says what KIND of
+# wrong, which is the thing that tells two arms apart. See spoken_rules.
+VIOLATIONS: dict[str, int] = {}
+
+# The last few DJ openers, for the repeat check. Short window on purpose: a
+# call legitimately returns to the same phrasing across ten minutes, and the
+# fault being caught is back-to-back.
+_RECENT_OPENERS: list[str] = []
+
+
+# A tool result that told the DJ the action did NOT happen. Read off the
+# house phrasing rather than a status field, because that sentence IS the
+# contract: fifteen places across call/tools/ end a refusal with it, and the
+# refusals ablation concluded that this line — arriving after the prompt and
+# specific to what just happened — is most likely why 16% of the conduct
+# measured inert. If the wording ever drifts, this check goes quiet and
+# TestARefusalIsRecognisableFromItsResult fails, which is the point of pinning
+# it in the suite rather than trusting a grep.
+_REFUSED = re.compile(
+    r"do not claim it worked|didn'?t go (?:out|through|into)|"
+    r"couldn'?t take|the station refused|was refused|<tool raised",
+    re.IGNORECASE)
+
+
+def _reads_as_a_refusal(result: str) -> bool:
+    return bool(_REFUSED.search(str(result or "")))
+
+
+def _note_faults(names) -> None:
+    for n in names:
+        VIOLATIONS[n] = VIOLATIONS.get(n, 0) + 1
+
+
 def _note_reply(said: str) -> None:
     """Count one DJ turn, as the caller would hear it.
 
@@ -281,6 +326,14 @@ def _note_reply(said: str) -> None:
     heard = speech_filter.clean_for_speech(said or "")
     if heard.strip():
         REPLY_WORDS.append(len(heard.split()))
+    # Graded on the RAW line, not the cleaned one: the stage-direction and
+    # markup faults are exactly the things clean_for_speech removes, so
+    # checking its output would report a model that never produces them.
+    if spoken_rules is not None and str(said or "").strip():
+        _note_faults(spoken_rules.check_spoken_line(
+            said, recent_openers=list(_RECENT_OPENERS)))
+        _RECENT_OPENERS.append(str(said))
+        del _RECENT_OPENERS[:-3]
 
 
 def _matches(track: dict, query: str) -> bool:
@@ -1400,10 +1453,23 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                     said = ""
                 ctx.add_message(role="user", content=_tool_report(ran))
 
+            refused = [n for n, res, failed in ran
+                       if failed or _reads_as_a_refusal(res)]
             said, calls = await _stream(llm, ctx, tools)
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
                 _note_reply(said)
+                # The turn that answers a refusal is the only place cue framing
+                # is a lie, so it is the only place it is checked. See
+                # spoken_rules.check_after_failure for why this is not a
+                # standing rule: "it's about six minutes out" is the honest
+                # receipt on every other turn of the call.
+                if refused and spoken_rules is not None:
+                    bad = spoken_rules.check_after_failure(said)
+                    if bad:
+                        _note_faults(bad)
+                        log.append(f"  !! told the caller it landed, after "
+                                   f"{', '.join(sorted(set(refused)))} refused it")
                 last_dj = said.strip()
                 said_here.append(said)
 
@@ -1598,6 +1664,16 @@ async def main() -> None:
             _blocks = getattr(_mod, "blocks", None)
             if callable(_blocks):
                 known |= {n for n, _ in _blocks({})}
+        # The sub-sections of tool_rules, which `blocks()` cannot list because
+        # it returns that block whole — dropping it whole is the measurement
+        # nobody wants. Same tolerance as above: an older image has no
+        # SECTIONS, and then these names simply read as unknown.
+        try:
+            from brain import tool_rules as _tr_mod
+
+            known |= set(getattr(_tr_mod, "SECTIONS", ()))
+        except Exception:                                      # noqa: BLE001
+            pass
         unknown = sorted(drop - known)
         if unknown:
             print(f"[ABLATE names no such section: {unknown} — known: "
@@ -1793,6 +1869,23 @@ async def summarise(log, repeats, which, tools) -> None:
         log.append("archive, for comparison: median 26, p90 50, max 76 "
                    "(caller median 6)")
         REPLY_WORDS.clear()
+
+    if spoken_rules is not None:
+        # Printed even when empty, and that is deliberate: "no faults" is a
+        # result, and a section that only appears on failure trains the reader
+        # to skim past its absence.
+        log.append(f"\n{'=' * 72}\nWHAT WAS WRONG WITH THE LINES\n{'=' * 72}")
+        if VIOLATIONS:
+            for name, n in sorted(VIOLATIONS.items(), key=lambda kv: -kv[1]):
+                log.append(f"{n:>4}x  {name}")
+            if "claims-it-landed" in VIOLATIONS:
+                log.append("\nclaims-it-landed is the serious one: the DJ told "
+                           "the caller the thing was on its way AFTER the tool "
+                           "refused it. Read those turns before anything else.")
+        else:
+            log.append("(none)")
+        VIOLATIONS.clear()
+        _RECENT_OPENERS.clear()
 
     if which == "coverage":
         # The verdict the drill reads first. "Never called" is judged against

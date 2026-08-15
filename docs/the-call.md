@@ -55,6 +55,8 @@ Two things the report makes visible that nobody would guess:
 
 Sections are named (`conduct.blocks`), the report prices them from that list, and `rules(cfg, drop={...})` drops one by name so a sweep can measure whether it changes behaviour. `TestThePromptBudgetIsMeasurable` fails the build if a section is ever assembled outside that list.
 
+**`tool_rules` is a special case, because being the biggest made it the least measurable.** At 42.6% of the conduct it is four times the next section, and dropping it whole removes the tool surface's entire description — an ablation that proves only that a DJ told nothing about its tools uses them badly. Since 0.10.152 it has seven named parts of its own (`tool_rules.SECTIONS`), each droppable while the rest stays, so the question actually worth asking — does the per-tool prose earn its place while the triage table remains — can be run. The shipped prompt is byte-identical when nothing is dropped, which `TestTheToolBlockSplitChangedNoPromptByte` holds to the character; without that, every measurement taken before the split would be against a different prompt from every one taken after.
+
 ## 2. The tool surface
 
 `call/tools/registry.py` is the single table. The allowlists and the panel's tool reference are both derived from it, so they cannot disagree.

@@ -218,11 +218,14 @@ from tests.test_conduct import (  # noqa: F401
     TestActionBulletsRideTheirOwnSwitch,
     TestARefusalIsPassedOnNotNarrated,
     TestNoToolIsBuiltWithoutThePromptKnowingIt,
-    TestThePromptBudgetIsMeasurable,
     TestThePromptNeverPromisesATakeoverItCannotDo,
     TestThePromptStopsClaimingRequestsCannotBeCancelled,
     TestThePromptTeachesTheDJHowToActuallyFindARecord,
     TestTriageIsStatedInOnePlace,
+)
+from tests.test_prompt_budget import (  # noqa: F401
+    TestThePromptBudgetIsMeasurable,
+    TestTheToolBlockSplitChangedNoPromptByte,
 )
 from tests.test_discovery import (  # noqa: F401
     TestBrowsingSpeaksTheStationsOwnVocabulary,
@@ -247,6 +250,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
 )
 from tests.test_speech_filter import (  # noqa: F401
+    TestALineIsGradedByWhatKindOfWrongItIs,
     TestATypedToolCallNeverReachesTheSpeaker,
     TestPunctuationIsSpokenNotSpelled,
     TestSpeechFilter,

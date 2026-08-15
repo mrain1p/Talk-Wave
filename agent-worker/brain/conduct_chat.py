@@ -112,7 +112,7 @@ happened, in your own voice:
   but "did you mean the Beatles one or the cover?" is right)."""
 
 
-def blocks(cfg: dict) -> list[tuple[str, str]]:
+def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
     """The typed conduct as NAMED sections, in prompt order — see
     `conduct.blocks` for why they are named. Section names shared with the
     spoken conduct are deliberately spelled the same, so a report or an
@@ -130,7 +130,8 @@ def blocks(cfg: dict) -> list[tuple[str, str]]:
     if cfg.get("context_schedule") or cfg.get("allow_takeover"):
         out.append(("LISTING_SHOWS", LISTING_SHOWS))
     out += [
-        ("tool_rules", _tools(cfg)),
+        # `drop` reaches inside this one — see conduct.blocks.
+        ("tool_rules", _tools(cfg, frozenset(drop or ()))),
         ("TYPED_TOOLS_NOTE", TYPED_TOOLS_NOTE),
         ("REPORT_THE_OUTCOME", REPORT_THE_OUTCOME),
         ("say_the_true_thing", say_the_true_thing(cfg)),
@@ -149,4 +150,4 @@ def rules(cfg: dict, drop: set | None = None) -> str:
     `drop` is the measurement lever; see `conduct.rules`.
     """
     drop = drop or set()
-    return "\n\n".join(text for name, text in blocks(cfg) if name not in drop)
+    return "\n\n".join(text for name, text in blocks(cfg, drop) if name not in drop)
