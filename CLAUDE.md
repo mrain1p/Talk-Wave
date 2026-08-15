@@ -148,7 +148,14 @@ prose devalues the numbers that mark shipped behaviour.
 ### Release notes
 
 `CHANGELOG.md` is written for the operator deciding whether to pull, not for whoever wrote the
-code. Five rules, and the last two are the ones people skip:
+code.
+
+**A new heading here IS a release** — write it, tag that version, publish the notes, in one act.
+Left to "when a batch feels finished", the newest release drifted fourteen builds and twenty
+commits behind `:latest` (2026-08-15). And the number reads as distance from 1.0: the series
+restarted at **0.97.0** that day, from 0.10.159. See `.claude/skills/talkwave-release`.
+
+Five rules, and the last two are the ones people skip:
 
 1. **A one-line headline under the version**, before any section. What this release is about.
    Say which versions it covers if it covers several.

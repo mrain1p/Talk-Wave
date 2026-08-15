@@ -17,6 +17,25 @@ Images publish from GitHub Actions to `ghcr.io/mrain1p/talk-wave`:
 **Work happens on `dev`, not `main`.** The operator does not want iterative tweaks on main
 until a change is ready to publish.
 
+## When to cut one, and what to call it
+
+**A new heading in `CHANGELOG.md` IS a release.** Write the heading, cut the tag at that
+version, publish the notes — one act, not three. The rule exists because the alternative was
+measured: on 2026-08-15 the newest release was fourteen builds and twenty commits behind
+`:latest`, and everything an operator would want to read about was in the image and nowhere
+else. Tagging when a batch "feels finished" is what produced that gap; a heading is a decision
+somebody already made, so it cannot drift.
+
+**The number reads as distance from 1.0.** The series restarted at **0.97.0** on 2026-08-15,
+from 0.10.159 — the operator's ask, "close to a 1.0 but not quite there". 0.98 and 0.99 are in
+hand; 1.0.0 is a deliberate call, not an accident of counting. Patch within the series
+(0.97.1, 0.97.2…) for ordinary work.
+
+**It only ever goes UP.** Everything that compares two versions — the panel's update flag,
+the container-skew check — parses them part by part, so 0.9.7 would sort *below* 0.10.159 and
+every deployment would report an update that was really a downgrade. That is why the restart
+went to 97 and not to 9.
+
 ## The motion
 
 1. **Bump `agent-worker/version.py`.** `APP_VERSION` is the only place the number lives; both
