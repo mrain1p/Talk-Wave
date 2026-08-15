@@ -1034,8 +1034,11 @@
     // The duck with a close and no open. A stored 0 beats the default and
     // nothing anywhere said so — the operator spent an evening on ducking
     // that "felt off in general" with the lead silently disabled.
+    // page 'calls', not 'safety': the `onair` section lives under Calls (see
+    // GROUPS), so this pinned the wrong chip in the picker and sent the
+    // operator to a page the section it names is not on.
     if (on('avoid_on_air_overlap') && num('on_air_handover_secs') === 0) {
-      items.push({ page: 'safety', group: 'onair',
+      items.push({ page: 'calls', group: 'onair',
                    label: 'Set the hand-over lead',
                    note: 'overlap protection is on but the lead is 0 — the DJ '
                      + 'is cut off the instant the station speaks, with no '
@@ -1135,11 +1138,18 @@
 
     const silent = recent.filter((c) => hasProblem(c, 'no audio was ever'));
     if (silent.length >= 2) {
-      items.push({ page: 'calls', group: 'onair',
+      // TO THE RECORDS, not to a settings section. This said "Read the
+      // transcripts" and then jumped to ON-AIR DUCKING — it was filed under
+      // the `onair` group and the pin follows the group, so the operator was
+      // shown a ducking section that had nothing to do with it and asked why
+      // ducking was being flagged. It never was. Nothing under settings fixes
+      // a caller whose audio never arrived; the only move is to read the
+      // calls, so that is where this goes now (operator's ask).
+      items.push({ page: 'diag', diag: 'calls',
                    label: silent.length + ' of the last ' + recent.length
                      + ' calls heard nothing',
                    note: 'the caller\u2019s audio never arrived — off-LAN media, '
-                     + 'a blocked microphone, or a silent caller. Read the '
+                     + 'a blocked microphone, or a silent caller. Opens the '
                      + 'transcripts' });
     }
 
@@ -1172,6 +1182,9 @@
                        /^the DJ.s brain returned an error: /, '').slice(0, 180) });
     }
 
+    const since = sinceLastVisit();
+    if (since) items.push(since);
+
     const typed = recent.filter((c) => hasProblem(c, 'typed a tool call'));
     if (typed.length) {
       items.push({ page: 'config', group: 'brains',
@@ -1180,6 +1193,60 @@
                      + 'so nothing ran — a model-side failure' });
     }
     return items;
+  }
+
+  // ---- what happened while you were away ----------------------------------
+  // Not a fault, and the only row in this box that isn't one: how many people
+  // got through since the operator last marked the box read (their ask). The
+  // watermark moves when they DISMISS it, never when the page loads — "since
+  // you were last here, until cleared" means a visit cannot be what clears it,
+  // or the answer would be zero every time by construction.
+  const VISIT_KEY = 'callinPanelSeenCallsAt';
+  const stamp = (c) => {
+    const t = Date.parse(c && c.startedAt);
+    return isNaN(t) ? 0 : t;
+  };
+  function visitMark() {
+    const v = parseInt(localStorage.getItem(VISIT_KEY) || '', 10);
+    return isNaN(v) ? null : v;
+  }
+  function markVisited() {
+    try { localStorage.setItem(VISIT_KEY, String(Date.now())); } catch (e) {}
+  }
+
+  function sinceLastVisit() {
+    if (!Array.isArray(recentCalls) || !recentCalls.length) return null;
+    const mark = visitMark();
+    // FIRST EVER LOAD: mark now and say nothing. Otherwise the first sight of
+    // this box on any browser is "20 calls since you were last here", counting
+    // a history the operator has already read.
+    if (mark === null) { markVisited(); return null; }
+    const fresh = recentCalls.filter((c) => stamp(c) > mark);
+    if (!fresh.length) return null;
+    const n = { call: 0, chat: 0, voicemail: 0 };
+    fresh.forEach((c) => {
+      n[c.kind === 'voicemail' ? 'voicemail'
+        : c.kind === 'chat' ? 'chat' : 'call'] += 1;
+    });
+    const say = (count, one, many) =>
+      count ? count + ' ' + (count === 1 ? one : many) : '';
+    const bits = [say(n.call, 'call', 'calls'),
+                  say(n.chat, 'text', 'texts'),
+                  say(n.voicemail, 'voicemail', 'voicemails')].filter(Boolean);
+    const rough = fresh.filter((c) => (c.problems || []).length
+                                      || !(c.callerTurns || 0)).length;
+    return {
+      info: true, page: 'diag', diag: 'calls',
+      // Its own key, carrying the newest record: dismissed, it stays gone
+      // until somebody else calls, and then it is a new notification rather
+      // than a silenced one.
+      key: 'since:' + Math.max.apply(null, fresh.map(stamp)),
+      label: bits.join(', ').replace(/, ([^,]*)$/, ' and $1')
+             + ' since you were last here',
+      note: (rough ? rough + ' of them had a problem — o' : 'O')
+            + 'pens the transcripts. Dismissing marks the box read.',
+      onDismiss: markVisited,
+    };
   }
 
   // ---- dismissing one -----------------------------------------------------
@@ -1221,6 +1288,10 @@
     if (clearBtn) {
       clearBtn.hidden = !items.length;
       clearBtn.onclick = () => {
+        // Clear-all is a dismissal of each, so anything with a watermark
+        // moves it — otherwise the activity row is the one thing Clear
+        // cannot clear, and it would come back on the next repaint.
+        all.forEach((it) => { if (it.onDismiss) it.onDismiss(); });
         setSeen(all.map(noteKey));
         paintNeeds();
       };
@@ -1243,7 +1314,9 @@
       // dismiss × cannot be nested inside the jump, and a × that also jumped
       // to the page it was dismissing would be its own bug report.
       const row = document.createElement('div');
-      row.className = 'needrow';
+      // `info` is not a fault and must not wear the fault's colour — coral
+      // means something is wrong everywhere else on this page.
+      row.className = 'needrow' + (it.info ? ' info' : '');
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'needjump';
@@ -1254,8 +1327,26 @@
       n.className = 'nn';
       n.textContent = it.note;
       b.append(k, n);
-      b.onclick = () => showSection(document.querySelector(
-        'details.sec[data-group="' + it.group + '"]'));
+      // An item either names a settings section to fix, or a DIAGNOSTICS
+      // viewer to read. The second is not a lesser case: nothing under
+      // settings fixes a call that already went wrong, and sending an
+      // operator to a settings page for one is how this box ended up
+      // flagging ducking for calls that heard nothing.
+      b.onclick = () => {
+        if (it.diag) {
+          const sec = document.querySelector(
+            'details.diag[data-diag="' + it.diag + '"]');
+          if (!sec) return;
+          showSection(sec);
+          // Opened AND loaded — the viewer is a button, and arriving at a
+          // closed one having been promised transcripts is a dead end.
+          const load = $('viewCallsBtn');
+          if (it.diag === 'calls' && load) load.click();
+          return;
+        }
+        showSection(document.querySelector(
+          'details.sec[data-group="' + it.group + '"]'));
+      };
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'ndismiss';
@@ -1263,6 +1354,7 @@
       x.title = 'Dismiss — it comes back if this happens again';
       x.setAttribute('aria-label', 'Dismiss this notification');
       x.onclick = () => {
+        if (it.onDismiss) it.onDismiss();
         setSeen(seenKeys().concat([noteKey(it)]));
         paintNeeds();
       };
@@ -1272,8 +1364,12 @@
     if ($('needsSay')) {
       // The empty message lives in the body now — saying it in the caption
       // too would read the same sentence twice in one box.
-      $('needsSay').textContent = items.length
-        ? items.length + ' thing' + (items.length === 1 ? '' : 's')
+      // Only the FAULTS are counted here. "3 things before the line is ready"
+      // with two of them being "4 calls since you were last here" would be the
+      // box telling the operator their working deployment is broken.
+      const faults = items.filter((it) => !it.info).length;
+      $('needsSay').textContent = faults
+        ? faults + ' thing' + (faults === 1 ? '' : 's')
           + ' before the line is ready'
         : '';
     }
@@ -1286,7 +1382,7 @@
     // folded sections it meant (operator's ask). Every item already names its
     // group, which is the section's own id — so the same mark, one level down,
     // and it clears itself the moment the item does.
-    const groups = new Set(items.map((it) => it.group));
+    const groups = new Set(items.map((it) => it.group).filter(Boolean));
     document.querySelectorAll('details.sec[data-group]').forEach((sec) => {
       sec.classList.toggle('attn', groups.has(sec.dataset.group));
     });

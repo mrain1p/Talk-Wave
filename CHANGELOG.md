@@ -3,9 +3,9 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.97.1
+## 0.97.2
 
-A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.159, released as 0.97.1.
+A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.159, released as 0.97.2.
 
 **The version numbers restart here, at 0.97.x.** The old line had reached a three-digit patch number and said nothing about how finished the thing was; this one says it — close to 1.0, not there yet, with 0.98 and 0.99 still to come. It is a higher number than 0.10.159, not a lower one, so your panel's update flag keeps working; nothing else about upgrading changes. From now on a release is cut every time this file gains a heading, so the newest release and the image you are running are the same thing.
 
@@ -38,6 +38,9 @@ A DJ who stops promising records the station refused, a call you can mark good o
 ### The panel
 
 - **Needs attention is now Notifications, and you can clear it.** Each item has a dismiss, and Clear takes everything listed. Nothing here is deleted — every item is worked out from live state — so a dismissed item comes back if the condition clears and happens again.
+- **It tells you what came in while you were away.** "2 calls and 1 text since you were last here", with how many of them had a problem, opening straight into the transcripts. It counts from the last time you cleared it, not from the last time you loaded the page — a visit is not what marks it read. Drawn in the panel's quiet frame rather than the red one, because it is not a fault.
+- **Calls that went wrong now open the transcripts instead of a settings page.** If you have wondered why ON-AIR DUCKING was being flagged, that was this: "7 of the last 8 calls heard nothing" was filed against the ducking section and pinned it, while its own note said to read the transcripts. Nothing in the settings fixes a call whose audio never arrived, so it goes to Recent conversations and loads them.
+- **The hand-over lead notice points at the page it is actually on.** It was pinning Permissions & safety for a setting that lives under Calls.
 - **The four blocks along the top of the dashboard each have their own outline.** They were one undivided strip of text at four different positions.
 - **The version link at the bottom left stops landing on a 404.** It pointed at a release page named after your exact build, and only some builds are cut as releases. It opens the release notes list now, and jumps straight to the notes that cover your build when they exist.
 - **The header says which page you are on, and stops repeating your address back to you.**

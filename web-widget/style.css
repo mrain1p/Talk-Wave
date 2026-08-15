@@ -2110,6 +2110,14 @@
     background: color-mix(in srgb, var(--coral) 7%, transparent);
     color: var(--text);
   }
+  /* An FYI, not a fault. Colour carries state on this page and coral means
+     something is wrong — "4 calls since you were last here" is the box working,
+     so it wears the quiet frame every other read-back surface wears. */
+  .needrow.info {
+    border-color: var(--line2);
+    background: color-mix(in srgb, var(--text) 3%, transparent);
+  }
+  .needrow.info .nk { color: var(--sage); }
   .needjump {
     display: grid; gap: 3px; text-align: left; cursor: pointer;
     border: 0; background: transparent; color: inherit; padding: 0;
