@@ -923,9 +923,34 @@ class TestAnAskThatWentNowhereIsWrittenDown(unittest.TestCase):
                         "how long have you been on air?",
                         "that's a great record",
                         "he's had a rough week",
-                        "yeah that's the one"):
+                        "yeah that's the one",
+                        # The three near-misses the 2026-08-14 widening had to
+                        # step around. Each is one word away from a real ask.
+                        "have you got any idea what that was?",
+                        "give me a second, the dog's going mad",
+                        "how long have you been on the air tonight?"):
             asks.heard(chatter, at=1.0)
         self.assertEqual([], asks.unanswered(acted_at=[]))
+
+    def test_the_plainest_request_shapes_are_heard(self):
+        # Replaying this detector over the real archive on 2026-08-14 — the
+        # first time it had met a caller rather than scenario text — caught
+        # five of thirteen tool-shaped asks. Every line below is one it MISSED,
+        # verbatim from a record, and they are the ordinary ways people ask a
+        # radio station for a record. The one that matters most is the first:
+        # on 2026-08-11 a caller asked "Got any Zeppelin?", was told "let me
+        # take a quick look through the racks", no tool ever ran, and the call
+        # ended twenty seconds later with "Still with me?" — a dropped ask that
+        # this module exists to make visible and could not see.
+        for said in ("Got any Zeppelin?",
+                     "Do you have any Zeppelin?",
+                     "Give me something acoustic, surprise me.",
+                     "surprise me on Zeppelin.",
+                     "Can you put Wade on the radio?",
+                     "Hey, can you tell me a story on air?"):
+            asks = self._asks()
+            asks.heard(said, at=1.0)
+            self.assertEqual(1, len(asks.unanswered(acted_at=[])), said)
 
     def test_every_shape_of_action_ask_is_caught(self):
         for said in ("can you play Dreams for me",

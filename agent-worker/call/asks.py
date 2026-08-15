@@ -34,11 +34,39 @@ import time
 # A caller line that asks for something a TOOL would have to do. Written from
 # the request vocabulary the tools already accept rather than invented: these
 # are the phrasings in the scenario sets and in the archive.
+#
+# **Replayed over the archive 2026-08-14**, which is the first time this had
+# been run against real callers rather than scenario text, and it was deaf
+# where it mattered most: five of thirteen tool-shaped asks across 44 records.
+# The misses were not exotic phrasings — they were the two most ordinary ways
+# anybody asks a radio station for anything. "Got any Zeppelin?" (four lines,
+# three separate calls) and "Can you put Wade on the radio?" (two) went
+# unseen, while the shapes it did catch were all skips and DJ changes.
+#
+# That direction of failure is the dangerous one HERE, because of what this
+# module is for: the plan says that if the archive does NOT fill up with
+# dropped asks then the turn-by-turn shape is fine and the director question
+# is closed. A detector that cannot hear a request would produce exactly that
+# verdict by being deaf, and the stream would settle its central question on
+# an instrument that was not listening.
 ASKS_FOR_ACTION = re.compile(
     r"\b("
     r"play (?:me|us|something|that|it|this|some)|can you play|could you play|"
-    r"put (?:on|it on|that on|something on)|stick (?:on|that on)|"
+    # "put Wade on the radio" — the takeover ask, and the old `put (?:on|it
+    # on|...)` list could not see a NAME in the middle of it.
+    r"put (?:\w+ ){0,3}on\b|stick (?:on|that on)|"
     r"queue|request|line up|dig out|"
+    # "Got any Zeppelin?" / "Do you have any Zeppelin?" — the plainest request
+    # there is, and the most common caller line in the archive after hello.
+    r"(?:got|have) any(?! idea| clue| thoughts)|"
+    # "Give me something acoustic, surprise me." Guarded off the two ways this
+    # phrasing means nothing at all.
+    r"give (?:me|us) (?:something|some|a)(?! second| minute| moment| sec\b)|"
+    r"surprise me|"
+    # "Hey, can you tell me a story on air?" — the segment ask. Anchored to a
+    # request verb rather than to "on air" alone, which would fire on "how long
+    # have you been on air?" — ordinary chatter that owes nobody an action.
+    r"(?:tell|do|run|give) (?:me|us|a|an|the)[^.?!]{0,40}?\bon (?:the )?air|"
     r"shout ?out|dedicate|dedication|say (?:hi|hello) to|send.*to the booth|"
     r"skip (?:this|it|that|the)|next (?:song|track|one)|"
     r"change the (?:dj|show)|switch (?:the )?(?:dj|show|to)|put someone else on|"
@@ -46,6 +74,12 @@ ASKS_FOR_ACTION = re.compile(
     r"heart (?:this|that)|like (?:this|that)"
     r")\b",
     re.IGNORECASE)
+
+# Known and deliberately not guessed at: an ask that names a station SKILL
+# ("can you do an escalation with the execs?") is invisible here, because the
+# skill names come from the station and a regex holding a copy of them would
+# be one more list to drift. If the archive shows this often, the shape to
+# reach for is the live skill list, not more prose in this pattern.
 
 
 class Asks:
