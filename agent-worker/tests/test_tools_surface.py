@@ -104,6 +104,10 @@ class TestExposedSurface(unittest.TestCase):
         # One record rather than all of them. Same gate as clear-all — a
         # transcript is a caller's words either way.
         "DELETE /calls/{rid}": "admin",
+        # The operator's own verdict on a record. Admin, like everything else
+        # that touches a transcript — and unlike /call-feedback, which is the
+        # caller's thumbs and is deliberately open to the caller.
+        "POST /calls/{rid}/mark": "admin",
         "DELETE /logs": "admin",
         "GET /hooks/recent": "admin",
         # Costs the station a round trip and reveals the receiver address.

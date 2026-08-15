@@ -231,8 +231,11 @@
       if (chip) chip.classList.add('here');
     }
     if ($('mastSub')) {
-      $('mastSub').textContent =
-        location.host + ' · ' + (PAGE_TITLES[page] || page).toUpperCase();
+      // The PAGE, and nothing else. The host name led this line and told the
+      // operator something they typed into the address bar a second ago —
+      // and on a real hostname it was long enough to read as the subtitle,
+      // with the page name trailing off it (operator's ask).
+      $('mastSub').textContent = (PAGE_TITLES[page] || page).toUpperCase();
     }
     sizeStickyBar();
   }
@@ -1103,7 +1106,10 @@
   function callHealthNeeds() {
     const items = [];
     if (newerRelease) {
+      // Its own key, carrying the version: dismissing "0.10.155 is out" must
+      // not also silence 0.10.160, which the digit-blind default key would.
       items.push({ page: 'config', group: 'station',
+                   key: 'newer:' + newerRelease,
                    label: 'Version ' + newerRelease + ' is out',
                    note: 'this box is on ' + (panelVersion || '?')
                      + ' — pull the image and restart both containers' });
@@ -1117,6 +1123,7 @@
     const workerV = (recent.find((c) => c.appVersion) || {}).appVersion;
     if (workerV && panelVersion && workerV !== panelVersion) {
       items.push({ page: 'config', group: 'station',
+                   key: 'skew:' + panelVersion + ':' + workerV,
                    label: 'The two containers disagree',
                    note: 'this panel is ' + panelVersion + ' and the last call '
                      + 'was answered by a worker on ' + workerV
@@ -1175,10 +1182,49 @@
     return items;
   }
 
+  // ---- dismissing one -----------------------------------------------------
+  // Every item in this box is COMPUTED from live state, so nothing here can
+  // delete one: dismissing is the operator saying "I have read that", and the
+  // item comes back the moment the condition clears and happens again. The
+  // list of what has been read lives in this browser rather than on the box,
+  // because it is a fact about a reader, not about the deployment — and it
+  // costs no endpoint, no setting and no file the container has to be able to
+  // write.
+  const SEEN_KEY = 'callinNotesSeen';
+  // Digit-blind by default, so "7 of the last 8 calls heard nothing" does not
+  // become a new notification when the count moves to 8 of 10. Items that
+  // must re-notify on a number carry their own `key` (the version items do).
+  const noteKey = (it) => it.key
+    || (it.page + '|' + it.group + '|' + it.label.replace(/\d+/g, '#'));
+  function seenKeys() {
+    try {
+      const v = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  function setSeen(keys) {
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(keys)); } catch (e) {}
+  }
+
   function paintNeeds() {
     const list = $('needsList');
     if (!list) return;
-    const items = computeNeeds();
+    const all = computeNeeds();
+    // PRUNED to what is live: a dismissal that outlives its condition would
+    // silence the next occurrence of it for good, which is the way this
+    // feature usually goes wrong.
+    const live = new Set(all.map(noteKey));
+    const seen = seenKeys().filter((k) => live.has(k));
+    setSeen(seen);
+    const items = all.filter((it) => seen.indexOf(noteKey(it)) === -1);
+    const clearBtn = $('needsClearBtn');
+    if (clearBtn) {
+      clearBtn.hidden = !items.length;
+      clearBtn.onclick = () => {
+        setSeen(all.map(noteKey));
+        paintNeeds();
+      };
+    }
     list.innerHTML = '';
     // Empty is a state, not an absence (operator, 0.10.92): the box keeps its
     // column and says so in the middle of it, instead of shrinking to a bare
@@ -1187,13 +1233,20 @@
     if (!items.length) {
       const d = document.createElement('div');
       d.className = 'needempty';
-      d.textContent = 'Nothing needs attention — the line is ready.';
+      d.textContent = all.length
+        ? 'Nothing new — everything here has been read.'
+        : 'Nothing needs attention — the line is ready.';
       list.appendChild(d);
     }
     items.forEach((it) => {
+      // A row is a wrapper with TWO buttons in it, not one button — the
+      // dismiss × cannot be nested inside the jump, and a × that also jumped
+      // to the page it was dismissing would be its own bug report.
+      const row = document.createElement('div');
+      row.className = 'needrow';
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'needrow';
+      b.className = 'needjump';
       const k = document.createElement('span');
       k.className = 'nk';
       k.textContent = it.label;
@@ -1203,7 +1256,18 @@
       b.append(k, n);
       b.onclick = () => showSection(document.querySelector(
         'details.sec[data-group="' + it.group + '"]'));
-      list.appendChild(b);
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'ndismiss';
+      x.textContent = '×';
+      x.title = 'Dismiss — it comes back if this happens again';
+      x.setAttribute('aria-label', 'Dismiss this notification');
+      x.onclick = () => {
+        setSeen(seenKeys().concat([noteKey(it)]));
+        paintNeeds();
+      };
+      row.append(b, x);
+      list.appendChild(row);
     });
     if ($('needsSay')) {
       // The empty message lives in the body now — saying it in the caption
@@ -1805,7 +1869,7 @@
   }
 
   // The "Start here" banner and the first-run password card both retired at
-  // 0.10.77 (operator's call): the dashboard's NEEDS ATTENTION column says
+  // 0.10.77 (operator's call): the dashboard's NOTIFICATIONS column says
   // the same things, in one place, with a jump on every row.
 
   // The provider dropdowns, refillable on their own: they list only what a
@@ -2297,29 +2361,57 @@
     paintNeeds();          // skew is only knowable once this is in
     el.textContent = '';
     const link = document.createElement('a');
-    link.href = REPO_URL + '/releases/tag/v' + v;
+    // THE RELEASES PAGE until we know better. This pointed straight at
+    // /releases/tag/v<this build>, and most builds have no release of their
+    // own — only some versions are cut as one — so the link an operator
+    // clicked to read what changed was usually GitHub's 404 (operator: "the
+    // link often fails to go to a valid page"). The list is always a real
+    // page, opens on the newest notes, and needs no network to be right.
+    link.href = REPO_URL + '/releases';
     link.textContent = 'Talk Wave v' + v;
     link.target = '_blank';
     link.rel = 'noopener';
-    link.title = 'Release notes for this build';
+    link.title = 'Release notes';
     el.appendChild(link);
     if (v === '?') return;
-    fetch('https://api.github.com/repos/mrain1p/Talk-Wave/releases/latest',
+    // One read of the release list does both jobs: point this build's link at
+    // the notes that actually cover it, and say whether a newer one is out.
+    // 30 is several months of releases at this repo's rate.
+    fetch('https://api.github.com/repos/mrain1p/Talk-Wave/releases?per_page=30',
           { headers: { Accept: 'application/vnd.github+json' } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((rel) => {
-        const tag = rel && String(rel.tag_name || '').replace(/^v/, '');
-        if (!tag || tag === v || !newer(tag, v)) return;
+      .then((rels) => {
+        if (!Array.isArray(rels) || !rels.length) return;
+        const tagOf = (r) => String((r && r.tag_name) || '').replace(/^v/, '');
+        // The notes for THIS build: its own release if it has one, otherwise
+        // the newest release at or below it — which is the one whose notes
+        // describe the code this box is running.
+        const at = rels.filter((r) => tagOf(r) === v)[0];
+        const before = rels.filter((r) => tagOf(r) && !newer(tagOf(r), v))
+          .sort((a, b) => (newer(tagOf(a), tagOf(b)) ? -1 : 1))[0];
+        const cover = at || before;
+        if (cover && cover.html_url) {
+          link.href = cover.html_url;
+          link.title = at ? 'Release notes for this build'
+            : 'The newest release notes at or before this build (v'
+              + tagOf(cover) + ')';
+        }
+        // Newest by VERSION, not by position: a back-dated patch release
+        // sorts first in the API's own order and would claim to be the latest.
+        const top = rels.map(tagOf).filter(Boolean)
+          .reduce((a, b) => (newer(b, a) ? b : a), '');
+        if (!top || top === v || !newer(top, v)) return;
+        const rel = rels.filter((r) => tagOf(r) === top)[0] || {};
         const flag = document.createElement('a');
         flag.className = 'vnew';
         flag.href = rel.html_url || (REPO_URL + '/releases/latest');
         flag.target = '_blank';
         flag.rel = 'noopener';
-        flag.textContent = 'v' + tag + ' available';
+        flag.textContent = 'v' + top + ' available';
         flag.title = 'A newer release is out — pull the image and restart';
         el.appendChild(document.createTextNode(' '));
         el.appendChild(flag);
-        newerRelease = tag;
+        newerRelease = top;
         paintNeeds();
       })
       .catch(() => {});

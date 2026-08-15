@@ -26,6 +26,7 @@ from api.diagnostics import (
     handle_delete_call,
     handle_clear_logs,
     handle_logs,
+    handle_mark_call,
     handle_prompt_preview,
     handle_speed_test,
     handle_test_admin,
@@ -105,6 +106,8 @@ def build_app() -> web.Application:
     app.router.add_delete("/calls", handle_clear_calls)
     # One record rather than all of them — see handle_delete_call.
     app.router.add_delete("/calls/{rid}", handle_delete_call)
+    # The operator's own verdict on a call, beside the caller's.
+    app.router.add_post("/calls/{rid}/mark", handle_mark_call)
     app.router.add_delete("/logs", handle_clear_logs)
     app.router.add_options("/call-ended", handle_options)
     app.router.add_options("/call-feedback", handle_options)

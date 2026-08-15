@@ -1313,6 +1313,36 @@ async def handle_delete_call(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"ok": True}))
 
 
+async def handle_mark_call(request: web.Request) -> web.Response:
+    """The operator's own verdict on ONE record.
+
+    The caller's thumbs were the only verdict a call could carry, and they
+    arrive from the one person who cannot hear how the call sounded from the
+    outside — most calls carry no rating at all, and a run of test calls placed
+    by the operator carries none by definition. This is the operator marking
+    what they heard, stored beside the caller's rather than over it.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))}, status=401))
+    from call.record import mark_one
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    mark = str((body or {}).get("mark") or "").strip().lower()
+    if mark not in ("up", "down", ""):
+        return _cors(request, web.json_response(
+            {"error": "mark must be up, down, or empty to clear"}, status=400))
+    rid = request.match_info.get("rid", "")
+    if not mark_one(rid, mark):
+        return _cors(request, web.json_response(
+            {"error": "no such call record"}, status=404))
+    return _cors(request, web.json_response({"ok": True, "mark": mark}))
+
+
 async def handle_clear_logs(request: web.Request) -> web.Response:
     """Empty the log viewer's buffer.
 

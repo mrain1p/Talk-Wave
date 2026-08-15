@@ -73,6 +73,89 @@
     return { cls: 'pass', icon: '✓', note: '' };
   }
 
+  // The same record as PLAIN TEXT, for pasting into a bug report, a message
+  // to whoever runs the station, or a model you are asking why the DJ did
+  // that. The panel could show a transcript and nothing else; getting one out
+  // meant selecting a scrolling box by hand and losing the columns doing it
+  // (operator's ask).
+  function callText(c) {
+    const L = [];
+    const kind = c.kind === 'voicemail' ? 'voicemail'
+      : c.kind === 'chat' ? 'text chat' : 'call';
+    L.push(`Talk Wave ${kind} — ${callTime(c.startedAt, true)}`);
+    L.push(`DJ: ${(c.persona && c.persona.name) || '—'}`
+      + `  ·  ${Math.round(c.durationSecs || 0)}s`
+      + `  ·  ${c.callerTurns || 0} caller turn${(c.callerTurns || 0) === 1 ? '' : 's'}`);
+    const cfg = c.config || {};
+    L.push(`Ran on: ${cfg.llm || '—'} · ${cfg.stt || '—'} · ${cfg.tts || '—'}`);
+    L.push(`Ended: ${c.endedBecause || 'caller hung up or the line timed out'}`);
+    // Both verdicts, named — a pasted transcript that says "rated down" and
+    // does not say by whom is the one thing this format must not do.
+    const verdictWord = (v) => (v === 'up' ? 'good' : v === 'down' ? 'bad' : 'not rated');
+    L.push(`Caller: ${verdictWord(c.rating)}  ·  Operator: ${verdictWord(c.opRating)}`);
+    if (c.appVersion) L.push(`Build: ${c.appVersion}`);
+    L.push(`Record: ${c.id || c.room || ''}`);
+    if ((c.problems || []).length) {
+      L.push('', 'What went wrong:');
+      c.problems.forEach((p) => L.push('  - ' + p.what));
+    }
+    L.push('', 'Conversation:');
+    const events = []
+      .concat((c.turns || []).map((t) => ({ t: t.t, kind: t.who, text: t.text })))
+      .concat((c.tools || []).map((t) => ({
+        t: t.t, kind: 'tool', name: t.name, result: t.result || '',
+      })))
+      .sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+    if (!events.length) L.push('  (nothing was said)');
+    const who = { caller: 'Caller', dj: 'DJ' };
+    events.forEach((e) => {
+      const label = (e.kind === 'tool' ? 'Tool' : (who[e.kind] || e.kind));
+      const body = e.kind === 'tool'
+        ? e.name + (e.result ? ' -> ' + e.result : '')
+        : e.text;
+      L.push(`  [${callTime(e.t)}] ${label.padEnd(6)} ${body}`);
+    });
+    return L.join('\n');
+  }
+
+  // Clipboard, with the fallback that matters here: navigator.clipboard is
+  // undefined on a plain-http LAN address, which is exactly how this panel is
+  // reached before anyone puts TLS in front of it. Returns whether it landed,
+  // so the button can say.
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) { /* fall through to the old way */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  // One button, its own "Copied" flash, and it never leaves the caller
+  // wondering: a copy that silently failed on an http address is worse than
+  // one that says so.
+  async function flashCopy(btn, text, word) {
+    const was = btn.textContent;
+    const ok = await copyText(text);
+    btn.textContent = ok ? (word || 'Copied') : 'Blocked';
+    btn.classList.toggle('ok', ok);
+    setTimeout(() => {
+      if (!btn.isConnected) return;
+      btn.textContent = was; btn.classList.remove('ok');
+    }, 1600);
+  }
+
   // The body of an opened call, in the order you actually read it: what the
   // call was, what it ran on, who was calling, what went wrong, and only then
   // the conversation. Dumping all of it as one block meant the warning that
@@ -227,6 +310,12 @@
     if (c.rating === 'up' || c.rating === 'down') {
       el.dataset.rating = c.rating;
     }
+    // The operator's own verdict rides beside the caller's, never over it —
+    // see call/record.mark_one. The toolbar's thumbs match either.
+    if (c.opRating === 'up' || c.opRating === 'down') {
+      el.dataset.oprating = c.opRating;
+    }
+    el._call = c;          // what the copy-all button reads back off the row
     // What the toolbar's dropdowns filter on. Tools are stored as the badge
     // WORDS, not the raw names — the dropdown offers what the chips say, and
     // 8 stable words filter better than every raw tool spelling.
@@ -288,6 +377,71 @@
       // arrows' vocabulary: direction, no cartoon.
       (c.rating === 'down' ? '\u25bc ' : c.rating === 'up' ? '\u25b2 ' : '')
       + v.note;
+    // The row's own controls, in one trailing cell: mark it good, mark it
+    // bad, copy it, delete it. All four stop the click from toggling the
+    // <details> — they are reachable without opening the record, which is the
+    // point of them being on the summary.
+    const acts = document.createElement('span');
+    acts.className = 'crowacts';
+    sum.appendChild(acts);
+
+    // THE OPERATOR'S VERDICT. The caller's thumbs were the only verdict a
+    // record could carry, and most calls carry none — a test call the
+    // operator placed themselves carries none by definition. Pressing the
+    // mark that is already set clears it.
+    if (c.id) {
+      const marks = {};
+      const paintMarks = () => {
+        Object.keys(marks).forEach((k) => {
+          marks[k].classList.toggle('on', c.opRating === k);
+          marks[k].setAttribute('aria-pressed', String(c.opRating === k));
+        });
+        if (c.opRating) el.dataset.oprating = c.opRating;
+        else delete el.dataset.oprating;
+      };
+      [['up', '▲', 'Mark this call good'],
+       ['down', '▼', 'Mark this call bad']].forEach(([val, glyph, title]) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'cmark ' + val;
+        b.textContent = glyph;
+        b.title = title + ' (press again to clear)';
+        b.setAttribute('aria-label', title);
+        b.onclick = async (ev) => {
+          ev.preventDefault(); ev.stopPropagation();
+          const want = c.opRating === val ? '' : val;
+          b.disabled = true;
+          try {
+            const r = await afetch('/calls/' + encodeURIComponent(c.id) + '/mark', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mark: want }),
+            });
+            if (!r.ok) throw new Error('refused');
+            c.opRating = want;
+            paintMarks();
+          } catch (e) {
+            b.title = 'That did not save — reload the list and try again';
+          } finally { b.disabled = false; }
+        };
+        marks[val] = b;
+        acts.appendChild(b);
+      });
+      paintMarks();
+    }
+
+    // This conversation, as text, in the clipboard.
+    const cp = document.createElement('button');
+    cp.type = 'button';
+    cp.className = 'ccopy';
+    cp.textContent = 'Copy';
+    cp.title = 'Copy this conversation as text';
+    cp.onclick = (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      flashCopy(cp, callText(c));
+    };
+    acts.appendChild(cp);
+
     // Delete THIS one. Clear-all was the only way to remove a transcript,
     // which after a run of test calls meant throwing away the evidence you
     // were about to read. Lives on the summary so it is reachable without
@@ -325,7 +479,7 @@
           del.disabled = false; del.textContent = 'failed';
         }
       };
-      sum.appendChild(del);
+      acts.appendChild(del);
     }
     el.appendChild(sum);
     el.appendChild(callBody(c));
@@ -371,7 +525,11 @@
         let shown = 0;
         rows.forEach((row) => {
           const ok = (!filters.bad || row.dataset.verdict !== 'pass')
-            && (!filters.rating || row.dataset.rating === filters.rating)
+            // EITHER verdict. The thumbs used to mean the caller's alone, and
+            // an operator hunting for the calls they marked bad themselves
+            // filtered them all away.
+            && (!filters.rating || row.dataset.rating === filters.rating
+                || row.dataset.oprating === filters.rating)
             && (!filters.kind || row.dataset.kind === filters.kind)
             && (!filters.tier || row.dataset.tier === filters.tier)
             && (!filters.tool || (' ' + (row.dataset.tools || '') + ' ')
@@ -394,10 +552,12 @@
         box.classList.toggle('on', filters.bad);
         apply();
       };
-      // The caller's own verdicts, as filters. One at a time — a call can't
-      // be rated both ways — and they stack with everything else on the bar.
-      const down = calls.filter((c) => c.rating === 'down').length;
-      const up = calls.filter((c) => c.rating === 'up').length;
+      // The verdicts, as filters. One at a time — a call can't be rated both
+      // ways — and they stack with everything else on the bar. The counts
+      // include the operator's own marks, because the filter does.
+      const rated = (c, val) => c.rating === val || c.opRating === val;
+      const down = calls.filter((c) => rated(c, 'down')).length;
+      const up = calls.filter((c) => rated(c, 'up')).length;
       [['callsOnlyDown', 'down', down], ['callsOnlyUp', 'up', up]]
         .forEach(([id, val, n]) => {
           const btn = $(id);
@@ -445,6 +605,21 @@
       fillSelect('callTool', 'tool', 'All tools',
         [...new Set(calls.flatMap((c) => (c.tools || []).map((t) =>
           toolBadge(t.name).word)))].sort());
+
+      // COPY WHAT IS ON SCREEN, not everything stored: the bar's whole job is
+      // narrowing forty records to the ones you are working on, and a copy
+      // button that ignored the filters would hand back the wall the filters
+      // were for. Reads the rows, so it follows every filter without knowing
+      // what any of them are.
+      const copyAll = $('callsCopyBtn');
+      if (copyAll) {
+        copyAll.onclick = () => {
+          const picked = rows.filter((r) => !r.hidden).map((r) => r._call);
+          if (!picked.length) return;
+          flashCopy(copyAll, picked.map(callText).join('\n\n' + '-'.repeat(60) + '\n\n'),
+                    'Copied ' + picked.length);
+        };
+      }
 
       apply();
       $('callBar').hidden = false;

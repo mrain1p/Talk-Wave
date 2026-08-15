@@ -718,7 +718,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Deliberately NOT cut here: the ducking is being diagnosed on a live
         # deployment, and moving this file in the same change would give any
         # regression two candidate causes.
-        "web-widget/panel-viewers.js": (606, "the log viewer split from the "
+        #
+        # RAISED to 781 for the operator's marks and the copy buttons (callText,
+        # copyText, flashCopy, the row's action cell). Same reasoning as the
+        # first deferral, which is the honest one rather than a convenient one:
+        # this landed in a change that also moved the call card, the dashboard
+        # strip and the notifications box, and cutting the file in the same
+        # commit would hand any regression in it two candidate causes. The seam
+        # has not moved — everything added here is on the CALL side of it — but
+        # the debt is now 181 lines over the ceiling and the next thing this
+        # file gains should be the split.
+        "web-widget/panel-viewers.js": (781, "the log viewer split from the "
                                              "call viewer; they share only "
                                              "Panel.afetch and showResult"),
         # 0.9.122 pushed it over adding per-adapter auth and the {voice}

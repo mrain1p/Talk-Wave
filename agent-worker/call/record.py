@@ -451,6 +451,56 @@ def rate(room: str, rating: str) -> bool:
         return False
 
 
+def mark_one(record_id: str, mark: str) -> bool:
+    """Attach the OPERATOR's own verdict to a record, by its id.
+
+    Separate from `rate` and stored in its own field, because the two answer
+    different questions: `rating` is what the caller pressed on the card, and
+    the panel's thumbs filters and the activity charts have always meant that.
+    An operator listening back is a second opinion, not a correction of the
+    caller's — a call the caller loved can still be the one that shows the DJ
+    talking over the station.
+
+    An empty mark clears it, so a verdict pressed by mistake can be taken off
+    again without deleting the transcript to do it.
+    """
+    mark = str(mark or "").strip().lower()
+    if mark not in ("up", "down", ""):
+        return False
+    stem = str(record_id or "").strip()
+    if not stem or not _SAFE_ID.fullmatch(stem):
+        return False
+    path = CALLS_DIR / f"{stem}.json"
+    try:
+        # Same containment as delete_one: the id comes from a browser and is
+        # about to build a path.
+        if path.resolve().parent != CALLS_DIR.resolve():
+            return False
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if mark:
+            data["opRating"] = mark
+        else:
+            data.pop("opRating", None)
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1, ensure_ascii=False)
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(path)
+        log.info("call %s marked %s by the operator", stem, mark or "unrated")
+        return True
+    except FileNotFoundError:
+        # No such record — an answer, not a fault. The panel turns it into a
+        # 404 and the operator's list was simply stale.
+        return False
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("could not store the operator's mark: %s", e)
+        return False
+
+
 def recent(limit: int = 20) -> list[dict]:
     """Newest first, for the panel."""
     out = []

@@ -53,7 +53,13 @@
     // Admin only. `isAdmin` rides the per-request half of /live, so an
     // older worker that does not send it leaves this exactly as it was —
     // `!== false` rather than a truthy test, deliberately.
-    set('gearBtn', c.settings !== false && !compact && d.canOpenSettings !== false);
+    // `!d ||` is load-bearing: the offline path calls this with null exactly
+    // so the corner controls survive a failed /live, and dereferencing d here
+    // threw instead — so the one case this was written for was the one case it
+    // did not work. Caught in the preview browser: "Cannot read properties of
+    // null (reading 'canOpenSettings')", once per failed read.
+    set('gearBtn', c.settings !== false && !compact
+        && (!d || d.canOpenSettings !== false));
     // Forget-the-code, shown whenever THIS device holds a stored code and
     // there was a reason to enter one — the line demanded it (kiosks), or
     // sign-in is on offer and the caller climbed a tier. Without the second

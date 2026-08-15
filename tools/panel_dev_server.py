@@ -286,6 +286,27 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             return self._json({"ok": True, "effects": voice_effects.read()})
+        # The operator's own verdict on a call. Lands in the in-memory CALLS
+        # fixture so the mark can be driven end to end here — pressed, cleared,
+        # and read back by the thumbs filters — without a real transcript
+        # directory to write into.
+        if self.path.split("?")[0].endswith("/mark"):
+            rid = self.path.split("?")[0].split("/")[2]
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            mark = str(body.get("mark") or "")
+            for c in CALLS:
+                if c.get("id") == rid:
+                    if mark:
+                        c["opRating"] = mark
+                    else:
+                        c.pop("opRating", None)
+                    return self._json({"ok": True, "mark": mark})
+            return self._send(404, json.dumps({"error": "no such call record"}),
+                              "application/json")
         self.do_GET()
 
     def do_GET(self) -> None:

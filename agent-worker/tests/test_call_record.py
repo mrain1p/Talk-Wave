@@ -594,6 +594,111 @@ class TestTheCallerGetsAVerdict(unittest.TestCase):
         self.assertFalse(call_record.rate("x", "up"))
 
 
+class TestTheOperatorGetsAVerdictToo(unittest.TestCase):
+    """The operator's own mark on a call, beside the caller's rather than over
+    it.
+
+    Most records carry no caller rating at all — nobody presses the thumbs, and
+    a test call the operator placed themselves has nobody to press them. The
+    mark is keyed by record id (the panel has it) rather than by room, and it
+    must never overwrite `rating`: the thumbs filters and the activity charts
+    have always meant "what the caller said", and a second opinion filed in the
+    same field would silently rewrite that history.
+    """
+
+    def setUp(self):
+        from call import record
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = record.CALLS_DIR
+        record.CALLS_DIR = Path(self._tmp.name)
+
+    def tearDown(self):
+        from call import record
+
+        record.CALLS_DIR = self._old
+        self._tmp.cleanup()
+
+    def _seed(self, **extra):
+        from call import record as call_record
+
+        call_record.CALLS_DIR.mkdir(parents=True, exist_ok=True)
+        path = call_record.CALLS_DIR / "20260806-120000-abc123def456.json"
+        body = {"room": "callin-abc123def456", "turns": []}
+        body.update(extra)
+        path.write_text(json.dumps(body), encoding="utf-8")
+        return path
+
+    def _read(self, path):
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_a_mark_lands_on_that_record(self):
+        from call import record as call_record
+
+        path = self._seed()
+        self.assertTrue(
+            call_record.mark_one("20260806-120000-abc123def456", "down"))
+        self.assertEqual(self._read(path)["opRating"], "down")
+
+    def test_the_callers_own_rating_is_left_alone(self):
+        from call import record as call_record
+
+        path = self._seed(rating="up")
+        call_record.mark_one("20260806-120000-abc123def456", "down")
+        got = self._read(path)
+        self.assertEqual(got["rating"], "up",
+                         "the operator's mark overwrote the caller's verdict")
+        self.assertEqual(got["opRating"], "down")
+
+    def test_the_rest_of_the_record_survives(self):
+        from call import record as call_record
+
+        path = self._seed(turns=[{"who": "caller", "text": "hello"}])
+        call_record.mark_one("20260806-120000-abc123def456", "up")
+        self.assertEqual(len(self._read(path)["turns"]), 1)
+
+    def test_an_empty_mark_takes_it_off_again(self):
+        # A verdict pressed by mistake must have a way back that isn't
+        # "delete the transcript". None counts as empty — the panel posts JSON
+        # and an absent field arrives as null.
+        from call import record as call_record
+
+        for blank in ("", None):
+            with self.subTest(mark=blank):
+                path = self._seed(opRating="down")
+                self.assertTrue(
+                    call_record.mark_one("20260806-120000-abc123def456", blank))
+                self.assertNotIn("opRating", self._read(path))
+
+    def test_only_up_down_and_empty_are_accepted(self):
+        from call import record as call_record
+
+        self._seed()
+        for junk in ("sideways", "UP; DROP TABLE", "good"):
+            with self.subTest(mark=junk):
+                self.assertFalse(
+                    call_record.mark_one("20260806-120000-abc123def456", junk))
+
+    def test_an_id_that_leaves_the_directory_is_refused(self):
+        # The id arrives from a browser and is used to build a path — the same
+        # containment delete_one has, for the same reason.
+        from call import record as call_record
+
+        self._seed()
+        for junk in ("../../etc/passwd", "20260806-120000-abc123def456.json",
+                     "", "a/b"):
+            with self.subTest(rid=junk):
+                self.assertFalse(call_record.mark_one(junk, "up"))
+
+    def test_a_record_that_does_not_exist_writes_nothing(self):
+        from call import record as call_record
+
+        self._seed()
+        self.assertFalse(call_record.mark_one("20260101-000000-000000000000", "up"))
+        self.assertEqual(len(list(call_record.CALLS_DIR.glob("*.json"))), 1,
+                         "a mark for a call we have no record of invented a file")
+
+
 class TestStaleRecordsCanBeThrownAway(unittest.TestCase):
     """`record_keep` only trims as new calls arrive, so a deployment that has
     gone quiet keeps whatever it last had forever. After a run of test calls

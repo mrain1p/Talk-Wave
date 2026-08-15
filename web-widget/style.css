@@ -922,7 +922,13 @@
      own content — label, rail, percentage — and at embed widths that pushed
      the DJ's waveform off the card entirely (operator: "the volume bar is too
      large causing the waveform to its right to go out of frame"). */
-  .meters .vol { flex: 0 1 auto; min-width: 0; }
+  /* A THIRD OF THE BAND, at most. Giving room before the waveforms do was not
+     enough: at the card's own width the label, the rail and the percentage
+     still measured about half the row and the two meters were left reading as
+     a pair of dashes (operator: "the you and dj waveforms are obfuscated
+     because the volume bar is too big"). A cap in per-cent holds at every card
+     width, which the 260px one below does not. */
+  .meters .vol { flex: 0 1 auto; min-width: 0; max-width: 33%; }
   .meters .vol input[type=range] { min-width: 40px; }
   /* Two WAVEFORMS on one band — You on the left, the DJ on the right, the
      volume beside them. 0.10.131 collapsed both into a single centre-out bar
@@ -1507,10 +1513,28 @@
 
   .idleboard {
     display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 7px; height: 100%; text-align: center;
+    gap: 7px; height: 100%; text-align: center;
     padding: 4px 0;
   }
+  /* LOW IN THE BOX, not centred on it. The board and a skin's idle artefact
+     were drawn in the middle of the same rectangle, so the platter, the dial
+     or the reticle had nowhere to be that the headline was not already sitting
+     on top of. The headline takes the bottom third and the art gets the two
+     thirds above it (operator's ask).
+     Two spacers rather than a bottom padding, because the line box is the
+     card's one ELASTIC band: a fixed padding sits the headline against the
+     bottom edge of a tall card and halfway up a short one, and a percentage
+     padding would resolve against the box's WIDTH. Flex grow is the only unit
+     here that means a third of the height. */
+  .idleboard::before { content: ""; flex: 3 1 0; }
+  .idleboard::after  { content: ""; flex: 1 1 0; }
   .idleboard[hidden] { display: none; }
+  /* And the art keeps the two thirds ABOVE the headline while the board is up
+     — otherwise moving the board down just moved it on top of the drawing
+     instead of out from under it. Only while the board is showing: with the
+     door code or the setup nudge in the box there is no headline to make room
+     for, and the drawing should have the box. */
+  .linebox:has(.idleboard:not([hidden])) .skinart { bottom: 34%; }
   /* THE STATUS PRINTS UNDER THE HEADLINE, like a line on a terminal — this is
      the operator's shape: LINES ARE OPEN, and beneath it what is happening
      right now (Connecting… · On the line, go ahead · They rang off). It was
@@ -1519,11 +1543,12 @@
      board it is a normal flow child of a centred column, so the two read as
      one small display instead of fighting for the middle of the box. */
   .linebox:has(.idleboard:not([hidden])) #status {
-    /* Just under the headline, which is centred in the box: the board's rule
-       and head come to about 30px, so half the box plus a little clears it.
-       Still absolute — the board owns the box's height and a flow sibling
-       would be pushed out of it — but placed rather than centred. */
-    inset: calc(50% + 22px) 12px auto 12px;
+    /* Under the headline, which now sits low in the box — so this is anchored
+       to the BOTTOM rather than measured down from the top: the headline's own
+       position is a proportion of a box that is elastic, and the two would
+       have to be kept in agreement at every height. Still absolute — the board
+       owns the box's height and a flow sibling would be pushed out of it. */
+    inset: auto 12px 6px 12px;
     justify-content: center; text-align: center;
     font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
@@ -2050,12 +2075,29 @@
     display: grid; place-items: center; text-align: center; padding: 10px;
     font-style: italic; font-size: 13px; color: var(--dim);
   }
+  /* The card is the WRAPPER now: the jump and the dismiss × are two buttons
+     inside it, because a button cannot be nested in a button and a × that
+     also jumped to the page it was dismissing would be a bug. */
   .needrow {
-    display: grid; gap: 3px; text-align: left; padding: 10px 12px;
-    cursor: pointer; border: 1px solid var(--coral); border-radius: 10px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px;
+    align-items: start; text-align: left; padding: 10px 12px;
+    border: 1px solid var(--coral); border-radius: 10px;
     background: color-mix(in srgb, var(--coral) 7%, transparent);
     color: var(--text);
   }
+  .needjump {
+    display: grid; gap: 3px; text-align: left; cursor: pointer;
+    border: 0; background: transparent; color: inherit; padding: 0;
+    min-width: 0;
+  }
+  .ndismiss {
+    border: 1px solid transparent; background: transparent; cursor: pointer;
+    color: var(--dim); font: 400 15px/1 var(--font-mono);
+    padding: 1px 6px; border-radius: 4px; align-self: center;
+    opacity: 0; transition: opacity .12s, color .12s, border-color .12s;
+  }
+  .needrow:hover .ndismiss, .ndismiss:focus-visible { opacity: 1; }
+  .ndismiss:hover { color: var(--coral); border-color: var(--coral); }
   .needrow .nk {
     font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: uppercase; color: var(--coral);
@@ -3217,10 +3259,41 @@
        turn count, a fixed track cut chips off mid-word ("search…" and a bare
        clipped border, operator screenshot) while the note column beside it
        sat empty on every passing call. */
-    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr) 22px;
+    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr) auto;
     gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
   }
+  /* The row's four controls in ONE trailing cell rather than four tracks: a
+     column per button would have every row reserve the width of a delete
+     confirmation it is not showing, and the columns this list exists for are
+     the six to the left of it. */
+  .crowacts {
+    justify-self: end; align-self: center;
+    display: inline-flex; align-items: center; gap: 2px;
+  }
+  /* The operator's own verdict on the call. Unlike the other three it stays
+     lit when it is SET — it is a fact about the record, not an affordance, and
+     a mark you can only see by hovering the row is a mark you will not trust
+     the list without checking. */
+  .callrow > summary .cmark {
+    border: 1px solid transparent; background: transparent;
+    color: var(--dim); font: 11px/1 var(--font-mono);
+    padding: 3px 5px; border-radius: 4px; cursor: pointer;
+    opacity: 0; transition: opacity .12s, color .12s, border-color .12s;
+  }
+  .callrow > summary .cmark.up:hover, .callrow > summary .cmark.up.on { color: var(--ok); }
+  .callrow > summary .cmark.down:hover, .callrow > summary .cmark.down.on { color: var(--accent); }
+  .callrow > summary .cmark.on { opacity: 1; border-color: currentColor; }
+  .callrow > summary .ccopy {
+    border: 1px solid transparent; background: transparent;
+    color: var(--dim); font: 10px/1 var(--font-mono); letter-spacing: .06em;
+    text-transform: uppercase; padding: 4px 6px; border-radius: 4px;
+    cursor: pointer; opacity: 0; transition: opacity .12s, color .12s;
+  }
+  .callrow > summary .ccopy:hover { color: var(--text); border-color: var(--line2); }
+  .callrow > summary .ccopy.ok { color: var(--ok); opacity: 1; }
+  .callrow > summary:hover .cmark, .callrow > summary .cmark:focus-visible,
+  .callrow > summary:hover .ccopy, .callrow > summary .ccopy:focus-visible { opacity: 1; }
   /* Delete this record. Invisible until the row is hovered — forty rows each
      showing a delete affordance is a list that looks like a demolition site,
      and the button is not what you came to the list for. */
@@ -4107,7 +4180,14 @@
     border: 1px solid var(--edge); padding: 9px 11px;
     background: color-mix(in srgb, var(--alpenglow) 3%, transparent);
   }
-  body.panelpage .stationstrip .tile { border-bottom: 0; }
+  /* EACH BLOCK OUTLINED inside the strip (operator's ask). One rule round all
+     four read as a single band of text at four different x positions, and
+     which value belonged to which heading was left to the reader's eye. The
+     tiles' own bottom rule goes — it drew a line under the content of a box
+     that now has four sides. */
+  body.panelpage .stationstrip .tile {
+    border: 1px solid var(--hairline); border-radius: 0;
+  }
   body.panelpage .stationstrip .tile .tk { font-size: 9.5px; }
   body.panelpage .stationstrip .tile .tv { font-size: 17px; }
   body.panelpage .stationstrip .tile .tn { font-size: 11.5px; }

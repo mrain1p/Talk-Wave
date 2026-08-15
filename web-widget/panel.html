@@ -101,7 +101,7 @@
     </header>
 
     <!-- The first-run password card retired at 0.10.77 (operator's call):
-         the dashboard's NEEDS ATTENTION column carries the ask now, with a
+         the dashboard's NOTIFICATIONS column carries the ask now, with a
          jump to the Access section that holds the one implementation. -->
     <!-- The gate is the ONLY thing on screen while .locked hides the rest,
          so it has to carry the page's identity itself — the bare one-line
@@ -266,8 +266,14 @@
            than vanishing. The same items pin the page picker's chips. -->
       <div class="dashgroup needs">
         <div class="dashcaption">
-          <p class="tlabel">Needs attention</p>
+          <p class="tlabel">Notifications</p>
           <p class="dashmodesay" id="needsSay"></p>
+          <!-- Dismisses what is listed RIGHT NOW. Every item here is computed
+               from live state, so this cannot fix anything — it says "I have
+               read this one", and the item comes back if the condition clears
+               and happens again. -->
+          <button type="button" class="runbtn" id="needsClearBtn" hidden
+                  title="Dismiss everything listed here">Clear</button>
         </div>
         <div class="needslist" id="needsList"></div>
       </div>
@@ -1694,9 +1700,9 @@
           <button type="button" class="runbtn" id="callsOnlyBad"
                   title="Only calls with problems"><span class="bang">!</span> <span id="callsOnlyBadLabel"></span></button>
           <button type="button" class="runbtn" id="callsOnlyDown"
-                  title="Only calls the caller rated thumbs down"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg> <span></span></button>
+                  title="Only calls rated bad — by the caller, or marked by you"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg> <span></span></button>
           <button type="button" class="runbtn" id="callsOnlyUp"
-                  title="Only calls the caller rated thumbs up"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg> <span></span></button>
+                  title="Only calls rated good — by the caller, or marked by you"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg> <span></span></button>
           <!-- Filled from the loaded records; each hides itself when the
                records only hold one answer for it. -->
           <select id="callKind" aria-label="Only one way in" hidden></select>
@@ -1704,6 +1710,9 @@
           <select id="callTool" aria-label="Only calls that used a tool" hidden></select>
           <span class="grow"></span>
           <span class="tag" id="callCount"></span>
+          <!-- Copies the conversations the bar is currently SHOWING, as text. -->
+          <button type="button" class="runbtn" id="callsCopyBtn"
+                  title="Copy every conversation in this view as text">Copy</button>
           <button type="button" class="runbtn danger" id="callsClearBtn">Clear</button>
         </div>
         <div class="result scrolly" id="callsResult"></div>
