@@ -175,12 +175,15 @@ Every block is priceable; four now have a set behind them, and the results do no
 | Section | Share | Measured against | With | Without |
 |---|---|---|---|---|
 | `LANGUAGE_AND_MIMICRY` | 4% | `SCENARIO_SET=mimicry` | 11/11 | **5/11** |
+| `HOW_TO_TALK` | 4% | `SCENARIO_SET=banter` | p90 69 words | **p90 84** |
 | `CLOSING_DOOR` | 4% | `SCENARIO_SET=closing` | 1/3 first occurrence | 0/3 |
-| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` | 14/15 | **14/14** |
+| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` | 14/15 | **14/14** — but see below |
 
-The smallest block is the only thing stopping a caller driving station-wide actions by quoting fake instructions at the DJ — ablated, it skipped the track and put "the station is closing down" on air, 3/3 each. The largest of the three changed nothing when removed, most likely because the TOOLS already carry the same instruction in their result text, at the moment it matters, where it beats the standing prompt.
+The smallest block is the only thing stopping a caller driving station-wide actions by quoting fake instructions at the DJ — ablated, it skipped the track and put "the station is closing down" on air, 3/3 each. `HOW_TO_TALK` is the same story with a different instrument: dropping it moves the median DJ turn from 39 words to 54 and doubles the turns that cross fifty, so 1,101 characters are buying about fifteen words a turn, on every turn. The largest of the four changed nothing when removed, most likely because the TOOLS already carry the same instruction in their result text, at the moment it matters, where it beats the standing prompt.
 
-**Nothing about their size predicted either result**, which is the case against ever trimming the prompt by eye. `say_the_true_thing` is not cut on this evidence — fifteen judged rounds is a signal, not a verdict, and the set grades specific invented phrases rather than honesty in general.
+**Nothing about their size predicted any of it**, which is the case against ever trimming the prompt by eye — three of the four blocks with a set behind them are the small ones, and all three earn their length.
+
+`say_the_true_thing` is not cut, and the reason is now stronger than "fifteen rounds is a signal": **the set cannot currently answer the question.** One of its five scenarios never provoked its own fault until 0.10.150 (the DJ queued the found record by id and never touched the rate-limited path), and with the fault firing, a round scored PASS while the DJ told a caller that a request the station had just REFUSED was "coming up right after this". The grader lists the invented excuses; that answer invented an outcome instead. Before this block is cut or kept, the set needs a judge that asks whether the caller was left believing something true.
 
 ## Known disagreements
 
