@@ -1095,9 +1095,12 @@ SCHEMA: dict[str, dict] = {
         help="This is the PHONE — who may ring at all. What a caller may DO "
              "once through is separate and per-tier, feature by feature, "
              "under Caller permissions. Open and Guest code are one choice "
-             "apiece: an open line has no code door (the code stops "
-             "elevating), a code-gated line is closed to strangers. The "
-             "admin password opens the phone and the panel in every mode."),
+             "apiece for the DOOR: an open line needs no code to ring, a "
+             "code-gated line is closed to strangers. A guest code you have "
+             "set still elevates whoever types it either way, so an open line "
+             "can run all three tiers at once — strangers, code-holders and "
+             "you. The admin password opens the phone and the panel in every "
+             "mode."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels

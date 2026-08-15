@@ -205,14 +205,26 @@ class TestTheDoorDecidesTheTier(_TempStores):
     def test_a_wrong_password_is_not_a_higher_tier(self):
         self.assertEqual(self._tier(**{"X-Call-Key": "not-the-password"}), "open")
 
-    def test_an_open_line_has_no_guest_door(self):
-        # 0.10.66, the operator's ask: Guest code and Anyone are one choice
-        # apiece. On an open line the stored code no longer elevates — so
-        # turning the guest pathway off does not require deleting the code —
-        # while the admin password stays a door in every mode.
+    def test_an_open_line_runs_all_three_tiers_at_once(self):
+        # The door and the tier are two questions (operator, 2026-08-15). From
+        # 0.10.66 to 0.97.0 an open line refused to elevate a code-holder, so
+        # only two of the three tiers could ever be live and the permission
+        # matrix greyed a column whichever way the door was set: "it shouldn't
+        # be that if i have a guest role i can't have permissions for anyone or
+        # vice versa". A stranger, a code-holder and the operator can all be on
+        # an open line, and they are three different callers.
         settings_store.save({"front_access": "open"})
-        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "open")
+        self.assertEqual(self._tier(), "open")
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "guest")
         self.assertEqual(self._tier(**{"X-Call-Key": "hunter2hunter2"}), "admin")
+
+    def test_no_code_set_means_no_guest_tier(self):
+        # How the guest pathway is switched off: there is no code. Without
+        # this an operator with no code could still tick Guest on a permission
+        # and grant it to a tier nobody can ever be.
+        settings_store.save({"front_access": "open"})
+        self.admin_auth.set_guest_password("")
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "open")
 
     def test_a_code_gated_line_still_elevates(self):
         settings_store.save({"front_access": "guest"})

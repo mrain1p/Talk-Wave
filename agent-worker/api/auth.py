@@ -202,13 +202,25 @@ def caller_tier(request: web.Request) -> str:
     """
     import settings as settings_store
 
-    # Whether a GUEST caller can exist is the door's answer, not the code's.
-    # Since 0.10.66 Guest code and Anyone are one choice apiece (the
-    # operator's ask): on an open line the code no longer elevates, so
-    # turning the guest pathway off does not require closing the line or
-    # deleting the stored code. The admin password is a door in every mode.
+    # THE DOOR AND THE TIER ARE TWO QUESTIONS. `front_access` answers who may
+    # ring at all; the guest code answers who this caller IS once they are in.
+    # 0.10.66 fused them — on an open line the code stopped elevating — and the
+    # cost only showed up in the permission matrix: two of the three tiers
+    # could be live at once and never all three, so an operator running an open
+    # line could not give code-holders anything extra, and one running a gated
+    # line could not describe a stranger who by then could not exist anyway
+    # (operator, 2026-08-15: "it shouldn't be that if i have a guest role i
+    # can't have permissions for anyone or vice versa").
+    #
+    # So: a stored guest code elevates whoever types it, in every mode that
+    # lets anyone below admin in at all. Admin-only is the exception and stays
+    # one — nobody arrives under admin there, so a guest tier reached by side
+    # door would be a tier the door does not admit.
+    #
+    # The guest pathway is switched off by not having a code, which is the rule
+    # this had before 0.10.66 and the one the panel now states.
     mode = str(settings_store.load().get("front_access") or "auto").lower()
-    guest_door = mode == "guest" or (mode == "auto" and admin_auth.guest_is_set())
+    guest_door = mode != "admin" and admin_auth.guest_is_set()
     for header in ("X-Call-Key", "X-Admin-Key"):
         key = request.headers.get(header, "")
         if not key:

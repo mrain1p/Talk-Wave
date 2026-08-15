@@ -139,7 +139,11 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     admin_set = admin_auth.is_set()
     guest_set = admin_auth.guest_is_set()
     mode = str(settings_store.load().get("front_access") or "auto").lower()
-    guest_door = guest_set and mode in ("guest", "auto")
+    # Same rule as auth.caller_tier, and it has to stay the same rule: a stored
+    # code elevates in every mode except admin-only. This one decides whether
+    # the card offers "Sign in for more" — on an open line with a code and
+    # something gated above the open tier, that offer is now real.
+    guest_door = guest_set and mode != "admin"
     out["signinAvailable"] = (
         (tier == "open" and (guest_door or admin_set))
         or (tier == "guest" and admin_set)

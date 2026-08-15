@@ -3,11 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.97.0
+## 0.97.1
 
-A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.159, released as 0.97.0.
+A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.159, released as 0.97.1.
 
-**The version numbers restart here, at 0.97.0.** The old line had reached a three-digit patch number and said nothing about how finished the thing was; this one says it — close to 1.0, not there yet, with 0.98 and 0.99 still to come. It is a higher number than 0.10.159, not a lower one, so your panel's update flag keeps working; nothing else about upgrading changes. From now on a release is cut every time this file gains a heading, so the newest release and the image you are running are the same thing.
+**The version numbers restart here, at 0.97.x.** The old line had reached a three-digit patch number and said nothing about how finished the thing was; this one says it — close to 1.0, not there yet, with 0.98 and 0.99 still to come. It is a higher number than 0.10.159, not a lower one, so your panel's update flag keeps working; nothing else about upgrading changes. From now on a release is cut every time this file gains a heading, so the newest release and the image you are running are the same thing.
+
+### Access
+
+- **An open line can have a guest code again, and all three tiers at once.** Since 0.10.66 the door and the caller's tier were one choice: open the line to anyone and the code stopped elevating, gate it with a code and there were no strangers to describe — so the permissions matrix always greyed one of its three columns. The door is still open-or-gated, but a code you have set now elevates whoever types it either way. Strangers, code-holders and you, each with their own permissions, on the same line. The way to switch the guest tier off is to not have a code.
 
 ### What the caller hears
 

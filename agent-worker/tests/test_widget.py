@@ -1323,15 +1323,28 @@ class TestSigningInClimbsTheTier(_TempStores):
         self.assertEqual(out["callerTier"], "admin")
         self.assertFalse(out["signinAvailable"])
 
-    def test_an_open_line_offers_no_guest_climb(self):
-        # 0.10.66 made the doors one choice apiece: on an open line the code
-        # does not elevate, so the chip must not offer that climb — while the
-        # admin password stays a door in every mode, so setting one restores
-        # the offer.
+    def test_an_open_line_still_offers_the_guest_climb(self):
+        # The door and the tier are two questions (operator, 2026-08-15). From
+        # 0.10.66 to 0.97.0 an open line refused to elevate a code-holder, so
+        # the card could not offer a climb that the permissions matrix could
+        # not describe either. A stranger on an open line with a code set is
+        # exactly who "Sign in for more" is for.
         import admin_auth
 
         admin_auth.set_guest_password("guest99")
         settings_store.save({"front_access": "open"})
+        self.assertTrue(self._live_for()["signinAvailable"])
+        self.assertEqual(self._live_for("guest99")["callerTier"], "guest")
+
+    def test_an_admin_only_line_offers_no_guest_climb(self):
+        # The one mode where the code still does not elevate: nobody arrives
+        # under admin at all, so a guest tier reached by side door would be one
+        # the door does not admit. The admin password stays a door, so setting
+        # one restores the offer.
+        import admin_auth
+
+        admin_auth.set_guest_password("guest99")
+        settings_store.save({"front_access": "admin"})
         self.assertFalse(self._live_for()["signinAvailable"])
         self.assertEqual(self._live_for("guest99")["callerTier"], "open")
         admin_auth.set_password("adminpass123")

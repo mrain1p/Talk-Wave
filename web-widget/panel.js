@@ -2860,12 +2860,13 @@
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access || 'auto';
     if (tier === 'admin') return true;      // always a door
-    // Guest code and Anyone are one choice apiece (operator's ask,
-    // 0.10.66): a guest caller exists only while the line is code-gated —
-    // on an open line the code no longer elevates, and admin-only closes
-    // the phone below admin. Auto is code-gated once a code exists.
+    // The door and the tier are two questions (operator's ask, 2026-08-15).
+    // A stored guest code elevates whoever types it in every mode that lets
+    // anyone below admin in — INCLUDING an open line, where the three tiers
+    // now coexist: strangers, code-holders, and the operator. Admin-only is
+    // the exception, because nobody arrives under admin there at all.
     if (tier === 'guest') {
-      return guestConfigured && (access === 'guest' || access === 'auto');
+      return guestConfigured && access !== 'admin';
     }
     // `open` callers only exist while the line lets somebody in without a
     // code. On auto that is "until a guest code is set".
@@ -2877,26 +2878,28 @@
   function tierWhyNot(tier) {
     const access = ($('front_access') && $('front_access').value)
       || resolved.front_access || 'auto';
-    if (tier === 'guest' && access === 'open') {
-      return 'The line is open to anyone — the guest door is off, and the '
-        + 'code does not elevate. Pick Guest code under Access to gate it.';
-    }
     if (tier === 'guest' && access !== 'admin' && !guestConfigured) {
-      return 'No guest code set — nobody can be this caller yet.';
+      return 'No guest code set — nobody can be this caller yet. Set one under '
+        + 'Access and code-holders become their own tier, open line or not.';
+    }
+    if (tier === 'open' && access === 'guest') {
+      return 'The line is code-gated, so nobody arrives without a code — there '
+        + 'are no callers at this level to give anything to.';
     }
     return 'The line is closed to callers at this level, so nobody can be '
       + 'this caller. Change Call-in access under Access.';
   }
 
-  // Call-in access as three ticks, but NOT the permission rows' cascade any
-  // more (operator's ask, 0.10.66): Guest code and Anyone are one choice
-  // apiece — the door is code-gated or open, never both, so the guest
-  // pathway can be off while the line stays open — and Admin is always a
-  // door. The hidden select stays the stored field — these cells drive it
-  // the way the kill switch drives calls_paused — so Save and the schema
-  // never learn a new shape.
+  // Call-in access as three ticks, and they are THE DOOR — who may ring at
+  // all — not the tiers. The doors are still one choice apiece (0.10.66: the
+  // line is code-gated or open, never both), but a stored guest code now
+  // elevates on an open line too, so all three CALLER TIERS can be live at
+  // once and each can carry its own permissions. Admin is always a door.
+  // The hidden select stays the stored field — these cells drive it the way
+  // the kill switch drives calls_paused — so Save and the schema never learn
+  // a new shape.
   const ACCESS_CELLS = [
-    ['open', 'Anyone', 'No code — whoever loads the page can ring. The guest door is off.'],
+    ['open', 'Anyone', 'No code needed to ring. A guest code, if you set one, still elevates whoever types it.'],
     ['guest', 'Guest code', 'Only callers who type the code you share.'],
     ['admin', 'Admin', 'Always a door — the admin password opens the phone and this panel.'],
   ];
