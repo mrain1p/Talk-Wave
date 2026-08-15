@@ -119,6 +119,7 @@ from tests.test_caller_tiers import (  # noqa: F401
 )
 from tests.test_call_record import (  # noqa: F401
     TestASwallowedRequestIsWrittenDown,
+    TestAnAskThatWentNowhereIsWrittenDown,
     TestCallPrivacy,
     TestCallRecord,
     TestOneUtteranceIsOneLineInTheRecord,

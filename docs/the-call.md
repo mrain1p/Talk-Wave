@@ -132,7 +132,7 @@ Worth knowing before diagnosing from one:
 
 - **A call's tool entries carry no arguments.** The chat line records them (`"search_library returned nothing" is only half an answer — the question is always what it searched FOR`); the voice line, the primary surface, does not.
 - **A call's tool entries are not marked failed.** `CallRecord.tool()` takes the flag and chat passes it; the call path never does, so a call spent talking around three refusals reads as a clean call.
-- **Nothing pairs an ask to an outcome.** There are turns, tools and problems — no representation of what the caller came for or whether it happened, so "a request that was never returned to" is not visible in the archive.
+- ~~Nothing pairs an ask to an outcome.~~ Closed at 0.10.147: [`call/asks.py`](../agent-worker/call/asks.py) notes every caller line that asks for something a TOOL would have to do, and the record says so when no action landed afterwards. Detection only — the DJ is never told and no turn is generated. It is the evidence the director question needs: if the archive fills with dropped asks then a director has a case, and if it does not, the turn-by-turn shape is fine.
 - **Held receipt cards drop at hang-up.** The record has them; the caller's screen does not.
 
 ## Does the prompt work? — the first measured answer

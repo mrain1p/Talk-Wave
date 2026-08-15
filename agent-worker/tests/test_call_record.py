@@ -879,6 +879,75 @@ class TestTheRecordAndItsProblemsShareOneClock(unittest.TestCase):
         self.assertLess(rec.data["durationSecs"], 5)
 
 
+class TestAnAskThatWentNowhereIsWrittenDown(unittest.TestCase):
+    """The gap that made the director question unanswerable.
+
+    A record holds turns, tools and problems, and nothing joins them — so "the
+    caller asked for a shoutout and no shoutout was ever sent" could not be seen
+    in the archive at all. Not rare: INVISIBLE. Three reviews argued about
+    whether calls lose things across turns with no way to look.
+
+    Detection only. Nothing branches on it, the DJ is never told, and no turn is
+    generated because of it — if the archive fills with these, a director has a
+    case; if it does not, the turn-by-turn shape is fine.
+    """
+
+    def _asks(self):
+        from call.asks import Asks
+
+        return Asks()
+
+    def test_an_ask_with_nothing_after_it_is_reported(self):
+        asks = self._asks()
+        asks.heard("can you play Africa by Toto", at=100.0)
+        self.assertEqual(1, len(asks.unanswered(acted_at=[])))
+
+    def test_an_action_after_the_ask_answers_it(self):
+        asks = self._asks()
+        asks.heard("can you play Africa by Toto", at=100.0)
+        self.assertEqual([], asks.unanswered(acted_at=[101.0]))
+
+    def test_an_action_BEFORE_the_ask_answers_nothing(self):
+        # The whole reason this holds timestamps rather than a count: an action
+        # that landed earlier belonged to an earlier ask.
+        asks = self._asks()
+        asks.heard("and put a shoutout out for Marcus", at=200.0)
+        self.assertEqual(1, len(asks.unanswered(acted_at=[100.0])))
+
+    def test_chatter_is_not_an_ask(self):
+        # Counting "what's playing?" would report a dropped ask on every call
+        # that went perfectly well — it is answered in words and leaves no
+        # receipt. Only the shape that OWES an action counts.
+        asks = self._asks()
+        for chatter in ("what's playing right now?",
+                        "how long have you been on air?",
+                        "that's a great record",
+                        "he's had a rough week",
+                        "yeah that's the one"):
+            asks.heard(chatter, at=1.0)
+        self.assertEqual([], asks.unanswered(acted_at=[]))
+
+    def test_every_shape_of_action_ask_is_caught(self):
+        for said in ("can you play Dreams for me",
+                     "put on something mellow",
+                     "give a shoutout to my mate Marcus",
+                     "can you skip this one",
+                     "change the DJ to Wade",
+                     "never play that again"):
+            asks = self._asks()
+            asks.heard(said, at=1.0)
+            self.assertEqual(1, len(asks.unanswered(acted_at=[])), said)
+
+    def test_the_ledger_stamps_when_an_action_landed(self):
+        # The record's side of the same question.
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        actions.note("request", "Africa")
+        self.assertEqual(1, len(actions.taken_at))
+        self.assertGreater(actions.taken_at[0], 0)
+
+
 class TestASwallowedRequestIsWrittenDown(unittest.TestCase):
     """The speech filter keeps a typed tool call off the air, but silently —
     and from the caller's side that is indistinguishable from the DJ agreeing

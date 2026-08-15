@@ -292,8 +292,10 @@ class TestSilentCallIsRecorded(unittest.TestCase):
         return s
 
     def test_a_call_with_no_caller_audio_is_flagged(self):
+        from call import postmortem
+
         s = self._session(heard=0)
-        s._note_if_nothing_was_heard(15.0, [("dj", "Evening, you're through.")])
+        postmortem._note_if_nothing_was_heard(s, 15.0, [("dj", "Evening, you're through.")])
         problems = s.record.data["problems"]
         self.assertEqual(len(problems), 1)
         what = problems[0]["what"]
@@ -302,15 +304,19 @@ class TestSilentCallIsRecorded(unittest.TestCase):
         self.assertIn("the DJ did speak", what)  # so a mic problem is separable
 
     def test_a_call_that_heard_the_caller_is_not_flagged(self):
+        from call import postmortem
+
         s = self._session(heard=3)
-        s._note_if_nothing_was_heard(90.0, [("caller", "hello"), ("dj", "hi")])
+        postmortem._note_if_nothing_was_heard(s, 90.0, [("caller", "hello"), ("dj", "hi")])
         self.assertEqual(s.record.data["problems"], [])
 
     def test_it_records_whether_the_dj_spoke_at_all(self):
         # A DJ that never spoke points at the pipeline; one that did points at
         # the caller's side. The record has to keep them apart.
+        from call import postmortem
+
         s = self._session(heard=0)
-        s._note_if_nothing_was_heard(12.0, [])
+        postmortem._note_if_nothing_was_heard(s, 12.0, [])
         self.assertIn("the DJ did not speak", s.record.data["problems"][0]["what"])
 
 
@@ -1944,10 +1950,10 @@ class TestTwoOfTheDJsOwnTurnsNeverStartAtOnce(unittest.TestCase):
         # A silent fix is one nobody can tell is load-bearing — or needless.
         import inspect
 
-        import call.session as call_session
+        from call import postmortem
 
         src = inspect.getsource(
-            call_session.CallSession._note_if_two_turns_wanted_the_floor)
+            postmortem._note_if_two_turns_wanted_the_floor)
         self.assertIn("collisions", src)
 
 

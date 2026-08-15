@@ -67,6 +67,10 @@ class CallActions:
         # caption card somewhere other than a LiveKit data channel — the
         # chat's WebSocket sets it; a call leaves it alone.
         self.taken: list[tuple[str, str]] = []
+        # WHEN each of those landed. `taken` alone cannot answer "did
+        # anything happen AFTER the caller asked", which is the whole
+        # question call/asks.py exists to record.
+        self.taken_at: list[float] = []
         self.on_note = None
         # When the DJ is mid-task ON THE CALLER'S BEHALF — a search running, a
         # request still resolving in the background — the ball is in the DJ's
@@ -102,6 +106,7 @@ class CallActions:
         icon, label = self.LABELS.get(kind, ("✅", "Action completed"))
         log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)
         self.taken.append((kind, detail))
+        self.taken_at.append(time.time())
         if self.on_note is not None:
             try:
                 self.on_note({"kind": kind, "icon": icon,

@@ -41,8 +41,8 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
-from . import (background, door, floor as floor_mod, greeting, handoff,
-               lifecycle, promise_guard)
+from . import (asks as asks_mod, background, door, floor as floor_mod,
+               greeting, handoff, lifecycle, postmortem, promise_guard)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -163,6 +163,9 @@ class CallSession:
         # created inside the guard's watch loop.
         self.floor = floor_mod.Floor()
         self.air.floor = self.floor
+        # What the caller asked for, and whether anything happened about
+        # it. Records only — see call/asks.py.
+        self.asks = asks_mod.Asks()
 
         self.started_at = time.time()
         self.heard = {"n": 0}
@@ -419,6 +422,7 @@ class CallSession:
         promise_guard.attach_promise_guard(session, self.record, self.actions,
                                            air=self.air, floor=self.floor)
         door.attach_door_watch(session, self.door)
+        asks_mod.attach_ask_watch(session, self.asks)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard, actions=self.actions)
         lifecycle.attach_time_limit(ctx, session, cfg, air=self.air,
@@ -428,117 +432,6 @@ class CallSession:
     async def greet(self) -> None:
         await greeting.greet(self.session, self.cfg, record=self.record,
                               air=self.air)
-
-    def _note_if_the_door_was_held_open(self) -> None:
-        """Say so, in the record, when the DJ had to be steered off the door.
-
-        The correction itself is silent to the caller and to the operator, and a
-        silent fix is one nobody can tell is load-bearing — or failing. A call
-        that needed telling once is the mechanism working; a call that needed
-        telling three times is the prompt still pulling the other way, and that
-        is the number the next prompt cut should be argued from.
-        """
-        if not self.record or not self.door.corrections:
-            return
-        n = self.door.corrections
-        self.record.problem(
-            f"The DJ ended {n} turn{'s' if n != 1 else ''} by asking whether the "
-            "caller wanted anything else, before they had said they were "
-            "finished — the line was steered off it on the following turn each "
-            "time. One is ordinary. Several means the closing rules in the "
-            "prompt are not landing on this model."
-        )
-
-    def _note_if_two_turns_wanted_the_floor(self) -> None:
-        """Say so when two of the DJ's own turns tried to start at once.
-
-        Recorded rather than acted on: the lock already stops the overlap,
-        and the NUMBER is what says whether this narrow guard was worth
-        having. If a month of calls records none, it can go.
-        """
-        if not self.record or not self.floor.collisions:
-            return
-        self.record.problem(
-            f"Two of the DJ's own turns wanted to start at once "
-            f"{self.floor.collisions} time(s)"
-            + (f", and {self.floor.given_up} gave up waiting"
-               if self.floor.given_up else "")
-            + ". They were serialised rather than spoken over each other. "
-            "Expected to be rare; several on one call means two behaviours "
-            "are firing on the same cue."
-        )
-
-    def _note_if_nothing_was_heard(self, duration: float, final: list) -> None:
-        """Say so, in the record, when a call produced no caller audio.
-
-        An off-LAN caller whose media path never establishes looks exactly like
-        a healthy call from in here: the room is joined, the agent starts, the
-        greeting plays, and then the line drops around fifteen seconds later
-        with nothing received. That is what the first outside caller hit, and
-        NOTHING in our own logs said so — the failure was only visible in
-        LiveKit's ICE candidates and the caller's browser console.
-
-        This can't distinguish a broken media path from a silent caller, so it
-        doesn't pretend to. It records the shape and names the candidates in
-        order of likelihood, which is what a future investigation needs.
-        """
-        if self.heard["n"] or not self.record:
-            return
-
-        dj_spoke = any(who == "dj" and text.strip() for who, text in final)
-        log.warning(
-            "no caller audio received room=%s duration=%.0fs dj_spoke=%s — "
-            "media path, blocked microphone, or a silent caller",
-            self.ctx.room.name, duration, dj_spoke,
-        )
-        self.record.problem(
-            f"No audio was ever received from the caller ({duration:.0f}s on the "
-            f"line, the DJ {'did' if dj_spoke else 'did not'} speak). Three "
-            "things look like this from the booth: the caller was off-LAN and "
-            "the media path never established, their microphone was blocked, "
-            "or they genuinely said nothing. If they reported \"Could not "
-            "connect\" after about fifteen seconds of ringing, it is the first "
-            "— see off-LAN calling in the README."
-        )
-
-    def _note_if_the_voice_fell_behind(self) -> None:
-        """Say so, in the record, when the TTS could not keep up with playback.
-
-        This is the failure that has no symptom from in here. Time to first
-        audio was measured at a healthy 1.5s while the same backend ran at
-        1.6-2.3x realtime, so the DJ started speaking on cue and then fell
-        further behind with every sentence — audible to the caller as gaps and
-        drag, invisible in the transcript, and nothing anywhere errored. The
-        operator could only report that calls "felt laggy", which is not
-        something anyone can act on.
-        """
-        tts = getattr(self.session, "tts", None)
-        report = getattr(tts, "pace_report", None)
-        if not self.record or not callable(report):
-            return
-        try:
-            said = report()
-        except Exception as e:                                # noqa: BLE001
-            log.debug("could not read the TTS pace (harmless): %s", describe(e))
-            return
-        if said:
-            log.warning("%s", said)
-            self.record.problem(said)
-
-    def _note_if_the_model_kept_the_caller_waiting(self) -> None:
-        """Say so, in the record, when the caller waited on the model.
-
-        The companion to the check above, one leg earlier. Both exist because
-        the same class of failure — everything works, slowly enough to ruin the
-        call — leaves no trace anywhere else: no exception, no line in the
-        transcript, nothing an operator can point at. See llm_pace.
-        """
-        if not self.record:
-            return
-        said = self.think.report()
-        if said:
-            log.warning("%s", said)
-            self.record.problem(said)
 
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
@@ -575,11 +468,7 @@ class CallSession:
             except Exception as e:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []
-            self._note_if_the_door_was_held_open()
-            self._note_if_two_turns_wanted_the_floor()
-            self._note_if_nothing_was_heard(duration, final)
-            self._note_if_the_model_kept_the_caller_waiting()
-            self._note_if_the_voice_fell_behind()
+            postmortem.write_notes(self, duration, final)
             if self.cfg.get("record_calls", True):
                 self.record.write(reason=reason,
                                   keep=int(self.cfg.get("record_keep") or 0))
