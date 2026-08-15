@@ -112,29 +112,41 @@ happened, in your own voice:
   but "did you mean the Beatles one or the cover?" is right)."""
 
 
-def rules(cfg: dict) -> str:
-    """The behavioural half of a chat prompt, in prompt order.
-
-    `_tools` is the spoken tool etiquette verbatim — the etiquette IS
-    medium-independent (receipts, no invented tracks, the stranger rule) —
-    and TYPED_TOOLS_NOTE overrides the single rule that isn't.
+def blocks(cfg: dict) -> list[tuple[str, str]]:
+    """The typed conduct as NAMED sections, in prompt order — see
+    `conduct.blocks` for why they are named. Section names shared with the
+    spoken conduct are deliberately spelled the same, so a report or an
+    ablation naming one reaches both mouths.
     """
-    blocks = [
-        DOORWAY,
-        HOW_TO_TYPE + SPEAK_AS_YOURSELF,
-        running_the_call(cfg),
-        CHAT_CLOSING,
+    out = [
+        ("DOORWAY", DOORWAY),
+        ("HOW_TO_TYPE", HOW_TO_TYPE + SPEAK_AS_YOURSELF),
+        ("running_the_call", running_the_call(cfg)),
+        ("CHAT_CLOSING", CHAT_CLOSING),
     ]
     # The table guidance earns its tokens only when the DJ actually holds the
     # roster — the same switches that put it in the briefing (station_context).
     # With neither on there are no shows to lay out, so the rule is dead weight.
     if cfg.get("context_schedule") or cfg.get("allow_takeover"):
-        blocks.append(LISTING_SHOWS)
-    blocks += [
-        _tools(cfg),
-        TYPED_TOOLS_NOTE,
-        REPORT_THE_OUTCOME,
-        say_the_true_thing(cfg),
-        LANGUAGE_AND_MIMICRY,
+        out.append(("LISTING_SHOWS", LISTING_SHOWS))
+    out += [
+        ("tool_rules", _tools(cfg)),
+        ("TYPED_TOOLS_NOTE", TYPED_TOOLS_NOTE),
+        ("REPORT_THE_OUTCOME", REPORT_THE_OUTCOME),
+        ("say_the_true_thing", say_the_true_thing(cfg)),
+        ("LANGUAGE_AND_MIMICRY", LANGUAGE_AND_MIMICRY),
     ]
-    return "\n\n".join(blocks)
+    return out
+
+
+def rules(cfg: dict, drop: set | None = None) -> str:
+    """The behavioural half of a chat prompt, in prompt order.
+
+    `_tools` is the spoken tool etiquette verbatim — the etiquette IS
+    medium-independent (receipts, no invented tracks, the stranger rule) —
+    and TYPED_TOOLS_NOTE overrides the single rule that isn't.
+
+    `drop` is the measurement lever; see `conduct.rules`.
+    """
+    drop = drop or set()
+    return "\n\n".join(text for name, text in blocks(cfg) if name not in drop)

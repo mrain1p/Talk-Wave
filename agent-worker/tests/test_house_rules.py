@@ -224,23 +224,159 @@ class TestTheCallHarnessOnlyDialsLocal(unittest.TestCase):
                              "— pointing this at a deployment is never right")
 
 
-class TestTheToolEvalUsesFakeTools(unittest.TestCase):
-    """tools/tool_eval.py runs the REAL model (`build_llm`) to MEASURE whether
-    the DJ fires the right tool on a caller line — but the tools it hands the
-    model are FAKE: they only record what was called and return a canned
-    string, so an eval run can never take over a show, request a song, or make
-    any sound on a live station. Source-read from here (a run needs a provider
-    key and a live model, which the suite must never do); this also keeps the
-    dev harness NAMED in the suite, the coverage floor every module owes."""
+class TestTheRetiredEvalStaysRetired(unittest.TestCase):
+    """tools/tool_eval.py was deleted at 0.10.146. This is the note saying why,
+    so it does not get rebuilt.
 
-    def test_the_tools_are_fake_and_the_station_is_never_touched(self):
-        src = (REPO / "tools" / "tool_eval.py").read_text(encoding="utf-8")
-        self.assertIn("FIRED.append", src)   # tools only RECORD
-        self.assertIn("FAKE tools", src)      # and say so
-        # No real station client or MCP toolset is built — the model is handed
-        # the recording stubs, nothing that reaches the booth.
-        self.assertNotIn("StationClient", src)
-        self.assertNotIn("MCPToolset", src)
+    It asked the same question `SCENARIO_SET=triage` asks — does the DJ fire the
+    right tool — with three scenarios, FAKE tools that only recorded, and no
+    grading beyond printing what happened. The triage set asks it with eleven
+    scenarios, the REAL wrappers (so a tool's own guidance is under test too), a
+    PASS/FAIL per scenario and a rate over repeats. Two harnesses answering one
+    question is how they drift apart, and the weaker one is the one nobody
+    notices has rotted — which is exactly what happened to the drill between
+    0.10.138 and 0.10.145.
+
+    Its one intent with no home moved with it: "a show change is a takeover, not
+    a song request" is a triage scenario now. The other two were config-
+    dependent (confirm-before-sending, which rides a setting) and chat-only (the
+    Close button), and both are held at the prompt level in test_conduct and
+    test_chat.
+    """
+
+    def test_it_has_not_come_back(self):
+        self.assertFalse(
+            (REPO / "tools" / "tool_eval.py").exists(),
+            "tool_eval.py is back. If a second tool-routing harness is really "
+            "wanted, say why here — otherwise the triage set is the one that is "
+            "maintained, graded and run.")
+
+    def test_its_surviving_scenario_lives_in_the_triage_set(self):
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        self.assertIn("a show change is a takeover, not a song request", src)
+        self.assertIn("subwave_takeover_show", src)
+
+
+class TestTheDrillHarnessTracksTheModulesItDrives(unittest.TestCase):
+    """scripted_call.py is the instrument every conduct verdict rests on, and
+    it broke silently for seven versions because nothing held it to the code it
+    drives.
+
+    0.10.138 moved the promise patterns into `promises.py` and made `_NUDGE` a
+    dict keyed by kind. The harness went on naming `promise_guard.PROMISES_ACTION`
+    and passing `promise_guard._NUDGE` as a string — an AttributeError on the
+    first turn where the DJ speaks without calling a tool, which is the exact
+    case the sweep exists to measure. So from 0.10.138 to 0.10.145 the drill
+    could not run, the suite was green throughout, and the last numbers anyone
+    quoted were taken before the break.
+
+    The product modules already hold each other honest this way (test_chat pins
+    the chat line and the phone to one `unbacked`). This does the same for the
+    harness: every first-party name it imports, and every attribute it reads off
+    a first-party module, has to still be there. Static — the harness itself
+    needs a provider key and a live station, which the suite must never touch.
+    """
+
+    HARNESS = "scripted_call.py"
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+
+        cls.tree = ast.parse((AGENT_WORKER / cls.HARNESS).read_text(encoding="utf-8"))
+        cls.ast = ast
+
+    def _first_party(self, dotted: str) -> bool:
+        """A module that lives in this repo, as opposed to the SDK or stdlib.
+
+        Only ours are checked: a third-party rename is not this test's business,
+        and importing whatever happens to be installed is how a house-rules test
+        starts failing for reasons that have nothing to do with the house.
+        """
+        top = dotted.split(".")[0]
+        return ((AGENT_WORKER / f"{top}.py").is_file()
+                or (AGENT_WORKER / top / "__init__.py").is_file())
+
+    def test_the_scan_found_the_harness(self):
+        # Guard the guard: an empty parse would make everything below vacuous.
+        self.assertTrue(
+            any(isinstance(n, (self.ast.FunctionDef, self.ast.AsyncFunctionDef))
+                and n.name == "run_scenario"
+                for n in self.ast.walk(self.tree)),
+            "scripted_call.py no longer has run_scenario — this test is "
+            "reading the wrong file or the harness has been rewritten",
+        )
+
+    def test_every_name_it_imports_from_our_code_still_exists(self):
+        import importlib
+
+        missing = []
+        for node in self.ast.walk(self.tree):
+            if not isinstance(node, self.ast.ImportFrom) or node.level:
+                continue
+            if not node.module or not self._first_party(node.module):
+                continue
+            module = importlib.import_module(node.module)
+            for alias in node.names:
+                if hasattr(module, alias.name):
+                    continue
+                # `from brain import conduct_chat` is a SUBMODULE import and is
+                # perfectly valid even though `brain/__init__.py` does not pull
+                # it in — the attribute only appears once something imports it.
+                # Without this the guard fails on a legal import, which it did
+                # the first time the harness reached for the typed conduct.
+                try:
+                    importlib.import_module(f"{node.module}.{alias.name}")
+                except ImportError:
+                    missing.append(f"{node.module}.{alias.name}")
+        self.assertEqual(
+            missing, [],
+            "the harness imports names our code no longer defines: "
+            f"{missing}. It will raise on the run, not here — fix the harness "
+            "against the module that moved.",
+        )
+
+    def test_every_attribute_it_reads_off_our_modules_still_exists(self):
+        import importlib
+
+        # alias -> dotted module, for `import x`, `import x as y` and
+        # `from a import b` (where b is itself a module, e.g. `from call
+        # import promise_guard`).
+        bound: dict[str, str] = {}
+        for node in self.ast.walk(self.tree):
+            if isinstance(node, self.ast.Import):
+                for alias in node.names:
+                    if self._first_party(alias.name):
+                        bound[alias.asname or alias.name.split(".")[0]] = alias.name
+            elif isinstance(node, self.ast.ImportFrom) and node.module and not node.level:
+                for alias in node.names:
+                    dotted = f"{node.module}.{alias.name}"
+                    if self._first_party(dotted) and (
+                            AGENT_WORKER / node.module / f"{alias.name}.py").is_file():
+                        bound[alias.asname or alias.name] = dotted
+
+        self.assertIn("promise_guard", bound,
+                      "the harness no longer imports the promise guard — if "
+                      "that is deliberate, the sweep has stopped measuring the "
+                      "DJ the product ships")
+
+        missing = []
+        for node in self.ast.walk(self.tree):
+            if not isinstance(node, self.ast.Attribute):
+                continue
+            if not isinstance(node.value, self.ast.Name):
+                continue
+            dotted = bound.get(node.value.id)
+            if not dotted:
+                continue
+            module = importlib.import_module(dotted)
+            if not hasattr(module, node.attr):
+                missing.append(f"{node.value.id}.{node.attr}")
+        self.assertEqual(
+            sorted(set(missing)), [],
+            "the harness reads attributes our code no longer has: "
+            f"{sorted(set(missing))}. This is the 0.10.138 break, again.",
+        )
 
 
 class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
@@ -507,6 +643,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "agent-worker/tests/test_call_record.py":
             "one subject: what is written down about a call, and what is "
             "deliberately not — now including the caller's own verdict.",
+        "agent-worker/tests/test_brain.py":
+            "one subject: prompt assembly and what the DJ is told — the "
+            "briefing/conduct seam, the caller's context, the budget caps that "
+            "stop one bad track swallowing the prompt, and now whether every "
+            "mouth speaks as the same DJ. Crossed the ceiling at 0.10.146 when "
+            "the back-to-air line and the voicemail greeting were brought back "
+            "to the persona's own card; same subject-placement rule as the "
+            "test modules around it.",
         "agent-worker/tests/test_widget.py":
             "one subject: the browser half, guarded from here. It is the "
             "substitute for the JS unit tests this repo has no toolchain to "

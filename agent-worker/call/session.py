@@ -41,7 +41,8 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
-from . import background, greeting, handoff, lifecycle, promise_guard
+from . import (background, door, floor as floor_mod, greeting, handoff,
+               lifecycle, promise_guard)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -154,6 +155,14 @@ class CallSession:
         self.actions = CallActions(self.cfg.get("max_actions_per_call"), room=ctx.room,
                                    mode=str(self.cfg.get("action_cards") or "after"))
         self.air = OnAirGuard(self.station, self.cfg, room=ctx.room)
+        # One call's memory of whether the last line showed the caller the
+        # door — see call/door.py. Cheap enough to always build.
+        self.door = door.Door()
+        # Who is allowed to start a turn — see call/floor.py. Attached to
+        # the air guard the way air_log is, because the come-back task is
+        # created inside the guard's watch loop.
+        self.floor = floor_mod.Floor()
+        self.air.floor = self.floor
 
         self.started_at = time.time()
         self.heard = {"n": 0}
@@ -376,7 +385,7 @@ class CallSession:
         )
 
         await self.session.start(
-            agent=CallAgent(self.instructions, self.air),
+            agent=CallAgent(self.instructions, self.air, self.door),
             room=self.ctx.room,
             # RoomOptions replaces the deprecated RoomInputOptions/
             # RoomOutputOptions pair. close_on_disconnect keeps its meaning:
@@ -407,15 +416,57 @@ class CallSession:
         # Attached after card_flush and before the idle watch on purpose: it
         # reacts to the same conversation_item_added, and the receipt cards
         # for a nudged tool must still land behind the DJ's line.
-        promise_guard.attach_promise_guard(session, self.record)
+        promise_guard.attach_promise_guard(session, self.record, self.actions,
+                                           air=self.air, floor=self.floor)
+        door.attach_door_watch(session, self.door)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard, actions=self.actions)
-        lifecycle.attach_time_limit(ctx, session, cfg)
+        lifecycle.attach_time_limit(ctx, session, cfg, air=self.air,
+                                    floor=self.floor)
         ctx.add_shutdown_callback(self._on_shutdown)
 
     async def greet(self) -> None:
         await greeting.greet(self.session, self.cfg, record=self.record,
                               air=self.air)
+
+    def _note_if_the_door_was_held_open(self) -> None:
+        """Say so, in the record, when the DJ had to be steered off the door.
+
+        The correction itself is silent to the caller and to the operator, and a
+        silent fix is one nobody can tell is load-bearing — or failing. A call
+        that needed telling once is the mechanism working; a call that needed
+        telling three times is the prompt still pulling the other way, and that
+        is the number the next prompt cut should be argued from.
+        """
+        if not self.record or not self.door.corrections:
+            return
+        n = self.door.corrections
+        self.record.problem(
+            f"The DJ ended {n} turn{'s' if n != 1 else ''} by asking whether the "
+            "caller wanted anything else, before they had said they were "
+            "finished — the line was steered off it on the following turn each "
+            "time. One is ordinary. Several means the closing rules in the "
+            "prompt are not landing on this model."
+        )
+
+    def _note_if_two_turns_wanted_the_floor(self) -> None:
+        """Say so when two of the DJ's own turns tried to start at once.
+
+        Recorded rather than acted on: the lock already stops the overlap,
+        and the NUMBER is what says whether this narrow guard was worth
+        having. If a month of calls records none, it can go.
+        """
+        if not self.record or not self.floor.collisions:
+            return
+        self.record.problem(
+            f"Two of the DJ's own turns wanted to start at once "
+            f"{self.floor.collisions} time(s)"
+            + (f", and {self.floor.given_up} gave up waiting"
+               if self.floor.given_up else "")
+            + ". They were serialised rather than spoken over each other. "
+            "Expected to be rare; several on one call means two behaviours "
+            "are firing on the same cue."
+        )
 
     def _note_if_nothing_was_heard(self, duration: float, final: list) -> None:
         """Say so, in the record, when a call produced no caller audio.
@@ -524,6 +575,8 @@ class CallSession:
             except Exception as e:
                 log.debug("could not finalise the transcript (keeping live text): %s", e)
                 final = []
+            self._note_if_the_door_was_held_open()
+            self._note_if_two_turns_wanted_the_floor()
             self._note_if_nothing_was_heard(duration, final)
             self._note_if_the_model_kept_the_caller_waiting()
             self._note_if_the_voice_fell_behind()

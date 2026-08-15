@@ -41,7 +41,7 @@ class TestBrainSplit(_TempStores):
     quietly undo by reaching for a station read from inside a rule.
     """
 
-    FACT_MARKERS = ("Now playing", "Just played", "Coming up",
+    FACT_MARKERS = ("Playing when this call connected", "Just played", "Coming up",
                     "Other shows on this station", "Segments you can run")
     RULE_MARKERS = ("# Running the call", "# Closing a call",
                     "Keep the call moving", "# What you can do")
@@ -97,7 +97,11 @@ class TestBrainSplit(_TempStores):
 
     def test_briefing_reports_what_the_station_is_doing(self):
         text = self._facts({})
-        self.assertIn("Now playing: \"Dreams\" by Fleetwood Mac", text)
+        # Frozen at pickup, so the line says WHEN it was true — see
+        # briefing._fmt_now_playing.
+        self.assertIn(
+            'Playing when this call connected: "Dreams" by Fleetwood Mac',
+            text)
         self.assertIn("Just played", text)
         self.assertIn("Coming up", text)
 
@@ -187,7 +191,7 @@ class TestBrainSplit(_TempStores):
                 await station.aclose()
 
         text = asyncio.run(build())
-        facts_at = text.index("Now playing")
+        facts_at = text.index("Playing when this call connected")
         rules_at = text.index("# Running the call")
         self.assertLess(facts_at, rules_at)
         # And the identity header still comes before both.
@@ -449,6 +453,57 @@ class TestACallerCanBeToldNothingIsKept(_TempStores):
         # thousand is single-digit MB — and the old 100 aged out a busy
         # evening's calls before anyone had read them back.
         self.assertEqual(cfg["record_keep"], 1000)
+
+
+class TestEveryMouthSpeaksAsTheSameDJ(unittest.TestCase):
+    """There are four mouths, not two, and two of them had no character.
+
+    The phone and the text line share the brain by construction. The other two
+    write their own prompts, and until 0.10.146 neither carried the DJ card:
+
+      * the back-to-air mention — the ONE line the station's whole audience
+        hears about a call — was written from the persona's NAME alone. No
+        card, no conduct, no house style, while the call it was summarising had
+        been run by 28,000 characters of brain.
+      * the voicemail greeting clipped the card to 900 characters, a number
+        from nowhere and less than half what a call carries, so a caller who
+        got the machine met a shorter version of the DJ.
+
+    Neither is a place to assemble the whole brain — the handoff runs during
+    shutdown and a station read there delays the worker letting go — but the
+    card is already in hand in both, and it is what makes the voice the same.
+    """
+
+    def test_the_back_to_air_line_is_written_by_the_persona(self):
+        import inspect
+
+        from call import handoff
+
+        src = inspect.getsource(handoff.send_on_air_callback)
+        self.assertIn("CARD_BUDGET", src)
+        self.assertIn('persona.get("soul"', src)
+
+    def test_the_voicemail_greeting_uses_the_same_card_budget(self):
+        import inspect
+
+        from voicemail import capture
+
+        src = inspect.getsource(capture._fresh_greeting)
+        self.assertIn("CARD_BUDGET", src)
+        # Comments stripped: the one above the fix QUOTES the old `soul[:900]`
+        # to say what it replaced, and a check that cannot tell code from the
+        # note explaining it would forbid describing the bug at all.
+        code = "\n".join(line for line in src.splitlines()
+                         if not line.lstrip().startswith("#"))
+        self.assertNotIn("[:900]", code,
+                         "the machine is back on its own private card length")
+
+    def test_the_card_budget_is_one_number(self):
+        # Both read it from the briefing rather than each keeping a copy, which
+        # is how the 900 happened in the first place.
+        from brain.briefing import CARD_BUDGET
+
+        self.assertEqual(CARD_BUDGET, 2000)
 
 
 class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):

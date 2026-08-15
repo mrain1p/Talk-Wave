@@ -39,7 +39,18 @@ PROMISES_ACTION = re.compile(
     r"\b(let me|lemme|i'?ll\b|i am going to|i'?m going to|i'?m gonna|"
     r"hold on|hang on|one sec|one moment|give me a|on it\b|"
     r"checking|looking|digging|sending|queueing|queuing|getting that|"
-    r"pulling up|have a look|dig out|dig through)\b",
+    r"pulling up|have a look|dig out|dig through|"
+    # The present participle of an action already under way, which reads to a
+    # caller exactly like the finished tense and owes the same receipt.
+    # "No problem. Taking that off for you now." — said with no tool call at
+    # all, on the drill's cancel scenario, 2026-08-14. Narrow on purpose: the
+    # object is required, so "taking requests tonight" and "putting on a good
+    # show" are untouched. Checked against all 162 DJ lines in the live archive
+    # the same day: it matches none of them, so it widens what is caught
+    # without widening what is interrupted.
+    r"(?:taking|pulling|putting|queuing|cueing) (?:it|that|them|those) "
+    r"(?:off|out|back|on|in|up)"
+    r")\b",
     re.IGNORECASE)
 
 # Finished tense: the DJ says it HAS acted. Deliberately two-part — a completion marker AND
@@ -62,17 +73,37 @@ CLAIMS_DONE = re.compile(
     re.IGNORECASE)
 
 
-def unbacked(text: str) -> str:
-    """Classify a line the DJ said with no tool call behind it.
+def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False) -> str:
+    """Classify a line the DJ said, against what actually ran behind it.
 
     Returns "promise", "claim", or "" for anything that owes nothing. A line carrying both
     ("got it, I'll queue that up") is a PROMISE: the softer nudge still gets the tool called,
     and telling a model it claimed something it only offered to do invites an apology the
     caller does not need.
+
+    **A read does not settle a claim, and this is the whole reason the two flags are
+    separate.** A promise is about dead air — "let me have a dig" is honest the moment the DJ
+    reaches for ANY tool, because something is now happening. A claim is about truth: "that
+    one's in" is true only if something was PUT in, and a search is not that. Both surfaces
+    got this wrong, in opposite directions, and each bug was invisible from the other side:
+
+      * the phone cleared a claim on any tool at all, so a turn that searched and then said
+        "That one's in. Got it lined up for you." with nothing queued sailed through. Caught
+        2026-08-14 on the drill's `a cancel that comes too late` scenario, one round in three,
+        on the model the operator runs. It is the Duke call with a search in front of it, and
+        the caller has no way to notice.
+      * the text line cleared a claim on nothing at all, so a queue that really HAD run got
+        told "no tool ran — so it is NOT done" and spent a turn apologising for a job it had
+        done correctly.
+
+    `acted` is the ledger's answer, not a list of tool names kept here: `CallActions.note()`
+    fires exactly when a station action SUCCEEDED, which is also the right answer for a tool
+    that ran and was refused — a refused queue leaves the claim false, and the nudge for that
+    case tells the DJ to own it.
     """
     text = str(text or "")
     if PROMISES_ACTION.search(text):
-        return "promise"
+        return "" if tools_ran else "promise"
     if CLAIMS_DONE.search(text):
-        return "claim"
+        return "" if acted else "claim"
     return ""

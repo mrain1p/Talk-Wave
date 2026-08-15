@@ -313,6 +313,13 @@ class ChatSession:
         by_name = {t.info.name: t for t in tools}
         reply = ""
         nudge_left = True
+        # Where the ledger stood when this message started, for the claim rule
+        # in promises.unbacked. It is per conversation, so what matters is
+        # whether it MOVED. Without it the text line nudged a claim that a
+        # queue had genuinely just satisfied — the DJ was told "no tool ran, so
+        # it is NOT done" about something it had done correctly, and spent a
+        # turn apologising for it.
+        acted_at = int(getattr(self.actions, "count", 0) or 0)
         for _ in range(MAX_TOOL_ROUNDS):
             text_out, calls = "", []
             stream = model.chat(chat_ctx=ctx, tools=tools)
@@ -338,7 +345,14 @@ class ChatSession:
                 # ever sent (operator-reported, 2026-08-12). One extra
                 # pass, only when the words match the opener the conduct
                 # asked for, and only once per message.
-                kind = unbacked(text_out) if (nudge_left and tools) else ""
+                # tools_ran stays False deliberately: this branch IS "the model
+                # stopped without calling anything", so a promise here is
+                # unbacked whatever an earlier round did. A round-1 search does
+                # not make a round-2 "I'll get that queued" true.
+                kind = unbacked(
+                    text_out, tools_ran=False,
+                    acted=int(getattr(self.actions, "count", 0) or 0) > acted_at,
+                ) if (nudge_left and tools) else ""
                 if kind:
                     nudge_left = False
                     ctx.add_message(role="assistant", content=text_out)
@@ -426,9 +440,9 @@ class ChatSession:
         between a library that lacks the track and a DJ that looked up the
         wrong words.
         """
-        detail = ", ".join(f"{k}={v!r}"[:80] for k, v in (args or {}).items())
-        text = f"({detail}) -> {result}" if detail else str(result)
-        self.tool_log.append((time.time(), name, text, failed))
+        from call.record import with_args
+
+        self.tool_log.append((time.time(), name, with_args(args, result), failed))
 
     async def aclose(self) -> None:
         """Let go of the conversation's model. Idempotent, and never allowed

@@ -188,7 +188,13 @@ async def _fresh_greeting(cfg: dict, persona: dict) -> tuple[bytes, int] | None:
 
     text = greetings.greeting_text_for(
         persona.get("id") or "", cfg, "", persona.get("name") or "the DJ")
-    soul = str(persona.get("soul") or "").strip()
+    # The same DJ card the call gets, clipped the same way. It was `soul[:900]`
+    # — a number from nowhere, less than half what a call carries — so the
+    # answering machine spoke in a shorter version of the persona than the
+    # phone did, and a caller who got the machine met a different DJ.
+    from brain.briefing import CARD_BUDGET, clip
+
+    soul = clip(persona.get("soul") or "", CARD_BUDGET)
     if soul:
         try:
             from livekit.agents.llm import ChatContext
@@ -196,7 +202,7 @@ async def _fresh_greeting(cfg: dict, persona: dict) -> tuple[bytes, int] | None:
             llm = build_llm(cfg)
             chat_ctx = ChatContext()
             chat_ctx.add_message(role="user", content=(
-                "You are this radio DJ:\n" + soul[:900] + "\n\n"
+                "You are this radio DJ:\n" + soul + "\n\n"
                 "Write your answering-machine greeting for a caller the "
                 "booth could not take live. One spoken line, under 25 words, "
                 "in your own voice, ending by telling them to leave a "

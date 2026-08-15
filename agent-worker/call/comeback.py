@@ -45,6 +45,20 @@ async def come_back(guard, session: AgentSession) -> None:
         f" What went out on air was: \"{aired[:200]}\" — a passing nod to "
         "it is fine, but don't read it back to them."
     ) if aired else ""
+    # One of the three turns that can start while another is generating — the
+    # promise nudge is the one it would collide with, and both are about a
+    # caller who has been left waiting. See call/floor.py.
+    floor = getattr(guard, "floor", None)
+    if floor is not None:
+        async with floor.take("the back-from-air line") as mine:
+            if not mine:
+                return
+            await _say_it(guard, session, nod)
+        return
+    await _say_it(guard, session, nod)
+
+
+async def _say_it(guard, session: AgentSession, nod: str) -> None:
     try:
         await session.generate_reply(instructions=(
             "You just stepped away to let something go out on air, and "

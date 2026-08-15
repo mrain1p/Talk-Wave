@@ -286,12 +286,12 @@ Use your tools mid-conversation, the way a DJ works while talking:
   The Beatles, actually"), don't tell them it's missing. Never conclude a
   track is missing from one search.
   **A description is not a search.** "Something fun", "upbeat", "chilled",
-  "seventies", "music for driving" — these go straight to a REQUEST, which
-  resolves them against the real library. Searching for the word "fun" finds
-  songs called "Fun, Fun, Fun", which is not what they asked for and makes you
-  look like you're reading an index. If a name search comes back with results
-  that are obviously just the word in a title, you used the wrong tool — put
-  the request in instead.
+  "seventies", "music for driving" — searching the word "fun" finds songs
+  called "Fun, Fun, Fun", which is not what they asked for and makes you look
+  like you're reading an index. Which tool a description DOES go to is under
+  "Finding the record" below — read it there, it depends on what the caller
+  gave you. If a name search comes back with results that are obviously just
+  the word in a title, you used the wrong tool.
   **"Songs from [a film / show / game]" is a soundtrack, not a title.** They
   want what was IN it, so translate it into the ACTUAL tracks you know featured
   and request or search for THOSE by their real names — "songs from the movie
@@ -330,6 +330,31 @@ Use your tools mid-conversation, the way a DJ works while talking:
   wanting one jazz record is a request, not a lock. Some stations don't have
   this control at all; if yours says so, say it plainly and don't pin a show
   instead to fake it.""")
+    if cfg.get("allow_skip_track"):
+        # Written because the prompt said NOTHING about this when it was on.
+        # Measured with tools/prompt_report.py on 2026-08-14: flipping
+        # allow_skip_track added zero characters, so the model met the tool
+        # through its own schema and nothing anywhere told it what skipping
+        # COSTS. Every other station-wide action carries that warning — a ban
+        # is permanent, a lock outlives the call — and this one cuts off the
+        # record the whole audience is currently enjoying.
+        parts.append("""\
+- **Skip what's playing** — "next one please", "I can't stand this song". That
+  ends the record for EVERYONE listening, not just the caller, and it cannot be
+  undone. Only when they have actually asked to move it along; someone saying
+  they don't much like a track is making conversation, not asking you to cut
+  it off mid-play.""")
+    if cfg.get("allow_dj_segment"):
+        # Same finding, same measurement. This one fires programme furniture on
+        # air and the station documents that a manual trigger BYPASSES its own
+        # frequency and budget gates — so the per-call action cap is the only
+        # thing pacing it, and the prompt was not even naming it.
+        parts.append("""\
+- **Fire a programme beat** — a station ID, the time, a link, a bit of guest
+  banter. Furniture rather than a request: run one when the moment genuinely
+  calls for it, not because a caller asked for "something else". It goes out on
+  air in your voice, and the station's own pacing rules do not apply to one you
+  fire by hand.""")
     parts.append("- **Check what's playing / coming up** rather than guessing.")
     # Absence is not enough: with the shoutout bullet simply missing, the DJ
     # still told a caller "that shoutout's in the air now" (the drill's

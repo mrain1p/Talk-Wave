@@ -32,6 +32,14 @@ Env:
     SCENARIO_SET=triage    which TOOL each ask is routed to, graded per
                            scenario — the set that answers "is the DJ making
                            the right decision", which coverage cannot
+    SCENARIO_SET=closing   when the line hangs up, and when it must not. The
+                           set the CLOSING section is measured against — the
+                           other sets are blind to it, so ablating that section
+                           without this one reads as "it costs nothing".
+    ABLATE=CLOSING,DOORWAY build the prompt WITHOUT those sections (names from
+                           conduct.blocks) and run the set against it. Pair it
+                           with a set that tests what you dropped.
+    SCENARIO=<substring>   run only the scenarios whose name contains it.
     SCENARIO_SET=conversations
                            whole messy calls with FAULTS injected: the caller
                            misremembers, changes their mind, doubts the DJ,
@@ -41,12 +49,25 @@ Env:
                            for any verdict you intend to act on: routing is a
                            distribution, and two consecutive single runs
                            disagreed on two scenarios out of nine.
+    REPLAY=parts           feed tool results back as structured functionCall
+                           parts instead of as text. The product uses text
+                           (0.10.119); this is the probe for whether a
+                           provider still rejects the structured shape, and it
+                           is expected to fail on Gemini 3.x multi-tool turns.
     CALL_AGE_SECS=300      age the call so end_call is past its 60s floor
 
-To try a prompt change WITHOUT redeploying, prepend the new conduct.py:
+To try a prompt change WITHOUT redeploying, prepend the new source. Either or
+both of conduct.py and tool_rules.py — the triage table lives in the second one,
+so a conduct-only injection has not been the whole prompt since 0.10.104:
 
-    { printf "NEW_CONDUCT = r'''\\n"; cat brain/conduct.py; printf "'''\\n\\n";
+    { printf "NEW_TOOL_RULES = r'''\\n"; cat brain/tool_rules.py; printf "'''\\n\\n";
+      printf "NEW_CONDUCT = r'''\\n";    cat brain/conduct.py;    printf "'''\\n\\n";
+      printf "NEW_DOOR = r'''\\n";       cat call/door.py;        printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
+
+NEW_DOOR is the same trick one step further: a module the image does not have
+AT ALL, installed into sys.modules before the imports run. That is how a guard
+written this afternoon gets measured against the deployed brain tonight.
 
 What it cannot test: STT, TTS, the on-air overlap hold, and the idle ladder's
 TIMING. Those need a real call with a real microphone. The ladder's WORDING it
@@ -74,11 +95,48 @@ try:
 except Exception:                                              # noqa: BLE001
     pass
 
+def _install_injected(path: str, source: str) -> None:
+    """Put a module the deployed image does not have into this run.
+
+    The prompt injection below replaces modules that already exist. A NEW
+    module — a guard added since the last deploy — could not be tested at all
+    without a redeploy, which is a slow loop for the thing this harness is for:
+    the door correction was unit-tested and unmeasurable on the same afternoon.
+    The prepended assignment is evaluated before these imports run, so the
+    module is in place by the time anything asks for it.
+
+    Only for pure modules with no image-side dependencies. Anything wired into
+    the SESSION still needs a real deploy — this reaches the harness's own copy
+    of the behaviour, not the worker's.
+    """
+    import sys
+    import types
+
+    module = types.ModuleType(path)
+    module.__file__ = f"{path} (injected)"
+    exec(compile(source, module.__file__, "exec"), module.__dict__)
+    sys.modules[path] = module
+    parent, _, leaf = path.rpartition(".")
+    if parent:
+        import importlib
+
+        setattr(importlib.import_module(parent), leaf, module)
+    print(f"[installed {path} — the image does not carry it]")
+
+
+for _var, _path in (("NEW_DOOR", "call.door"),):
+    _source = globals().get(_var)
+    if _source:
+        _install_injected(_path, _source)
+
 import secrets_store
 import settings as settings_store
 import speech_filter
+from call import door as call_door
 from call import promise_guard
+from chat.session import _tool_report
 from livekit.agents import llm as lk_llm
+from promises import unbacked
 from station import StationClient
 
 import brain
@@ -604,12 +662,29 @@ TRIAGE = [
         "avoid": [],
         "must_not_say": ["nothing", "empty", "haven't got"]}),
 
+    # Inherited from tools/tool_eval.py when that harness was retired into this
+    # one. It is the 2026-08-12 incident as a graded scenario: asked to change
+    # the DJ, the model reached for the nearest tool it had and queued a SONG,
+    # then told the caller "the pub door opens in a bit". The routing question
+    # is the whole point — a show change and a song request are not neighbours.
+    ("a show change is a takeover, not a song request", [
+        "can you change the DJ to Wade?",
+    ], {"want": ["subwave_takeover_show"],
+        "avoid": ["subwave_request_song"]}),
+
     # A read is free; a DJ that guesses at the queue instead of looking is the
-    # habit the briefing was supposed to break.
+    # habit the briefing was supposed to break. What this scenario defends is
+    # LOOKING UP rather than guessing — so `subwave_already_played` counts,
+    # and had to be added: the caller's question is two-part ("still coming
+    # up, or did I miss it?") and that tool is the one built for its second
+    # half, but it arrived at 0.10.132 and this list was written before it.
+    # The DJ answered correctly with it and the grader called it a routing
+    # failure (2026-08-14) — an expectation that lags the tool surface is the
+    # same drift the prompt has, wearing a test's clothes.
     ("a question about the queue is looked up, not guessed", [
         "is my song still coming up, or did I miss it?",
     ], {"want": ["subwave_station_state", "subwave_request_status",
-                 "subwave_now_playing"],
+                 "subwave_now_playing", "subwave_already_played"],
         "avoid": []}),
 ]
 
@@ -734,6 +809,105 @@ CONVERSATIONS = [
                          "travel", "bouncing"]}),
 ]
 
+# ------------------------------------------------------------------ closing
+#
+# The set that exists because the ablation lever needed something to measure.
+#
+# `CLOSING` is 18% of the conduct and the second-largest section in the prompt,
+# and NOTHING graded it. Triage grades which tool fired; conversations grades
+# recovery from a fault. Both are blind to when the line hangs up — so dropping
+# CLOSING and running either would have come back unchanged, and the honest
+# reading of that result is "the set does not test this", not "the section is
+# free". Ablating against a blind set is how a rewrite gets a nice rationale.
+#
+# Every scenario here grades a claim CLOSING actually makes, and all of them are
+# claims bought with real calls: the door held open after every action, the
+# caller made to ask whether the DJ was going to hang up, the agreement token
+# read as a farewell, and the caller closed on mid-thought.
+CLOSING_SET = [
+    # "A request going in is a thing that happened in the MIDDLE of a
+    # conversation." Eight of twelve turns in one scripted run against a live
+    # deployment ended in "anything else before I let you go?".
+    # The phrasings are broad on purpose. The first run of this scenario failed
+    # on the literal "anything else?"; the fix moved that sentence out of the
+    # prompt and the model came back with "Anything else you're looking to
+    # hear…" and "you want me to spin up something else, or are you good for
+    # now?". The FAILURE is ending the turn by asking whether they want more,
+    # not one wording of it, so grading one wording just teaches the next
+    # rewrite to dodge the grader.
+    ("a landed request is not the end of the call", [
+        "hey, can you play Africa by Toto?",
+        "yeah, that's the one",
+    ], {"avoid": ["end_call"],
+        "must_not_say": ["anything else", "let you go", "before you go",
+                         "you all set", "are you good", "anything more",
+                         "something else you", "what else can i"]}),
+
+    # "Closing is yours to do. You do not need permission." A caller who has to
+    # ask "well, are you going to hang up?" has been made to do the DJ's job —
+    # that happened, word for word, 2026-08-13.
+    ("a caller who says that is everything is let go", [
+        "put on something mellow for me",
+        "lovely — that's everything I wanted, cheers",
+    ], {"want": ["end_call"]}),
+
+    # "The turn after you've DONE what they called for and they acknowledge it
+    # with nothing new in it IS the goodbye turn." A real caller sat through
+    # twenty seconds of the DJ answering a thank-you with more information and
+    # then hung up.
+    ("a thank-you after the action is the goodbye turn", [
+        "play Dreams by Fleetwood Mac for me",
+        "nice one",
+        "alright, thanks",
+    ], {"want": ["end_call"]}),
+
+    # "A caller mid-story, mid-thought, or still deciding is NOT a call to
+    # close." The opposite failure, given equal weight on purpose.
+    ("a caller still deciding is not closed on", [
+        "hi! ooh, I don't know what I fancy yet",
+        "give me a second, let me think",
+    ], {"avoid": ["end_call"],
+        "must_not_say": ["let you go", "call in any time", "take care"]}),
+
+    # The consent token that looks like a farewell. Kept red on purpose from
+    # 0.10.105 to 0.10.145 and green since; it belongs in the set that owns it.
+    ("go ahead then is agreement, not goodbye", [
+        "have you got Africa by Toto?",
+        "go ahead then",
+    ], {"avoid": ["end_call"]}),
+
+    # An answered question is not a completed transaction either.
+    ("a question answered is not a wind-down", [
+        "what's playing right now?",
+    ], {"avoid": ["end_call"],
+        "must_not_say": ["anything else", "let you go"]}),
+
+    # THREE turns, because the harm is the repetition and a next-turn
+    # correction cannot show up in a two-turn scenario. The archive has a call
+    # that held the door open three times while the caller was talking about a
+    # friend having a rough week; this is that shape, and what it grades is
+    # whether the SECOND and THIRD lines stop doing it.
+    #
+    # Graded from the LAST turn only, and getting that wrong the first time is
+    # worth recording: with the window opened at turn 2 this scored 1/3 and the
+    # transcripts showed the mechanism working — the door was held on turn 2,
+    # the steer fired on turn 3, and turn 2 was inside the window being scored.
+    # It was grading the mechanism on the turn it cannot reach, which is the
+    # same mistake as ablating against a set that is blind to the section.
+    ("the door is not held open twice", [
+        "can you play something for my mate Marcus? he's had a rough week",
+        # Scripted, so the guard's trigger is certain rather than lucky. This
+        # is a real line from the archive, near enough.
+        "@dj That's queued up for Marcus now — should be about ten minutes "
+        "out, right after this one. Anything else you want me to dig out "
+        "while I'm in here?",
+        "he really will, thanks",
+    ], {"avoid": ["end_call"],
+        "grade_from_turn": 2,
+        "must_not_say": ["anything else", "something else you", "anything more",
+                         "you all set", "are you good", "what else can i"]}),
+]
+
 SCENARIOS = [
     ("named track", [
         "hey, could you play Let It Be by The Beatles?",
@@ -770,6 +944,26 @@ SCENARIOS = [
 
 
 # ---------------------------------------------------------------------- runner
+
+# How a tool's result goes back to the model between rounds.
+#
+# TEXT by default, because that is what the PRODUCT does. chat/session.py
+# stopped replaying structured functionCall parts at 0.10.119, after four
+# shapes were tried against the live model: Gemini 3 signs a tool call with an
+# opaque `thought_signature` and does not sign them all — two calls in one
+# response, ONE signature — so a faithful structured replay is impossible by
+# construction and the request dies with a fatal 400. This harness kept
+# replaying parts, which means every multi-tool scenario it graded was failing
+# on a fault the product had already designed out. A harness that reproduces a
+# bug the shipped code does not have is measuring the harness.
+#
+# REPLAY=parts restores the old shape ON PURPOSE, for the one open question it
+# is still the right instrument for: whether the VOICE path is exposed to the
+# same thing (the SDK owns that context and may preserve the signature, which
+# is why it is a question and not a finding — see the master plan's LIVE BUG
+# entry of 2026-08-13).
+REPLAY_PARTS = os.environ.get("REPLAY", "text").strip().lower() == "parts"
+
 
 def tool_name(t) -> str:
     """The REGISTERED name (subwave_search_library), not the Python function
@@ -820,6 +1014,15 @@ async def one_turn(llm, ctx, tools, text: str):
 # A scripted turn that is an idle-ladder instruction, not a caller line.
 NUDGE = "@nudge "
 
+# A scripted turn the DJ "said" — see where it is handled for why.
+DJ_LINE = "@dj "
+
+# DOOR=off runs the same scenarios with the door correction disabled: the
+# CONTROL arm. A guard that has never been run against its own absence is one
+# nobody can say is doing anything, and the first two attempts to measure this
+# one both scored something other than the guard.
+DOOR_ON = os.environ.get("DOOR", "on").strip().lower() != "off"
+
 
 async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     by_name = {tool_name(t): t for t in tools}
@@ -832,6 +1035,14 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     # exchange, and a tool a previous scenario called proves nothing here.
     fired_here: set[str] = set()
     said_here: list[str] = []
+    # Per scenario: a call's memory of whether its own last line held the door
+    # open. Nothing carries between scenarios, any more than a tool call does.
+    door = call_door.Door()
+    # Where each caller turn's DJ lines begin, so a scenario can be graded
+    # from turn N onward. The door correction cannot unsay the line that
+    # tripped it — only stop the next one — so grading its first turn would
+    # score the mechanism on the one thing it does not claim to fix.
+    turn_starts: list[int] = []
     for text in turns:
         if text.startswith(NUDGE):
             # The ladder generates from instructions with NO new caller turn —
@@ -853,7 +1064,32 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 last_dj = said.strip()
             continue
 
+        if text.startswith(DJ_LINE):
+            # A line the DJ "said", put into the history exactly rather than
+            # hoped for. The only way to measure a guard whose TRIGGER is a
+            # model output: the first door scenario scored 3/4 with the guard
+            # never firing once, because the DJ happened not to hold the door
+            # open in any of those four rounds. A measurement that depends on
+            # the fault occurring by luck is not a measurement.
+            scripted = text[len(DJ_LINE):]
+            log.append(f"DJ*    : {scripted}")
+            ctx.add_message(role="assistant", content=scripted)
+            door.dj_said(scripted)
+            last_dj = scripted
+            continue
+
         log.append(f"\nCALLER : {text}")
+        # Where this caller turn's DJ lines begin, for `grade_from_turn`.
+        turn_starts.append(len(said_here))
+        # The door correction, in the harness. CallAgent.on_user_turn_completed
+        # puts one note in front of the model when the LAST line ended by asking
+        # whether the caller wanted more and they had not said they were done.
+        # Without this the sweep measures a DJ the product no longer ships —
+        # the same gap the promise guard had here until it was mirrored.
+        hint = door.hint_for(text) if DOOR_ON else ""
+        if hint:
+            log.append("  (last line held the door open — steering this turn)")
+            ctx.add_message(role="system", content=hint)
         said, calls = await one_turn(llm, ctx, tools, text)
         if said.strip():
             log.append(f"DJ     : {said.strip()}")
@@ -864,12 +1100,22 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # sweep measures a DJ the product no longer ships: attach_promise_guard
         # gives the model one more turn whenever it narrates an action and
         # calls nothing, and that turn is where most of the tool calls now
-        # happen. Same trigger and same wording as the real one.
-        if (not calls and said.strip()
-                and promise_guard.PROMISES_ACTION.search(said)):
-            log.append("  (promise with no tool call — guard nudges)")
+        # happen. Same trigger and same wording as the real one — imported
+        # rather than restated, because restating it is how this broke.
+        #
+        # It broke silently: 0.10.138 moved the patterns to promises.py and
+        # made _NUDGE a dict keyed by kind, and this line went on naming
+        # `promise_guard.PROMISES_ACTION`. That is an AttributeError on the
+        # first turn where the DJ speaks without calling a tool — the exact
+        # case the sweep exists to measure — so from 0.10.138 to 0.10.145 the
+        # drill could not run at all. TestTheDrillHarnessTracksTheModulesItDrives
+        # fails the build if it drifts again.
+        kind = unbacked(said) if (not calls and said.strip()) else ""
+        if kind:
+            log.append(f"  ({kind} with no tool call — guard nudges)")
             ctx.add_message(role="assistant", content=said)
-            said, calls = await one_turn(llm, ctx, tools, promise_guard._NUDGE)
+            said, calls = await one_turn(llm, ctx, tools,
+                                         promise_guard._NUDGE[kind])
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
                 said_here.append(said)
@@ -877,6 +1123,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         rounds = 0
         while calls and rounds < 3:
             rounds += 1
+            ran: list[tuple[str, str, bool]] = []
             for tc in calls:
                 args = tc.arguments
                 if isinstance(args, str):
@@ -894,12 +1141,22 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 else:
                     result = await invoke(tool, args)
                 log.append(f"  RESULT: {str(result)[:400]}")
-                ctx.items.append(lk_llm.FunctionCall(
-                    call_id=tc.call_id, name=tc.name,
-                    arguments=json.dumps(args, ensure_ascii=False)))
-                ctx.items.append(lk_llm.FunctionCallOutput(
-                    call_id=tc.call_id, name=tc.name,
-                    output=str(result), is_error=False))
+                ran.append((tc.name, str(result),
+                            tool is None
+                            or str(result).startswith("<tool raised")))
+                if REPLAY_PARTS:
+                    ctx.items.append(lk_llm.FunctionCall(
+                        call_id=tc.call_id, name=tc.name,
+                        arguments=json.dumps(args, ensure_ascii=False)))
+                    ctx.items.append(lk_llm.FunctionCallOutput(
+                        call_id=tc.call_id, name=tc.name,
+                        output=str(result), is_error=False))
+            if not REPLAY_PARTS:
+                # The product's own shape, borrowed rather than restated.
+                if said.strip():
+                    ctx.add_message(role="assistant", content=said)
+                    said = ""
+                ctx.add_message(role="user", content=_tool_report(ran))
 
             said, calls = await _stream(llm, ctx, tools)
             if said.strip():
@@ -909,9 +1166,13 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
 
         if said.strip():
             ctx.add_message(role="assistant", content=said)
+        # How the LAST line of this turn ended is what the NEXT turn is judged
+        # against — the same event CallAgent's watcher sees.
+        door.dj_said(said)
 
     if expect:
-        grade_scenario(name, expect, fired_here, said_here, log)
+        grade_scenario(name, expect, fired_here, said_here, log,
+                       exposed=set(by_name), turn_starts=turn_starts)
 
 
 # The triage verdict for one scenario. Kept separate from the run so the
@@ -919,9 +1180,45 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
 TRIAGE_RESULTS: list[tuple[str, list[str]]] = []
 
 
-def grade_scenario(name, expect, fired, said, log) -> None:
-    spoken = " ".join(said).casefold()
+def grade_scenario(name, expect, fired, said, log, exposed=None,
+                   turn_starts=None) -> None:
+    """`exposed` is what the model could actually reach on THIS run.
+
+    It matters because the surface is not fixed. MCP attaches at run time and
+    degrades quietly — on a congested station `attach_mcp_reads` raises, the
+    harness prints one line about sweeping the local surface only, and the five
+    station reads are simply absent. The grader knew nothing about that, so
+    "a question about the queue is looked up, not guessed" was recorded as a
+    ROUTING FAILURE on a run where subwave_station_state, subwave_now_playing
+    and subwave_request_status were never handed to the model at all (seen
+    2026-08-14, first run of the repaired harness). The DJ picked the best tool
+    it had and was marked down for it.
+
+    A verdict that cannot tell "chose wrongly" from "was never offered the
+    choice" is worse than no verdict, because it reads as the DJ's fault. So a
+    scenario whose wanted tools are all missing is INCONCLUSIVE, and says which
+    ones were missing — that sentence is the instruction to re-run with MCP.
+    """
+    # `grade_from_turn` scores only what was said from that caller turn
+    # onward. Tools are still judged across the whole scenario — the claim
+    # is about WORDS, and a tool called on turn one is still a tool called.
+    first = int(expect.get("grade_from_turn") or 0)
+    start = (turn_starts[first - 1]
+             if first > 1 and turn_starts and len(turn_starts) >= first
+             else 0)
+    spoken = " ".join(said[start:]).casefold()
     faults: list[str] = []
+
+    want_all = expect.get("want") or []
+    if want_all and exposed is not None:
+        absent = [w for w in want_all if w not in exposed]
+        if len(absent) == len(want_all):
+            log.append(f"\n  VERDICT: INCONCLUSIVE — none of "
+                       f"{', '.join(want_all)} was on the surface for this "
+                       "run (MCP not attached?), so nothing here is a "
+                       "judgement on the DJ")
+            TRIAGE_RESULTS.append((name, None))
+            return
 
     # Checked FIRST, and named as its own fault, because it is a completely
     # different diagnosis wearing the same clothes. A model that TYPES
@@ -938,7 +1235,10 @@ def grade_scenario(name, expect, fired, said, log) -> None:
             "a model failure, not a routing one: nothing ran and the caller "
             "heard the DJ say it would go and look")
 
-    want = expect.get("want") or []
+    # Judged against what was REACHABLE, not against the wish list — see the
+    # docstring. A partially-present want list still grades on its present half.
+    want = ([w for w in want_all if w in exposed] if exposed is not None
+            else want_all)
     if want and not (set(want) & fired):
         faults.append(f"reached for none of {', '.join(want)}"
                       + (f" (called {', '.join(sorted(fired))})" if fired
@@ -965,12 +1265,42 @@ async def main() -> None:
     # module the image shipped. conduct is pure text and pure functions, so
     # re-executing it into the live module namespace is enough — and it lets a
     # prompt change be tested against the deployed image without a redeploy.
-    new_conduct = globals().get("NEW_CONDUCT")
-    if new_conduct:
-        from brain import conduct as _conduct
+    # A prompt change, tested against the deployed image without a redeploy.
+    #
+    # This covered `conduct.py` alone, which stopped being the whole prompt at
+    # 0.10.104 when the tool rules were split out of it — so a change to the
+    # triage table, which is where most prompt work now happens, could not be
+    # measured before it shipped. Both are pure text and pure functions, so
+    # re-executing them into the live module namespace is enough.
+    #
+    # ORDER MATTERS and is the reason this is a list rather than two ifs:
+    # `conduct` does `from brain.tool_rules import _tools` at import, so its
+    # binding is captured. Patch tool_rules first and conduct's copy is still
+    # the old function; hence tool_rules goes in first, and anything that
+    # imported FROM an injected module is reloaded afterwards to rebind.
+    import importlib
 
-        exec(compile(new_conduct, "conduct_new.py", "exec"), _conduct.__dict__)
-        print("[using injected conduct.py, not the image's]")
+    injected = []
+    for var, path in (("NEW_TOOL_RULES", "brain.tool_rules"),
+                      ("NEW_CONDUCT", "brain.conduct"),
+                      # The typed mouth. Needed for its own sake, and because
+                      # injecting `conduct` RELOADS this one from the image to
+                      # rebind — so an image older than the change comes back
+                      # without whatever the change added. That is not
+                      # hypothetical: ABLATE died on
+                      # "module 'brain.conduct_chat' has no attribute 'blocks'".
+                      ("NEW_CONDUCT_CHAT", "brain.conduct_chat")):
+        source = globals().get(var)
+        if not source:
+            continue
+        module = importlib.import_module(path)
+        exec(compile(source, f"{path} (injected)", "exec"), module.__dict__)
+        injected.append(path)
+    if injected:
+        for path in ("brain.conduct", "brain.conduct_chat"):
+            if path not in injected:
+                importlib.reload(importlib.import_module(path))
+        print(f"[using injected {', '.join(injected)} — not the image's]")
 
     secrets_store.apply_to_env()
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
@@ -988,6 +1318,40 @@ async def main() -> None:
                 cfg[t.gate] = gates == "all"
         if gates == "all":
             cfg["max_actions_per_call"] = 99
+    # ABLATE=CLOSING,say_the_true_thing — build the prompt WITHOUT those
+    # sections and run the set against it, so "does this paragraph change
+    # behaviour" stops being a matter of taste. Names come from
+    # `conduct.blocks`; the report at tools/prompt_report.py prices the same
+    # list, so what you can price you can drop.
+    #
+    # A warning worth more than the lever: **ablate against a set that
+    # actually tests the section.** Dropping CLOSING and running SCENARIO_SET=
+    # triage measures nothing — triage grades which TOOL fired, and CLOSING
+    # governs when the line hangs up, so the run comes back unchanged and the
+    # section looks free. It is not free; the set was blind to it. That is what
+    # SCENARIO_SET=closing is for.
+    drop = {s.strip() for s in os.environ.get("ABLATE", "").split(",") if s.strip()}
+    if drop:
+        from brain import conduct as _conduct_mod
+        from brain import conduct_chat as _chat_mod
+
+        # Tolerant of a module without blocks(): the harness runs against
+        # whatever image is deployed, and an older one may predate the split.
+        # Naming the sections it CAN see beats refusing to run at all.
+        known: set[str] = set()
+        for _mod in (_conduct_mod, _chat_mod):
+            _blocks = getattr(_mod, "blocks", None)
+            if callable(_blocks):
+                known |= {n for n, _ in _blocks({})}
+        unknown = sorted(drop - known)
+        if unknown:
+            print(f"[ABLATE names no such section: {unknown} — known: "
+                  f"{sorted(known)}]")
+        for _mod in (_conduct_mod, _chat_mod):
+            _mod.rules = (lambda cfg, _original=_mod.rules:
+                          _original(cfg, drop=drop))
+        print(f"[ABLATED: {', '.join(sorted(drop))}]")
+
     muzzle_the_station()
 
     station = StationClient()
@@ -1011,7 +1375,8 @@ async def main() -> None:
     started = time.time() - float(os.environ.get("CALL_AGE_SECS", "0"))
     which = os.environ.get("SCENARIO_SET", "")
     scenarios = {"extra": EXTRA, "coverage": COVERAGE, "triage": TRIAGE,
-                 "conversations": CONVERSATIONS}.get(which, SCENARIOS)
+                 "conversations": CONVERSATIONS,
+                 "closing": CLOSING_SET}.get(which, SCENARIOS)
 
     class FakeCtx:
         room = type("R", (), {"name": "script-test"})()
@@ -1070,6 +1435,15 @@ async def main() -> None:
 
 
 async def run_all(llm, tools, prompt, scenarios, log) -> None:
+    # SCENARIO=<substring> runs just the ones whose name contains it. A whole
+    # set is the right unit for a verdict and the wrong one for a PROBE — the
+    # thought-signature question is about a single scenario, and paying for the
+    # other eight to ask it makes the question expensive enough to skip.
+    only = os.environ.get("SCENARIO", "").strip().casefold()
+    if only:
+        scenarios = [s for s in scenarios if only in s[0].casefold()]
+        if not scenarios:
+            log.append(f"[SCENARIO={only!r} matched nothing in this set]")
     for entry in scenarios:
         # (name, turns) or (name, turns, expectations). Only the triage set
         # grades itself; the other three must keep working untouched.
@@ -1102,12 +1476,19 @@ async def summarise(log, repeats, which, tools) -> None:
             runs.setdefault(nm, []).append(faults)
         log.append(f"\n{'=' * 72}\nTRIAGE — {repeats} rounds\n{'=' * 72}")
         for nm, results in runs.items():
-            ok = sum(1 for r in results if not r)
-            flag = ("  " if ok == len(results)
+            # None is INCONCLUSIVE (the wanted tools were never on the
+            # surface) and must not be counted as either — a run that could
+            # not ask the question does not get to answer it.
+            judged = [r for r in results if r is not None]
+            ok = sum(1 for r in judged if not r)
+            skipped = len(results) - len(judged)
+            flag = ("??" if not judged
+                    else "  " if ok == len(judged)
                     else "!!" if ok == 0 else " ~")   # ~ = intermittent
-            log.append(f"{flag} {ok}/{len(results)}  {nm}")
+            log.append(f"{flag} {ok}/{len(judged)}  {nm}"
+                       + (f"  ({skipped} inconclusive)" if skipped else ""))
             seen = set()
-            for r in results:
+            for r in judged:
                 for f in r:
                     if f not in seen:
                         seen.add(f)
@@ -1118,12 +1499,17 @@ async def summarise(log, repeats, which, tools) -> None:
         # The number the drill quotes. Coverage says a tool CAN be reached;
         # this says the model reached for the right one, which is the only
         # question the bad calls were ever about.
-        passed = [n for n, f in TRIAGE_RESULTS if not f]
+        judged = [(n, f) for n, f in TRIAGE_RESULTS if f is not None]
+        passed = [n for n, f in judged if not f]
         log.append(f"\n{'=' * 72}\nTRIAGE\n{'=' * 72}")
-        log.append(f"{len(passed)}/{len(TRIAGE_RESULTS)} scenarios routed correctly")
+        log.append(f"{len(passed)}/{len(judged)} scenarios routed correctly"
+                   + (f" ({len(TRIAGE_RESULTS) - len(judged)} inconclusive — "
+                      "tools missing from the surface)"
+                      if len(judged) != len(TRIAGE_RESULTS) else ""))
         for nm, faults in TRIAGE_RESULTS:
-            log.append(("  PASS  " if not faults else "  FAIL  ") + nm)
-            for f in faults:
+            log.append(("  ????  " if faults is None
+                        else "  PASS  " if not faults else "  FAIL  ") + nm)
+            for f in (faults or []):
                 log.append(f"          - {f}")
 
     if which == "coverage":

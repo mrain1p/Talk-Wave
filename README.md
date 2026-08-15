@@ -143,6 +143,7 @@ The README is the short version. The detail lives here:
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
 | **[Voicemail](docs/VOICEMAIL.md)** | The answering machine: staged greetings, where messages go, and what is deliberately never recorded |
+| **[How a call actually works](docs/the-call.md)** | The path one sentence takes: the prompt and what it costs, the tool surface, how a request is triaged, and everything that can make the DJ speak |
 
 ## Under the hood
 

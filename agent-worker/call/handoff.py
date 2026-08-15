@@ -94,10 +94,25 @@ async def send_on_air_callback(
         f"{'Caller' if role == 'user' else 'You'}: {text}" for role, text in turns
     )
 
+    # WHO the DJ is, not just what it is called.
+    #
+    # This prompt used to carry the persona's NAME and nothing else — no card,
+    # no conduct, no house style — while the call it is summarising was run by
+    # the whole brain. So the one line every LISTENER hears about a call was
+    # written by a DJ with no character, and it is the only place the station's
+    # audience meets this feature at all. The card is already in hand here; it
+    # costs one read of a dict and buys the line the same voice the caller just
+    # heard. (The full brain is deliberately not assembled: this runs during
+    # shutdown, and a station snapshot there would put a network round-trip in
+    # front of the worker letting go.)
+    from brain.briefing import CARD_BUDGET, clip
+
+    card = clip(persona.get("soul", ""), CARD_BUDGET)
     ask = (
         f"You are {persona.get('name', 'the DJ')}. The call just ended. Write ONE "
         f"line to say on air about it, under {max_words} words, in your own voice.\n\n"
-        "Mention it the way a DJ passes over something between tracks — light, "
+        + (f"Who you are:\n{card}\n\n" if card else "")
+        + "Mention it the way a DJ passes over something between tracks — light, "
         "in character, moving on. Do not greet the audience, do not read out a "
         "summary, do not quote the caller word for word, and do not use their "
         "personal details beyond a first name. If they asked you something about "

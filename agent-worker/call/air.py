@@ -526,19 +526,38 @@ class OnAirGuard(AirVerdict):
 
 
 class CallAgent(Agent):
-    """The caller's DJ, with one addition: its replies wait for quiet air.
+    """The caller's DJ, with two additions: its replies wait for quiet air, and
+    a turn that showed the caller the door gets one word in its ear before the
+    next one.
 
     Holding here rather than dropping input is deliberate. The caller's words
     are already transcribed and in the context by this point — only the REPLY
     is queued, so nothing they said is lost and they never have to repeat
     themselves just because the station was mid-link.
+
+    This hook is also the SDK's own place to edit the context before the model
+    answers, which is the only moment a correction can land BEFORE the words do.
+    See call/door.py for why that matters and why the promise guard's shape does
+    not transfer.
     """
 
-    def __init__(self, instructions: str, guard: OnAirGuard) -> None:
+    def __init__(self, instructions: str, guard: OnAirGuard, door=None) -> None:
         super().__init__(instructions=instructions)
         self._guard = guard
+        self._door = door
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        if self._door is not None:
+            said = getattr(new_message, "text_content", "") or ""
+            hint = self._door.hint_for(said)
+            if hint:
+                # A system message at the tail, which is how the plugins deliver
+                # per-turn instructions and how the harness feeds the idle
+                # ladder. Not appended to the caller's own message: that text
+                # reaches the written transcript, and a note from us inside
+                # their line would be a record of something they never said.
+                turn_ctx.add_message(role="system", content=hint)
+                log.info("the last line held the door open — steering this one")
         waited = await self._guard.wait_until_clear()
         if waited >= 2:
             log.info("held the caller's reply %.0fs while the on-air DJ was talking",

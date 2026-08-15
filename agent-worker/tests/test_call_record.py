@@ -687,8 +687,8 @@ class TestTheCallRecordHearsBothSides(unittest.TestCase):
             def turn(self, who, text):
                 self.turns.append((who, text))
 
-            def tool(self, name, result=""):
-                self.tools.append((name, result))
+            def tool(self, name, result="", failed=False):
+                self.tools.append((name, result, failed))
 
         session, record, counter = _Session(), _Record(), {"n": 0}
         attach_heard_logging(session, counter, record)
@@ -731,7 +731,8 @@ class TestTheCallRecordHearsBothSides(unittest.TestCase):
             function_call_outputs=[types.SimpleNamespace(call_id="c1",
                                                          output="Added to the queue")],
         ))
-        self.assertEqual(record.tools, [("subwave_request_song", "Added to the queue")])
+        self.assertEqual(record.tools,
+                         [("subwave_request_song", "Added to the queue", False)])
 
     def test_a_tool_with_no_output_is_still_recorded(self):
         session, record, _ = self._attach()
@@ -740,7 +741,57 @@ class TestTheCallRecordHearsBothSides(unittest.TestCase):
                                                   call_id="c9")],
             function_call_outputs=[],
         ))
-        self.assertEqual(record.tools, [("subwave_skip_track", "")])
+        self.assertEqual(record.tools, [("subwave_skip_track", "", False)])
+
+    def test_what_it_searched_FOR_is_written_down_too(self):
+        """The half of a tool call the phone never recorded.
+
+        "search_library returned nothing" does not say whether the library
+        lacks the track or the DJ looked up the wrong words, and those are
+        different bugs with different fixes — it is exactly what the Firestone
+        diagnosis turned on. The chat line has recorded arguments since
+        0.10.104 with that reasoning written next to it; the phone, which is
+        the surface almost every caller uses, did not.
+        """
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(
+                name="subwave_search_library", call_id="c2",
+                arguments='{"q": "Firestorm by Kygo"}')],
+            function_call_outputs=[types.SimpleNamespace(
+                call_id="c2", output="No track or artist by that name")],
+        ))
+        name, detail, failed = record.tools[0]
+        self.assertEqual(name, "subwave_search_library")
+        self.assertIn("Firestorm by Kygo", detail)
+        self.assertIn("No track or artist", detail)
+        self.assertFalse(failed)
+
+    def test_a_refused_tool_is_marked_failed(self):
+        """A call that talked its way around three refusals used to read back
+        as a call where the DJ simply chatted. The record has carried the flag
+        since 0.10.104 and only the chat line ever set it."""
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(
+                name="subwave_request_song", call_id="c3", arguments="{}")],
+            function_call_outputs=[types.SimpleNamespace(
+                call_id="c3", output="rate limited", is_error=True)],
+        ))
+        self.assertTrue(record.tools[0][2], "the refusal is invisible again")
+
+    def test_unreadable_arguments_never_cost_the_receipt(self):
+        # A record is what you reach for when a call went wrong, so nothing in
+        # here may throw. Malformed JSON keeps the result and says what it saw.
+        session, record, _ = self._attach()
+        session.handlers["function_tools_executed"](types.SimpleNamespace(
+            function_calls=[types.SimpleNamespace(
+                name="subwave_browse_library", call_id="c4",
+                arguments="{not json")],
+            function_call_outputs=[types.SimpleNamespace(call_id="c4",
+                                                         output="8 results")],
+        ))
+        self.assertIn("8 results", record.tools[0][1])
 
 
 class TestOneUtteranceIsOneLineInTheRecord(unittest.TestCase):
@@ -850,8 +901,8 @@ class TestASwallowedRequestIsWrittenDown(unittest.TestCase):
             def turn(self, who, text):
                 self.turns.append((who, text))
 
-            def tool(self, name, result=""):
-                self.tools.append((name, result))
+            def tool(self, name, result="", failed=False):
+                self.tools.append((name, result, failed))
 
             def problem(self, what):
                 self.problems.append(what)

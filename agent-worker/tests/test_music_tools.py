@@ -126,6 +126,64 @@ class TestSearchPagesLikeTheStation(unittest.TestCase):
         self.assertNotIn("subwave_request_song", out)
 
 
+class TestTheSearchRefusalAgreesWithThePrompt(unittest.TestCase):
+    """A backstop that argues with the prompt teaches the model to distrust it.
+
+    The wrapper refuses a mood word — "fun" would return "Fun, Fun, Fun" — and
+    tells the DJ which tool to use instead. That message was written when a name
+    search was the only other way into the library, and it went on saying
+    "use subwave_request_song" after 0.10.104 gave the station a sound search.
+    So the prompt's triage table routed a described feeling to
+    subwave_search_by_sound while the tool the model reached for FIRST told it,
+    at runtime, to do something else — and the runtime instruction arrives last.
+    Found 2026-08-14 reading the three statements of triage against each other.
+    """
+
+    def _tool(self, cfg):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def search_library(self, q, offset=0, limit=30):
+                return []
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False   # as if creds were set
+        try:
+            tools = build_library_tools({"allow_library_search": True, **cfg},
+                                        _Station(), CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        return next(t for t in tools if t.info.name == "subwave_search_library")
+
+    def test_with_the_sound_search_on_it_points_there(self):
+        tool = self._tool({"allow_sound_search": True})
+        out = asyncio.run(tool(q="dreamy"))
+        self.assertIn("subwave_search_by_sound", out)
+        self.assertNotIn("subwave_request_song", out,
+                         "the wrapper is still sending a feeling to the "
+                         "request tool while the prompt sends it to the sound "
+                         "search — one situation, two instructions")
+
+    def test_with_the_sound_search_off_it_falls_back_to_the_request(self):
+        # Same rule the prompt follows when the tool is not there: the request
+        # is the fallback, not the first answer.
+        tool = self._tool({"allow_sound_search": False})
+        out = asyncio.run(tool(q="dreamy"))
+        self.assertIn("subwave_request_song", out)
+        self.assertNotIn("subwave_search_by_sound", out)
+
+    def test_an_empty_multi_word_result_says_the_same_thing(self):
+        # The other place the wrapper hands out triage advice, and it drifted
+        # the same way. A description that finds nothing is the commonest route
+        # into this message, so the two must not disagree with each other.
+        tool = self._tool({"allow_sound_search": True})
+        out = asyncio.run(tool(q="something for a rainy night"))
+        self.assertIn("subwave_search_by_sound", out)
+        self.assertNotIn("subwave_request_song", out)
+
+
 class TestCurrentLyricsAreARead(unittest.TestCase):
     """The lyrics tool is a read like now-playing: always built, no switch,
     and honest when the station has nothing. A station older than the lyrics

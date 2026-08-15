@@ -78,24 +78,36 @@ _PROBLEM = {
 }
 
 
-def attach_promise_guard(session: AgentSession, record=None) -> None:
+def attach_promise_guard(session: AgentSession, record=None, actions=None,
+                         air=None, floor=None) -> None:
     """One extra turn when the DJ promises an action and calls nothing.
 
-    Fires at most once per caller turn, and only when THAT turn ran no tools —
-    a DJ that said "let me look" and looked is behaving correctly and must not
-    be interrupted. The state is per-turn rather than per-call because a long
-    call legitimately contains many promises.
+    Fires at most once per caller turn. The state is per-turn rather than
+    per-call because a long call legitimately contains many promises.
+
+    `actions` is the call's ledger, and it is what tells a READ from an ACTION.
+    Without it this guard cleared a claim on any tool at all — so a turn that
+    searched the library and then told the caller "That one's in" with nothing
+    queued was treated as a DJ behaving correctly. See `promises.unbacked`.
+    Optional so the chat line and the tests can attach without one; absent, a
+    claim is only ever cleared by an action nobody recorded, which is the safe
+    direction (it nudges) rather than the silent one.
     """
     # Reset by the caller speaking; set by any tool running; consumed by the
-    # nudge. Three flags rather than one because the events can arrive in
-    # either order and a missed reset would silence the guard for the rest of
-    # the call.
-    state = {"tools_ran": False, "nudged": False}
+    # nudge. Separate flags because the events can arrive in either order and a
+    # missed reset would silence the guard for the rest of the call.
+    state = {"tools_ran": False, "nudged": False, "acted_at": 0}
+
+    def _ledger() -> int:
+        return int(getattr(actions, "count", 0) or 0)
 
     def _on_caller(ev) -> None:
         if getattr(ev, "is_final", True):
             state["tools_ran"] = False
             state["nudged"] = False
+            # The ledger is per CALL and this question is per TURN, so what
+            # matters is whether it moved since the caller last spoke.
+            state["acted_at"] = _ledger()
 
     session.on("user_input_transcribed", _on_caller)
 
@@ -109,9 +121,10 @@ def attach_promise_guard(session: AgentSession, record=None) -> None:
         if getattr(item, "role", None) != "assistant":
             return
         text = str(getattr(item, "text_content", "") or "").strip()
-        if not text or state["tools_ran"] or state["nudged"]:
+        if not text or state["nudged"]:
             return
-        kind = unbacked(text)
+        kind = unbacked(text, tools_ran=state["tools_ran"],
+                        acted=_ledger() > state["acted_at"])
         if not kind:
             return
         state["nudged"] = True
@@ -120,7 +133,30 @@ def attach_promise_guard(session: AgentSession, record=None) -> None:
             record.problem(_PROBLEM[kind])
 
         async def _push() -> None:
+            # Wait for the DJ's OTHER turns, not just the station's. This is
+            # one of only three injectors that can start while another is
+            # already generating — see call/floor.py for which and why.
+            if floor is None:
+                await _generate()
+                return
+            async with floor.take("the promise nudge") as mine:
+                if mine:
+                    await _generate()
+
+        async def _generate() -> None:
             try:
+                # Wait for the broadcast, like every other generated turn.
+                # This one did not, and it is the likeliest of the three that
+                # skip the hold to be heard: the DJ says "let me have a dig",
+                # the station starts a link, and the nudge generates straight
+                # over the top of it — the doubled voice the whole on-air guard
+                # exists to prevent. `wait_until_clear` gives up at MAX_HOLD, so
+                # a stuck gate delays the repair rather than losing it.
+                if air is not None:
+                    waited = await air.wait_until_clear()
+                    if waited > 0.5:
+                        log.info("held the %s nudge %.1fs for the on-air DJ",
+                                 kind, waited)
                 await session.generate_reply(user_input=_NUDGE[kind])
             except Exception as e:                             # noqa: BLE001
                 log.debug("promise nudge failed (harmless): %s", e)

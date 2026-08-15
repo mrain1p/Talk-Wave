@@ -1793,8 +1793,9 @@ class TestPushToTalkIsPerSurfaceAndOnByDefault(unittest.TestCase):
 
     def test_the_quiet_caller_nudge_knows_about_the_bar(self):
         # "Check your microphone" to somebody deliberately holding it closed
-        # reads as the DJ not knowing its own phone.
-        source = (AGENT_WORKER / "call" / "lifecycle.py").read_text(encoding="utf-8")
+        # reads as the DJ not knowing its own phone. The ladder moved to
+        # call/clocks.py at 0.10.146 with the rest of the timer-driven turns.
+        source = (AGENT_WORKER / "call" / "clocks.py").read_text(encoding="utf-8")
         self.assertIn("push to talk", source)
         self.assertIn("show_push_to_talk", source)
 

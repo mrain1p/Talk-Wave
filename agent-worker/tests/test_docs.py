@@ -12,7 +12,7 @@ from __future__ import annotations
 import unittest
 
 import settings as settings_store
-from tests.support import REPO
+from tests.support import AGENT_WORKER, REPO
 
 
 class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
@@ -124,6 +124,40 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
                           f"({n}) — the registry moved and the sentence did not")
         # And the gate the row promises: the destructive ones are never served.
         self.assertTrue(all(t.gate == NEVER for t in TOOLS if t.served == NONE))
+
+    def test_everything_that_can_make_the_dj_speak_is_in_the_call_doc(self):
+        """docs/the-call.md lists the nine things that can start a DJ turn, and
+        which of them wait for the broadcast to finish.
+
+        That list is the whole point of the page. Nine separate places can make
+        the DJ talk — each added for a real incident, none aware of the others —
+        and three of them do not check the air. A tenth added quietly is exactly
+        the kind of thing that only shows up as "the caller heard two of the
+        same voice", so the page has to fail the build rather than fall behind.
+
+        Mechanical, like everything else here: it checks the module is NAMED,
+        not that the page describes it well.
+        """
+        call_dir = AGENT_WORKER / "call"
+        speakers = sorted(
+            p for p in call_dir.rglob("*.py")
+            if any(needle in p.read_text(encoding="utf-8")
+                   for needle in ("generate_reply(", ".say("))
+        )
+        self.assertGreaterEqual(len(speakers), 6,
+                                "the scan found almost nothing — call/ moved?")
+        page = (REPO / "docs" / "the-call.md").read_text(encoding="utf-8")
+        missing = [
+            str(p.relative_to(AGENT_WORKER)).replace("\\", "/")
+            for p in speakers
+            if str(p.relative_to(AGENT_WORKER)).replace("\\", "/") not in page
+        ]
+        self.assertEqual(
+            missing, [],
+            "these can make the DJ speak and docs/the-call.md does not name "
+            f"them: {missing}. Add the row, and say whether it waits for the "
+            "air — an injector nobody wrote down is one nobody coordinates.",
+        )
 
     def test_every_doc_links_back_to_the_readme(self):
         # Landed on from a search engine, a page in docs/ has to say what it is

@@ -1602,7 +1602,7 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
     the primary surface, never did.
     """
 
-    def _wire(self, record=None):
+    def _wire(self, record=None, actions=None):
         from call import promise_guard
 
         handlers, replies = {}, []
@@ -1614,7 +1614,7 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
             async def generate_reply(self, **kw):
                 replies.append(kw)
 
-        promise_guard.attach_promise_guard(_Session(), record)
+        promise_guard.attach_promise_guard(_Session(), record, actions)
         return handlers, replies
 
     @staticmethod
@@ -1727,19 +1727,93 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
 
         asyncio.run(go())
 
-    def test_a_claim_that_really_did_run_a_tool_is_left_alone(self):
-        # The same sentence is CORRECT behaviour when the tool ran, and it is
-        # the commonest correct sentence on the line. Nudging it would cost a
+    def test_a_claim_that_really_did_act_is_left_alone(self):
+        # The same sentence is CORRECT behaviour when the action landed, and it
+        # is the commonest correct sentence on the line. Nudging it would cost a
         # turn on every successful action.
+        from call.actions import CallActions
+
         async def go():
-            handlers, replies = self._wire()
+            actions = CallActions(9)
+            handlers, replies = self._wire(actions=actions)
             handlers["user_input_transcribed"](self._heard())
             handlers["function_tools_executed"](types.SimpleNamespace())
+            actions.note("takeover", "THE OVERLOOK")
             handlers["conversation_item_added"](self._said(
                 "Got it. The switch is made — THE OVERLOOK is coming up once "
                 "this record finishes."))
             await asyncio.sleep(0.05)
             self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_a_read_does_not_make_a_claim_true(self):
+        """The hole this guard had until 0.10.146, found by the drill.
+
+        `a cancel that comes too late`, one round in three, on the model the
+        operator runs (2026-08-14): the DJ searched the library — a READ — and
+        then said "That one's in. Got it lined up for you." Nothing was queued.
+        The guard set tools_ran on ANY tool, so it saw a DJ that had done its
+        job and stayed quiet. It is the Duke call with a search in front of it,
+        and unlike the Duke call the caller has a receipt-shaped sentence to
+        believe. The ledger is what tells the two apart: a search notes nothing.
+        """
+        from call.actions import CallActions
+
+        async def go():
+            actions = CallActions(9)           # nothing ever noted: a read only
+            handlers, replies = self._wire(actions=actions)
+            handlers["user_input_transcribed"](self._heard())
+            handlers["function_tools_executed"](types.SimpleNamespace())
+            handlers["conversation_item_added"](self._said(
+                "That one's in. Got it lined up for you."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1,
+                             "a search ran, nothing was queued, and the caller "
+                             "was told it was — that has to be nudged")
+            self.assertIn("it is NOT done", replies[0]["user_input"])
+
+        asyncio.run(go())
+
+    def test_a_promise_is_still_settled_by_any_tool_at_all(self):
+        # The two rules are deliberately different. A promise is about DEAD AIR
+        # — "let me have a dig" is honest the moment the DJ reaches for
+        # anything, because something is now happening — so a read settles it.
+        # Only a claim asks whether the thing was actually done.
+        from call.actions import CallActions
+
+        async def go():
+            handlers, replies = self._wire(actions=CallActions(9))
+            handlers["user_input_transcribed"](self._heard())
+            handlers["function_tools_executed"](types.SimpleNamespace())
+            handlers["conversation_item_added"](self._said(
+                "Hold on, let me have a dig through the racks for you."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_an_action_from_an_earlier_turn_does_not_settle_this_one(self):
+        # The ledger counts for the whole CALL and the question is per TURN, so
+        # a caller's second request must not be excused by their first landing.
+        from call.actions import CallActions
+
+        async def go():
+            actions = CallActions(9)
+            handlers, replies = self._wire(actions=actions)
+            handlers["user_input_transcribed"](self._heard())
+            actions.note("request", "Africa")
+            handlers["conversation_item_added"](self._said(
+                "That's lined up — I've got it queued for you."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [], "the first one really did land")
+
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said(
+                "That's lined up too — I've got that one queued as well."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1,
+                             "the second claim rode the first request's receipt")
 
         asyncio.run(go())
 
@@ -1765,6 +1839,340 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
             self.assertIn("ALREADY been done", rec.problems[0])
 
         asyncio.run(go())
+
+
+class TestTwoOfTheDJsOwnTurnsNeverStartAtOnce(unittest.TestCase):
+    """Nine things can make the DJ speak; three of them can start while another
+    is already generating.
+
+    The other six are already covered and reading them against each other is
+    what showed it: the greeting is a one-shot at pickup, the late request match
+    and the idle ladder both wait for `agent_state == "listening"` (false while
+    anything is generating), and the hand-over line IS the air. That leaves the
+    promise nudge, the come-back after a link, and the time-limit sign-off —
+    each on its own clock, none aware of the others.
+
+    A lock, and deliberately nothing more: deciding who SHOULD speak would be
+    the director this stream has twice declined to build on the evidence.
+    """
+
+    def _floor(self):
+        from call.floor import Floor
+
+        return Floor()
+
+    def test_the_second_turn_waits_rather_than_talking_over(self):
+        async def go():
+            floor = self._floor()
+            order = []
+
+            async def first():
+                async with floor.take("first") as mine:
+                    order.append(("first", mine))
+                    await asyncio.sleep(0.05)
+                    order.append(("first done", mine))
+
+            async def second():
+                await asyncio.sleep(0.01)
+                async with floor.take("second") as mine:
+                    order.append(("second", mine))
+
+            await asyncio.gather(first(), second())
+            self.assertEqual(
+                [("first", True), ("first done", True), ("second", True)], order,
+                "the second turn started before the first had finished")
+            self.assertEqual(1, floor.collisions)
+
+        asyncio.run(go())
+
+    def test_an_uncontested_turn_notices_nothing(self):
+        async def go():
+            floor = self._floor()
+            async with floor.take("only") as mine:
+                self.assertTrue(mine)
+            self.assertEqual(0, floor.collisions)
+            self.assertEqual(0, floor.given_up)
+
+        asyncio.run(go())
+
+    def test_a_holder_that_waits_too_long_stays_quiet(self):
+        # Being late is fine; arriving after the conversation has moved on is
+        # not. False means "say nothing", never "say it anyway".
+        from call import floor as floor_mod
+
+        async def go():
+            floor = self._floor()
+            original, floor_mod.MAX_WAIT_SECS = floor_mod.MAX_WAIT_SECS, 0.05
+            try:
+                async with floor.take("holder"):
+                    async with floor.take("latecomer") as mine:
+                        self.assertFalse(mine)
+            finally:
+                floor_mod.MAX_WAIT_SECS = original
+            self.assertEqual(1, floor.given_up)
+
+        asyncio.run(go())
+
+    def test_the_floor_is_released_even_when_the_turn_raises(self):
+        # A lock that leaks on an exception would silence the DJ for the rest
+        # of the call, which is far worse than the overlap it prevents.
+        async def go():
+            floor = self._floor()
+            with self.assertRaises(RuntimeError):
+                async with floor.take("doomed"):
+                    raise RuntimeError("the provider fell over")
+            async with floor.take("after") as mine:
+                self.assertTrue(mine, "the floor was never given back")
+
+        asyncio.run(go())
+
+    def test_all_three_injectors_are_wired_to_it(self):
+        import inspect
+
+        from call import clocks, comeback, promise_guard
+        import call.session as call_session
+
+        for module in (promise_guard, comeback, clocks):
+            self.assertIn("floor", inspect.getsource(module),
+                          f"{module.__name__} can start a turn without asking")
+        src = inspect.getsource(call_session.CallSession)
+        self.assertIn("self.air.floor = self.floor", src,
+                      "the come-back task is created inside the air guard, so "
+                      "the guard is how it reaches the floor")
+
+    def test_the_record_says_when_two_turns_collided(self):
+        # A silent fix is one nobody can tell is load-bearing — or needless.
+        import inspect
+
+        import call.session as call_session
+
+        src = inspect.getsource(
+            call_session.CallSession._note_if_two_turns_wanted_the_floor)
+        self.assertIn("collisions", src)
+
+
+class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
+    """"A caller who asked for one song was shown the door three times on the
+    way out" — the operator, and then the archive.
+
+    Eight of the 162 DJ lines in the live archive end by asking whether the
+    caller wants more, and not one of those callers had said they were
+    finished: "I'll wait while it goes out" answered with "anything else you
+    want to dig up while we're waiting?", and one call doing it three times
+    while the caller talked about a friend having a rough week. `CLOSING` has
+    four paragraphs against this and measured 1-in-3 on the closing set.
+
+    The harm is the REPETITION, so the correction lands on the next turn rather
+    than trying to unsay the line — see call/door.py for why the promise
+    guard's shape does not transfer.
+    """
+
+    def _door(self):
+        from call.door import Door
+
+        return Door()
+
+    def test_a_line_that_ends_by_asking_for_more_is_caught(self):
+        door = self._door()
+        for said in (
+            "That's lined up — about ten minutes out. Anything else you want "
+            "digging out while I'm in the racks?",
+            "Sent that down to the booth. Anything else you're looking for "
+            "tonight?",
+            "Got it queued. Something else I can dig up for you?",
+            "That's in. Are you all set?",
+        ):
+            door.dj_said(said)
+            self.assertTrue(door.held, said)
+            self.assertTrue(door.hint_for("yeah go on then"), said)
+
+    def test_the_same_words_mid_line_are_ordinary_talk(self):
+        # It is how a turn ENDS that shows someone the door. The words in the
+        # middle of a sentence are just a DJ talking.
+        door = self._door()
+        for said in (
+            "Anything else you fancy, just say — but first, this one's a "
+            "belter and I want you to hear the intro.",
+            "I'll keep an eye out for anything else by them tonight.",
+            "That's queued up, about ten minutes out, right after the Waits.",
+        ):
+            door.dj_said(said)
+            self.assertFalse(door.held, said)
+
+    def test_a_caller_who_says_they_are_done_gets_the_question_honestly(self):
+        # The conduct allows it ONCE, at the end — that is not the failure,
+        # and correcting it there would be the opposite bug.
+        door = self._door()
+        for finished in ("that's everything, thanks", "no, that's me done",
+                         "cheers, bye", "nothing else, take care"):
+            door.dj_said("That's in. Anything else before I let you go?")
+            self.assertEqual("", door.hint_for(finished), finished)
+
+    def test_the_correction_is_consumed_not_left_hanging(self):
+        # Holding the flag would steer a turn two turns downstream of the line
+        # that earned it, which reads as the DJ being told off for nothing.
+        door = self._door()
+        door.dj_said("That's queued. Anything else you want?")
+        self.assertTrue(door.hint_for("go on then"))
+        self.assertEqual("", door.hint_for("what about some Fleetwood Mac"))
+
+    def test_it_counts_how_often_it_had_to_step_in(self):
+        # A silent fix is one nobody can tell is working. Once is ordinary;
+        # three times is the prompt still pulling the other way.
+        door = self._door()
+        for _ in range(3):
+            door.dj_said("Done. Anything else you need?")
+            door.hint_for("yeah")
+        self.assertEqual(3, door.corrections)
+
+    def test_the_note_reaches_the_model_before_it_answers(self):
+        # It has to land in the CONTEXT, on the SDK's own pre-reply hook — a
+        # correction that arrives after the utterance can only add a line.
+        from call.air import CallAgent, OnAirGuard
+        from call.door import Door
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        door = Door()
+        door.dj_said("That's queued. Anything else you want digging out?")
+        guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        agent = CallAgent("instructions", guard, door)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="go on then")))
+        self.assertEqual(1, len(added), "the model was not told")
+        role, content = added[0]
+        self.assertEqual("system", role,
+                         "a note from us must not be filed as the caller's words")
+        self.assertIn("do not end this turn that way again", content.lower())
+
+    def test_a_well_behaved_turn_costs_nothing(self):
+        # The whole argument for a mechanism over standing prose: it is free on
+        # every turn where the DJ behaved, which a paragraph can never be.
+        from call.air import CallAgent, OnAirGuard
+        from call.door import Door
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        door = Door()
+        door.dj_said("That's lined up — right after the Waits, and there's a "
+                     "live session on straight after that.")
+        agent = CallAgent("instructions", OnAirGuard(
+            None, {"avoid_on_air_overlap": False}), door)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="lovely")))
+        self.assertEqual([], added)
+
+
+class TestEveryGeneratedTurnWaitsForTheBroadcast(unittest.TestCase):
+    """Nine things can make the DJ speak, and they do not know about each other.
+
+    The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires
+    for CALLER turns only — so it covers the reply path and nothing else. Every
+    other injector has had to remember to check the guard itself, and two of
+    them did not: the promise nudge and the time-limit sign-off both generated
+    straight over a live link. Found by reading the injectors against each other
+    on 2026-08-14 (docs/the-call.md has the table).
+
+    The nudge is the likelier of the two to be heard: it fires a second or so
+    after the DJ says "let me have a dig", which is exactly when a queued link
+    lands. Neither is reproduced as a live fault yet — this is the arithmetic
+    being wrong in the same shape as the overlaps that were reproduced.
+    """
+
+    class _Guard:
+        """Just enough OnAirGuard to answer "did you ask?"."""
+
+        def __init__(self):
+            self.asked = 0
+
+        async def wait_until_clear(self, timeout=None):
+            self.asked += 1
+            return 0.0
+
+    def test_the_promise_nudge_asks_before_it_speaks(self):
+        from call import promise_guard
+
+        async def go():
+            handlers, replies = {}, []
+
+            class _Session:
+                def on(self, name, fn):
+                    handlers[name] = fn
+
+                async def generate_reply(self, **kw):
+                    replies.append(kw)
+
+            guard = self._Guard()
+            promise_guard.attach_promise_guard(_Session(), None, None, air=guard)
+            handlers["user_input_transcribed"](
+                types.SimpleNamespace(is_final=True, transcript="play something"))
+            handlers["conversation_item_added"](types.SimpleNamespace(
+                item=types.SimpleNamespace(
+                    role="assistant",
+                    text_content="Hold on, let me dig that out for you.")))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1, "the nudge did not fire at all")
+            self.assertEqual(guard.asked, 1,
+                             "the nudge generated without asking whether the "
+                             "broadcast had the microphone")
+
+        asyncio.run(go())
+
+    def test_the_time_limit_signoff_asks_before_it_speaks(self):
+        from call import lifecycle
+
+        async def go():
+            said = []
+            shutdown = []
+
+            class _Session:
+                async def generate_reply(self, **kw):
+                    said.append(kw)
+
+                async def say(self, text, **kw):
+                    said.append({"text": text})
+
+            ctx = types.SimpleNamespace(
+                add_shutdown_callback=lambda fn: None,
+                shutdown=lambda reason="": shutdown.append(reason))
+            guard = self._Guard()
+            # A one-second limit, so the test does not wait out a real call.
+            lifecycle.attach_time_limit(ctx, _Session(), {"max_call_seconds": 1},
+                                        air=guard)
+            await asyncio.sleep(1.4)
+            self.assertTrue(said, "the sign-off never happened")
+            self.assertEqual(guard.asked, 1,
+                             "the sign-off generated without asking whether "
+                             "the broadcast had the microphone")
+
+        asyncio.run(go())
+
+    def test_the_doc_names_every_module_that_can_speak(self):
+        # The table in docs/the-call.md is the only place the nine are written
+        # down together, and a tenth added quietly is how this happened twice.
+        # test_docs holds the membership; this holds the SESSION's wiring, so
+        # an injector that exists but is never handed the guard is caught here.
+        import inspect
+
+        import call.session as call_session
+
+        src = inspect.getsource(call_session.CallSession._attach_behaviours)
+        for wired in ("air=self.air", "attach_time_limit", "attach_idle_watch",
+                      "attach_promise_guard"):
+            self.assertIn(wired, src)
+        # Both of the ones that used to skip the hold now take the guard by
+        # name. Matched on the ARGUMENT rather than the whole call, so adding
+        # another (the floor did) does not read as the guard going missing.
+        limit = src.split("attach_time_limit(")[1].split(")")[0]
+        self.assertIn("air=self.air", limit)
 
 
 class TestTheWordsThatOweAReceipt(unittest.TestCase):

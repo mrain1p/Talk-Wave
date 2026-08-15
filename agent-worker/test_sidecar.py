@@ -139,6 +139,9 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheAirSplitHoldsItsShape,
     TestTheGreetingWaitsForTheOnAirDJ,
     TestAPromisedActionActuallyHappens,
+    TestEveryGeneratedTurnWaitsForTheBroadcast,
+    TestTheCallerIsNotShownTheDoorTwice,
+    TestTwoOfTheDJsOwnTurnsNeverStartAtOnce,
     TestTheWordsThatOweAReceipt,
     TestACallerWhoWasNeverHeardIsToldSo,
     TestALineThatFailsToGenerateIsStillSpoken,
@@ -176,6 +179,7 @@ from tests.test_music_tools import (  # noqa: F401
     TestAQueuedTrackCanComeBackOut,
     TestCurrentLyricsAreARead,
     TestSearchPagesLikeTheStation,
+    TestTheSearchRefusalAgreesWithThePrompt,
     TestSearchingForWhatTheCallerActuallySaid,
     TestWhatsNewInTheLibrary,
 )
@@ -196,6 +200,7 @@ from tests.test_brain import (  # noqa: F401
     TestOneBadTrackCannotSwallowThePrompt,
     TestPromptAssembly,
     TestPrompts,
+    TestEveryMouthSpeaksAsTheSameDJ,
     TestTheConductHarnessCannotReachTheRealStation,
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
@@ -212,9 +217,11 @@ from tests.test_conduct import (  # noqa: F401
     TestActionBulletsRideTheirOwnSwitch,
     TestARefusalIsPassedOnNotNarrated,
     TestNoToolIsBuiltWithoutThePromptKnowingIt,
+    TestThePromptBudgetIsMeasurable,
     TestThePromptNeverPromisesATakeoverItCannotDo,
     TestThePromptStopsClaimingRequestsCannotBeCancelled,
     TestThePromptTeachesTheDJHowToActuallyFindARecord,
+    TestTriageIsStatedInOnePlace,
 )
 from tests.test_discovery import (  # noqa: F401
     TestBrowsingSpeaksTheStationsOwnVocabulary,
@@ -326,7 +333,8 @@ from tests.test_house_rules import (  # noqa: F401
     TestTheParallelRunnerRunsTheSameSuite,
     TestNoFileGrowsWithoutSomebodyDeciding,
     TestTheCallHarnessOnlyDialsLocal,
-    TestTheToolEvalUsesFakeTools,
+    TestTheDrillHarnessTracksTheModulesItDrives,
+    TestTheRetiredEvalStaysRetired,
     TestTheCommitGateIsStillWiredUp,
     TestTheLogKeepsTheLinesThatMatter,
     TestTheRoutingTableIsInOnePlace,

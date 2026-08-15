@@ -67,7 +67,23 @@ def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:
     bits = []
 
     if track.get("title"):
-        line = f"Now playing: \"{_fld(track['title'])}\""
+        # "When this call connected", not "now". The prompt is assembled once
+        # in `prepare()` and `update_instructions` is never called, so every
+        # fact here is frozen for the life of the call — while max_call_seconds
+        # defaults to 300 and a track runs three to four minutes. Written as
+        # "Now playing", the back half of a normal call carried a station fact
+        # that had simply stopped being true, stated flatly, with nothing to
+        # tell the DJ it had aged. A model trusts its own briefing over
+        # spending a tool call, and this is the one line most likely to be read
+        # back to a caller word for word.
+        #
+        # The sentence is now true for as long as the call lasts, which is the
+        # smallest honest fix. Whether it also changes behaviour is UNMEASURED:
+        # the drill reads the station once and cannot advance its clock, so
+        # this is a correctness change, not a demonstrated improvement. The
+        # bigger answer — refreshing the volatile facts on a track-change push,
+        # which the on-air guard already receives — is still open.
+        line = f"Playing when this call connected: \"{_fld(track['title'])}\""
         if track.get("artist"):
             line += f" by {_fld(track['artist'])}"
         # The station analyses tracks and publishes what it found. Without
@@ -89,7 +105,7 @@ def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:
             line += " — " + "; ".join(detail)
         bits.append(line + ".")
     else:
-        bits.append("Nothing is playing this second (between tracks).")
+        bits.append("Nothing was playing as this call connected (between tracks).")
 
     clock = ctx.get("clock") or {}
     weather = ctx.get("weather") or {}
@@ -221,7 +237,11 @@ def _fmt_upcoming(state: dict, limit: int) -> str:
     if limit <= 0:
         return ""
     queued = _tracks(state.get("upcoming") or state.get("queue") or [], limit)
-    return "Coming up: " + ", ".join(queued) + "." if queued else ""
+    # Frozen at pickup like the now-playing line above, and staler than it: a
+    # queue that was two deep at connect is empty ten minutes later. "Was"
+    # keeps the sentence true and leaves the tools as the answer to "what's
+    # coming up NOW", which is what the DJ should reach for anyway.
+    return "Coming up after that: " + ", ".join(queued) + "." if queued else ""
 
 
 def _is_show_announcement(text: str, show_name: str, show_topic: str) -> bool:

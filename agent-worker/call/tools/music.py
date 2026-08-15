@@ -121,6 +121,24 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
     # Exact queueing needs the ids that only the local search wrapper surfaces.
     exact_queue = bool(cfg.get("allow_exact_queue")) and not library_search_needs_mcp()
 
+    # Where a DESCRIPTION goes, said the same way the prompt says it.
+    #
+    # This wrapper used to send every feeling to subwave_request_song, which was
+    # right when a name search was the only other way into the library and wrong
+    # from 0.10.104, when the station's sound search arrived. So the prompt's
+    # triage table routed "something dreamy" to subwave_search_by_sound while
+    # the tool the model reached for FIRST told it, at runtime, to use the
+    # request instead — two instructions, one situation, and the runtime one
+    # wins because it arrives last. A backstop that argues with the prompt is
+    # worse than no backstop: it teaches the model that the table is unreliable.
+    _the_right_tool_for_a_feeling = (
+        "Use subwave_search_by_sound with their words — it matches the audio "
+        "itself, so it answers a feeling properly."
+        if cfg.get("allow_sound_search") else
+        "Use subwave_request_song with the caller's own words instead; the "
+        "station picks properly from the whole library. Put the request in."
+    )
+
     # Without admin credentials this wrapper can only ever return nothing, so
     # the raw MCP tool takes its place (see library_search_needs_mcp).
     if cfg.get("allow_library_search") and not library_search_needs_mcp():
@@ -143,11 +161,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 return (
                     f"'{q}' describes a feeling, and this tool only matches words in "
                     "titles and artist names — it would hand you songs with that word "
-                    "in the title, not songs that feel that way. Use "
-                    "subwave_request_song with the caller's own words instead; the "
-                    "station picks properly from the whole library. Do not tell the "
-                    "caller a search failed — nothing failed, you just used the wrong "
-                    "tool. Put the request in."
+                    "in the title, not songs that feel that way. "
+                    + _the_right_tool_for_a_feeling
+                    + " Do not tell the caller a search failed — nothing failed, you "
+                    "just used the wrong tool."
                 )
             # 8 to a page: enough for "was it one of these", small enough to
             # read down a phone line. One extra row is fetched purely to know
@@ -213,10 +230,9 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 hint = (
                     " If that was a description rather than a title — a mood, an "
                     "era, an occasion, 'more like this' — then this was the wrong "
-                    "tool and nothing is wrong with the library. Put it in as a "
-                    "request with subwave_request_song, in the caller's own words, "
-                    "and let the station pick. Do NOT tell the caller you couldn't "
-                    "find anything."
+                    "tool and nothing is wrong with the library. "
+                    + _the_right_tool_for_a_feeling
+                    + " Do NOT tell the caller you couldn't find anything."
                 )
             return (
                 "No track or artist by that name, even after loosening the "

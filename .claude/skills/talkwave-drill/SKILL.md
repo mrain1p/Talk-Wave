@@ -100,5 +100,31 @@ A read in "never called" is only a finding if the transcript shows the DJ *guess
 the tool would have told it — the call-start briefing legitimately answers some reads.
 
 Deliver findings as a ranked list with the transcript line that proves each one. Fixes go the
-usual routes: conduct wording via `NEW_CONDUCT` re-runs (no redeploy), tool descriptions in
-`call/tools/`, settings via `talkwave-setting` — then re-run only the failed scenarios' mode.
+usual routes: prompt wording via an injected re-run (no redeploy — see below), tool
+descriptions in `call/tools/`, settings via `talkwave-setting` — then re-run only the failed
+scenarios with `SCENARIO=<substring>` rather than paying for the whole set again.
+
+## Measuring a prompt change, not just sweeping
+
+Since 0.10.146 the harness carries the levers this needs. Read them before proposing any
+wording change: a claim about conduct that is not measured against a set is a rewrite with a
+rationale.
+
+- **`SCENARIO_SET=triage`** grades WHICH tool fired. **`=conversations`** injects faults and
+  grades recovery. **`=closing`** grades when the line hangs up and when it must not.
+- **`REPEATS=3`** turns a verdict into a rate. Routing is a distribution; two consecutive
+  single runs have disagreed on two scenarios out of nine. Never act on a single run.
+- **`ABLATE=CLOSING`** builds the prompt WITHOUT a named section (names from
+  `conduct.blocks`; `python tools/prompt_report.py` prices the same list).
+- **Injecting a change** covers `brain/conduct.py` AND `brain/tool_rules.py` — the triage
+  table lives in the second, so a conduct-only injection has not been the whole prompt since
+  0.10.104. The docstring at the top of `scripted_call.py` has the exact pipeline.
+
+**The trap, and it is the one that matters:** ablate against a set that actually tests what
+you dropped. Dropping `CLOSING` and running `triage` measures nothing — triage grades tool
+choice and `CLOSING` governs hang-ups — so the run comes back unchanged and the section looks
+free. It is not free; the set was blind to it. Pair every ablation with the set that owns the
+behaviour, and if no set owns it, the honest first step is to write one.
+
+**A verdict of INCONCLUSIVE means the tools a scenario wanted were not on the surface** (MCP
+degrades quietly on a congested station). Re-run it; do not read it as the DJ choosing badly.

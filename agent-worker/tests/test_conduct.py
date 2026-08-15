@@ -212,6 +212,127 @@ class TestThePromptStopsClaimingRequestsCannotBeCancelled(unittest.TestCase):
         self.assertNotIn("subwave_cancel_queued_track", rules)
 
 
+class TestTriageIsStatedInOnePlace(unittest.TestCase):
+    """Three statements of the same decision, and they disagreed.
+
+    Where does "something dreamy" go? `tool_rules.finding_rule` said the sound
+    search; the "Search the library" bullet, two paragraphs above it in the SAME
+    file, said "straight to a REQUEST"; and the search wrapper's runtime refusal
+    named the request tool as well. The bullet and the wrapper both predate the
+    discovery tools (0.10.104) and neither was reconciled with them, so the DJ
+    was given contradictory instructions and then graded on which one it picked.
+
+    The table in finding_rule is the single source now. The bullet says a
+    description is not a search and points AT the table rather than answering
+    for it; the wrapper's refusal is checked in test_music_tools.
+    """
+
+    def _rules(self, **cfg):
+        from brain import tool_rules
+
+        base = {"allow_library_search": True, "allow_requests": True,
+                "allow_sound_search": True}
+        base.update(cfg)
+        return tool_rules._tools(base)
+
+    def test_the_search_bullet_does_not_answer_for_the_table(self):
+        text = self._rules()
+        bullet = text.split("**Search the library**")[1].split("- **")[0]
+        self.assertIn("A description is not a search", bullet)
+        self.assertNotIn("go straight to a REQUEST", bullet,
+                         "the bullet is prescribing a destination again, and "
+                         "the table below it prescribes a different one")
+
+    def test_the_table_is_where_a_description_is_routed(self):
+        text = self._rules()
+        self.assertIn("Finding the record", text)
+        self.assertIn("subwave_search_by_sound", text)
+        # And the pointer actually points somewhere: the table comes after.
+        self.assertLess(text.index("A description is not a search"),
+                        text.index("**Finding the record.**"))
+
+    def test_with_no_sound_search_the_table_still_answers(self):
+        # The bullet defers unconditionally, so the table has to carry the
+        # fallback on a station with no analyser — otherwise deferring would
+        # send the DJ to a paragraph that says nothing about descriptions.
+        text = self._rules(allow_sound_search=False)
+        self.assertIn("Finding the record", text)
+        self.assertIn("subwave_request_song", text)
+
+
+class TestThePromptBudgetIsMeasurable(unittest.TestCase):
+    """Every section of the prompt has to be priceable, or the budget is an
+    opinion.
+
+    The plan carried "~20k characters" as the working figure for a year while
+    the real assembled prompt reached 28,715 (measured on the live deployment,
+    2026-08-14). Nobody was careless: there was simply no instrument, so each
+    paragraph was argued on its own merits — which is always "cheap" — and
+    never against the total. `tools/prompt_report.py` prices the sections, and
+    it prices them from `blocks()`, which is only honest while `rules()` has no
+    text of its own.
+
+    So this is the invariant that keeps the instrument pointed at the real
+    prompt: a section added straight into `rules()` would be sent to the model,
+    paid for on every turn, and invisible to the report. It has to go through
+    `blocks()` and get a name.
+    """
+
+    def _cfg(self):
+        from call.tools.registry import TOOLS, NEVER
+
+        return {t.gate: True for t in TOOLS if t.gate not in ("read", NEVER)}
+
+    def test_neither_mouth_assembles_text_the_report_cannot_see(self):
+        from brain import conduct, conduct_chat
+
+        cfg = self._cfg()
+        for mod in (conduct, conduct_chat):
+            self.assertEqual(
+                mod.rules(cfg),
+                "\n\n".join(text for _name, text in mod.blocks(cfg)),
+                f"{mod.__name__}.rules() is assembling text that is not in "
+                "blocks(), so tools/prompt_report.py cannot price it and a "
+                "section can grow unmeasured — the exact way this got to 28k",
+            )
+
+    def test_every_section_has_a_name_and_no_two_share_one(self):
+        from brain import conduct, conduct_chat
+
+        cfg = self._cfg()
+        for mod in (conduct, conduct_chat):
+            names = [name for name, _ in mod.blocks(cfg)]
+            self.assertTrue(all(names), f"{mod.__name__} has an unnamed section")
+            self.assertEqual(
+                sorted(names), sorted(set(names)),
+                f"{mod.__name__} has two sections with one name — the report "
+                "would price them as one and an ablation would drop both")
+
+    def test_a_section_can_be_dropped_for_measurement(self):
+        # The ablation lever phase 3 runs on. If `drop` stops working, the
+        # prompt stops being testable and the next cut is a matter of taste.
+        from brain import conduct
+
+        cfg = self._cfg()
+        whole = conduct.rules(cfg)
+        for name, text in conduct.blocks(cfg):
+            without = conduct.rules(cfg, drop={name})
+            self.assertLess(len(without), len(whole),
+                            f"dropping {name} changed nothing")
+            self.assertNotIn(text, without)
+
+    def test_the_report_exists_and_reads_both_mouths(self):
+        # Keeps the dev script named in the suite — the coverage floor every
+        # module owes — and fails if it stops covering a mouth.
+        from tests.support import REPO
+
+        src = (REPO / "tools" / "prompt_report.py").read_text(encoding="utf-8")
+        for needle in (".blocks(", "conduct_chat", "--live", "CHARS_PER_TOKEN"):
+            self.assertIn(needle, src,
+                          f"prompt_report.py no longer mentions {needle!r} — "
+                          "the budget instrument has changed shape")
+
+
 class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
     """The general shape of the 0.10.104 bug, caught once and for all.
 
@@ -233,32 +354,105 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
     # Tools the model is not steered to by name because the prompt describes
     # WHEN to use them in words instead. Each needs a reason, and the reason
     # has to survive being read out loud.
-    NAMED_ELSEWHERE = {
+    #
+    # Two categories, and the split is not bookkeeping. "BULLET" claims the
+    # tool has prose of its own that appears and disappears with its switch;
+    # "SCHEMA" claims the tool's own description is the whole instruction and
+    # the prompt deliberately says nothing. The first claim is CHECKABLE and is
+    # checked below — and when it was written down as one undifferentiated set,
+    # four entries claimed a bullet they did not have.
+    #
+    # Found 2026-08-14 with tools/prompt_report.py: flipping allow_skip_track,
+    # allow_dj_segment, allow_favorite or allow_unfavorite changed the assembled
+    # prompt by ZERO characters. The exemption list said all four "carry a named
+    # bullet in _tools()". They carried nothing, and this test — the one written
+    # to close the 0.10.104 bug class for good — was passing on a sentence that
+    # had stopped being true. Skip and the programme beat now have real bullets
+    # (they reach every listener and the prompt owed them a consequence); the
+    # hearts keep the exemption, honestly labelled.
+    BULLET = {
+        "subwave_dj_announce": "Put things on air",
+        "subwave_skip_track": "Skip what's playing",
+        "subwave_dj_segment": "Fire a programme beat",
+        "subwave_takeover_show": "the takeover bullet",
+        "subwave_cancel_takeover": "the takeover bullet",
+        "subwave_never_play_track": "Ban a record for good",
+        "subwave_allow_track_again": "Ban a record for good",
+        "subwave_genre_lock": "Hold the station to a genre",
+        "subwave_clear_genre_lock": "Hold the station to a genre",
+    }
+    SCHEMA = {
+        # Segments are named by the ALWAYS-ON line in running_the_call ("A
+        # segment — run it by name, only from the list you've been given"), and
+        # the catalogue of real segment names rides allow_skills in the
+        # BRIEFING rather than in the conduct. So there is no switch-riding
+        # bullet to find here and there should not be one: the rule holds
+        # whether or not this station has segments, and the list is a fact.
+        "subwave_list_skills": "named by the always-on segment line",
+        "subwave_run_skill": "named by the always-on segment line",
         # The five station reads are covered by "Check what's playing /
         # coming up rather than guessing" and the briefing's own facts. They
         # are also always on, so there is no switch to be out of step with.
-        "subwave_health", "subwave_now_playing", "subwave_station_state",
-        "subwave_schedule", "subwave_session",
-        # A read with no switch, same as above.
-        "subwave_current_lyrics",
+        "subwave_health": "always-on read",
+        "subwave_now_playing": "always-on read",
+        "subwave_station_state": "always-on read",
+        "subwave_schedule": "always-on read",
+        "subwave_session": "always-on read",
+        "subwave_current_lyrics": "always-on read",
         # Follow-ups to a tool the prompt does name, reached from that tool's
         # own result text rather than from the conduct.
-        "subwave_request_status", "subwave_recent_tracks",
-        # These carry a named bullet in _tools() rather than a bare tool name
-        # ("Put things on air", "Offering a segment", the takeover bullet).
-        "subwave_dj_announce", "subwave_list_skills", "subwave_run_skill",
-        "subwave_skip_track", "subwave_dj_segment",
-        "subwave_takeover_show", "subwave_cancel_takeover",
-        "subwave_like_track", "subwave_unlike_track",
-        # Same again: each carries its own bullet in _tools() written in the
-        # words a caller uses ("Ban a record for good", "Hold the station to a
-        # genre") rather than a bare tool name. Both are things the DJ must
-        # understand the CONSEQUENCE of before reaching for, and a tool name in
-        # a list teaches neither that a ban is permanent nor that a lock
-        # outlives the call.
-        "subwave_never_play_track", "subwave_allow_track_again",
-        "subwave_genre_lock", "subwave_clear_genre_lock",
+        "subwave_request_status": "named by request_song's own result",
+        "subwave_recent_tracks": "named by the finding table's neighbours",
+        # The lowest-harm actions on the line: a like changes nobody's audio
+        # and is exactly what a listener does from the app. The tool's own
+        # description is the whole instruction, and a bullet would spend prompt
+        # on every call to teach a heart.
+        "subwave_like_track": "lowest-harm action, schema is enough",
+        "subwave_unlike_track": "lowest-harm action, schema is enough",
     }
+    NAMED_ELSEWHERE = set(BULLET) | set(SCHEMA)
+
+    def test_a_tool_claiming_a_bullet_actually_has_one(self):
+        """The exemption that has to be earned rather than asserted.
+
+        A BULLET entry says: this tool's prose rides its own switch. That is a
+        measurement, not an opinion — flip the switch and text APPEARS.
+
+        Note the question is what the switch ADDS, not whether the prompt gets
+        shorter. Turning a capability off replaces its bullet with a line in
+        the "Not on this line tonight" list, and for four of these the refusal
+        is the LONGER of the two — so a size comparison would report a bullet
+        missing that is plainly there.
+        """
+        import difflib
+
+        from brain import conduct
+        from call.tools.registry import BY_NAME, NEVER, READ, TOOLS
+
+        allon = {t.gate: True for t in TOOLS if t.gate not in (READ, NEVER)}
+        base = conduct.rules(allon).splitlines()
+        empty = []
+        for name in sorted(self.BULLET):
+            gate = BY_NAME[name].gate
+            off = dict(allon)
+            off[gate] = False
+            added = [
+                line[1:].strip() for line in difflib.unified_diff(
+                    conduct.rules(off).splitlines(), base, lineterm="", n=0)
+                if line.startswith("+") and not line.startswith("+++")
+            ]
+            if not "".join(added).strip():
+                empty.append(f"{name} (gate {gate})")
+        self.assertEqual(
+            empty, [],
+            "these are exempted from the naming rule because they 'carry a "
+            "bullet', and turning them off does not shrink the prompt — so "
+            f"there is no bullet: {empty}. Either write one, or move the entry "
+            "to SCHEMA and say why the tool's own description is enough.")
+
+    def test_the_two_exemption_kinds_do_not_overlap(self):
+        both = sorted(set(self.BULLET) & set(self.SCHEMA))
+        self.assertEqual(both, [], f"claimed twice, two ways: {both}")
 
     def test_every_unlocked_tool_is_named_or_deliberately_not(self):
         from brain import conduct, conduct_chat

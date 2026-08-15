@@ -38,6 +38,31 @@ MAX_TURNS = 400       # a runaway loop must not write an unbounded file
 MAX_TEXT = 2000       # one turn, clipped
 
 
+def with_args(args, result) -> str:
+    """One tool call's arguments beside what it answered.
+
+    The arguments are half the answer and the record kept only the other half:
+    "search_library returned nothing" never says what it searched FOR, which is
+    the whole difference between a library that lacks the track and a DJ that
+    looked up the wrong words. That is the first thing anyone reading a bad call
+    back wants, and it is what the Firestone diagnosis turned on.
+
+    The text line has recorded them since 0.10.104 and the phone — the primary
+    surface — did not, so the better record was the one for the medium fewer
+    people use. Both go through here now rather than through two formatters that
+    would print the same call two ways.
+    """
+    if isinstance(args, str):
+        try:
+            args = json.loads(args or "{}")
+        except (ValueError, TypeError):
+            args = {"_raw": args[:200]}
+    if not isinstance(args, dict) or not args:
+        return str(result)
+    detail = ", ".join(f"{k}={v!r}"[:80] for k, v in args.items())
+    return f"({detail}) -> {result}"
+
+
 class CallRecord:
     """Builds the record as the call runs, writes it once at the end."""
 

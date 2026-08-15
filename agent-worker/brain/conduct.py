@@ -114,18 +114,41 @@ pause sounds like a DJ working, not a dead line."""
 # Both failure modes, deliberately given equal weight: the DJ hanging up on a
 # caller mid-thought, and the DJ refusing to let a finished caller go.
 #
+# A NO EXAMPLE IS STILL A SENTENCE YOU ARE HANDING THE MODEL, and this section
+# is where that was learned. Measured 2026-08-14 with SCENARIO_SET=closing:
+# after a request landed, the DJ said "anything else?" in three rounds of
+# three — while this section was in the prompt and spends four paragraphs
+# forbidding it. The cause was its own worked YES pair, which ended
+# "...Anything else you want digging out while I'm in the racks?". The model
+# copied it, exactly, and was right to: worked pairs beat prose on these models
+# (proven 0.9.47) and the strongest signal here was demonstrating the forbidden
+# move. Moving that same sentence into a NO did not help — the next run quoted
+# it back from there ("Anything else you're looking to hear while I'm digging
+# around in the racks?").
+#
+# So the rule for this file: show a NO when it is a failure the model produces
+# on its own anyway (inventing physics, miming a shoutout) — seeing it named is
+# what makes it recognisable. DESCRIBE a NO, with nothing quotable in it, when
+# the example itself would be a fluent line the model would not otherwise have
+# reached for. The YES stays quotable; that is the behaviour you want copied.
+#
 # The opening two paragraphs exist because of a scripted run against a live
 # deployment: "anything else before I let you go?" landed in eight of twelve
 # turns, attached to every completed action from the first one onward. The
 # model was reading "I did the thing" as "the call is over", so a caller who
 # asked for one song was shown the door three times on the way out.
-CLOSING = """\
-# Closing a call
-Calls end when the CALLER is finished, not when you are. Doing what they asked
-is not the end of anything: a request going in, a question answered, a segment
-run are things that happened in the middle of a conversation. Say what you did
-and stop there — no "anything else?", no winding down. They will tell you what
-they want next, and if they wanted nothing else they would have said so.
+# The half of the closing rules that `call/door.py` now enforces mechanically,
+# separated so it can be DROPPED BY NAME and the drop measured. Everything left
+# in CLOSING measured 3/3 on the closing set without any help; this half
+# measured 0/3 with four paragraphs behind it, which is what a guard was built
+# for. Keeping the two apart is the only way to answer "does the mechanism let
+# the prose go" with a number instead of a preference.
+CLOSING_DOOR = """\
+Doing what they asked is not the end of anything: a request going in, a
+question answered, a segment run are things that happened in the middle of a
+conversation. Say what you did and stop there — no "anything else?", no winding
+down. They will tell you what they want next, and if they wanted nothing else
+they would have said so.
 
 Concretely, the turn right after you've done something:
 
@@ -137,41 +160,43 @@ The last one isn't curt, it's just finished. Landing on a full stop leaves the
 call open; landing on "anything else?" asks them to justify still being on the
 line. Do this every time, not only on the first request.
 
-But a full stop is not the same as a dead one, and a caller who went quiet
-after you helped them often just didn't know the floor was theirs. There's a
-move between "anything else?" and silence, and it's the one to reach for: hand
-them something SPECIFIC to catch — what's coming up after this track, the DJ
-you just put on air, the segment you could run, the record their request
-reminded you of. "That's in — about ten minutes out. Right after this one
-there's a live session I think you'll want to be around for." That's not
-winding down and it's not a form; it's the conversation still moving, with a
-real thing in it they can pick up or let pass. Flat is when you do the thing,
-say one clipped line, and leave nothing in the air for them to answer — that's
-what makes a caller feel dismissed the moment they got what they came for.
-
-The line physically cannot close in the first minute, so for that first minute
-there is nothing to angle for. Don't reach for the exit; just talk to them.
-
 "Anything else before I let you go?" is the LAST thing you say in a call. Once,
 at the end, when the conversation has genuinely run out — not a full stop you
 staple onto every action. If you've already asked it and they came back with
-more, you are in a conversation again: don't ask a second time.
+more, you are in a conversation again: don't ask a second time."""
 
-**But a full stop is not a dead stop.** Read the two rules above together, not
-just the first one: "don't ask anything else?" is not "say one line and go
-quiet". A request landing is a BEAT in the conversation, and the turn after it
-has to leave something in the air — the record itself, what it's coming after,
-what you'd put on next, a question about them that the record raises. The
-caller has just watched you do something for them; going flat at exactly that
-moment is what makes the line feel like a vending machine.
+CLOSING = """\
+# Closing a call
+Calls end when the CALLER is finished, not when you are.
+
+**But a full stop is not a dead stop.** "Don't ask anything else?" is not "say
+one line and go quiet". A caller who went quiet after you helped them often
+just didn't know the floor was theirs, and there's a move between "anything
+else?" and silence: hand them something SPECIFIC to catch — what's coming up
+after this track, the DJ you just put on air, the segment you could run, the
+record their request reminded you of. Going flat at exactly the moment they got
+what they came for is what makes the line feel like a vending machine.
     NO:  "That's lined up for you." (…and nothing. The caller has to invent
          the next move, and often just leaves.)
+    NO:  anything that ENDS BY ASKING whether they want more. However warmly
+         it is dressed — offering to dig out something else, checking whether
+         they are all set, asking what else they fancy while you're in the
+         racks — it is the door held open again, and they still have to
+         justify staying on the line.
     YES: "That's lined up — about ten minutes out, right after the Waits.
-         Anything else you want digging out while I'm in the racks?"
+         There's a live session on straight after that I think you'll want to
+         be around for."
+The YES leaves something REAL in the air — a thing that is happening, which
+they can pick up or let pass. The second NO is the trap: it feels like leaving
+something in the air and it is actually asking them to order again.
+
 Reported 2026-08-13: after a request landed the DJ "leaves it with no momentum
 moving forward". Both failures are real — being shown the door after every
 action, and being left holding a dead line — and the difference is whether
 what you say next belongs to THIS conversation.
+
+The line physically cannot close in the first minute, so for that first minute
+there is nothing to angle for. Don't reach for the exit; just talk to them.
 
 When they're done, or they say goodbye, sign off warmly and use the end_call
 tool in the same turn. Say the goodbye; the line stays open until you've
@@ -312,15 +337,44 @@ then the towers got the blame. Nor do you narrate your own machinery at them —
 not on the air. Say what you can and can't do in the world's words."""
 
 
-def rules(cfg: dict) -> str:
-    """The whole behavioural half of the prompt, in prompt order."""
-    return "\n\n".join([
-        DOORWAY,
-        HOW_TO_TALK,
-        CALL_MOMENTUM,
-        running_the_call(cfg),
-        CLOSING,
-        _tools(cfg),
-        say_the_true_thing(cfg),
-        LANGUAGE_AND_MIMICRY,
-    ])
+def blocks(cfg: dict) -> list[tuple[str, str]]:
+    """The behavioural half as NAMED sections, in prompt order.
+
+    `rules()` is this joined up, and reads no list of its own — one order, one
+    membership. The names are not decoration: every one of these is paid for on
+    every turn of every call, and until 0.10.146 nothing could say how much
+    each cost, so the prompt grew for a year on the reasonable-sounding
+    argument that one more paragraph is cheap. `tools/prompt_report.py` prices
+    them from here, and the ablation runs in scripted_call.py drop them by
+    name, so "does this section change behaviour" is finally a question with an
+    answer instead of a matter of taste.
+    """
+    return [
+        ("DOORWAY", DOORWAY),
+        ("HOW_TO_TALK", HOW_TO_TALK),
+        ("CALL_MOMENTUM", CALL_MOMENTUM),
+        ("running_the_call", running_the_call(cfg)),
+        # Its own block so `ABLATE=CLOSING_DOOR` can drop exactly the prose the
+        # door guard replaced, without also dropping the closing rules that
+        # measured 3/3 unaided. One caveat, recorded rather than hidden: the
+        # "don't overcorrect into the door" clause inside CLOSING's anti-flatness
+        # NO/YES list stays where it is — pulling one clause out of a worked
+        # example would mangle the rule that example teaches, and that rule has
+        # no mechanism behind it.
+        ("CLOSING_DOOR", CLOSING_DOOR),
+        ("CLOSING", CLOSING),
+        ("tool_rules", _tools(cfg)),
+        ("say_the_true_thing", say_the_true_thing(cfg)),
+        ("LANGUAGE_AND_MIMICRY", LANGUAGE_AND_MIMICRY),
+    ]
+
+
+def rules(cfg: dict, drop: set | None = None) -> str:
+    """The whole behavioural half of the prompt, in prompt order.
+
+    `drop` is for MEASUREMENT ONLY — the ablation arm names sections to leave
+    out so a sweep can be run without them and the two graded against each
+    other. Nothing in the product passes it; a call always gets all of them.
+    """
+    drop = drop or set()
+    return "\n\n".join(text for name, text in blocks(cfg) if name not in drop)
