@@ -34,6 +34,17 @@ from __future__ import annotations
 
 import re
 
+# The DJ assuring the caller of an OUTCOME that has not happened. Distinct
+# from CLAIMS_DONE, which is past tense ("that's in", "sent it off"): this is
+# the confident future — the record will air, the shoutout will go out — and
+# it is only ever a fault when the thing it promises has already been refused.
+# On every other turn of a call it is the honest receipt, because the DJ really
+# does queue records and "it's about six minutes out" is what the caller wants
+# to hear. Shared with `spoken_rules.CUE_FRAMING`, which grades the same shape
+# from the harness side, so the guard and the grader cannot drift into
+# disagreeing about what a claim looks like.
+from spoken_rules import CUE_FRAMING as _ASSURED_OUTCOME
+
 # Future tense: the DJ says it is ABOUT to act.
 PROMISES_ACTION = re.compile(
     r"\b(let me|lemme|i'?ll\b|i am going to|i'?m going to|i'?m gonna|"
@@ -73,7 +84,8 @@ CLAIMS_DONE = re.compile(
     re.IGNORECASE)
 
 
-def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False) -> str:
+def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
+             refused: bool = False) -> str:
     """Classify a line the DJ said, against what actually ran behind it.
 
     Returns "promise", "claim", or "" for anything that owes nothing. A line carrying both
@@ -102,6 +114,29 @@ def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False) -> str:
     case tells the DJ to own it.
     """
     text = str(text or "")
+    # A tool that ran and was REFUSED backs nothing, and this case slipped
+    # both other flags. Measured 2026-08-14, refusals set, two judged rounds
+    # out of two: `subwave_request_song` came back "The station couldn't take
+    # that request", and the DJ answered "it'll head out onto the airwaves just
+    # as soon as that track clears" and "I've got it locked in to follow".
+    #
+    # The first line matched neither pattern — it is an assured FUTURE, not a
+    # past-tense "that's done", which is what CLAIMS_DONE was written for. The
+    # second matched PROMISES_ACTION and was then cleared by `tools_ran`,
+    # because a promise is normally settled the moment the DJ reaches for any
+    # tool. That reasoning is right about dead air and wrong here: the tool it
+    # reached for is the one that said no, so the very call that should have
+    # made the line honest is what silenced the guard.
+    #
+    # After a refusal both shapes are the same failure and take the CLAIM
+    # nudge, not the promise one — "call it NOW" would be telling the DJ to
+    # retry a refusal, which every tool result explicitly forbids. The claim
+    # nudge is the one that says: own it, tell them it did not go through.
+    if refused and not acted and (
+            _ASSURED_OUTCOME.search(text)
+            or CLAIMS_DONE.search(text)
+            or PROMISES_ACTION.search(text)):
+        return "refused"
     if PROMISES_ACTION.search(text):
         return "" if tools_ran else "promise"
     if CLAIMS_DONE.search(text):

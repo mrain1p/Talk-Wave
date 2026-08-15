@@ -2585,3 +2585,126 @@ class TestTheAirSplitHoldsItsShape(_TempStores):
         self.assertTrue(hasattr(OnAirGuard, "_push_verdict"))
         self.assertTrue(hasattr(OnAirGuard, "_settle"))
 
+
+
+class TestARefusedActionIsNotReportedAsDone(unittest.TestCase):
+    """The guard was silenced by the very tool call that failed.
+
+    Measured 2026-08-14 on `SCENARIO_SET=refusals`, both judged rounds out of
+    two, with `say_the_true_thing` present in the prompt. The station refused
+    the request — "The station couldn't take that request: Your last request is
+    still queued" — and the DJ answered:
+
+        "…it'll head out onto the airwaves just as soon as that track clears."
+        "I've got it locked in to follow."
+
+    Nothing was queued. The scenario scored PASS both times, because the grader
+    listed the invented EXCUSES a DJ once used and this is an invented OUTCOME.
+
+    Two separate holes let it through, which is why the fix is two lines rather
+    than one. The first sentence is an assured FUTURE and `CLAIMS_DONE` is
+    written for the past tense. The second matched `PROMISES_ACTION` and was
+    then cleared by `tools_ran` — a promise is normally settled the moment the
+    DJ reaches for any tool, which is right about dead air and exactly wrong
+    here: the tool it reached for is the one that said no.
+    """
+
+    def test_a_claim_after_a_refusal_is_caught(self):
+        from promises import unbacked
+
+        for said in (
+            "The station's still holding onto that last one — it'll head out "
+            "onto the airwaves just as soon as that track clears.",
+            "I'll get that in the queue for you the second the one lined up "
+            "clears. I've got it locked in to follow.",
+        ):
+            self.assertEqual(
+                "refused", unbacked(said, tools_ran=True, acted=False,
+                                    refused=True), said)
+
+    def test_the_refused_nudge_never_asks_for_a_retry(self):
+        """Its own kind, because the claim nudge made this worse.
+
+        Measured 2026-08-15 before this existed: the claim nudge opens "no tool
+        ran — so it is NOT done", which is false when a tool ran and was
+        refused, and goes on to say "call it NOW". So the DJ sent the same
+        request again, twice, against a tool result reading "Do NOT send it
+        again — you already have the reason". Three turns to reach the honest
+        sentence and two forbidden retries the caller sat through.
+
+        Nothing is left to call after a refusal. The station has answered.
+        """
+        from call.promise_guard import _NUDGE, _PROBLEM
+
+        nudge = _NUDGE["refused"]
+        self.assertNotIn("call it NOW", nudge)
+        self.assertIn("Do not call", nudge)
+        self.assertIn("did not go through", nudge)
+        self.assertIn("refused", _PROBLEM["refused"].lower())
+
+    def test_every_kind_unbacked_returns_has_a_nudge_and_a_problem(self):
+        # A kind with no nudge is a KeyError on a live call, at the moment the
+        # guard fires, which is the worst place to find one.
+        from call.promise_guard import _NUDGE, _PROBLEM
+
+        for kind in ("promise", "claim", "refused"):
+            self.assertIn(kind, _NUDGE)
+            self.assertIn(kind, _PROBLEM)
+
+    def test_the_same_line_is_fine_when_the_action_really_landed(self):
+        # The guard must not touch the honest receipt. "It's about six minutes
+        # out" is what a caller wants to hear and what the tool result tells
+        # the DJ to say; only the refusal makes it a lie.
+        from promises import unbacked
+
+        self.assertEqual("", unbacked(
+            "That's lined up — about six minutes out.",
+            tools_ran=True, acted=True))
+
+    def test_owning_the_refusal_is_not_nudged(self):
+        # The behaviour the nudge is trying to produce must not itself trip it,
+        # or the guard fires forever on a DJ doing the right thing.
+        from promises import unbacked
+
+        for said in ("That didn't go through — the station's only taking one "
+                     "at a time tonight.",
+                     "No luck with that one, they've knocked it back."):
+            self.assertEqual("", unbacked(said, tools_ran=True, acted=False,
+                                          refused=True), said)
+
+    def test_ordinary_talk_after_a_refusal_is_not_nudged(self):
+        from promises import unbacked
+
+        self.assertEqual("", unbacked(
+            "Rich, dark, and bitter enough to wake the dead.",
+            tools_ran=True, refused=True))
+
+    def test_a_refusal_is_read_off_the_house_phrasing(self):
+        from spoken_rules import reads_as_a_refusal
+
+        self.assertTrue(reads_as_a_refusal(
+            "The station couldn't take that request: Your last request is "
+            "still queued — it airs first."))
+        self.assertTrue(reads_as_a_refusal(
+            "That didn't go out: the station refused it. Tell the caller "
+            "plainly — do not claim it worked."))
+        self.assertFalse(reads_as_a_refusal(
+            '"Africa" by Toto is in the queue — it comes up after what is '
+            "already ahead of it."))
+
+    def test_the_live_guard_reads_the_tool_outputs(self):
+        """The flag has to reach the guard, not just exist in the rule.
+
+        `function_tools_executed` carries `function_call_outputs` alongside the
+        calls, so the guard can see a refusal without any new plumbing — and
+        this pins that it actually looks, because the rule above is inert if
+        nobody sets `refused`.
+        """
+        import inspect
+
+        from call import promise_guard
+
+        src = inspect.getsource(promise_guard)
+        self.assertIn("function_call_outputs", src)
+        self.assertIn("reads_as_a_refusal", src)
+        self.assertIn("refused=state[\"refused\"]", src)

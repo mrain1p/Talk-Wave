@@ -136,7 +136,14 @@ def _install_injected(path: str, source: str) -> None:
     print(f"[installed {path} — the image does not carry it]")
 
 
-for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_RULES", "spoken_rules")):
+# ORDER MATTERS: a module is installed before anything that imports it, so the
+# leaves come first. `call.promise_guard` imports both `promises` and
+# `spoken_rules`, and installing it first would bind it to the image's copies —
+# which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
+# new rule returning a kind the old nudge table had never heard of.
+for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_RULES", "spoken_rules"),
+                    ("NEW_PROMISES", "promises"),
+                    ("NEW_PROMISE_GUARD", "call.promise_guard")):
     _source = globals().get(_var)
     if _source:
         _install_injected(_path, _source)
@@ -287,28 +294,23 @@ REPLY_WORDS: list[int] = []
 # wrong, which is the thing that tells two arms apart. See spoken_rules.
 VIOLATIONS: dict[str, int] = {}
 
+# How many of those faults the guard went on to repair. Counted apart
+# because a next-turn correction CANNOT unsay the line that tripped it —
+# same as call/door.py — so the fault count alone reads as a failure even
+# on a run where every one was caught and owned.
+REPAIRED: dict[str, int] = {}
+
 # The last few DJ openers, for the repeat check. Short window on purpose: a
 # call legitimately returns to the same phrasing across ten minutes, and the
 # fault being caught is back-to-back.
 _RECENT_OPENERS: list[str] = []
 
 
-# A tool result that told the DJ the action did NOT happen. Read off the
-# house phrasing rather than a status field, because that sentence IS the
-# contract: fifteen places across call/tools/ end a refusal with it, and the
-# refusals ablation concluded that this line — arriving after the prompt and
-# specific to what just happened — is most likely why 16% of the conduct
-# measured inert. If the wording ever drifts, this check goes quiet and
-# TestARefusalIsRecognisableFromItsResult fails, which is the point of pinning
-# it in the suite rather than trusting a grep.
-_REFUSED = re.compile(
-    r"do not claim it worked|didn'?t go (?:out|through|into)|"
-    r"couldn'?t take|the station refused|was refused|<tool raised",
-    re.IGNORECASE)
-
-
 def _reads_as_a_refusal(result: str) -> bool:
-    return bool(_REFUSED.search(str(result or "")))
+    """Shared with the live guard — see spoken_rules.reads_as_a_refusal."""
+    if spoken_rules is None:
+        return False
+    return spoken_rules.reads_as_a_refusal(result)
 
 
 def _note_faults(names) -> None:
@@ -1379,6 +1381,14 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # whether the caller wanted more and they had not said they were done.
         # Without this the sweep measures a DJ the product no longer ships —
         # the same gap the promise guard had here until it was mirrored.
+        # Whether any tool this turn came back refused. Set by the tool loop
+        # below and read by the guard mirror, so a claim made AFTER a refusal
+        # is judged the way CallAgent judges it.
+        turn_refused = False
+        # One nudge per caller turn, mirroring the product's state["nudged"].
+        # Without it the harness fired three times on a single turn — a loop
+        # CallAgent cannot produce, so the run was measuring the instrument.
+        turn_nudged = False
         hint = door.hint_for(text) if DOOR_ON else ""
         if hint:
             log.append("  (last line held the door open — steering this turn)")
@@ -1404,8 +1414,16 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # case the sweep exists to measure — so from 0.10.138 to 0.10.145 the
         # drill could not run at all. TestTheDrillHarnessTracksTheModulesItDrives
         # fails the build if it drifts again.
-        kind = unbacked(said) if (not calls and said.strip()) else ""
+        # Mirrors CallAgent's guard, which consults `unbacked` on every
+        # assistant turn. This used to run only when NO tool had been
+        # called, so the one shape it could never reproduce was a claim
+        # made AFTER a tool was refused — which is the shape the refusals
+        # set exists to catch and the one it was silently passing.
+        kind = ("" if turn_nudged else
+                unbacked(said, tools_ran=bool(calls),
+                         refused=turn_refused)) if said.strip() else ""
         if kind:
+            turn_nudged = True
             log.append(f"  ({kind} with no tool call — guard nudges)")
             ctx.add_message(role="assistant", content=said)
             said, calls = await one_turn(llm, ctx, tools,
@@ -1455,6 +1473,8 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
 
             refused = [n for n, res, failed in ran
                        if failed or _reads_as_a_refusal(res)]
+            if refused:
+                turn_refused = True
             said, calls = await _stream(llm, ctx, tools)
             if said.strip():
                 log.append(f"DJ     : {said.strip()}")
@@ -1472,6 +1492,28 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                                    f"{', '.join(sorted(set(refused)))} refused it")
                 last_dj = said.strip()
                 said_here.append(said)
+                # The guard's SECOND firing point, and the only one that can
+                # reach a claim made after a refusal — the pre-tool check above
+                # runs when the turn's tools have been named but not yet run.
+                # Without this the harness measured a DJ the product does not
+                # ship: the live guard consults `unbacked` on every assistant
+                # turn, this one only consulted it before the tools.
+                after = ("" if turn_nudged
+                         else unbacked(said, tools_ran=True, refused=turn_refused))
+                if after and not calls:
+                    turn_nudged = True
+                    REPAIRED[after] = REPAIRED.get(after, 0) + 1
+                    log.append(f"  ({after} after a refusal — guard nudges)")
+                    ctx.add_message(role="assistant", content=said)
+                    said, calls = await one_turn(
+                        llm, ctx, tools, promise_guard._NUDGE[after])
+                    if said.strip():
+                        log.append(f"DJ     : {said.strip()}")
+                        _note_reply(said)
+                        _note_faults(spoken_rules.check_after_failure(said)
+                                     if spoken_rules else [])
+                        said_here.append(said)
+                        last_dj = said.strip()
 
         if said.strip():
             ctx.add_message(role="assistant", content=said)
@@ -1878,6 +1920,15 @@ async def summarise(log, repeats, which, tools) -> None:
         if VIOLATIONS:
             for name, n in sorted(VIOLATIONS.items(), key=lambda kv: -kv[1]):
                 log.append(f"{n:>4}x  {name}")
+            fixed = sum(REPAIRED.values())
+            if fixed:
+                detail = ", ".join(f"{k}: {v}"
+                                   for k, v in sorted(REPAIRED.items()))
+                log.append(
+                    f"\n{fixed} of these were caught by the guard and owned on "
+                    f"the next turn ({detail}). The fault still counts: a "
+                    "next-turn correction cannot unsay the line that tripped "
+                    "it, only stop the caller being left believing it.")
             if "claims-it-landed" in VIOLATIONS:
                 log.append("\nclaims-it-landed is the serious one: the DJ told "
                            "the caller the thing was on its way AFTER the tool "
@@ -1885,6 +1936,7 @@ async def summarise(log, repeats, which, tools) -> None:
         else:
             log.append("(none)")
         VIOLATIONS.clear()
+        REPAIRED.clear()
         _RECENT_OPENERS.clear()
 
     if which == "coverage":

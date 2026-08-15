@@ -37,6 +37,7 @@ import logging
 from livekit.agents import AgentSession
 
 from promises import unbacked
+from spoken_rules import reads_as_a_refusal
 
 log = logging.getLogger("callin.agent")
 
@@ -52,6 +53,25 @@ _NUDGE = {
     # The last sentence matters as much as the first: every tool in this codebase ends by
     # telling the DJ not to claim a failure worked, and a nudge that only said "call it now"
     # would leave a refused action still sitting behind a sentence that said it went through.
+    # A THIRD kind, and it exists because the claim nudge made things worse
+    # here. Measured 2026-08-15 on the refusals set: the claim nudge opens
+    # "no tool ran — so it is NOT done", which is false when a tool ran and was
+    # REFUSED, and it goes on to say "call it NOW" — so the DJ sent the same
+    # request again, twice, against a tool result that says in as many words
+    # "Do NOT send it again". Three turns to reach the honest sentence, two of
+    # them forbidden retries the caller sat through.
+    #
+    # So this one never asks for a tool. There is nothing left to call: the
+    # station has answered, the answer was no, and the only thing owed is
+    # saying so.
+    "refused": (
+        "[The tool you just called came back REFUSED — the thing did not happen — and the "
+        "line you just said tells the caller it did, or that it is on its way. Do not call "
+        "that tool again: you already have the station's answer, and asking twice does not "
+        "change it. Say plainly, in your own voice and in the world, that it did not go "
+        "through and why, and offer what you CAN do instead. Do not apologise twice or "
+        "explain the machinery — one honest sentence and move on.]"
+    ),
     "claim": (
         "[You just told the caller that was already done, and no tool ran — so it is NOT "
         "done. If one of your tools does it, call it NOW, and say nothing to them first: "
@@ -67,6 +87,12 @@ _PROBLEM = {
         "one more turn to actually make the call; if the next line still promises without a "
         "receipt, the model is narrating actions instead of taking them — check the LLM "
         "setting against one with proven tool routing."
+    ),
+    "refused": (
+        "A tool came back REFUSED and the DJ told the caller it had happened anyway, or was "
+        "on its way. This is the failure the caller cannot catch — they hang up believing a "
+        "record is coming that nobody queued. It was given one more turn to own it. Repeats "
+        "here mean the honesty rules in the prompt are not reaching this model."
     ),
     "claim": (
         "The DJ told the caller something had ALREADY been done and ran no tool, so it had "
@@ -96,7 +122,8 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
     # Reset by the caller speaking; set by any tool running; consumed by the
     # nudge. Separate flags because the events can arrive in either order and a
     # missed reset would silence the guard for the rest of the call.
-    state = {"tools_ran": False, "nudged": False, "acted_at": 0}
+    state = {"tools_ran": False, "nudged": False, "acted_at": 0,
+             "refused": False}
 
     def _ledger() -> int:
         return int(getattr(actions, "count", 0) or 0)
@@ -105,6 +132,7 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         if getattr(ev, "is_final", True):
             state["tools_ran"] = False
             state["nudged"] = False
+            state["refused"] = False
             # The ledger is per CALL and this question is per TURN, so what
             # matters is whether it moved since the caller last spoke.
             state["acted_at"] = _ledger()
@@ -113,6 +141,15 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
 
     def _on_tools(ev) -> None:
         state["tools_ran"] = True
+        # Whether any of them came back REFUSED. Without this the guard was
+        # silenced by the very call that failed: "I'll get that in the queue
+        # for you" is normally settled the moment the DJ reaches for a tool,
+        # and the tool it reached for was the one that said no. Measured on the
+        # refusals set, both judged rounds, 2026-08-14.
+        for out in (getattr(ev, "function_call_outputs", None) or []):
+            if out is not None and reads_as_a_refusal(getattr(out, "output", "")):
+                state["refused"] = True
+                break
 
     session.on("function_tools_executed", _on_tools)
 
@@ -124,7 +161,8 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         if not text or state["nudged"]:
             return
         kind = unbacked(text, tools_ran=state["tools_ran"],
-                        acted=_ledger() > state["acted_at"])
+                        acted=_ledger() > state["acted_at"],
+                        refused=state["refused"])
         if not kind:
             return
         state["nudged"] = True

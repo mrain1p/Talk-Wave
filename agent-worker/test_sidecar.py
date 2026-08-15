@@ -140,6 +140,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheAirSplitHoldsItsShape,
     TestTheGreetingWaitsForTheOnAirDJ,
     TestAPromisedActionActuallyHappens,
+    TestARefusedActionIsNotReportedAsDone,
     TestEveryGeneratedTurnWaitsForTheBroadcast,
     TestTheCallerIsNotShownTheDoorTwice,
     TestTwoOfTheDJsOwnTurnsNeverStartAtOnce,

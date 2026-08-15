@@ -35,13 +35,30 @@ import re
 
 # Phrases that tell the caller a thing is on its way. Ordinary and correct on
 # almost every turn; a lie on a turn where the action was refused.
+#
+# **Deliberately generous, and that is safe here because it is conditional.**
+# Nothing consults this pattern except code that already knows a tool came back
+# refused — `check_after_failure` and `promises.unbacked(refused=True)` — so
+# the cost of a loose match is confined to turns where describing the record as
+# air-bound is the failure being looked for. On every other turn of the call
+# these words are the receipt and nothing here is even read.
+#
+# The air-bound half was added after the first real measurement: the DJ
+# answered a refused request with "it'll head out onto the airwaves just as
+# soon as that track clears", which none of the queue vocabulary caught. Chasing
+# each new paraphrase one at a time is the losing game this repo already learned
+# with the door prose, so this reaches for the CONCEPT — the record reaching the
+# air — rather than the sentence.
 CUE_FRAMING = re.compile(
     r"\b("
     r"coming up|comes up|it'?s next|up next|next one up|"
     r"on its way|on the way|going out|goes out (?:next|now)|"
-    r"in the queue|queued up|lined up|"
+    r"in the queue|queued up|lined up|locked in|"
     r"right after this|after this one|in a few minutes|"
-    r"you'?ll hear it|watch out for it"
+    r"you'?ll hear it|watch out for it|"
+    # Air-bound: the thing reaching the broadcast, however it is phrased.
+    r"(?:head|heads|heading|go|goes|going|out) (?:out |straight )?(?:on)?to the air"
+    r"|on(?:to)? the airwaves|out over the air|to air\b|it airs\b"
     r")\b",
     re.IGNORECASE)
 
@@ -112,6 +129,31 @@ def check_spoken_line(text: str, *, max_sentences: int = 6,
         if opener and any(opener == _first_words(o, 4) for o in recent_openers):
             faults.append("opener-repeat")
     return faults
+
+
+# A tool result that told the DJ the action did NOT happen.
+#
+# Read off the house phrasing rather than a status field, because that sentence
+# IS the contract: fifteen places across `call/tools/` end a refusal with "Tell
+# the caller plainly — do not claim it worked", and the refusals ablation
+# concluded that this line is most likely why 16% of the conduct measured inert
+# — it arrives after the prompt and is specific to what just happened.
+#
+# One copy, shared by the live guard (`promises.unbacked(refused=...)`) and the
+# harness grader, for the reason SUB/WAVE keeps its cross-path prose in one
+# file: a rule that governs two paths and is written twice drifts into saying
+# subtly different things about the same obligation. This repo has already paid
+# that bill once — the phone and the text line each carried their own promise
+# regex and by 0.10.137 they had drifted four phrasings apart.
+_REFUSED = re.compile(
+    r"do not claim it worked|didn'?t go (?:out|through|into)|"
+    r"couldn'?t take|the station refused|was refused|<tool raised",
+    re.IGNORECASE)
+
+
+def reads_as_a_refusal(result: str) -> bool:
+    """Did this tool result say the action did not happen?"""
+    return bool(_REFUSED.search(str(result or "")))
 
 
 def check_after_failure(text: str) -> list[str]:
