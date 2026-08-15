@@ -47,10 +47,10 @@ class AirVerdict:
         The log records when an utterance STARTED and what was said — never
         when it finished — so the end is sized from the words themselves
         (`speaking_secs`), the same way the station's own voice serialiser
-        holds its channel. `on_air_quiet_secs` is only the fallback for an
-        entry with no words: as a fixed hold it either reopened the gate while
-        a long segment was still mid-delivery or gagged the call for most of a
-        minute over a one-line station ID.
+        holds its channel. FALLBACK_LINK_SECS is only for an entry with no
+        words: as a fixed hold it either reopened the gate while a long segment
+        was still mid-delivery or gagged the call for most of a minute over a
+        one-line station ID.
         """
         if speech is None:
             return False
@@ -66,16 +66,29 @@ class AirVerdict:
         # operator's report exactly ("most of the on-call completes before the
         # on-air commentary even airs").
         # The hand-over lead is built in here rather than at the call sites:
-        # the poll and the legacy push branch both need it, and applying it at
-        # one of them was how the DJ stopped handing over out loud at all.
+        # applying it at one of them was how the DJ stopped handing over out
+        # loud at all.
         lag = self.caller_lag()
         words = speaking_secs(text, int(self.quiet_secs) or 30)
         return lag - self.handover_secs <= since < lag + words + self.duck_pad
 
+    def _stale_end(self, state: dict | None) -> bool:
+        """True when a voice.end cannot possibly be the end of OUR action.
+
+        The station's end event names the utterance that just finished. If it
+        finished before we sent ours, it is the tail of what was already
+        playing and proves nothing about the announcement the station has not
+        aired yet. Its own method so the rule can be tested without running the
+        watch loop — this closed a hold 0.2s after opening it on a live call.
+        """
+        if not self._ours_sent_at:
+            return False
+        return float((state or {}).get("at") or 0.0) <= self._ours_sent_at
+
     def _pushed_state(self) -> dict | None:
-        """The last verified push, raw. Two generations live in the file:
-        legacy dj.say/dj.link entries (handoff-stamped, no "v") and the 1.8
-        voice lifecycle ("v": 2 with a phase — queued / speaking / clear).
+        """The last verified push, raw — the voice lifecycle ("v": 2 with a
+        phase: queued / speaking / clear). A pre-1.8 entry still reads back
+        here and is simply judged as no evidence; see _push_verdict.
         """
         try:
             d = json.loads(_air_path().read_text())
@@ -98,14 +111,13 @@ class AirVerdict:
         if not isinstance(d, dict):
             return None
         text = str(d.get("text") or "")
-        if int(d.get("v") or 0) < 2:
-            # Legacy handoff-stamped entry: busy while the words (plus the
-            # handoff lag) are still airing — exactly the old behaviour.
-            since = now - float(d.get("at") or 0)
-            if self._log_says_busy((since, text)):
-                return ("busy", text,
-                        "Hold on a second — let me let that go out on air first.")
-            return None
+        # THE VOICE LIFECYCLE ONLY. A pre-1.8 station's handoff-stamped
+        # dj.say/dj.link entry used to get its own branch here; that whole
+        # generation is gone (0.97.3, the operator's call: "assume everything
+        # is up to date"). A station that still sends one now proves nothing
+        # through this path and falls through to the poll, which reads the same
+        # log the old branch did — so the behaviour degrades to the previous
+        # generation's rather than breaking.
         phase = str(d.get("phase") or "")
         at = float(d.get("at") or 0)
         dur = max(0.0, float(d.get("durMs") or 0) / 1000.0)

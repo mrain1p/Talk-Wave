@@ -238,6 +238,81 @@ def attach_idle_watch(
     ctx.add_shutdown_callback(lambda: _cancel(task))
 
 
+def attach_working_line(ctx: JobContext, session: AgentSession, cfg: dict,
+                        air=None, actions=None) -> None:
+    """Say something while the DJ is working, instead of going quiet.
+
+    The caller asks for a record and the line goes dead — no "let me look",
+    nothing — until the answer arrives. On this deployment the wait is real and
+    measured: the record of 2026-08-15 17:23 carries "4 of 4 replies took longer
+    than 1.5s to start (worst 9.1s, typical 6.5s)", and a tool call on top of
+    that is longer still. The operator's words: "it just pauses there until its
+    done […] something like that's better than just waiting a bunch of time of
+    not knowing if its doing anything at all besides thinking."
+
+    THE MODEL IS NOT ASKED TO SAY IT. That is the whole design constraint here:
+    a DJ told to speak before acting speaks INSTEAD of acting — the failure
+    promise_guard exists for — so this is the worker saying one short line of
+    its own while the model's turn is still in flight, with
+    `add_to_chat_ctx=False` so the conversation the model sees is untouched
+    (the same trick the hand-over line uses in air.py).
+
+    It never fires:
+      - while the station is on air. That silence has its own line, and two
+        explanations of one pause is worse than none.
+      - twice for one wait. It is a "still here, still working" line, and
+        hearing it twice reads as a stuck loop.
+      - once the DJ is already speaking, which is the thing it was covering for.
+    """
+    after = float(cfg.get("working_line_secs") or 0)
+    if after <= 0:
+        return
+    # Deliberately generic: the worker does not know what the model is doing,
+    # and a specific guess ("let me look that up") is a claim. These say only
+    # that somebody is still there and working, which is all that is known.
+    LINES = [
+        "One second, let me have a look.",
+        "Hang on — checking that now.",
+        "Bear with me a moment.",
+    ]
+    state = {"said": 0, "since": 0.0, "was": ""}
+
+    def _on_state(ev) -> None:
+        now = str(getattr(ev, "new_state", "") or "")
+        if now != state["was"]:
+            state["was"] = now
+            state["since"] = time.time()
+            # A new WAIT, not the same one continuing: speaking is what ends
+            # a wait, so the counter resets when the DJ actually says
+            # something of its own.
+            if now == "speaking":
+                state["said"] = 0
+    session.on("agent_state_changed", _on_state)
+
+    async def _watch() -> None:
+        while True:
+            await asyncio.sleep(0.5)
+            if state["was"] != "thinking" or state["said"]:
+                continue
+            if time.time() - state["since"] < after:
+                continue
+            if air is not None and getattr(air, "on_air", False):
+                continue
+            state["said"] += 1
+            line = LINES[(state["said"] - 1) % len(LINES)]
+            log.info("the DJ has been working %.1fs — saying a holding line", after)
+            try:
+                # Not interruptible and not in the history: it is a courtesy
+                # over a gap, and the reply it is covering for must land
+                # intact behind it.
+                session.say(line, allow_interruptions=False, add_to_chat_ctx=False)
+            except Exception as e:                            # noqa: BLE001
+                log.debug("holding line failed (harmless): %s", e)
+
+    task = asyncio.create_task(_watch())
+    ctx.add_shutdown_callback(lambda: _cancel(task))
+
+
 def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict,
                       air=None, floor=None) -> None:
     """`max_call_seconds` was a declared setting that nothing enforced. Wind

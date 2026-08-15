@@ -659,6 +659,95 @@ class TestACallerWhoWasNeverHeardIsToldSo(unittest.TestCase):
         self.assertIn("microphone", " ".join(lines).lower())
 
 
+class TestTheCallerIsToldSomebodyIsStillThere(unittest.TestCase):
+    """A long wait with no sound is indistinguishable from a dead line.
+
+    The operator, 2026-08-15: "when its attempting to do something it just
+    pauses there until its done […] something like that's better than just
+    waiting a bunch of time of not knowing if its doing anything at all besides
+    thinking." Measured on the same box the same afternoon: "4 of 4 replies
+    took longer than 1.5s to start (worst 9.1s, typical 6.5s)".
+
+    The line is the WORKER's, never the model's — a DJ told to speak before
+    acting speaks instead of acting, which is the failure promise_guard exists
+    for — so nothing here may reach the conversation the model sees.
+    """
+
+    def _run(self, seconds=2.0, on_air=False, after=1, then=None):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        said = []
+        subs = {}
+
+        class _Session:
+            agent_state = "listening"
+
+            def on(self, name, fn=None):
+                subs[name] = fn
+
+            def say(self, text, **kw):
+                said.append((str(text), kw))
+
+            async def generate_reply(self, **kw):
+                said.append(("GENERATED", kw))
+
+        ctx = types.SimpleNamespace(
+            add_shutdown_callback=lambda *a: None,
+            api=types.SimpleNamespace(room=types.SimpleNamespace(
+                delete_room=_noop_async)),
+            room=types.SimpleNamespace(name="callin-test"),
+            shutdown=lambda **k: None,
+        )
+        air = types.SimpleNamespace(on_air=on_air)
+
+        async def go():
+            lifecycle.attach_working_line(
+                ctx, _Session(), {"working_line_secs": after}, air=air)
+            state = subs.get("agent_state_changed")
+            if state:
+                state(types.SimpleNamespace(new_state="thinking"))
+            await asyncio.sleep(seconds)
+            if then and state:
+                state(types.SimpleNamespace(new_state=then))
+                await asyncio.sleep(seconds)
+            return said
+
+        return asyncio.run(go())
+
+    def test_it_says_one_line_over_a_long_wait(self):
+        said = self._run()
+        self.assertEqual(len(said), 1, "expected exactly one holding line")
+        self.assertTrue(said[0][0].strip(), "the holding line was empty")
+
+    def test_the_line_never_reaches_the_models_history(self):
+        # An extra turn in the history is what Gemini 400s on when a tool call
+        # follows it — the same reason the hand-over line is kept out.
+        said = self._run()
+        self.assertFalse(said[0][1].get("add_to_chat_ctx", True))
+
+    def test_it_does_not_say_it_twice_for_one_wait(self):
+        said = self._run(seconds=4.0)
+        self.assertEqual(len(said), 1,
+                         "a second holding line landed on the same wait")
+
+    def test_it_stays_quiet_while_the_station_is_on_air(self):
+        # That silence has its own line. Two explanations of one pause is
+        # worse than none.
+        self.assertEqual(self._run(on_air=True), [])
+
+    def test_zero_switches_it_off(self):
+        self.assertEqual(self._run(after=0), [])
+
+    def test_a_new_wait_gets_its_own_line(self):
+        # The DJ answered, then went away to work again: that is a second
+        # wait, and the caller is owed the same courtesy.
+        said = self._run(seconds=2.0, then="speaking")
+        self.assertEqual(len(said), 1)
+
+
 class TestTheCheckInWindowIsTheNumberTheOperatorTyped(unittest.TestCase):
     """A question in the DJ's last line must not lengthen the wait.
 
@@ -1017,6 +1106,36 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         base.update(cfg)
         return OnAirGuard(station or object(), base)
 
+    def test_an_end_from_before_our_action_does_not_close_our_hold(self):
+        """The 2026-08-15 overlap, and the reason it sounded like the ducking
+        was inverted.
+
+        The DJ announces something, we open a hold for our own 28.5 seconds of
+        it, and 0.2 seconds later a voice.end arrives — for the utterance that
+        was ALREADY playing, because ours has not aired yet. That end used to
+        wipe the hold, so the DJ said its back-from-air line and then talked
+        straight over the announcement for the next half minute. Read off the
+        operator's own box:
+
+            17:46:13  hold opened  we put something on air  forSecs=28.5
+            17:46:13  hold closed  voice.end                heldSecs=0.2
+            17:46:13  dj said      back-from-air line
+        """
+        import time
+
+        guard = self._guard()
+        guard.mark_on_air(28.5, spoken="A big hello going out to Amelia")
+        self.assertTrue(guard.on_air, "our own action did not open a hold")
+
+        # The end of what was playing BEFORE we sent ours.
+        self.assertTrue(guard._stale_end({"at": time.time() - 2}))
+        # …and the end of ours, once the station has actually aired it.
+        self.assertFalse(guard._stale_end({"at": time.time() + 30}))
+        # A hold nobody opened is not protected — an ordinary voice.end after
+        # an ordinary busy spell still closes the gate on the spot.
+        fresh = self._guard()
+        self.assertFalse(fresh._stale_end({"at": time.time() - 2}))
+
     def test_a_disabled_guard_never_makes_anyone_wait(self):
         import asyncio
 
@@ -1168,10 +1287,14 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
                                 time.time() + 9 + OnAirGuard.HANDOFF_LAG_SECS)
 
     def test_the_push_file_reads_back_as_evidence(self):
-        # The web process writes the last verified voice push; the guard
-        # reads it raw and judges it with _push_verdict. An absent file is
-        # no evidence at all; a legacy (handoff-stamped) entry can prove the
-        # air busy, never clear — exactly the old behaviour.
+        # The web process writes the last verified voice push; the guard reads
+        # it raw and judges it with _push_verdict. An absent file is no
+        # evidence at all, and a `speaking` entry proves the air busy.
+        #
+        # The pre-1.8 handoff-stamped shape (no "v", no phase) lost its branch
+        # at 0.97.3 — the operator's call, "assume everything is up to date".
+        # It proves nothing here now and falls through to the poll, which reads
+        # the same station log that branch did.
         import json
         import os
         import tempfile
@@ -1184,11 +1307,20 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
                 guard = self._guard()
                 self.assertIsNone(guard._pushed_state())
                 with open(p, "w", encoding="utf-8") as f:
-                    json.dump({"at": time.time() - 3,
+                    json.dump({"at": time.time() - 3, "v": 2,
+                               "phase": "speaking", "durMs": 9000,
                                "text": "Back after this."}, f)
                 verdict = guard._push_verdict(guard._pushed_state(), time.time())
                 self.assertEqual(verdict[0], "busy")
                 self.assertEqual(verdict[1], "Back after this.")
+                # And the retired generation: read back fine, judged as nothing.
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 3,
+                               "text": "Back after this."}, f)
+                self.assertIsNotNone(guard._pushed_state())
+                self.assertIsNone(
+                    guard._push_verdict(guard._pushed_state(), time.time()),
+                    "a pre-1.8 push entry is still being judged")
             finally:
                 os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
 

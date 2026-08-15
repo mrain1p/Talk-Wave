@@ -708,8 +708,11 @@
     setTag('tagTurns', resolved.allow_interruptions ? 'interruptible' : 'finishes its sentence');
     setTag('tagLimits', 'ends by ' + resolved.max_call_seconds + 's'
       + (resolved.idle_prompt_secs ? ' · checks in at ' + resolved.idle_prompt_secs + 's' : ''));
+    // The tag says what the operator SET, not an internal fallback: the hold
+    // is sized to the words the station actually spoke, so quoting a number
+    // of seconds here described something that almost never happens.
     setTag('tagOnair', resolved.avoid_on_air_overlap
-      ? 'waits ' + resolved.on_air_quiet_secs + 's for quiet air' : 'talks over the broadcast');
+      ? 'waits for quiet air' : 'talks over the broadcast');
     setTag('tagTunein', resolved.tune_in_on_call
       ? 'on · ' + resolved.tune_in_volume + '%' : 'off — requests may be refused');
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');

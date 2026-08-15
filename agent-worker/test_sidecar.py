@@ -161,6 +161,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheCloseReasonIsReadable,
     TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack,
     TestTheIdleClockDoesNotRunWhileTheDJIsWorking,
+    TestTheCallerIsToldSomebodyIsStillThere,
     TestTheCheckInWindowIsTheNumberTheOperatorTyped,
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )

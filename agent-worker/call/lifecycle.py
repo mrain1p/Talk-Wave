@@ -331,6 +331,7 @@ from .clocks import (  # noqa: F401,E402
     _say_something,
     attach_idle_watch,
     attach_time_limit,
+    attach_working_line,
 )
 
 

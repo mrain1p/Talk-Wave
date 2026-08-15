@@ -427,6 +427,11 @@ class CallSession:
                                     heard=self.heard, actions=self.actions)
         lifecycle.attach_time_limit(ctx, session, cfg, air=self.air,
                                     floor=self.floor)
+        # Says one short line over a long wait rather than leaving the caller
+        # in silence. Given the air guard so it never explains a pause the
+        # hand-over line has already explained.
+        lifecycle.attach_working_line(ctx, session, cfg, air=self.air,
+                                      actions=self.actions)
         ctx.add_shutdown_callback(self._on_shutdown)
 
     async def greet(self) -> None:

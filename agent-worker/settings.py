@@ -211,6 +211,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "max_endpointing_delay": (None, 0.0),
     "allow_interruptions":   (None, True),
     "min_interruption_secs": (None, 0.0),
+    # How long the DJ may work in silence before saying so. The model's own
+    # time to first token runs 6.5s typical on this deployment, and a tool
+    # call sits on top of that — long enough that the caller cannot tell a
+    # thinking DJ from a dead line. 0 = stay silent until the answer is ready.
+    "working_line_secs":     (None, 4),
 
     # Whether both sides of a call are written to disk at all.
     #
@@ -358,7 +363,6 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # falls back to a fixed hold. The handoff lag that used to sit between
     # these two stopped being an operator's decision in 0.10.97 — see
     # OnAirGuard.HANDOFF_LAG_SECS.
-    "on_air_quiet_secs":    (None, 30),
 
     # The station refuses song requests when nobody is tuned in. A caller on
     # the line is engaged with the station but isn't pulling the stream, so
@@ -1486,22 +1490,20 @@ SCHEMA: dict[str, dict] = {
     "on_air_handover_secs": dict(group="onair", kind="number",
         label="Hand over before air (s)",
         needs=("avoid_on_air_overlap", True),
-        help="SUB/WAVE 1.8+ warns that a voice is COMING (voice.queued), "
-             "sometimes many seconds ahead. The call keeps flowing until "
-             "this close to air, then the DJ says its hand-over line and "
-             "steps back — instead of holding the whole wait. Needs ~2s of "
-             "warning for the line; with less the gate closes silently. "
-             "5 suits the default mixer lead — lower it if the caller hears "
-             "silence between the hand-over line and the broadcast."),
-    # Last in the group, because it is the fallback rather than a dial an
-    # operator reaches for (their ask, 2026-08-12).
-    "on_air_quiet_secs": dict(group="onair", kind="number",
-        label="Fallback: air is busy for (s)",
-        needs=("avoid_on_air_overlap", True),
-        help="Only a fallback, for when the station's log doesn't say what was "
-             "spoken — when it does, the hold is sized to the words themselves. "
-             "A typical link runs 20–30 seconds."),
-
+        help="The station warns when a voice is coming, sometimes many seconds "
+             "ahead. The call keeps flowing until this close to air, then the "
+             "DJ says its hand-over line and steps back — instead of holding "
+             "the whole wait. Needs about 2s to get the line out; with less "
+             "the gate closes silently. 5 suits the default mixer lead — lower "
+             "it if the caller hears silence between the hand-over line and "
+             "the broadcast."),
+    "working_line_secs": dict(group="turns", kind="number",
+        label="Say something after (s)",
+        help="How long the DJ may be working on an answer before it says one "
+             "short line so the caller knows somebody is still there — "
+             "“one second, let me have a look”. Covers the wait while "
+             "the model thinks and a tool runs. 0 keeps the line silent until "
+             "the answer is ready."),
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "
              "A volunteered name is still used to credit them on air."),

@@ -30,25 +30,23 @@ class OnAirGuard(AirVerdict):
     gate, the on-air tools and the widget's status chip all read it, so they
     cannot disagree with each other.
 
-    "Busy" means ACTIVELY SPEAKING — or, on a station that warns us
-    (voice.queued, SUB/WAVE 1.8), ABOUT TO BE, once the forecast is inside
-    the hand-over window. A 1.8 station bounds the busy spell exactly
-    (voice.start … voice.end, measured); an older one only says when a link
-    STARTED and what it says, so the end is estimated from the words
-    (`speaking_secs`) plus the handoff lag. `on_air_quiet_secs` is the
-    fallback hold for an entry with no words either way.
+    "Busy" means ACTIVELY SPEAKING — or ABOUT TO BE, once the station's
+    voice.queued forecast is inside the hand-over window. The voice lifecycle
+    bounds the spell exactly (voice.start … voice.end, measured); the 4s log
+    poll is the fallback, and there the end is estimated from the words
+    (`speaking_secs`) plus the handoff lag. FALLBACK_LINK_SECS covers an entry
+    with no words at all.
     """
 
     POLL_SECS = 4.0     # a station read per call every 4s, not per turn
     MAX_HOLD = 45.0     # never leave a caller in silence longer than this
 
-    # HANDOFF-STAMPED evidence only — the 4s log poll, and pre-1.8 pushes.
-    # Those signals are stamped when the audio is handed to the mixer, a
-    # couple of seconds before it is audible, so the words finish that much
-    # later too and the gap rides the hold's tail (0.10.69: the tail ending
-    # early was the reported bug). A station on SUB/WAVE 1.8 stamps at AIR
-    # time and sends the voice.* lifecycle; that evidence carries "v": 2 and
-    # is held on exactly, with no lag. It was an operator setting until
+    # HANDOFF-STAMPED evidence only — which now means the 4s log poll alone.
+    # It is stamped when the audio is handed to the mixer, a couple of seconds
+    # before it is audible, so the words finish that much later too and the gap
+    # rides the hold's tail (0.10.69: the tail ending early was the reported
+    # bug). The voice.* lifecycle stamps at AIR time and is held on exactly,
+    # with no lag. It was an operator setting until
     # 0.10.97 and should not have been: nobody can measure their mixer's
     # handoff gap from the panel, the two stations that matter both want ~2s,
     # and it sat in the middle of the ducking list looking like a dial worth
@@ -75,11 +73,22 @@ class OnAirGuard(AirVerdict):
     # need a floor here.
     SETTLE_SECS = 0.0
 
+    # A typical station link, for an entry with no words to size the hold from.
+    FALLBACK_LINK_SECS = 30.0
+
     def __init__(self, station: StationClient, cfg: dict, room=None) -> None:
         self.station = station
         self.room = room
         self.enabled = bool(cfg.get("avoid_on_air_overlap"))
-        self.quiet_secs = float(cfg.get("on_air_quiet_secs") or 0)
+        # HOW LONG A LINK RUNS when the station's log says a voice happened but
+        # not what was said. A constant since 0.97.3, not a setting: the
+        # station sends the words and their measured duration on every voice
+        # push, so this is the fallback for a fallback — and as a settable
+        # number it was a second off-switch for ducking (0 disabled the whole
+        # watch loop) sitting next to the real one. Two switches for one
+        # feature is the sort of thing the operator has to keep in their head
+        # for nothing.
+        self.quiet_secs = self.FALLBACK_LINK_SECS
         # See HANDOFF_LAG_SECS: a constant since 0.10.97, not a setting.
         self.lag_secs = self.HANDOFF_LAG_SECS
         # First tick of quiet inside a busy spell, or 0 when the air is busy.
@@ -121,6 +130,10 @@ class OnAirGuard(AirVerdict):
         # poll means "assume busy", not clear — the same congestion that made
         # the confirmation slow was blinding the poll.
         self._pending_until = 0.0
+        # WHEN we sent it, as well as how long we are holding for. A voice.end
+        # names the utterance that just finished, and an utterance that
+        # finished BEFORE we sent ours cannot be ours — see the watch loop.
+        self._ours_sent_at = 0.0
         # Whether the caller heard a hand-over line for the current busy spell.
         # Only then is there anything to come back FROM: the gate also closes
         # for a caller who dialled in mid-link, and "I'm back" to them is a
@@ -159,6 +172,7 @@ class OnAirGuard(AirVerdict):
         # air really is measured and this never runs out.
         self._assumed_until = max(self._assumed_until,
                                   time.time() + seconds + self.tail())
+        self._ours_sent_at = time.time()
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
@@ -257,6 +271,7 @@ class OnAirGuard(AirVerdict):
         ceiling decides it is never coming."""
         self._pending_until = max(self._pending_until,
                                   time.time() + self.PENDING_CEILING)
+        self._ours_sent_at = time.time()
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
@@ -387,7 +402,7 @@ class OnAirGuard(AirVerdict):
         """Watch the push file every second and poll the station every
         POLL_SECS, and flip the gate. Started as a task for the life of the
         call."""
-        if not (self.enabled and self.quiet_secs > 0):
+        if not self.enabled:
             return
         # The first pass runs immediately and silently: someone who dials in
         # mid-link should have the gate already closed (so their first reply
@@ -441,21 +456,33 @@ class OnAirGuard(AirVerdict):
                 # voice.end is a MEASURED stop, and it now beats OUR OWN
                 # GUESS as well as the poll's.
                 #
-                # It used to lose to _assumed_until / _pending_until, on the
-                # reasoning that an end event cannot be proved to close the
-                # action we just sent. True, and beside the point: the station
-                # is telling us the air is quiet NOW, and quiet is the only
-                # thing this gate is about. What it bought instead was the
-                # caller sitting held for the remainder of a 25-second
-                # estimate after the DJ had already stopped talking —
-                # "held working the booth way too long, I had to hang up".
+                # It used to lose to _assumed_until / _pending_until, and what
+                # that bought was the caller held for the rest of a 25-second
+                # estimate after the DJ had stopped talking — "held working the
+                # booth way too long, I had to hang up". So the measurement
+                # wins and the guesses are dropped rather than out-voted, or
+                # they reassert the hold on the next tick.
                 #
-                # So the measurement wins and the guesses are dropped, not
-                # merely out-voted: leaving them set would have them reassert
-                # the hold on the very next tick.
-                self._assumed_until = 0.0
-                self._pending_until = 0.0
-                busy = False
+                # …UNLESS THE END PREDATES OUR OWN ACTION. voice.end names the
+                # utterance that just finished, and one that finished before we
+                # sent ours is the tail of what was ALREADY playing — it says
+                # nothing about the announcement the station has not aired yet.
+                # Measured on the operator's box, 2026-08-15 17:46:13: the hold
+                # opened for our own 28.5s announcement, a voice.end landed
+                # 0.2s later, the hold closed, and the DJ said its back-from-air
+                # line and then talked over the announcement for half a minute
+                # — "comes back a second before the on air voice even happens".
+                if self._stale_end(state):
+                    # Prove nothing, decide nothing: fall through to the one
+                    # place that weighs everything, which keeps holding while
+                    # our own window is open and releases when it expires.
+                    busy = self._assess(aged, poll_failed)
+                    aired_now = aged[1] if aged else ""
+                else:
+                    self._assumed_until = 0.0
+                    self._pending_until = 0.0
+                    self._ours_sent_at = 0.0
+                    busy = False
             else:
                 busy = self._assess(aged, poll_failed)
                 aired_now = aged[1] if aged else ""

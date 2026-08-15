@@ -523,6 +523,31 @@
   const callBtn = $('callBtn'), muteBtn = $('muteBtn'), hangBtn = $('hangBtn');
   const statusText = $('statusText'), dot = $('dot'), capBox = $('captions');
 
+  // THE LINE BOX IS THE SCROLLER, not the transcript inside it. Five places
+  // wrote `capBox.scrollTop = capBox.scrollHeight` and every one of them was
+  // scrolling an element with no overflow — .captions stopped being a scroller
+  // of its own when the box took the job, and nothing updated these. So the
+  // newest line landed below the fold and the caller had to scroll by hand to
+  // read what had just been said (operator-reported, on a live call).
+  //
+  // STICKY, not forced: a caller who has deliberately scrolled up to re-read
+  // something must not be yanked back every time a word arrives. Within ~40px
+  // of the bottom counts as "following", which is where you are unless you
+  // went looking.
+  function followTranscript() {
+    const box = $('lineBox');
+    if (!box) return;
+    const slack = box.scrollHeight - box.scrollTop - box.clientHeight;
+    if (slack > 40) return;
+    box.scrollTop = box.scrollHeight;
+  }
+  // …and for the moments where following is the whole point (a message left, a
+  // keyboard opening over the box), regardless of where they were.
+  function pinTranscript() {
+    const box = $('lineBox');
+    if (box) box.scrollTop = box.scrollHeight;
+  }
+
   let room = null, muted = false, live = null;
   let chatOpen = false;                       // the text line, not a call
   let signinMode = false;                     // the gate opened to climb a tier
@@ -2110,7 +2135,7 @@
     renderSaid(node.querySelector('.said'), text);
     node.classList.toggle('interim', !final);
     lastByWho[who] = { node, text, at: Date.now() };
-    capBox.scrollTop = capBox.scrollHeight;
+    followTranscript();
     while (capBox.children.length > 40) capBox.removeChild(capBox.firstChild);
   }
 
@@ -2139,7 +2164,7 @@
     node.querySelector('.what').textContent = label;
     node.querySelector('.detail').textContent = detail || '';
     capBox.appendChild(node);
-    capBox.scrollTop = capBox.scrollHeight;
+    followTranscript();
     // A system line must not be merged into the next spoken turn.
     delete lastByWho.dj;
     while (capBox.children.length > 40) capBox.removeChild(capBox.firstChild);
@@ -2899,7 +2924,7 @@
     $('endedBar').hidden = true;
     addSystemLine('✓', 'Message received',
                   'The DJ will review your request shortly.', true);
-    capBox.scrollTop = capBox.scrollHeight;
+    pinTranscript();
     notifyHeight();
   }
 
@@ -3139,7 +3164,7 @@
       + '<span class="said"><span class="typedots" aria-label="typing">'
       + '<i></i><i></i><i></i></span></span>';
     capBox.appendChild(node);
-    capBox.scrollTop = capBox.scrollHeight;
+    followTranscript();
     notifyHeight();
   }
   function hideTyping() {
@@ -3328,7 +3353,7 @@
     // meta) and the transcript flexes down — keep the newest lines in view so
     // the caller reads the conversation they're replying to, not blank space.
     $('chatInput').addEventListener('focus', () => {
-      setTimeout(() => { capBox.scrollTop = capBox.scrollHeight; }, 350);
+      setTimeout(pinTranscript, 350);
     });
   }
 
