@@ -164,6 +164,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack,
     TestTheIdleClockDoesNotRunWhileTheDJIsWorking,
     TestTheCallerIsToldSomebodyIsStillThere,
+    TestTheCheckInDoesNotBlameTheCallerForOurOwnPause,
     TestTheCheckInDoesNotTalkOverTheCaller,
     TestTheCheckInWindowIsTheNumberTheOperatorTyped,
     TestTheSignOffIsHeardBeforeTheLineCloses,
@@ -179,6 +180,7 @@ from tests.test_tools_surface import (  # noqa: F401
 from tests.test_tools_logic import (  # noqa: F401
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
+    TestOneRequestCannotTakeTwoQueueSlots,
 )
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,

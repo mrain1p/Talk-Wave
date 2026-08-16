@@ -78,6 +78,40 @@ class CallActions:
         # "still there?" of a caller who is only waiting on us (the Zeppelin
         # call, 2026-08-10: a long resolve, then "are you still there?").
         self.working_until = 0.0
+        # And when the DJ SAID it was about to do something. `working_until`
+        # only covers a tool actually in flight, which turned out to be the
+        # narrower half of "the caller is waiting on us": on 2026-08-16 the DJ
+        # said "I'm digging through the crates now", ran nothing at all, and
+        # asked "Still with me?" eighteen seconds later. Twice on one evening,
+        # and the second time twenty seconds after four searches had already
+        # come back with no answer spoken. Nothing was in flight either time,
+        # so is_working() was correctly False and the check-in was still wrong.
+        self.promised_at = 0.0
+        # Track ids this call has already put in the queue, so the same record
+        # cannot take two slots. See subwave_queue_track.
+        self.queued_ids: set[str] = set()
+
+    # How long a promise keeps the check-in quiet. Capped, because a DJ that
+    # promises and never delivers would otherwise buy silence for the rest of
+    # the call — and a caller sitting in nothing is worse off than one asked a
+    # slightly rude question.
+    PROMISE_PATIENCE_SECS = 45.0
+
+    def promise_made(self) -> None:
+        """The DJ told the caller it was about to do something."""
+        self.promised_at = time.time()
+
+    def caller_is_waiting_on_us(self) -> bool:
+        """Is the ball in the DJ's court rather than the caller's?
+
+        Either a tool is genuinely running, or the DJ has said it is going to
+        do something and nothing has landed since. Asking "still there?" in
+        that window blames the caller for a pause the DJ created.
+        """
+        if self.is_working():
+            return True
+        return (self.promised_at > 0.0
+                and time.time() - self.promised_at < self.PROMISE_PATIENCE_SECS)
 
     def mark_working(self, secs: float = 8.0) -> None:
         """Hold the 'DJ is working' flag for `secs` from now. Called repeatedly
@@ -102,6 +136,8 @@ class CallActions:
         )
 
     def note(self, kind: str, detail: str = "") -> None:
+        # Something landed, so whatever was promised is no longer outstanding.
+        self.promised_at = 0.0
         self.count += 1
         icon, label = self.LABELS.get(kind, ("✅", "Action completed"))
         log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)

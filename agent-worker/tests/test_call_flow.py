@@ -530,6 +530,84 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestTheCheckInDoesNotBlameTheCallerForOurOwnPause(unittest.TestCase):
+    """"Still with me?" to somebody waiting on a dig the DJ announced.
+
+    The clock already pauses while a tool is in flight. That test kept being
+    right and useless: on 2026-08-16 the DJ said "I'm digging through the
+    crates now", ran nothing at all, and asked "Still with me?" eighteen
+    seconds later — and earlier the same evening, twenty seconds after four
+    searches had come back with no answer ever spoken. Nothing was in flight
+    either time, so is_working() was correctly False.
+
+    A promise the DJ has not kept is still the DJ's turn. Capped, though: a DJ
+    that promises and never delivers must not buy silence for the rest of the
+    call.
+    """
+
+    def _run(self, prime, seconds: float = 3.5):
+        import asyncio
+        import types
+
+        from call import lifecycle
+        from call.actions import CallActions
+
+        replies = []
+        actions = CallActions(9)
+        prime(actions)
+
+        class _Session:
+            agent_state = "listening"
+            user_state = "listening"
+
+            def on(self, *a, **k):
+                pass
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+
+        async def go():
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": 2},
+                actions=actions)
+            await asyncio.sleep(seconds)
+
+        asyncio.run(go())
+        return replies
+
+    def test_a_promise_with_no_tool_still_counts_as_our_turn(self):
+        self.assertEqual([], self._run(lambda a: a.promise_made()))
+
+    def test_a_tool_in_flight_still_counts(self):
+        self.assertEqual([], self._run(lambda a: a.mark_working(30)))
+
+    def test_an_idle_caller_is_still_checked_on(self):
+        self.assertTrue(self._run(lambda a: None))
+
+    def test_an_action_landing_hands_the_turn_back(self):
+        # The promise was kept, so the pause after it is the caller's again.
+        def kept(a):
+            a.promise_made()
+            a.note("request", "Landslide")
+
+        self.assertTrue(self._run(kept))
+
+    def test_a_promise_never_kept_does_not_buy_silence_for_ever(self):
+        import time
+
+        from call.actions import CallActions
+
+        a = CallActions(9)
+        a.promised_at = time.time() - (CallActions.PROMISE_PATIENCE_SECS + 1)
+        self.assertFalse(a.caller_is_waiting_on_us())
+
+
 class TestTheCheckInDoesNotTalkOverTheCaller(unittest.TestCase):
     """"Still with me?" arriving on top of the caller's answer.
 
@@ -632,7 +710,13 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsWorking(unittest.TestCase):
                 replies.append({"say": a})
 
         ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
-        actions = types.SimpleNamespace(is_working=lambda: working)
+        # Mirrors CallActions on both questions. A double carrying only
+        # is_working stopped matching the interface at 0.97.15, and the way it
+        # failed is worth remembering: the missing attribute raised inside the
+        # watch loop, the task died, and the check-in went silent for the whole
+        # call with nothing saying so.
+        actions = types.SimpleNamespace(is_working=lambda: working,
+                                        caller_is_waiting_on_us=lambda: working)
 
         async def go():
             lifecycle.attach_idle_watch(

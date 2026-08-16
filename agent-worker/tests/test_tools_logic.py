@@ -759,3 +759,66 @@ class TestOnlyThisDJsSegmentsCanBeRun(unittest.TestCase):
 
         self.assertEqual(station.ran, [])
         self.assertIn("no segments to run", out)
+
+
+class TestOneRequestCannotTakeTwoQueueSlots(unittest.TestCase):
+    """Four queue entries for two records, on a real call.
+
+    20260816: both went in at 84s as ONE PARALLEL GROUP, and only the first
+    call of such a group is signed on Gemini — the rest replay as plain text,
+    so the model lost its own receipts, said "I didn't actually lock those in
+    — my mistake!", and the promise guard pushed it to redo the lot. Positions
+    3 and 4, then 5 and 6.
+
+    Guarded at the TOOL because the cause does not matter: a lost receipt, a
+    nudge that fired twice and a caller who repeats themselves all arrive here.
+    """
+
+    def _tool(self, actions=None):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            def __init__(self):
+                self.queued = []
+
+            async def queue_track(self, track):
+                self.queued.append(track.get("id"))
+                return {"ok": True, "queuePosition": len(self.queued) + 2}
+
+        st = _Station()
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools(
+                {"allow_exact_queue": True}, st, actions or CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        tool = next((t for t in tools
+                     if t.info.name == "subwave_queue_track"), None)
+        return st, tool
+
+    def test_the_same_track_twice_only_lands_once(self):
+        st, tool = self._tool()
+        self.assertIn("in the queue",
+                      asyncio.run(tool(id="JGUH6", title="Murder on the Dancefloor")))
+        second = asyncio.run(tool(id="JGUH6", title="Murder on the Dancefloor"))
+        self.assertEqual(st.queued, ["JGUH6"], "the record took a second slot")
+        self.assertIn("ALREADY in the queue", second)
+        # And the DJ is told not to say "right, THAT time it went in" — which
+        # is what it said on the call, and it was untrue both times.
+        self.assertIn("Don't queue it again", second)
+        self.assertIn("still waiting its turn", second)
+        # A DIFFERENT record is unaffected.
+        asyncio.run(tool(id="sUpwE", title="Classical Gas (live)"))
+        self.assertEqual(st.queued, ["JGUH6", "sUpwE"])
+
+    def test_a_repeat_does_not_spend_the_callers_action_limit(self):
+        from call.actions import CallActions
+
+        actions = CallActions(9)
+        st, tool = self._tool(actions)
+        asyncio.run(tool(id="JGUH6", title="Murder on the Dancefloor"))
+        asyncio.run(tool(id="JGUH6", title="Murder on the Dancefloor"))
+        self.assertEqual(actions.count, 1)

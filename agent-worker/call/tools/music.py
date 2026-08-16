@@ -282,6 +282,27 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             they get that recording rather than a re-match."""
             if actions.at_limit():
                 return actions.refusal()
+            # ALREADY IN, FROM THIS CALL? Then say so instead of adding it
+            # twice. On 2026-08-16 a caller got four queue slots for two
+            # records: both went in at 84s as one parallel group, the model
+            # lost the receipts (only the first call of a parallel group is
+            # signed on Gemini, so the rest replay as plain text), the DJ said
+            # "I didn't actually lock those in — my mistake!", and the promise
+            # guard helpfully pushed it to do the whole thing again. Positions
+            # 3 and 4, then 5 and 6, for the same two songs.
+            #
+            # Guarded HERE rather than in the guard or the prompt because the
+            # cause does not matter: a model that lost its receipt, a nudge
+            # that fired twice, and a caller who repeats themselves all arrive
+            # at this same line, and none of them should cost a second slot.
+            if str(id) in getattr(actions, "queued_ids", ()):
+                return (
+                    f"\"{title}\" is ALREADY in the queue from earlier in this "
+                    "call — nothing further has been added, and nothing needs "
+                    "to be. Don't queue it again or tell them it has just gone "
+                    "in: if they are asking, tell them it is still waiting its "
+                    "turn."
+                )
             res = await station.queue_track(
                 {"id": id, "title": title, "artist": artist}
             )
@@ -291,6 +312,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     f"{res.get('error') or 'the station refused it'}. "
                     "Tell the caller plainly — do not claim it worked."
                 )
+            actions.queued_ids.add(str(id))
             actions.note("request", _fmt_track({"title": title, "artist": artist}))
             return (
                 f"\"{title}\" is in the queue — the exact recording they picked. It "

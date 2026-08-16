@@ -166,6 +166,13 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         if not kind:
             return
         state["nudged"] = True
+        # The caller is now waiting on US, and the idle clock has to know it.
+        # It reads `working_until`, which only covers a tool in flight — and
+        # the whole point of this branch is that no tool ran. Without this the
+        # DJ says "I'm digging through the crates", digs nothing, and asks
+        # "Still with me?" (2026-08-16, twice in one evening).
+        if actions is not None:
+            actions.promise_made()
         log.info("%s with no tool call — nudging: %s", kind, text[:80])
         if record:
             record.problem(_PROBLEM[kind])

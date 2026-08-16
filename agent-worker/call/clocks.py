@@ -145,7 +145,17 @@ def attach_idle_watch(
             # is waiting on US; asking whether THEY are still there is exactly
             # backwards, and it happened on a real call (a Zeppelin request
             # that took a while to resolve, then "are you still there?").
-            if actions is not None and actions.is_working():
+            #
+            # Widened 0.97.15 from "a tool is in flight" to "the ball is in our
+            # court", because the narrower test kept being right and useless:
+            # the DJ says "I'm digging through the crates now", runs nothing,
+            # and asks "Still with me?" eighteen seconds later. No tool was in
+            # flight, so is_working() was correctly False both times it
+            # happened on 2026-08-16. A promise the DJ has not kept is still
+            # the DJ's turn, and the promise guard is already nudging it to
+            # act — a check-in on top of that asks the caller to answer for a
+            # silence two of our own mechanisms are busy causing.
+            if actions is not None and actions.caller_is_waiting_on_us():
                 state["last_words"] = time.time()
                 continue
             # THE WINDOW IS THE SETTING. It used to triple when the DJ's last
