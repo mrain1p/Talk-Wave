@@ -169,7 +169,10 @@ def _registration_due() -> bool:
     """
     station = settings_store.station_base_url()
     if _hook_state.get("registered") and _hook_state.get("station") == station:
-        return False
+        # …unless the station is pushing with a header we cannot verify, which
+        # is a registration that succeeded and achieved nothing. Being due is
+        # what gets the row re-keyed; see _mis_keyed.
+        return _mis_keyed()
     if _hook_state.get("station") not in ("", station):
         # A different station is a different question, so a previous refusal
         # does not carry over to it.
@@ -177,6 +180,18 @@ def _registration_due() -> bool:
         _hook_state.pop("gave_up", None)
         _hook_state.pop("attempts", None)
     return not _hook_state.get("gave_up")
+
+
+def _mis_keyed() -> bool:
+    """Whether the station is pushing with a header we cannot verify.
+
+    Rejections climbing while NOTHING has ever been accepted is the one
+    signature that separates "the row is wrong" from "the station is quiet":
+    a healthy row produces received > 0, and a station that never pushes
+    produces neither. One accepted push is enough to prove the key is right,
+    so this can only fire while `received` is still zero.
+    """
+    return bool(_hook_state.get("rejected")) and not _hook_state.get("received")
 
 
 def _stand_down(detail: str, *, permanent: bool) -> None:
@@ -282,6 +297,21 @@ async def register_station_webhook() -> None:
             if not desired.get("authHeader"):
                 minted = _load_hook_secret() or _mint_hook_secret()
                 desired["authHeader"] = minted
+            elif desired["id"] == HOOK_ID and _mis_keyed():
+                # THE ROW LOOKS PERFECT AND NOTHING GETS IN. The station
+                # redacts the stored header on read, so a row whose secret has
+                # drifted from ours is indistinguishable from a correct one —
+                # every field matches, the settled check below returns
+                # "registered", and every push is turned away for ever. Found
+                # on the operator's box 2026-08-16: 59 rejections, zero
+                # received, `registered: true`, and nothing anywhere able to
+                # notice. The receiver's own counters are the only evidence
+                # that exists, so they are what re-keys it.
+                minted = _mint_hook_secret()
+                desired["authHeader"] = minted
+                log.warning("the station's pushes are being rejected (%d of "
+                            "them, none accepted) — re-keying our webhook row",
+                            _hook_state.get("rejected", 0))
             elif desired["id"] == HOOK_ID and not _load_hook_secret():
                 # The row carries a header we no longer hold the secret for —
                 # a data/ recreated without its volume. The row is ours (we
@@ -327,6 +357,10 @@ async def register_station_webhook() -> None:
             # demanding a header the station never agreed to send.
             if minted:
                 _store_hook_secret(minted)
+                # The rejection count belongs to the OLD key. Left standing it
+                # would re-key the row on every warm tick for ever, since
+                # `received` only moves when a push actually lands.
+                _hook_state.pop("rejected", None)
             _hook_state.update(registered=True, station=station,
                                events=desired["events"],
                                detail=_settled_detail(desired))
@@ -465,14 +499,24 @@ async def keep_station_warm(app: web.Application) -> None:
                         log.debug("warm ping got no answer from the station")
                 finally:
                     await station.aclose()
-                # Registration was previously attempted exactly once at
-                # startup — a station that was down at that moment, or admin
-                # credentials added later, left it unregistered until a
-                # restart. Piggyback on the warm tick until it sticks.
-                if _registration_due():
-                    await register_station_webhook()
             except Exception as e:
                 log.debug("warm ping failed: %s", describe(e))
+            # Registration was previously attempted exactly once at startup —
+            # a station that was down at that moment, or admin credentials
+            # added later, left it unregistered until a restart. Piggyback on
+            # the warm tick until it sticks.
+            #
+            # OUTSIDE the ping's try, deliberately. It used to sit after
+            # live_dj() inside it, so a station that did not answer the ping
+            # took the retry down with it — and "the station was down a moment
+            # ago" is the entire situation this retry exists for. Talk Wave
+            # starting before SUB/WAVE does exactly that, every time they come
+            # up together (2026-08-16, 01:32:54).
+            try:
+                if _registration_due():
+                    await register_station_webhook()
+            except Exception as e:                            # noqa: BLE001
+                log.debug("registration retry failed: %s", describe(e))
             await asyncio.sleep(interval)
 
     task = asyncio.create_task(loop())

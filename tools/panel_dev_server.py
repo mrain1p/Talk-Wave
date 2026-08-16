@@ -425,6 +425,18 @@ class Handler(BaseHTTPRequestHandler):
             ]})
         if path == "/calls":
             return self._json({"calls": CALLS})
+        # The webhook health the dashboard reads on load. Fixed as the FAULT
+        # (rejections, nothing accepted), because the healthy shape shows
+        # nothing and a stub that only reproduces the invisible state cannot
+        # be used to look at the row that reports it.
+        if path == "/hooks/recent":
+            return self._json({"registered": {
+                "registered": True, "id": "talk_wave",
+                "url": "http://192.0.2.7:8100/hooks/station",
+                "station": "http://192.0.2.7:7700/api",
+                "events": ["voice.queued", "voice.start", "voice.end"],
+                "received": 0, "rejected": 14, "detail": "registered",
+            }, "events": []})
         if path == "/stats/listeners":
             return self._json({"samples": LISTENERS, "intervalSecs": 600})
         if path == "/logs":

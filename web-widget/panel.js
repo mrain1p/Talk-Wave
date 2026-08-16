@@ -1087,7 +1087,7 @@
                      + 'leaves no record to read back' });
     }
 
-    return items.concat(callHealthNeeds());
+    return items.concat(hookNeeds(), callHealthNeeds());
   }
 
   // What the last few calls actually did. The records already carried all of
@@ -1107,6 +1107,42 @@
       recentCalls = [];    // never let this break the dashboard
     }
     paintNeeds();
+  }
+
+  // What the station's pushes are doing. One cheap admin read on load, for
+  // the one fault nothing on this page could see: the webhook row can look
+  // perfect at the station and still be keyed to a secret this box does not
+  // hold, and then every push is turned away. Found on the operator's own
+  // deployment 2026-08-16 — 59 rejections, none accepted, the panel showing
+  // "registered", and the only reason anyone noticed was reading logs for
+  // something else.
+  let hookState = null;
+
+  async function loadHookHealth() {
+    try {
+      const d = await afetch('/hooks/recent').then((r) => r.json());
+      hookState = (d && d.registered) || null;
+    } catch (e) {
+      hookState = null;              // never let this break the dashboard
+    }
+    paintNeeds();
+  }
+
+  function hookNeeds() {
+    if (!hookState) return [];
+    const turned = Number(hookState.rejected || 0);
+    const got = Number(hookState.received || 0);
+    if (!turned || got) return [];
+    return [{
+      page: 'diag', diag: 'pipeline',
+      key: 'hook-rejected',
+      label: 'The station’s pushes are being turned away',
+      note: turned + ' rejected, none accepted — the webhook row at the '
+        + 'station is keyed to a secret this box does not hold, so the DJ is '
+        + 'working from the slow poll instead of what the station says. It '
+        + 're-keys itself within a minute; if this stays, run the pipeline '
+        + 'check',
+    }];
   }
 
   function callHealthNeeds() {
@@ -2437,6 +2473,7 @@
     // the dashboard must paint at its normal speed and gain these rows a
     // moment later, not wait on a disk read of forty transcripts.
     loadRecentCalls();
+    loadHookHealth();
   }
 
   // The build number is the thing every bug report is anchored to, so it may

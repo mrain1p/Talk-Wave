@@ -444,6 +444,78 @@ class TestOurPushesCarryAnAuthHeader(_StationWebhooks):
         self.assertEqual(self.hooks._load_hook_secret(), "")
 
 
+class TestARowThatLooksRightAndLetsNothingInGetsReKeyed(_StationWebhooks):
+    """A registration that succeeds and achieves nothing.
+
+    The station REDACTS the stored header on read, so a row whose secret has
+    drifted from ours reads back identical to a correct one — every field
+    matches, registration reports "settled, registered", and every push is
+    turned away for ever. Measured on the operator's deployment 2026-08-16:
+    59 rejections, zero received, `registered: true`, and nothing in the
+    system able to notice. The receiver's own counters are the only evidence
+    there is, so they are what re-keys the row.
+    """
+
+    def _drift(self, station):
+        """Register, then make the station's copy disagree with ours."""
+        self.register(station)
+        ours = self.hooks._load_hook_secret()
+        station.rows[0]["authHeader"] = "Bearer something-else-entirely"
+        return ours
+
+    def test_rejections_with_nothing_received_rewrite_the_header(self):
+        station = _FakeStation()
+        ours = self._drift(station)
+        # A push arrives carrying the station's key, not ours.
+        resp = asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "track.play"},
+            headers={"Authorization": "Bearer something-else-entirely"})))
+        self.assertEqual(resp.status, 401)
+
+        self.register(station)
+        self.assertNotEqual(self.hooks._load_hook_secret(), ours,
+                            "the row was left keyed to a secret we don't hold")
+        self.assertEqual(station.rows[0].get("authHeader"),
+                         self.hooks._load_hook_secret(),
+                         "the station and this box still disagree")
+
+    def test_the_rekey_is_due_even_though_it_says_registered(self):
+        # The warm tick is what runs it, and that asks _registration_due —
+        # which used to answer False the moment `registered` was true, which
+        # is exactly the state this fault lives in.
+        station = _FakeStation()
+        self._drift(station)
+        self.assertFalse(self.hooks._registration_due(),
+                         "a settled row with no traffic is not due")
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))
+        self.assertTrue(self.hooks._registration_due(),
+                        "rejections with nothing received must re-arm it")
+
+    def test_one_accepted_push_settles_it_for_good(self):
+        # The counters are "has ANYTHING ever got in", not a rate: a row that
+        # is working and then sees a stray bad push must not re-key itself.
+        self.register(_FakeStation())
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "track.play"},
+            headers={"Authorization": self.hooks._load_hook_secret()})))
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))     # rejected
+        self.assertFalse(self.hooks._mis_keyed())
+        self.assertFalse(self.hooks._registration_due())
+
+    def test_a_successful_rekey_forgets_the_old_rejections(self):
+        # Left standing, the count would re-key the row on every warm tick for
+        # ever — `received` only moves when a push actually lands.
+        station = _FakeStation()
+        self._drift(station)
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))
+        self.register(station)
+        self.assertFalse(self.hooks._mis_keyed())
+        self.assertFalse(self.hooks._hook_state.get("rejected"))
+
+
 class TestStaleLookalikeRowsAreSurfacedNotDeleted(_StationWebhooks):
     """Observed live (2026-08-11): four rows on one station all pointing at a
     /hooks/station path — a Docker-internal address minted before

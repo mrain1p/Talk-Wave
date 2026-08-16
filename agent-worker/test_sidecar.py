@@ -288,6 +288,7 @@ from tests.test_webhooks import (  # noqa: F401
     TestOurPushesCarryAnAuthHeader,
     TestOurWebhookRowKeepsItsIdentity,
     TestPointingAtANewStationRegistersAgain,
+    TestARowThatLooksRightAndLetsNothingInGetsReKeyed,
     TestStaleLookalikeRowsAreSurfacedNotDeleted,
     TestTheRegistrationShapeIsTheOneTheStationReads,
     TestTheRenameDoesNotOrphanTheOldRow,
