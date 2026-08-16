@@ -390,12 +390,29 @@
     const median = sorted.length % 2
       ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     const max = Math.max(...sorted);
+    // THE SCALE, printed against the plot. Every bar carried its seconds in a
+    // title attribute and nowhere else, so the only way to read the chart was
+    // to hover it one bar at a time (operator's ask). Two numbers make the
+    // shape mean something: the ceiling it is drawn against, and the median
+    // the caption already quotes — as a line, so a bar's height can be read
+    // against it at a glance.
+    const medPct = max > 0 ? Math.round((median / max) * 100) : 0;
+    // Not when they are within a few per cent of each other: two labels on
+    // top of one another is worse than the one that carries the ceiling.
+    const medFits = medPct > 12 && medPct < 84;
     $('ttfwChart').innerHTML =
       '<div class="actbars">' + rows.map((r) =>
         // Twice the median is where "one slow call" becomes worth a colour.
         '<span class="actbar' + (r.secs > median * 2 ? ' bad' : '')
         + '" style="height:' + Math.max(6, Math.round((r.secs / max) * 100))
         + '%" title="' + r.secs.toFixed(1) + 's"></span>').join('')
+      + (medFits
+        ? '<span class="actmedline" style="bottom:' + medPct + '%"></span>'
+          + '<span class="actmed" style="bottom:' + medPct + '%">'
+          + esc(median.toFixed(1)) + 's</span>'
+        : '')
+      + '<span class="actmax">' + esc(max.toFixed(1)) + 's</span>'
+      + '<span class="actmin">0s</span>'
       + '</div>'
       // "oldest → latest" named the direction and nothing else: no when, no
       // how long, on a chart whose whole subject is seconds. The ends now

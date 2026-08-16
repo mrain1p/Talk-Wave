@@ -4427,18 +4427,23 @@
     font-style: normal; font-size: 11px; color: var(--sage);
     text-align: right;
   }
-  body.panelpage .actbody { min-height: 64px; }
+  body.panelpage .actbody { min-height: 86px; }
   /* Centred in the frame at the height a drawn chart would occupy, so an
      empty card sits level with a full one beside it. */
   body.panelpage .actempty {
     margin: 0; color: var(--sage-dim); font-size: 12px;
     display: grid; place-items: center; text-align: center;
-    min-height: 90px; padding: 0 18px;
+    min-height: 112px; padding: 0 18px;
   }
   /* Bars: flat rects over a 1px baseline; clean buckets neutral ink,
      buckets holding a failure coral. */
+  /* 96, not 74 (operator's ask): four framed cards in a 2x2 grid, and the
+     drawn part of each was barely two thirds of its own frame — the charts
+     read as captions with a strip under them rather than as charts. The
+     empty state and the body minimum below move with it, or an empty card
+     stops sitting level with a full one beside it. */
   body.panelpage .actbars {
-    display: flex; align-items: flex-end; gap: 2px; height: 74px;
+    display: flex; align-items: flex-end; gap: 2px; height: 96px;
     border-bottom: 1px solid var(--edge);
   }
   body.panelpage .actbar {
@@ -4477,7 +4482,7 @@
   /* What the line did: a ranked row per tool. A bar chart over eight
      categories with long names is unreadable at this width; a list with the
      bar as a rule behind it is not. */
-  body.panelpage .toolrows { display: flex; flex-direction: column; gap: 5px; }
+  body.panelpage .toolrows { display: flex; flex-direction: column; gap: 8px; }
   body.panelpage .toolrow {
     display: grid; grid-template-columns: 74px minmax(0, 1fr) 26px;
     gap: 8px; align-items: center;
@@ -4488,7 +4493,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   body.panelpage .toolrow .tbar {
-    height: 9px; background: color-mix(in srgb, var(--edge) 60%, transparent);
+    height: 11px; background: color-mix(in srgb, var(--edge) 60%, transparent);
   }
   body.panelpage .toolrow .tbar i {
     display: block; height: 100%; background: var(--coral);
@@ -4496,6 +4501,30 @@
   body.panelpage .toolrow .tn {
     font: 700 10px/1 var(--font-mono); color: var(--alpenglow);
     text-align: right;
+  }
+  /* A CHART THAT CANNOT BE READ WITHOUT A MOUSE IS NOT A CHART. Time to first
+     word drew eleven bars whose seconds existed only in a title attribute, so
+     the operator had to hover each one in turn to find out what they were
+     looking at. The ceiling, the floor and the median are printed against the
+     plot now — the median as a line as well as a number, because "is this bar
+     above or below typical" is the question the chart is for.
+     Absolutely placed, which also keeps them OUT of the bars' flex flow: an
+     ordinary span in there would be handed a flex share and drawn as a
+     twelfth bar. */
+  body.panelpage .actmax,
+  body.panelpage .actmin,
+  body.panelpage .actmed {
+    position: absolute; right: 0; padding-left: 5px;
+    font: 700 8px/1 var(--font-mono); letter-spacing: .04em;
+    color: var(--sage-dim); background: var(--panel); pointer-events: none;
+  }
+  body.panelpage .actmax { top: 0; }
+  body.panelpage .actmin { bottom: 0; }
+  /* Centred ON the line rather than sitting above it. */
+  body.panelpage .actmed { transform: translateY(50%); color: var(--sage); }
+  body.panelpage .actmedline {
+    position: absolute; left: 0; right: 0; height: 0;
+    border-top: 1px dashed var(--edge); pointer-events: none;
   }
   /* The listener curve needs a scale. It had none: a shape, and one number
      in the caption. The floor and the peak are printed against the plot, and
