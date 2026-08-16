@@ -278,6 +278,11 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     })
     # Saturates at the deque's length, so it cannot be counted from the list.
     _hook_state["received"] = _hook_state.get("received", 0) + 1
+    # `rejected` is a RUN — refusals since the last push that got in — not a
+    # lifetime total. That is what lets hooks._mis_keyed notice a key that
+    # breaks after a period of working, instead of going blind for good the
+    # moment one push lands.
+    _hook_state.pop("rejected", None)
     log.info("station webhook: %s", event)
 
     # The worker's on-air guard anchors its hold on this file. VERIFIED

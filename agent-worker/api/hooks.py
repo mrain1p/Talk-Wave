@@ -182,16 +182,42 @@ def _registration_due() -> bool:
     return not _hook_state.get("gave_up")
 
 
+# A run of refusals this long, with nothing getting in between them, is a
+# broken key rather than a stray probe. Only reached by a row that WAS working:
+# the never-worked case is caught by `received == 0` on the first refusal.
+_BREAK_RUN = 10
+# …and no more than one re-key per this, so a device on the LAN poking the
+# receiver cannot make us rewrite the station's row in a loop.
+_REKEY_COOLDOWN = 600.0
+
+
 def _mis_keyed() -> bool:
     """Whether the station is pushing with a header we cannot verify.
 
-    Rejections climbing while NOTHING has ever been accepted is the one
-    signature that separates "the row is wrong" from "the station is quiet":
-    a healthy row produces received > 0, and a station that never pushes
-    produces neither. One accepted push is enough to prove the key is right,
-    so this can only fire while `received` is still zero.
+    Two shapes, and the second was missing until the audit that followed the
+    first being fixed.
+
+    NEVER WORKED: rejections while NOTHING has ever been accepted. That is the
+    signature that separates "the row is wrong" from "the station is quiet" —
+    a healthy row produces received > 0, a silent station produces neither.
+    This is the one measured on the operator's box: 59 refusals, none accepted.
+
+    WORKED, THEN BROKE: a run of refusals since the last accepted push. The
+    first rule goes blind the moment one push lands, so a key that drifted
+    later — the station's store rebuilt, a row edited by hand — would have sat
+    broken for ever with `received` frozen at whatever it reached first. The
+    run resets on every accepted push, so this can only fire when the traffic
+    really has stopped getting in.
     """
-    return bool(_hook_state.get("rejected")) and not _hook_state.get("received")
+    run = int(_hook_state.get("rejected") or 0)
+    if not run:
+        return False
+    if not _hook_state.get("received"):
+        return True
+    if run < _BREAK_RUN:
+        return False
+    last = float(_hook_state.get("rekeyed_at") or 0)
+    return (time.time() - last) > _REKEY_COOLDOWN
 
 
 def _stand_down(detail: str, *, permanent: bool) -> None:
@@ -294,6 +320,12 @@ async def register_station_webhook() -> None:
             # — the receiver just can't verify that one, which is the open
             # behaviour it always had.
             minted = ""
+            # Whether this write is a RE-key rather than a first registration.
+            # The cooldown belongs only to the former: stamping it on every
+            # minted header made a fresh registration look like a re-key that
+            # had just happened, and the next genuine break was ignored for ten
+            # minutes (caught by the test below, not on a box).
+            rekeying = False
             if not desired.get("authHeader"):
                 minted = _load_hook_secret() or _mint_hook_secret()
                 desired["authHeader"] = minted
@@ -309,6 +341,7 @@ async def register_station_webhook() -> None:
                 # that exists, so they are what re-keys it.
                 minted = _mint_hook_secret()
                 desired["authHeader"] = minted
+                rekeying = True
                 log.warning("the station's pushes are being rejected (%d of "
                             "them, none accepted) — re-keying our webhook row",
                             _hook_state.get("rejected", 0))
@@ -361,6 +394,8 @@ async def register_station_webhook() -> None:
                 # would re-key the row on every warm tick for ever, since
                 # `received` only moves when a push actually lands.
                 _hook_state.pop("rejected", None)
+                if rekeying:
+                    _hook_state["rekeyed_at"] = time.time()
             _hook_state.update(registered=True, station=station,
                                events=desired["events"],
                                detail=_settled_detail(desired))

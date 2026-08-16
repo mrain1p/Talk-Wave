@@ -504,6 +504,41 @@ class TestARowThatLooksRightAndLetsNothingInGetsReKeyed(_StationWebhooks):
         self.assertFalse(self.hooks._mis_keyed())
         self.assertFalse(self.hooks._registration_due())
 
+    def test_a_key_that_breaks_AFTER_working_is_still_caught(self):
+        """The half the first fix missed, found by auditing it.
+
+        "Nothing has ever been accepted" goes blind the moment one push lands,
+        so a key that drifted later — the station's store rebuilt, a row edited
+        by hand — would sit broken for ever with `received` frozen at whatever
+        it reached first. `rejected` is a RUN since the last accepted push, so
+        a genuine break still shows.
+        """
+        station = _FakeStation()
+        self.register(station)
+        good = {"Authorization": self.hooks._load_hook_secret()}
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"}, headers=good)))
+        self.assertFalse(self.hooks._mis_keyed(), "a working row is not broken")
+
+        # …and now the station's copy drifts.
+        station.rows[0]["authHeader"] = "Bearer no-longer-ours"
+        for _ in range(self.hooks._BREAK_RUN):
+            asyncio.run(self.hooks.handle_station_hook(
+                _FakeHookRequest({"event": "track.play"})))
+        self.assertTrue(self.hooks._mis_keyed(),
+                        "a row that stopped letting anything in went unnoticed")
+
+    def test_one_stray_probe_does_not_rewrite_the_row(self):
+        # Anything on the LAN can POST to the receiver. A single refusal after
+        # a working period must not make us rewrite the station's config.
+        self.register(_FakeStation())
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "track.play"},
+            headers={"Authorization": self.hooks._load_hook_secret()})))
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))
+        self.assertFalse(self.hooks._mis_keyed())
+
     def test_a_successful_rekey_forgets_the_old_rejections(self):
         # Left standing, the count would re-key the row on every warm tick for
         # ever — `received` only moves when a push actually lands.

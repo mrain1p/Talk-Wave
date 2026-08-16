@@ -171,6 +171,56 @@ class TestDiagnosticsResultsKeepTheirScrollSkin(unittest.TestCase):
             "a viewer result box loses its scroll skin on rewrite: %r" % missing)
 
 
+class TestEveryNotificationLeadsSomewhereReal(unittest.TestCase):
+    """A notification names where its fix is. Twice it named the wrong place.
+
+    "7 of the last 8 calls heard nothing" was filed under the `onair` group, so
+    the pin lit ON-AIR DUCKING and the operator asked why ducking was being
+    flagged — it never was. The hand-over notice declared page `safety` for a
+    section that lives under Calls, so it pinned a chip the section is not on.
+    Both were found by an operator clicking them, because nothing checked that
+    an item's page and group agree with the schema they claim to point into.
+
+    Read off panel.js's source rather than executed: the whole point is to
+    catch a pair that no longer resolves, and a running panel would need every
+    fault condition staged to render one.
+    """
+
+    def setUp(self):
+        import re
+
+        self.src = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        # `page: 'x', group: 'y'` — the only shape these are declared in.
+        self.pairs = re.findall(r"page: '([a-z]+)', group: '([a-z]+)'", self.src)
+        self.diags = re.findall(r"page: '([a-z]+)', diag: '([a-z]+)'", self.src)
+
+    def test_every_group_is_a_real_section_on_the_page_it_names(self):
+        import settings as settings_store
+
+        where = {g: sup for g, sup, _t, _b in settings_store.GROUPS}
+        self.assertTrue(self.pairs, "no notification jumps found to check")
+        for page, group in self.pairs:
+            with self.subTest(page=page, group=group):
+                self.assertIn(group, where,
+                              "notification points at a section that does not exist")
+                self.assertEqual(
+                    where[group], page,
+                    "%s lives under %r, but the notification says page %r — the "
+                    "picker will pin the wrong chip" % (group, where[group], page))
+
+    def test_every_diag_target_is_a_real_viewer(self):
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        import re
+
+        viewers = set(re.findall(r'data-diag="([^"]+)"', html))
+        for page, diag in self.diags:
+            with self.subTest(diag=diag):
+                self.assertEqual(page, "diag",
+                                 "a diagnostics viewer is only on the diag page")
+                self.assertIn(diag, viewers,
+                              "no such viewer in panel.html")
+
+
 class TestPanelMarkup(unittest.TestCase):
     """The panel builds itself from the schema, but it can only fill in a
     control the markup actually contains — `byKind` skips any field with no

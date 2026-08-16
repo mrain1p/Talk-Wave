@@ -77,6 +77,7 @@ from tests.test_widget import (  # noqa: F401
     TestThumbsArePerDoor,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
+    TestEveryNotificationLeadsSomewhereReal,
     TestPanelMarkup,
     TestPushToTalkIsPerSurfaceAndOnByDefault,
     TestSigningInClimbsTheTier,
