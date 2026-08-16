@@ -218,6 +218,45 @@ class TestTheDoorDecidesTheTier(_TempStores):
         self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "guest")
         self.assertEqual(self._tier(**{"X-Call-Key": "hunter2hunter2"}), "admin")
 
+    def test_the_two_switches_are_independent(self):
+        """ANYONE and GUEST CODE are two decisions, not one choice.
+
+        The operator, 2026-08-16: "guest can be on and anyone can be off or
+        vice versa". All four combinations are real, and three of them share a
+        door value — what tells those apart is `guest_tier`, which exists so
+        that switching the guest pathway off does not mean deleting a code the
+        operator wants to keep.
+        """
+        code = {"X-Call-Key": "letmein"}
+
+        # anyone ON, guest ON — a stranger rings through, a code makes a guest.
+        settings_store.save({"front_access": "open", "guest_tier": True})
+        self.assertEqual(self._tier(), "open")
+        self.assertEqual(self._tier(**code), "guest")
+
+        # anyone ON, guest OFF — the line is open and the stored code is inert.
+        settings_store.save({"front_access": "open", "guest_tier": False})
+        self.assertEqual(self._tier(), "open")
+        self.assertEqual(self._tier(**code), "open",
+                         "the code elevated with the guest tier switched off")
+
+        # anyone OFF, guest ON — the code is the only way in, and it is a tier.
+        settings_store.save({"front_access": "guest", "guest_tier": True})
+        self.assertEqual(self._tier(**code), "guest")
+
+        # anyone OFF, guest OFF — nobody under admin at all.
+        settings_store.save({"front_access": "admin", "guest_tier": False})
+        self.assertEqual(self._tier(**code), "open")
+        self.assertEqual(self._tier(**{"X-Call-Key": "hunter2hunter2"}), "admin")
+
+    def test_a_code_gated_door_is_itself_the_guest_tier(self):
+        # Everyone inside typed the code, so classing them as strangers would
+        # be incoherent whatever the switch says — only a hand-edited file can
+        # reach this pair, and it must not produce a caller who typed the code
+        # and is treated as one who did not.
+        settings_store.save({"front_access": "guest", "guest_tier": False})
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "guest")
+
     def test_no_code_set_means_no_guest_tier(self):
         # How the guest pathway is switched off: there is no code. Without
         # this an operator with no code could still tick Guest on a permission

@@ -410,6 +410,18 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # question with day-shaped answers. 0 = until Sign out.
     "guest_session_hours": (None, 24),
     "front_access":     (None, "admin"),
+    # Whether a stored guest code ELEVATES whoever types it. Separate from the
+    # door on purpose: "anyone can ring" and "code-holders are their own tier"
+    # are two switches an operator sets independently, and inferring the second
+    # from whether a code happens to exist meant the only way to turn the guest
+    # pathway off was to delete the code (the operator's ask at 0.10.66, and
+    # again on 2026-08-16 in the other direction — "guest can be on and anyone
+    # can be off or vice versa").
+    #
+    # Defaults ON so an upgrade changes nothing: a deployment with a code set
+    # keeps elevating it exactly as it did before this existed. It is not a
+    # power being handed out — the code already opened that tier.
+    "guest_tier":       (None, True),
 
     # --- the widget itself, as a caller sees it --------------------------
     # A caller staring at one button has no idea a phone-in can do anything
@@ -1104,13 +1116,19 @@ SCHEMA: dict[str, dict] = {
         label="Call-in access",
         help="This is the PHONE — who may ring at all. What a caller may DO "
              "once through is separate and per-tier, feature by feature, "
-             "under Caller permissions. Open and Guest code are one choice "
-             "apiece for the DOOR: an open line needs no code to ring, a "
-             "code-gated line is closed to strangers. A guest code you have "
-             "set still elevates whoever types it either way, so an open line "
-             "can run all three tiers at once — strangers, code-holders and "
-             "you. The admin password opens the phone and the panel in every "
-             "mode."),
+             "under Caller permissions. ANYONE and GUEST CODE are independent: "
+             "tick both and strangers ring straight through while whoever "
+             "types the code becomes their own tier with their own "
+             "permissions; tick Guest code alone and the line is closed to "
+             "strangers; tick neither and the phone is closed to callers. The "
+             "admin password opens the phone and the panel in every "
+             "combination."),
+    "guest_tier": dict(group="security", kind="check",
+        label="Guest code tier",
+        help="Whether a code you have set elevates the caller who types it. "
+             "Off leaves the code stored but inert, which is how the guest "
+             "pathway is switched off without deleting a code you want to "
+             "keep."),
     # --- player settings: what the card shows, per surface ----------------
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels

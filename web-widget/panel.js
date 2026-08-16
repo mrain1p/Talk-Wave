@@ -3064,7 +3064,13 @@
     // now coexist: strangers, code-holders, and the operator. Admin-only is
     // the exception, because nobody arrives under admin there at all.
     if (tier === 'guest') {
-      return guestConfigured && access !== 'admin';
+      // The same three-part rule as auth.caller_tier: a code to type, a door
+      // that admits somebody under admin, and — on an OPEN line only — the
+      // guest tier switched on. A code-gated door is itself the tier.
+      const tierOn = $('guest_tier') ? $('guest_tier').checked
+                                     : resolved.guest_tier !== false;
+      if (!guestConfigured || access === 'admin') return false;
+      return access === 'guest' || tierOn;
     }
     // `open` callers only exist while the line lets somebody in without a
     // code. On auto that is "until a guest code is set".
@@ -3079,6 +3085,10 @@
     if (tier === 'guest' && access !== 'admin' && !guestConfigured) {
       return 'No guest code set — nobody can be this caller yet. Set one under '
         + 'Access and code-holders become their own tier, open line or not.';
+    }
+    if (tier === 'guest' && access === 'open') {
+      return 'The guest tier is switched off, so a code you have set does not '
+        + 'elevate anyone. Tick GUEST CODE under Access to turn it back on.';
     }
     if (tier === 'open' && access === 'guest') {
       return 'The line is code-gated, so nobody arrives without a code — there '
@@ -3097,42 +3107,57 @@
   // the kill switch drives calls_paused — so Save and the schema never learn
   // a new shape.
   const ACCESS_CELLS = [
-    ['open', 'Anyone', 'No code needed to ring. A guest code, if you set one, still elevates whoever types it.'],
-    ['guest', 'Guest code', 'Only callers who type the code you share. Nobody without it gets in.'],
-    ['admin', 'Admin only', 'The phone is closed to callers. Your admin password still opens it.'],
+    ['open', 'Anyone', 'Strangers can ring with no code at all.'],
+    ['guest', 'Guest code', 'A code you set makes whoever types it their own tier, with its own permissions. Tick this WITHOUT Anyone and the code becomes the only way in.'],
+    ['admin', 'Admin', 'Always in — your admin password opens the phone and this panel whatever else is set.'],
   ];
+
+  // The two ticks -> the two stored fields. Kept in one place because the
+  // mapping is the whole feature: three of the four combinations share a door
+  // value and are told apart by the tier switch.
+  function writeAccess() {
+    const wrap = $('accessCells');
+    const box = (m) => wrap.querySelector('input[data-mode="' + m + '"]');
+    const anyone = !!(box('open') && box('open').checked);
+    const guest = !!(box('guest') && box('guest').checked);
+    const sel = $('front_access');
+    const tier = $('guest_tier');
+    sel.value = anyone ? 'open' : guest ? 'guest' : 'admin';
+    // On a code-gated line the tier is the door, so it rides with it; on an
+    // open line it is the operator's own choice; with neither ticked there is
+    // no caller under admin to be a guest.
+    tier.checked = guest;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    tier.dispatchEvent(new Event('change', { bubbles: true }));
+    paintSecurity();
+  }
   function decorateAccess() {
     const wrap = $('accessCells');
     if (!wrap || wrap.dataset.built) return;
     wrap.dataset.built = '1';
-    // RADIOS, because `front_access` is ONE value with three modes. As tick
-    // boxes it read as three independent switches, so an operator who wanted
-    // strangers AND code-holders on the line saw an unticked GUEST CODE and
-    // concluded the guest tier was off — "im unable to have a guest and anyone
-    // profile […] both can be enabled! they have different permission levels
-    // each" (2026-08-16). Both CAN be live, but that is not this control's
-    // question: this is the DOOR, and the tiers it produces are printed under
-    // it by paintAccess.
+    // TWO INDEPENDENT TICKS, and admin as the one that is always in. The
+    // operator's model, stated twice: "guest can be on and anyone can be off
+    // or vice versa" (2026-08-16). All four combinations are real:
     //
-    // Admin is a real third mode (the phone closed to callers), not the
-    // permanently-ticked box it was drawn as — that conflated "admin can
-    // always get in" with "admin only", and left admin-only reachable solely
-    // by unticking the open door, which nothing said.
+    //   anyone ✓ guest ✓   strangers ring through, a code makes you a guest
+    //   anyone ✓ guest ✗   open line, the stored code is inert
+    //   anyone ✗ guest ✓   code-gated: no code, no call
+    //   anyone ✗ guest ✗   the phone is closed to callers
+    //
+    // They write TWO fields between them — the door (front_access) and
+    // whether a code elevates (guest_tier) — because three of these four
+    // collapse onto one door value and the remaining distinction is the tier.
+    // Drawn as an exclusive choice before, which is what made the operator
+    // report they could not have both.
     ACCESS_CELLS.forEach(([mode, word, why]) => {
       const cell = document.createElement('label');
       cell.className = 'acell';
       cell.title = why;
       const box = document.createElement('input');
-      box.type = 'radio';
-      box.name = 'front_access_door';
+      box.type = 'checkbox';
       box.dataset.mode = mode;
-      box.onchange = () => {
-        if (!box.checked) return;
-        const sel = $('front_access');
-        sel.value = mode;
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-        paintSecurity();
-      };
+      if (mode === 'admin') box.disabled = true;   // always in, never a choice
+      box.onchange = writeAccess;
       cell.appendChild(box);
       const w = document.createElement('span');
       w.textContent = word;
@@ -3146,11 +3171,18 @@
     if (!wrap || !sel) return;
     // `auto` is the stored value on an un-migrated install and is not one of
     // the three modes; it behaves as open-until-a-code-exists, so show it as
-    // the door it currently IS rather than leaving every radio blank.
+    // the door it currently IS rather than leaving every box blank.
     const mode = sel.value === 'auto'
       ? (guestConfigured ? 'guest' : 'open') : sel.value;
+    const tierOn = $('guest_tier') ? $('guest_tier').checked : true;
+    // Read back the pair, not the door alone: ANYONE is the door being open,
+    // GUEST CODE is the tier being live — which on a code-gated line is
+    // implied by the door and on an open line is its own switch.
+    const state = { open: mode === 'open',
+                    guest: mode === 'guest' || (mode === 'open' && tierOn),
+                    admin: true };
     wrap.querySelectorAll('input').forEach((box) => {
-      box.checked = box.dataset.mode === mode;
+      box.checked = !!state[box.dataset.mode];
     });
 
     // WHICH CALLERS THIS ACTUALLY PRODUCES — the question the door control was
@@ -3160,17 +3192,20 @@
     // operator sets what it may do.
     const out = $('accessTiers');
     if (!out) return;
+    const guestLive = state.guest && guestConfigured;
     const tiers = [];
-    if (mode === 'open') tiers.push('anyone');
-    if (guestConfigured && mode !== 'admin') tiers.push('guest');
+    if (state.open) tiers.push('anyone');
+    if (guestLive) tiers.push('guest');
     tiers.push('admin');
     const why = mode === 'admin'
       ? 'the line is closed to callers'
-      : !guestConfigured
-        ? 'set a guest code below to add a guest tier'
+      : state.guest && !guestConfigured
+        ? 'no code is set yet — use Set guest code below, or nobody can be a guest'
         : mode === 'guest'
-          ? 'no stranger can reach the line, so there is no “anyone” tier'
-          : 'all three, each with its own permissions';
+          ? 'the code is the only way in, so there is no “anyone” tier'
+          : guestLive
+            ? 'all three, each with its own permissions'
+            : 'the guest tier is off, so a code you have set stays inert';
     out.textContent = 'Callers you can get: ' + tiers.join(' · ') + ' — ' + why;
   }
 

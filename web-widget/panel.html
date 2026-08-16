@@ -395,6 +395,11 @@
           <span class="accesscells" id="accessCells"></span>
           <select id="front_access" class="fieldonly" tabindex="-1"
                   aria-hidden="true"></select>
+          <!-- The second half of the pair. ANYONE and GUEST CODE are two
+               independent ticks; between them they write the door (this
+               select) and whether a stored code elevates (this checkbox). -->
+          <input type="checkbox" id="guest_tier" class="fieldonly" tabindex="-1"
+                 aria-hidden="true" />
         </div>
         <!-- What the door above actually produces. The three cells are one
              choice (the door); the TIERS are derived from it plus whether a
