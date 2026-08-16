@@ -99,7 +99,11 @@ class AirVerdict:
         """
         d = state if state is not None else (self._pushed_state() or {})
         try:
-            at = float(d.get("at") or 0)
+            # `airedAt` is the mixer's own measurement of when the words hit
+            # the live edge; `at` is merely when the push reached us, on a
+            # different box's clock. Upstream #1390 exists to publish the
+            # first, and its own guidance is airedAt + streamBufferSeconds.
+            at = float(d.get("airedAt") or 0) or float(d.get("at") or 0)
             dur = float(d.get("durMs") or 0) / 1000.0
             buf = float(d.get("bufSecs") or 0)
         except (TypeError, ValueError):

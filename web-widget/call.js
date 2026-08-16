@@ -534,18 +534,49 @@
   // something must not be yanked back every time a word arrives. Within ~40px
   // of the bottom counts as "following", which is where you are unless you
   // went looking.
+  // Whether the caller is following the bottom. Maintained from their OWN
+  // scrolling, never measured after the fact: the slack was computed once the
+  // new line was already in the box, so anything taller than the 40px
+  // tolerance — a segment receipt, a skill card, a now-playing card — grew the
+  // content past it in one go and the check concluded the caller had scrolled
+  // away. They had not. They just had a card land, and from then on every new
+  // line arrived below the fold (operator-reported, and worst on exactly the
+  // turns that put a card up).
+  //
+  // A programmatic append fires no scroll event, so this flag survives it and
+  // still says what the caller last chose.
+  let followingLines = true;
+  function watchLineBox() {
+    const box = $('lineBox');
+    if (!box || box.dataset.followWatched) return;
+    box.dataset.followWatched = '1';
+    box.addEventListener('scroll', () => {
+      followingLines =
+        box.scrollHeight - box.scrollTop - box.clientHeight <= 40;
+    }, { passive: true });
+  }
   function followTranscript() {
     const box = $('lineBox');
     if (!box) return;
-    const slack = box.scrollHeight - box.scrollTop - box.clientHeight;
-    if (slack > 40) return;
+    watchLineBox();
+    if (!followingLines) return;
     box.scrollTop = box.scrollHeight;
+    // A card can grow after it is in the DOM — an image decoding, a font
+    // swapping, a receipt laying out — and the scroll above was measured
+    // against the height before that. One more pass on the next frame lands
+    // on the real bottom.
+    requestAnimationFrame(() => {
+      if (followingLines) box.scrollTop = box.scrollHeight;
+    });
   }
   // …and for the moments where following is the whole point (a message left, a
   // keyboard opening over the box), regardless of where they were.
   function pinTranscript() {
     const box = $('lineBox');
-    if (box) box.scrollTop = box.scrollHeight;
+    if (!box) return;
+    followingLines = true;             // an explicit pin re-arms following
+    box.scrollTop = box.scrollHeight;
+    requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
   }
 
   let room = null, muted = false, live = null;

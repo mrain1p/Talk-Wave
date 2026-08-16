@@ -702,6 +702,87 @@ class TestAVoicePushAnchorsTheAirGuard(_StationWebhooks):
                          "the clear threw the station's buffer away, and the "
                          "next call primed its lag from the 2s fallback")
 
+    def test_a_clear_keeps_the_numbers_the_caller_still_needs(self):
+        # voice.end says the station stopped at the LIVE EDGE. The caller is
+        # still hearing it for another 22 seconds, and the event ships with no
+        # durationMs and no airedAt — so the moment it lands, the guard loses
+        # every number it needs to work out when they actually stop hearing it.
+        #
+        # Room fc4bb17f63de, 2026-08-16: station spoke 20.9-31.7, the caller
+        # heard it 42.9-53.7, the hold closed at 53.1 on a word-count estimate
+        # because the floor had nothing left to measure, and the back-from-air
+        # line went out over the station's last words. That is the talk-over.
+        import time
+
+        self.register(_FakeStation())
+        auth = self.hooks._load_hook_secret()
+        aired = time.time()
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "v9", "text": "a link",
+             "durationMs": 11000, "streamBufferSeconds": 22, "airedAt": aired},
+            headers={"Authorization": auth})))
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.end", "voiceId": "v9"},
+            headers={"Authorization": auth})))
+
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertEqual("clear", d["phase"])
+        self.assertEqual(11000, d["durMs"], "the duration died with the clear")
+        self.assertAlmostEqual(aired, d["airedAt"], delta=0.5)
+
+    def test_a_clear_for_a_DIFFERENT_voice_carries_nothing_over(self):
+        # Paired by voiceId, which is what upstream minted it for. Carrying a
+        # previous utterance's length onto an unrelated one would hold the gate
+        # shut for a clip that had already finished.
+        import time
+
+        self.register(_FakeStation())
+        auth = self.hooks._load_hook_secret()
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "v1", "text": "a link",
+             "durationMs": 30000, "streamBufferSeconds": 22,
+             "airedAt": time.time()}, headers={"Authorization": auth})))
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.end", "voiceId": "v2"},
+            headers={"Authorization": auth})))
+        self.assertFalse(
+            json.loads(self.hooks._air_path().read_text()).get("durMs"))
+
+    def test_the_stations_own_air_time_is_kept_not_our_arrival_time(self):
+        # SUB/WAVE #1390 moved every speech signal off the handoff instant and
+        # onto AIR time, measured by the mixer, precisely so a consumer can
+        # sync to what listeners hear: "airedAt + streamBufferSeconds". We were
+        # stamping the moment the push reached us instead — handoff plus the
+        # network plus our own queue, on a different machine's clock.
+        import time
+
+        self.register(_FakeStation())
+        aired = time.time() - 4.0
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "v1", "text": "a link",
+             "durationMs": 8000, "streamBufferSeconds": 22,
+             "airedAt": aired},
+            headers={"Authorization": self.hooks._load_hook_secret()})))
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertAlmostEqual(aired, d["airedAt"], delta=0.5)
+        # `at` stays OUR clock: it is compared against our own send times, and
+        # mixing two machines' clocks there trades a small error for a
+        # confusing one.
+        self.assertGreater(d["at"], d["airedAt"])
+
+    def test_an_air_time_in_millis_or_iso_is_still_understood(self):
+        # Read from another project's payload, so the shape is not ours to
+        # assume. Failing closed here would fall silently back to the arrival
+        # time this replaced.
+        from api.hook_receiver import _epoch
+
+        self.assertAlmostEqual(1786893803.0, _epoch(1786893803), delta=0.5)
+        self.assertAlmostEqual(1786893803.0, _epoch(1786893803000), delta=0.5)
+        self.assertAlmostEqual(
+            1786893803.0, _epoch("2026-08-16T15:23:23+00:00"), delta=1.0)
+        self.assertEqual(0.0, _epoch(None))
+        self.assertEqual(0.0, _epoch("not a time"))
+
     def test_a_real_reading_of_zero_is_not_overwritten_by_an_older_one(self):
         # Carrying forward must not invent a buffer for a station that really
         # reports none — only fill in where the EVENT is silent about it.

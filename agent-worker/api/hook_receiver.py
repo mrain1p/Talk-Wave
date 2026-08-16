@@ -118,6 +118,32 @@ _hook_state: dict = {
 
 
 
+def _epoch(value) -> float:
+    """A station timestamp as seconds since the epoch, or 0.0 if unusable.
+
+    Deliberately generous about the shape — epoch seconds, epoch millis, or an
+    ISO string — because the field is read from another project's payload and
+    a stricter reader would fail closed on a format change, silently, back to
+    the arrival time it was added to replace.
+    """
+    if value in (None, ""):
+        return 0.0
+    try:
+        n = float(value)
+        # Anything past ~2001 in millis is far beyond a plausible epoch-seconds
+        # date, so the magnitude tells the two apart without a format flag.
+        return n / 1000.0 if n > 1e11 else n
+    except (TypeError, ValueError):
+        pass
+    try:
+        from datetime import datetime
+
+        return datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _remember_air(event: str, body: dict) -> None:
     """Write the one entry the worker's on-air guard reads.
 
@@ -142,6 +168,20 @@ def _remember_air(event: str, body: dict) -> None:
     except (TypeError, ValueError):
         buf = 0.0
 
+    # WHEN THE WORDS ACTUALLY HIT THE LIVE EDGE, from the mixer's own clock.
+    # SUB/WAVE #1390 moved every speech signal off the handoff instant and onto
+    # air time for exactly this reason, and says what a consumer should do with
+    # it: "one syncing to what listeners hear uses airedAt + streamBufferSeconds".
+    # We were stamping our own arrival time instead — the handoff, plus the
+    # network, plus our queue, measured on a different box's clock.
+    #
+    # Kept BESIDE `at` rather than replacing it: `at` is compared against our
+    # own send times elsewhere (see _stale_end), and mixing two machines'
+    # clocks in that comparison would trade a small error for a confusing one.
+    # An unmeasured air time is ABSENT rather than zeroed upstream, so a
+    # missing value here correctly means "fall back to when it reached us".
+    aired = _epoch(body.get("airedAt"))
+
     if event == "voice.queued":
         try:
             lead = max(0.0, float(body.get("estimatedAirInMs") or 0) / 1000.0)
@@ -151,13 +191,13 @@ def _remember_air(event: str, body: dict) -> None:
                  "voiceId": str(body.get("voiceId") or "")[:64],
                  "text": str(body.get("text") or "")[:2000],
                  "durMs": int(body.get("durationMs") or 0),
-                 "bufSecs": buf,
+                 "bufSecs": buf, "airedAt": aired,
                  "airAt": now + lead}
     elif event == "voice.start":
         entry = {"at": now, "event": event, "v": 2, "phase": "speaking",
                  "voiceId": str(body.get("voiceId") or "")[:64],
                  "text": str(body.get("text") or "")[:2000],
-                 "bufSecs": buf,
+                 "bufSecs": buf, "airedAt": aired,
                  "durMs": int(body.get("durationMs") or 0)}
     elif event == "voice.end":
         # No text on purpose: a skewed old worker reads at+text, and an
@@ -165,7 +205,7 @@ def _remember_air(event: str, body: dict) -> None:
         # than sizing a fresh hold from words that just FINISHED.
         entry = {"at": now, "event": event, "v": 2, "phase": "clear",
                  "voiceId": str(body.get("voiceId") or "")[:64],
-                 "bufSecs": buf,
+                 "bufSecs": buf, "airedAt": aired,
                  "text": ""}
     if entry is None:
         return
@@ -198,6 +238,24 @@ def _remember_air(event: str, body: dict) -> None:
         # back 3 seconds before the caller had finished hearing the shoutout.
         # The buffer belongs to the station's Icecast config, so the last real
         # reading is a far better guess than the fallback.
+        # AND CARRY THE UTTERANCE'S OWN NUMBERS ONTO ITS `clear`. voice.end
+        # says the station stopped talking at the LIVE EDGE; the caller is
+        # still hearing it for another `bufSecs`. It ships with no durationMs
+        # and no airedAt, so the moment it lands the guard loses every number
+        # it needs to work out when the caller actually stops hearing it —
+        # 22 seconds before that matters.
+        #
+        # Heard on air 2026-08-16 (room fc4bb17f63de): station spoke 20.9-31.7,
+        # the caller heard it 42.9-53.7, and the hold closed at 53.1 on a
+        # word-count estimate because the floor had nothing to measure. The
+        # back-from-air line went out over the station's last words.
+        #
+        # Paired by voiceId, which is what upstream #1390 minted it for.
+        if (entry.get("phase") == "clear" and entry.get("voiceId")
+                and entry.get("voiceId") == prev.get("voiceId")):
+            for field in ("durMs", "airedAt"):
+                if not entry.get(field) and prev.get(field):
+                    entry[field] = prev[field]
         if not entry.get("bufSecs"):
             try:
                 carried = float(prev.get("bufSecs") or 0)
