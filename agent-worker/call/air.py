@@ -101,10 +101,8 @@ class OnAirGuard(AirVerdict):
         # gags for the entire lead (the operator's ask, 0.10.89).
         self.handover_secs = max(0.0, float(cfg.get("on_air_handover_secs") or 0))
         # Last streamBufferSeconds the station reported, primed from the last
-        # push the WEB process wrote down: the buffer belongs to the station's
-        # config, not to this call, and without priming the FIRST thing a call
-        # aired sized its hold from the 2s fallback while the station had been
-        # saying 22 all along (2026-08-16; see the test of the same name).
+        # push the web process wrote down — the buffer belongs to the station,
+        # not to this call. See the test named for the first announcement.
         try:
             pushed = self._pushed_state() or {}
             self._last_buf = float(pushed.get("bufSecs") or 0)
@@ -180,8 +178,7 @@ class OnAirGuard(AirVerdict):
         # SHIFTED BY THE CALLER'S LAG, like every other hold — this was the one
         # that never was. A push says the station is speaking NOW; our own
         # action only starts in the caller's ear `caller_lag` from now. Room
-        # 72de3b8893fe: a 3.0s shoutout took a 7.5s hold, the DJ returned with
-        # "I just sent that shoutout", then a SECOND 12.0s hold on the push.
+        # 72de3b8893fe: a 3.0s shoutout took a 7.5s hold, then a SECOND of 12s.
         self._assumed_until = max(
             self._assumed_until,
             time.time() + self.caller_lag() + seconds + self.tail())
@@ -502,6 +499,9 @@ class OnAirGuard(AirVerdict):
                 self._publish(busy)
                 if busy:
                     self._clear.clear()
+                    # No estimate may shut this gate before the caller has
+                    # finished hearing it — see hold_at_least_as_long_as.
+                    self.hold_at_least_as_long_as(state)
                     # Coming back? Then this is the next part of one break, not
                     # a new one. Cancel the return and stay held — silently.
                     resumed = self._cancel_comeback()

@@ -530,6 +530,73 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestTheGateDoesNotChatter(unittest.TestCase):
+    """A one-second hold, then another five seconds later.
+
+    Room f38cdab69cce, 2026-08-16, and the rows say it plainly:
+
+        210.2  hold opened   callerLag=22.0  why=the station is on air
+        211.2  hold closed   heldSecs=1.0    why=the estimate ran out
+        216.2  hold opened   callerLag=22.0  why=the station is on air
+
+    The voice had started at 193.7, runs 22.6s, and the caller hears it from
+    +215.7 to +238 — so at the moment the gate shut they had not heard a word
+    of it. Every other sizing here is an ESTIMATE (a word count off the log, a
+    forecast ageing between polls), and an estimate that comes up short makes
+    the gate chatter rather than merely end early.
+
+    The push carries what the station actually knows, so it becomes the floor.
+    """
+
+    def _guard(self):
+        import types
+
+        from call.air import OnAirGuard
+
+        g = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        g._assumed_until = 0.0
+        return g
+
+    def test_the_stations_own_numbers_outlast_a_short_estimate(self):
+        import time
+
+        g = self._guard()
+        now = time.time()
+        g._assumed_until = now + 1.0            # the estimate that ran out
+        g.hold_at_least_as_long_as(
+            {"at": now - 16.5, "durMs": 22600, "bufSecs": 22.0})
+        # Caller stops hearing it at start + 22 + 22.6.
+        self.assertGreaterEqual(g._assumed_until, now + 27.0)
+
+    def test_it_only_ever_lengthens(self):
+        import time
+
+        g = self._guard()
+        now = time.time()
+        g._assumed_until = now + 90.0
+        g.hold_at_least_as_long_as({"at": now, "durMs": 3000, "bufSecs": 22.0})
+        self.assertAlmostEqual(g._assumed_until, now + 90.0, delta=0.5)
+
+    def test_a_push_with_no_duration_decides_nothing(self):
+        g = self._guard()
+        g.hold_at_least_as_long_as({"at": 1.0, "bufSecs": 22.0})
+        self.assertEqual(0.0, g._assumed_until)
+        g.hold_at_least_as_long_as(None)
+        self.assertEqual(0.0, g._assumed_until)
+
+    def test_a_push_that_forgot_the_buffer_uses_the_known_lag(self):
+        # voice.end reports no buffer; 0.97.19 carries one forward, but a push
+        # that still arrives without one must not size the hold as if the
+        # caller were level with the encoder.
+        import time
+
+        g = self._guard()
+        g._last_buf = 22.0
+        now = time.time()
+        g.hold_at_least_as_long_as({"at": now, "durMs": 4000, "bufSecs": 0})
+        self.assertGreaterEqual(g._assumed_until, now + 26.0)
+
+
 class TestTheTimelineSaysWhatTheGuardCouldSee(unittest.TestCase):
     """An empty air log meant two different things, and that cost a diagnosis.
 

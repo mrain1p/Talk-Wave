@@ -72,6 +72,42 @@ class AirVerdict:
         words = speaking_secs(text, int(self.quiet_secs) or 30)
         return lag - self.handover_secs <= since < lag + words + self.duck_pad
 
+    def hold_at_least_as_long_as(self, state: dict | None) -> None:
+        """Floor an open hold on the station's OWN numbers for this utterance.
+
+        Everything else here sizes a hold from an ESTIMATE — a word count off
+        the log, or a forecast that ages between polls — and an estimate that
+        comes up short does not merely end early, it makes the gate chatter.
+        Read off the operator's call of 2026-08-16 (room f38cdab69cce):
+
+            210.2  hold opened   callerLag=22.0  why=the station is on air
+            211.2  hold closed   heldSecs=1.0    why=the estimate ran out
+            216.2  hold opened   callerLag=22.0  why=the station is on air
+
+        A ONE SECOND hold, for a voice that had started 16s earlier, runs 22.6s
+        and which the caller had not begun to hear — they hear it from +215.7
+        to +238. Opening and shutting the gate inside a second is worse than
+        either answer on its own: the DJ gets a window it cannot use and the
+        caller gets the duck twice.
+
+        The push carries what the station actually knows — when it handed the
+        clip over, how long it runs, and how far behind the listener is — so
+        the caller stops hearing it at `at + buf + dur`, and no estimate should
+        be allowed to close the gate before then. Only ever LENGTHENS a hold.
+        """
+        try:
+            at = float((state or {}).get("at") or 0)
+            dur = float((state or {}).get("durMs") or 0) / 1000.0
+            buf = float((state or {}).get("bufSecs") or 0)
+        except (TypeError, ValueError):
+            return
+        if at <= 0 or dur <= 0:
+            return
+        if buf <= 0:
+            buf = self.caller_lag()
+        self._assumed_until = max(self._assumed_until,
+                                  at + buf + dur + self.duck_pad)
+
     def _stale_end(self, state: dict | None) -> bool:
         """True when a voice.end cannot possibly be the end of OUR action.
 
