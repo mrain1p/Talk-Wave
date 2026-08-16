@@ -530,6 +530,44 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestTheTimelineSaysWhatTheGuardCouldSee(unittest.TestCase):
+    """An empty air log meant two different things, and that cost a diagnosis.
+
+    Room 113774ecedfa, 2026-08-16: five minutes, ZERO air rows, and the caller
+    asking out loud "how are you talking on air and to me at the same time".
+    Nothing in the record could distinguish "the station was quiet" from "the
+    guard never saw it", and by the time anyone looked the containers had been
+    recreated and the logs were gone.
+
+    The station's djLog turned out to hold nothing newer than a 'whoosh' seven
+    hours old. One baseline row would have said that on the spot.
+    """
+
+    def _log(self):
+        from call.air_log import AirLog
+
+        return AirLog()
+
+    def test_a_quiet_station_is_recorded_as_watched_not_as_nothing(self):
+        log = self._log()
+        log.watching(None)
+        self.assertEqual(1, len(log.rows))
+        self.assertIn("none in the log", log.rows[0]["why"])
+
+    def test_a_stale_log_shows_its_age(self):
+        # The number is the finding: seven hours is a station that stopped
+        # writing, not a station that stopped talking.
+        log = self._log()
+        log.watching((24936.0, "whoosh"))
+        self.assertIn("24936s ago", log.rows[0]["why"])
+
+    def test_a_failed_read_is_on_the_timeline_too(self):
+        log = self._log()
+        log.read_failed()
+        self.assertIn("could not read the station", log.rows[0]["why"])
+        self.assertIn("holding the gate", log.rows[0]["why"])
+
+
 class TestTheCheckInDoesNotBlameTheCallerForOurOwnPause(unittest.TestCase):
     """"Still with me?" to somebody waiting on a dig the DJ announced.
 

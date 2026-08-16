@@ -414,12 +414,19 @@ class OnAirGuard(AirVerdict):
         speech: tuple[float, str] | None = None
         speech_read_at = 0.0
         poll_failed = False
+        # See AirLog.watching — an empty timeline stops meaning both "quiet
+        # station" and "blind guard".
+        said_baseline = False
         while True:
             if tick % poll_every == 0:
+                was_failing = poll_failed
                 try:
                     speech = await self.station.on_air_speech()
                     speech_read_at = time.time()
                     poll_failed = False
+                    if not said_baseline and getattr(self, "air_log", None):
+                        said_baseline = True
+                        self.air_log.watching(speech)
                 except asyncio.CancelledError:
                     return
                 except Exception as e:
@@ -434,6 +441,8 @@ class OnAirGuard(AirVerdict):
                     speech = None
                     speech_read_at = 0.0
                     poll_failed = True
+                    if not was_failing and getattr(self, "air_log", None):
+                        self.air_log.read_failed()
 
             # The cached poll answer ages between polls — its "seconds since"
             # was true when read, so advance it rather than replaying it.

@@ -117,6 +117,23 @@ class AirLog:
         except Exception:                                      # noqa: BLE001
             pass
 
+    # -- what the guard could SEE, as opposed to what it did --------------
+    # An empty timeline used to mean two different things: the station was
+    # quiet, or we were blind to it. A call on 2026-08-16 where the caller
+    # asked "how are you talking on air and to me at the same time" wrote ZERO
+    # rows, and nothing in the record could tell those apart. A poll reading
+    # speech from seven hours ago is a stale log, not a quiet station.
+    def watching(self, speech) -> None:
+        """The first clean read of the call, whatever it said."""
+        self.note("watching the station; last on-air speech: "
+                  + ("none in the log" if not speech
+                     else "%.0fs ago" % speech[0]))
+
+    def read_failed(self) -> None:
+        """Called once per RUN of failures, not once per poll — a station down
+        for a minute would otherwise bury the timeline being read."""
+        self.note("could not read the station — holding the gate where it was")
+
     # -- what the station was doing meanwhile -----------------------------
     def station(self, entry: dict) -> None:
         """One push from the station, as the guard saw it.
