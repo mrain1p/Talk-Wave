@@ -61,6 +61,10 @@ async def handle_get_settings(request: web.Request) -> web.Response:
             {
                 "resolved": settings_store.load(),
                 "overrides": settings_store.stored_only(),
+                # What each field would be if cleared — env over defaults, the
+                # operator's own choices removed. The panel's blank option
+                # describes itself with this; see settings.beneath().
+                "beneath": settings_store.beneath(),
                 "secrets": secrets_store.status(),
                 # Field metadata (labels, help, grouping, dependencies) so the
                 # page doesn't keep its own parallel copy of the schema.

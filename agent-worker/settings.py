@@ -2438,6 +2438,32 @@ def stored_only() -> dict:
     return {k: stored.get(k, "") for k in FIELDS}
 
 
+def beneath() -> dict:
+    """What every field would resolve to if the operator cleared it — env over
+    defaults, with the stored layer removed.
+
+    The panel needs this to describe its own blank option honestly. It was
+    labelling it "Default — <the resolved value>", and the resolved value
+    INCLUDES the operator's own choice: having picked Google, the blank read
+    "Default — google", which says a default exists where none does. On a
+    fresh install the same option correctly read "Not set — pick a provider",
+    so the label was right exactly when nobody needed it (operator-reported,
+    2026-08-16). Clearing a field means "fall through to the layer below", and
+    this is that layer.
+    """
+    out: dict[str, Any] = {}
+    for field, (env_var, default) in FIELDS.items():
+        env_value = None
+        for name in (env_var,) if isinstance(env_var, str) else (env_var or ()):
+            candidate = os.environ.get(name)
+            if candidate not in (None, ""):
+                env_value = candidate
+                break
+        out[field] = _coerce(
+            env_value if env_value not in (None, "") else default, default)
+    return out
+
+
 # Fields that must be a URL or nothing. A real deployment had "Michael" in
 # station_mcp_url — a browser autofilling a name into a text box — which meant
 # the agent got NO station tools on any call and invented library results

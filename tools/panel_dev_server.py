@@ -338,6 +338,10 @@ class Handler(BaseHTTPRequestHandler):
                 "schema": settings_store.schema_payload(),
                 "resolved": settings_store.load(),
                 "overrides": settings_store.stored_only(),
+                # What a cleared field falls back to. The panel labels its own
+                # blank option from this, so a stub without it renders every
+                # dropdown as "Not set" and cannot show the bug it exists for.
+                "beneath": settings_store.beneath(),
                 # Through the real status() shape, group and help included,
                 # so the per-section key blocks render the way they deploy.
                 "secrets": {

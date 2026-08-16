@@ -493,6 +493,8 @@
   // schema arrives, before the slow provider lists have loaded, so every
   // read of this has to survive it being empty.
   let options = {}, overrides = {}, resolved = {}, secrets = {};
+  // What a field falls back to when cleared — see settings.beneath().
+  let beneath = {};
   // Whether the panel has ever been filled. Its own flag rather than a
   // truthiness test on `options`, which is how 0.9.58 silently emptied the
   // whole panel: that commit changed `options` from null to {} for the
@@ -566,9 +568,7 @@
       labels[station.model] = station.model + '  — same as the station';
     }
     fill('llm_model', list, { labels,
-      blankLabel: resolved.llm_model
-        ? 'Default — ' + resolved.llm_model
-        : 'Not set — pick a model' });
+      blankLabel: blankFor('llm_model', 'a model') });
     $('llm_model').value = overrides.llm_model || '';
 
     const note = $('modelSourceNote');
@@ -589,8 +589,7 @@
 
     const stt = $('stt_provider').value || resolved.stt_provider;
     fill('stt_model', (options.sttModels || {})[stt] || [], {
-      blankLabel: resolved.stt_model
-        ? 'Default — ' + resolved.stt_model : 'Default' });
+      blankLabel: blankFor('stt_model', 'a model') });
     $('stt_model').value = overrides.stt_model || '';
     const sttNote = $('sttSourceNote');
     if (sttNote) { sttNote.textContent = ''; missingProviderNote(sttNote, 'stt'); }
@@ -1148,10 +1147,14 @@
   function callHealthNeeds() {
     const items = [];
     if (newerRelease) {
+      // NO JUMP. Both version notices used to point at Configuration →
+      // Station, which has nothing to do with either of them — the fix is a
+      // pull and a restart at a terminal, and sending the operator to an
+      // unrelated settings section to find that out is worse than sending
+      // them nowhere (their ask, 2026-08-16).
       // Its own key, carrying the version: dismissing "0.10.155 is out" must
       // not also silence 0.10.160, which the digit-blind default key would.
-      items.push({ page: 'config', group: 'station',
-                   key: 'newer:' + newerRelease,
+      items.push({ key: 'newer:' + newerRelease,
                    label: 'Version ' + newerRelease + ' is out',
                    note: 'this box is on ' + (panelVersion || '?')
                      + ' — pull the image and restart both containers' });
@@ -1160,15 +1163,27 @@
     const recent = recentCalls.slice(0, 10);
 
     // The two processes ship as one image and run as two containers, so a
-    // redeploy that recreates one and not the other leaves them skewed —
-    // invisible until now, because only the token server reported a version.
-    const workerV = (recent.find((c) => c.appVersion) || {}).appVersion;
+    // redeploy that recreates one and not the other leaves them skewed.
+    //
+    // ONLY ON A CALL THIS SERVER LIVED THROUGH. A record carries the version
+    // of the worker that answered it, which is evidence about the PAST: pull a
+    // new image and the newest transcript still names the old worker, so the
+    // box reported a disagreement between what is running now and a call from
+    // before the upgrade — "why am I getting the first notification" (operator,
+    // 2026-08-16, panel 0.97.6 against a 0.97.4 record). A call answered after
+    // this process booted is the only one that proves anything, because both
+    // containers were up for it.
+    const started = Number(serverSince || 0);
+    const live = recent.filter((c) => {
+      const t = Date.parse(c.startedAt || '');
+      return c.appVersion && !isNaN(t) && (!started || t / 1000 >= started);
+    });
+    const workerV = (live[0] || {}).appVersion;
     if (workerV && panelVersion && workerV !== panelVersion) {
-      items.push({ page: 'config', group: 'station',
-                   key: 'skew:' + panelVersion + ':' + workerV,
+      items.push({ key: 'skew:' + panelVersion + ':' + workerV,
                    label: 'The two containers disagree',
-                   note: 'this panel is ' + panelVersion + ' and the last call '
-                     + 'was answered by a worker on ' + workerV
+                   note: 'this panel is ' + panelVersion + ' and a call taken '
+                     + 'since it started was answered by a worker on ' + workerV
                      + ' — recreate both, they ship as one image' });
     }
 
@@ -1290,12 +1305,16 @@
 
   // ---- dismissing one -----------------------------------------------------
   // Every item in this box is COMPUTED from live state, so nothing here can
-  // delete one: dismissing is the operator saying "I have read that", and the
-  // item comes back the moment the condition clears and happens again. The
-  // list of what has been read lives in this browser rather than on the box,
-  // because it is a fact about a reader, not about the deployment — and it
-  // costs no endpoint, no setting and no file the container has to be able to
-  // write.
+  // delete one: dismissing is the operator saying "I have read that", and it
+  // stays read. The list lives in this browser rather than on the box, because
+  // it is a fact about a reader, not about the deployment — and it costs no
+  // endpoint, no setting and no file the container has to be able to write.
+  //
+  // What comes back is what is genuinely NEW, and that is carried in the key
+  // rather than in a sweep: `newer:0.98.0` is a different key from
+  // `newer:0.97.7`, a skew names both versions, and the activity row names the
+  // newest record it counted. A fault whose key does not change is the same
+  // fault, and the operator has already read it.
   const SEEN_KEY = 'callinNotesSeen';
   // Digit-blind by default, so "7 of the last 8 calls heard nothing" does not
   // become a new notification when the count moves to 8 of 10. Items that
@@ -1316,11 +1335,19 @@
     const list = $('needsList');
     if (!list) return;
     const all = computeNeeds();
-    // PRUNED to what is live: a dismissal that outlives its condition would
-    // silence the next occurrence of it for good, which is the way this
-    // feature usually goes wrong.
-    const live = new Set(all.map(noteKey));
-    const seen = seenKeys().filter((k) => live.has(k));
+    // DISMISSED MEANS DISMISSED. These were pruned to what was live, on the
+    // reasoning that a condition which clears and returns is news again — and
+    // in practice the conditions here never clear: "5 of the last 10 calls
+    // heard nothing" is true until five better calls push the bad ones out of
+    // the window, so the row came back over and over after being read
+    // ("after you dismiss ones like the ones indicating the failed calls they
+    // should not return" — operator, 2026-08-16).
+    //
+    // The items that genuinely must re-notify carry it in their KEY instead:
+    // a new release is `newer:0.98.0`, a new skew names both versions, so
+    // those are new keys rather than resurrected ones. Bounded because it is
+    // now append-only.
+    const seen = seenKeys().slice(-200);
     setSeen(seen);
     const items = all.filter((it) => seen.indexOf(noteKey(it)) === -1);
     const clearBtn = $('needsClearBtn');
@@ -1356,9 +1383,14 @@
       // `info` is not a fault and must not wear the fault's colour — coral
       // means something is wrong everywhere else on this page.
       row.className = 'needrow' + (it.info ? ' info' : '');
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'needjump';
+      // A row with nowhere to go is not a button. The version notices are
+      // fixed at a terminal, not in a settings section, and dressing them as
+      // links sent the operator to Configuration → Station to read about a
+      // docker pull.
+      const goes = !!(it.diag || it.group);
+      const b = document.createElement(goes ? 'button' : 'div');
+      if (goes) b.type = 'button';
+      b.className = 'needjump' + (goes ? '' : ' flat');
       const k = document.createElement('span');
       k.className = 'nk';
       k.textContent = it.label;
@@ -2012,35 +2044,49 @@
   // are reloaded — the operator saved a google key, watched google's MODELS
   // arrive, and found no google in the provider list until a full page
   // reload (operator-reported, 0.10.85). fill() keeps the current selection.
+  // THE BLANK OPTION DESCRIBES THE LAYER BELOW, not the current value. It read
+  // 'Default — ' + resolved, and `resolved` includes the operator's own choice
+  // — so having picked Google, the top of the list said "Default — google" and
+  // claimed a default that does not exist. On a fresh install the same option
+  // read "Not set — pick a provider" correctly, which is to say it was honest
+  // exactly when nobody was looking at it (operator-reported, 2026-08-16).
+  // `beneath` is what clearing would actually leave: env over defaults.
+  function blankFor(field, pickWord) {
+    const under = beneath[field];
+    return under ? 'Default — ' + under + ' (from the environment)'
+                 : 'Not set — pick ' + pickWord;
+  }
+
   function paintProviderChoices() {
-    // The blank option tells the truth about what blank DOES: with no layer
-    // below supplying a provider (fresh install, 0.10.80), it is an open
-    // choice, not a default.
     fill('llm_provider', options.llmProviders,
       { labels: options.llmProviderLabels || null,
-        blankLabel: resolved.llm_provider
-          ? 'Default — ' + resolved.llm_provider
-          : 'Not set — pick a provider' });
+        blankLabel: blankFor('llm_provider', 'a provider') });
     // EVERY OPTION SAYS WHAT IT COSTS YOU. The list read as four peers, so
     // "OpenAI and Google reuse the keys above" left the obvious question
     // unanswered — then what is Deepgram? (operator's ask). It is the one
     // with its own account, and the label is where that belongs.
     fill('stt_provider', options.sttProviders, {
       labels: {
-        local: 'Built-in Whisper — no key, runs here (default)',
+        // No "(default)" here: the blank option above it carries that, and
+        // the two lines read as one choice offered twice.
+        local: 'Built-in Whisper — no key, runs here',
         openai: 'OpenAI — reuses your OpenAI key',
         google: 'Google — reuses your Google key',
         deepgram: 'Deepgram — needs its own account and key, below',
       },
-      blankLabel: 'Default — built-in Whisper, no key',
+      // NOT a second "built-in Whisper" line. The blank and the local option
+      // said the same thing one above the other, which reads as two ways to
+      // pick one provider (operator's screenshot). The blank is the fall-back,
+      // and it names it as such.
+      blankLabel: beneath.stt_provider === 'local'
+        ? 'Default — built-in Whisper'
+        : blankFor('stt_provider', 'an ear'),
     });
   }
 
   function paint() {
     fill('tts_mode', options.ttsModes, {
-      blankLabel: resolved.tts_mode
-        ? 'Default — ' + resolved.tts_mode
-        : 'Not set — pick a backend',
+      blankLabel: blankFor('tts_mode', 'a backend'),
       labels: { local: 'Local — your own OpenAI-compatible speech server',
                 cloud: 'Cloud — a hosted speech API' },
     });
@@ -2444,6 +2490,7 @@
     }
     const s = await rs.json();
     overrides = s.overrides; resolved = s.resolved; secrets = s.secrets || {};
+    beneath = s.beneath || {};
     authConfigured = !!s.authConfigured;
     guestConfigured = !!s.guestConfigured;
     adoptSchema(s.schema);
@@ -2476,8 +2523,12 @@
     // footer also carries the build, which anchors every bug report over time.
     paintPage();
     if ($('footHost')) $('footHost').textContent = location.host;
-    fetch('/health').then((r) => r.json()).then((h) => paintVersion(h.version))
-      .catch(() => {});
+    fetch('/health').then((r) => r.json()).then((h) => {
+      // `since` is when THIS server process started, which is what makes the
+      // container-skew notice honest — see callHealthNeeds.
+      serverSince = Number(h.since || 0);
+      paintVersion(h.version);
+    }).catch(() => {});
     // The health half of Needs attention. Fired here rather than awaited:
     // the dashboard must paint at its normal speed and gain these rows a
     // moment later, not wait on a disk read of forty transcripts.
@@ -2495,8 +2546,10 @@
   // the part that was there before.
   const REPO_URL = 'https://github.com/mrain1p/Talk-Wave';
   // Kept for the container-skew check, which is the only place the two
-  // halves' versions are ever compared.
-  let panelVersion = '', newerRelease = '';
+  // halves' versions are ever compared. `serverSince` is when this server
+  // process started, and it is what stops that check reading a transcript
+  // from before an upgrade as a live disagreement.
+  let panelVersion = '', newerRelease = '', serverSince = 0;
 
   function paintVersion(version) {
     const el = $('versionLine');
@@ -3225,6 +3278,7 @@
     }
     const fresh = await afetch('/settings').then((x) => x.json());
     resolved = fresh.resolved; overrides = fresh.overrides;
+    if (fresh.beneath) beneath = fresh.beneath;
     paint();
     await refreshLiveData();   // sound + volume settings feed the card
     $('saveMsg').textContent = 'Saved — applies to the next caller';

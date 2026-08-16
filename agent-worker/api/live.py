@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 import httpx
 from aiohttp import web
@@ -53,9 +54,19 @@ def _num(v) -> float | None:
     return n if n == n and n not in (float("inf"), float("-inf")) else None
 
 
+# When this process started. The container-skew notice needs it: a call
+# RECORD carries the version of the worker that answered it, which is evidence
+# about the past, not about what is running now. A record written before this
+# process booted says nothing about the worker it shares an image with — and
+# saying it anyway is how an operator who has just pulled gets told their
+# containers disagree by a transcript from before the upgrade (2026-08-16).
+_STARTED_AT = time.time()
+
+
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response(
-        {"ok": True, "version": APP_VERSION, "livekit": LIVEKIT_PUBLIC_URL}
+        {"ok": True, "version": APP_VERSION, "livekit": LIVEKIT_PUBLIC_URL,
+         "since": _STARTED_AT}
     )
 
 

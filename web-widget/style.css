@@ -2141,6 +2141,10 @@
     border: 0; background: transparent; color: inherit; padding: 0;
     min-width: 0;
   }
+  /* A notice with nowhere to go — a pull and a restart happen at a terminal.
+     Same shape, no pointer: an affordance that leads somewhere unrelated is
+     worse than no affordance. */
+  .needjump.flat { cursor: default; }
   .ndismiss {
     border: 1px solid transparent; background: transparent; cursor: pointer;
     color: var(--dim); font: 400 15px/1 var(--font-mono);
