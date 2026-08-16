@@ -557,6 +557,55 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
         g._assumed_until = 0.0
         return g
 
+    def test_a_push_outranks_the_word_count(self):
+        # THE COLLAPSE. The log records when speech started and never when it
+        # ended, so _log_says_busy guessed the length by counting the words of
+        # the entry. When a push exists the station has already said how long
+        # it runs, and two answers for one question is where the chatter came
+        # from — whichever expires first shuts the gate.
+        #
+        # Three words, twenty-two seconds of audio: the word count would say
+        # this finished almost immediately.
+        import json
+        import os
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                g = self._guard()
+                g._last_buf = 22.0
+                now = time.time()
+                # Handed over 25s ago, so the caller is 3s into hearing it and
+                # has ~20s left. The word count for "back after this" would
+                # have called it finished long before.
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": now - 25, "v": 2, "phase": "speaking",
+                               "durMs": 22600, "bufSecs": 22.0,
+                               "text": "back after this"}, f)
+                self.assertTrue(
+                    g._log_says_busy((25.0, "back after this")),
+                    "the word count closed the gate while the station was "
+                    "still 20 seconds from finishing in the caller's ear")
+            finally:
+                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+
+    def test_with_no_push_the_word_count_still_answers(self):
+        # A station too old to send the voice lifecycle must keep working.
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["CALLIN_HOOK_AIR_PATH"] = os.path.join(td, "none.json")
+            try:
+                g = self._guard()
+                self.assertEqual((0.0, 0.0), g.audible_window())
+                self.assertTrue(g._log_says_busy((g.caller_lag(), "a line")))
+            finally:
+                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+
     def test_the_stations_own_numbers_outlast_a_short_estimate(self):
         import time
 

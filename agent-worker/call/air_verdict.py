@@ -68,9 +68,47 @@ class AirVerdict:
         # The hand-over lead is built in here rather than at the call sites:
         # applying it at one of them was how the DJ stopped handing over out
         # loud at all.
+        # MEASURED BEATS ESTIMATED. When a push covers this utterance the
+        # station has already said how long it runs, and counting the words of
+        # the log entry is a second opinion nobody needs — it is where most of
+        # the gate's chatter came from, because the two answers differ and
+        # whichever expires first shuts the gate.
+        starts, ends = self.audible_window()
+        if ends:
+            now = time.time()
+            return starts - self.handover_secs <= now < ends + self.duck_pad
+        # No push to read: a station too old to send the voice lifecycle, or a
+        # call that has not seen one yet. The word count is the fallback and
+        # only the fallback.
         lag = self.caller_lag()
         words = speaking_secs(text, int(self.quiet_secs) or 30)
         return lag - self.handover_secs <= since < lag + words + self.duck_pad
+
+    def audible_window(self, state: dict | None = None) -> tuple[float, float]:
+        """When the caller STARTS and STOPS hearing the station's newest
+        utterance, from the numbers the station itself sent. (0, 0) when there
+        is nothing to read.
+
+        The one measured answer, and the reason it exists: everything else here
+        estimates the same quantity a different way, and the estimates disagree
+        with each other. `at` is when the station handed the clip over, `durMs`
+        is how long it runs, `bufSecs` is how far behind the listener is — so
+        the caller hears it from at+buf to at+buf+dur, and there is nothing to
+        guess. The word count in _log_says_busy is now the FALLBACK for a
+        station that does not push, rather than a rival opinion.
+        """
+        d = state if state is not None else (self._pushed_state() or {})
+        try:
+            at = float(d.get("at") or 0)
+            dur = float(d.get("durMs") or 0) / 1000.0
+            buf = float(d.get("bufSecs") or 0)
+        except (TypeError, ValueError):
+            return 0.0, 0.0
+        if at <= 0 or dur <= 0:
+            return 0.0, 0.0
+        if buf <= 0:
+            buf = self.caller_lag()
+        return at + buf, at + buf + dur
 
     def hold_at_least_as_long_as(self, state: dict | None) -> None:
         """Floor an open hold on the station's OWN numbers for this utterance.
@@ -95,18 +133,10 @@ class AirVerdict:
         the caller stops hearing it at `at + buf + dur`, and no estimate should
         be allowed to close the gate before then. Only ever LENGTHENS a hold.
         """
-        try:
-            at = float((state or {}).get("at") or 0)
-            dur = float((state or {}).get("durMs") or 0) / 1000.0
-            buf = float((state or {}).get("bufSecs") or 0)
-        except (TypeError, ValueError):
-            return
-        if at <= 0 or dur <= 0:
-            return
-        if buf <= 0:
-            buf = self.caller_lag()
-        self._assumed_until = max(self._assumed_until,
-                                  at + buf + dur + self.duck_pad)
+        _, ends = self.audible_window(state)
+        if ends:
+            self._assumed_until = max(self._assumed_until,
+                                      ends + self.duck_pad)
 
     def _stale_end(self, state: dict | None) -> bool:
         """True when a voice.end cannot possibly be the end of OUR action.
