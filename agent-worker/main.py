@@ -62,6 +62,17 @@ from version import APP_VERSION
 # so a redeploy that recreates one and not the other leaves them skewed. That
 # has happened, and it was invisible because only the token server ever said
 # what it was.
+# PRINTED, not only logged, and that is the whole fix. Logging it put the line
+# exactly where nothing could read it: setup("worker", console=False) leaves
+# this logger a file sink and an in-memory ring, LOG_TO_FILE is off on a normal
+# container deployment, and livekit does not attach its own stdout handler
+# until cli.run_app runs — long after this line. So the banner reached nothing.
+# Measured on the live box 2026-08-16: `docker logs talkwave-worker | grep -c
+# 'talk-wave worker'` returned 0, and the panel's log viewer reads the WEB
+# process's ring, not this one. The skew check was left resting entirely on a
+# call record newer than the container, which is precisely what you do not have
+# when a fresh deploy is misbehaving.
+print(f"talk-wave worker {APP_VERSION} starting", flush=True)
 log.info("talk-wave worker %s starting", APP_VERSION)
 
 # Both processes share the bind-mounted data/, and this is the one that reads

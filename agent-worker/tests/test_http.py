@@ -404,6 +404,91 @@ class TestTheAuthLockoutKeyIsUnspoofable(unittest.TestCase):
         self.assertEqual(self._key("8.8.8.8", xff="10.0.0.1"), "8.8.8.8")
 
 
+class TestAPasswordAttemptCannotChooseItsOwnLockoutBucket(_TempStores):
+    """The lockout key was right where it was argued for and wrong in the two
+    handlers that actually take a password. `_check_admin` used `_auth_key`;
+    `/auth/password` and `/auth/guest-login` used `_caller_key`, which believes
+    X-Forwarded-For from any private or loopback peer.
+
+    Measured against the deployment before 0.97.25: eight wrong admin passwords
+    with a rotating header every time all answered "4 tries left", while the
+    same eight from one address tripped the cooldown at five. The throttle in
+    front of the admin password was decorative for anything the peer-trust rule
+    accepts — by default the whole LAN and every other container on the host.
+
+    Driven THROUGH the handlers rather than asserted on the key, because the
+    key was never the bug: TestTheAuthLockoutKeyIsUnspoofable passed the whole
+    time it was being walked past.
+    """
+
+    class _Req(dict):
+        """Enough of a request for the password handlers: headers, a body, and
+        the dict slot they leave a caller-facing reason on."""
+
+        def __init__(self, body, fwd):
+            super().__init__()
+            self.headers = {"X-Forwarded-For": fwd}
+            self.host = "box.local"
+            # A PRIVATE peer, which is the whole point: that is the case
+            # _caller_key trusts and _auth_key does not.
+            self.remote = "172.18.0.9"
+            self._body = body
+
+        async def json(self):
+            return self._body
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        from pathlib import Path
+
+        import admin_auth
+        from api import auth as api_auth
+
+        self._auth_tmp = tempfile.TemporaryDirectory()
+        self._old_auth_path = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._auth_tmp.name) / "admin-auth.json"
+        admin_auth.set_password("the-real-password")
+        api_auth._auth_state.clear()
+
+    def tearDown(self):
+        import admin_auth
+        from api import auth as api_auth
+
+        admin_auth.AUTH_PATH = self._old_auth_path
+        api_auth._auth_state.clear()
+        self._auth_tmp.cleanup()
+        super().tearDown()
+
+    def _error_from(self, resp):
+        return json.loads(resp.body.decode())["error"]
+
+    def _wrong_admin_password(self, fwd):
+        from api import auth as api_auth
+
+        return self._error_from(asyncio.run(api_auth.handle_set_password(
+            self._Req({"current": "not-it", "new": "abcdefghij"}, fwd))))
+
+    def _wrong_guest_code(self, fwd):
+        from api import auth as api_auth
+
+        return self._error_from(asyncio.run(api_auth.handle_guest_login(
+            self._Req({"password": "not-it"}, fwd))))
+
+    def test_rotating_the_forwarded_header_still_reaches_the_cooldown(self):
+        said = [self._wrong_admin_password(f"9.9.9.{i}") for i in range(1, 6)]
+        self.assertIn("too many failed attempts", said[-1],
+                      f"five wrong passwords went uncounted: {said}")
+
+    def test_the_guest_code_is_throttled_at_its_own_door_too(self):
+        import admin_auth
+
+        admin_auth.set_guest_password("door-code")
+        said = [self._wrong_guest_code(f"9.9.9.{i}") for i in range(1, 6)]
+        self.assertIn("too many failed attempts", said[-1],
+                      f"five wrong codes went uncounted: {said}")
+
+
 class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
     """Taking the rightmost X-Forwarded-For entry is right for one proxy and
     wrong for two. With a CDN in front of the reverse proxy, the entry the

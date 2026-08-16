@@ -77,6 +77,9 @@ whichever file is shortest.
 LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls LISTENERS_PATH=/tmp/l.json LISTENER_SAMPLE_INTERVAL=0 python -m unittest test_sidecar -v
 ```
 
+`python` above is **the venv's interpreter**, not whatever PATH resolves first — the system
+one has no dependencies and dies at `import httpx` before any test runs.
+
 **Faster: `python run_tests.py`** runs the SAME suite in parallel, one process per test
 module (~2-3x quicker; it sets each worker's own writable-path env, so no env prefix needed).
 The pre-commit hook and CI both use it. `test_sidecar` still works and is what the module

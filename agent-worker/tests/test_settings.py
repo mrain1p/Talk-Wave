@@ -547,6 +547,20 @@ class TestTurnTakingSettingsReachTheCall(unittest.TestCase):
             self._resolved({}).interruption["min_duration"], 0.5,
             "unset must leave the SDK's own floor alone")
 
+    def test_the_shipped_default_clears_the_sdk_floor(self):
+        # The line above is about an ABSENT key; this is about the value a
+        # deployment that never opens the panel actually runs on, and they were
+        # not the same question. The shipped default was 0 — which means "use
+        # the SDK's 0.5s" — and 0.5s of SOUND is half a second of the record
+        # playing in the caller's room. A 0.97.23 call came back with three
+        # one-word DJ turns on a box that had never touched the setting.
+        import settings as settings_store
+
+        self.assertGreater(
+            float(settings_store.FIELDS["min_interruption_secs"][1]), 0.5,
+            "the shipped default must clear the SDK's own floor, or every "
+            "deployment that never opens the panel gets the chopped turns")
+
     def test_preemptive_generation_is_still_off(self):
         # Folding three settings into the same dict must not lose the thing
         # that dict was originally there for: a speculative turn carrying a

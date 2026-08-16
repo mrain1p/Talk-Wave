@@ -22,7 +22,7 @@ from aiohttp import web
 import admin_auth
 from api import wire
 from api.live_cache import _live_cache
-from api.wire import _auth_key, _caller_key, _cors  # noqa: F401
+from api.wire import _auth_key, _cors  # noqa: F401
 
 log = logging.getLogger("callin.token")
 
@@ -362,7 +362,14 @@ async def handle_set_password(request: web.Request) -> web.Response:
             {"error": "use at least 8 characters"}, status=400))
 
     if _auth_configured():
-        ip = _caller_key(request)
+        # _auth_key, not _caller_key — this is a password attempt, so it is a
+        # security control and cannot ride a key the client writes. It rode one
+        # until 0.97.25: measured against the deployment, eight wrong passwords
+        # with a rotating X-Forwarded-For all came back "4 tries left" while the
+        # same eight from one address tripped the cooldown at five. The throttle
+        # in front of the admin password was decorative for anyone the peer-trust
+        # rule accepts, which by default is the whole LAN.
+        ip = _auth_key(request)
         gate = _auth_gate(ip)
         if gate:
             return _cors(request, web.json_response(
@@ -395,9 +402,11 @@ async def handle_guest_login(request: web.Request) -> web.Response:
         return _cors(request, web.json_response({"error": "invalid JSON"}, status=400))
 
     # Same check /token runs, so the two can never disagree about what a good
-    # code is.
+    # code is — including which bucket a failure counts against. _guest_ok
+    # hands _guest_check an _auth_key; this handed it a _caller_key, so the
+    # same wrong code was throttled at one door and unlimited at the other.
     reason = _guest_check(
-        str((body or {}).get("password") or ""), _caller_key(request)
+        str((body or {}).get("password") or ""), _auth_key(request)
     )
     if reason is None:
         return _cors(request, web.json_response({"ok": True}))

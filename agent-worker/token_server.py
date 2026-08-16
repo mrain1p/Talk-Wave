@@ -202,6 +202,14 @@ ACCESS_LOG_FORMAT = '%a "%r" %s %b'
 
 
 if __name__ == "__main__":
+    # Both processes say what they are, in the first line each writes. See the
+    # same print in main.py: this is the pair of numbers you compare when a
+    # redeploy recreated one container and not the other, and until 0.97.25
+    # neither container printed one — the web half logged its address and its
+    # LiveKit URL and never its version at all.
+    from version import APP_VERSION as _V
+
+    print(f"talk-wave token server {_V} starting", flush=True)
     log.info("call-in widget + token server on http://localhost:%s", PORT)
     warn_if_open_to_the_web()
     log.info("browser will be told to connect to %s", LIVEKIT_PUBLIC_URL)

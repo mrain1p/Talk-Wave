@@ -172,6 +172,7 @@ from call.air import OnAirGuard
 from call.providers import build_llm
 from call.tools import (
     build_call_control_tools,
+    build_curation_tools,
     build_discovery_tools,
     build_library_tools,
     build_on_air_tools,
@@ -304,6 +305,26 @@ REPAIRED: dict[str, int] = {}
 # call legitimately returns to the same phrasing across ten minutes, and the
 # fault being caught is back-to-back.
 _RECENT_OPENERS: list[str] = []
+
+# This run's action ledger, so the guard mirror below can answer the same
+# question the real one does. Global rather than threaded through run_all,
+# which is how every other piece of cross-scenario state here is held.
+#
+# It exists because the mirror was asking a DIFFERENT question. Both
+# `unbacked` calls omitted `acted=`, which defaults to False, while
+# attach_promise_guard passes `acted=(the ledger moved this turn)` — so on any
+# turn where an action SUCCEEDED and the DJ correctly said so, production
+# stayed quiet and the harness nudged. Measured 2026-08-16: the same sentence
+# reads as '' with acted=True and 'claim' with acted=False. On the coverage
+# sweep it fired after a successful dj_announce and drove two more, putting
+# three shoutouts on air for one ask, and every "claim" in the fault tally was
+# suspect. The block below says it exists so the harness stops measuring a DJ
+# the product does not ship; it was still doing that, in the other direction.
+ACTIONS = None
+
+
+def _ledger() -> int:
+    return int(getattr(ACTIONS, "count", 0) or 0)
 
 
 def _reads_as_a_refusal(result: str) -> bool:
@@ -1389,6 +1410,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # Without it the harness fired three times on a single turn — a loop
         # CallAgent cannot produce, so the run was measuring the instrument.
         turn_nudged = False
+        # Where the ledger stood when this caller turn began. The guard asks
+        # whether an action landed SINCE the caller last spoke, not whether the
+        # call has ever done anything — see ACTIONS.
+        turn_acted_at = _ledger()
         hint = door.hint_for(text) if DOOR_ON else ""
         if hint:
             log.append("  (last line held the door open — steering this turn)")
@@ -1421,6 +1446,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # set exists to catch and the one it was silently passing.
         kind = ("" if turn_nudged else
                 unbacked(said, tools_ran=bool(calls),
+                         acted=_ledger() > turn_acted_at,
                          refused=turn_refused)) if said.strip() else ""
         if kind:
             turn_nudged = True
@@ -1499,7 +1525,9 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 # ship: the live guard consults `unbacked` on every assistant
                 # turn, this one only consulted it before the tools.
                 after = ("" if turn_nudged
-                         else unbacked(said, tools_ran=True, refused=turn_refused))
+                         else unbacked(said, tools_ran=True,
+                                       acted=_ledger() > turn_acted_at,
+                                       refused=turn_refused))
                 if after and not calls:
                     turn_nudged = True
                     REPAIRED[after] = REPAIRED.get(after, 0) + 1
@@ -1737,7 +1765,8 @@ async def main() -> None:
         station, persona, snapshot=snap, cfg=cfg,
         mode="chat" if chat else "call")
 
-    actions = CallActions(int(cfg.get("max_actions_per_call") or 0))
+    global ACTIONS
+    actions = ACTIONS = CallActions(int(cfg.get("max_actions_per_call") or 0))
     # Chat's wiring, mirrored from chat/session.py: no overlap guard (a typed
     # DJ never needs holding off the air) and, below, no end_call — a text
     # line has no receiver to put down.
@@ -1759,6 +1788,15 @@ async def main() -> None:
     tools = []
     tools += build_library_tools(cfg, station, actions)
     tools += build_discovery_tools(cfg, station, actions)
+    # Curation — the hearts, the never-play list. Missing here from 0.10.132,
+    # when the family was added to call/session.py and not to this list, until
+    # 0.97.25. Four tools the drill could not reach and did not report as
+    # unreached either: they were absent from the surface, so COVERAGE listed
+    # them in neither column and nothing said so. What it looked like instead:
+    # asked to heart a track, the DJ had no like tool and mimed it with an
+    # on-air announcement, which reads as a conduct fault and was the harness.
+    # TestTheDrillBuildsEveryToolTheCallDoes now fails if this drifts again.
+    tools += build_curation_tools(cfg, station, actions)
     tools += build_on_air_tools(cfg, station, actions, guard, guarded=False)
     mcp_server = None
     if chat:
@@ -1793,20 +1831,39 @@ async def main() -> None:
     # PASS/FAIL invites exactly the wrong conclusion ("fixed it") from noise.
     # REPEATS=3 turns the verdict into a rate.
     repeats = max(1, int(os.environ.get("REPEATS", "1") or 1))
-    for _round in range(repeats):
-        if repeats > 1:
-            log.append(f"\n{'#' * 72}\n# ROUND {_round + 1} of {repeats}\n"
-                       f"{'#' * 72}")
-        await run_all(llm, tools, prompt, scenarios, log)
-    await summarise(log, repeats, which, tools)
-
-    if mcp_server is not None:
+    # EVERYTHING that can fail is inside the try, and the report is printed in
+    # the finally. It used to be one print at the tail: the whole run lived in
+    # a list and reached stdout only if nothing threw between the first
+    # scenario and the last close. run_all catches per scenario, so what got
+    # through was anything outside it — and on 2026-08-16 two of three sweeps
+    # died on a Gemini 504 and printed NOTHING, having already spent the run.
+    # A sweep costs real money; losing the evidence to a provider having a bad
+    # minute is the one failure it must not have.
+    try:
+        for _round in range(repeats):
+            if repeats > 1:
+                log.append(f"\n{'#' * 72}\n# ROUND {_round + 1} of {repeats}\n"
+                           f"{'#' * 72}")
+            await run_all(llm, tools, prompt, scenarios, log)
+        await summarise(log, repeats, which, tools)
+    except BaseException as e:                                 # noqa: BLE001
+        # BaseException, not Exception: a cancelled task or a Ctrl-C mid-sweep
+        # is exactly when the partial transcript is worth most.
+        log.append(f"\n*** THE RUN STOPPED EARLY: {type(e).__name__}: {e}")
+        log.append("*** Everything above actually ran. Re-run to finish the "
+                   "set; a 504 from the model here is usually transient.")
+        raise
+    finally:
+        if mcp_server is not None:
+            try:
+                await mcp_server.aclose()
+            except Exception:                                  # noqa: BLE001
+                pass
         try:
-            await mcp_server.aclose()
+            await station.aclose()
         except Exception:                                      # noqa: BLE001
             pass
-    await station.aclose()
-    print("\n".join(log))
+        print("\n".join(log))
 
 
 async def run_all(llm, tools, prompt, scenarios, log) -> None:

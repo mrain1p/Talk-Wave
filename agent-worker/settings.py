@@ -210,7 +210,16 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "min_endpointing_delay": (None, 0.0),
     "max_endpointing_delay": (None, 0.0),
     "allow_interruptions":   (None, True),
-    "min_interruption_secs": (None, 0.0),
+    # NOT 0, unlike the two delays above, and for a reason that only shows up
+    # on a real call. 0 here means "leave the SDK's floor alone" and that floor
+    # is half a second of SOUND, not of words — so with tune-in on, half a
+    # second of the record the caller is listening to counts as them
+    # interrupting. Room 16:41 on 2026-08-16: three of the DJ's turns were a
+    # single word ("Actually,", "Safe-rooted,", "I'm sorry,") on a box that had
+    # never touched this setting. A default nobody can get right before their
+    # first call is not a default, so this ships at a value that survives music
+    # bleed and still yields to someone actually talking.
+    "min_interruption_secs": (None, 0.8),
     # How long the DJ may work in silence before saying so. The model's own
     # time to first token runs 6.5s typical on this deployment, and a tool
     # call sits on top of that — long enough that the caller cannot tell a
@@ -1571,10 +1580,12 @@ SCHEMA: dict[str, dict] = {
     "min_interruption_secs": dict(group="turns", kind="number",
         needs=("allow_interruptions", True),
         label="Sound needed to interrupt (s)",
-        help="The SDK's default is half a second of SOUND, not words — so with "
-             "tune-in on, half a second of the record cuts the DJ off. Real calls "
-             "came back chopped into fragments because of it. Raise it on a "
-             "speakerphone; 0 keeps the default."),
+        help="How much SOUND — not words — it takes to stop the DJ mid-sentence. "
+             "The SDK's own floor is half a second, which with tune-in on means "
+             "half a second of the record cuts the DJ off, and real calls came "
+             "back chopped into single words. This ships at 0.8s for that reason. "
+             "Raise it on a speakerphone, lower it if the DJ is slow to yield; "
+             "0 hands the decision back to the SDK."),
     "allow_interruptions": dict(group="turns", kind="check",
         label="Let the caller talk over the DJ",
         help="On is how a phone call works. Off is steadier on a speakerphone, "

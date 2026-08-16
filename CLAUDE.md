@@ -109,6 +109,11 @@ cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.j
 Those env vars are not optional — they point every writable path away from the checkout so a
 test can never scribble on your real settings, secrets or auth files.
 
+And `python` there means **the venv's interpreter**, not whatever is first on PATH. A bare
+`python` is usually the system install, which has none of the dependencies and dies at
+`import httpx` before a single test runs — an `ImportError` that looks nothing like a test
+failure and has cost time twice.
+
 Local stack on Windows, no Docker (needs `.venv`, `.env`, and `bin/livekit-server.exe`):
 
 ```bash

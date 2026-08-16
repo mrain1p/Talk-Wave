@@ -379,6 +379,55 @@ class TestTheDrillHarnessTracksTheModulesItDrives(unittest.TestCase):
         )
 
 
+class TestTheDrillBuildsEveryToolTheCallDoes(unittest.TestCase):
+    """The sweep must hand the model the same tool surface a caller gets.
+
+    It did not, for ninety-odd versions. `build_curation_tools` was added to
+    call/session.py at 0.10.132 and never to scripted_call.py, so the hearts and
+    the never-play list could not be exercised — and, worse, could not be seen
+    to be missing: COVERAGE lists what the surface HAS against what fired, so a
+    tool absent from the surface appears in neither column. The drill reported
+    full coverage of a surface four tools short.
+
+    What it looked like instead was a conduct fault. Asked to put a heart on the
+    record, the DJ had no like tool and mimed it with an on-air announcement —
+    the exact shape 0.10.93 exists to prevent, from the instrument rather than
+    the product. And 0.97.24, a fix to the un-like path, shipped through a gate
+    that structurally could not test it.
+
+    Static, and by builder rather than by tool name: the harness needs a
+    provider key and a live station, which the suite must never touch.
+    """
+
+    @staticmethod
+    def _builders(path):
+        import ast
+
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        return {n.func.id for n in ast.walk(tree)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id.startswith("build_") and n.func.id.endswith("_tools")}
+
+    def test_the_scan_found_both_files(self):
+        # Guard the guard: two empty sets compare equal and prove nothing.
+        self.assertIn("build_library_tools",
+                      self._builders(AGENT_WORKER / "call" / "session.py"))
+        self.assertIn("build_library_tools",
+                      self._builders(AGENT_WORKER / "scripted_call.py"))
+
+    def test_the_harness_builds_what_the_call_builds(self):
+        call = self._builders(AGENT_WORKER / "call" / "session.py")
+        drill = self._builders(AGENT_WORKER / "scripted_call.py")
+        self.assertEqual(
+            call - drill, set(),
+            "the drill is missing a tool family the call gives every caller: "
+            f"{sorted(call - drill)}. It will not be reported as unreached — "
+            "COVERAGE can only compare against the surface it was handed — so "
+            "the sweep will read as clean while never testing those tools. Add "
+            "the builder to the tools list in scripted_call.py's main().",
+        )
+
+
 class TestTheWrittenInstructionsStillDescribeTheCode(unittest.TestCase):
     """CLAUDE.md is loaded into every agent's context, so a stale path there is
     worse than no path — it sends the next person (or model) confidently to a

@@ -3,6 +3,41 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.97.25
+
+The on-air hold stops guessing, a DJ that was being cut off after one word isn't, and the throttle in front of your admin password starts working. Covers 0.97.3 through 0.97.25.
+
+### Access
+
+- **The lockout in front of the admin password could be walked past.** It counted failures against an address the caller supplies: eight wrong passwords with a rotating header all answered "4 tries left", where five from one address trip a five-minute cooldown. Anyone who could reach the box on your network had unlimited guesses. The guest-code door had the same hole; both are fixed.
+- **An open line can have a guest code, and show all three tiers.** "Anyone may ring" and "code-holders are their own tier" are two switches now instead of one choice.
+
+### On air
+
+- **If you heard the DJ come back while the station was still talking, that was the hold ending on our estimate instead of the station's own number.** The station's measured timing now outranks every guess, and a link that reports no duration no longer reopens the gate early.
+- **The DJ's own announcements are held until the caller has actually heard them.** The hold was measured from our end of the line, not the caller's, so a shoutout aired while the DJ carried on over it.
+- **The record now shows what the guard could see, not only what it did.** When a hold looks wrong, the evidence is in the transcript instead of nowhere.
+
+### What the caller hears
+
+- **The DJ was being chopped off mid-word.** It takes half a second of *sound* to interrupt, and with tune-in on that is half a second of the record playing in the caller's room — a call this week came back with three one-word DJ turns. It ships at 0.8s now; the dial is under Turn-taking.
+- **"What would you play next?" was being answered by queueing something.** A question about music is a question now.
+- **The check-in stops interrupting you, and stops asking whether you are still there while you are waiting on the DJ.** A turn the caller has already overtaken is dropped rather than spoken late.
+- **Un-liking a song works, and no longer only while it is still playing.** On a real call the DJ managed both halves in one sentence: "I've pulled that back off for you. Nothing's playing at the moment, so I couldn't un-mark it."
+- **One request stops taking two slots in the queue**, and the stock phrase is out of the DJ's mouth.
+
+### The panel
+
+- **A webhook row that lets nothing in stops calling itself registered.** The station's pushes were being rejected while the panel reported the registration fine.
+- **The configuration page stops making you guess what is required**, dropdowns stop inventing a default, and a notice you dismiss stays dismissed.
+- **The activity charts have room, time-to-first-word has a scale**, and the model check stops calling a model silent when it reached for the tools instead of talking.
+
+### Under the hood
+
+- **The tool drill was testing a surface four tools short.** The hearts and the never-play list were never built for it, and coverage can only compare against the surface it was handed — so the sweep read clean while never touching them. That is the gate the un-like fix above went through.
+- **A sweep that hits a bad minute from the model keeps its transcript.** Two runs this week died on a provider timeout and printed nothing at all, having already spent the run.
+- **Both containers say which version they are, in their first line.** Neither did, which is the one question worth asking when a redeploy recreated one and not the other.
+
 ## 0.97.2
 
 A DJ who stops promising records the station refused, a call you can mark good or bad yourself, and a transcript box that gets out of its own way. Covers 0.10.146 through 0.10.159, released as 0.97.2.
