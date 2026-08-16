@@ -3514,7 +3514,9 @@
           '\ncarrying the conversation: ' + (
             d.followUp === 'ok' ? '✓ answered the follow-up'
               : d.followUp === 'silent' ? '⚠ replied with nothing'
-                : '✗ ' + (d.followUpError || 'the provider rejected the follow-up'))) +
+                : d.followUp === 'tools-again'
+                  ? '⚠ reached for the same tools again instead of saying what they returned'
+                  : '✗ ' + (d.followUpError || 'the provider rejected the follow-up'))) +
         (d.reply ? '\nreply: ' + d.reply : '') +
         (hopeless
           ? '\n✗ Over the ' + Math.round(budget / 1000) + 's a call allows — the turn '

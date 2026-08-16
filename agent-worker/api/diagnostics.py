@@ -553,7 +553,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
         # Replayed exactly the way chat/session.py does it, so this button is
         # testing the code path that ships and not a hopeful approximation of
         # it. A provider that fails here fails on air.
-        follow, follow_err = "", ""
+        follow, follow_err, follow_calls = "", "", []
         if tool_calls:
             from chat.session import _tool_report
 
@@ -569,6 +569,17 @@ async def handle_test_llm(request: web.Request) -> web.Response:
                     delta = getattr(chunk, "delta", None)
                     if delta and getattr(delta, "content", None):
                         follow += delta.content
+                    # Round two's tool calls were thrown away, and that made
+                    # this button lie: a model that answers "what did you just
+                    # do?" by CALLING THE TOOLS AGAIN produced no content, and
+                    # the verdict read "replied with nothing". Three different
+                    # Gemini models scored that way on 2026-08-16 before the
+                    # chunks were looked at — and re-reaching is a different
+                    # fault from going quiet, with a different fix. It is also
+                    # the shape behind a caller getting the same track queued
+                    # twice.
+                    if delta and getattr(delta, "tool_calls", None):
+                        follow_calls.extend(delta.tool_calls)
                 await stream.aclose()
             except Exception as e:                             # noqa: BLE001
                 follow_err = _plain_error(e)
@@ -602,6 +613,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
                     "followUp": ("skipped" if not tool_calls
                                  else "failed" if follow_err
                                  else "ok" if follow.strip()
+                                 else "tools-again" if follow_calls
                                  else "silent"),
                     "followUpError": follow_err,
                     "reply": (text or "").strip()[:200],
