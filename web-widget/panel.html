@@ -396,6 +396,11 @@
           <select id="front_access" class="fieldonly" tabindex="-1"
                   aria-hidden="true"></select>
         </div>
+        <!-- What the door above actually produces. The three cells are one
+             choice (the door); the TIERS are derived from it plus whether a
+             guest code exists, and on an open line with a code that is all
+             three at once. Written by paintAccess. -->
+        <p class="hint wide acetiers" id="accessTiers"></p>
         <div class="row narrow">
           <label for="guest_session_hours">Guest code expires (hours)</label>
           <input type="number" id="guest_session_hours" min="0" max="720" step="1" />

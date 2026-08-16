@@ -4665,6 +4665,15 @@
   }
   body.panelpage .acell input { margin: 0; }
   body.panelpage .acell input:disabled + span { color: var(--sage-dim); }
+  /* The selected door reads as chosen rather than as one of three greys —
+     with radios the unchosen ones are the answer's context, not peers. */
+  body.panelpage .acell input:checked + span { color: var(--coral); }
+  /* What the door produces. Directly under the cells, indented to their
+     column, because it is the answer to the question the cells get read as
+     asking ("can I have anyone AND guest?"). */
+  body.panelpage .acetiers {
+    margin: 6px 0 0; font-size: 12px; color: var(--sage);
+  }
 
   /* Legibility (operator: the section rows ran too small to read down the
      page): the name a step up, the sentence at body size in body ink. The

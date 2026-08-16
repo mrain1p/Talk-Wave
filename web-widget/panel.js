@@ -3098,26 +3098,38 @@
   // a new shape.
   const ACCESS_CELLS = [
     ['open', 'Anyone', 'No code needed to ring. A guest code, if you set one, still elevates whoever types it.'],
-    ['guest', 'Guest code', 'Only callers who type the code you share.'],
-    ['admin', 'Admin', 'Always a door — the admin password opens the phone and this panel.'],
+    ['guest', 'Guest code', 'Only callers who type the code you share. Nobody without it gets in.'],
+    ['admin', 'Admin only', 'The phone is closed to callers. Your admin password still opens it.'],
   ];
   function decorateAccess() {
     const wrap = $('accessCells');
     if (!wrap || wrap.dataset.built) return;
     wrap.dataset.built = '1';
+    // RADIOS, because `front_access` is ONE value with three modes. As tick
+    // boxes it read as three independent switches, so an operator who wanted
+    // strangers AND code-holders on the line saw an unticked GUEST CODE and
+    // concluded the guest tier was off — "im unable to have a guest and anyone
+    // profile […] both can be enabled! they have different permission levels
+    // each" (2026-08-16). Both CAN be live, but that is not this control's
+    // question: this is the DOOR, and the tiers it produces are printed under
+    // it by paintAccess.
+    //
+    // Admin is a real third mode (the phone closed to callers), not the
+    // permanently-ticked box it was drawn as — that conflated "admin can
+    // always get in" with "admin only", and left admin-only reachable solely
+    // by unticking the open door, which nothing said.
     ACCESS_CELLS.forEach(([mode, word, why]) => {
       const cell = document.createElement('label');
       cell.className = 'acell';
       cell.title = why;
       const box = document.createElement('input');
-      box.type = 'checkbox';
+      box.type = 'radio';
+      box.name = 'front_access_door';
       box.dataset.mode = mode;
-      if (mode === 'admin') box.disabled = true;   // always on, never a choice
       box.onchange = () => {
+        if (!box.checked) return;
         const sel = $('front_access');
-        // Mutually exclusive, not a cascade: ticking one door unticks the
-        // other, and unticking the open door closes the line to admin only.
-        sel.value = box.checked ? mode : 'admin';
+        sel.value = mode;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
         paintSecurity();
       };
@@ -3132,12 +3144,34 @@
     const wrap = $('accessCells');
     const sel = $('front_access');
     if (!wrap || !sel) return;
-    // One tick per door: Admin always, and whichever of Anyone / Guest code
-    // the stored mode names — never both (see ACCESS_CELLS).
+    // `auto` is the stored value on an un-migrated install and is not one of
+    // the three modes; it behaves as open-until-a-code-exists, so show it as
+    // the door it currently IS rather than leaving every radio blank.
+    const mode = sel.value === 'auto'
+      ? (guestConfigured ? 'guest' : 'open') : sel.value;
     wrap.querySelectorAll('input').forEach((box) => {
-      box.checked = box.dataset.mode === 'admin'
-        || box.dataset.mode === sel.value;
+      box.checked = box.dataset.mode === mode;
     });
+
+    // WHICH CALLERS THIS ACTUALLY PRODUCES — the question the door control was
+    // being read as answering. The door is one choice; the tiers are what
+    // comes out of it, and on an open line with a code set that is all three
+    // at once. Each one is a column in Caller permissions, which is where the
+    // operator sets what it may do.
+    const out = $('accessTiers');
+    if (!out) return;
+    const tiers = [];
+    if (mode === 'open') tiers.push('anyone');
+    if (guestConfigured && mode !== 'admin') tiers.push('guest');
+    tiers.push('admin');
+    const why = mode === 'admin'
+      ? 'the line is closed to callers'
+      : !guestConfigured
+        ? 'set a guest code below to add a guest tier'
+        : mode === 'guest'
+          ? 'no stranger can reach the line, so there is no “anyone” tier'
+          : 'all three, each with its own permissions';
+    out.textContent = 'Callers you can get: ' + tiers.join(' · ') + ' — ' + why;
   }
 
   // Build the label and the three cells once, then keep them in step with the
