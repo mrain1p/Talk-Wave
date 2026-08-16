@@ -530,6 +530,76 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestTheCheckInDoesNotTalkOverTheCaller(unittest.TestCase):
+    """"Still with me?" arriving on top of the caller's answer.
+
+    The idle clock counts TRANSCRIPTS and not voice, on purpose: VAD rode the
+    SDK's away-state and a TV or the station bleeding in kept the check-in from
+    ever firing in a real room. The cost of that only shows on real audio —
+    a transcript lands 8-11 seconds after the caller starts speaking on this
+    deployment, so "nothing transcribed" and "nobody talking" are a whole
+    sentence apart.
+
+    Both calls of 2026-08-16 did it, on the goodbye: the caller began "that's
+    everything, thanks" and the DJ came in over the top with "still with me?".
+
+    So the caller's voice is a VETO on firing and never a reset of the clock,
+    and the veto is capped — a room that reads as speaking for ever must still
+    get its check-in, or this reintroduces the bug the transcript rule fixed.
+    """
+
+    def _run(self, user_state, seconds: float = 3.5):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        replies = []
+
+        class _Session:
+            agent_state = "listening"
+
+            def __init__(self):
+                self.user_state = user_state
+
+            def on(self, *a, **k):
+                pass
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+
+        async def go():
+            lifecycle.attach_idle_watch(
+                ctx, _Session(),
+                {"idle_prompt_secs": 1, "idle_max_nudges": 2},
+            )
+            await asyncio.sleep(seconds)
+
+        asyncio.run(go())
+        return replies
+
+    def test_a_quiet_caller_still_gets_checked_on(self):
+        self.assertTrue(self._run("listening"),
+                        "the check-in stopped firing at all")
+
+    def test_the_check_in_waits_while_the_caller_is_mid_word(self):
+        # 8 beats of half a second, so nothing may go out inside two seconds.
+        self.assertEqual([], self._run("speaking", seconds=2.0))
+
+    def test_a_room_that_never_goes_quiet_still_gets_one(self):
+        # The failure mode the transcript-only clock was built to avoid: a
+        # caller on speakerphone with the station bleeding back reads as
+        # speaking indefinitely, and a veto with no ceiling would mute the
+        # check-in for the whole call.
+        self.assertTrue(self._run("speaking", seconds=7.0),
+                        "a noisy room can suppress the check-in for ever")
+
+
 class TestTheIdleClockDoesNotRunWhileTheDJIsWorking(unittest.TestCase):
     """"Still there?" must not be asked while the DJ is the one working.
 

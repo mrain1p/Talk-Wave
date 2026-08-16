@@ -1078,6 +1078,94 @@ class TestAnAskThatWentNowhereIsWrittenDown(unittest.TestCase):
         self.assertGreater(actions.taken_at[0], 0)
 
 
+class TestASearchNobodyHeardTheAnswerToIsWrittenDown(unittest.TestCase):
+    """The inverse of every honesty finding here, and the archive was blind.
+
+    Those are all the DJ claiming MORE than a tool returned. This is the tool
+    returning the goods and the DJ withholding them — which the unanswered-ask
+    check scores as fine, because a tool did run.
+
+    Both fixtures below are real, from 2026-08-16, and they are the point: the
+    same station, the same tool, the same eight results, one call that told the
+    caller and one that did not.
+    """
+
+    FOUND = ('(q=\'Fleetwood Mac\') -> 8 result(s):\n'
+             '"Landslide" by Fleetwood Mac (The White Album, 1975) — calm\n'
+             '"Crystal" by Fleetwood Mac (The White Album, 1975) — calm')
+
+    def _call(self, dj_lines):
+        import types
+
+        from call.record import CallRecord
+
+        rec = CallRecord.__new__(CallRecord)
+        rec.data = {"turns": [], "tools": [], "problems": []}
+        rec.data["tools"].append(
+            {"t": "2026-08-16T05:14:42+00:00",
+             "name": "subwave_search_library", "result": self.FOUND})
+        for i, line in enumerate(dj_lines):
+            rec.data["turns"].append(
+                {"t": f"2026-08-16T05:14:5{i}+00:00", "who": "dj",
+                 "text": line})
+        return types.SimpleNamespace(record=rec)
+
+    def _problems(self, call):
+        from call import postmortem
+
+        postmortem._note_if_a_lookup_was_never_read_out(call)
+        return call.record.data["problems"]
+
+    def test_a_search_the_dj_never_mentioned_is_reported(self):
+        # Verbatim from the call. Eight tracks came back and the caller was
+        # told nothing at all — not yes, not no, not one title. That record
+        # carried zero problems.
+        call = self._call([
+            "Fair enough — just keeping an eye on the collection. It's a "
+            "classic list, always good to know what's tucked away in the "
+            "crates just in case."])
+        found = self._problems(call)
+        self.assertEqual(1, len(found), "a search nobody heard back is invisible")
+        self.assertIn("never told", found[0]["what"])
+
+    def test_naming_the_results_counts_as_answering(self):
+        # Also verbatim, from the call that went well an hour later.
+        call = self._call([
+            "That's a classic choice. I've got a few versions here — the one "
+            "by Fleetwood Mac, The Chicks, or even a jazz take from Dexter "
+            "Gordon. Which one were you thinking of?"])
+        self.assertEqual([], self._problems(call))
+
+    def test_a_summary_counts_too(self):
+        # The bar is "did the caller learn the answer", not "did the DJ read
+        # the list out". Naming the artist they asked about is enough.
+        call = self._call(["We've got a good handful of Fleetwood Mac, yeah."])
+        self.assertEqual([], self._problems(call))
+
+    def test_the_answer_may_arrive_one_turn_late(self):
+        # The promise guard can put a turn between the tool and the answer,
+        # and that turn is usually the DJ saying it is looking.
+        call = self._call(["One second, let me have a look.",
+                           "Right — Landslide is in there."])
+        self.assertEqual([], self._problems(call))
+
+    def test_a_search_that_found_nothing_is_not_a_missed_answer(self):
+        # "Nothing in the racks tonight" cannot contain a title, so scoring it
+        # by whether titles were spoken would flag every honest empty search.
+        import types
+
+        from call.record import CallRecord
+
+        rec = CallRecord.__new__(CallRecord)
+        rec.data = {"turns": [{"t": "2026-08-16T05:14:50+00:00", "who": "dj",
+                               "text": "Nothing in the racks for that one."}],
+                    "tools": [{"t": "2026-08-16T05:14:42+00:00",
+                               "name": "subwave_search_library",
+                               "result": "(q='Zzz') -> no results"}],
+                    "problems": []}
+        self.assertEqual([], self._problems(types.SimpleNamespace(record=rec)))
+
+
 class TestASwallowedRequestIsWrittenDown(unittest.TestCase):
     """The speech filter keeps a typed tool call off the air, but silently —
     and from the caller's side that is indistinguishable from the DJ agreeing

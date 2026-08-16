@@ -119,6 +119,7 @@ from tests.test_caller_tiers import (  # noqa: F401
     TestUpgradingKeepsTheStationExactlyAsItWas,
 )
 from tests.test_call_record import (  # noqa: F401
+    TestASearchNobodyHeardTheAnswerToIsWrittenDown,
     TestASwallowedRequestIsWrittenDown,
     TestAnAskThatWentNowhereIsWrittenDown,
     TestCallPrivacy,
@@ -163,6 +164,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack,
     TestTheIdleClockDoesNotRunWhileTheDJIsWorking,
     TestTheCallerIsToldSomebodyIsStillThere,
+    TestTheCheckInDoesNotTalkOverTheCaller,
     TestTheCheckInWindowIsTheNumberTheOperatorTyped,
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )

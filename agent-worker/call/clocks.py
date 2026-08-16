@@ -26,6 +26,17 @@ from .hangup import await_sign_off, end_call
 
 log = logging.getLogger("callin.agent")
 
+# How many half-seconds a check-in will wait for the caller to stop talking
+# before going out anyway. Short on purpose: this is the difference between
+# talking over somebody's first three words and letting a noisy room mute the
+# check-in for good, and only the first of those is worth fixing here.
+SPEAKING_GRACE_BEATS = 8
+
+
+def _speaking_now(session) -> bool:
+    """Is the caller mid-word RIGHT NOW, by voice rather than by transcript."""
+    return str(getattr(session, "user_state", "") or "") == "speaking"
+
 
 def _cancel(task: asyncio.Task):
     """lifecycle.cancel, imported lazily to keep the two modules one-way."""
@@ -158,6 +169,24 @@ def attach_idle_watch(
                 continue
             if state["nudges"] >= max_nudges:
                 continue
+            # NOT WHILE THEY ARE ALREADY TALKING. The clock counts transcripts
+            # and not voice, deliberately (see above) — but a transcript lands
+            # 8-11 seconds after the caller starts on this deployment, so
+            # "nothing transcribed" and "nobody speaking" are not the same
+            # thing, and the gap between them is a whole sentence. Heard on
+            # both calls of 2026-08-16: the caller began "that's everything,
+            # thanks" and the DJ said "still with me?" over the top of it.
+            #
+            # A veto, never a reset, and capped: VAD was rejected for the
+            # CLOCK because a TV or the station bleeding in kept the check-in
+            # from ever firing in a real room. Deferring a few beats cannot
+            # bring that back — the nudge still goes out, just not into the
+            # caller's first words.
+            if _speaking_now(session):
+                for _ in range(SPEAKING_GRACE_BEATS):
+                    await asyncio.sleep(0.5)
+                    if not _speaking_now(session):
+                        break
             state["nudges"] += 1
             state["last_words"] = time.time()
             first = state["nudges"] == 1

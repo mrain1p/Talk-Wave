@@ -32,6 +32,7 @@ def write_notes(call, duration: float, final: list) -> None:
     _note_if_the_door_was_held_open(call)
     _note_if_two_turns_wanted_the_floor(call)
     _note_if_an_ask_went_unanswered(call)
+    _note_if_a_lookup_was_never_read_out(call)
     _note_if_nothing_was_heard(call, duration, final)
     _note_if_the_model_kept_the_caller_waiting(call)
     _note_if_the_voice_fell_behind(call)
@@ -98,6 +99,81 @@ def _note_if_an_ask_went_unanswered(call) -> None:
         "landed — the transcript says which. This is the shape a request "
         "takes when it gets dropped mid-call."
     )
+
+def _note_if_a_lookup_was_never_read_out(call) -> None:
+    """Say so when a search answered and the caller was never told what it said.
+
+    The blind spot in the check above, and the inverse of every honesty finding
+    this repo has: those are the DJ claiming MORE than a tool returned. This is
+    the tool returning the goods and the DJ withholding them, which
+    `unanswered` scores as fine because a tool did run.
+
+    Room 72de3b8893fe's predecessor on 2026-08-16: the caller asked "is there
+    anything by Fleetwood Mac in your library?", subwave_search_library
+    returned eight tracks including Landslide, and the DJ replied "Fair
+    enough — just keeping an eye on the collection. It's a classic list."
+    Never said yes, never said no, never named one. The record carried zero
+    problems.
+
+    The discriminator is deliberately blunt: did the DJ's next couple of lines
+    contain the thing that was searched for, or any title that came back? On
+    the call that went WELL the same day the DJ said "the one by Fleetwood
+    Mac, The Chicks, or even a jazz take from Dexter Gordon", so a summary
+    passes as easily as a list — what fails is a turn that mentions none of it.
+
+    Scoped to the library search alone. It is the one lookup whose whole value
+    is the answer, and a detector nobody has calibrated should start where the
+    evidence is rather than guess at the others.
+    """
+    if not call.record:
+        return
+    data = getattr(call.record, "data", {}) or {}
+    turns = [t for t in data.get("turns") or [] if t.get("who") == "dj"]
+    missed = []
+    for entry in data.get("tools") or []:
+        if entry.get("name") != "subwave_search_library" or entry.get("failed"):
+            continue
+        result = str(entry.get("result") or "")
+        if "result(s)" not in result or result.startswith("(q='') "):
+            continue
+        wanted = _search_words(result)
+        if not wanted:
+            continue
+        # The next two DJ lines, because the promise guard can put one turn
+        # between the tool and the answer.
+        after = [t for t in turns if (t.get("t") or "") > (entry.get("t") or "")]
+        spoken = " ".join(str(t.get("text") or "") for t in after[:2]).lower()
+        if spoken and not any(w in spoken for w in wanted):
+            missed.append(result.split(" -> ")[0])
+    if not missed:
+        return
+    call.record.problem(
+        f"A library search answered and the caller was never told what it "
+        f"said ({len(missed)}): " + "; ".join(missed[:3])
+        + ". The tool ran and returned results, and the DJ's next lines "
+        "named none of them — so this reads as a working call in every "
+        "other count. The caller asked a question and got no answer."
+    )
+
+
+def _search_words(result: str) -> list[str]:
+    """What the DJ would have to say for that search to count as reported.
+
+    The query's own words plus the titles that came back, which is what a
+    caller would recognise. Short words are dropped: "any" and "the" match
+    almost anything and would score a non-answer as an answer.
+    """
+    import re
+
+    words = set()
+    q = re.search(r"\(q='([^']*)'\)", result)
+    if q:
+        words.update(w for w in re.findall(r"\w+", q.group(1).lower())
+                     if len(w) > 3)
+    for title in re.findall(r'"([^"]{2,60})"', result)[:8]:
+        words.update(w for w in re.findall(r"\w+", title.lower()) if len(w) > 3)
+    return sorted(words)
+
 
 def _note_if_nothing_was_heard(call, duration: float, final: list) -> None:
     """Say so, in the record, when a call produced no caller audio.
