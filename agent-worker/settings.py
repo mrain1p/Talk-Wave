@@ -936,11 +936,16 @@ SCHEMA: dict[str, dict] = {
 
     # --- ears ---
     "stt_provider": dict(group="ears", kind="select", label="Provider",
-        help="The built-in Whisper is the default: in this container already, "
-             "no key, no network. The cloud ears (Deepgram, OpenAI, Google) "
-             "are strictly optional — a key buys word-by-word captions and "
-             "better accuracy on names, most noticeable from a phone in a "
-             "noisy place."),
+        help="Two real choices: the BUILT-IN Whisper, which is the default and "
+             "needs nothing — it is in this container already, no key, no "
+             "network — or a CLOUD ear, which buys word-by-word captions and "
+             "better accuracy on names, most noticeable from a phone in a noisy "
+             "room. Which cloud you pick is only a question of which key you "
+             "have: OpenAI and Google reuse the key you already entered under "
+             "Brains, so they cost you nothing new. Deepgram is a separate "
+             "company with its own account and its own key, in the box below "
+             "— it is listed because it is the most accurate of the three on "
+             "phone audio, not because anything here needs it."),
     "stt_model": dict(group="ears", kind="select", label="Model",
         help="For the built-in Whisper: base.en is the default and right for "
              "phone-quality audio; tiny.en is faster on weak CPUs, small.en "
@@ -949,11 +954,12 @@ SCHEMA: dict[str, dict] = {
 
     # --- voice ---
     "tts_mode": dict(group="voice", kind="select", label="Backend",
-        help="'local' points at your own OpenAI-compatible speech server — "
-             "whatever you run — and can use the station's persona voices, "
-             "but a small GPU may generate slower than realtime (Test voice "
-             "measures it). 'cloud' is fast but won't match the on-air "
-             "timbre."),
+        help="Nothing is picked until you pick it — the DJ has no voice to "
+             "speak with until then, and the dashboard says so. 'local' points "
+             "at your own OpenAI-compatible speech server — whatever you run — "
+             "and can use the station's persona voices, but a small GPU may "
+             "generate slower than realtime (Test voice measures it). 'cloud' "
+             "is fast but won't match the on-air timbre."),
     "tts_base_url": dict(group="voice", kind="text", label="Endpoint",
         help="Any OpenAI-compatible speech endpoint. Press Test voice after "
              "changing this or the adapter: a mismatched pair produces audio at "

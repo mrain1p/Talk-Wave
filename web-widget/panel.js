@@ -2021,8 +2021,17 @@
         blankLabel: resolved.llm_provider
           ? 'Default — ' + resolved.llm_provider
           : 'Not set — pick a provider' });
+    // EVERY OPTION SAYS WHAT IT COSTS YOU. The list read as four peers, so
+    // "OpenAI and Google reuse the keys above" left the obvious question
+    // unanswered — then what is Deepgram? (operator's ask). It is the one
+    // with its own account, and the label is where that belongs.
     fill('stt_provider', options.sttProviders, {
-      labels: { local: 'Built-in Whisper — local, no key (default)' },
+      labels: {
+        local: 'Built-in Whisper — no key, runs here (default)',
+        openai: 'OpenAI — reuses your OpenAI key',
+        google: 'Google — reuses your Google key',
+        deepgram: 'Deepgram — needs its own account and key, below',
+      },
       blankLabel: 'Default — built-in Whisper, no key',
     });
   }

@@ -2881,6 +2881,16 @@
     margin: 18px 0 9px; padding-top: 13px; border-top: 1px solid var(--line);
   }
   details.sec > .body > .subhead:first-child { margin-top: 4px; padding-top: 0; border-top: none; }
+  /* "optional" beside a subhead: the panel's own tag shape, quieter than the
+     heading it qualifies. Whether something is required is the first thing an
+     operator wants from a block of credentials, and prose three lines down is
+     not where they look for it. */
+  .subhead .opt {
+    font-style: normal; font-size: 9px; letter-spacing: .12em;
+    color: var(--sage-dim); border: 1px solid var(--line2);
+    border-radius: 4px; padding: 2px 6px; margin-left: 8px;
+    vertical-align: middle;
+  }
 
   /* THE ICON PICKER. Rows and columns of the actual glyphs, in the panel's own
      control shape — a dropdown of emoji names would be a list of words for a

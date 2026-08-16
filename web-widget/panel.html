@@ -449,12 +449,20 @@
              remains the escape hatch for a station publishing MCP somewhere
              unusual. -->
 
-        <h4 class="subhead">Station admin credentials</h4>
-        <p class="hint wide" style="margin-top:0">The station's own login.
-          Unlocks putting messages on air, running segments, firing a programme
-          beat, skipping a track, putting a different show on air,
-          the back-to-air mention, exact-track queueing, and mirroring each
-          persona's voice from the station. Stored server-side, never shown back.</p>
+        <!-- OPTIONAL in the heading, RECOMMENDED in the prose, and the list of
+             what it unlocks is the argument for it (operator's ask). The line
+             read as a requirement, so an operator setting the sidecar up had
+             no way to tell whether the line would work at all without their
+             station's password — it will, with a smaller DJ. -->
+        <h4 class="subhead">Station admin credentials <em class="opt">optional</em></h4>
+        <p class="hint wide" style="margin-top:0">The line works without these —
+          the DJ can talk, take requests and search the library. They are
+          <strong>recommended</strong> because they are what unlocks the rest:
+          putting messages on air, running segments, firing a programme beat,
+          skipping a track, putting a different show on air, the back-to-air
+          mention, exact-track queueing, and mirroring each persona's voice from
+          the station. Without them those stay switched off however you set the
+          permissions. Stored server-side, never shown back.</p>
         <!-- Filled by paintSecrets() from secrets_store.SECRET_GROUPS. Every
              key block on this page is one of these divs and nothing else, so
              adding a key is an entry in that table rather than an edit here. -->
