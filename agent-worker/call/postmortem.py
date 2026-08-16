@@ -65,13 +65,17 @@ def _note_if_two_turns_wanted_the_floor(call) -> None:
     and the NUMBER is what says whether this narrow guard was worth
     having. If a month of calls records none, it can go.
     """
-    if not call.record or not call.floor.collisions:
+    stale = getattr(call.floor, "stale", 0)
+    if not call.record or not (call.floor.collisions or stale):
         return
     call.record.problem(
         f"Two of the DJ's own turns wanted to start at once "
         f"{call.floor.collisions} time(s)"
         + (f", and {call.floor.given_up} gave up waiting"
            if call.floor.given_up else "")
+        + (f". {stale} was dropped because the caller spoke while it "
+           "queued — it would have answered a moment that had passed"
+           if stale else "")
         + ". They were serialised rather than spoken over each other. "
         "Expected to be rare; several on one call means two behaviours "
         "are firing on the same cue."

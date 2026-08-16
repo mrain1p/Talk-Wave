@@ -2373,6 +2373,103 @@ class TestAPromisedActionActuallyHappens(unittest.TestCase):
         asyncio.run(go())
 
 
+class TestATurnTheCallerHasOvertakenIsDropped(unittest.TestCase):
+    """"That's locked in!" answering "No, I don't want anything else."
+
+    Room 113774ecedfa, 2026-08-16, and both turns carry the same second. The
+    floor had already done its job — it serialised them — but serialising made
+    the second one LATE, and a late repair is not merely delayed: it answers a
+    moment nobody is in any more. Two collisions on that call, and this is what
+    one of them sounded like.
+
+    The judgement is the one MAX_WAIT_SECS already makes, on a better signal:
+    the caller, rather than a clock.
+    """
+
+    def _floor(self):
+        from call.floor import Floor
+
+        return Floor()
+
+    def test_a_turn_that_waited_through_the_caller_is_refused(self):
+        import asyncio
+
+        floor = self._floor()
+
+        async def go():
+            got = []
+            async with floor.take("the first turn") as mine:
+                got.append(mine)
+
+                async def late():
+                    async with floor.take("the promise nudge") as ok:
+                        got.append(ok)
+
+                task = asyncio.ensure_future(late())
+                await asyncio.sleep(0.05)
+                floor.caller_spoke()          # they moved on while it queued
+            await task
+            return got
+
+        self.assertEqual([True, False], asyncio.run(go()))
+        self.assertEqual(1, floor.stale)
+
+    def test_a_turn_nobody_overtook_still_speaks(self):
+        import asyncio
+
+        floor = self._floor()
+
+        async def go():
+            got = []
+            async with floor.take("the first turn") as mine:
+                got.append(mine)
+
+                async def late():
+                    async with floor.take("the come-back") as ok:
+                        got.append(ok)
+
+                task = asyncio.ensure_future(late())
+                await asyncio.sleep(0.05)
+            await task
+            return got
+
+        self.assertEqual([True, True], asyncio.run(go()))
+        self.assertEqual(0, floor.stale)
+
+    def test_speech_from_BEFORE_the_turn_was_wanted_does_not_drop_it(self):
+        # The whole point is "spoke while it queued". A caller who spoke first
+        # is the reason the turn exists.
+        import asyncio
+
+        floor = self._floor()
+        floor.caller_spoke()
+
+        async def go():
+            async with floor.take("the promise nudge") as mine:
+                return mine
+
+        self.assertTrue(asyncio.run(go()))
+        self.assertEqual(0, floor.stale)
+
+    def test_the_watch_only_counts_real_words(self):
+        import types
+
+        from call import floor as floor_mod
+
+        floor = self._floor()
+        handlers = {}
+        floor_mod.attach_floor_watch(
+            types.SimpleNamespace(on=lambda n, f: handlers.__setitem__(n, f)),
+            floor)
+        fire = handlers["user_input_transcribed"]
+        fire(types.SimpleNamespace(is_final=True, transcript="   "))
+        self.assertEqual(0.0, floor.last_caller_at)
+        fire(types.SimpleNamespace(is_final=False, transcript="half a wo"))
+        self.assertEqual(0.0, floor.last_caller_at)
+        fire(types.SimpleNamespace(is_final=True, transcript="no, that's it"))
+        self.assertGreater(floor.last_caller_at, 0.0)
+
+
 class TestTwoOfTheDJsOwnTurnsNeverStartAtOnce(unittest.TestCase):
     """Nine things can make the DJ speak; three of them can start while another
     is already generating.

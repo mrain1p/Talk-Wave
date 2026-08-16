@@ -424,6 +424,7 @@ class CallSession:
                                            air=self.air, floor=self.floor)
         door.attach_door_watch(session, self.door)
         comeback.attach_air_watch(session, self.air)
+        floor_mod.attach_floor_watch(session, self.floor)
         asks_mod.attach_ask_watch(session, self.asks)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard, actions=self.actions)

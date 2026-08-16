@@ -42,6 +42,17 @@ log = logging.getLogger("callin.agent")
 MAX_WAIT_SECS = 8.0
 
 
+def attach_floor_watch(session, floor: "Floor") -> None:
+    """Tell the floor when the caller speaks, so it can drop stale turns."""
+
+    def _on_caller(ev) -> None:
+        if getattr(ev, "is_final", True) and str(
+                getattr(ev, "transcript", "") or "").strip():
+            floor.caller_spoke()
+
+    session.on("user_input_transcribed", _on_caller)
+
+
 class Floor:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
@@ -50,6 +61,17 @@ class Floor:
         # Read by the record; nothing branches on it.
         self.collisions = 0
         self.given_up = 0
+        # Turns dropped because the caller spoke while they queued. Waiting
+        # made these turns LATE, and a late turn is not merely delayed — it is
+        # answering something nobody said any more. Room 113774ecedfa: the
+        # caller said "No, I don't want anything else" and the DJ replied
+        # "That's locked in!", which had been true of a different moment.
+        self.stale = 0
+        self.last_caller_at = 0.0
+
+    def caller_spoke(self) -> None:
+        """The caller said something. Same clock as `take`."""
+        self.last_caller_at = time.monotonic()
 
     @contextlib.asynccontextmanager
     async def take(self, who: str):
@@ -71,6 +93,22 @@ class Floor:
             log.warning("%s gave up waiting %.0fs for the floor (%s had it) — "
                         "staying quiet rather than talking over it",
                         who, time.monotonic() - started, self.holder or "?")
+            yield False
+            return
+        # THE CONVERSATION MOVED ON WHILE WE QUEUED. Every holder here already
+        # tolerates being late, but "late" was doing two jobs: a repair that
+        # arrives a beat after the line it repairs is fine, and one that
+        # arrives after the CALLER has spoken again is answering a moment that
+        # has gone. Dropping it is the same judgement MAX_WAIT_SECS already
+        # makes, using the better signal — the caller, rather than a clock.
+        #
+        # This cannot catch a turn that was already generating when the caller
+        # spoke; that is barge-in, and interruptions handle it.
+        if self.last_caller_at > started:
+            self.stale += 1
+            self._lock.release()
+            log.info("%s is stale — the caller spoke while it waited, so it "
+                     "would answer a moment that has passed", who)
             yield False
             return
         self.holder = who

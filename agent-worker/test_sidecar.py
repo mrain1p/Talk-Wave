@@ -146,6 +146,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestARefusedActionIsNotReportedAsDone,
     TestEveryGeneratedTurnWaitsForTheBroadcast,
     TestTheCallerIsNotShownTheDoorTwice,
+    TestATurnTheCallerHasOvertakenIsDropped,
     TestTwoOfTheDJsOwnTurnsNeverStartAtOnce,
     TestTheWordsThatOweAReceipt,
     TestACallerWhoWasNeverHeardIsToldSo,
