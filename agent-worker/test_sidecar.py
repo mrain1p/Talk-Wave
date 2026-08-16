@@ -165,6 +165,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack,
     TestTheIdleClockDoesNotRunWhileTheDJIsWorking,
     TestTheCallerIsToldSomebodyIsStillThere,
+    TestNoStockPhraseIsPutInTheDJsMouth,
     TestTheGateDoesNotChatter,
     TestTheTimelineSaysWhatTheGuardCouldSee,
     TestTheCheckInDoesNotBlameTheCallerForOurOwnPause,

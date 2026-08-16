@@ -306,14 +306,22 @@ def attach_working_line(ctx: JobContext, session: AgentSession, cfg: dict,
     after = float(cfg.get("working_line_secs") or 0)
     if after <= 0:
         return
-    # Deliberately generic: the worker does not know what the model is doing,
-    # and a specific guess ("let me look that up") is a claim. These say only
-    # that somebody is still there and working, which is all that is known.
-    LINES = [
-        "One second, let me have a look.",
-        "Hang on — checking that now.",
-        "Bear with me a moment.",
-    ]
+    # NOTHING CANNED UNLESS THE OPERATOR WROTE IT. This used to hold three
+    # stock lines and always reach for the first, so every caller on every
+    # call heard the identical "One second, let me have a look" — in Wade's
+    # voice and in Ash's, word for word, which is exactly as hollow as it
+    # sounds. The prompt was seeding the same phrase alongside it.
+    #
+    # The line cannot be generated here: this fires WHILE the model's turn is
+    # in flight, and a DJ asked to speak before acting speaks instead of
+    # acting (the failure promise_guard exists for). So the honest options are
+    # the operator's own words or none, and none is the better default —
+    # silence over a wait is a smaller fault than a stock phrase that makes
+    # the persona sound like a kiosk.
+    lines = [ln.strip() for ln in
+             str(cfg.get("working_line_text") or "").split("|") if ln.strip()]
+    if not lines:
+        return
     state = {"said": 0, "since": 0.0, "was": ""}
 
     def _on_state(ev) -> None:
@@ -338,7 +346,7 @@ def attach_working_line(ctx: JobContext, session: AgentSession, cfg: dict,
             if air is not None and getattr(air, "on_air", False):
                 continue
             state["said"] += 1
-            line = LINES[(state["said"] - 1) % len(LINES)]
+            line = lines[(state["said"] - 1) % len(lines)]
             log.info("the DJ has been working %.1fs — saying a holding line", after)
             try:
                 # Not interruptible and not in the history: it is a courtesy

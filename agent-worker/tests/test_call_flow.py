@@ -530,6 +530,56 @@ class TestTheIdleClockDoesNotRunWhileTheDJIsHeldBack(unittest.TestCase):
             "the idle check-in stopped working when the air was clear")
 
 
+class TestNoStockPhraseIsPutInTheDJsMouth(unittest.TestCase):
+    """"One second, let me have a look" — word for word, call after call.
+
+    Two places were seeding it at once: a list of three stock lines in the
+    worker that always reached for the first, and the prompt's own example
+    ("Say it in your voice (\"let me have a look\")"). So Wade and Ash said the
+    identical sentence, which is exactly as hollow as it sounds.
+
+    It cannot be generated instead: this fires WHILE the model's turn is in
+    flight, and a DJ asked to speak before acting speaks instead of acting.
+    So it is the operator's wording or nothing, and nothing is the default.
+    """
+
+    def test_with_no_wording_the_dj_says_nothing(self):
+        import asyncio
+        import types
+
+        from call import lifecycle
+
+        said = []
+        subs = {}
+
+        class _Session:
+            def on(self, name, fn):
+                subs[name] = fn
+
+            def say(self, text, **kw):
+                said.append(text)
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+
+        async def go():
+            lifecycle.attach_working_line(
+                ctx, _Session(), {"working_line_secs": 0.2}, air=None)
+            fire = subs.get("agent_state_changed")
+            if fire:
+                fire(types.SimpleNamespace(new_state="thinking"))
+            await asyncio.sleep(1.2)
+
+        asyncio.run(go())
+        self.assertEqual([], said)
+
+    def test_the_prompt_stops_suggesting_the_phrase(self):
+        # The stock list was only half of it — the conduct told the DJ the
+        # words to use, so removing the list alone would have changed nothing.
+        from brain import conduct
+
+        self.assertNotIn("let me have a look", conduct.HOW_TO_TALK)
+
+
 class TestTheGateDoesNotChatter(unittest.TestCase):
     """A one-second hold, then another five seconds later.
 
@@ -1012,8 +1062,15 @@ class TestTheCallerIsToldSomebodyIsStillThere(unittest.TestCase):
         air = types.SimpleNamespace(on_air=on_air)
 
         async def go():
+            # The wording is the OPERATOR'S now, and an empty one keeps the
+            # line silent: three stock phrases in the code meant every caller
+            # heard the same "One second, let me have a look" in every
+            # persona's voice.
             lifecycle.attach_working_line(
-                ctx, _Session(), {"working_line_secs": after}, air=air)
+                ctx, _Session(),
+                {"working_line_secs": after,
+                 "working_line_text": "Hang on, digging.|Bear with me."},
+                air=air)
             state = subs.get("agent_state_changed")
             if state:
                 state(types.SimpleNamespace(new_state="thinking"))

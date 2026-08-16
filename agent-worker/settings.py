@@ -216,6 +216,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # call sits on top of that — long enough that the caller cannot tell a
     # thinking DJ from a dead line. 0 = stay silent until the answer is ready.
     "working_line_secs":     (None, 4),
+    "working_line_text":     (None, ""),
 
     # Whether both sides of a call are written to disk at all.
     #
@@ -1524,10 +1525,19 @@ SCHEMA: dict[str, dict] = {
     "working_line_secs": dict(group="turns", kind="number",
         label="Say something after (s)",
         help="How long the DJ may be working on an answer before it says one "
-             "short line so the caller knows somebody is still there — "
-             "“one second, let me have a look”. Covers the wait while "
-             "the model thinks and a tool runs. 0 keeps the line silent until "
-             "the answer is ready."),
+             "short line so the caller knows somebody is still there. Covers "
+             "the wait while the model thinks and a tool runs. 0 keeps the "
+             "line silent until the answer is ready, and so does leaving the "
+             "wording below empty."),
+    "working_line_text": dict(group="turns", kind="text",
+        label="…and say this",
+        help="YOUR words, spoken while the DJ works. Separate several with | "
+             "and they are used in turn. Left empty, nothing is said — the "
+             "line cannot be written by the DJ itself (it fires while the "
+             "DJ's turn is still being generated, and a DJ told to speak "
+             "before acting speaks INSTEAD of acting), so the only "
+             "alternative to your wording is a stock phrase every caller "
+             "hears in every persona's voice. Silence beats that."),
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "
              "A volunteered name is still used to credit them on air."),
