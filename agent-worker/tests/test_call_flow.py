@@ -1029,6 +1029,62 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         asyncio.run(comeback.come_back(guard, _Session()))
         self.assertNotIn("Dave", said[1])
 
+    def test_the_comeback_knows_what_it_already_told_the_caller(self):
+        # "Don't recap" cannot be obeyed by a model that has not been told
+        # what would count as a recap. On 2026-08-16 the DJ said "I just sent
+        # that shoutout for Marcus, and the Fleetwood Mac track is lined up"
+        # on its way out, then came back and said both things again — with
+        # "don't recap" already in the instruction.
+        #
+        # The operator's steer is that referring back is GOOD continuity and
+        # only the verbatim repeat is wrong, so the line the DJ actually said
+        # rides along to be named rather than the subject being forbidden.
+        import asyncio
+        import types
+
+        from call import comeback
+        from call.air import OnAirGuard
+
+        said = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                said.append(str(kw.get("instructions", "")))
+
+        guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        guard.aired_text = "Big shout to Dave from the call line."
+        guard.last_dj_line = "That shoutout for Dave is going out now."
+        asyncio.run(comeback.come_back(guard, _Session()))
+        self.assertIn("going out now", said[0],
+                      "the come-back cannot avoid a repeat it never saw")
+        self.assertIn("don't say it again", said[0])
+
+    def test_the_air_watch_remembers_the_djs_last_line(self):
+        # Same shape as the door's watch, and for the same reason: only the
+        # event knows what was said, and by the time the come-back runs the
+        # turn is long gone. The caller's own turns must not be mistaken for
+        # the DJ's, or the come-back would avoid repeating the CALLER.
+        import types
+
+        from call import comeback
+
+        handlers = {}
+
+        class _Session:
+            def on(self, name, fn):
+                handlers[name] = fn
+
+        guard = types.SimpleNamespace(last_dj_line="")
+        comeback.attach_air_watch(_Session(), guard)
+        fire = handlers["conversation_item_added"]
+
+        fire(types.SimpleNamespace(item=types.SimpleNamespace(
+            role="user", text_content="play me something loud")))
+        self.assertEqual(guard.last_dj_line, "")
+        fire(types.SimpleNamespace(item=types.SimpleNamespace(
+            role="assistant", text_content="Lining that up for you now.")))
+        self.assertEqual(guard.last_dj_line, "Lining that up for you now.")
+
     def test_the_djs_own_action_gets_a_comeback_line_too(self):
         # mark_on_air() sets `on_air` directly, so the watch loop never saw a
         # busy edge for the DJ's own announcements — `stepped_away` stayed
@@ -1285,6 +1341,64 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
         guard.mark_on_air(10)
         self.assertGreaterEqual(guard._assumed_until,
                                 time.time() + 9 + OnAirGuard.HANDOFF_LAG_SECS)
+
+    def test_our_own_announcement_waits_for_the_caller_to_hear_it(self):
+        # The one hold that gets no push is the one for our OWN action, and it
+        # was the only one the caller's lag never shifted. The caller is
+        # `caller_lag` seconds behind the live edge, so a shoutout sent now
+        # does not START in their ear for that long — sizing the hold as words
+        # + pad brings the DJ back while the caller is still waiting to hear a
+        # word of it.
+        #
+        # Heard on the call of 2026-08-16 (room 72de3b8893fe), and the record
+        # shows the whole shape: a 3.0s shoutout opened a 7.5s hold, the hold
+        # closed on "the estimate ran out", the DJ said "I just sent that
+        # shoutout for Marcus" — and the guard then had to open a SECOND hold
+        # for another 12.0s once the push arrived carrying the real 22. The
+        # caller heard the DJ announce the shoutout roughly seventeen seconds
+        # before they heard the shoutout.
+        import time
+
+        guard = self._guard()
+        guard._last_buf = 22.0                   # what this station reports
+        now = time.time()
+        guard.mark_on_air(3)
+        # The caller starts hearing it at now+22 and stops at now+25; coming
+        # back before that talks over it in the only ear that matters.
+        self.assertGreaterEqual(
+            guard._assumed_until, now + 22 + 3,
+            "the DJ comes back before the caller has heard the announcement")
+
+    def test_the_first_announcement_knows_the_stations_buffer(self):
+        # `_last_buf` was only ever written by an incoming push, so the FIRST
+        # thing a call puts on air sized its hold from the 2s fallback even
+        # when the station had been saying 22 all along. On the 2026-08-16
+        # call the push carrying bufSecs=22.0 and the hold opened with
+        # bufSecs=2.0 are three milliseconds apart in the same timeline.
+        #
+        # The web process already writes the last verified push to disk for
+        # exactly this kind of cross-process read, so there is no new state
+        # here — the buffer is a property of the station's Icecast config,
+        # not of this call, and a call that has seen no push yet should still
+        # start from the last thing the station said.
+        import json
+        import os
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 30, "v": 2,
+                               "phase": "clear", "bufSecs": 22.0}, f)
+                guard = self._guard()
+                self.assertEqual(
+                    guard.caller_lag(), 22.0,
+                    "the first hold of a call still assumes the 2s fallback")
+            finally:
+                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
 
     def test_the_push_file_reads_back_as_evidence(self):
         # The web process writes the last verified voice push; the guard reads
@@ -2578,15 +2692,30 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         # The DJ said "right, I'm back" and its own announcement started a
         # beat later, over the top of it: the hold has to outlast the speech.
         #
-        # It used to be sized as speech + whatever streamBufferSeconds the
-        # station reported, on the reading that the caller is that far behind
-        # the live edge. Measured 2026-08-13 and the premise did not hold: the
-        # reported 22 is Icecast's BURST SIZE, and the plain `<audio>` element
-        # the widget tunes a caller in with plays 2.3 seconds behind the
-        # newest byte, not 22. What the old sizing bought was ~17 seconds of
-        # silence after the DJ had already finished — read off a real record,
-        # a 37.8s voice sizing a ~60s hold. So it is speech + ONE pad, and a
-        # station claiming a large buffer no longer inflates it.
+        # The lag is BACK in this sizing, and the history is worth keeping
+        # because this test has now argued both sides.
+        #
+        # 2026-08-13 removed it: the reported 22 is Icecast's burst SIZE, and
+        # the widget's `<audio>` element measured 2.3 seconds behind the newest
+        # byte, so padding by 22 bought ~17s of silence after the DJ had
+        # finished. 0.10.129 overturned that measurement — `buffered.end -
+        # currentTime` is buffer DEPTH, not distance behind the live edge, and
+        # the operator's stopwatch against the actual audio said seventeen and
+        # twenty. `caller_lag()` has returned the station's number ever since.
+        #
+        # What never followed was THIS sizing, and the two halves of the guard
+        # were left disagreeing: the verdict path shifted its window by 22
+        # while the ceiling for our own action assumed 2. Room 72de3b8893fe on
+        # 2026-08-16 is that disagreement in one timeline — a 3.0s shoutout
+        # opened a 7.5s hold, the DJ came back and said "I just sent that
+        # shoutout", and the guard then opened a SECOND hold for 12.0s when
+        # the push arrived with the real 22. The caller heard the confirmation
+        # about seventeen seconds before the thing it confirmed.
+        #
+        # This is still a CEILING and still not the normal path: a voice.end
+        # drops it on the spot, shifted by the same lag. Sizing it correctly
+        # is what lets the measured close happen at the right moment instead
+        # of after a premature return.
         import time
 
         from call.air import OnAirGuard
@@ -2602,7 +2731,7 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         OnAirGuard.mark_on_air(g, seconds=10.0)
         held = g._assumed_until - before
         self.assertGreater(held, 10.0, "the hold ends before the DJ does")
-        self.assertAlmostEqual(held, 10.0 + g.duck_pad, delta=1.0)
+        self.assertAlmostEqual(held, 22.0 + 10.0 + g.duck_pad, delta=1.0)
 
     def test_with_no_measurement_it_falls_back_rather_than_to_zero(self):
         from call.air import OnAirGuard
@@ -2674,10 +2803,11 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["what"], "hold opened")
         self.assertEqual(rows[0]["why"], "we put something on air")
-        # 10s of words + ONE pad. The station reports a 22s buffer and it is
-        # recorded — a diagnosis needs to see what the station claimed — but
-        # it no longer sizes the hold; see tail().
-        self.assertAlmostEqual(rows[0]["forSecs"], 10.0 + 4.5, delta=1.0)
+        # The caller's 22s lag, then 10s of words, then ONE pad. The row has to
+        # show the whole window or a diagnosis reads a hold as over-long when
+        # it is merely covering the distance the caller is behind — which is
+        # how the double hold on 2026-08-16 was misread the first time.
+        self.assertAlmostEqual(rows[0]["forSecs"], 22.0 + 10.0 + 4.5, delta=1.0)
         self.assertEqual(rows[0]["bufSecs"], 22.0)
 
     def test_the_timeline_starts_at_the_call(self):

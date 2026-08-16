@@ -23,6 +23,25 @@ from livekit.agents import AgentSession
 log = logging.getLogger("callin.agent")
 
 
+def attach_air_watch(session, guard) -> None:
+    """Remember the DJ's last line, so the come-back knows what not to repeat.
+
+    Same shape as door.attach_door_watch and for the same reason: the only
+    place that knows what was actually said is the event, and by the time the
+    come-back runs the turn is long gone.
+    """
+
+    def _on_said(ev) -> None:
+        item = getattr(ev, "item", None)
+        if getattr(item, "role", None) != "assistant":
+            return
+        text = str(getattr(item, "text_content", "") or "").strip()
+        if text:
+            guard.last_dj_line = text
+
+    session.on("conversation_item_added", _on_said)
+
+
 async def come_back(guard, session: AgentSession) -> None:
     """Say something on the way back from the broadcast.
 
@@ -45,6 +64,19 @@ async def come_back(guard, session: AgentSession) -> None:
         f" What went out on air was: \"{aired[:200]}\" — a passing nod to "
         "it is fine, but don't read it back to them."
     ) if aired else ""
+    # And what the DJ told them on the way OUT, which is the half that was
+    # missing. "Don't recap" cannot be obeyed by a model that has not been
+    # told what would count as a recap: on 2026-08-16 the DJ said "I just sent
+    # that shoutout for Marcus and the Fleetwood Mac track is lined up" as it
+    # stepped away, then came back and said the same two things again. The
+    # operator's steer is that referring to what just aired is GOOD continuity
+    # and only the verbatim repeat is wrong, so this names the sentence to
+    # avoid rather than forbidding the subject.
+    before = (getattr(guard, "last_dj_line", "") or "").strip()
+    if before:
+        nod += (
+            f" Before you stepped away you told them: \"{before[:200]}\". "
+            "They have heard that — carry on from it, don't say it again.")
     # One of the three turns that can start while another is generating — the
     # promise nudge is the one it would collide with, and both are about a
     # caller who has been left waiting. See call/floor.py.

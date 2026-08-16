@@ -100,9 +100,16 @@ class OnAirGuard(AirVerdict):
         # queue wait and steps away just before the voice lands, not that it
         # gags for the entire lead (the operator's ask, 0.10.89).
         self.handover_secs = max(0.0, float(cfg.get("on_air_handover_secs") or 0))
-        # Last streamBufferSeconds the station reported on a voice push. 0
-        # until one arrives; stream_buffer() falls back to the handoff lag.
-        self._last_buf = 0.0
+        # Last streamBufferSeconds the station reported, primed from the last
+        # push the WEB process wrote down: the buffer belongs to the station's
+        # config, not to this call, and without priming the FIRST thing a call
+        # aired sized its hold from the 2s fallback while the station had been
+        # saying 22 all along (2026-08-16; see the test of the same name).
+        try:
+            pushed = self._pushed_state() or {}
+            self._last_buf = float(pushed.get("bufSecs") or 0)
+        except Exception:                                      # noqa: BLE001
+            self._last_buf = 0.0
         # The duck's close, per guard rather than as a bare module constant,
         # for the same reason SETTLE_SECS and lag_secs are reachable: a test
         # about the come-back LINE has to be able to compress every real
@@ -170,8 +177,14 @@ class OnAirGuard(AirVerdict):
         # This is a CEILING, not a promise: a voice.end from the station drops
         # it on the spot (see the watch loop), so the normal case is that the
         # air really is measured and this never runs out.
-        self._assumed_until = max(self._assumed_until,
-                                  time.time() + seconds + self.tail())
+        # SHIFTED BY THE CALLER'S LAG, like every other hold — this was the one
+        # that never was. A push says the station is speaking NOW; our own
+        # action only starts in the caller's ear `caller_lag` from now. Room
+        # 72de3b8893fe: a 3.0s shoutout took a 7.5s hold, the DJ returned with
+        # "I just sent that shoutout", then a SECOND 12.0s hold on the push.
+        self._assumed_until = max(
+            self._assumed_until,
+            time.time() + self.caller_lag() + seconds + self.tail())
         self._ours_sent_at = time.time()
         if spoken:
             self.aired_text = str(spoken)
@@ -181,8 +194,9 @@ class OnAirGuard(AirVerdict):
             self.on_air = True
             self._publish(True)
             log.info("our own action is going out on air — holding the call DJ "
-                     "back for %.1fs (%.1fs of words + %.1fs tail)",
-                     seconds + self.tail(), seconds, self.tail())
+                     "back for %.1fs (%.1fs lag + %.1fs of words + %.1fs tail)",
+                     self.caller_lag() + seconds + self.tail(),
+                     self.caller_lag(), seconds, self.tail())
             if getattr(self, "air_log", None):
                 self.air_log.opened("we put something on air",
                                     until=self._assumed_until,
@@ -225,26 +239,12 @@ class OnAirGuard(AirVerdict):
         The duck's close, and it is DUCK_PAD_SECS — the operator's own ask,
         "a consistent 4-5 second duck at the beginning and close".
 
-        It used to be max(duck_pad, stream_buffer), on the reading that a
-        station reporting a long buffer means the caller is that far behind.
-        The premise was wrong, and only measuring showed it: streamBufferSecs
-        is 22 here and Icecast really does burst 22 seconds on connect, but
-        that is the burst SIZE, not the playhead. The widget tunes a caller in
-        with a plain `<audio>` element, and that element sat a steady 2.3
-        seconds behind the newest buffered byte for a full run — Chrome
-        discards nearly all of the burst. So the tail was padding by 22 for a
-        2.3s lag: about seventeen seconds of silence after the DJ had already
-        finished, on every hold where a push had been seen. Read off a record:
-        a 37.8s voice sizing a ~60s hold.
-
-        stream_buffer() stays because the TIMELINE still records what the
-        station claimed — a station that one day reports a real playhead
-        offset should be believed, and that row is where it would show up.
+        JUST the pad. It used to be max(duck_pad, stream_buffer), which
+        double-counted: the lag belongs at the OPEN, where it shifts the whole
+        window (see caller_lag, air_verdict, and mark_on_air, which was the
+        last holdout until 0.97.12). Padding the close covered the end by
+        accident while leaving the open seventeen seconds early.
         """
-        # Just the pad. The lag is no longer padding here — it SHIFTS the
-        # whole window in air_verdict, which is what it always should have
-        # done: padding the close covered the end by accident while leaving
-        # the open seventeen seconds early.
         return self.duck_pad
 
     def stream_buffer(self) -> float:

@@ -41,8 +41,9 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
-from . import (asks as asks_mod, background, door, floor as floor_mod,
-               greeting, handoff, lifecycle, postmortem, promise_guard)
+from . import (asks as asks_mod, background, comeback, door,
+               floor as floor_mod, greeting, handoff, lifecycle, postmortem,
+               promise_guard)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -422,6 +423,7 @@ class CallSession:
         promise_guard.attach_promise_guard(session, self.record, self.actions,
                                            air=self.air, floor=self.floor)
         door.attach_door_watch(session, self.door)
+        comeback.attach_air_watch(session, self.air)
         asks_mod.attach_ask_watch(session, self.asks)
         lifecycle.attach_idle_watch(ctx, session, cfg, air=self.air,
                                     heard=self.heard, actions=self.actions)
