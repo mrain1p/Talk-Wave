@@ -90,6 +90,10 @@ class CallActions:
         # Track ids this call has already put in the queue, so the same record
         # cannot take two slots. See subwave_queue_track.
         self.queued_ids: set[str] = set()
+        # (song id, track) of the last thing this call LIKED, so "actually,
+        # un-like that" still works once the record has moved on — which is
+        # when a caller usually changes their mind. See _target_to_unlike.
+        self.last_liked: tuple[str, dict] | None = None
 
     # How long a promise keeps the check-in quiet. Capped, because a DJ that
     # promises and never delivers would otherwise buy silence for the rest of

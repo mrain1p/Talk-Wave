@@ -185,6 +185,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
     TestOneRequestCannotTakeTwoQueueSlots,
+    TestTakingAHeartBackOff,
 )
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,

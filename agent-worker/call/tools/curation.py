@@ -31,11 +31,47 @@ async def _track_on_air(station: StationClient) -> tuple[dict, str]:
 
     Four tools resolved this separately and two of them read a different key,
     which is how an action could land on nothing while the station was clearly
-    playing something.
+    playing something. Consolidating them did not fix the key list, though:
+    `subsonic_id` is what the station actually sends and it was missing, so
+    this returned "" on every call to a real station.
+
+    Liking survived that because POST /like likes whatever is on air and the id
+    is only a guard against the record changing mid-request. Un-liking needs it
+    for /likes/song/:id/operator, so it refused with "nothing is playing to
+    un-like right now" while the caller could plainly hear something playing —
+    2026-08-16, twice in one call, on "Everyday" by Don McLean, which the same
+    call had liked successfully forty seconds earlier.
     """
     np = await station.now_playing()
     track = (np or {}).get("nowPlaying") or {}
-    return track, str(track.get("id") or track.get("songId") or "")
+    return track, str(track.get("subsonic_id") or track.get("id")
+                      or track.get("songId") or "")
+
+
+async def _target_to_unlike(station: StationClient, actions, title: str,
+                            artist: str) -> tuple[dict, str]:
+    """Which song the caller means, in the order they are likely to mean it.
+
+    Tying this to the current record was OUR restriction and never the
+    station's: DELETE /likes/song/:id/operator takes any song id at all. A
+    caller changing their mind usually does it a beat late — the record has
+    moved on, or the DJ skipped it — so "un-like that one" has to survive the
+    track changing underneath it. On 2026-08-16 a caller liked "Everyday" by
+    Don McLean, asked twice to take it back, and was told nothing was playing.
+    """
+    named = " ".join(p for p in (title, artist) if p).strip()
+    if named:
+        try:
+            for row in (await station.search_library(named) or [])[:1]:
+                found = str(row.get("subsonic_id") or row.get("id") or "")
+                if found:
+                    return row, found
+        except Exception as e:                                 # noqa: BLE001
+            log.debug("could not resolve %r to un-like: %s", named, e)
+    remembered = getattr(actions, "last_liked", None)
+    if remembered and remembered[0]:
+        return remembered[1], remembered[0]
+    return await _track_on_air(station)
 
 
 def build_curation_tools(cfg: dict, station: StationClient,
@@ -51,11 +87,14 @@ def build_curation_tools(cfg: dict, station: StationClient,
             """Add a like to the track playing RIGHT NOW — the same heart a
             listener taps in the app. Use it when the caller says they love
             this one, or asks to favourite what's on. It likes the CURRENT
-            record only: there is no way to like some other track from here,
-            and no un-like, so don't offer either."""
+            record only; to take a heart back off, use subwave_unlike_track."""
             if actions.at_limit():
                 return actions.refusal()
             track, song_id = await _track_on_air(station)
+            # Remembered so "actually, un-like that" works after the record has
+            # moved on — which is when a caller usually changes their mind.
+            if song_id:
+                actions.last_liked = (song_id, track)
             res = await station.like_track(song_id)
             if not res.get("ok"):
                 return (
@@ -78,15 +117,25 @@ def build_curation_tools(cfg: dict, station: StationClient,
 
     if cfg.get("allow_unfavorite") and not library_search_needs_mcp():
         @lk_llm.function_tool(name="subwave_unlike_track")
-        async def unlike_track() -> str:
-            """Remove the operator's heart from the track playing RIGHT NOW.
-            Admin only. This undoes the OPERATOR's own curation heart on the
-            current record — not a listener's public like, which cannot be
-            undone. Use it when a signed-in operator asks to un-favourite what's
-            on. Likes the current track only; there is no arbitrary song here."""
+        async def unlike_track(title: str = "", artist: str = "") -> str:
+            """Take the operator's heart back off a song. Admin only.
+
+            Undoes the OPERATOR's own curation heart — not a listener's public
+            like, which cannot be undone. Name the track if they name one
+            ("un-like that Don McLean one"); with no name it takes the heart
+            off whatever you liked earlier in this call, or failing that off
+            whatever is playing now. The record does NOT have to still be on
+            air: the station un-likes any song by id."""
             if actions.at_limit():
                 return actions.refusal()
-            track, song_id = await _track_on_air(station)
+            track, song_id = await _target_to_unlike(station, actions,
+                                                     title, artist)
+            if not song_id:
+                return (
+                    f"Couldn't find {title or 'that one'} to un-like — nothing "
+                    "by that name in the library, and nothing playing to fall "
+                    "back on. Ask them which record they mean."
+                )
             res = await station.unlike_track(song_id)
             if not res.get("ok"):
                 return (

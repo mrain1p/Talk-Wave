@@ -822,3 +822,126 @@ class TestOneRequestCannotTakeTwoQueueSlots(unittest.TestCase):
         asyncio.run(tool(id="JGUH6", title="Murder on the Dancefloor"))
         asyncio.run(tool(id="JGUH6", title="Murder on the Dancefloor"))
         self.assertEqual(actions.count, 1)
+
+
+class TestTakingAHeartBackOff(unittest.TestCase):
+    """"Can you un-favourite this song?" — twice, and refused both times.
+
+    2026-08-16: the caller liked "Everyday" by Don McLean, changed their mind
+    forty seconds later, and got "nothing is playing to un-like right now"
+    while a record was plainly playing. Two separate faults, and the first one
+    means un-like had never once worked against a real station.
+
+    1. `_track_on_air` read `id` and `songId`. The station sends
+       `subsonic_id`. So the id was ALWAYS "" — liking survived it because
+       POST /like likes whatever is on air and the id is only a guard against
+       the record changing mid-request; un-liking needs it for the URL.
+    2. Tying it to the current record was our restriction, never the
+       station's: DELETE /likes/song/:id/operator takes any song id. A caller
+       changes their mind a beat late, by which time the track has moved on —
+       or the DJ has skipped it, which is exactly what happened here.
+    """
+
+    def _tools(self, now_playing=None, search=None, liked=None):
+        from call.actions import CallActions
+        from call.tools import curation
+
+        class _Station:
+            def __init__(self):
+                self.unliked = []
+
+            async def now_playing(self):
+                return {"nowPlaying": now_playing or {}}
+
+            async def search_library(self, q, offset=0, limit=30):
+                return list(search or [])
+
+            async def unlike_track(self, song_id):
+                if not song_id:
+                    return {"ok": False,
+                            "error": "nothing is playing to un-like right now"}
+                self.unliked.append(song_id)
+                return {"ok": True}
+
+        st = _Station()
+        actions = CallActions(9)
+        if liked:
+            actions.last_liked = liked
+        orig = curation.library_search_needs_mcp
+        curation.library_search_needs_mcp = lambda: False
+        try:
+            tools = curation.build_curation_tools(
+                {"allow_favorite": True, "allow_unfavorite": True},
+                st, actions)
+        finally:
+            curation.library_search_needs_mcp = orig
+        tool = next(t for t in tools if t.info.name == "subwave_unlike_track")
+        return st, tool
+
+    def test_the_stations_own_id_field_is_read(self):
+        # The whole bug in one assertion: subsonic_id is what arrives.
+        st, tool = self._tools(
+            now_playing={"title": "UFOF", "artist": "Big Thief",
+                         "subsonic_id": "m2VUWQI9gwmHLK9lvFwLvU"})
+        out = asyncio.run(tool())
+        self.assertEqual(["m2VUWQI9gwmHLK9lvFwLvU"], st.unliked)
+        self.assertIn("took the heart off", out)
+
+    def test_a_named_track_does_not_have_to_be_on_air(self):
+        st, tool = self._tools(
+            now_playing={"title": "Something Else", "subsonic_id": "onair"},
+            search=[{"title": "Everyday", "artist": "Don McLean",
+                     "subsonic_id": "donmc1"}])
+        asyncio.run(tool(title="Everyday", artist="Don McLean"))
+        self.assertEqual(["donmc1"], st.unliked,
+                         "it un-liked whatever happened to be on air instead")
+
+    def test_with_no_name_it_undoes_what_this_call_liked(self):
+        # The caller who changes their mind after the record has moved on —
+        # which on the real call was because the DJ had skipped it.
+        st, tool = self._tools(
+            now_playing={"title": "Something Else", "subsonic_id": "onair"},
+            liked=("donmc1", {"title": "Everyday", "artist": "Don McLean"}))
+        asyncio.run(tool())
+        self.assertEqual(["donmc1"], st.unliked)
+
+    def test_nothing_to_go_on_asks_rather_than_claiming(self):
+        st, tool = self._tools(now_playing={})
+        out = asyncio.run(tool(title="A Record Nobody Has"))
+        self.assertEqual([], st.unliked)
+        self.assertIn("Ask them which record", out)
+
+    def test_liking_remembers_the_id_for_the_undo(self):
+        from call.actions import CallActions
+        from call.tools import curation
+
+        class _Station:
+            async def now_playing(self):
+                return {"nowPlaying": {"title": "Everyday",
+                                       "artist": "Don McLean",
+                                       "subsonic_id": "donmc1"}}
+
+            async def like_track(self, song_id):
+                return {"ok": True, "count": 1}
+
+        actions = CallActions(9)
+        tools = curation.build_curation_tools(
+            {"allow_favorite": True}, _Station(), actions)
+        like = next(t for t in tools if t.info.name == "subwave_like_track")
+        asyncio.run(like())
+        self.assertEqual("donmc1", actions.last_liked[0])
+
+    def test_the_prompt_stops_saying_there_is_no_un_like(self):
+        # like_track's own description told the model "there is no un-like, so
+        # don't offer either" — while subwave_unlike_track sat beside it in the
+        # same registry. The DJ was being taught to refuse.
+        from call.actions import CallActions
+        from call.tools import curation
+
+        class _Station:
+            pass
+
+        tools = curation.build_curation_tools(
+            {"allow_favorite": True}, _Station(), CallActions(9))
+        like = next(t for t in tools if t.info.name == "subwave_like_track")
+        self.assertNotIn("no un-like", like.info.description)
