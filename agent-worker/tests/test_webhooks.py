@@ -672,6 +672,50 @@ class TestAVoicePushAnchorsTheAirGuard(_StationWebhooks):
         self.assertIn("Riverside", d["text"])
         self.assertLess(abs(time.time() - d["at"]), 5)
 
+    def test_the_stream_buffer_survives_an_event_that_does_not_report_it(self):
+        # Only some events carry streamBufferSeconds — voice.end reports 0 —
+        # and the guard primes the caller's lag from whatever push happens to
+        # be newest when a CALL starts. So a call beginning after a `clear`
+        # believed the caller was 2 seconds behind the live edge rather than
+        # 22, and sized the hold for its own announcement from that.
+        #
+        # Measured on air 2026-08-16: hold opened with callerLag=2.0 on a
+        # station that had been reporting 22 all evening, and the DJ came back
+        # three seconds before the caller had finished hearing the shoutout.
+        # The buffer belongs to the station's Icecast config, not to one
+        # event, so the last real reading is carried forward.
+        self.register(_FakeStation())
+        auth = self.hooks._load_hook_secret()
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "v1", "text": "a link",
+             "durationMs": 3000, "streamBufferSeconds": 22},
+            headers={"Authorization": auth})))
+        self.assertEqual(22.0,
+                         json.loads(self.hooks._air_path().read_text())["bufSecs"])
+
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.end", "voiceId": "v1"},
+            headers={"Authorization": auth})))
+        d = json.loads(self.hooks._air_path().read_text())
+        self.assertEqual(d["phase"], "clear")
+        self.assertEqual(22.0, d["bufSecs"],
+                         "the clear threw the station's buffer away, and the "
+                         "next call primed its lag from the 2s fallback")
+
+    def test_a_real_reading_of_zero_is_not_overwritten_by_an_older_one(self):
+        # Carrying forward must not invent a buffer for a station that really
+        # reports none — only fill in where the EVENT is silent about it.
+        self.register(_FakeStation())
+        auth = self.hooks._load_hook_secret()
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "v1", "text": "a link",
+             "streamBufferSeconds": 22}, headers={"Authorization": auth})))
+        asyncio.run(self.hooks.handle_station_hook(_FakeHookRequest(
+            {"event": "voice.start", "voiceId": "v2", "text": "another",
+             "streamBufferSeconds": 5}, headers={"Authorization": auth})))
+        self.assertEqual(5.0,
+                         json.loads(self.hooks._air_path().read_text())["bufSecs"])
+
     def test_an_unverified_push_never_steers_the_gate(self):
         # No secret minted: the receiver stays open for compatibility, but a
         # push nothing vouched for must not move the call DJ's gate.

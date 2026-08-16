@@ -188,6 +188,23 @@ def _remember_air(event: str, body: dict) -> None:
         # no buffer and handed the caller back at the exact moment the DJ
         # became audible to them. A station fluent in the lifecycle does not
         # need us to read its handoff events at all.
+        # CARRY THE BUFFER FORWARD. Only some events report it — voice.end
+        # carries 0 — and the guard primes the caller's lag from whatever push
+        # happens to be newest when a call starts. So a call beginning after a
+        # `clear` believed the caller was 2 seconds behind rather than 22, and
+        # sized the hold for its own announcement from the wrong number.
+        # Measured on air 2026-08-16: the hold opened with callerLag=2.0 while
+        # the same station had been reporting 22 all evening, and the DJ came
+        # back 3 seconds before the caller had finished hearing the shoutout.
+        # The buffer belongs to the station's Icecast config, so the last real
+        # reading is a far better guess than the fallback.
+        if not entry.get("bufSecs"):
+            try:
+                carried = float(prev.get("bufSecs") or 0)
+            except (TypeError, ValueError):
+                carried = 0.0
+            if carried > 0:
+                entry["bufSecs"] = carried
         demote = int(entry.get("v") or 0) < 2 and _lifecycle_is_live(prev, now)
         _keep(entry, prev, path, demote=demote)
     except Exception as e:                                # noqa: BLE001
