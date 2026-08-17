@@ -280,6 +280,12 @@ async def handle_live(request: web.Request) -> web.Response:
                         "volume": (int(cfg.get("tune_in_volume") or 0)
                                    if cfg.get("tune_in_audible", True) else 0),
                     },
+                    # Whether the card OFFERS the swipe-up station player.
+                    # Only the operator's switch travels — the stream itself
+                    # is the block above, and the widget also requires a
+                    # resolved URL before it shows the gesture, so a switch
+                    # flipped on with no reachable stream offers nothing.
+                    "swipePlayer": bool(cfg.get("swipe_player")),
                     # Everything that is a look rather than a fact — the theme,
                     # the corner controls, which lines of the who's-on-air
                     # block each surface paints, the photo's shape, the Call

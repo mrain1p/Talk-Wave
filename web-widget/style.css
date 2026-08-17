@@ -748,6 +748,55 @@
   #vmRecBtn { touch-action: none; -webkit-user-select: none; user-select: none; }
   #vmRecBtn[aria-pressed="true"] { border-color: var(--warn, #c0392b); }
 
+  /* The station player: what a swipe up on the idle card opens. The identity
+     header stays — the DJ's photo and name ARE the artwork, already large and
+     centered on the full page — so the band itself is only what a player
+     adds: the record, its progress, and the transport. Same one-footprint
+     contract as every mode: the phone's bands hide and .player flexes into
+     exactly the room they leave. The now-playing rail and the who-row's own
+     track line hide too, or the record would be named three times at three
+     sizes on one card. */
+  .card:not([data-mode="player"]) .player { display: none !important; }
+  .card[data-mode="player"] .talkrow,
+  .card[data-mode="player"] .actionrow,
+  .card[data-mode="player"] .after,
+  .card[data-mode="player"] .linebox,
+  .card[data-mode="player"] .nprail,
+  .card[data-mode="player"] #npTrack,
+  .card[data-mode="player"] .meters .duplex { display: none !important; }
+  .player { display: flex; flex-direction: column; justify-content: center;
+            align-items: center; gap: 10px; flex: 1 1 auto; min-height: 0;
+            text-align: center; padding: 8px 2px; }
+  .player[hidden] { display: none !important; }
+  .pltrack { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .plwho { font: 700 10px/1.4 var(--font-mono); letter-spacing: .12em;
+           text-transform: var(--skin-label-case); color: var(--sage-dim); }
+  /* The same 3px hairline the now-playing rail draws, fed by its own
+     variable — the rail's is hidden in this mode, not borrowed. */
+  .plbar { width: min(100%, 260px); height: 3px; background: var(--granite-hi);
+           position: relative; overflow: hidden; }
+  .plbar .plfill { position: absolute; inset: 0 auto 0 0;
+           width: var(--pl-progress, 0%); background: var(--coral);
+           transition: width .9s linear; }
+  .plclock { font: 400 10.5px/1 var(--font-mono); letter-spacing: .1em;
+             color: var(--sage-dim); font-variant-numeric: tabular-nums; }
+  .plclock .pllen:not(:empty)::before { content: " / "; }
+  .plrow { display: flex; gap: 8px; width: 100%; }
+  .plrow button { flex: 1 1 auto; }
+  /* The hint is a caption that happens to be pressable (the no-touch way
+     out), not a control — strip the button costume. */
+  .plhint { background: transparent; border: 0; height: auto; padding: 4px;
+            color: var(--sage-dim); cursor: pointer;
+            font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+            text-transform: var(--skin-label-case); }
+
+  /* The door into the player is a chip that is pressed, not read — the one
+     pill that acts like a button. Green while the stream is actually
+     playing, the same state vocabulary as everything else. */
+  .listenchip { cursor: pointer; }
+  .listenchip:hover { color: var(--alpenglow); border-color: var(--sage); }
+  .listenchip.playing { color: var(--sage); border-color: var(--sage); }
+
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
      absent or a bordered block of its own, and a rule that sometimes ends the

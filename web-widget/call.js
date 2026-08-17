@@ -584,6 +584,10 @@
   let signinMode = false;                     // the gate opened to climb a tier
   let lastCanAsk = null;                       // rebuild the menu only on a tier change
   let djEl = null, rafId = null, streamEl = null;
+  // The station player's own element and its health — separate from the
+  // call's tune-in bed (streamEl) on purpose: the two are never up at once,
+  // but they answer to different volumes and different owners.
+  let playerEl = null, playerDead = false;
   // The DJ's own track, kept so the station can pull the voice into the shared
   // audio graph whichever of the two arrives second. See mixStation.
   let djTrack = null;
@@ -667,11 +671,17 @@
   }
 
   function paintNowPlaying() {
-    const clock = $('npElapsed'), rail = $('npRail');
+    const clock = $('npElapsed'), rail = $('npRail'), deck = $('playerView');
+    const mmss = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
     if (!clock || !rail) return;
     if (!npStart) {
       clock.textContent = '';
       rail.style.setProperty('--np-progress', '0%');
+      if (deck) {
+        $('plElapsed').textContent = '';
+        $('plLen').textContent = '';
+        deck.style.setProperty('--pl-progress', '0%');
+      }
       return;
     }
     const secs = Math.max(0, Math.floor(Date.now() / 1000 - npStart));
@@ -679,10 +689,17 @@
     // out of step) would otherwise count on for ever, and a rail reading 94:12
     // is more obviously broken than one that simply stops at the end.
     const shown = npLength ? Math.min(secs, npLength) : secs;
-    clock.textContent = Math.floor(shown / 60) + ':' +
-      String(shown % 60).padStart(2, '0');
-    rail.style.setProperty('--np-progress',
-      npLength ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%');
+    clock.textContent = mmss(shown);
+    const pct = npLength
+      ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%';
+    rail.style.setProperty('--np-progress', pct);
+    // The station player's clock and hairline follow the same figures — the
+    // rail is hidden in that mode, not borrowed.
+    if (deck) {
+      $('plElapsed').textContent = mmss(shown);
+      $('plLen').textContent = npLength ? mmss(npLength) : '';
+      deck.style.setProperty('--pl-progress', pct);
+    }
   }
   // One second is the right cadence for a clock that shows whole seconds, and
   // it costs one text write; the progress hairline has its own CSS transition
@@ -719,17 +736,33 @@
     playFirstWorking(candidates, 0);
   }
 
-  function playFirstWorking(urls, i) {
+  function playFirstWorking(urls, i, slot) {
+    // `slot` is which element the stream lands in: the call's tune-in bed by
+    // default, or the station player's deck. ONE engine on purpose — the
+    // CORS retry and the mixed-content warning below took three incidents to
+    // get right, and a second copy would only ever have the older bugs.
+    const s = slot || {
+      get: () => streamEl,
+      set: (el) => { streamEl = el; },
+      // Scaled by the caller's own volume from the start — see applyVolume.
+      level: stationLevel,
+      // Into the call's own graph if it will go. Only while a call is up:
+      // between calls there is nothing to marry it to, and an element
+      // inside an AudioContext cannot be given back.
+      onPlaying: (el) => { if (room) mixStation(el); },
+      onDead: () => {},
+    };
     if (i >= urls.length) {
       // Was console.info, which meant nobody ever found out. The commonest
       // cause is an http stream on an https page: the browser blocks it as
       // mixed content and the caller hears no station at all.
       console.warn(
-        'Talk Wave: could not tune the caller in. Tried:', urls.join(', '),
+        'Talk Wave: could not play the station stream. Tried:', urls.join(', '),
         '— if these are http:// and this page is https://, the browser blocked ' +
         'them as mixed content. Set the station stream URL in settings.'
       );
-      streamEl = null;
+      s.set(null);
+      s.onDead();
       return;
     }
     try {
@@ -744,36 +777,35 @@
       if (!plain) el.crossOrigin = 'anonymous';
       el.dataset.cors = plain ? 'no' : 'ok';
       el.src = urls[i];
-      // Scaled by the caller's own volume from the start — see applyVolume.
-      el.volume = stationLevel();
-      el.muted = stationLevel() <= 0;
+      el.volume = s.level();
+      el.muted = s.level() <= 0;
       el.addEventListener('error', () => {
-        if (streamEl !== el) return;
+        if (s.get() !== el) return;
         try { el.pause(); } catch (e) {}
-        streamEl = null;
+        s.set(null);
         // The CORS attempt failing is not this mount failing — try it plain
         // once before giving up on it.
         if (el.dataset.cors === 'ok') {
           lastPlainAttempt = urls[i];
-          playFirstWorking(urls, i);
+          playFirstWorking(urls, i, slot);
         } else {
-          playFirstWorking(urls, i + 1);
+          playFirstWorking(urls, i + 1, slot);
         }
       }, { once: true });
-      streamEl = el;
+      s.set(el);
+      // A stop while this chain was mid-flight refuses the set — bail rather
+      // than resurrecting a stream the caller just turned off.
+      if (s.get() !== el) return;
       el.play().then(() => {
-        // Into the call's own graph if it will go. Only while a call is up:
-        // between calls there is nothing to marry it to, and an element
-        // inside an AudioContext cannot be given back.
-        if (streamEl === el && room) mixStation(el);
+        if (s.get() === el) s.onPlaying(el);
       }).catch(() => {
-        if (streamEl !== el) return;
-        streamEl = null;
-        playFirstWorking(urls, i + 1);
+        if (s.get() !== el) return;
+        s.set(null);
+        playFirstWorking(urls, i + 1, slot);
       });
     } catch (e) {
-      streamEl = null;
-      playFirstWorking(urls, i + 1);
+      s.set(null);
+      playFirstWorking(urls, i + 1, slot);
     }
   }
 
@@ -1117,6 +1149,9 @@
   function setCardMode(m) {
     const card = document.querySelector('.card');
     if (card) card.dataset.mode = m;
+    // The LISTEN chip belongs to the idle card alone; every mode change is a
+    // chance for it to appear or get out of the way.
+    paintListenChip();
   }
 
   // Which way round the three doors sit. Written as flex `order` rather than
@@ -1474,6 +1509,13 @@
         $('volSlider').value = getVolume();
         applyVolume();
       }
+
+      // The station player follows every poll: the chip appears or goes as
+      // the operator's switch and the stream come and go, and an open deck
+      // repaints for a record change without the caller doing anything.
+      paintListenChip();
+      if (cardMode() === 'player') paintPlayer();
+      if (playerEl) feedMediaSession();
 
       if (!d.reachable) { paintOffAir('offline'); return; }
       if (!d.onAir)     { paintOffAir('offair');  return; }
@@ -2435,6 +2477,12 @@
       streamEl.volume = level;
       streamEl.muted = level <= 0;
     }
+    if (playerEl) {
+      // Full volume, scaled only by the card's own slider: in the player the
+      // broadcast is the subject, not the bed under a call.
+      playerEl.volume = Math.min(1, getVolume() / 100);
+      playerEl.muted = getVolume() <= 0;
+    }
   }
   $('volSlider').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
   applyVolume();      // paint the fill at whatever volume we start on
@@ -2458,6 +2506,13 @@
     // "END / hi there / SEND" row over a live voicemail, operator-reported).
     if (chatOpen) endChat();
     if ($('chatRow')) $('chatRow').hidden = true;
+
+    // The station player cannot survive a live microphone: on speakers the
+    // stream comes straight back in through the caller's mic and gets
+    // transcribed as if they had said it — and the call's own tune-in takes
+    // over at pickup anyway, at the volume that job calls for.
+    stopPlayerAudio();
+    $('playerView').hidden = true;
 
     // AFTER any chat teardown (endChat resets the mode to idle) — this is the
     // mode the call runs in. The card switches to the call's own controls,
@@ -3578,6 +3633,10 @@
 
   function vmOpenStudio() {
     vmDraft = null; vmClip = null;
+    // Recording and the station player do not mix — the take would carry
+    // the broadcast, and on speakers the transcript would too.
+    stopPlayerAudio();
+    $('playerView').hidden = true;
     $('vmTranscript').textContent = '';
     $('vmAction').textContent = '';
     $('vmReview').hidden = true;
@@ -3670,6 +3729,187 @@
     if (room || previewMode) return;
     if (vmFlow() === 'studio') vmOpenStudio(); else startCall(true);
   };
+
+  // ------------------------------------------------------- station player
+  // A swipe up on the idle card opens the station as a player — the same
+  // stream tune-in plays under a call, but as the SUBJECT: full volume,
+  // progress, transport. The point is the installed app on a phone: one
+  // card that is the station in your pocket, listen with a swipe, call with
+  // a button. Full page only — an embed's host page usually IS a player,
+  // and two of them would double the audio.
+  //
+  // The audio outlives the view on purpose: swiping back down to the phone
+  // keeps the music going (the chip stays green and says so), the way every
+  // pocket player keeps playing behind its mini bar. Only a live microphone
+  // ends it — see startCall and vmOpenStudio — because on speakers the
+  // stream comes straight back in through the mic.
+
+  function cardMode() {
+    const card = document.querySelector('.card');
+    return (card && card.dataset.mode) || 'idle';
+  }
+
+  function playerOffered() {
+    const d = shown || live || {};
+    return !compact && !framed && !previewMode
+      && !!d.swipePlayer && !!(d.stream && d.stream.url);
+  }
+
+  let playerStopped = false;
+  function startPlayerAudio() {
+    if (playerEl) return;
+    const s = ((shown || live || {}).stream) || {};
+    if (!s.url) return;
+    playerDead = false;
+    // BEFORE the chain starts: the first candidate is tried synchronously,
+    // and a stale stop from the last press would refuse it on arrival.
+    playerStopped = false;
+    playFirstWorking([s.url].concat(s.alternates || []), 0, {
+      get: () => playerEl,
+      set: (el) => {
+        // A stop that landed while the fallback chain was still walking the
+        // mounts refuses the late arrival instead of resurrecting the music.
+        if (el && playerStopped) {
+          try { el.pause(); el.src = ''; } catch (e) {}
+          return;
+        }
+        playerEl = el;
+      },
+      level: () => Math.min(1, getVolume() / 100),
+      onPlaying: () => { playerDead = false; paintPlayerButtons(); feedMediaSession(); },
+      onDead: () => {
+        playerDead = true;
+        paintPlayerButtons();
+        if (cardMode() === 'player') paintPlayer();
+      },
+    });
+    paintPlayerButtons();
+  }
+
+  function stopPlayerAudio() {
+    playerStopped = true;
+    if (playerEl) {
+      const el = playerEl;
+      playerEl = null;
+      try { el.pause(); el.src = ''; } catch (e) {}
+      dropMediaSession();
+    }
+    paintPlayerButtons();
+  }
+
+  function openPlayer() {
+    if (!playerOffered() || inConversation()) return;
+    $('playerView').hidden = false;
+    setCardMode('player');
+    paintPlayer();
+    startPlayerAudio();
+    notifyHeight();
+  }
+
+  function closePlayer(keepAudio) {
+    if (!keepAudio) stopPlayerAudio();
+    $('playerView').hidden = true;
+    if (cardMode() === 'player') setCardMode('idle');
+    paintListenChip();
+    notifyHeight();
+  }
+
+  function paintPlayer() {
+    const d = shown || live || {};
+    $('plTrack').textContent = d.track
+      || (d.onAir ? 'Live broadcast' : 'Nobody in the booth');
+    $('plWho').textContent = playerDead
+      ? 'The stream would not play here'
+      : [d.name, d.show].filter((v) => v && v !== '…').join(' — ');
+    paintPlayerButtons();
+  }
+
+  function paintPlayerButtons() {
+    const btn = $('plPlayBtn');
+    if (btn) btn.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+    paintListenChip();
+  }
+
+  function paintListenChip() {
+    const chip = $('listenChip');
+    if (!chip) return;
+    if (!playerOffered()) {
+      // The operator can pull the player out from under a caller mid-song —
+      // honour it on the next poll rather than playing on with the door gone.
+      chip.hidden = true;
+      if (playerEl) stopPlayerAudio();
+      if (cardMode() === 'player') closePlayer();
+      return;
+    }
+    chip.hidden = cardMode() !== 'idle';
+    chip.classList.toggle('playing', !!playerEl);
+    chip.textContent = playerEl ? 'Playing' : 'Listen';
+  }
+
+  // The lock screen's idea of what is playing, on the platforms that ask.
+  // Metadata only plus play/pause — the player is one live stream, so there
+  // is nothing honest to say for seek or skip.
+  function feedMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    const d = shown || live || {};
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: d.track || d.name || 'Live broadcast',
+        artist: d.name || '',
+        album: d.show || '',
+        artwork: d.avatar ? [{ src: new URL(d.avatar, location.href).href }] : [],
+      });
+      navigator.mediaSession.setActionHandler('play', () => startPlayerAudio());
+      navigator.mediaSession.setActionHandler('pause', () => stopPlayerAudio());
+    } catch (e) { /* optional kit; the player works without it */ }
+  }
+
+  function dropMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.setActionHandler('play', null);
+      navigator.mediaSession.setActionHandler('pause', null);
+    } catch (e) {}
+  }
+
+  // The gesture. Touch, not pointer: this is a phone move, and the mouse
+  // path is the chip and the hint button. A swipe that starts on a control
+  // is a press, not a gesture, and a slow or mostly-horizontal drag is a
+  // scroll — both fall through untouched.
+  (function bindSwipe() {
+    const card = document.querySelector('.card');
+    if (!card) return;
+    let sx = 0, sy = 0, st = 0, armed = false;
+    card.addEventListener('touchstart', (e) => {
+      armed = false;
+      if (e.touches.length !== 1) return;
+      if (e.target.closest('button, a, input, select, textarea')) return;
+      const m = cardMode();
+      if (m === 'idle' ? !playerOffered() : m !== 'player') return;
+      armed = true;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+    }, { passive: true });
+    card.addEventListener('touchend', (e) => {
+      if (!armed) return;
+      armed = false;
+      const t = e.changedTouches && e.changedTouches[0];
+      if (!t || Date.now() - st > 800) return;
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
+      if (dy < 0 && cardMode() === 'idle') openPlayer();
+      else if (dy > 0 && cardMode() === 'player') closePlayer(true);
+    }, { passive: true });
+  })();
+
+  $('listenChip').onclick = () => {
+    if (cardMode() === 'idle') openPlayer();
+  };
+  $('plHint').onclick = () => closePlayer(true);
+  $('plPlayBtn').onclick = () => {
+    if (playerEl) stopPlayerAudio(); else startPlayerAudio();
+  };
+
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };
 

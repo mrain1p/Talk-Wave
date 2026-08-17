@@ -493,6 +493,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "corner_link_icon":    (None, "radio"),
     "show_corner_link":    (None, True),
     "embed_corner_link":   (None, True),
+    # The swipe-up station player: a swipe up on the idle card (full page and
+    # the installed app only, never an embed — the host page there usually IS
+    # a player) opens an in-card player pulling the same stream tune-in uses.
+    # Off by default, twice over: a gesture surface appearing on every
+    # deployed card unasked is the 0.9.61 shape again, and without a public
+    # https tune_in_url the player would open onto silence behind TLS.
+    "swipe_player":       (None, False),
     # No `embed_settings_gear`. An embed never loads the panel's code, so a
     # gear there opens nothing — offering the operator a switch for it would
     # be offering a switch that does nothing whichever way it is set.
@@ -1491,6 +1498,14 @@ SCHEMA: dict[str, dict] = {
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
              "in; on this page it behaves as auto."),
+    "swipe_player": dict(group="player", kind="check",
+        label="Swipe-up station player",
+        help="Swiping up on the card (or tapping LISTEN) opens an in-card "
+             "station player: artwork, what's playing, play and pause. It "
+             "plays the Stream URL from Calls → Tune the caller in, so "
+             "behind TLS that must be the station's public https stream. "
+             "This page and the installed app only, never an embed. Starting "
+             "a call or a recording stops the music."),
     "min_call_seconds": dict(group="closing", kind="number",
         label="Earliest hang-up (s)",
         help="The floor under the DJ ending a call itself. 60 by default: a model "

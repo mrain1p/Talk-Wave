@@ -158,6 +158,11 @@
         <span class="chips" id="stateRow">
           <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
           <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+          <!-- The door into the station player, only when the operator has
+               switched it on AND a stream resolved — a chip that opens onto
+               silence is worse than no chip. The swipe gesture is the other
+               way in; this is the one a mouse (and a screen reader) gets. -->
+          <button class="pill listenchip" id="listenChip" type="button" hidden>Listen</button>
         </span>
       </div>
 
@@ -298,6 +303,27 @@
           <button id="vmSendBtn" type="button" hidden>Send to air</button>
           <button id="vmCloseBtn" type="button">Never mind</button>
         </div>
+      </div>
+
+      <!-- The station player, opened by a swipe up on the idle card or the
+           LISTEN chip. Its own card mode, same one-mode-at-a-time rule as
+           chat and the studio: the phone's bands hide and this one flexes
+           into their room, so the card keeps ONE footprint. Full page and
+           the installed app only — never an embed, where the host page
+           usually IS a player and a second one would double the audio. -->
+      <div class="player" id="playerView" hidden>
+        <!-- No artwork of its own: the identity header above stays in this
+             mode, and the DJ's photo and name ARE the player's art. The band
+             is only what a player adds — the record, its progress, and the
+             transport. -->
+        <div class="pltrack" id="plTrack"></div>
+        <div class="plwho" id="plWho"></div>
+        <div class="plbar" aria-hidden="true"><span class="plfill"></span></div>
+        <div class="plclock"><span id="plElapsed"></span><span class="pllen" id="plLen"></span></div>
+        <div class="plrow">
+          <button id="plPlayBtn" type="button">Pause</button>
+        </div>
+        <button class="plhint" id="plHint" type="button">Swipe down for the phone</button>
       </div>
 
       <!-- The last row of the card, on every surface. Idle it is Call (and

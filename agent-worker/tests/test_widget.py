@@ -2695,3 +2695,39 @@ class TestTheCornerControlsAreAllOneSize(unittest.TestCase):
         self.assertIn("13px", rule,
                       "the drawn corner icon is sized differently from the "
                       "glyphs beside it")
+
+
+class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
+    """The swipe-up player is the full page's own feature. The operator's
+    switch travels on /live; an embed is never offered it (the host page
+    there usually IS a player, and two would double the audio); and a live
+    microphone always wins — on speakers the stream comes straight back in
+    through the caller's mic and is transcribed as if they had said it,
+    which is the exact bleed the tune-in volume help already warns about."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(
+            encoding="utf-8")
+
+    def test_the_switch_travels_and_is_read(self):
+        self.assertIn('"swipePlayer"', self.live_py)
+        self.assertIn("d.swipePlayer", self.js)
+
+    def test_an_embed_is_never_offered_the_player(self):
+        gate = self.js.split("function playerOffered")[1][:400]
+        for refusal in ("!compact", "!framed", "!previewMode"):
+            self.assertIn(refusal, gate)
+
+    def test_the_gesture_only_offers_a_stream_that_resolved(self):
+        # A chip that opens onto silence is worse than no chip: the switch
+        # alone is not enough, the stream URL has to have resolved too.
+        gate = self.js.split("function playerOffered")[1][:400]
+        self.assertIn("d.stream && d.stream.url", gate)
+
+    def test_a_live_microphone_stops_the_music(self):
+        call = self.js.split("async function startCall")[1][:2400]
+        self.assertIn("stopPlayerAudio()", call)
+        studio = self.js.split("function vmOpenStudio")[1][:800]
+        self.assertIn("stopPlayerAudio()", studio)
