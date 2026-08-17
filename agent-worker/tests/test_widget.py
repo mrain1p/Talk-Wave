@@ -2787,11 +2787,18 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
 
     def test_a_live_microphone_stops_the_music(self):
         # closePlayer(false) is the sheet AND the audio dying together;
-        # closePlayer(true) would leave the stream feeding the open mic.
+        # closePlayer(true) would leave the stream feeding the open mic. The
+        # studio's version lives at the DIAL, not the door — at the door
+        # nothing records yet and the operator wants the station playing
+        # right up until the line rings; no path reaches the microphone
+        # (vmStartRec requires vmDialed) without passing through vmDial.
         call = self.js.split("async function startCall")[1][:2400]
         self.assertIn("closePlayer(false)", call)
-        studio = self.js.split("function vmOpenStudio")[1][:800]
-        self.assertIn("closePlayer(false)", studio)
+        # The studio DUCKS instead (operator's ask — the tune-in move): the
+        # bed drops to the operator's percentage at the dial and never
+        # reaches the mic at full level.
+        dial = self.js.split("function vmDial()")[1][:900]
+        self.assertIn("playerDucked = true", dial)
 
     def test_the_sheet_is_not_a_rig_row(self):
         # .rig reserves visibility for the call's own rows — a band inside it

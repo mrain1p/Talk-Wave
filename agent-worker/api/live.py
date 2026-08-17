@@ -338,6 +338,11 @@ async def handle_live(request: web.Request) -> web.Response:
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": bool(cfg.get("start_on_player")),
+                    # How loud the player stays under the studio. 0 is real
+                    # (silent but running), so no `or` shorthand here.
+                    "playerDuck": max(0, min(100, int(
+                        cfg.get("vm_player_duck")
+                        if cfg.get("vm_player_duck") is not None else 10))),
                     # The player's queue panel, booth line and header weather.
                     "upNext": up_next,
                     "booth": booth_line,

@@ -884,12 +884,14 @@
   .plalbum:empty { display: none; }
   /* The analysis strip: genre · BPM · key · mood. Amber, like the playhead —
      the mockup's reading of "metadata is playback-coloured". */
-  .pltags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+  .pltags { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px;
             margin-top: 12px; }
   .pltags:empty { display: none; }
+  /* Packed so a real tag set fits TWO rows on a phone, not three
+     (operator's screenshot, 2026-08-17). */
   .pltags .pill { color: var(--amber); border-color: var(--edge);
-                  font-size: 9px; letter-spacing: .12em; height: auto;
-                  padding: 6px 8px; }
+                  font-size: 9px; letter-spacing: .08em; height: auto;
+                  padding: 5px 6px; }
   .plprog { display: flex; align-items: center; gap: 10px; width: 100%;
             margin-top: 16px; }
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
@@ -948,8 +950,8 @@
      of height from the panels above it. */
   .plctl { display: flex; align-items: center; gap: 10px; }
   .card .plheart {
-    width: 36px; height: 36px; flex: none; border: 1px solid var(--edge);
-    background: transparent; color: var(--sage); font-size: 16px;
+    width: 30px; height: 30px; flex: none; border: 1px solid var(--edge);
+    background: transparent; color: var(--sage); font-size: 14px;
     line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
   }
   .card .plheart.liked { color: var(--coral); border-color: var(--coral); }
@@ -961,10 +963,10 @@
   #plVol { flex: 1 1 auto; }
   /* The VU meter: eleven bars breathing while the stream plays, frozen the
      moment it pauses — animation-play-state, driven by .player.playing. */
-  .plvu { display: flex; align-items: flex-end; gap: 3px; height: 12px;
+  .plvu { display: flex; align-items: flex-end; gap: 3px; height: 10px;
           flex: none; }
   .plvu span {
-    width: 3px; height: calc(var(--h, 10px) * .75); background: var(--coral);
+    width: 3px; height: calc(var(--h, 10px) * .62); background: var(--coral);
     transform-origin: bottom; transform: scaleY(.3);
     animation: pleq var(--d, 700ms) ease-in-out alternate infinite;
     animation-delay: var(--dl, 0ms); animation-play-state: paused;

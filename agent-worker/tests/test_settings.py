@@ -966,3 +966,11 @@ class TestTheStationPlayerShipsOff(_TempStores):
         import settings as settings_store
 
         self.assertIs(settings_store.FIELDS["start_on_player"][1], False)
+
+    def test_the_bed_under_the_machine_defaults_like_tune_in(self):
+        # The same percentage grammar as tune_in_volume, deliberately — one
+        # mental model for "music under the conversation".
+        import settings as settings_store
+
+        self.assertEqual(settings_store.FIELDS["vm_player_duck"][1], 10)
+        self.assertEqual(settings_store.FIELDS["tune_in_volume"][1], 10)

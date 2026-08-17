@@ -586,8 +586,11 @@
   let djEl = null, rafId = null, streamEl = null;
   // The station player's own element and its health — separate from the
   // call's tune-in bed (streamEl) on purpose: the two are never up at once,
-  // but they answer to different volumes and different owners.
-  let playerEl = null, playerDead = false;
+  // but they answer to different volumes and different owners. Ducked while
+  // the STUDIO holds the line (see vmDial and applyVolume); declared here
+  // because applyVolume reads it at first paint, long before the studio's
+  // own block runs.
+  let playerEl = null, playerDead = false, playerDucked = false;
   // The DJ's own track, kept so the station can pull the voice into the shared
   // audio graph whichever of the two arrives second. See mixStation.
   let djTrack = null;
@@ -2553,9 +2556,16 @@
     }
     if (playerEl) {
       // Full volume, scaled only by the card's own slider: in the player the
-      // broadcast is the subject, not the bed under a call.
-      playerEl.volume = Math.min(1, getVolume() / 100);
-      playerEl.muted = getVolume() <= 0;
+      // broadcast is the subject, not the bed under a call. Under the
+      // STUDIO it ducks to the operator's percentage instead (playerDuck —
+      // the same move tune-in makes under a call).
+      const duck = playerDucked
+        ? Math.max(0, Math.min(100,
+            (shown && shown.playerDuck != null) ? shown.playerDuck : 10)) / 100
+        : 1;
+      const level = Math.min(1, getVolume() / 100) * duck;
+      playerEl.volume = level;
+      playerEl.muted = level <= 0;
     }
     // The player's fader is a second handle on the SAME volume — value and
     // drawn fill both, since the fill is a gradient stop, not the browser's.
@@ -3709,6 +3719,11 @@
     sink.gain.value = 0;
     src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
     anYou = analyserFor(stream.getAudioTracks()[0]);
+    // The YOU meter has to MOVE — the analyser was wired but nothing drove
+    // the paint loop outside a call, so the bars sat flat while the caller
+    // spoke (operator's report). The same tick a call runs, started here,
+    // stopped when the take ends.
+    if (!rafId) tick();
     vmRec = { ctx, proc, src, sink, stream, chunks, rate: ctx.sampleRate };
     const secs = vmCeiling();
     vmRec.stopTimer = setTimeout(vmStopRec, secs * 1000);
@@ -3733,6 +3748,8 @@
     vmRec = null;
     clearTimeout(r.stopTimer);
     stopTimer();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    clearMeters();
     try { r.proc.disconnect(); r.src.disconnect(); r.sink.disconnect(); } catch (e) {}
     r.stream.getTracks().forEach((t) => t.stop());
     try { r.ctx.close(); } catch (e) {}
@@ -3811,12 +3828,10 @@
   function vmOpenStudio() {
     vmDraft = null; vmClip = null;
     vmSession += 1;
-    // Recording and the station player do not mix — the take would carry
-    // the broadcast, and on speakers the transcript would too. false = the
-    // audio dies with the sheet; the flag brings it back when the studio
-    // closes (see resumePlayer).
-    if (playerEl) playerResume = true;
-    closePlayer(false);
+    // The SHEET goes away; the music does not — at the door nothing is
+    // recording yet, and the operator wants the station playing right up
+    // until the line actually rings (vmDial is where the audio stops).
+    closePlayer(true);
     vmClearBox();
     $('vmStudio').hidden = false;
     // The idle board may already be painted in the box, and the poll no
@@ -3845,6 +3860,11 @@
     if (vmDialed) return;
     vmDialed = true;
     const session = vmSession;
+    // The station player DUCKS here, not dies (operator's ask): the same
+    // backdrop move tune-in makes under a call, at the operator's
+    // percentage, restored when the studio closes.
+    playerDucked = true;
+    applyVolume();
     vmSetChip('connecting', word('vm_chip_ring', 'Ringing'));
     setStatus(word('vm_ringing', 'Calling the machine…'), 'connecting');
     vmPaintButtons('idle');
@@ -3859,18 +3879,26 @@
         const r = await fetch('/vm-greeting',
                               { headers: vmKeyHeaders(), signal: ctl.signal });
         clearTimeout(cap);
-        if (!r.ok) return '';
-        return URL.createObjectURL(await r.blob());
-      } catch (e) { return ''; }
+        if (!r.ok) return { url: '', text: '' };
+        let text = '';
+        try {
+          text = decodeURIComponent(r.headers.get('X-Greeting-Text') || '');
+        } catch (e) { /* an undecodable header is just no caption */ }
+        return { url: URL.createObjectURL(await r.blob()), text };
+      } catch (e) { return { url: '', text: '' }; }
     })();
-    Promise.all([minRing, fetchGreet]).then(([, blobUrl]) => {
+    Promise.all([minRing, fetchGreet]).then(([, greet]) => {
       if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') {
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        if (greet.url) URL.revokeObjectURL(greet.url);
         return;
       }
       stopRinging();
       playSound('pickup');
-      vmPlayGreeting(session, blobUrl);
+      // The greeting's WORDS land in the box as the DJ's caption while the
+      // voice plays — the operator's ask: the transcript area tells the
+      // machine's side of the exchange, not just the caller's.
+      if (greet.text) vmLine('vm-greet', 'dj', greet.text);
+      vmPlayGreeting(session, greet.url);
     });
   }
 
@@ -3886,6 +3914,10 @@
       if (session !== vmSession) return;
       if (!vmRec && cardMode() === 'vmstudio' && !vmBusy) {
         vmBeep();
+        // The beep gets its card — the moment the machine hands the caller
+        // the line, marked in the box where the story is being told.
+        addSystemLine('●', word('vm_beep_card',
+                                'Beep — hold the bar and say your piece'), '');
         vmPaintButtons('idle');
         vmSetChip('idle', word('vm_chip_ready', 'Ready'));
         setStatus(word('vm_howto', 'Record a message — you can play it back '
@@ -3917,6 +3949,8 @@
     clearTimeout(vmRingTimer);
     stopRinging();
     stopTimer();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    clearMeters();
     if (vmRec) {                 // mid-recording: stop hardware, keep nothing
       const r = vmRec; vmRec = null;
       clearTimeout(r.stopTimer);
@@ -3935,18 +3969,19 @@
     $('vmStudio').hidden = true;
     vmDropChip();
     setCardMode('idle');
+    // The ducked bed comes back up; a player a CALL had silenced (the
+    // classic machine flow goes through startCall) resumes.
+    playerDucked = false;
+    applyVolume();
     resumePlayer();
-    if (sent) {
-      // The receipt card stays on the ended card, like a call's transcript.
-      setStatus(word('vm_sent', 'On its way to air'));
-    } else {
-      // Cancelled: the box's half-told story goes with it, so the idle board
-      // is not blocked by leftover captions nobody sent.
-      vmClearBox();
-      capBox.classList.remove('on');
-      $('lineBox').classList.remove('open');
-      setStatus('');
-    }
+    // Sent or cancelled, the box's story goes with the studio — leftover
+    // captions were still sitting on the idle card after a send (operator's
+    // report; the text line already clears itself this way). The status
+    // line carries the receipt.
+    vmClearBox();
+    capBox.classList.remove('on');
+    $('lineBox').classList.remove('open');
+    setStatus(sent ? word('vm_sent', 'On its way to air') : '');
     refreshLive();
     notifyHeight();
   }
@@ -4112,10 +4147,11 @@
     paintPlayerButtons();
   }
 
-  // The music a call or a recording interrupted comes back when the line
-  // clears (operator's ask) — audio only, the sheet stays away, and the
-  // chip goes green again to say so. Set by startCall and vmOpenStudio at
-  // the moment they silence the player.
+  // The music a call interrupted comes back when the line clears
+  // (operator's ask) — audio only, the sheet stays away, and the chip goes
+  // green again to say so. Set by startCall at the moment it silences the
+  // player. The STUDIO doesn't stop the music at all — it ducks it
+  // (playerDucked, declared with the player's own state up top).
   let playerResume = false;
   function resumePlayer() {
     if (!playerResume) return;
@@ -4250,14 +4286,11 @@
       boothBody.innerHTML = '';
       const line = d.booth && d.booth.text;
       if (line) {
+        // The words alone — the DJ's name and show were a third statement
+        // of what the header already says (operator's cut).
         const q = document.createElement('div');
         q.className = 'plquote'; q.textContent = line;
         boothBody.appendChild(q);
-        const s = document.createElement('div');
-        s.className = 'plsub';
-        s.textContent = [d.name !== '…' ? d.name : '', d.show]
-          .filter(Boolean).join(' · ');
-        if (s.textContent) boothBody.appendChild(s);
       } else {
         const t = document.createElement('div');
         t.className = 'pltit';

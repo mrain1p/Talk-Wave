@@ -566,6 +566,7 @@ class Handler(BaseHTTPRequestHandler):
                 # the button appears, and it opens the browser studio.
                 "voicemailWhen": "always",
                 "voicemailFlow": "studio",
+                "playerDuck": 10,
                 "booth": {"text": "This one's for anyone still up with the "
                                   "windows open — Beegie Adair, gentle as "
                                   "ever, and the rain agrees.",
