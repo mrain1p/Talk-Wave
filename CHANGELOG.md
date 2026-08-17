@@ -3,7 +3,34 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.97.26
+## 0.97.39
+
+The card grows a full station player behind a pull-down ribbon, voicemail gains a soundbite studio that records in the browser and sends to air, and the widget wears its mark. Covers 0.97.27 through 0.97.39.
+
+### Added: the station player
+
+- **Pull the ribbon at the top of the card and the station slides down over the phone.** Cover art with its own glow, the track's genre, BPM, key and mood, a live playhead, what's queued next, and who's in the booth — the same data the station's own player reads, playing over your stream URL.
+- **Callers can heart the record and request the next one without saying a word.** The heart and the request box relay to the station's own listener endpoints, behind the same door as the phone, and the station's per-listener limits still hold through the relay.
+- **The player can be the front page.** "Start on the player" opens the page listening-first, with the call page one pull away. Browsers still wait for one tap before audio plays — their rule, not a fault.
+- Off by default, under Players → Player settings. Point Tune-in's Stream URL at the station's public https stream first — behind TLS a plain-http stream plays nothing, silently. Never offered in an embed: the page you embedded on usually is a player, and two would double the audio.
+- **Starting a call or a recording always silences it.** On speakers the stream would come straight back in through the microphone and be transcribed as the caller's own words.
+
+### Added: the soundbite studio
+
+- **A caller can record a take in the browser, hear it back, read what sending will do, and put it on air with the DJ around it.** A new voicemail flow beside the classic machine; the audio is deleted the moment it airs. Switch flows under Voicemail.
+- **Hold to record, like everywhere else on the card.** The Record button is the talk bar in the studio's costume — press and hold, or tap to latch — and a long press no longer loses the take to the phone's context menu.
+- **If the studio looked blank, that was real.** Its buttons were laid out and invisible — the card's working area reserves visibility for rows that declare it, and the studio's never did.
+- **A caller's clip no longer airs before the DJ introduces it.** The intro reaches the mixer on a half-second poll while the clip lands instantly; the send now waits out the poll, heard in order on a real take.
+- **The studio answers to the same door as the machine.** An open line whose voicemail takes strangers takes studio messages from strangers too — the first build let them record a take and only refused it at send.
+- The studio picks up with the DJ's staged greeting, and a finished draft survives the trip from temp storage to the data volume.
+
+### On the call
+
+- **The speaker/earpiece button stops lying on Android.** Chrome there ships the switching function but the platform cannot move a stream — the button pressed and nothing happened. It now probes what the device actually offers, routes both directions where it can, and leaves entirely where it cannot: a missing button is the fix, not a regression.
+
+### The mark
+
+- **The widget wears the wave.** Two voices meeting in the middle, on the favicon, the home-screen icons, the social preview and the README.
 
 The Text and Voicemail buttons tell a screen reader what they are.
 
