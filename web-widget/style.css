@@ -1246,6 +1246,14 @@
     color: var(--dim); background: transparent;
     border: 1px solid var(--line); border-radius: 0; text-align: left;
   }
+  /* The armed label is long and phones are narrow: the word truncates
+     rather than shoving the knob through the border (operator's phone,
+     2026-08-17 — the knob left the row entirely). */
+  #onAirWord {
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .onairdot, .onairknob { flex-shrink: 0; }
   .onairdot { width: 7px; height: 7px; background: var(--sage-dim); }
   .onairknob {
     margin-left: auto; flex: 0 0 26px; height: 14px; position: relative;
@@ -1262,8 +1270,13 @@
   .onairrow button[aria-checked="true"] .onairdot { background: var(--coral); animation: blink 1.6s infinite; }
   .onairrow button[aria-checked="true"] .onairknob { border-color: var(--coral); }
   .onairrow button[aria-checked="true"] .onairknob::after { left: 14px; background: var(--coral); }
-  /* The row leaves with the doors the moment a call starts. */
-  .card.oncall .onairrow { display: none; }
+  /* The row leaves with the doors the moment ANY mode starts — not only a
+     call. Keyed to .oncall alone, it sat half-clipped under the machine's
+     own buttons through the whole voicemail flow (operator's phone,
+     2026-08-17): the choice was made at the door; mid-flow it is furniture
+     from the wrong room. */
+  .card.oncall .onairrow,
+  .card:not([data-mode="idle"]) .onairrow { display: none; }
 
   .timechip { letter-spacing: .1em; font-variant-numeric: tabular-nums; }
   .timechip .tmax { color: var(--sage-dim); font-weight: 400; margin-left: 4px; }
