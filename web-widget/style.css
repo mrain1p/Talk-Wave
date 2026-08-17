@@ -3144,6 +3144,11 @@
   .check.tickright input { order: 2; margin-left: auto; flex: 0 0 auto; margin-top: 2px; }
   .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 178px; line-height: 1.4; }
   .hint.wide { margin-left: 0; }
+  /* The Whisper ladder: a list, not a paragraph (operator's ask) — the
+     model names step out in the reading colour, the trades stay dim. */
+  .hint ul.ladder { margin: 4px 0 6px; padding-left: 16px; }
+  .hint ul.ladder li { margin: 2px 0; }
+  .hint ul.ladder strong { color: var(--dim); font-weight: 700; }
 
   /* "Needs the station's own admin credentials." Coral while they are
      missing, grey once they are stored — a switch that quietly never happens

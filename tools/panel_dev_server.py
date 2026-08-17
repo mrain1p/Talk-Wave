@@ -78,7 +78,11 @@ OPTIONS = {
                   "openai": ["gpt-4.1-mini"]},
     "modelsDiscovered": {"google": True},
     "sttProviders": ["local", "deepgram", "openai", "google"],
-    "sttModels": {"local": ["base.en", "tiny.en"], "deepgram": ["nova-3"]},
+    # The LOCAL list from the real table, so the panel's Whisper ladder and
+    # its option labels are driven with the true set and order — a trimmed
+    # fixture here made the reordered ladder look broken in the stub.
+    "sttModels": {"local": list(settings_store.STT_MODEL_CHOICES["local"]),
+                  "deepgram": ["nova-3"]},
     "ttsModes": ["cloud", "local"],
     "ttsAdapters": ["local-vibevoice.json", "openai-cloud.json",
                     "elevenlabs-cloud.json"],

@@ -783,9 +783,21 @@
     missingProviderNote(note, 'llm');
 
     const stt = $('stt_provider').value || resolved.stt_provider;
+    // The Whisper ladder wears its trade-offs in the dropdown itself: the
+    // bare ids read as if "base" were the best one, and the operator chose
+    // it believing exactly that. Cloud model ids fall through unlabelled.
     fill('stt_model', (options.sttModels || {})[stt] || [], {
-      blankLabel: blankFor('stt_model', 'a model') });
+      blankLabel: blankFor('stt_model', 'a model'),
+      labels: {
+        'tiny.en': 'tiny.en — fastest, hears the least',
+        'base.en': 'base.en — light (default); misses words on phone audio',
+        'small.en': 'small.en — hears phone audio clearly better, more CPU per turn',
+        'medium.en': 'medium.en — hears the most; heavy, test before trusting on a NAS',
+      } });
     $('stt_model').value = overrides.stt_model || '';
+    // The ladder describes the BUILT-IN models; behind a cloud pick it
+    // would explain four options that are not in the dropdown.
+    if ($('whisperLadder')) $('whisperLadder').hidden = stt !== 'local';
     const sttNote = $('sttSourceNote');
     if (sttNote) { sttNote.textContent = ''; missingProviderNote(sttNote, 'stt'); }
   }

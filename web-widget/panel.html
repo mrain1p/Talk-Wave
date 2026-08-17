@@ -600,6 +600,22 @@
           <label for="stt_model">Model</label>
           <select id="stt_model"></select>
         </div>
+        <!-- The Whisper ladder as a LIST, not a paragraph (operator's ask,
+             2026-08-17 — the prose read as if base were the best one).
+             Local provider only; panel.js hides it when a cloud ear is
+             picked, whose model names carry their own meaning. -->
+        <div class="hint wide" id="whisperLadder">
+          The built-in models, smallest to largest — each hears better and
+          costs more CPU per turn than the one above it:
+          <ul class="ladder">
+            <li><strong>tiny.en</strong> — fastest, hears the least</li>
+            <li><strong>base.en</strong> — light, the default; misses words on phone audio</li>
+            <li><strong>small.en</strong> — hears phone audio clearly better; the practical ceiling on a NAS</li>
+            <li><strong>medium.en</strong> — hears the most; heavy — test a call before trusting it</li>
+          </ul>
+          A cloud ear with a key (Deepgram’s phone-call model especially)
+          out-hears all four and costs this box nothing.
+        </div>
         <p class="hint wide" id="sttSourceNote"></p>
 
         <h4 class="subhead">Transcription keys</h4>

@@ -1033,10 +1033,9 @@ SCHEMA: dict[str, dict] = {
              "— it is listed because it is the most accurate of the three on "
              "phone audio, not because anything here needs it."),
     "stt_model": dict(group="ears", kind="select", label="Model",
-        help="For the built-in Whisper: base.en is the default and right for "
-             "phone-quality audio; tiny.en is faster on weak CPUs, small.en "
-             "and medium.en hear names better but cost real CPU time per "
-             "turn — test a call before trusting medium.en on a NAS."),
+        help="Smallest to largest — base.en is the default because it is "
+             "light, not because it hears best. The ladder under the field "
+             "spells out each model's trade."),
 
     # --- voice ---
     "tts_mode": dict(group="voice", kind="select", label="Backend",
@@ -2307,7 +2306,11 @@ def tts_base_urls() -> dict:
 STT_MODEL_CHOICES = {
     # In-process faster-whisper. No container, no key, no network — and CPU
     # only, which matters because the GPU is fully committed to VibeVoice.
-    "local": ["base.en", "tiny.en", "small.en", "medium.en"],
+    # Smallest to largest, and the ORDER is part of the documentation: the
+    # list used to lead with base.en (the default), which read as "the best
+    # one" — the operator picked it believing exactly that (2026-08-17).
+    # The panel labels each with its trade; keep the two in step.
+    "local": ["tiny.en", "base.en", "small.en", "medium.en"],
     "deepgram": ["nova-3", "nova-2", "nova-2-phonecall"],
     # Uses the same OpenAI key as the LLM/TTS — the practical choice when
     # there's no Deepgram account, since Google STT needs a GCP service
