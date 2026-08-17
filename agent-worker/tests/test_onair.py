@@ -214,6 +214,43 @@ class TestTheRelayObeysTheOperatorMidCall(_RelayCase):
                          "no clip airs once the operator said no")
         self.assertFalse(r.active)
 
+    def test_the_panels_dump_crosses_the_process_seam(self):
+        # The dump button lives in the WEB process and the relay in the
+        # worker; the marker file in the shared store is the message. A
+        # fresh marker kills the held turn AND the arriving one; a stale
+        # one (a dump pressed long before, with nothing live) is spent
+        # silently — it must never behead the next caller's first turn.
+        async def run():
+            station = _FakeStation()
+            r, got = self._relay(station=station)
+            await r.open()
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            chunks.request_dump()                  # the operator, mid-call
+            await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
+            return r, got, station
+
+        r, got, station = asyncio.run(run())
+        self.assertEqual([g for g in got if b"voice_queue.push" in g], [],
+                         "neither the held turn nor the new one airs")
+        self.assertTrue(r.dumped)
+        self.assertEqual(len(station.says), 2, "intro, then the sign-off")
+
+    def test_a_stale_marker_is_spent_not_obeyed(self):
+        async def run():
+            r, got = self._relay()
+            chunks.request_dump()
+            stale = time.time() - chunks.DUMP_FRESH_SECS - 5
+            os.utime(chunks.SERVE_DIR / "DUMP", (stale, stale))
+            await r.open()                         # open() spends leftovers
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
+            return r, got
+
+        r, got = asyncio.run(run())
+        self.assertTrue(r.active, "a stale dump must not end the broadcast")
+        self.assertEqual(
+            len([g for g in got if b"voice_queue.push" in g]), 1)
+
     def test_dump_kills_the_unpushed_tail(self):
         async def run():
             station = _FakeStation()

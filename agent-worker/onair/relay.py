@@ -104,6 +104,9 @@ class CallRelay:
             self._problem("the on-air intro failed; the call aired without one")
         window = float(self.cfg.get("on_air_max_seconds") or 0) or 240.0
         self._deadline = time.time() + window
+        # Spend any marker a previous call left, so an old dump cannot
+        # behead this caller's first turn.
+        await asyncio.to_thread(chunks.take_dump)
         self.active = True
         self._tool(f"on air: window open ({window:.0f}s max)")
         return True
@@ -115,6 +118,18 @@ class CallRelay:
         async with self._lock:
             if not self.active:
                 wav.unlink(missing_ok=True)
+                return
+            # The panel's dump, read here because this is the moment before
+            # anything else can air: the turn in hand and the one arriving
+            # both die, the segment signs off, the call itself carries on.
+            if await asyncio.to_thread(chunks.take_dump):
+                self.dumped = True
+                wav.unlink(missing_ok=True)
+                if self._held:
+                    self._held["wav"].unlink(missing_ok=True)
+                    self._held = None
+                await self._close_locked("dumped by the operator",
+                                         say_outro=True)
                 return
             if time.time() > self._deadline:
                 wav.unlink(missing_ok=True)

@@ -119,6 +119,33 @@ def sweep(ttl_secs: float = CHUNK_TTL_SECS) -> int:
     return removed
 
 
+# The operator's dump crosses the same process seam the clips do: the PANEL
+# talks to the web process, the relay lives in the worker, and the marker
+# file is the message between them. Fresh-only, because a dump pressed while
+# no phone-in was live must never behead the NEXT caller's first turn.
+DUMP_FRESH_SECS = 120
+
+
+def request_dump() -> None:
+    _ensure_dir()
+    try:
+        (SERVE_DIR / "DUMP").write_bytes(b"")
+    except OSError as e:
+        log.warning("could not write the dump marker: %s", e)
+
+
+def take_dump() -> bool:
+    """Consume the marker; True only when it was fresh. Consumed either way —
+    a stale marker is spent, not left lying around to fire later."""
+    path = SERVE_DIR / "DUMP"
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return False
+    path.unlink(missing_ok=True)
+    return age <= DUMP_FRESH_SECS
+
+
 def clear() -> int:
     """Everything, now — the relay closing, or the operator's kill. Unlike
     sweep() this does not wait for the TTL's opinion."""

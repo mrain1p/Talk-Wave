@@ -86,7 +86,7 @@ from api.sounds import (
     handle_sound_meta,
 )
 from api.chat import handle_chat_ws
-from api.onair import handle_on_air_clip
+from api.onair import handle_on_air_clip, handle_on_air_dump
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
 from api.widget import WIDGET_DIR, _assets, handle_index
 from api.wire import handle_options
@@ -169,6 +169,9 @@ def build_app() -> web.Application:
     # The live relay's clips ride the same mixer-fetch pattern as /vm-air —
     # written by the WORKER during an on-air call, served by this process.
     app.router.add_get("/on-air/{token}", handle_on_air_clip)
+    # The operator's broadcast-delay dump: kills the turn still in hand.
+    app.router.add_post("/on-air/dump", handle_on_air_dump)
+    app.router.add_options("/on-air/dump", handle_options)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
     app.router.add_get("/cover/{track_id}", handle_cover)
     app.router.add_get("/player/like", handle_player_like_status)

@@ -2729,6 +2729,9 @@
     display: grid; grid-template-columns: minmax(0, 1fr) 150px;
     gap: 8px; align-items: stretch;
   }
+  /* The dump row ships [hidden] until the on-air door opens, and the grid
+     rule above would beat the UA's hidden — the slot-card lesson. */
+  .linerow[hidden] { display: none; }
   @media (max-width: 940px) {
     .stationstrip { grid-template-columns: repeat(2, 1fr); }
   }

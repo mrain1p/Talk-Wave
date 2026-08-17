@@ -64,9 +64,14 @@ _STARTED_AT = time.time()
 
 
 async def handle_health(request: web.Request) -> web.Response:
+    from api.tokens import on_air_call_live
+
     return web.json_response(
         {"ok": True, "version": APP_VERSION, "livekit": LIVEKIT_PUBLIC_URL,
-         "since": _STARTED_AT}
+         "since": _STARTED_AT,
+         # Whether a caller is live on the station's air right now — the
+         # panel's dump control reads its state from here.
+         "onAirLive": on_air_call_live()}
     )
 
 

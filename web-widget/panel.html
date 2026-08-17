@@ -259,6 +259,18 @@
               <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
             </button>
           </div>
+          <!-- The broadcast-delay dump. Standing furniture whenever the
+               on-air row is open (the panel does not poll, so a lamp that
+               only lit during a call would never light): the press asks the
+               server, and the answer — dumped, or no phone-in live — lands
+               on the card itself. -->
+          <div class="linerow" id="onAirLine" hidden>
+            <button type="button" id="dumpBtn" class="ctrlcard">
+              <span class="ck">On-air phone-in</span>
+              <span class="cv">DUMP</span>
+              <span class="cn">kills the turn still in hand before it airs</span>
+            </button>
+          </div>
         </div>
       </div>
 

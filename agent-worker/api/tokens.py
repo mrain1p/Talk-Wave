@@ -161,6 +161,19 @@ def _check_usage(request: web.Request, cfg: dict) -> str | None:
     return None
 
 
+def on_air_call_live() -> bool:
+    """Whether any minted, unfinished call chose the on-air door — read off
+    the lettered room names this process minted itself. The panel's dump
+    asks this before arming a marker, so a dump pressed on a quiet line can
+    never behead the next caller's first turn."""
+    import time as _time
+
+    now = _time.time()
+    return any(settings_store.on_air_from_room(room)
+               and now - started < _CALL_ASSUMED_MAX
+               for room, started in _live_calls.items())
+
+
 async def handle_call_ended(request: web.Request) -> web.Response:
     """The widget reports a hangup so a finished call stops counting against
     the concurrency limit immediately, rather than aging out."""

@@ -1031,6 +1031,13 @@
     // caller-supplied reaches the innerHTML.
     const chip = (t) => '<span class="permchip">' + t + '</span>';
     const said = (t) => '<span>' + t + '</span>';
+    // The dump card exists exactly while the on-air door is open — unsaved
+    // picks included, like every read on this page. The panel does not
+    // poll, so the card is standing furniture for an armed feature; the
+    // press itself asks whether a phone-in is actually live.
+    if ($('onAirLine')) {
+      $('onAirLine').hidden = permTier('allow_on_air') === 'off';
+    }
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
@@ -1787,6 +1794,26 @@
     wire('modeLiveBtn', 'live_calls_enabled');
     wire('modeVmBtn', 'voicemail_enabled');
     wire('modeChatBtn', 'chat_enabled');
+    // The broadcast-delay dump: posts immediately like every dash control,
+    // and the card's own note line carries the server's answer — dumped, or
+    // no phone-in live. Never through Save; a dump is not a form draft.
+    const dump = $('dumpBtn');
+    if (dump) dump.onclick = async () => {
+      const note = dump.querySelector('.cn');
+      dump.disabled = true;
+      try {
+        const r = await afetch('/on-air/dump', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        note.textContent = !r.ok
+          ? (d.error || 'refused')
+          : d.ok ? 'dumped — the held turn will not air'
+                 : (d.note || 'no phone-in is on the air right now');
+      } catch (e) {
+        note.textContent = 'unreachable — try again';
+      } finally {
+        dump.disabled = false;
+      }
+    };
   }
   bindModeButtons();
 

@@ -126,6 +126,8 @@ class TestExposedSurface(unittest.TestCase):
         # the worker writes a turn, the mixer curls it once, the token is the
         # filename and chunks.py expires it in three minutes (onair/chunks.py).
         "GET /on-air/{token}": "public",
+        # The broadcast-delay dump — an operator action on a live phone-in.
+        "POST /on-air/dump": "admin",
         "DELETE /settings/sounds/{name}": "admin",
         "GET /prompt": "admin",
         "GET /calls": "admin",
