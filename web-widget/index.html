@@ -303,11 +303,14 @@
           </button>
           <button id="vmCloseBtn" type="button">Cancel</button>
         </div>
+        <!-- The verb that MATTERS takes the whole top row (operator's order);
+             the three lesser verbs share the one beneath. Placement is the
+             stylesheet's grid, so the source order stays tab order. -->
         <div class="vmgrid" id="vmGrid" hidden>
+          <button id="vmSendBtn" type="button">Send&nbsp;to&nbsp;booth&nbsp;➤</button>
           <button id="vmPlayBtn" type="button">▶&nbsp;Play</button>
           <button id="vmRerecBtn" type="button">↺&nbsp;Rerecord</button>
-          <button id="vmSendBtn" type="button">Send&nbsp;➤</button>
-          <button id="vmCancelBtn" type="button">Cancel</button>
+          <button id="vmCancelBtn" type="button">✕&nbsp;Cancel</button>
         </div>
       </div>
 

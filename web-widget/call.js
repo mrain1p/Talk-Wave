@@ -2992,10 +2992,11 @@
   // A voicemail counts against ITS ceiling, not the live call's — the card
   // showed "/ 10:00" on a 30-second machine, which read as the limit being
   // ignored (and the room really did outlive it; the worker closes it now).
-  function startTimer() {
-    const max = vmCall
+  function startTimer(maxOverride) {
+    // The studio passes its own ceiling; a call resolves one from /live.
+    const max = maxOverride != null ? maxOverride : (vmCall
       ? ((live && live.limits && live.limits.voicemailMaxSeconds) || 0)
-      : ((live && live.limits && live.limits.maxCallSeconds) || 0);
+      : ((live && live.limits && live.limits.maxCallSeconds) || 0));
     callStarted = Date.now();
     $('timeChip').hidden = false;
     $('timeMax').textContent = max ? '/ ' + fmt(max) : '';
@@ -3554,7 +3555,23 @@
   let vmAbortStart = false;
   // The DJ's staged greeting, playing at pickup; and a session counter so a
   // greeting fetched for a studio the caller already closed never plays.
-  let vmGreet = null, vmSession = 0;
+  let vmGreet = null, vmSession = 0, vmRingTimer = 0;
+
+  // The machine's own beep, synthesized — one second of the classic tone
+  // between the greeting and the message, because a caller who has ever
+  // left a voicemail is waiting for it.
+  function vmBeep() {
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      const c = new C();
+      const o = c.createOscillator(), g = c.createGain();
+      o.frequency.value = 1000;
+      g.gain.value = Math.min(0.14, 0.14 * (getVolume() / 100));
+      o.connect(g); g.connect(c.destination);
+      o.start(); o.stop(c.currentTime + 0.8);
+      o.onended = () => { try { c.close(); } catch (e) {} };
+    } catch (e) { /* a silent beep never blocks the message */ }
+  }
 
   function vmFlow() { return ((shown || live || {}).voicemailFlow) || 'machine'; }
 
@@ -3636,8 +3653,10 @@
     const rec = state === 'recording';
     bar.setAttribute('aria-pressed', rec ? 'true' : 'false');
     bar.classList.toggle('on', rec);
-    main.textContent = rec ? word('vm_recording', 'Recording — let go to stop')
-      : state === 'greeting' ? word('vm_talkover', 'Hold to record — you can talk over the greeting')
+    // ONE OR TWO WORDS — the state and the clock live in the chips above,
+    // and the longer labels overflowed the bar on the operator's phone.
+    main.textContent = rec ? word('vm_recording', 'Recording')
+      : state === 'greeting' ? word('vm_talkover', 'Hold to talk over it')
       : word('vm_record', 'Hold to record');
     bar.disabled = state === 'busy' || state === 'sending';
     // Record state shows the bar row; review shows the 2×2 verb grid
@@ -3661,8 +3680,10 @@
       vmDraft = null;
     }
     if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
-    // Talk-over: pressing the bar mid-greeting answers it, like the real
-    // machine — and a new take restarts the box's story.
+    // Talk-over: pressing the bar mid-ring or mid-greeting answers it, like
+    // the real machine — and a new take restarts the box's story.
+    clearTimeout(vmRingTimer);
+    stopRinging();
     if (vmGreet) { vmGreet.pause(); vmGreet = null; }
     vmClearBox();
     let stream;
@@ -3690,7 +3711,11 @@
     vmRec.stopTimer = setTimeout(vmStopRec, secs * 1000);
     vmPaintButtons('recording');
     vmSetChip('listening', word('vm_chip_rec', 'Recording'));
-    setStatus('Up to ' + secs + 's — let go, or tap, to stop.', 'connected');
+    // The clock chip carries elapsed against the machine's ceiling, exactly
+    // as a call's does — the operator's ask: the state and the time live in
+    // the chips, not crammed into the bar's own label.
+    startTimer(secs);
+    setStatus('Let go, or tap, to stop.', 'connected');
     if (vmAbortStart) {
       // The finger lifted while the permission prompt held the start in
       // flight; honour the lift now rather than recording an empty room.
@@ -3704,6 +3729,7 @@
     if (!r) return;
     vmRec = null;
     clearTimeout(r.stopTimer);
+    stopTimer();
     try { r.proc.disconnect(); r.src.disconnect(); r.sink.disconnect(); } catch (e) {}
     r.stream.getTracks().forEach((t) => t.stop());
     try { r.ctx.close(); } catch (e) {}
@@ -3794,11 +3820,19 @@
     $('idleBoard').hidden = true;
     setCardMode('vmstudio');
     vmPaintButtons('idle');
-    vmSetChip('idle', word('vm_chip_ready', 'Ready'));
-    setStatus('Hold the bar and say your piece — the DJ airs it after you '
-              + 'approve it.', 'connected');
+    // The legacy machine's whole theater, in order (operator's ask): it
+    // RINGS, the booth picks up, the greeting plays, the beep — and only
+    // then the message. Holding the bar at any point answers early.
+    vmSetChip('connecting', word('vm_chip_ring', 'Ringing'));
+    setStatus(word('vm_open', 'Leave a voicemail for the booth.'), 'connecting');
     notifyHeight();
-    vmPlayGreeting(vmSession);
+    startRinging();
+    vmRingTimer = setTimeout(((session) => () => {
+      if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') return;
+      stopRinging();
+      playSound('pickup');
+      vmPlayGreeting(session);
+    })(vmSession), 3400);
   }
 
   // The answering machine's own voice stays part of the process (operator:
@@ -3806,13 +3840,27 @@
   // greeting the operator rendered per persona plays when the studio picks
   // up, and holding the bar talks over it, exactly like the real machine.
   async function vmPlayGreeting(session) {
+    // Whatever happened to the greeting — played, missing, refused — the
+    // machine still BEEPS and invites the message; a staged clip is part of
+    // the theater, never a gate on it.
+    const ready = () => {
+      if (session !== vmSession) return;
+      if (!vmRec && cardMode() === 'vmstudio' && !vmBusy) {
+        vmBeep();
+        vmPaintButtons('idle');
+        vmSetChip('idle', word('vm_chip_ready', 'Ready'));
+        setStatus(word('vm_howto', 'Record a message — you can play it back '
+          + 'and review it before anything is sent. Once you approve it, '
+          + 'the DJ airs it.'), 'connected');
+      }
+    };
     let blobUrl = '';
     try {
       const r = await fetch('/vm-greeting', { headers: vmKeyHeaders() });
-      if (!r.ok) return;                   // nothing staged — skip silently
+      if (!r.ok) return ready();           // nothing staged — straight to the beep
       blobUrl = URL.createObjectURL(await r.blob());
     } catch (e) {
-      return;
+      return ready();
     }
     if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') return;
     vmGreet = new Audio(blobUrl);
@@ -3822,10 +3870,7 @@
       URL.revokeObjectURL(blobUrl);
       if (session !== vmSession) return;
       vmGreet = null;
-      if (!vmRec && cardMode() === 'vmstudio' && !vmBusy) {
-        vmPaintButtons('idle');
-        vmSetChip('idle', word('vm_chip_ready', 'Ready'));
-      }
+      ready();
     };
     vmGreet.onended = done;
     vmGreet.onerror = done;
@@ -3834,6 +3879,9 @@
 
   function vmCloseStudio(sent) {
     vmSession += 1;
+    clearTimeout(vmRingTimer);
+    stopRinging();
+    stopTimer();
     if (vmRec) {                 // mid-recording: stop hardware, keep nothing
       const r = vmRec; vmRec = null;
       clearTimeout(r.stopTimer);
@@ -4107,28 +4155,31 @@
     $('plAlbum').textContent =
       [np.artist, np.album, np.year].filter(Boolean).join(' · ');
 
-    // UP NEXT: the station's own queue. The pip only goes live when
-    // something is actually queued — a lit pip over an empty panel is the
-    // kind of lie the board rules exist to prevent.
-    const nx = (d.upNext || [])[0];
+    // UP NEXT: the station's own queue, ALL of it — the operator wants to
+    // see what is coming, not the head of the line; the panel body scrolls
+    // when the list outgrows it. The pip only goes live when something is
+    // actually queued — a lit pip over an empty panel is the kind of lie
+    // the board rules exist to prevent.
+    const list = d.upNext || [];
     const nextBody = $('plNextBody');
     if (nextBody) {
-      $('plNextMeta').textContent = nx
-        ? (d.upNext.length > 1 ? d.upNext.length + ' queued' : '1 queued')
-        : 'queue empty';
-      $('plNextPip').classList.toggle('live', !!nx);
+      $('plNextMeta').textContent = list.length
+        ? list.length + ' queued' : 'queue empty';
+      $('plNextPip').classList.toggle('live', !!list.length);
       nextBody.innerHTML = '';
-      if (nx) {
-        const t = document.createElement('div');
-        t.className = 'pltit'; t.textContent = nx.title;
-        nextBody.appendChild(t);
-        const sub = [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
-          .filter(Boolean).join(' · ');
-        if (sub) {
-          const s = document.createElement('div');
-          s.className = 'plsub'; s.textContent = sub;
-          nextBody.appendChild(s);
-        }
+      if (list.length) {
+        list.forEach((nx) => {
+          const t = document.createElement('div');
+          t.className = 'pltit'; t.textContent = nx.title;
+          nextBody.appendChild(t);
+          const sub = [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
+            .filter(Boolean).join(' · ');
+          if (sub) {
+            const s = document.createElement('div');
+            s.className = 'plsub'; s.textContent = sub;
+            nextBody.appendChild(s);
+          }
+        });
       } else {
         nextBody.textContent = 'Nothing queued — send a request below.';
       }

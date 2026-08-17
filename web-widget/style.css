@@ -739,15 +739,23 @@
   /* Record state: the bar carries the row, Cancel rides beside it — the same
      proportions as the talk row it replaces. The bar reuses .pttbar wholesale
      (markup and class), so it lights, presses and reads like the real one. */
+  /* Daylight between the caller's own meter and the controls — the rows sat
+     flush against the YOU strip (operator's screenshots, 2026-08-17). */
+  .vmbarrow, .vmgrid { margin-top: 10px; }
   .vmbarrow { display: flex; gap: 8px; }
   .vmbarrow .pttbar { flex: 1 1 auto; min-width: 0; }
   .vmbarrow > #vmCloseBtn { flex: 0 0 auto; }
-  /* Review state: four verbs, two rows (operator's sketch). min-width:0 so a
-     label can never push its cell — words were leaving their boxes on a
-     phone (operator's screenshots, 2026-08-17). */
+  /* Review state: SEND TO BOOTH owns the top row — it is the verb the whole
+     studio exists for — and the three lesser verbs share the row beneath
+     (operator's order). min-width:0 so a label can never push its cell —
+     words were leaving their boxes on a phone. */
   .vmgrid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
   }
+  .vmgrid #vmSendBtn { grid-row: 1; grid-column: 1 / -1; }
+  .vmgrid #vmPlayBtn { grid-row: 2; grid-column: 1; }
+  .vmgrid #vmRerecBtn { grid-row: 2; grid-column: 2; }
+  .vmgrid #vmCancelBtn { grid-row: 2; grid-column: 3; }
   .vmgrid button {
     min-width: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap;
@@ -902,16 +910,19 @@
   .ppip.live { background: var(--coral); }
   .plpanelmeta { margin-left: auto; color: var(--sage-dim); font-weight: 400;
                  letter-spacing: .08em; text-transform: none; }
-  .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage); }
+  /* The body SCROLLS past its window instead of clamping (operator's ask:
+     the whole queue, the whole booth line, reachable by thumb) — the cap
+     only stops one long panel from pushing the dock off a short phone. */
+  .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage);
+                 max-height: 108px; overflow-y: auto; }
   .plpanelbody .pltit { font-size: 14px; font-weight: 700;
                         color: var(--alpenglow); }
   .plpanelbody .plsub { font-size: 12px; color: var(--sage); margin-top: 2px; }
-  /* The DJ's own words — prose, not a title, clamped so a long segment
-     cannot push the dock off a short phone. */
+  /* Breathing room between queue entries. */
+  .plpanelbody .plsub + .pltit, .plpanelbody .pltit + .pltit { margin-top: 6px; }
+  /* The DJ's own words — prose, not a title. */
   .plpanelbody .plquote {
     font-size: 13px; line-height: 1.45; color: var(--alpenglow);
-    display: -webkit-box; -webkit-line-clamp: 4;
-    -webkit-box-orient: vertical; overflow: hidden;
   }
   /* The docked action bar: heart · volume · meter, the big transport, the
      request row, and the grabber home. Granite over the pine panels, same
@@ -922,10 +933,13 @@
     padding: 12px 16px calc(8px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 10px;
   }
-  .plctl { display: flex; align-items: center; gap: 12px; }
+  /* Tighter than the mockup's 44px row on the operator's ask — the fader
+     strip is furniture, not a destination, and it was taking a band's worth
+     of height from the panels above it. */
+  .plctl { display: flex; align-items: center; gap: 10px; }
   .card .plheart {
-    width: 44px; height: 44px; flex: none; border: 1px solid var(--edge);
-    background: transparent; color: var(--sage); font-size: 18px;
+    width: 36px; height: 36px; flex: none; border: 1px solid var(--edge);
+    background: transparent; color: var(--sage); font-size: 16px;
     line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
   }
   .card .plheart.liked { color: var(--coral); border-color: var(--coral); }
@@ -937,10 +951,10 @@
   #plVol { flex: 1 1 auto; }
   /* The VU meter: eleven bars breathing while the stream plays, frozen the
      moment it pauses — animation-play-state, driven by .player.playing. */
-  .plvu { display: flex; align-items: flex-end; gap: 3px; height: 16px;
+  .plvu { display: flex; align-items: flex-end; gap: 3px; height: 12px;
           flex: none; }
   .plvu span {
-    width: 3px; height: var(--h, 10px); background: var(--coral);
+    width: 3px; height: calc(var(--h, 10px) * .75); background: var(--coral);
     transform-origin: bottom; transform: scaleY(.3);
     animation: pleq var(--d, 700ms) ease-in-out alternate infinite;
     animation-delay: var(--dl, 0ms); animation-play-state: paused;
@@ -1008,8 +1022,8 @@
     .plprog { grid-column: 1 / -1; margin-top: 10px; }
     .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
-    /* Two lines of the DJ on a short card, not four. */
-    .plpanelbody .plquote { -webkit-line-clamp: 2; }
+    /* A shorter window on the short card; the body scrolls past it. */
+    .plpanelbody { max-height: 64px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
     .card .plheart { width: 38px; }
