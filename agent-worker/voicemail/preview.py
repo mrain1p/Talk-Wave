@@ -50,22 +50,142 @@ async def transcribe(cfg: dict, wav_path) -> str:
         return ""
 
 
+# Tools that only READ — a look at the library, the lyrics, the queue. A
+# recorded message that trips one has nothing to AIR (there is no conversation
+# to hand the answer back to), so a captured read stages nothing.
+_READ_TOOLS = {
+    "subwave_current_lyrics", "subwave_search_library", "subwave_recent_tracks",
+    "subwave_search_by_sound", "subwave_more_like_this", "subwave_browse_library",
+    "subwave_station_favourites", "subwave_already_played", "subwave_request_status",
+}
+
+# The plain-words line the caller approves, per tool. This IS the receipts
+# discipline for the actions that carry no track to pin: the caller sees what
+# SEND will do before they send it.
+_LABELS = {
+    "subwave_skip_track": lambda a: "Skip the track playing now (everyone hears the cut)",
+    "subwave_like_track": lambda a: "Like the track playing now",
+    "subwave_unlike_track": lambda a: "Un-like the track playing now",
+    "subwave_never_play_track": lambda a: "Never play the current track again",
+    "subwave_allow_track_again": lambda a: "Take the current track off the never-play list",
+    "subwave_cancel_takeover": lambda a: "Cancel the show takeover — back to the schedule",
+    "subwave_clear_genre_lock": lambda a: "Lift the genre lock",
+    "subwave_dj_announce": lambda a: f"Announce on air: “{str(a.get('message') or '').strip()[:100]}”",
+    "subwave_run_skill": lambda a: f"Run the {a.get('name') or 'station'} segment on air",
+    "subwave_dj_segment": lambda a: f"Fire the {a.get('type') or 'station'} beat on air",
+    "subwave_genre_lock": lambda a: f"Lock the station to {a.get('genres') or 'a genre'} for a while",
+    "subwave_cancel_queued_track": lambda a: f"Take “{a.get('title') or a.get('id') or 'that track'}” back out of the queue",
+    "subwave_queue_track": lambda a: f"Queue “{a.get('title') or 'the track'}”",
+}
+
+
+def _label_for(name: str, args: dict) -> str:
+    fn = _LABELS.get(name)
+    try:
+        return fn(args) if fn else name.replace("subwave_", "").replace("_", " ")
+    except Exception:                                         # noqa: BLE001
+        return name.replace("subwave_", "").replace("_", " ")
+
+
+async def build_action_tools(cfg: dict, station):
+    """The SAME permission-gated tool surface a live call and the text line
+    build, reused WHOLE — so the studio can stage any tool the caller's tier
+    allows, and send can replay it through the exact wrapper the phone runs,
+    rather than a fourth reimplementation that would drift. Returns
+    (tools, actions); `actions` is the per-message ledger the wrappers write
+    their receipts into. `cfg` must already be permissions_for-resolved.
+    """
+    from call.actions import CallActions
+    from call.air import OnAirGuard
+    from call.tools import (build_curation_tools, build_discovery_tools,
+                            build_library_tools, build_on_air_tools)
+
+    actions = CallActions(int(cfg.get("max_actions_per_call") or 0))
+    # No live room to collide with, so the overlap guard is off — the same
+    # shape the text line builds these in (chat/session.py builds a disabled
+    # guard for exactly this reason).
+    guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
+    skills = []
+    if cfg.get("allow_skills"):
+        try:
+            skills = [s for s in (str(x.get("kind") or x.get("name") or "")
+                                  for x in await station.list_skills()) if s]
+        except Exception:                                     # noqa: BLE001
+            skills = []
+    tools = (
+        build_library_tools(cfg, station, actions)
+        + build_discovery_tools(cfg, station, actions)
+        + build_curation_tools(cfg, station, actions)
+        + build_on_air_tools(cfg, station, actions, guard, guarded=False,
+                             skills=skills)
+    )
+    return tools, actions
+
+
+async def _capture_tool_call(cfg: dict, text: str, tools: list):
+    """Run ONE model pass over the message with the gated tools, and read back
+    the tool it WOULD call — WITHOUT running it (the /test/llm probe's trick:
+    read tool_calls off the stream, invoke nothing). The model that resolves a
+    live caller's words to a tool call resolves a recorded message the same
+    way; send is the only place anything runs. Returns (name, args) or None.
+    """
+    from livekit.agents.llm import ChatContext
+
+    from call.providers import build_llm
+
+    llm = build_llm(cfg)
+    ctx = ChatContext.empty()
+    ctx.add_message(role="system", content=(
+        "A radio station's soundbite line took a recorded message from a "
+        "caller. If it asks you to DO something you have a tool for, call that "
+        "ONE tool with the caller's own words. If it is just a message with "
+        "nothing to action, call no tool at all."))
+    ctx.add_message(role="user", content=text[:600])
+    calls: list = []
+    try:
+        stream = llm.chat(chat_ctx=ctx, tools=tools)
+        async for chunk in stream:
+            delta = getattr(chunk, "delta", None)
+            if delta and getattr(delta, "tool_calls", None):
+                calls.extend(delta.tool_calls)
+        await stream.aclose()
+    except Exception as e:                                    # noqa: BLE001
+        log.warning("draft tool triage failed (%s) — no action previewed", e)
+        return None
+    finally:
+        try:
+            await llm.aclose()
+        except Exception:                                     # noqa: BLE001
+            pass
+    if not calls:
+        return None
+    call = calls[0]
+    try:
+        args = json.loads(getattr(call, "arguments", "") or "{}")
+    except Exception:                                         # noqa: BLE001
+        args = {}
+    return str(getattr(call, "name", "")), (args if isinstance(args, dict) else {})
+
+
 async def resolve(station, cfg: dict, transcript: str, tier: str = "open") -> dict:
-    """The ONE action this message asks for, resolved to something executable.
+    """The action this message asks for, resolved through the SAME tools a
+    live call and the text line use — the whole permission-gated surface, not
+    a reimplemented subset.
 
-    The SAME tools and the SAME permission gates the live line and the text
-    line use, resolved for THIS caller's tier exactly as a call is
-    (settings.permissions_for). Only the medium differs: a call runs the tool
-    the instant the model calls it; the soundbite STAGES the resolved action
-    into the draft for the caller to approve, and send runs it. So the tool
-    set is consistent across all three doors — a music ask rides
-    allow_requests, an exact-id queue rides allow_exact_queue, a takeover
-    rides allow_takeover — while the execution is not, because a preview has
-    to show what WILL happen before it does.
+    The medium is what differs, not the tools. A call runs the tool the instant
+    the model calls it; the soundbite runs a CAPTURE pass here (the model picks
+    the one tool it would call, and we read that call without running it) and
+    STAGES it into the draft. Send replays exactly that call through the exact
+    wrapper the phone runs. So which actions a message can set in motion is
+    decided by permissions_for(cfg, tier) — the same gate a call reads at
+    pickup — and by nothing else.
 
-    Every failure path lands on NO_ACTION — a message that airs with no side
-    effect loses nobody anything, while a guessed side effect is the thing the
-    preview exists to prevent.
+    Music and a takeover keep their pinned-receipt previews (a request to its
+    resolved track, a show to its id) because those CAN be shown exactly; every
+    other tool stages by name and args with a plain-words label the caller
+    approves. A read, or no tool at all, stages nothing — a message that airs
+    with no side effect loses nobody anything, which is the thing the preview
+    exists to protect.
     """
     import settings as settings_store
 
@@ -73,73 +193,34 @@ async def resolve(station, cfg: dict, transcript: str, tier: str = "open") -> di
     if not text:
         return dict(NO_ACTION)
 
-    # Resolved for the caller's tier, the same call a live call makes at
-    # pickup — so an action the tiers would not grant this caller is not on
-    # offer to their message either, and "off" (truthy as a raw string) can
-    # never read as on.
+    # Resolved for THIS caller's tier, the same call a live call makes at
+    # pickup. "off" is truthy as a raw string, so collapsing to a bool here is
+    # what stops a switched-off action reading as on.
     cfg = settings_store.permissions_for(cfg, tier)
-    music_ok = bool(cfg.get("allow_requests"))
-    takeover_ok = bool(cfg.get("allow_takeover"))
-    # Nothing this caller may set in motion: don't spend a completion to be
-    # told so, and never wake the model on an empty offer.
-    if not (music_ok or takeover_ok):
+    tools, _actions = await build_action_tools(cfg, station)
+    built = {t.info.name for t in tools}
+
+    captured = await _capture_tool_call(cfg, text, tools)
+    if not captured:
+        return dict(NO_ACTION)
+    name, args = captured
+
+    # Airtight gate: route ONLY a tool this caller's tier actually built. A
+    # captured read, an empty call, or a name that was never offered (a model
+    # reaching for a tool it wasn't given) all stage nothing — the permission
+    # set alone decides what a message can do, and nothing downstream re-grants
+    # it. Send re-gates the same way (air._run_staged_tool).
+    if not name or name not in built or name in _READ_TOOLS:
         return dict(NO_ACTION)
 
-    try:
-        from livekit.agents.llm import ChatContext
-
-        from call.providers import build_llm
-
-        llm = build_llm(cfg)
-        # Only the actions this caller may actually take are offered — the same
-        # discipline that keeps the live line from describing a tool it will
-        # then refuse.
-        options = []
-        if music_ok:
-            options.append(
-                '  {"action": "queue", "query": "<what they want to hear — a '
-                "title and/or artist, OR a description: a mood, a genre, an "
-                "era, 'something like this'>\"}  when it asks for music of ANY "
-                "kind, named or described\n")
-        if takeover_ok:
-            options.append(
-                '  {"action": "takeover", "who": "<the DJ or show they '
-                'named>"}  when it asks for a different DJ or show to come '
-                "on\n")
-        options.append('  {"action": "none"}  when it asks for none of these.')
-        prompt = (
-            "A radio station's soundbite line took this recorded message:\n"
-            f"  {text[:600]}\n\n"
-            "Pick ONE action. Answer with bare JSON only:\n"
-            + "".join(options)
-        )
-        chunks = []
-        chat_ctx = ChatContext()
-        chat_ctx.add_message(role="user", content=prompt)
-        try:
-            async with llm.chat(chat_ctx=chat_ctx) as st:
-                async for chunk in st:
-                    delta = getattr(chunk, "delta", None)
-                    if delta and getattr(delta, "content", None):
-                        chunks.append(delta.content)
-        finally:
-            try:
-                await llm.aclose()
-            except Exception:                                 # noqa: BLE001
-                pass
-        raw = "".join(chunks).strip()
-        verdict = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
-    except Exception as e:                                    # noqa: BLE001
-        log.warning("draft triage failed (%s) — no action previewed", e)
-        return dict(NO_ACTION)
-
-    action = str(verdict.get("action") or "none").lower()
-    if action == "takeover" and takeover_ok:
-        who = str(verdict.get("who") or "").strip()
+    if name == "subwave_request_song":
+        return await stage_music_action(
+            station, cfg, str(args.get("request") or text))
+    if name == "subwave_takeover_show":
+        who = str(args.get("show") or "").strip()
         return await _resolve_takeover(station, who) if who else dict(NO_ACTION)
-    if action == "queue" and music_ok:
-        return await stage_music_action(station, cfg, str(verdict.get("query") or ""))
-    return dict(NO_ACTION)
+    return {"kind": "tool", "name": name, "args": args,
+            "label": _label_for(name, args)}
 
 
 async def stage_music_action(station, cfg: dict, query: str) -> dict:

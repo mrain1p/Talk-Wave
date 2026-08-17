@@ -54,12 +54,41 @@ def _quote(text: str, limit: int = 420) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+async def _run_staged_tool(station, cfg: dict, action: dict) -> tuple[str, bool]:
+    """Replay a staged tool call through the LIVE wrapper — the exact code a
+    call runs — re-gated for the caller's tier at send (cfg is already
+    permissions_for-resolved by deliver). A permission the operator switched
+    off since the preview is refused here, like the takeover re-check above.
+    The wrapper notes a clean (kind, detail) to the ledger on success; a
+    refusal leaves it empty and its returned sentence carries the reason."""
+    from voicemail.preview import build_action_tools
+
+    name = str(action.get("name") or "")
+    args = action.get("args") if isinstance(action.get("args"), dict) else {}
+    tools, actions = await build_action_tools(cfg, station)
+    tool = next((t for t in tools if t.info.name == name), None)
+    if tool is None:
+        return f"'{name}' is not an action this line allows any more", False
+    try:
+        out = await tool(**args)
+    except Exception as e:                                     # noqa: BLE001
+        return f"that action didn't run ({type(e).__name__})", False
+    if actions.taken:
+        act_kind, detail = actions.taken[-1]
+        return (f"{act_kind}: {detail}" if detail else act_kind), True
+    # No ledger note = the wrapper refused (the action cap, or the station said
+    # no); its sentence carries the reason.
+    return str(out).strip().split(".")[0][:160], False
+
+
 async def _run_action(station, cfg: dict, action: dict) -> tuple[str, bool]:
     """Execute the ONE action the caller approved, exactly as resolved at
     review time. Returns (receipt line, ok)."""
     kind = str((action or {}).get("kind") or "none")
     if kind == "none" or not action:
         return "no action asked for", True
+    if kind == "tool":
+        return await _run_staged_tool(station, cfg, action)
     if kind == "queue":
         track = dict(action.get("track") or {})
         result = await station.queue_track(track)
@@ -101,6 +130,13 @@ async def deliver(station, cfg: dict, draft: dict) -> dict:
     """
     transcript = _quote(draft.get("transcript"))
     action = dict(draft.get("action") or {})
+    # Re-gate for the caller's tier at send — the same defence-in-depth the
+    # takeover branch already ran, now for every staged tool: a permission the
+    # operator switched off since the preview is refused here, not aired. Only
+    # the tiered permissions collapse; the backend/mixer settings below are
+    # untouched.
+    import settings as settings_store
+    cfg = settings_store.permissions_for(cfg, str(draft.get("tier") or "open"))
     wanted = str(cfg.get("vm_air_backend") or "dj-reads")
     backend = wanted
     note = ""
