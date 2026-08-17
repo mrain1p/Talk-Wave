@@ -1496,13 +1496,33 @@
       && (vmPolicy() === 'always' || d.liveCalls === false);
     const vmHere = vmOnly
       || (machineOn && !lineClosedNow && vmPolicy() === 'closed' && !d.onAir);
+    // The phone-in switch: only when the server says the door is open AND
+    // working (setting on, mixer answering its probe), never behind a code
+    // gate, and never on a voicemail-only line with no live door for it to
+    // modify. Hidden means OFF — a switch the caller cannot see must never
+    // stay silently armed from an earlier paint.
+    const onAirHere = !!(d.onAirCalls && d.onAirCalls.offered)
+      && !lineClosedNow && !needsCode && !vmOnly;
+    if (!onAirHere) onAirPick = false;
+    if ($('onAirRow')) {
+      $('onAirRow').hidden = !onAirHere;
+      $('onAirTgl').setAttribute('aria-checked', onAirPick ? 'true' : 'false');
+      // The armed label says what is about to happen, in the row itself —
+      // no second hint line, so the card's height never moves.
+      $('onAirWord').textContent = onAirPick
+        ? word('onair_armed', 'Live on air — this call is broadcast')
+        : word('onair_off', 'Live on air');
+    }
     // The operator can put the machine on the card as its own button,
     // per surface. With the button up, Call never morphs — two clear
     // doors beat one door with a changing sign.
     const vmButton = machineOn && !lineClosedNow
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
-    if (vmButton) setBtn($('vmBtn'), 'vm', 'mail', word('vm_button', 'Leave a message'));
+    if (vmButton) setBtn($('vmBtn'), 'vm', 'mail',
+                         onAirHere && onAirPick
+                           ? word('vm_button_live', 'Record for air')
+                           : word('vm_button', 'Leave a message'));
     // The text line's door, same rules as the machine's: the kill switch
     // outranks it, the door code gates it, and it is per-surface. Never
     // hidden mid-chat — the input row is the conversation.
@@ -1536,10 +1556,17 @@
     } else if (vmHere && !vmButton) {
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
-      setBtn(callBtn, 'vm', 'mail', word('vm_button', 'Leave a message'));
+      setBtn(callBtn, 'vm', 'mail',
+             onAirHere && onAirPick
+               ? word('vm_button_live', 'Record for air')
+               : word('vm_button', 'Leave a message'));
     } else {
       callBtn.disabled = false;
-      setBtn(callBtn, 'call', 'phone', callLabel());
+      // The armed toggle re-labels the one door rather than adding another:
+      // same button, same size, the sign now tells the truth about where
+      // the call goes.
+      setBtn(callBtn, 'call', 'phone',
+             onAirPick ? word('call_live', 'Call in live') : callLabel());
     }
   }
 
@@ -2666,6 +2693,10 @@
   async function startCall(asVoicemail) {
     const myGen = ++callGen;
     vmCall = !!asVoicemail;
+    // Pinned at the press: the toggle's word is only a REQUEST — the server
+    // re-gates it at the mint and the worker preflights the transport, so
+    // this flag means "asked to be live", never "is live".
+    onAirCall = !vmCall && onAirPick;
     vmBeepHeard = false;
 
     // A call or a voicemail is a different mode from the text line — you are
@@ -2712,6 +2743,9 @@
     hangBtn.hidden = false;
     const card = document.querySelector('.card');
     card.classList.add('oncall');
+    // The broadcast light, for the whole call — a caller must never be able
+    // to forget they chose the air.
+    if ($('onAirBadge')) $('onAirBadge').hidden = !onAirCall;
     // Repainted HERE, like openChat does — the board is only painted when the
     // card is idle and the /live poll runs every 20 seconds, so LINES ARE OPEN
     // stayed up through connecting, pickup and the DJ's first words. Whoever
@@ -2763,12 +2797,15 @@
         headers: Object.assign(
           { 'Content-Type': 'application/json' },
           callKey() ? { 'X-Call-Key': callKey() } : {}),
-        body: JSON.stringify(vmCall ? { voicemail: true } : {}),
+        body: JSON.stringify(vmCall ? { voicemail: true }
+                             : onAirCall ? { onAir: true } : {}),
       });
       // 429 = the line is busy or the operator has closed it; 401 = the door
-      // code is missing or wrong. Both are answers, not faults — engaged
-      // tone, plain wording, and the button comes straight back.
-      if (res.status === 429 || res.status === 401) {
+      // code is missing or wrong; 403 = a door this caller's tier doesn't
+      // open (the on-air ask from a stale tab, mostly — the toggle hides
+      // when the door shuts). All answers, not faults — engaged tone, plain
+      // wording, and the button comes straight back.
+      if (res.status === 429 || res.status === 401 || res.status === 403) {
         const d = await res.json().catch(() => ({}));
         stopRinging(); tuneOut();
         playSound('failed');
@@ -2784,6 +2821,8 @@
         callBtn.classList.remove('ringing', 'answering');
         room = null;
         vmCall = false;
+        onAirCall = false;
+        if ($('onAirBadge')) $('onAirBadge').hidden = true;
         // Back to idle in full: since the card flips to .oncall + Hang up the
         // INSTANT the button is pressed (no ringing phase), a refusal has to
         // undo that here, or .oncall keeps the doors hidden and the card sits
@@ -2876,6 +2915,11 @@
             setStatus('The machine is listening — speak after the beep, transcript only',
                       'connected');
           }
+        } else if (onAirCall) {
+          // NO station bed under a live call: the stream at this moment is
+          // this very conversation, one stream-buffer ago — a caller hearing
+          // their own last exchange under the current one cannot hold a
+          // thought. They rejoin the listener count when the line clears.
         } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
@@ -3157,6 +3201,8 @@
     callBtn.hidden = false;
     hangBtn.hidden = true;
     document.querySelector('.card').classList.remove('oncall');
+    onAirCall = false;
+    if ($('onAirBadge')) $('onAirBadge').hidden = true;
     muteBtn.textContent = 'Mute';
     muteBtn.classList.remove('on');
     setCardMode('idle');
@@ -3291,6 +3337,11 @@
 
   callBtn.onclick = () => {
     if (!room && !previewMode) startCall(callBtn.dataset.vm === '1');
+  };
+  if ($('onAirTgl')) $('onAirTgl').onclick = () => {
+    if (room) return;                 // pinned once a call exists
+    onAirPick = !onAirPick;
+    paintIdleButtons(live || {});
   };
   // ------------------------------------------------- the text line
   // A chat is a WebSocket to /chat/ws and the same caption box the call
@@ -3665,7 +3716,18 @@
     } catch (e) { /* a silent beep never blocks the message */ }
   }
 
-  function vmFlow() { return ((shown || live || {}).voicemailFlow) || 'machine'; }
+  function vmFlow() {
+    // While the Live-on-air switch is on the card it owns this choice too:
+    // ON routes the message door to the studio (recorded FOR the air, with
+    // the review card saying so), OFF to the classic machine (a private
+    // message for the DJ) — whatever the operator's global flow says. One
+    // switch, one meaning: does what I do next go out on the station?
+    const d = shown || live || {};
+    if (d.onAirCalls && d.onAirCalls.offered && !$('onAirRow').hidden) {
+      return onAirPick ? 'studio' : 'machine';
+    }
+    return d.voicemailFlow || 'machine';
+  }
 
   function vmCeiling() {
     return ((live && live.limits && live.limits.voicemailMaxSeconds) || 30);
@@ -4749,6 +4811,12 @@
   // /live so the card can offer "Leave a message" exactly where it paints a
   // refusal — every closed line used to be a dead end.
   let vmCall = false;
+  // The phone-in switch. onAirPick is the idle toggle and is never
+  // persisted — a fresh load is a private call until the caller flips it
+  // again, so nobody lands on air out of habit. onAirCall pins the choice
+  // for the call's whole life the moment the button is pressed.
+  let onAirPick = false;
+  let onAirCall = false;
   // The worker announces the beep over the data channel. It used to gate
   // the caller's mic; now the mic is live from pickup — the machine hears
   // talk-over, like every answering machine — and the beep only moves the

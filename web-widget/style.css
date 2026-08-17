@@ -1228,6 +1228,40 @@
   .micchip.off { color: var(--sage-dim); }
   .micchip.muted { color: var(--coral); }
 
+  /* The broadcast light. Coral like "speaking", but steady-blinking for the
+     WHOLE call — a caller must never be able to forget they are live. */
+  .onairchip { color: var(--coral); border-color: var(--coral); font-weight: 700; letter-spacing: .08em; }
+  .onairchip .sdot { width: 7px; height: 7px; border-radius: 0; background: currentColor; animation: blink 1.6s infinite; }
+
+  /* The phone-in switch: one full-width row in the card's own square
+     grammar. OFF is furniture; ON is unmissable — coral all the way through,
+     and the label itself says what is about to happen. */
+  .onairrow { margin: 0 0 8px; }
+  .onairrow button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer;
+    color: var(--dim); background: transparent;
+    border: 1px solid var(--line); border-radius: 0; text-align: left;
+  }
+  .onairdot { width: 7px; height: 7px; background: var(--sage-dim); }
+  .onairknob {
+    margin-left: auto; flex: 0 0 26px; height: 14px; position: relative;
+    border: 1px solid var(--line2); background: transparent;
+  }
+  .onairknob::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 8px; height: 8px; background: var(--sage-dim);
+    transition: left .12s ease, background .12s ease;
+  }
+  .onairrow button[aria-checked="true"] {
+    color: var(--coral); border-color: var(--coral); font-weight: 700;
+  }
+  .onairrow button[aria-checked="true"] .onairdot { background: var(--coral); animation: blink 1.6s infinite; }
+  .onairrow button[aria-checked="true"] .onairknob { border-color: var(--coral); }
+  .onairrow button[aria-checked="true"] .onairknob::after { left: 14px; background: var(--coral); }
+  /* The row leaves with the doors the moment a call starts. */
+  .card.oncall .onairrow { display: none; }
+
   .timechip { letter-spacing: .1em; font-variant-numeric: tabular-nums; }
   .timechip .tmax { color: var(--sage-dim); font-weight: 400; margin-left: 4px; }
   .timechip.warn { color: var(--amber); border-color: var(--amber); }

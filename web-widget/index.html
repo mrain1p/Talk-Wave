@@ -157,6 +157,7 @@
         <span class="npclock" id="npElapsed"></span>
         <span class="chips" id="stateRow">
           <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+          <span class="pill onairchip" id="onAirBadge" hidden><span class="sdot"></span>ON AIR</span>
           <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
           <!-- The door into the station player, only when the operator has
                switched it on AND a stream resolved — a chip that opens onto
@@ -314,6 +315,18 @@
           <button id="vmRerecBtn" type="button"><span class="vico" aria-hidden="true">↺</span>Rerecord</button>
           <button id="vmCancelBtn" type="button"><span class="vico" aria-hidden="true">✕</span>Cancel</button>
         </div>
+      </div>
+
+      <!-- The phone-in switch. Exists only while the operator's on-air door
+           is open AND the server's mixer probe answered — one choice, zero
+           extra steps: the same Call button just means live. Hidden the
+           moment a call starts (.oncall), like the doors beneath it. -->
+      <div class="onairrow" id="onAirRow" hidden>
+        <button id="onAirTgl" type="button" role="switch" aria-checked="false">
+          <span class="onairdot" aria-hidden="true"></span>
+          <span id="onAirWord">Live on air</span>
+          <span class="onairknob" aria-hidden="true"></span>
+        </button>
       </div>
 
       <!-- The last row of the card, on every surface. Idle it is Call (and
