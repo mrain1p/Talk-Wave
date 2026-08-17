@@ -986,6 +986,37 @@
                   background: var(--sage-dim); display: block; }
   .card .plgrab:hover .grip { background: var(--alpenglow); }
 
+  /* The DESKTOP card is 544px tall — the phone's stacked litany overflowed
+     it, scrolled the art half out of view and buried the booth panel under
+     the dock (operator's screenshot, 2026-08-17). Side-by-side header: the
+     art sits left at record-sleeve size, the title block reads beside it,
+     and every band tightens until the whole player fits the card without
+     the middle scrolling. */
+  @media (min-width: 701px) {
+    .plscroll {
+      display: grid; grid-template-columns: 128px 1fr; gap: 3px 16px;
+      align-content: start; align-items: center; text-align: left;
+      padding: 12px 16px 8px;
+    }
+    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 128px;
+                 align-self: start; }
+    .pltrack { grid-column: 2; margin-top: 4px; align-self: end;
+               font-size: 22px; }
+    .plalbum { grid-column: 2; margin-top: 0; }
+    .pltags { grid-column: 2; justify-content: flex-start; margin-top: 4px;
+              align-self: start; }
+    .plprog { grid-column: 1 / -1; margin-top: 10px; }
+    .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
+    .plscroll .plpanel:first-of-type { margin-top: 8px; }
+    /* Two lines of the DJ on a short card, not four. */
+    .plpanelbody .plquote { -webkit-line-clamp: 2; }
+    .pldock { padding: 8px 16px 6px; gap: 7px; }
+    .card .plheart, .plreq input, #plReqSend { height: 38px; }
+    .card .plheart { width: 38px; }
+    #plPlayBtn { height: 38px; }
+    .card .plgrab { height: 14px; }
+  }
+
   /* The door into the player is a chip that is pressed, not read — the one
      pill that acts like a button. Green while the stream is actually
      playing, the same state vocabulary as everything else. */
