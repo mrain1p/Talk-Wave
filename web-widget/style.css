@@ -244,6 +244,8 @@
   .card {
     width: min(620px, 100%); height: 544px; padding: 0 16px 16px;
     position: relative; display: flex; flex-direction: column;
+    /* (The installed app overrides the fixed height below — see the
+       display-mode: standalone block after this rule.) */
     /* Named so the bands inside can ask how wide the CARD is rather than how
        wide the window is. An embed in a wide page is a narrow card, and every
        viewport query here got that wrong at least once. */
@@ -253,6 +255,19 @@
     background-image: var(--skin-card-bg);
     background-color: var(--granite); box-shadow: var(--skin-shadow);
   }
+  /* The INSTALLED APP owns its whole screen: a 544px card floating over a
+     dead half-screen is a web page's shape, not an app's (operator's
+     foldable, 2026-08-17). Standalone only — a browser tab keeps the fixed
+     card, and under 700px the phone rules already fill the viewport. The
+     card grows wider too: 620px was the web page's column, not a tablet's. */
+  @media (display-mode: standalone) {
+    body:not(.compact) .card {
+      width: min(980px, 100%);
+      height: calc(100vh - 48px);
+      height: calc(100dvh - 48px);
+    }
+  }
+
   /* The skin's overlay: scanlines, dither, rust, a CRT curve's vignette. Over
      the card and under nothing — `pointer-events:none` so it can never eat a
      click, and inset by the border so it cannot round differently from the
@@ -636,6 +651,14 @@
      no Record button, and the probe's offsetParent check saw nothing wrong
      because offsetParent is blind to visibility. */
   .rig > .vmstudio { visibility: visible; }
+  /* The now-playing rail is the third relearning of the same lesson: it
+     stopped being call-only the day the LISTEN chip moved in, and the
+     studio's RINGING/RECORDING chips and clock live there too — all of it
+     laid out and painting NOTHING under the reservation (operator's report,
+     2026-08-17: "i dont see the chips above the transcript box"). The rail
+     still collapses itself when every pill is hidden, so idle cards without
+     the player lose nothing. */
+  .rig > .nprail { visibility: visible; }
   /* Idle, the volume gives up its WIDTH as well as its ink. It was
      `visibility: hidden` alone, which keeps the box — on an embed that box was
      most of the band, and it squeezed the two waveforms into 65px between the
@@ -1339,7 +1362,11 @@
      dead meter must not look like a quiet one. Keyed on the rig rather than a
      class of its own, so there is nothing for JS to forget to clear. */
   .meter .bars i { background: var(--hairline); }
-  .rig.on .meter .bars i { background: currentColor; }
+  /* Lit on a call — and in the studio, which records without the rig ever
+     going .on: its YOU bars sat hairline-grey beside the call's amber ones
+     (operator: "keep some consistency"). */
+  .rig.on .meter .bars i,
+  .card[data-mode="vmstudio"] .meter .bars i { background: currentColor; }
   .meter.muted .bars i { background: var(--hairline); }
 
   /* --- volume ------------------------------------------------------------
