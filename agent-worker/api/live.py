@@ -243,18 +243,33 @@ async def handle_live(request: web.Request) -> web.Response:
                         "artist": item.get("artist") or None,
                         "requestedBy": item.get("requestedBy") or None,
                     })
-            # IN THE BOOTH is what the DJ is SAYING, not who they are — the
-            # operator's correction to a panel that restated the identity
-            # header. The station serves /session exactly for a player booth
-            # feed: the live session's own turns, sfx already dropped. The
-            # newest turn with words in it is the panel.
+            # IN THE BOOTH is the DJ's commentary on the RECORD — "this
+            # track matches the rainy, late-night mood" — which the feed
+            # carries as role dj + kind pick (operator's correction, checked
+            # against their live station's own /session: the last-anything
+            # rule was surfacing request banter instead). The newest dj turn
+            # of any kind stands in when no pick has words yet.
             feed = await station.session_feed()
-            for m in reversed(feed.get("messages") or []):
+            msgs = feed.get("messages") or []
+
+            def _booth(m):
                 text = str(m.get("text") or "").strip()
-                if text:
-                    booth_line = {"text": demojibake(text)[:280],
-                                  "kind": m.get("kind") or None}
-                    break
+                if not text:
+                    return None
+                return {"text": demojibake(text)[:280],
+                        "kind": m.get("kind") or None}
+
+            for m in reversed(msgs):
+                if m.get("role") == "dj" and m.get("kind") == "pick":
+                    booth_line = _booth(m)
+                    if booth_line:
+                        break
+            if not booth_line:
+                for m in reversed(msgs):
+                    if m.get("role") == "dj":
+                        booth_line = _booth(m)
+                        if booth_line:
+                            break
         # The header's weather readout, from the context the station already
         # sends with /now-playing — same source its own player reads.
         wx = (now.get("context") or {}).get("weather") or {}

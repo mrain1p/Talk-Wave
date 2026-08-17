@@ -1337,3 +1337,33 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
                          "no setting and no HOST_IP must read as 'no base', "
                          "which the adapter treats as caller-voice being "
                          "unavailable — never a URL with an empty host")
+
+
+class TestTheStudioGreetingIsRenderedOnceNotPerVisit(unittest.TestCase):
+    """With nothing staged, /vm-greeting renders the DJ's line on demand —
+    the operator heard ring, beep and NO voice on a fresh persona
+    (2026-08-17). The render spends TTS money at a GUEST's say-so, so the
+    handler must cache through the same index staging uses (needs_render →
+    write_clip) behind a lock: a stranger can cost one render per persona,
+    never one per visit."""
+
+    def setUp(self):
+        from tests.support import AGENT_WORKER
+
+        self.api = (AGENT_WORKER / "api" / "voicemail.py").read_text(
+            encoding="utf-8")
+        self.greet = (AGENT_WORKER / "voicemail" / "greetings.py").read_text(
+            encoding="utf-8")
+
+    def test_the_fallback_goes_through_the_cache_and_a_lock(self):
+        handler = self.api.split("async def handle_vm_greeting")[1]
+        handler = handler[:handler.index("\nasync def ")]
+        self.assertIn("ensure_clip", handler,
+                      "the studio pickup no longer goes through "
+                      "greetings.ensure_clip — the on-demand voice is gone")
+        ensure = self.greet.split("async def ensure_clip")[1]
+        for piece in ("needs_render", "write_clip", "_lock()", "staged_clip"):
+            self.assertIn(piece, ensure,
+                          f"ensure_clip no longer uses {piece} — either the "
+                          "cache or the lock is gone, and either way a guest "
+                          "can now spend unbounded TTS money")

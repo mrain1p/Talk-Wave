@@ -433,39 +433,53 @@ async def handle_vm_draft_send(request: web.Request) -> web.Response:
         return _cors(request, web.json_response(
             {"error": "that draft has expired — record it again"}, status=404))
 
-    secrets_store.apply_to_env()
-    cfg = settings_store.load()
-    station = StationClient(base_url=cfg.get("station_base_url"))
-    try:
-        result = await vm_air.deliver(station, cfg, draft)
-    except Exception as e:                                    # noqa: BLE001
-        log.warning("soundbite delivery crashed: %s", e)
-        result = {"ok": False, "backend": "none",
-                  "receipt": f"delivery crashed: {e}"}
-    finally:
-        await station.aclose()
+    # QUEUED, not awaited (operator's ask): the slow part of a send is
+    # ordering theater between this process and the mixer — the DJ's intro
+    # written, the poll out-waited — and none of it needs the caller's
+    # browser held on the line watching a chip spin. The work continues
+    # here; the outcome lands in the operator's messages list exactly as
+    # before, where a failure is visible with its receipt.
+    async def _deliver_later():
+        secrets_store.apply_to_env()
+        cfg = settings_store.load()
+        station = StationClient(base_url=cfg.get("station_base_url"))
+        try:
+            result = await vm_air.deliver(station, cfg, draft)
+        except Exception as e:                                # noqa: BLE001
+            log.warning("soundbite delivery crashed: %s", e)
+            result = {"ok": False, "backend": "none",
+                      "receipt": f"delivery crashed: {e}"}
+        finally:
+            await station.aclose()
+        # The operator's record survives the draft: same list the classic
+        # machine writes, labelled with how it went out.
+        vm_deliver.hold(str(draft.get("transcript") or "(no transcript)"),
+                        "", delivered=f"soundbite/{result.get('backend')}",
+                        note=str(result.get("receipt") or "")[:300])
+        # Sent or failed, the audio does not outlive the attempt — but WHEN
+        # it dies depends on the backend. caller-voice pushed a URL the
+        # mixer fetches LAZILY, when the queue reaches the clip after the
+        # DJ's intro: deleting here beat the fetch to it, the mixer got a
+        # 404, and the operator heard the DJ speak around a hole where
+        # their own voice should have been (2026-08-17, RIDs 65/69). The
+        # clip dies at the claim (handle_vm_air_clip), with the sweep as
+        # the net; every other backend has no later reader, so it dies now.
+        if result.get("backend") != "caller-voice":
+            vm_review.delete(draft_id)
+        if not result.get("ok"):
+            log.warning("soundbite delivery failed after accept: %s",
+                        result.get("receipt"))
 
-    # The operator's record survives the draft: same list the classic
-    # machine writes, labelled with how it went out.
-    vm_deliver.hold(str(draft.get("transcript") or "(no transcript)"), "",
-                    delivered=f"soundbite/{result.get('backend')}",
-                    note=str(result.get("receipt") or "")[:300])
-    # Sent or failed, the audio does not outlive the attempt — but WHEN it
-    # dies depends on the backend. caller-voice pushed a URL the mixer
-    # fetches LAZILY, when the queue reaches the clip after the DJ's intro:
-    # deleting here beat the fetch to it, the mixer got a 404, and the
-    # operator heard the DJ speak around a hole where their own voice
-    # should have been (2026-08-17, RIDs 65/69). The clip now dies at the
-    # claim (handle_vm_air_clip), with the sweep as the net if the mixer
-    # never comes; every other backend has no later reader, so it dies now.
-    if result.get("backend") != "caller-voice":
-        vm_review.delete(draft_id)
+    import asyncio
 
-    status = 200 if result.get("ok") else 502
+    task = asyncio.get_running_loop().create_task(_deliver_later())
+    _SEND_TASKS.add(task)
+    task.add_done_callback(_SEND_TASKS.discard)
+
     return _cors(request, web.json_response(
-        {"ok": bool(result.get("ok")),
-         "backend": result.get("backend"),
-         "receipt": result.get("receipt")}, status=status))
+        {"ok": True, "queued": True,
+         "receipt": "Queued for air — the DJ takes it from here."},
+        status=202))
 
 
 async def handle_vm_draft_delete(request: web.Request) -> web.Response:
@@ -478,12 +492,20 @@ async def handle_vm_draft_delete(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"ok": True}))
 
 
+# Live references to queued deliveries — asyncio keeps only weak refs to
+# tasks, and a GC'd send is a message that silently never airs.
+_SEND_TASKS: set = set()
+
+
 async def handle_vm_greeting(request: web.Request) -> web.StreamResponse:
-    """The staged greeting for whoever is on air, played at the studio's
-    pickup — the operator's ask: the DJ's own voicemail voice stays part of
-    the process when the flow is the studio. Same clips the machine plays,
-    same fallback order (this persona → the station → any), guest-gated like
-    every studio route. 404 when nothing is staged; the card skips silently."""
+    """The greeting for whoever is on air, played at the studio's pickup —
+    the operator's ask: the DJ's own voicemail voice stays part of the
+    process. A staged clip answers first; with nothing staged the greeting
+    is rendered ON DEMAND (greetings.ensure_clip — cached, locked, one
+    render per persona at most) — the classic machine speaks this line live
+    at every pickup, and the studio going silent instead was heard on the
+    operator's own phone (ring, beep, no voice; 2026-08-17). 404 only when
+    the render itself fails; the card then goes straight to the beep."""
     if not _draft_gate(request):
         raise web.HTTPUnauthorized()
 
@@ -492,14 +514,16 @@ async def handle_vm_greeting(request: web.Request) -> web.StreamResponse:
     secrets_store.apply_to_env()
     cfg = settings_store.load()
     station = StationClient(base_url=cfg.get("station_base_url"))
-    persona = {}
+    persona, dj = {}, {}
     try:
         persona = await station.resolve_live_persona()
+        dj = await station.live_dj()
     except Exception as e:                                    # noqa: BLE001
         log.info("vm greeting could not resolve the live persona: %s", e)
     finally:
         await station.aclose()
-    clip = greetings.staged_clip(str((persona or {}).get("id") or ""))
+
+    clip = await greetings.ensure_clip(persona, dj, cfg)
     if not clip:
         raise web.HTTPNotFound()
     return web.FileResponse(clip, headers={

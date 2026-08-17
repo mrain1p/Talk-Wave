@@ -1544,8 +1544,7 @@
         lastCanAsk = askSignature(d);
         // The operator can make the player the page's FRONT — it opens
         // without the wipe (this is the starting face, not a transition)
-        // and audio waits for the browser's one allowed tap, which the
-        // NotAllowedError path answers honestly.
+        // and QUIET: PLAY starts the music, never the page turn.
         if (d.playerStart && playerOffered() && !inConversation()) {
           const sheet = $('playerView');
           sheet.classList.add('dragging');
@@ -2593,7 +2592,9 @@
     // stream comes straight back in through the caller's mic and gets
     // transcribed as if they had said it — and the call's own tune-in takes
     // over at pickup anyway, at the volume that job calls for. false = the
-    // audio dies with the sheet.
+    // audio dies with the sheet; the flag brings it back when the line
+    // clears (see resumePlayer).
+    if (playerEl) playerResume = true;
     closePlayer(false);
 
     // AFTER any chat teardown (endChat resets the mode to idle) — this is the
@@ -3072,6 +3073,7 @@
     muteBtn.textContent = 'Mute';
     muteBtn.classList.remove('on');
     setCardMode('idle');
+    resumePlayer();
     pttOpen = false;
     const pttBar = $('pttBtn');
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
@@ -3555,7 +3557,7 @@
   let vmAbortStart = false;
   // The DJ's staged greeting, playing at pickup; and a session counter so a
   // greeting fetched for a studio the caller already closed never plays.
-  let vmGreet = null, vmSession = 0, vmRingTimer = 0;
+  let vmGreet = null, vmSession = 0, vmRingTimer = 0, vmDialed = false;
 
   // The machine's own beep, synthesized — one second of the classic tone
   // between the greeting and the message, because a caller who has ever
@@ -3656,6 +3658,7 @@
     // ONE OR TWO WORDS — the state and the clock live in the chips above,
     // and the longer labels overflowed the bar on the operator's phone.
     main.textContent = rec ? word('vm_recording', 'Recording')
+      : state === 'door' ? word('vm_dial', 'Leave a voicemail')
       : state === 'greeting' ? word('vm_talkover', 'Hold to talk over it')
       : word('vm_record', 'Hold to record');
     bar.disabled = state === 'busy' || state === 'sending';
@@ -3810,7 +3813,9 @@
     vmSession += 1;
     // Recording and the station player do not mix — the take would carry
     // the broadcast, and on speakers the transcript would too. false = the
-    // audio dies with the sheet.
+    // audio dies with the sheet; the flag brings it back when the studio
+    // closes (see resumePlayer).
+    if (playerEl) playerResume = true;
     closePlayer(false);
     vmClearBox();
     $('vmStudio').hidden = false;
@@ -3819,30 +3824,64 @@
     // hand-off is ours: board away, studio in.
     $('idleBoard').hidden = true;
     setCardMode('vmstudio');
-    vmPaintButtons('idle');
-    // The legacy machine's whole theater, in order (operator's ask): it
-    // RINGS, the booth picks up, the greeting plays, the beep — and only
-    // then the message. Holding the bar at any point answers early.
-    vmSetChip('connecting', word('vm_chip_ring', 'Ringing'));
-    setStatus(word('vm_open', 'Leave a voicemail for the booth.'), 'connecting');
+    // The DOOR, not the dial tone: opening the studio rings nothing until
+    // the caller presses the bar (operator's correction — the machine was
+    // dialling itself the moment the page turned). The bar IS the dial.
+    vmDialed = false;
+    vmPaintButtons('door');
+    vmSetChip('idle', word('vm_chip_ready', 'Ready'));
+    setStatus(word('vm_open', 'Press the bar to leave the booth a voicemail.'),
+              'connected');
     notifyHeight();
+  }
+
+  // The legacy machine's whole theater, in order (operator's ask): it
+  // RINGS, the booth picks up, the DJ's greeting plays, the beep — and only
+  // then the message. The greeting is FETCHED during the ring (the server
+  // may be rendering it in the DJ's voice on demand, which takes real
+  // seconds), and the line keeps ringing until it arrives — exactly like a
+  // phone nobody has answered yet. Holding the bar answers early.
+  function vmDial() {
+    if (vmDialed) return;
+    vmDialed = true;
+    const session = vmSession;
+    vmSetChip('connecting', word('vm_chip_ring', 'Ringing'));
+    setStatus(word('vm_ringing', 'Calling the machine…'), 'connecting');
+    vmPaintButtons('idle');
     startRinging();
-    vmRingTimer = setTimeout(((session) => () => {
-      if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') return;
+    const minRing = new Promise((res) => {
+      vmRingTimer = setTimeout(res, 3400);
+    });
+    const fetchGreet = (async () => {
+      try {
+        const ctl = new AbortController();
+        const cap = setTimeout(() => ctl.abort(), 20000);
+        const r = await fetch('/vm-greeting',
+                              { headers: vmKeyHeaders(), signal: ctl.signal });
+        clearTimeout(cap);
+        if (!r.ok) return '';
+        return URL.createObjectURL(await r.blob());
+      } catch (e) { return ''; }
+    })();
+    Promise.all([minRing, fetchGreet]).then(([, blobUrl]) => {
+      if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        return;
+      }
       stopRinging();
       playSound('pickup');
-      vmPlayGreeting(session);
-    })(vmSession), 3400);
+      vmPlayGreeting(session, blobUrl);
+    });
   }
 
   // The answering machine's own voice stays part of the process (operator:
   // "I don't want to lose the voicemail lines from the dj") — the staged
   // greeting the operator rendered per persona plays when the studio picks
   // up, and holding the bar talks over it, exactly like the real machine.
-  async function vmPlayGreeting(session) {
+  function vmPlayGreeting(session, blobUrl) {
     // Whatever happened to the greeting — played, missing, refused — the
-    // machine still BEEPS and invites the message; a staged clip is part of
-    // the theater, never a gate on it.
+    // machine still BEEPS and invites the message; the clip is part of the
+    // theater, never a gate on it.
     const ready = () => {
       if (session !== vmSession) return;
       if (!vmRec && cardMode() === 'vmstudio' && !vmBusy) {
@@ -3854,15 +3893,11 @@
           + 'the DJ airs it.'), 'connected');
       }
     };
-    let blobUrl = '';
-    try {
-      const r = await fetch('/vm-greeting', { headers: vmKeyHeaders() });
-      if (!r.ok) return ready();           // nothing staged — straight to the beep
-      blobUrl = URL.createObjectURL(await r.blob());
-    } catch (e) {
-      return ready();
+    if (!blobUrl) return ready();          // no clip — straight to the beep
+    if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') {
+      URL.revokeObjectURL(blobUrl);
+      return;
     }
-    if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') return;
     vmGreet = new Audio(blobUrl);
     vmSetChip('speaking', word('vm_chip_greet', 'Greeting'));
     vmPaintButtons('greeting');
@@ -3900,6 +3935,7 @@
     $('vmStudio').hidden = true;
     vmDropChip();
     setCardMode('idle');
+    resumePlayer();
     if (sent) {
       // The receipt card stays on the ended card, like a call's transcript.
       setStatus(word('vm_sent', 'On its way to air'));
@@ -3930,6 +3966,9 @@
     btn.addEventListener('pointerdown', (e) => {
       if (vmBusy) return;
       e.preventDefault();
+      // The first press on the bar DIALS — the ring, the greeting, the
+      // beep — and only after that does pressing it record.
+      if (!vmDialed) { viaPointer = true; vmDial(); return; }
       btn.setPointerCapture?.(e.pointerId);
       pressed = true;
       viaPointer = true;
@@ -3958,6 +3997,7 @@
     btn.addEventListener('click', () => {
       if (viaPointer) { viaPointer = false; return; }
       if (vmBusy) return;
+      if (!vmDialed) { vmDial(); return; }
       if (vmRec) vmStopRec(); else vmStartRec();
     });
     // Space mirrors the hold, exactly as it does on the talk bar — the
@@ -3968,6 +4008,7 @@
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
       e.preventDefault();
+      if (!vmDialed) { vmDial(); return; }   // space answers the door too
       pressed = true;
       downAt = Date.now();
       recBefore = !!vmRec;
@@ -4071,6 +4112,17 @@
     paintPlayerButtons();
   }
 
+  // The music a call or a recording interrupted comes back when the line
+  // clears (operator's ask) — audio only, the sheet stays away, and the
+  // chip goes green again to say so. Set by startCall and vmOpenStudio at
+  // the moment they silence the player.
+  let playerResume = false;
+  function resumePlayer() {
+    if (!playerResume) return;
+    playerResume = false;
+    if (!playerEl && playerOffered()) startPlayerAudio();
+  }
+
   function openPlayer() {
     if (!playerOffered() || inConversation() || playerOpen) return;
     clearTimeout(playerHideTimer);
@@ -4082,7 +4134,9 @@
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
     paintPlayer();
-    startPlayerAudio();
+    // NO music yet — opening shows the deck, and PLAY starts it (operator's
+    // correction: the sheet was playing the moment it arrived). Music that
+    // was already going keeps going.
     paintListenChip();
   }
 

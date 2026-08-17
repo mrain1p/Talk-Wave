@@ -338,6 +338,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestMasteringMakesAClipTheAirCanCarry,
     TestADraftIsHeldBrieflyAndLeavesNoOrphans,
     TestTheSoundbiteAirsWithReceipts,
+    TestTheStudioGreetingIsRenderedOnceNotPerVisit,
 )
 from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,
