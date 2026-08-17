@@ -1055,121 +1055,145 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertIn("caller-voice unavailable", result["receipt"])
 
     def test_preview_resolves_to_a_track_and_falls_safe_everywhere_else(self):
-        # The preview IS the receipts discipline moved earlier: a queue
-        # verdict must come back holding the library's own id, and every
-        # failure shape — no hits, a "none", garbage from the model — must
-        # land on no-action, never on a guess.
+        # The preview IS the receipts discipline moved earlier: a request the
+        # library holds comes back pinned to its id; every other shape — no
+        # hit, a read, no tool call at all — lands on no-action, never a guess.
+        CFG = {"allow_requests": "open", "allow_exact_queue": "open"}
+        hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
+
+        # A request the library holds → pinned queue, by the library's own id.
+        action = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "landslide fleetwood mac"},
+            hits=[hit], transcript="play landslide", cfg=CFG))
+        self.assertEqual(action["kind"], "queue")
+        self.assertEqual(action["track"]["id"], "t9",
+                         "the preview must hold the LIBRARY's id — send "
+                         "executes this record, never the words again")
+        self.assertIn("Landslide", action["label"])
+
+        # Same request, empty library → a request the station resolves at send.
+        action = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "landslide fleetwood mac"},
+            hits=[], transcript="play landslide", cfg=CFG))
+        self.assertEqual(action["kind"], "request")
+
+        # A READ the model reached for stages nothing — there is no
+        # conversation to hand the answer back to.
+        action = asyncio.run(self._resolve(
+            "subwave_search_library", {"q": "landslide"},
+            hits=[hit], transcript="what have you got", cfg=CFG))
+        self.assertEqual(action["kind"], "none")
+
+        # No tool call at all — a plain message — stages nothing.
+        action = asyncio.run(self._resolve(
+            None, transcript="hi mum, just saying hello", cfg=CFG))
+        self.assertEqual(action["kind"], "none")
+
+        # An empty transcript never wakes the model.
+        action = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "x"}, transcript="   ",
+            cfg=CFG, no_llm=True))
+        self.assertEqual(action["kind"], "none")
+
+    def test_a_vibe_message_stages_a_request_like_the_live_line(self):
+        # The bug this defends: "play something a bit lighter" — a MOOD — came
+        # back "no action asked for" (RID 280, 2026-08-17). The studio now runs
+        # the caller's words through the live line's own subwave_request_song,
+        # so a mood stages the SAME request the phone and text line make.
+        action = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "something a bit lighter"},
+            hits=[], transcript="play something a bit lighter this morning",
+            cfg={"allow_requests": "open", "allow_exact_queue": "open"}))
+        self.assertEqual(action["kind"], "request",
+                         "a mood must stage a request, not 'no action'")
+        self.assertIn("lighter", action["text"])
+
+    def test_music_and_exact_queue_ride_their_own_switches(self):
+        # Consistent with the live line: a music ask rides allow_requests, and
+        # an exact-id pin rides allow_exact_queue. Off, the tool is never built
+        # so the capture routes nothing; on without exact-queue, a found track
+        # is a REQUEST (the station picks), not a by-id queue that skips its
+        # rate limit.
+        hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
+
+        # Requests OFF: request_song is not built, so even a model that names
+        # it stages nothing — the gate is the tool set, not a downstream check.
+        off = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "landslide"}, hits=[hit],
+            transcript="play landslide", cfg={"allow_requests": "off"}))
+        self.assertEqual(off["kind"], "none")
+
+        # Requests on, exact-queue OFF: a found track stages a REQUEST.
+        req = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "landslide"}, hits=[hit],
+            transcript="play landslide", cfg={"allow_requests": "open"}))
+        self.assertEqual(req["kind"], "request",
+                         "without allow_exact_queue a named track is a "
+                         "request, never a by-id queue")
+
+        # Both on: the exact record is pinned by id — the receipts discipline.
+        both = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "landslide"}, hits=[hit],
+            transcript="play landslide",
+            cfg={"allow_requests": "open", "allow_exact_queue": "open"}))
+        self.assertEqual(both["kind"], "queue")
+        self.assertEqual(both["track"]["id"], "t9")
+
+    def test_the_full_tool_suite_is_reachable_and_still_gated(self):
+        # The point of the unification: ANY tool the caller's tier allows can
+        # be staged, through the SAME wrapper the live line runs — and a tool
+        # the tier does NOT allow is refused even if the model names it.
+        on = asyncio.run(self._resolve(
+            "subwave_skip_track", {}, transcript="skip this one",
+            cfg={"allow_skip_track": "open"}))
+        self.assertEqual(on["kind"], "tool")
+        self.assertEqual(on["name"], "subwave_skip_track")
+        self.assertIn("Skip", on["label"])
+        # Off (never built): the same model call stages nothing.
+        off = asyncio.run(self._resolve(
+            "subwave_skip_track", {}, transcript="skip this one",
+            cfg={"allow_skip_track": "off"}))
+        self.assertEqual(off["kind"], "none",
+                         "a tool the tier didn't build cannot be staged, even "
+                         "if the model reaches for it")
+
+    async def _resolve(self, tool=None, args=None, *, hits=(),
+                       transcript="a message", cfg=None, station=None,
+                       no_llm=False):
+        """Run preview.resolve with a stubbed CAPTURE pass: the model 'calls'
+        tool(args) and the resolver reads that back WITHOUT running it (the
+        real capture reads tool_calls off the stream). tool=None means it calls
+        nothing. The shared harness for the studio's resolver tests."""
+        import json as _json
+
         import call.providers as providers
         from voicemail import preview
 
-        class _FakeStream:
-            def __init__(self, text):
-                self._text = text
+        calls = ([type("Call", (), {"name": tool,
+                                    "arguments": _json.dumps(args or {})})()]
+                 if tool else [])
 
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *a):
-                return False
-
-            def __aiter__(self):
+        class _Stream:
+            def __aiter__(s):
                 async def _gen():
-                    class _D:  # the two-attribute shape resolve() reads
-                        pass
-                    d = _D()
-                    d.content = self._text
-                    c = _D()
-                    c.delta = d
-                    yield c
+                    d = type("D", (), {"tool_calls": calls, "content": None})()
+                    yield type("C", (), {"delta": d})()
                 return _gen()
 
-        class _FakeLLM:
-            def __init__(self, text):
-                self._text = text
-
-            def chat(self, chat_ctx=None):
-                return _FakeStream(self._text)
-
-            async def aclose(self):
+            async def aclose(s):
                 pass
 
-        class _SearchStation:
-            def __init__(self, hits):
-                self.hits = hits
-                self.queries = []
-
-            async def search_library(self, q, *a, **k):
-                self.queries.append(q)
-                return self.hits
-
-        old = providers.build_llm
-        try:
-            hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
-            providers.build_llm = lambda cfg, **k: _FakeLLM(
-                '{"action": "queue", "query": "landslide fleetwood mac"}')
-            st = _SearchStation([hit])
-            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
-            self.assertEqual(action["kind"], "queue")
-            self.assertEqual(action["track"]["id"], "t9",
-                             "the preview must hold the LIBRARY's id — send "
-                             "executes this record, never the words again")
-            self.assertIn("Landslide", action["label"])
-
-            # Same verdict, empty library: a request, and the label says so.
-            st2 = _SearchStation([])
-            action = asyncio.run(preview.resolve(st2, {}, "play landslide"))
-            self.assertEqual(action["kind"], "request")
-
-            # The model says none, or says nonsense: no action, both times.
-            providers.build_llm = lambda cfg, **k: _FakeLLM('{"action": "none"}')
-            action = asyncio.run(preview.resolve(st, {}, "hi mum"))
-            self.assertEqual(action["kind"], "none")
-            providers.build_llm = lambda cfg, **k: _FakeLLM("not json at all")
-            action = asyncio.run(preview.resolve(st, {}, "hello"))
-            self.assertEqual(action["kind"], "none")
-
-            # And an empty transcript never wakes the model at all.
-            providers.build_llm = lambda cfg, **k: (_ for _ in ()).throw(
-                AssertionError("the LLM must not be built for silence"))
-            action = asyncio.run(preview.resolve(st, {}, "   "))
-            self.assertEqual(action["kind"], "none")
-        finally:
-            providers.build_llm = old
-
-    def test_a_takeover_rides_the_live_lines_own_switch(self):
-        # "Change the DJ" from a voicemail is the furthest-reaching thing the
-        # studio can do, so it rides allow_takeover — the SAME switch the
-        # live line uses — read at preview AND again at send.
-        import call.providers as providers
-        from voicemail import preview
-
-        class _Llm:
-            def chat(self, chat_ctx=None):
-                self.prompt = chat_ctx.items[-1].content[0] if chat_ctx else ""
-
-                class _S:
-                    async def __aenter__(s):
-                        return s
-
-                    async def __aexit__(s, *a):
-                        return False
-
-                    def __aiter__(s):
-                        async def _gen():
-                            class _D:
-                                pass
-                            d = _D()
-                            d.content = '{"action":"takeover","who":"duke"}'
-                            c = _D()
-                            c.delta = d
-                            yield c
-                        return _gen()
-                return _S()
+        class _LLM:
+            def chat(self, chat_ctx=None, tools=None):
+                return _Stream()
 
             async def aclose(self):
                 pass
 
         class _St:
+            async def search_library(self, q, *a, **k):
+                return list(hits)
+
             async def schedule(self):
                 return {"shows": [{"id": "s1", "name": "The Alibi Room",
                                    "personaId": "p1"}]}
@@ -1177,24 +1201,35 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
             async def personas(self):
                 return [{"id": "p1", "name": "Duke Sterling"}]
 
-            async def search_library(self, q, *a, **k):
+            async def list_skills(self):
                 return []
 
         old = providers.build_llm
         try:
-            providers.build_llm = lambda cfg, **k: _Llm()
-            on = asyncio.run(preview.resolve(
-                _St(), {"allow_takeover": True}, "put duke on"))
-            self.assertEqual(on["kind"], "takeover")
-            self.assertEqual(on["showId"], "s1")
-            self.assertIn("Duke Sterling", on["label"])
-            # Switch off: even a model that answers takeover anyway resolves
-            # to nothing — the option was never offered and never honoured.
-            off = asyncio.run(preview.resolve(
-                _St(), {}, "put duke on"))
-            self.assertEqual(off["kind"], "none")
+            providers.build_llm = (
+                (lambda cfg, **k: (_ for _ in ()).throw(
+                    AssertionError("the model must not be built for silence")))
+                if no_llm else (lambda cfg, **k: _LLM()))
+            return await preview.resolve(station or _St(), cfg or {}, transcript)
         finally:
             providers.build_llm = old
+
+    def test_a_takeover_rides_the_live_lines_own_switch(self):
+        # "Change the DJ" from a voicemail rides allow_takeover — the SAME
+        # switch the live line uses — and keeps its pinned preview (the show
+        # resolved to its id) so the caller approves exactly what airs.
+        on = asyncio.run(self._resolve(
+            "subwave_takeover_show", {"show": "duke"},
+            transcript="put duke on", cfg={"allow_takeover": "open"}))
+        self.assertEqual(on["kind"], "takeover")
+        self.assertEqual(on["showId"], "s1")
+        self.assertIn("Duke Sterling", on["label"])
+        # Switch off: takeover_show is never built, so a model that names it
+        # anyway resolves to nothing — the tool set is the gate.
+        off = asyncio.run(self._resolve(
+            "subwave_takeover_show", {"show": "duke"},
+            transcript="put duke on", cfg={"allow_takeover": "off"}))
+        self.assertEqual(off["kind"], "none")
 
         # Send-time: the adapter executes the pin, and refuses honestly when
         # the switch went off between preview and send.
@@ -1217,6 +1252,42 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertFalse(hasattr(station2, "pinned"))
         self.assertIn("switched off", result2["receipt"])
         self.assertIn("do NOT claim it worked", station2.says[0])
+
+    def test_a_staged_tool_replays_through_the_live_wrapper_and_re_gates(self):
+        # The full suite, staged: a skip stored on the draft REPLAYS through the
+        # exact wrapper the phone runs — station.skip_track() is called — and
+        # send RE-GATES for the caller's tier, so a permission the operator
+        # turned off between preview and send is refused, not aired.
+        class _Skipper(_AdapterStation):
+            def __init__(self):
+                super().__init__()
+                self.skipped = 0
+
+            async def skip_track(self):
+                self.skipped += 1
+                return {"ok": True}
+
+        # Granted at this caller's tier (the draft is minted "guest"): it runs.
+        st = _Skipper()
+        draft = self._draft({"kind": "tool", "name": "subwave_skip_track",
+                             "args": {}})
+        result = asyncio.run(self.air.deliver(
+            st, {"vm_air_backend": "dj-reads", "allow_skip_track": "guest"},
+            draft))
+        self.assertTrue(result["ok"])
+        self.assertEqual(st.skipped, 1, "the staged tool ran the real wrapper")
+        self.assertIn("skip", result["receipt"])
+
+        # Switched to admin-only after the preview: the guest draft is refused
+        # at send, and nothing airs.
+        st2 = _Skipper()
+        draft2 = self._draft({"kind": "tool", "name": "subwave_skip_track",
+                              "args": {}})
+        result2 = asyncio.run(self.air.deliver(
+            st2, {"vm_air_backend": "dj-reads", "allow_skip_track": "admin"},
+            draft2))
+        self.assertFalse(result2["ok"])
+        self.assertEqual(st2.skipped, 0, "a tool the tier lost is not aired")
 
     def test_the_clip_dies_at_the_claim_not_at_the_send(self):
         # The mixer fetches the pushed URL LAZILY — when the queue reaches
@@ -1280,35 +1351,7 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         # query kept the caller's "by" ("Landslide by Fleetwood Mac"), the
         # station's every-word search returned nothing, and a track the
         # library holds five times over previewed as a mere request.
-        import call.providers as providers
-        from voicemail import preview
-
-        class _Llm:
-            def chat(self, chat_ctx=None):
-                class _S:
-                    async def __aenter__(s):
-                        return s
-
-                    async def __aexit__(s, *a):
-                        return False
-
-                    def __aiter__(s):
-                        async def _gen():
-                            class _D:
-                                pass
-                            d = _D()
-                            d.content = ('{"action":"queue","query":'
-                                         '"Landslide by Fleetwood Mac"}')
-                            c = _D()
-                            c.delta = d
-                            yield c
-                        return _gen()
-                return _S()
-
-            async def aclose(self):
-                pass
-
-        class _St:
+        class _ByStation:
             def __init__(self):
                 self.queries = []
 
@@ -1318,16 +1361,17 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
                           "artist": "Fleetwood Mac"}]
                         if "by" not in q.lower().split() else [])
 
-        old = providers.build_llm
-        try:
-            providers.build_llm = lambda cfg, **k: _Llm()
-            st = _St()
-            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
-            self.assertEqual(action["kind"], "queue",
-                             "the by-variant retry must reach the hit")
-            self.assertGreater(len(st.queries), 1)
-        finally:
-            providers.build_llm = old
+            async def list_skills(self):
+                return []
+
+        st = _ByStation()
+        action = asyncio.run(self._resolve(
+            "subwave_request_song", {"request": "Landslide by Fleetwood Mac"},
+            station=st, transcript="play landslide",
+            cfg={"allow_requests": "open", "allow_exact_queue": "open"}))
+        self.assertEqual(action["kind"], "queue",
+                         "the by-variant retry must reach the hit")
+        self.assertGreater(len(st.queries), 1)
 
     def test_the_air_base_url_prefers_the_setting_then_host_ip(self):
         import os as _os

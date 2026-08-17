@@ -1112,10 +1112,11 @@
           <label for="voicemail_greeting">Greeting</label>
           <input type="text" id="voicemail_greeting" />
         </div>
-        <div class="row narrow">
-          <label for="vm_player_duck">Station under the machine (%)</label>
-          <input type="number" id="vm_player_duck" min="0" max="100" />
-        </div>
+        <!-- The station-under-the-machine volume moved to Players →
+             Behaviour with the rest of the on-the-phone settings (the
+             design handoff's re-homing); byKind fills the FIRST id match,
+             so a copy left here would be the one that saves while the
+             visible one sat dead. -->
         <div class="row narrow">
           <label for="voicemail_max_seconds">Message ceiling (s)</label>
           <input type="number" id="voicemail_max_seconds" min="5" max="120" step="5" />
@@ -1232,146 +1233,118 @@
       </div>
     </details>
 
-    <!-- Player settings. Was "Embed on another page" and held nothing but the
-         snippet; everything deciding what the card LOOKS like was scattered
-         through Call behaviour between settings about how the DJ talks.
+    <!-- ======================= THE PLAYERS PAGE ==========================
+         Rebuilt to the operator's design handoff ("Players Settings
+         Reorganization", direction 1a — element blocks): the old page
+         scattered one element's controls across four sections and let the
+         preview scroll away. Now every control sits with the card element it
+         changes, in card order, under three tabs — THE CARD, BEHAVIOUR,
+         EMBED — with the live preview pinned beside them. Nothing was added
+         or removed, only re-homed.
 
-         The matrix is two answers per row because the two surfaces are two
-         audiences: this page is the operator's own front door, an embed sits
-         in a column next to the host's own show heading and now-playing
-         ticker, where a second copy of both is noise. The gear's embed cell
-         is a dash rather than a checkbox — an embed never loads this panel's
-         code, so the switch would do nothing whichever way it was set. -->
-    <details data-group="preview" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Player preview</span><em class="secblurb"></em><span class="tag">live</span></summary>
-      <div class="body">
-        <!-- The real call card, in a frame, driven by the form in the two
-             sections below before anything is saved. It is the actual widget
-             rather than a drawing of one, and what it shows is resolved by
-             /live/preview — the same code that answers a real caller — so it
-             cannot drift from the thing it is previewing. Call and the gear
-             are inert inside it; see previewMode in call.js. -->
+         The wrapper is static markup, but the sections inside it are
+         ordinary details.sec: layoutPanel() moves the card supergroup's
+         sections INTO #cardCol (schema order, as everywhere else) and parks
+         this wrapper where the supergroup band sits. Which tab a section
+         belongs to is CARD_TABS in panel.js — the schema still owns the
+         order, the tabs only decide which sections are on screen. -->
+    <div class="cardwrap" id="cardWrap">
+      <div class="cardtabs" role="tablist" aria-label="Players settings tabs">
+        <button type="button" class="cardtab on" id="cardTabCard">The card</button>
+        <button type="button" class="cardtab" id="cardTabBehaviour">Behaviour</button>
+        <button type="button" class="cardtab" id="cardTabEmbed">Embed</button>
+        <!-- "N on page · M in embed" — follows the checkboxes live, before
+             any save, so it counts what the preview is showing. -->
+        <span class="cardcounts" id="cardCounts"></span>
+      </div>
+      <div class="cardcol" id="cardCol"></div>
+      <!-- The pinned preview. The frame holds the REAL call card, driven by
+           the form before anything is saved: what it shows is resolved by
+           /live/preview — the same code that answers a real caller — so it
+           cannot drift from the thing it is previewing. Call and the gear
+           are inert inside it; see previewMode in call.js. On a phone this
+           aside becomes the bottom dock, chevron and all. -->
+      <aside class="cardaside" id="cardAside">
         <div class="preview" id="previewWrap">
           <div class="previewbar">
+            <!-- Mobile only: collapses the dock so the settings get the
+                 screen back. Hidden on desktop, where the aside is pinned. -->
+            <button type="button" class="dockchev" id="dockChev"
+                    aria-label="Show or hide the preview">▾</button>
             <span class="plabel">Preview</span>
             <span class="segs" role="group" aria-label="Which surface to preview">
               <button type="button" id="previewPage" class="seg on">Page</button>
               <button type="button" id="previewEmbed" class="seg">Embed</button>
             </span>
-            <span class="pnote" id="previewNote">unsaved changes shown live</span>
+            <span class="pnote" id="previewNote">live · unsaved</span>
           </div>
-          <!-- The frame is the real card. In Embed view it sits inside a STAGE
-               that dresses it as the chosen shape (a corner pill, a docked bar,
-               an inline button + pop-up), so the operator sees the shape they
-               picked, not just the card that lands inside it. The mock trigger
-               is a drawing; pressing it reveals the frame the way the shape
-               would on a real page. -->
-          <div class="previewstage" id="previewStage" data-shape="inline">
-            <button type="button" class="previewtrigger" id="previewTrigger" hidden>📞 Call the DJ</button>
-            <iframe id="previewFrame" title="Live preview of the call card"
-                    src="/?preview=1" loading="lazy"></iframe>
+          <div class="dockbody" id="dockBody">
+            <!-- The frame is the real card. In Embed view it sits inside a
+                 STAGE that dresses it as the chosen shape (a corner pill, a
+                 docked bar, an inline button + pop-up), so the operator sees
+                 the shape they picked, not just the card that lands inside
+                 it. The mock trigger is a drawing; pressing it reveals the
+                 frame the way the shape would on a real page. -->
+            <div class="previewstage" id="previewStage" data-shape="inline">
+              <button type="button" class="previewtrigger" id="previewTrigger" hidden>📞 Call the DJ</button>
+              <iframe id="previewFrame" title="Live preview of the call card"
+                      src="/?preview=1" loading="lazy"></iframe>
+            </div>
+            <!-- Filled by applyVisibility() whenever the line status
+                 overrides what these sections configure — paused, closed,
+                 voicemail-only. The preview is a REAL card, so it already
+                 shows the override; this line says why, so the operator
+                 doesn't read their own kill switch as the preview being
+                 broken. -->
+            <p class="hint wide" id="previewLineNote" hidden></p>
           </div>
         </div>
-        <!-- Filled by applyVisibility() whenever the line status overrides
-             what the sections below configure — paused, closed, voicemail-only.
-             The preview above is a REAL card, so it already shows the
-             override; this line says why, so the operator doesn't read
-             their own kill switch as the preview being broken. -->
-        <p class="hint wide" id="previewLineNote" hidden></p>
-      </div>
-    </details>
+      </aside>
+    </div>
 
-    <details data-group="surface" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">What the card shows</span><em class="secblurb"></em><span class="tag" id="tagSurface"></span></summary>
+    <!-- Each element block asks its questions twice, once per surface: this
+         page is the operator's own front door, an embed sits in a column
+         next to the host's own show heading and now-playing ticker, where a
+         second copy of both is noise. The gear's embed cell is a dash rather
+         than a checkbox — an embed never loads this panel's code, so the
+         switch would do nothing whichever way it was set. -->
+    <details data-group="topcorner" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Top corner</span><em class="secblurb"></em><span class="tag" id="tagTopcorner"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">The two columns are the two
-          places the card appears: <strong>this page</strong> (the phone at
-          <code>/</code>) and an <strong>embed</strong> in a frame on somebody
-          else’s site.</p>
-
         <div class="pmatrix">
           <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
-
-          <div class="prow" data-help="show_caller_help">
+          <div class="prow" data-help="show_caller_help" data-spot="ask">
             <span class="plabel">“What can I ask?” button</span>
             <input type="checkbox" id="show_caller_help" aria-label="Ask button on the page" />
             <input type="checkbox" id="embed_caller_help" aria-label="Ask button in an embed" />
           </div>
-          <div class="prow" data-help="show_theme_toggle">
+          <div class="prow" data-help="show_theme_toggle" data-spot="theme">
             <span class="plabel">Light / dark toggle</span>
             <input type="checkbox" id="show_theme_toggle" aria-label="Theme toggle on the page" />
             <input type="checkbox" id="embed_theme_toggle" aria-label="Theme toggle in an embed" />
           </div>
-          <div class="prow" data-help="show_settings_gear">
+          <div class="prow" data-help="show_settings_gear" data-spot="gear">
             <span class="plabel">Settings gear</span>
             <input type="checkbox" id="show_settings_gear" aria-label="Settings gear on the page" />
             <span class="pnone" title="An embed never loads this panel's code, so a gear there would open nothing.">—</span>
           </div>
-
-          <div class="phead"><span>Who’s on air</span><span>Page</span><span>Embed</span></div>
-
-          <div class="prow" data-help="show_push_to_talk">
-            <span class="plabel">Push to talk</span>
-            <input type="checkbox" id="show_push_to_talk" aria-label="Push to talk on the page" />
-            <input type="checkbox" id="embed_push_to_talk" aria-label="Push to talk in an embed" />
-          </div>
-          <div class="prow" data-help="show_dj_avatar">
-            <span class="plabel">DJ photo</span>
-            <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />
-            <input type="checkbox" id="embed_dj_avatar" aria-label="DJ photo in an embed" />
-          </div>
-          <div class="prow" data-help="show_dj_show">
-            <span class="plabel">Show name</span>
-            <input type="checkbox" id="show_dj_show" aria-label="Show name on the page" />
-            <input type="checkbox" id="embed_dj_show" aria-label="Show name in an embed" />
-          </div>
-          <div class="prow" data-help="show_dj_tagline">
-            <span class="plabel">DJ tagline</span>
-            <input type="checkbox" id="show_dj_tagline" aria-label="Tagline on the page" />
-            <input type="checkbox" id="embed_dj_tagline" aria-label="Tagline in an embed" />
-          </div>
-          <div class="prow" data-help="show_now_playing">
-            <span class="plabel">Now playing</span>
-            <input type="checkbox" id="show_now_playing" aria-label="Now playing on the page" />
-            <input type="checkbox" id="embed_now_playing" aria-label="Now playing in an embed" />
-          </div>
-          <div class="prow" data-help="show_voicemail_button">
-            <span class="plabel">“Leave a message” button</span>
-            <input type="checkbox" id="show_voicemail_button" aria-label="Voicemail button on the page" />
-            <input type="checkbox" id="embed_voicemail_button" aria-label="Voicemail button in an embed" />
-          </div>
-          <div class="prow" data-help="show_chat_button">
-            <span class="plabel">“Text the booth” button</span>
-            <input type="checkbox" id="show_chat_button" aria-label="Chat button on the page" />
-            <input type="checkbox" id="embed_chat_button" aria-label="Chat button in an embed" />
-          </div>
-          <div class="prow" data-help="show_signin">
+          <div class="prow" data-help="show_signin" data-spot="signin">
             <span class="plabel">“Sign in” button</span>
             <input type="checkbox" id="show_signin" aria-label="Sign-in button on the page" />
             <input type="checkbox" id="embed_signin" aria-label="Sign-in button in an embed" />
           </div>
         </div>
 
-      </div>
-    </details>
-
-    <details data-group="player" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Player settings</span><em class="secblurb"></em><span class="tag" id="tagPlayer"></span></summary>
-      <div class="body">
         <!-- THE LINK OUT. The switch comes first and everything under it
              `needs` that switch, so an operator cannot fill in an address —
              or tick a surface — for a button that is off. Same shape as the
              voicemail rows and the sound slots. -->
-        <h4 class="subhead">Link out of the card</h4>
-        <div class="row" data-field="corner_link_enabled">
-          <label for="corner_link_enabled">Link out of the card</label>
-          <input type="checkbox" id="corner_link_enabled" />
-        </div>
-        <div class="row" data-field="corner_link_url">
+        <label class="check" data-spot="link"><input type="checkbox" id="corner_link_enabled" /> Link out of the card</label>
+        <div class="row indent" data-field="corner_link_url" data-spot="link">
           <label for="corner_link_url">Where it goes</label>
           <input type="text" id="corner_link_url" autocomplete="off" />
         </div>
-        <div class="row" data-field="corner_link_label">
+        <div class="row indent" data-field="corner_link_label" data-spot="link">
           <label for="corner_link_label">What it says</label>
           <input type="text" id="corner_link_label" autocomplete="off" />
         </div>
@@ -1382,7 +1355,7 @@
              names tells you nothing about what the button will look like.
              Filled by panel.js from one list, so the choices and the field
              cannot disagree, and the field still takes anything pasted. -->
-        <div class="row" data-field="corner_link_icon">
+        <div class="row indent" data-field="corner_link_icon" data-spot="link">
           <label for="corner_link_icon">Icon</label>
           <input type="text" id="corner_link_icon" autocomplete="off" maxlength="24" />
           <!-- The trigger shows the icon ITSELF, because that is the whole
@@ -1404,80 +1377,190 @@
             <p class="iconpop-note">Or type any emoji in the box.</p>
           </div>
         </div>
-        <div class="row" data-field="show_corner_link">
-          <label for="show_corner_link">Show it on this page</label>
-          <input type="checkbox" id="show_corner_link" />
-        </div>
-        <div class="row" data-field="embed_corner_link">
-          <label for="embed_corner_link">Show it in an embed</label>
-          <input type="checkbox" id="embed_corner_link" />
-        </div>
-
-        <!-- What each door SHOWS: its word, its icon, or both. One row per
-             feature, two ticks each — the old single "Button style" select
-             could not say "Call worded, the two secondary doors as bare
-             icons", which is what a tight embed wants. The widget shows the
-             word if a door is left with neither, so a button is never blank. -->
         <div class="pmatrix">
-          <div class="phead"><span>Button shows</span><span>Word</span><span>Icon</span></div>
-          <div class="prow" data-help="call_show_words">
-            <span class="plabel">Call</span>
-            <input type="checkbox" id="call_show_words" aria-label="Call button shows its word" />
-            <input type="checkbox" id="call_show_emoji" aria-label="Call button shows an icon" />
-          </div>
-          <div class="prow" data-help="vm_show_words">
-            <span class="plabel">Leave a message</span>
-            <input type="checkbox" id="vm_show_words" aria-label="Message button shows its word" />
-            <input type="checkbox" id="vm_show_emoji" aria-label="Message button shows an icon" />
-          </div>
-          <div class="prow" data-help="chat_show_words">
-            <span class="plabel">Text the booth</span>
-            <input type="checkbox" id="chat_show_words" aria-label="Text button shows its word" />
-            <input type="checkbox" id="chat_show_emoji" aria-label="Text button shows an icon" />
+          <div class="prow indent" data-help="show_corner_link" data-spot="link">
+            <span class="plabel">Show it</span>
+            <input type="checkbox" id="show_corner_link" aria-label="Link out on the page" />
+            <input type="checkbox" id="embed_corner_link" aria-label="Link out in an embed" />
           </div>
         </div>
+      </div>
+    </details>
 
-        <div class="row">
-          <label for="avatar_style">DJ photo shape</label>
+    <details data-group="whosonair" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Who’s on air</span><em class="secblurb"></em><span class="tag" id="tagWhosonair"></span></summary>
+      <div class="body">
+        <div class="pmatrix">
+          <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
+          <div class="prow" data-help="show_dj_avatar" data-spot="photo">
+            <span class="plabel">DJ photo</span>
+            <input type="checkbox" id="show_dj_avatar" aria-label="DJ photo on the page" />
+            <input type="checkbox" id="embed_dj_avatar" aria-label="DJ photo in an embed" />
+          </div>
+        </div>
+        <!-- The shape rides with the photo it shapes — it used to live two
+             sections away under "Button shows" (the handoff's diagnosis). -->
+        <div class="row indent" data-spot="photo">
+          <label for="avatar_style">Photo shape</label>
           <select id="avatar_style"></select>
         </div>
-
-        <h4 class="subhead">Colours</h4>
-        <div class="row">
-          <label for="widget_theme">Colours</label>
-          <select id="widget_theme"></select>
+        <div class="pmatrix">
+          <div class="prow" data-help="show_dj_show" data-spot="show">
+            <span class="plabel">Show name</span>
+            <input type="checkbox" id="show_dj_show" aria-label="Show name on the page" />
+            <input type="checkbox" id="embed_dj_show" aria-label="Show name in an embed" />
+          </div>
+          <div class="prow" data-help="show_dj_tagline" data-spot="tag">
+            <span class="plabel">DJ tagline</span>
+            <input type="checkbox" id="show_dj_tagline" aria-label="Tagline on the page" />
+            <input type="checkbox" id="embed_dj_tagline" aria-label="Tagline in an embed" />
+          </div>
+          <div class="prow" data-help="show_now_playing" data-spot="now">
+            <span class="plabel">Now playing</span>
+            <input type="checkbox" id="show_now_playing" aria-label="Now playing on the page" />
+            <input type="checkbox" id="embed_now_playing" aria-label="Now playing in an embed" />
+          </div>
         </div>
-        <!-- Under Colours because that is what it mostly replaces: a skin
-             brings its own palette, so the two are read together. -->
-        <div class="row">
-          <label for="widget_skin">Skin (experimental)</label>
-          <select id="widget_skin"></select>
-        </div>
+      </div>
+    </details>
 
-        <h4 class="subhead">Button order</h4>
+    <details data-group="talkbar" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">The talk bar</span><em class="secblurb"></em><span class="tag" id="tagTalkbar"></span></summary>
+      <div class="body">
+        <div class="pmatrix">
+          <div class="phead"><span></span><span>Page</span><span>Embed</span></div>
+          <div class="prow" data-help="show_push_to_talk" data-spot="ptt">
+            <span class="plabel">Push to talk</span>
+            <input type="checkbox" id="show_push_to_talk" aria-label="Push to talk on the page" />
+            <input type="checkbox" id="embed_push_to_talk" aria-label="Push to talk in an embed" />
+          </div>
+        </div>
+        <div class="row" data-spot="ptt">
+          <label for="word_ptt">What it says</label>
+          <input type="text" id="word_ptt" />
+        </div>
+      </div>
+    </details>
+
+    <!-- Everything about the three doors, in one place. This block merges
+         what used to be four homes per button — "What the card shows",
+         "Button shows", "Button order" and their Wording fields — which is
+         the handoff's core diagnosis. -->
+    <details data-group="buttons" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">The buttons</span><em class="secblurb"></em><span class="tag" id="tagButtons"></span></summary>
+      <div class="body">
         <!-- The field is the value; the list is how you edit it. Same shape as
              the icon picker: a control writes into a plain input and fires the
              input event, so Save, the dirty mark and the live preview all see
              one ordinary edit and cannot drift from what is stored. The input
              is hidden rather than absent — the panel's save path reads fields
              by id, and a control with no field behind it saves nothing. -->
-        <div class="row wrapped" data-field="door_order">
+        <div class="row wrapped" data-field="door_order" data-spot="actions">
           <label for="door_order">Button order</label>
           <input type="hidden" id="door_order" />
           <ol class="doororder" id="doorOrderList" aria-label="Drag to reorder the caller's buttons"></ol>
         </div>
+        <div class="row" data-spot="call">
+          <label for="call_button_mode">Call button label</label>
+          <select id="call_button_mode"></select>
+        </div>
+        <div class="row" data-spot="call">
+          <label for="call_button_label">Custom words</label>
+          <input type="text" id="call_button_label" />
+        </div>
 
-        <h4 class="subhead">On the caller's phone</h4>
+        <!-- What each door SHOWS: its word, its icon, or both. Two ticks
+             each — the old single "Button style" select could not say "Call
+             worded, the two secondary doors as bare icons", which is what a
+             tight embed wants. The widget shows the word if a door is left
+             with neither, so a button is never blank. -->
+        <div class="pmatrix">
+          <div class="phead"><span>Each shows</span><span>Word</span><span>Icon</span></div>
+          <div class="prow" data-help="call_show_words" data-spot="call">
+            <span class="plabel">Call</span>
+            <input type="checkbox" id="call_show_words" aria-label="Call button shows its word" />
+            <input type="checkbox" id="call_show_emoji" aria-label="Call button shows an icon" />
+          </div>
+          <div class="prow" data-help="chat_show_words" data-spot="chat">
+            <span class="plabel">Text the booth</span>
+            <input type="checkbox" id="chat_show_words" aria-label="Text button shows its word" />
+            <input type="checkbox" id="chat_show_emoji" aria-label="Text button shows an icon" />
+          </div>
+          <div class="prow" data-help="vm_show_words" data-spot="vm">
+            <span class="plabel">Leave a message</span>
+            <input type="checkbox" id="vm_show_words" aria-label="Message button shows its word" />
+            <input type="checkbox" id="vm_show_emoji" aria-label="Message button shows an icon" />
+          </div>
+        </div>
+
+        <!-- Call is always offered; these two doors are optional per surface. -->
+        <div class="pmatrix">
+          <div class="phead"><span>On the card</span><span>Page</span><span>Embed</span></div>
+          <div class="prow" data-help="show_chat_button" data-spot="chat">
+            <span class="plabel">“Text the booth” button</span>
+            <input type="checkbox" id="show_chat_button" aria-label="Chat button on the page" />
+            <input type="checkbox" id="embed_chat_button" aria-label="Chat button in an embed" />
+          </div>
+          <div class="prow" data-help="show_voicemail_button" data-spot="vm">
+            <span class="plabel">“Leave a message” button</span>
+            <input type="checkbox" id="show_voicemail_button" aria-label="Voicemail button on the page" />
+            <input type="checkbox" id="embed_voicemail_button" aria-label="Voicemail button in an embed" />
+          </div>
+        </div>
+
+        <div class="row" data-spot="call">
+          <label for="word_hangup">Hang up says</label>
+          <input type="text" id="word_hangup" />
+        </div>
+        <div class="row" data-spot="chat">
+          <label for="word_send">Send says</label>
+          <input type="text" id="word_send" />
+        </div>
+        <div class="row" data-spot="vm">
+          <label for="word_vm_button">Message button says</label>
+          <input type="text" id="word_vm_button" />
+        </div>
+      </div>
+    </details>
+
+    <details data-group="surface" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Surface</span><em class="secblurb"></em><span class="tag" id="tagSurface"></span></summary>
+      <div class="body">
+        <div class="row" data-spot="card">
+          <label for="widget_theme">Colours</label>
+          <select id="widget_theme"></select>
+        </div>
+        <!-- Under Colours because that is what it mostly replaces: a skin
+             brings its own palette, so the two are read together. -->
+        <div class="row" data-spot="card">
+          <label for="widget_skin">Skin (experimental)</label>
+          <select id="widget_skin"></select>
+        </div>
+      </div>
+    </details>
+
+    <!-- BEHAVIOUR tab: nothing visual lives here — the handoff's rule. -->
+    <details data-group="phone" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">On the caller's phone</span><em class="secblurb"></em><span class="tag" id="tagPhone"></span></summary>
+      <div class="body">
         <label class="check tickright"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
         <label class="check tickright"><input type="checkbox" id="swipe_player" /> Swipe-up station player</label>
         <label class="check tickright"><input type="checkbox" id="start_on_player" /> Start on the player</label>
+        <div class="row narrow">
+          <label for="vm_player_duck">Player under the machine (%)</label>
+          <input type="number" id="vm_player_duck" min="0" max="100" />
+        </div>
+      </div>
+    </details>
 
-        <h4 class="subhead">After the conversation</h4>
+    <details data-group="feedback" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">After the conversation</span><em class="secblurb"></em><span class="tag" id="tagFeedback"></span></summary>
+      <div class="body">
         <!-- One question, three doors — it used to ask the same thing three
              times over, once per door (operator's ask, 2026-08-12). Same
-             matrix shape as the Page/Embed rows above, so it reads as a
-             column per door rather than as three unrelated toggles, and
-             data-help names the one field whose help describes the row. -->
+             matrix shape as the Page/Embed rows, so it reads as a column per
+             door rather than as three unrelated toggles, and data-help names
+             the one field whose help describes the row. -->
         <div class="pmatrix doors3">
           <div class="phead"><span></span><span>Calls</span><span>Texts</span><span>Voicemail</span></div>
           <div class="prow" data-help="ask_call_feedback">
@@ -1490,89 +1573,63 @@
       </div>
     </details>
 
-    <details data-group="wording" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Wording</span><em class="secblurb"></em><span class="tag" id="tagWording"></span></summary>
+    <!-- All call-state wording lives here, in the order the states happen on
+         a call. Focusing any field previews that state live in the preview
+         card's line box (see the focus handling in panel.js) — which is why
+         these sit together instead of in a 14-field list at the page's end. -->
+    <details data-group="linebox" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">The line box</span><em class="secblurb"></em><span class="tag" id="tagLinebox"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Every fixed string on the
-          card, in your own voice. All of them (and the Call button's custom
-          label, and the voicemail greeting) take
+        <p class="hint wide" style="margin-top:0">Blank keeps the built-in.
           <code>{station}</code> <code>{dj}</code> <code>{show}</code>
-          <code>{track}</code> <code>{tagline}</code> — filled live, and an
-          empty or unknown one simply disappears. Blank keeps the built-in.</p>
-        <div class="row">
+          <code>{track}</code> <code>{tagline}</code> fill live, and an empty
+          or unknown one simply disappears. Focus a field to see that state
+          on the preview card.</p>
+        <div class="row" data-spot="line">
           <label for="word_ringing">Ringing</label>
           <input type="text" id="word_ringing" />
         </div>
-        <div class="row">
+        <div class="row" data-spot="line">
           <label for="word_answering">Answering</label>
           <input type="text" id="word_answering" />
         </div>
-        <div class="row">
-          <label for="word_online">On the line</label>
-          <input type="text" id="word_online" />
-        </div>
-        <div class="row">
-          <label for="word_recording">Recording</label>
-          <input type="text" id="word_recording" />
-        </div>
-        <div class="row">
-          <label for="word_hangup">Hang up</label>
-          <input type="text" id="word_hangup" />
-        </div>
-        <div class="row">
-          <label for="word_vm_button">Leave a message</label>
-          <input type="text" id="word_vm_button" />
-        </div>
-        <div class="row">
-          <label for="word_ptt">Talk bar</label>
-          <input type="text" id="word_ptt" />
-        </div>
-        <div class="row">
-          <label for="word_closed">Line closed</label>
-          <input type="text" id="word_closed" />
-        </div>
-        <div class="row">
-          <label for="word_message_only">Voicemail-only line</label>
-          <input type="text" id="word_message_only" />
-        </div>
-        <div class="row">
-          <label for="word_send">Send (text line)</label>
-          <input type="text" id="word_send" />
-        </div>
-        <div class="row">
+        <div class="row" data-spot="line">
           <label for="word_connecting">Connecting</label>
           <input type="text" id="word_connecting" />
         </div>
-        <div class="row">
+        <div class="row" data-spot="line">
           <label for="word_waiting">Waiting for the DJ</label>
           <input type="text" id="word_waiting" />
         </div>
-        <div class="row">
+        <div class="row" data-spot="line">
+          <label for="word_online">On the line</label>
+          <input type="text" id="word_online" />
+        </div>
+        <div class="row" data-spot="line">
+          <label for="word_recording">Recording</label>
+          <input type="text" id="word_recording" />
+        </div>
+        <div class="row" data-spot="line">
+          <label for="word_closed">Line closed</label>
+          <input type="text" id="word_closed" />
+        </div>
+        <div class="row" data-spot="line">
+          <label for="word_message_only">Voicemail-only line</label>
+          <input type="text" id="word_message_only" />
+        </div>
+        <div class="row" data-spot="line">
           <label for="word_ended">Conversation ended</label>
           <input type="text" id="word_ended" />
         </div>
-        <label class="check tickright"><input type="checkbox" id="transcript_dj_name" /> Name the DJ in the transcript</label>
-        <!-- The Call button's own wording lives WITH the wording, not over in
-             Player settings where it used to sit two sections away from every
-             other word on the card (operator's ask, 2026-08-12). -->
-        <h4 class="subhead">The Call button</h4>
-        <div class="row">
-          <label for="call_button_mode">Call button</label>
-          <select id="call_button_mode"></select>
-        </div>
-        <div class="row">
-          <label for="call_button_label">Button text</label>
-          <input type="text" id="call_button_label" />
-        </div>
+        <label class="check tickright" data-spot="line"><input type="checkbox" id="transcript_dj_name" /> Name the DJ in the transcript</label>
       </div>
     </details>
 
+    <!-- EMBED tab. Opening it flips the preview to Embed mode (panel.js), so
+         the frame options are seen on the surface they shape. -->
     <details data-group="embed" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Embed on another page</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
+      <summary><span class="chev">▶</span><span class="secname">The frame</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Paste the snippet where the
-          card should appear. <strong>Nothing else to add</strong>: the script
-          builds the iframe itself, microphone permission included.</p>
         <label class="check"><input type="checkbox" id="embed_card_outline" /> Draw the card outline</label>
         <div class="row">
           <label for="allowed_origins">Allowed origins</label>
@@ -1604,6 +1661,11 @@
             <option value="off">None</option>
           </select>
         </div>
+
+        <h4 class="subhead">The snippet</h4>
+        <p class="hint wide" style="margin-top:0">Paste it where the card
+          should appear. <strong>Nothing else to add</strong>: the script
+          builds the iframe itself, microphone permission included.</p>
         <textarea class="snippet" id="embedSnippet" readonly rows="3"></textarea>
         <div class="testrow" style="margin-top:9px">
           <button id="copyEmbedBtn">Copy snippet</button>

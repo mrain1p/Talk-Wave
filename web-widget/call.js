@@ -347,6 +347,25 @@
       return;
     }
 
+    // The panel's hover-highlight: the settings row under the operator's
+    // pointer names the card element it controls, and that element wears
+    // the accent outline while the pointer stays. Same two gates as
+    // swtv:preview — this exists only for the operator's own page.
+    if (msg.type === 'swtv:spotlight') {
+      if (!previewMode || e.origin !== location.origin) return;
+      spotlight(msg.el);
+      return;
+    }
+
+    // Focusing a line-box wording field in the panel: the status line shows
+    // that state's text — typed, or the built-in default — until a null
+    // puts the live one back. See lineboxPreview for how the truth is kept.
+    if (msg.type === 'swtv:linepreview') {
+      if (!previewMode || e.origin !== location.origin) return;
+      lineboxPreview(msg.text);
+      return;
+    }
+
     // The host answering our request for room to open the ask list in. It is
     // the authority on both the amount and the direction: it can see the
     // page, and we cannot see past our own frame.
@@ -993,9 +1012,72 @@
     navigator.mediaDevices.addEventListener('devicechange', probeRouting);
   }
 
+  // While the panel is previewing a line-box state (preview frames only),
+  // the live status is BANKED rather than painted — every real setStatus
+  // lands in the held copy, so blur restores the newest truth instead of
+  // whatever was on screen when the operator clicked into the field.
+  let lineboxHeld = null;
+
   function setStatus(text, state) {
+    if (lineboxHeld) {
+      lineboxHeld.text = text;
+      lineboxHeld.dot = 'dot' + (state ? ' ' + state : '');
+      return;
+    }
     statusText.textContent = text;
     dot.className = 'dot' + (state ? ' ' + state : '');
+  }
+
+  function lineboxPreview(text) {
+    if (text == null) {
+      if (lineboxHeld) {
+        statusText.textContent = lineboxHeld.text;
+        dot.className = lineboxHeld.dot;
+        lineboxHeld = null;
+      }
+      return;
+    }
+    if (!lineboxHeld) {
+      lineboxHeld = { text: statusText.textContent, dot: dot.className };
+    }
+    statusText.textContent = fillWords(String(text));
+  }
+
+  // Which DOM the panel's data-spot names reach. Per-element where the card
+  // has one thing to point at, block-level (actions, card) where the row
+  // describes a region. The photo has two faces — image, or initials.
+  const SPOT_TARGETS = {
+    ask: '#helpBtn', theme: '#themeBtn', gear: '#gearBtn', signin: '#signinBtn',
+    link: '#linkBtn', photo: '#djAvatar, #djMono', show: '#djShow',
+    tag: '#djTagline', now: '#npTrack', line: '#lineBox', ptt: '#pttBtn',
+    call: '#callBtn', chat: '#chatBtn', vm: '#vmBtn',
+    actions: '.actionrow', card: '.card',
+  };
+
+  function spotlight(name) {
+    document.querySelectorAll('.spot').forEach((el) => el.classList.remove('spot'));
+    const sel = SPOT_TARGETS[String(name || '')];
+    if (!sel) return;
+    document.querySelectorAll(sel).forEach((el) => el.classList.add('spot'));
+  }
+
+  // The other direction: clicking an element on the previewed card tells
+  // the panel, which flashes and scrolls to the block that owns it. Capture
+  // phase, because most of the card's controls are inert in a preview and
+  // never let a click bubble. A real page reports nothing.
+  if (previewMode) {
+    document.addEventListener('click', (e) => {
+      if (!e.target || !e.target.closest) return;
+      let hit = 'card';
+      for (const k of Object.keys(SPOT_TARGETS)) {
+        if (k === 'card') continue;
+        if (e.target.closest(SPOT_TARGETS[k])) { hit = k; break; }
+      }
+      try {
+        window.parent.postMessage({ type: 'subwave-callin:spot', el: hit },
+          location.origin);
+      } catch (err) { /* not framed — nothing to tell */ }
+    }, true);
   }
 
   // What the Call button says at rest. Resolved SERVER-side — the operator

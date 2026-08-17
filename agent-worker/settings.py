@@ -933,17 +933,26 @@ GROUPS = [
     ("voicemail", "voicemail", "The machine",     "When the booth can't pick up, the machine does."),
     ("chat",      "texts",  "Text line",          "Typed chat with whoever is on air — same brain, no microphone."),
 
-    # One "Player settings" section until 0.10.47: the live preview, the
-    # what-shows-where matrix and the look-and-feel rows all shared a single
-    # drawer, and the operator asked for them as separate dropdowns.
-    ("preview",  "card",   "Player preview",      "The real card, following unsaved changes live."),
-    ("surface",  "card",   "What the card shows", "Each element, on this page and in an embed."),
-    ("player",   "card",   "Player settings",     "The card's look and behaviour."),
-    # Every fixed string on the card, overridable — so a station whose whole
-    # page speaks in its own voice doesn't get "Ringing…" in ours. The
-    # operator asked for it as a group.
-    ("wording",  "card",   "Wording",             "What the card's buttons and states say."),
-    ("embed",    "card",   "Embed on another page", "The snippet, and what it looks like."),
+    # The Players page reorganized to the operator's design handoff ("Players
+    # Settings Reorganization", direction 1a): one block per card ELEMENT, in
+    # card order top to bottom, so everything about a thing is together —
+    # the old page gave one button four homes (shows / word-icon / order /
+    # wording) and let the live preview scroll away. The preview is no
+    # longer a section at all: it is the pinned column beside these, static
+    # markup in panel.html. The first six groups are the THE CARD tab, the
+    # next two BEHAVIOUR, the last EMBED — the tab map itself is CARD_TABS
+    # in panel.js, because the schema owns order, not screen furniture.
+    ("topcorner", "card",  "Top corner",          "The small controls on the card's top edge."),
+    ("whosonair", "card",  "Who's on air",        "Photo, show, tagline, and the record playing."),
+    # Every fixed call-state string, overridable — so a station whose whole
+    # page speaks in its own voice doesn't get "Ringing…" in ours.
+    ("linebox",   "card",  "The line box",        "What the card says in every state of a call."),
+    ("talkbar",   "card",  "The talk bar",        "The caller's microphone control."),
+    ("buttons",   "card",  "The buttons",         "The three doors — order, labels, word and icon."),
+    ("surface",   "card",  "Surface",             "Colours and skin for the whole card."),
+    ("phone",     "card",  "On the caller's phone", "Nothing visual — how a call behaves in the hand."),
+    ("feedback",  "card",  "After the conversation", "Whether the card asks how it went."),
+    ("embed",     "card",  "The frame",           "The embed's options, and the snippet to paste."),
 
     ("ask",      "ref",    "What callers can ask", "Driven by the permissions above."),
     ("tools",    "ref",    "Station tools",        "Every tool the station publishes, and who can reach it."),
@@ -1173,12 +1182,12 @@ SCHEMA: dict[str, dict] = {
     # Every row here is asked twice, once for this page and once for an embed.
     # The panel lays them out as a two-column matrix, which is why the labels
     # are short: the column heading carries the surface, not the label.
-    "show_caller_help": dict(group="surface", kind="check",
+    "show_caller_help": dict(group="topcorner", kind="check",
         label="“What can I ask?” button",
         help="Opens the same live reference this panel shows you, filtered to "
              "what is actually switched on. Most callers assume a phone-in only "
              "takes requests."),
-    "embed_caller_help": dict(group="surface", kind="check",
+    "embed_caller_help": dict(group="topcorner", kind="check",
         label="“What can I ask?” button (embed)",
         help="The same button, in a frame on somebody else's page."),
     "chat_idle_minutes": dict(group="chat", kind="number",
@@ -1259,11 +1268,11 @@ SCHEMA: dict[str, dict] = {
         needs=("chat_reprompt", True),
         help="How long a caller may be quiet, the ball in their court, before "
              "that one nudge. 15 is a natural pause; too short reads as pushy."),
-    "show_theme_toggle": dict(group="surface", kind="check",
+    "show_theme_toggle": dict(group="topcorner", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "
              "to toggle between."),
-    "embed_theme_toggle": dict(group="surface", kind="check",
+    "embed_theme_toggle": dict(group="topcorner", kind="check",
         label="Light / dark toggle (embed)",
         help="Usually worth off: a caller flipping the card to light on a dark "
              "host page gets a bright rectangle in the middle of it."),
@@ -1271,47 +1280,47 @@ SCHEMA: dict[str, dict] = {
     # draws them under it, and every tick `needs` the switch above: an
     # operator cannot set where a button nobody can see would go, which is the
     # same shape the sound slots and the voicemail rows already use.
-    "corner_link_enabled": dict(group="player", kind="check",
+    "corner_link_enabled": dict(group="topcorner", kind="check",
         label="Link out of the card",
         help="One more button in the card's top corner, going wherever you "
              "send it — your station's own page by default. Off until you fill "
              "the address in below."),
-    "corner_link_url": dict(group="player", kind="text", label="Where it goes",
+    "corner_link_url": dict(group="topcorner", kind="text", label="Where it goes",
         needs=("corner_link_enabled", True),
         placeholder="default: your station's address",
         help="Left blank this follows the SUB/WAVE station this line answers "
              "for, so it keeps up if the station moves. Opens in a new tab, "
              "which for an embed means the host's page keeps its caller."),
-    "corner_link_label": dict(group="player", kind="text", label="What it says",
+    "corner_link_label": dict(group="topcorner", kind="text", label="What it says",
         needs=("corner_link_enabled", True),
         placeholder="The station",
         help="The tooltip, and what a screen reader announces. The button "
              "itself is the icon."),
-    "corner_link_icon": dict(group="player", kind="emoji", label="Icon",
+    "corner_link_icon": dict(group="topcorner", kind="emoji", label="Icon",
         needs=("corner_link_enabled", True),
         help="Pick one, or type any emoji. It sits beside the other corner "
              "controls, at their size and in their ink."),
-    "show_corner_link": dict(group="player", kind="check",
+    "show_corner_link": dict(group="topcorner", kind="check",
         label="Show it on this page",
         needs=("corner_link_enabled", True),
         help="The card at /. Both of these are greyed out until the link "
              "itself is switched on — there is nothing to show or hide yet."),
-    "embed_corner_link": dict(group="player", kind="check",
+    "embed_corner_link": dict(group="topcorner", kind="check",
         label="Show it in an embed",
         needs=("corner_link_enabled", True),
         help="Worth keeping ON for an embed: a caller who found the card on "
              "somebody else's page has no other way back to you."),
-    "show_settings_gear": dict(group="surface", kind="check",
+    "show_settings_gear": dict(group="topcorner", kind="check",
         label="Settings gear",
         help="The way into this panel from the card. Off secures nothing — "
              "/settings still answers by URL and still asks for the password — "
              "just stops advertising it."),
-    "show_chat_button": dict(group="surface", kind="check",
+    "show_chat_button": dict(group="buttons", kind="check",
         label="“Text the booth” button",
         help="A third way in, beside Call: typed conversation with the "
              "on-air DJ. Needs the text line switched on under Running "
              "the line."),
-    "embed_chat_button": dict(group="surface", kind="check",
+    "embed_chat_button": dict(group="buttons", kind="check",
         label="“Text the booth” button (embed)",
         help="The same door on the embedded card. Off by default: three "
              "buttons crowd a 190px frame."),
@@ -1320,25 +1329,25 @@ SCHEMA: dict[str, dict] = {
     # offered — the widget falls back to the word if both are cleared, so a
     # blank button is impossible. Words edit under Wording; the icon is a
     # line drawing in the card's own ink, not an emoji glyph.
-    "call_show_words": dict(group="player", kind="check",
+    "call_show_words": dict(group="buttons", kind="check",
         label="Call button — word",
         help="Show the Call button's WORDS (edit them under Wording)."),
-    "call_show_emoji": dict(group="player", kind="check",
+    "call_show_emoji": dict(group="buttons", kind="check",
         label="Call button — icon",
         help="Show a phone icon on the Call button."),
-    "vm_show_words": dict(group="player", kind="check",
+    "vm_show_words": dict(group="buttons", kind="check",
         label="Leave-a-message button — word",
         help="Show the message button's WORDS (edit them under Wording)."),
-    "vm_show_emoji": dict(group="player", kind="check",
+    "vm_show_emoji": dict(group="buttons", kind="check",
         label="Leave-a-message button — icon",
         help="Show an envelope icon on the message button."),
-    "chat_show_words": dict(group="player", kind="check",
+    "chat_show_words": dict(group="buttons", kind="check",
         label="Text button — word",
         help="Show the Text button's WORDS (edit them under Wording)."),
-    "chat_show_emoji": dict(group="player", kind="check",
+    "chat_show_emoji": dict(group="buttons", kind="check",
         label="Text button — icon",
         help="Show a speech-bubble icon on the Text button."),
-    "show_signin": dict(group="surface", kind="check",
+    "show_signin": dict(group="topcorner", kind="check",
         label="“Sign in” button",
         help="A corner button that lets a caller enter the guest code or the "
              "admin password to UNLOCK more of what they can ask for — the "
@@ -1346,7 +1355,7 @@ SCHEMA: dict[str, dict] = {
              "shows only when a code is set and there is a higher tier to "
              "reach; it does nothing on a line where every permission is open "
              "to anyone. See Caller permissions to set the tiers."),
-    "embed_signin": dict(group="surface", kind="check",
+    "embed_signin": dict(group="topcorner", kind="check",
         label="“Sign in” button (embed)",
         help="The same corner button on the embedded card."),
     "embed_card_outline": dict(group="embed", kind="check",
@@ -1361,22 +1370,22 @@ SCHEMA: dict[str, dict] = {
              "are reading this on needs no entry — add the site the snippet is "
              "pasted into. Applies to the next request, no restart. “*” lets "
              "every page on the internet spend your budget — dev only."),
-    "show_voicemail_button": dict(group="surface", kind="check",
+    "show_voicemail_button": dict(group="buttons", kind="check",
         label="\u201cLeave a message\u201d button",
         help="A second button beside Call, so the machine is on offer even "
              "while the booth could pick up live. Voicemail itself has to be "
              "switched on on its own page."),
-    "embed_voicemail_button": dict(group="surface", kind="check",
+    "embed_voicemail_button": dict(group="buttons", kind="check",
         label="\u201cLeave a message\u201d button (embed)",
         help="The same second button, on the embedded card."),
-    "show_push_to_talk": dict(group="surface", kind="check",
+    "show_push_to_talk": dict(group="talkbar", kind="check",
         label="Push to talk",
         help="The caller's mic stays closed except while they hold (or tap to "
              "latch) a talk bar — space works on a keyboard. Better control in "
              "a noisy room, and the DJ never hears a TV in the background. The "
              "mic permission is still asked once, at pickup. On by default; "
              "switch off for an open mic from pickup."),
-    "embed_push_to_talk": dict(group="surface", kind="check",
+    "embed_push_to_talk": dict(group="talkbar", kind="check",
         label="Push to talk (embed)",
         help="The same bar, on the embedded card."),
     "voice_effect": dict(group="effects", kind="select", label="Voice effect",
@@ -1394,12 +1403,12 @@ SCHEMA: dict[str, dict] = {
         help="0–100. 100 is the effect at full character; lower settles it "
              "toward the clean voice — 40 is a hint of radio rather than a "
              "costume. Test with effect uses this number."),
-    "show_dj_avatar": dict(group="surface", kind="check", label="DJ photo",
+    "show_dj_avatar": dict(group="whosonair", kind="check", label="DJ photo",
         help="Served through this origin, so it still loads from an https page "
              "off your network."),
-    "embed_dj_avatar": dict(group="surface", kind="check", label="DJ photo (embed)",
+    "embed_dj_avatar": dict(group="whosonair", kind="check", label="DJ photo (embed)",
         help="Off if the host page already shows the same photo."),
-    "default_to_speaker": dict(group="player", kind="check",
+    "default_to_speaker": dict(group="phone", kind="check",
         label="Start calls on loudspeaker",
         help="A live microphone puts the phone into its voice-call audio mode, "
              "which routes to the earpiece — so music playing out loud goes "
@@ -1408,73 +1417,73 @@ SCHEMA: dict[str, dict] = {
              "button. What the browser will actually allow varies: iOS Safari "
              "publishes no audio-routing API at all, so there the button asks "
              "and the platform decides."),
-    "avatar_style": dict(group="player", kind="select", label="DJ photo shape",
+    "avatar_style": dict(group="whosonair", kind="select", label="DJ photo shape",
         help="Applies wherever the photo is shown. Round suits a portrait and "
              "is what the card was built around; square matches a host page "
              "whose own artwork has corners."),
-    "show_dj_show": dict(group="surface", kind="check", label="Show name",
+    "show_dj_show": dict(group="whosonair", kind="check", label="Show name",
         help="The programme currently on air."),
-    "embed_dj_show": dict(group="surface", kind="check", label="Show name (embed)",
+    "embed_dj_show": dict(group="whosonair", kind="check", label="Show name (embed)",
         help="Off if the host page already says what show is on."),
-    "show_dj_tagline": dict(group="surface", kind="check", label="DJ tagline",
+    "show_dj_tagline": dict(group="whosonair", kind="check", label="DJ tagline",
         help="The persona's one-line blurb, as the station publishes it."),
-    "embed_dj_tagline": dict(group="surface", kind="check", label="DJ tagline (embed)",
+    "embed_dj_tagline": dict(group="whosonair", kind="check", label="DJ tagline (embed)",
         help="Off if the host page already carries it."),
-    "show_now_playing": dict(group="surface", kind="check", label="Now playing",
+    "show_now_playing": dict(group="whosonair", kind="check", label="Now playing",
         help="Updates on the card's own 20-second poll, so it will briefly "
              "disagree with a host page's faster ticker."),
-    "embed_now_playing": dict(group="surface", kind="check", label="Now playing (embed)",
+    "embed_now_playing": dict(group="whosonair", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
-    "word_ringing": dict(group="wording", kind="text", label="Ringing",
+    "word_ringing": dict(group="linebox", kind="text", label="Ringing",
         placeholder="default: Ringing…"),
-    "word_answering": dict(group="wording", kind="text", label="Answering",
+    "word_answering": dict(group="linebox", kind="text", label="Answering",
         placeholder="default: Answering…"),
-    "word_online": dict(group="wording", kind="text", label="On the line",
+    "word_online": dict(group="linebox", kind="text", label="On the line",
         placeholder="default: On the line"),
-    "word_recording": dict(group="wording", kind="text", label="Recording",
+    "word_recording": dict(group="linebox", kind="text", label="Recording",
         placeholder="default: Recording…"),
-    "word_hangup": dict(group="wording", kind="text", label="Hang up",
+    "word_hangup": dict(group="buttons", kind="text", label="Hang up",
         placeholder="default: Hang up"),
-    "word_vm_button": dict(group="wording", kind="text", label="Leave a message",
+    "word_vm_button": dict(group="buttons", kind="text", label="Leave a message",
         placeholder="default: Leave a message"),
-    "word_ptt": dict(group="wording", kind="text", label="Talk bar",
+    "word_ptt": dict(group="talkbar", kind="text", label="Talk bar",
         placeholder="default: Tap to talk"),
-    "word_closed": dict(group="wording", kind="text", label="Line closed",
+    "word_closed": dict(group="linebox", kind="text", label="Line closed",
         placeholder="default: Line closed"),
-    "word_message_only": dict(group="wording", kind="text", label="Voicemail-only line",
+    "word_message_only": dict(group="linebox", kind="text", label="Voicemail-only line",
         placeholder="default: Message only"),
-    "word_send": dict(group="wording", kind="text", label="Send (text line)",
+    "word_send": dict(group="buttons", kind="text", label="Send (text line)",
         placeholder="default: Send"),
-    "word_connecting": dict(group="wording", kind="text", label="Connecting",
+    "word_connecting": dict(group="linebox", kind="text", label="Connecting",
         placeholder="default: Connecting…"),
-    "word_waiting": dict(group="wording", kind="text", label="Waiting for the DJ",
+    "word_waiting": dict(group="linebox", kind="text", label="Waiting for the DJ",
         placeholder="default: Connected — waiting for the DJ…",
         help="Shown in the transcript area between the line connecting and "
              "the DJ's first word."),
-    "word_ended": dict(group="wording", kind="text", label="Conversation ended",
+    "word_ended": dict(group="linebox", kind="text", label="Conversation ended",
         placeholder="default: Call ended",
         help="Said when the line drops and when a text chat closes. The "
              "voicemail receipt keeps its own wording."),
-    "transcript_dj_name": dict(group="wording", kind="check",
+    "transcript_dj_name": dict(group="linebox", kind="check",
         label="Name the DJ in the transcript",
         help="The transcript labels each line with who said it. On, the DJ's "
              "lines carry their name (ASH) instead of the generic DJ — which "
              "reads better on a station whose listeners know the roster, and "
              "follows the name as the show changes. The caller's own lines "
              "stay YOU either way."),
-    "call_button_mode": dict(group="wording", kind="select", label="Call button",
+    "call_button_mode": dict(group="buttons", kind="select", label="Call button",
         help="“Call the DJ” is the honest label when the card shows whoever "
              "happens to be on air. The DJ's name reads better on a station "
              "whose listeners know the roster, and follows it as the show "
              "changes."),
-    "call_button_label": dict(group="wording", kind="text", label="Button text",
+    "call_button_label": dict(group="buttons", kind="text", label="Custom words",
         needs=("call_button_mode", "custom"),
         placeholder="Call the DJ",
         help="Shown only for the custom option above."),
     # One row, a column per door — the panel prints THIS field's help for the
     # whole row (its .prow names it), so this one describes all three and the
     # other two carry the per-door caveat for anyone reading the schema.
-    "ask_call_feedback": dict(group="player", kind="check",
+    "ask_call_feedback": dict(group="feedback", kind="check",
         label="Ask how it went",
         help="A thumbs up or down under the card once the conversation ends, "
              "stored against its own transcript so a bad one can be found and "
@@ -1482,33 +1491,33 @@ SCHEMA: dict[str, dict] = {
              "caller actually typed something; leaving it off for voicemail "
              "keeps the machine's receipt as the last word, since “how was "
              "it?” over “message left” can read as fishing."),
-    "ask_chat_feedback": dict(group="player", kind="check",
+    "ask_chat_feedback": dict(group="feedback", kind="check",
         label="Ask after a text chat",
         help="The same thumbs, offered when the caller ends a chat they "
              "actually typed in. Stored against the chat's transcript."),
-    "ask_vm_feedback": dict(group="player", kind="check",
+    "ask_vm_feedback": dict(group="feedback", kind="check",
         label="Ask after a voicemail",
         help="The same thumbs after a message is left. Off keeps the "
              "machine's receipt as the last word — asking “how was "
              "it?” over “message left” can read as fishing."),
-    "door_order": dict(group="player", kind="order", label="Button order",
+    "door_order": dict(group="buttons", kind="order", label="Button order",
         help="Drag to reorder the three doors on the card. This is the order "
              "they sit in left to right, on this page and in an embed alike; "
              "a door you have switched off simply is not there, and the rest "
              "close up. Hang up is not in the list — it replaces the whole "
              "row during a call and has nowhere else to be."),
-    "widget_skin": dict(group="player", kind="select", label="Skin (experimental)",
+    "widget_skin": dict(group="surface", kind="select", label="Skin (experimental)",
         help="A different look for the card, on this page and in embeds alike. "
              "A skin brings its own colours, so while one is on, the Colours "
              "setting and the viewer's light/dark toggle have nothing left to "
              "change — pick Default to get them back. Skins cannot change the "
              "card's size or its controls, only its surface, so none of them "
              "can break a call."),
-    "widget_theme": dict(group="player", kind="select", label="Colours",
+    "widget_theme": dict(group="surface", kind="select", label="Colours",
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
              "in; on this page it behaves as auto."),
-    "swipe_player": dict(group="player", kind="check",
+    "swipe_player": dict(group="phone", kind="check",
         label="Swipe-up station player",
         help="The ribbon at the card's top edge pulls down a full station "
              "player: cover art, what's playing, the queue, likes and song "
@@ -1516,15 +1525,15 @@ SCHEMA: dict[str, dict] = {
              "in, so behind TLS that must be the station's public https "
              "stream. This page and the installed app only, never an embed. "
              "Starting a call or a recording stops the music."),
-    "start_on_player": dict(group="player", kind="check",
+    "start_on_player": dict(group="phone", kind="check",
         label="Start on the player",
         needs=("swipe_player", True),
         help="The page opens onto the player, and pulling it up reveals the "
              "phone — the widget becomes the station's app with a call "
              "button behind it. Browsers still wait for one tap before any "
              "audio starts; that is their rule, not a fault."),
-    "vm_player_duck": dict(group="voicemail", kind="number",
-        label="Station under the machine (%)",
+    "vm_player_duck": dict(group="phone", kind="number",
+        label="Player under the machine (%)",
         help="While the machine rings, greets and records, the station "
              "plays underneath at this volume — piped in even when the "
              "caller wasn't listening, the same move Tune-in makes on a "
@@ -1937,11 +1946,11 @@ STATIC_CHOICES = {
     "call_button_mode": [
         ("default", "“Call the DJ”"),
         ("name", "The live DJ's name — “Call Francesca”"),
-        ("custom", "Something else…"),
+        ("custom", "Custom words…"),
     ],
     "avatar_style": [
         ("round", "Round — a portrait"),
-        ("square", "Square — a thumbnail"),
+        ("square", "Square — matches host artwork"),
     ],
     "voice_effect": [
         ("none", "None — the voice as the backend made it"),

@@ -389,7 +389,12 @@ async def handle_vm_draft_create(request: web.Request) -> web.Response:
         cfg, vm_review.audio_path(draft["id"]))
     station = StationClient(base_url=cfg.get("station_base_url"))
     try:
-        action = await vm_preview.resolve(station, cfg, transcript)
+        # The caller's tier decides which actions the resolver may stage — the
+        # same permissions_for() gate a live call runs at pickup, so what a
+        # message can set in motion matches what a call from the same tier
+        # could.
+        action = await vm_preview.resolve(
+            station, cfg, transcript, caller_tier(request))
     finally:
         await station.aclose()
     draft = vm_review.annotate(draft["id"], transcript=transcript,
