@@ -906,6 +906,13 @@
   .plpanelbody .pltit { font-size: 14px; font-weight: 700;
                         color: var(--alpenglow); }
   .plpanelbody .plsub { font-size: 12px; color: var(--sage); margin-top: 2px; }
+  /* The DJ's own words — prose, not a title, clamped so a long segment
+     cannot push the dock off a short phone. */
+  .plpanelbody .plquote {
+    font-size: 13px; line-height: 1.45; color: var(--alpenglow);
+    display: -webkit-box; -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
   /* The docked action bar: heart · volume · meter, the big transport, the
      request row, and the grabber home. Granite over the pine panels, same
      as the mockup's bottom bar. */

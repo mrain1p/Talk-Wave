@@ -2754,9 +2754,13 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         # station — the phone card shows none of it, so it is only fetched
         # for deployments that actually switched the player on.
         self.assertIn('"upNext"', self.live_py)
-        gate = self.live_py.split("up_next = []")[1][:200]
+        gate = self.live_py.split("up_next = []")[1][:260]
         self.assertIn('cfg.get("swipe_player")', gate)
         self.assertIn("d.upNext", self.js)
+        # The booth line rides the same gate: it is the DJ's own words from
+        # the station's /session feed, and only the player shows them.
+        self.assertIn('"booth"', self.live_py)
+        self.assertIn("d.booth", self.js)
 
     def test_the_record_travels_as_structure_and_the_art_is_proxied(self):
         # The sheet renders the same analysis strip the station's own player

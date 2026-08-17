@@ -554,6 +554,10 @@ class Handler(BaseHTTPRequestHandler):
                 # panels and header exercise their filled states.
                 "upNext": [{"title": "Esta noche", "artist": "Federico Aubele",
                             "requestedBy": "Marco"}],
+                "booth": {"text": "This one's for anyone still up with the "
+                                  "windows open — Beegie Adair, gentle as "
+                                  "ever, and the rain agrees.",
+                          "kind": "track-intro"},
                 "weather": "cloudy 70°F",
                 # A show palette, so the theme cycle's third stop exists here.
                 "stationTheme": {"mode": "dark", "tokens": {

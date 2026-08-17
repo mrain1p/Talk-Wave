@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.97.40
+
+The player's booth panel says what the DJ is saying.
+
+- **IN THE BOOTH carried the DJ's name and show, which the top of the card already says.** It now carries the DJ's newest words on air — the track intro, the commentary, the pick — straight from the station's own booth feed, with the name demoted to the line beneath. When the booth has said nothing yet, the show stands in.
+
 ## 0.97.39
 
 The card grows a full station player behind a pull-down ribbon, voicemail gains a soundbite studio that records in the browser and sends to air, and the widget wears its mark. Covers 0.97.27 through 0.97.39.
@@ -31,6 +37,8 @@ The card grows a full station player behind a pull-down ribbon, voicemail gains 
 ### The mark
 
 - **The widget wears the wave.** Two voices meeting in the middle, on the favicon, the home-screen icons, the social preview and the README.
+
+## 0.97.26
 
 The Text and Voicemail buttons tell a screen reader what they are.
 

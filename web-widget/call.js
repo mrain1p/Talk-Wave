@@ -4133,22 +4133,37 @@
         nextBody.textContent = 'Nothing queued — send a request below.';
       }
     }
-    // IN THE BOOTH: who is on and what they are doing, from the same facts
-    // the identity header paints.
+    // IN THE BOOTH: what the DJ is SAYING — the newest turn of the live
+    // session, straight from the station's own booth feed (the operator's
+    // correction: the panel restated the identity header, which is already
+    // at the top of the card). The DJ's name rides the sub line; the show
+    // stands in only while the booth has said nothing yet.
     const boothBody = $('plBoothBody');
     if (boothBody) {
       $('plBoothMeta').textContent = playerDead
         ? 'stream unavailable' : (d.onAir ? 'live' : 'off air');
       boothBody.innerHTML = '';
-      const t = document.createElement('div');
-      t.className = 'pltit';
-      t.textContent = (d.name && d.name !== '…') ? d.name : 'The booth';
-      boothBody.appendChild(t);
-      const subText = [d.show, d.tagline].filter(Boolean).join(' — ');
-      if (subText) {
+      const line = d.booth && d.booth.text;
+      if (line) {
+        const q = document.createElement('div');
+        q.className = 'plquote'; q.textContent = line;
+        boothBody.appendChild(q);
         const s = document.createElement('div');
-        s.className = 'plsub'; s.textContent = subText;
-        boothBody.appendChild(s);
+        s.className = 'plsub';
+        s.textContent = [d.name !== '…' ? d.name : '', d.show]
+          .filter(Boolean).join(' · ');
+        if (s.textContent) boothBody.appendChild(s);
+      } else {
+        const t = document.createElement('div');
+        t.className = 'pltit';
+        t.textContent = (d.name && d.name !== '…') ? d.name : 'The booth';
+        boothBody.appendChild(t);
+        const subText = [d.show, d.tagline].filter(Boolean).join(' — ');
+        if (subText) {
+          const s = document.createElement('div');
+          s.className = 'plsub'; s.textContent = subText;
+          boothBody.appendChild(s);
+        }
       }
     }
     paintHeadMeta();
