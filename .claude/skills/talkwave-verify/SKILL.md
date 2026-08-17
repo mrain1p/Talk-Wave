@@ -127,6 +127,14 @@ passed" is not.
   ghosts shipped while probes reported `el.hidden === true` and the element
   sat fully visible. `TestHiddenActuallyHides` now sweeps markup-shipped
   cases mechanically, but JS-toggled ones still need the visibility probe.
+- **And offsetParent is blind to `visibility: hidden` — check
+  `getComputedStyle(el).visibility` too.** The card's `.rig` RESERVES its
+  bands invisible and each one opts back in with its own
+  `visibility: visible`; a new band that forgets ships laid out, occupying
+  its rows, invisible — and every offsetParent probe passes. The soundbite
+  studio's Record button shipped exactly this way (2026-08-17), including a
+  probe screenshot confidently captioned as showing buttons that were not
+  there. Pixels or computed visibility; geometry proves nothing.
 - **Verify semantics, not activity.** "The sort ran" let sort-by-assignment-
   count ship as sort-by-type; "the POST fired" let category edits revert on
   the next repaint. Read the ORDER a sort produced; drive a repaint or a

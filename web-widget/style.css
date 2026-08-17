@@ -630,6 +630,12 @@
      was present but invisible (visibility inherited from .rig), which is
      exactly the "I still can't see the text area" the operator reported. */
   .rig > .chatrow { visibility: visible; }
+  /* The soundbite studio is the chatrow's lesson relearned: it lives in the
+     rig, is meaningful off a call, and shipped inheriting reserved-hidden —
+     laid out, occupying its rows, invisible. The operator met a studio with
+     no Record button, and the probe's offsetParent check saw nothing wrong
+     because offsetParent is blind to visibility. */
+  .rig > .vmstudio { visibility: visible; }
   /* Idle, the volume gives up its WIDTH as well as its ink. It was
      `visibility: hidden` alone, which keeps the box — on an embed that box was
      most of the band, and it squeezed the two waveforms into 65px between the
@@ -748,26 +754,67 @@
   #vmRecBtn { touch-action: none; -webkit-user-select: none; user-select: none; }
   #vmRecBtn[aria-pressed="true"] { border-color: var(--warn, #c0392b); }
 
-  /* The station player: what a swipe up on the idle card opens. The identity
-     header stays — the DJ's photo and name ARE the artwork, already large and
-     centered on the full page — so the band itself is only what a player
-     adds: the record, its progress, and the transport. Same one-footprint
-     contract as every mode: the phone's bands hide and .player flexes into
-     exactly the room they leave. The now-playing rail and the who-row's own
-     track line hide too, or the record would be named three times at three
-     sizes on one card. */
-  .card:not([data-mode="player"]) .player { display: none !important; }
-  .card[data-mode="player"] .talkrow,
-  .card[data-mode="player"] .actionrow,
-  .card[data-mode="player"] .after,
-  .card[data-mode="player"] .linebox,
-  .card[data-mode="player"] .nprail,
-  .card[data-mode="player"] #npTrack,
-  .card[data-mode="player"] .meters .duplex { display: none !important; }
-  .player { display: flex; flex-direction: column; justify-content: center;
-            align-items: center; gap: 10px; flex: 1 1 auto; min-height: 0;
-            text-align: center; padding: 8px 2px; }
+  /* The station player: a SHEET pulled down over the card, not a card mode.
+     The wipe is the design — the operator's ask is the player coming down
+     over the phone page like a shade, and going back up the same way — so
+     it overlays whatever the card was showing and touches none of the bands
+     beneath. A direct child of .card on purpose: .rig reserves visibility
+     for the call's own rows, and the first build sat inside it — laid out,
+     measured by every geometry probe, painting NOTHING (operator's phone,
+     2026-08-17). An absolutely-positioned sheet with its own opaque surface
+     cannot fail that way: if it arrives at all, it is visibly a surface. */
+  .player {
+    position: absolute; inset: 0; z-index: 60;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; text-align: center;
+    padding: 30px 16px 16px;
+    background-color: var(--granite); background-image: var(--skin-card-bg);
+    border-radius: inherit;
+    transform: translateY(-103%);
+    transition: transform .38s cubic-bezier(.32, .72, .28, 1);
+    will-change: transform;
+  }
+  .card.playeropen .player { transform: translateY(0); }
+  /* The finger owns the sheet mid-drag; the transition takes over on release. */
+  .player.dragging { transition: none; }
+  /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
+     At rest the sheet is display:none, so nothing sits off-canvas. */
   .player[hidden] { display: none !important; }
+  /* While the sheet is rendered the card clips, so the wipe stays inside the
+     card's own corners. The ask popup is position:fixed and does not care. */
+  .card:has(.player:not([hidden])) { overflow: clip; }
+
+  /* The ribbon: the shade's handle, centered on the card's top edge, above
+     the sheet (z 70 over 60) so the same grip closes what it opened. */
+  .ribbon {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    z-index: 70; width: 64px; height: 22px; padding: 0;
+    background: transparent; border: 0; cursor: grab;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  .ribbon .grip {
+    width: 34px; height: 4px; border-radius: 2px;
+    background: var(--sage-dim); display: block;
+  }
+  .ribbon:hover .grip { background: var(--alpenglow); }
+  .ribbon[hidden] { display: none; }
+
+  .plart { position: relative; width: 96px; height: 96px; }
+  .plart img {
+    width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+    border: 1px solid var(--hairline); background: var(--granite-hi);
+  }
+  .plmono {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; border-radius: 50%;
+    border: 1px solid var(--hairline); background: var(--granite-hi);
+    color: var(--coral); font: 700 30px/1 var(--font-mono);
+  }
+  /* The card's own photo-shape choice applies here too. */
+  .card[data-avatar="square"] .plart img,
+  .card[data-avatar="square"] .plmono { border-radius: 0; }
+  .plart img[hidden], .plmono[hidden] { display: none; }
   .pltrack { font-size: 15px; font-weight: 600; line-height: 1.3; }
   .plwho { font: 700 10px/1.4 var(--font-mono); letter-spacing: .12em;
            text-transform: var(--skin-label-case); color: var(--sage-dim); }

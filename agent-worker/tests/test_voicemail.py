@@ -1176,6 +1176,22 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertIn("switched off", result2["receipt"])
         self.assertIn("do NOT claim it worked", station2.says[0])
 
+    def test_the_studio_declares_its_own_visibility_in_the_rig(self):
+        # The rig ships reserved-but-hidden (`visibility: hidden`) and every
+        # band that should show must opt in — the chat input learned this
+        # ("present but invisible", operator-reported) and the studio
+        # relearned it: laid out, occupying its rows, no Record button
+        # anywhere (operator's screenshot, 2026-08-17). offsetParent checks
+        # saw nothing wrong, because offsetParent is blind to visibility —
+        # which is why this is pinned at the stylesheet, not probed at runtime.
+        from tests.support import REPO
+
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        if ".rig {\n    visibility: hidden" not in css.replace("\r\n", "\n"):
+            self.skipTest("the rig no longer reserves-hidden")
+        self.assertIn(".rig > .vmstudio { visibility: visible; }",
+                      css.replace("\r\n", "\n"))
+
     def test_the_studio_answers_to_the_machines_own_tier_door(self):
         # The first build hard-refused the open tier, while the operator's
         # real line runs allow_voicemail=open — their strangers could record
