@@ -1523,14 +1523,15 @@ SCHEMA: dict[str, dict] = {
              "phone — the widget becomes the station's app with a call "
              "button behind it. Browsers still wait for one tap before any "
              "audio starts; that is their rule, not a fault."),
-    "vm_player_duck": dict(group="player", kind="number",
-        label="Player under the machine (%)",
-        needs=("swipe_player", True),
-        help="While the studio rings, greets and records, playing music "
-             "ducks to this instead of stopping — the same move Tune-in "
-             "makes under a call. 10 by default; 0 keeps it silent but "
-             "running. Much above 20 and, on speakers, it bleeds into the "
-             "recording. Full volume returns when the studio closes."),
+    "vm_player_duck": dict(group="voicemail", kind="number",
+        label="Station under the machine (%)",
+        help="While the machine rings, greets and records, the station "
+             "plays underneath at this volume — piped in even when the "
+             "caller wasn't listening, the same move Tune-in makes on a "
+             "call. 10 by default; 0 keeps the machine quiet. Much above "
+             "20 and, on speakers, it bleeds into the recording. Music "
+             "that was playing before returns to full volume when the "
+             "machine hangs up."),
     "min_call_seconds": dict(group="closing", kind="number",
         label="Earliest hang-up (s)",
         help="The floor under the DJ ending a call itself. 60 by default: a model "

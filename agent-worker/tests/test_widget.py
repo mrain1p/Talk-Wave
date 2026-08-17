@@ -2796,9 +2796,12 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn("closePlayer(false)", call)
         # The studio DUCKS instead (operator's ask — the tune-in move): the
         # bed drops to the operator's percentage at the dial and never
-        # reaches the mic at full level.
-        dial = self.js.split("function vmDial()")[1][:900]
+        # reaches the mic at full level — and a QUIET card gets the station
+        # piped in at that level, so the machine always has the broadcast
+        # under it.
+        dial = self.js.split("function vmDial()")[1][:1400]
         self.assertIn("playerDucked = true", dial)
+        self.assertIn("vmBedOwn = true", dial)
 
     def test_the_sheet_is_not_a_rig_row(self):
         # .rig reserves visibility for the call's own rows — a band inside it

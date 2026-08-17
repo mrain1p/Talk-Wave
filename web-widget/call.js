@@ -2557,13 +2557,8 @@
     if (playerEl) {
       // Full volume, scaled only by the card's own slider: in the player the
       // broadcast is the subject, not the bed under a call. Under the
-      // STUDIO it ducks to the operator's percentage instead (playerDuck —
-      // the same move tune-in makes under a call).
-      const duck = playerDucked
-        ? Math.max(0, Math.min(100,
-            (shown && shown.playerDuck != null) ? shown.playerDuck : 10)) / 100
-        : 1;
-      const level = Math.min(1, getVolume() / 100) * duck;
+      // STUDIO it ducks instead — playerLevel carries the factor.
+      const level = playerLevel();
       playerEl.volume = level;
       playerEl.muted = level <= 0;
     }
@@ -3568,6 +3563,9 @@
   // The DJ's staged greeting, playing at pickup; and a session counter so a
   // greeting fetched for a studio the caller already closed never plays.
   let vmGreet = null, vmSession = 0, vmRingTimer = 0, vmDialed = false;
+  // True when the MACHINE started the station bed itself (nothing was
+  // playing when the line rang) — that bed is the machine's to stop.
+  let vmBedOwn = false;
 
   // The machine's own beep, synthesized — one second of the classic tone
   // between the greeting and the message, because a caller who has ever
@@ -3860,11 +3858,20 @@
     if (vmDialed) return;
     vmDialed = true;
     const session = vmSession;
-    // The station player DUCKS here, not dies (operator's ask): the same
-    // backdrop move tune-in makes under a call, at the operator's
-    // percentage, restored when the studio closes.
+    // The station rides UNDER the machine, the same move tune-in makes at a
+    // call's pickup (operator's ask): music already playing ducks to the
+    // operator's percentage, and a quiet card gets the station PIPED IN at
+    // that level — the caller hears the broadcast throughout either way.
+    // Whatever was playing before comes back full when the studio closes;
+    // a bed the machine started is the machine's to stop.
     playerDucked = true;
-    applyVolume();
+    if (playerEl) {
+      applyVolume();
+    } else if (playerLevel() > 0
+               && (((shown || live || {}).stream) || {}).url) {
+      vmBedOwn = true;
+      startPlayerAudio();
+    }
     vmSetChip('connecting', word('vm_chip_ring', 'Ringing'));
     setStatus(word('vm_ringing', 'Calling the machine…'), 'connecting');
     vmPaintButtons('idle');
@@ -3969,9 +3976,14 @@
     $('vmStudio').hidden = true;
     vmDropChip();
     setCardMode('idle');
-    // The ducked bed comes back up; a player a CALL had silenced (the
-    // classic machine flow goes through startCall) resumes.
+    // The ducked bed comes back up — or, if the machine piped it in itself,
+    // goes away with the machine. A player a CALL had silenced (the classic
+    // machine flow goes through startCall) resumes.
     playerDucked = false;
+    if (vmBedOwn) {
+      vmBedOwn = false;
+      stopPlayerAudio();
+    }
     applyVolume();
     resumePlayer();
     // Sent or cancelled, the box's story goes with the studio — leftover
@@ -4102,6 +4114,16 @@
       && !!d.swipePlayer && !!(d.stream && d.stream.url);
   }
 
+  // The card's own volume, times the machine's duck while the studio holds
+  // the line — 0 is a real value and mutes the bed without stopping it.
+  function playerLevel() {
+    const duck = playerDucked
+      ? Math.max(0, Math.min(100,
+          (shown && shown.playerDuck != null) ? shown.playerDuck : 10)) / 100
+      : 1;
+    return Math.min(1, getVolume() / 100) * duck;
+  }
+
   let playerStopped = false;
   function startPlayerAudio() {
     if (playerEl) return;
@@ -4122,7 +4144,7 @@
         }
         playerEl = el;
       },
-      level: () => Math.min(1, getVolume() / 100),
+      level: playerLevel,
       onPlaying: () => { playerDead = false; paintPlayerButtons(); feedMediaSession(); },
       onDead: () => {
         playerDead = true;

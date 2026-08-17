@@ -636,6 +636,14 @@
      no Record button, and the probe's offsetParent check saw nothing wrong
      because offsetParent is blind to visibility. */
   .rig > .vmstudio { visibility: visible; }
+  /* The now-playing rail is the third relearning of the same lesson: it
+     stopped being call-only the day the LISTEN chip moved in, and the
+     studio's RINGING/RECORDING chips and clock live there too — all of it
+     laid out and painting NOTHING under the reservation (operator's report,
+     2026-08-17: "i dont see the chips above the transcript box"). The rail
+     still collapses itself when every pill is hidden, so idle cards without
+     the player lose nothing. */
+  .rig > .nprail { visibility: visible; }
   /* Idle, the volume gives up its WIDTH as well as its ink. It was
      `visibility: hidden` alone, which keeps the box — on an embed that box was
      most of the band, and it squeezed the two waveforms into 65px between the
@@ -1339,7 +1347,11 @@
      dead meter must not look like a quiet one. Keyed on the rig rather than a
      class of its own, so there is nothing for JS to forget to clear. */
   .meter .bars i { background: var(--hairline); }
-  .rig.on .meter .bars i { background: currentColor; }
+  /* Lit on a call — and in the studio, which records without the rig ever
+     going .on: its YOU bars sat hairline-grey beside the call's amber ones
+     (operator: "keep some consistency"). */
+  .rig.on .meter .bars i,
+  .card[data-mode="vmstudio"] .meter .bars i { background: currentColor; }
   .meter.muted .bars i { background: var(--hairline); }
 
   /* --- volume ------------------------------------------------------------

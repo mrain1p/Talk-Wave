@@ -1251,6 +1251,13 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
             self.skipTest("the rig no longer reserves-hidden")
         self.assertIn(".rig > .vmstudio { visibility: visible; }",
                       css.replace("\r\n", "\n"))
+        # Third firing of the same trap: the rail carries the studio's
+        # RINGING/RECORDING chips and clock (and the idle card's LISTEN
+        # chip), and sat laid-out-but-invisible under the reservation —
+        # "i dont see the chips above the transcript box" (operator,
+        # 2026-08-17).
+        self.assertIn(".rig > .nprail { visibility: visible; }",
+                      css.replace("\r\n", "\n"))
 
     def test_the_studio_answers_to_the_machines_own_tier_door(self):
         # The first build hard-refused the open tier, while the operator's
