@@ -1,0 +1,40 @@
+# Build context hygiene + safety. The image is built from the REPO ROOT
+# (docker build -f agent-worker/Dockerfile .), so without this the whole
+# checkout — including data/ (API keys and password hashes in plaintext JSON),
+# .env and the LiveKit keypair — is shipped to the Docker daemon on every
+# build. The Dockerfile's COPYs are selective, so nothing here reaches the
+# image today; this keeps it that way if a COPY is ever broadened, and stops a
+# multi-hundred-MB .venv/.git from crawling into the context. Anything the
+# Dockerfile actually COPYs (agent-worker/, web-widget/, assets/) is NOT listed.
+
+# --- operator secrets: must never enter a build context --------------------
+data/
+.env
+*.env
+!.env.example
+livekit.yaml
+# persona-voices.json is operator-local and names their personas/voice samples.
+# The image ships persona-voices.example.json and falls back to it; a local
+# build must not bake the operator's real map into a published layer.
+agent-worker/persona-voices.json
+
+# --- version control + local environments ----------------------------------
+.git/
+.gitignore
+.venv/
+bin/
+
+# --- caches and build junk -------------------------------------------------
+**/__pycache__/
+**/*.pyc
+*.log
+
+# --- not part of the runtime image -----------------------------------------
+# Dev harnesses, working notes, upstream reference copies, design bundles.
+tools/
+subwave-probe/
+subwave-openapi.json
+notes-archive/
+chromeprofile*/
+*.zip
+.claude/

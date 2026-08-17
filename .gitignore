@@ -59,3 +59,8 @@ notes-archive/
 # commit to a public repo.
 chromeprofile*/
 chrome*.log
+
+# Reference copies of SUB/WAVE's own source, pulled in to read while working on
+# the mixer/caller-voice seam. Upstream code that must not be committed to this
+# public repo — same `git add -A` hazard as the browser profile above.
+subwave-probe/
