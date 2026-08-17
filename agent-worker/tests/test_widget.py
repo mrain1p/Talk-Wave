@@ -1654,6 +1654,18 @@ class TestEveryDoorReadsForItself(unittest.TestCase):
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         self.assertIn("if (!words && !emoji) words = true", call_js)
 
+    def test_an_icon_only_door_still_has_a_name(self):
+        # The two defaults above ship Text and Voicemail as BARE ICONS, and
+        # setBtn clears the button's text before painting one. The glyph is
+        # aria-hidden on purpose, so what was left had no accessible name at
+        # all: read off the deployment 2026-08-16, chatBtn and vmBtn had no
+        # text, no aria-label, no title and no SVG title — two of the three
+        # ways into this product announced to a screen reader as "button".
+        # Not a configuration anyone chose; it is what a fresh install does.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("el.setAttribute('aria-label', text)", call_js,
+                      "setBtn must name the door it just painted")
+
     def test_the_icon_is_a_currentColor_line_drawing(self):
         # An emoji glyph is a colour block the theme cannot touch (a yellow
         # phone on a slate card); the icon inherits the button's ink instead.

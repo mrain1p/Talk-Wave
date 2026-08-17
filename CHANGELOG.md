@@ -3,6 +3,12 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.97.26
+
+The Text and Voicemail buttons tell a screen reader what they are.
+
+- **An icon-only door had no name on it.** Both ship as bare icons by default, the glyph is hidden from assistive tech on purpose, and painting the icon cleared the word — so the two secondary ways into the product announced themselves as "button", with nothing else to go on. They carry their label now, and a hover tooltip with it, which is the same gap for anyone who just wants to know what the icon does.
+
 ## 0.97.25
 
 The on-air hold stops guessing, a DJ that was being cut off after one word isn't, and the throttle in front of your admin password starts working. Covers 0.97.3 through 0.97.25.

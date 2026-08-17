@@ -1039,6 +1039,20 @@
     if (st.words) {
       el.appendChild(document.createTextNode((st.emoji ? ' ' : '') + text));
     }
+    // The NAME survives the operator turning the word off. An icon-only door
+    // was reaching a screen reader as "button", with nothing else to go on:
+    // the glyph is the only content and it is aria-hidden, deliberately, so
+    // dropping the text node dropped the accessible name with it. Two of the
+    // three ways into this product — Text the booth and Leave a message —
+    // were shipped that way on the deployment (checked 2026-08-16). Always
+    // set, not only when icon-only, so the two can never disagree.
+    el.setAttribute('aria-label', text);
+    // And a tooltip for the sighted half of the same problem: an icon-only
+    // door gives a first-time caller no way to find out what it does short of
+    // pressing it. Only when the word is gone — a title that repeats a visible
+    // label is noise.
+    if (st.emoji && !st.words) el.setAttribute('title', text);
+    else el.removeAttribute('title');
     // An ICON-ONLY door is just its glyph — it should hug the icon and give
     // the row's slack to a worded door beside it, not sit at an equal third
     // (operator: "Call Danny Boy" was clipping while two bare icons took the
