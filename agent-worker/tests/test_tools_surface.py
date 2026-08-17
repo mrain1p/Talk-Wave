@@ -122,6 +122,10 @@ class TestExposedSurface(unittest.TestCase):
         # unguessable token is the credential; review.py burns it on first
         # claim and expires it in two minutes, so the URL a log leaks is dead.
         "GET /vm-air/{token}": "public",
+        # The live relay's clips, same pattern and same defence as /vm-air:
+        # the worker writes a turn, the mixer curls it once, the token is the
+        # filename and chunks.py expires it in three minutes (onair/chunks.py).
+        "GET /on-air/{token}": "public",
         "DELETE /settings/sounds/{name}": "admin",
         "GET /prompt": "admin",
         "GET /calls": "admin",

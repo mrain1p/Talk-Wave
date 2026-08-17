@@ -70,6 +70,41 @@ async def handle_health(request: web.Request) -> web.Response:
     )
 
 
+# Whether the live-relay transport is actually there, cached briefly: /live
+# is polled by every open widget, and the probe is a real TCP connect with a
+# 2s timeout — unreachable (the normal case: no shared docker network) would
+# otherwise cost every poll two seconds. The widget only offers the
+# Live-on-air toggle when this says yes, so a dead mixer means no toggle
+# rather than a caller choosing a door that dies mid-call.
+_onair_probe = {"at": 0.0, "ok": False}
+_ONAIR_PROBE_TTL = 30.0
+
+
+async def _on_air_door(cfg: dict) -> dict:
+    offered = settings_store.normalise_tier(
+        cfg.get("allow_on_air")) != settings_store.TIER_OFF
+    reachable = False
+    if offered:
+        import asyncio
+
+        from onair import transport
+
+        now = time.time()
+        if now - _onair_probe["at"] > _ONAIR_PROBE_TTL:
+            _onair_probe["ok"] = bool(
+                transport.air_base_url(cfg)
+                and await asyncio.to_thread(transport.mixer_reachable, cfg))
+            _onair_probe["at"] = now
+        reachable = _onair_probe["ok"]
+    return {
+        # The one flag the widget branches on: the door exists AND works.
+        "offered": offered and reachable,
+        # The tier the row is set to, so the card can explain a lock rather
+        # than silently hiding the toggle from a caller one code short.
+        "tier": settings_store.normalise_tier(cfg.get("allow_on_air")),
+    }
+
+
 def _secure_origin() -> str:
     """Where the HTTPS front door lives, if one is configured. wss signalling
     and the https widget share an origin by design (the Caddyfile routes
@@ -301,6 +336,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # (a LiveKit vm- room) or the soundbite studio (browser
                     # recording + review). The widget branches on this alone.
                     "voicemailFlow": str(cfg.get("voicemail_flow") or "machine"),
+                    # The phone-in door: whether a Live-on-air toggle is worth
+                    # offering at all (setting on AND mixer reachable), and at
+                    # what tier. The mint still enforces the tier for real.
+                    "onAirCalls": await _on_air_door(cfg),
                     # The widget's expiry maths stayed in minutes; only the SETTING
                     # moved to hours, so the wire stays compatible both ways.
                     "guestSessionMinutes":

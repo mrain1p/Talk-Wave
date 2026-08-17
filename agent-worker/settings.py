@@ -182,6 +182,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # the call, the show and the operator's memory of the call, and nothing
     # goes out on air to say it happened. Admin.
     "allow_never_play":   (None, "admin"),
+    # A caller's own conversation relayed to the station's air, one finished
+    # turn at a time — the phone-in. Off by default everywhere: a stranger's
+    # voice on the broadcast is a decision the operator makes, never a
+    # default. The window cap bounds how long one caller may hold the voice
+    # channel, because the station's own segments queue behind a live call.
+    "allow_on_air":       (None, "off"),
+    "on_air_max_seconds": (None, 240),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -696,6 +703,7 @@ TIER_OFF = "off"
 TIERED_PERMISSIONS = (
     "allow_voicemail",
     "allow_chat",
+    "allow_on_air",
     "allow_requests",
     "allow_library_search",
     "allow_sound_search",
@@ -772,18 +780,35 @@ def permission_reaches(setting: Any, tier: str) -> bool:
 def tier_from_room(room_name: str) -> str:
     """The caller's tier, read back out of the room the token was signed for.
 
-    `callin-<o|g|a>-<12 hex>`. Anything else — a probe room, a room minted by
-    a version of the token server that predates this, a name from somewhere
-    else entirely — comes back as the LEAST trusted tier. Failing closed is
-    the only safe direction: the alternative is an unrecognised name handing a
-    stranger the operator's own permissions.
+    `callin-<o|g|a>-<12 hex>`, with an optional `l` behind the tier letter
+    (`callin-gl-…`) marking an on-air call — see on_air_from_room. Anything
+    else — a probe room, a room minted by a version of the token server that
+    predates this, a name from somewhere else entirely — comes back as the
+    LEAST trusted tier. Failing closed is the only safe direction: the
+    alternative is an unrecognised name handing a stranger the operator's own
+    permissions.
     """
     parts = str(room_name or "").split("-")
     if len(parts) >= 3 and parts[0] == "callin":
         for tier in TIERS:
-            if parts[1] == tier[0]:
+            if parts[1] in (tier[0], tier[0] + "l"):
                 return tier
     return "open"
+
+
+def on_air_from_room(room_name: str) -> bool:
+    """Whether this call was minted as a live-on-air call.
+
+    Rides the room NAME for the same two reasons the tier does: the name is
+    inside the signed grant, so a caller cannot put themselves on air without
+    a token nobody minted them, and the worker knows it the instant the job
+    starts. The flag is one letter behind the tier so tier_from_room's exact
+    matching still fails closed on anything unrecognised.
+    """
+    parts = str(room_name or "").split("-")
+    return (len(parts) >= 3 and parts[0] == "callin"
+            and len(parts[1]) == 2 and parts[1][1] == "l"
+            and parts[1][0] in {t[0] for t in TIERS})
 
 
 def permissions_for(cfg: dict, tier: str) -> dict:
@@ -1141,6 +1166,23 @@ SCHEMA: dict[str, dict] = {
              "rather than failing. Same 15–720 minute window as a takeover and it "
              "ends by itself. Quieter than a takeover, which is the risk: a pinned "
              "show announces itself on air, a narrowed playlist doesn't."),
+    "allow_on_air": dict(group="perms", kind="select", tiered=True, admin=True,
+        label="Go live on the station",
+        help="The phone-in: the caller's own conversation with the DJ airs on the "
+             "station while it happens, one finished turn at a time, about one "
+             "exchange behind the room. The widget grows a Live-on-air toggle when "
+             "a caller may choose it. Needs the mixer's telnet door (the same "
+             "network stanza as the studio's caller-voice) — without it the call "
+             "quietly stays private and the transcript says why. The turn still "
+             "in hand is a working broadcast delay: it can be dumped before it "
+             "airs."),
+    "on_air_max_seconds": dict(group="perms", kind="number", admin=True,
+        label="On-air window (s)",
+        needs=("allow_on_air", TIERS),
+        help="How long one caller may hold the broadcast before the relay signs "
+             "them off air and the call carries on privately. The station's own "
+             "segments queue behind a live call, so shorter is kinder to the "
+             "programme. Blank = 240."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good",
         help="Puts the track playing now on the station's never-play list: out of the "

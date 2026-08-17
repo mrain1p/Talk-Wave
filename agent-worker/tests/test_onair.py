@@ -104,7 +104,7 @@ class _RelayCase(_ChunkStore):
     def setUp(self):
         super().setUp()
         self._old_load = settings_store.load
-        settings_store.load = lambda: {"call_on_air": True}
+        settings_store.load = lambda: {"allow_on_air": "open"}
         self.addCleanup(lambda: setattr(settings_store, "load", self._old_load))
 
     def _fake_mixer(self, reply: bytes = b"409\nEND\n") -> tuple[str, list]:
@@ -148,8 +148,7 @@ class _RelayCase(_ChunkStore):
     def _relay(self, station=None, record=None, **cfg_extra):
         addr, got = self._fake_mixer()
         cfg = {"vm_mixer_telnet": addr,
-               "vm_air_base_url": "http://192.168.1.245:8100",
-               "call_on_air": True, **cfg_extra}
+               "vm_air_base_url": "http://192.168.1.245:8100", **cfg_extra}
         r = relay_mod.CallRelay(station or _FakeStation(), cfg,
                                 room="callin-g-abcdef123456", tier="guest",
                                 record=record or _FakeRecord())
@@ -205,7 +204,7 @@ class TestTheRelayObeysTheOperatorMidCall(_RelayCase):
             r, got = self._relay()
             await r.open()
             await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
-            settings_store.load = lambda: {"call_on_air": False}
+            settings_store.load = lambda: {"allow_on_air": "off"}
             await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
             await r.feed(self._feed_file("t3.wav"), "caller", 2.0)
             return r, got

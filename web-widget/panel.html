@@ -680,7 +680,12 @@
           <div class="row permrow" data-perm="allow_dj_segment"><select id="allow_dj_segment"></select></div>
           <div class="row permrow" data-perm="allow_takeover"><select id="allow_takeover"></select></div>
           <div class="row permrow" data-perm="allow_genre_lock"><select id="allow_genre_lock"></select></div>
+          <div class="row permrow" data-perm="allow_on_air"><select id="allow_on_air"></select></div>
           <div class="row permrow" data-perm="allow_never_play"><select id="allow_never_play"></select></div>
+        </div>
+        <div class="row narrow">
+          <label for="on_air_max_seconds">On-air window (s)</label>
+          <input type="number" id="on_air_max_seconds" min="30" max="1800" step="30" />
         </div>
         <p class="hint wide">Sound effects and playlist rebuilds stay unavailable
           to callers whatever you set here — “Test station + tools” prints the

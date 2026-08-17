@@ -41,9 +41,11 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
+from onair.relay import CallRelay
+
 from . import (asks as asks_mod, background, comeback, door,
                floor as floor_mod, greeting, handoff, lifecycle, postmortem,
-               promise_guard)
+               promise_guard, tee as tee_mod)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -144,6 +146,16 @@ class CallSession:
         self.cfg = settings_store.permissions_for(settings_store.load(), self.tier)
         self.station = StationClient()
         self.station_cfg = StationConfig()
+
+        # The caller chose the on-air door AND this tier still clears it —
+        # the mint already gated the choice inside the signed room name, but
+        # the worker re-reads settings per call, so an operator who switched
+        # the feature off between mint and pickup wins here. The relay itself
+        # is built (and the transport preflighted) in start().
+        self.on_air_asked = (settings_store.on_air_from_room(ctx.room.name)
+                             and bool(self.cfg.get("allow_on_air")))
+        self.relay: CallRelay | None = None
+        self._tee: tee_mod.TeeHandle | None = None
 
         self.persona: dict = {}
         # The segments THIS DJ may run, narrowed in prepare(). Empty until then,
@@ -324,6 +336,34 @@ class CallSession:
 
     async def start(self) -> None:
         """Build the voice session and put the DJ on the line."""
+        # The on-air relay opens BEFORE the session is built, for one reason:
+        # the prompt. The DJ must be told it is live before its first word,
+        # and the only honest moment to decide that is after the transport
+        # preflight — a prompt written earlier would claim an air that a dead
+        # mixer then never carries. The intro line airs during what the
+        # caller still hears as ringing.
+        if self.on_air_asked:
+            relay = CallRelay(self.station, self.cfg, self.ctx.room.name,
+                              tier=self.tier, record=self.record)
+            if await relay.open():
+                self.relay = relay
+                # The overlap guard holds the call DJ while "the broadcast
+                # talks" — but on this call the broadcast IS the call, and
+                # the relay's own intro/outro must not gag the conversation
+                # they bracket.
+                self.air.enabled = False
+                if self.record:
+                    self.record.data["config"]["onAir"] = True
+                self.instructions += (
+                    "\n\nThis call is LIVE ON AIR: the conversation is "
+                    "broadcast on the station as it happens, a few seconds "
+                    "behind. Keep it broadcast-clean and keep the pace "
+                    "bright. Never read out private details — numbers, "
+                    "addresses, codes — the listeners hear everything the "
+                    "caller says.")
+            # A failed open already wrote why to the record; the call simply
+            # proceeds as a private one.
+
         allowed_tools, local_tools = self._build_tools()
 
         log.info(
@@ -397,6 +437,10 @@ class CallSession:
             room_options=RoomOptions(close_on_disconnect=True),
         )
         self._attach_behaviours()
+        if self.relay:
+            # Both taps go in only once the session's own IO chain exists,
+            # and before greet() — the greeting is the first DJ clip to air.
+            self._tee = tee_mod.attach(self.session, self.relay)
 
     def _attach_behaviours(self) -> None:
         """Everything that runs for the life of the call."""
@@ -444,6 +488,19 @@ class CallSession:
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
+        # The relay closes FIRST, inside this callback rather than as its own
+        # (the SDK runs shutdown callbacks concurrently, and the off-air line
+        # belongs inside the record that is written below): the caller's last
+        # word is usually still mastering, so the tee drains before the relay
+        # pushes its held tail and signs off air.
+        if self.relay:
+            try:
+                if self._tee:
+                    await self._tee.drain()
+                await self.relay.close("the call ended")
+            except Exception as e:                              # noqa: BLE001
+                log.warning("the on-air relay did not close cleanly: %s", e)
+
         duration = time.time() - self.started_at
         # Ours first — attach_time_limit and the idle goodbye set a real reason.
         # The SDK's close reason fills the gap they leave, which is every call

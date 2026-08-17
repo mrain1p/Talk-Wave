@@ -34,8 +34,9 @@ _caller_last: dict[str, float] = {}      # caller key -> last mint
 
 # A minted room is `<prefix>-<tier?>-<12 hex>`; feedback for anything else was
 # never a real call, so it is rejected before the 10s / 20-scan retry loop
-# rather than tying a request open on a random string (0.10.57 review).
-_ROOM_SHAPE = re.compile(r"^(callin|vm|probe)-([a-z]-)?[0-9a-f]{12}$")
+# rather than tying a request open on a random string (0.10.57 review). The
+# tier segment may carry the on-air letter behind it (`callin-gl-…`).
+_ROOM_SHAPE = re.compile(r"^(callin|vm|probe)-([a-z]l?-)?[0-9a-f]{12}$")
 # And a ceiling on how many feedback waiters may be parked at once, so a flood
 # of well-formed-but-nonexistent rooms can't hold a pile of requests open.
 _feedback_waiters = asyncio.Semaphore(16)
@@ -233,6 +234,8 @@ async def handle_token(request: web.Request) -> web.Response:
         body = {}
     probe = bool(isinstance(body, dict) and body.get("probe"))
     voicemail = bool(isinstance(body, dict) and body.get("voicemail")) and not probe
+    on_air = (bool(isinstance(body, dict) and body.get("onAir"))
+              and not probe and not voicemail)
     if probe and not _write_allowed(request):
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "not allowed",
@@ -277,6 +280,16 @@ async def handle_token(request: web.Request) -> web.Response:
         elif refusal:
             log.info("call refused by usage controls: %s", refusal)
             return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
+        if on_air and not settings_store.tier_reaches(
+                cfg.get("allow_on_air"), caller_tier(request)):
+            # Same ladder as the machine's gate: "off" grants nobody and an
+            # unknown value fails closed. The widget only offers the toggle
+            # when /live says the door exists, so a refusal here is a
+            # hand-built client or a stale tab — either way it is told
+            # plainly rather than being put on air anyway.
+            return _cors(request, web.json_response(
+                {"error": "This line can't put callers on the air."},
+                status=403))
         if not voicemail and (settings_store.voicemail_policy(cfg) == "always"
                               or not cfg.get("live_calls_enabled", True)):
             # A voicemail-only line: the widget offers Leave a message and a
@@ -299,9 +312,12 @@ async def handle_token(request: web.Request) -> web.Response:
     # The last 12 characters stay hex: call/record.py finds a transcript by
     # matching on that suffix, and the widget posts a rating against it.
     tier = "admin" if probe else caller_tier(request)
+    # The on-air letter rides behind the tier, inside the signed name, for
+    # the same reason the tier itself does: a caller cannot flip it.
+    seg = tier[0] + ("l" if on_air else "")
     room = (f"probe-{uuid.uuid4().hex[:12]}" if probe
             else f"vm-{tier[0]}-{uuid.uuid4().hex[:12]}" if voicemail
-            else f"callin-{tier[0]}-{uuid.uuid4().hex[:12]}")
+            else f"callin-{seg}-{uuid.uuid4().hex[:12]}")
     identity = f"caller-{uuid.uuid4().hex[:8]}"
 
     token = (

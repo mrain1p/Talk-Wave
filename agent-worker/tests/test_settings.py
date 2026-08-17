@@ -974,3 +974,48 @@ class TestTheStationPlayerShipsOff(_TempStores):
 
         self.assertEqual(settings_store.FIELDS["vm_player_duck"][1], 10)
         self.assertEqual(settings_store.FIELDS["tune_in_volume"][1], 10)
+
+
+class TestTheOnAirLetterRidesTheRoomName(_TempStores):
+    """The phone-in flag lives inside the signed room name, behind the tier
+    letter — `callin-gl-…` — so a caller can no more put themselves on air
+    than raise their own tier. Parsing must fail CLOSED both ways: an
+    unrecognised name is an open-tier private call, never an on-air one."""
+
+    def test_the_tier_still_reads_through_the_flag(self):
+        self.assertEqual(
+            settings_store.tier_from_room("callin-gl-0123456789ab"), "guest")
+        self.assertEqual(
+            settings_store.tier_from_room("callin-al-0123456789ab"), "admin")
+        # And the plain rooms are untouched.
+        self.assertEqual(
+            settings_store.tier_from_room("callin-g-0123456789ab"), "guest")
+
+    def test_on_air_reads_only_the_shape_the_mint_writes(self):
+        self.assertTrue(
+            settings_store.on_air_from_room("callin-ol-0123456789ab"))
+        self.assertTrue(
+            settings_store.on_air_from_room("callin-gl-0123456789ab"))
+        for not_on_air in ("callin-g-0123456789ab",     # plain call
+                           "vm-g-0123456789ab",         # the machine
+                           "probe-0123456789ab",        # pipeline check
+                           "callin-xl-0123456789ab",    # x is not a tier
+                           "callin-lg-0123456789ab",    # flag before tier
+                           "", "garbage"):
+            self.assertFalse(settings_store.on_air_from_room(not_on_air),
+                             not_on_air)
+        # The x-tier room also fails the TIER parse closed, to open.
+        self.assertEqual(
+            settings_store.tier_from_room("callin-xl-0123456789ab"), "open")
+
+    def test_the_door_ships_shut_and_the_window_has_a_number(self):
+        # A stranger's voice on the broadcast is the operator's decision;
+        # every deployment that never touches the row must stay private.
+        self.assertEqual(settings_store.FIELDS["allow_on_air"][1], "off")
+        self.assertIn("allow_on_air", settings_store.TIERED_PERMISSIONS)
+        self.assertEqual(settings_store.FIELDS["on_air_max_seconds"][1], 240)
+        cfg = settings_store.permissions_for(
+            {"allow_on_air": "guest"}, "guest")
+        self.assertTrue(cfg["allow_on_air"])
+        self.assertFalse(settings_store.permissions_for(
+            {"allow_on_air": "guest"}, "open")["allow_on_air"])

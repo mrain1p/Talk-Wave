@@ -765,3 +765,84 @@ class TestTheSettingsGearIsForTheOperator(_TempStores):
         # The gate is not the fact. isAdmin stays true only for an admin, so
         # anything else reading it is not told a first-run guest is one.
         self.assertFalse(self._payload("open", configured=False)["isAdmin"])
+
+
+class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
+    """Asking for onAir is a request, not a right: the mint checks the same
+    tier ladder the machine's gate uses, and only a cleared ask puts the
+    letter in the signed room name. The widget hides the toggle when the door
+    is shut, so a refusal here is a hand-built client — told plainly."""
+
+    def _mint(self, allow, tier="open", on_air=True):
+        import asyncio
+        import json as _json
+        import types
+
+        import settings as settings_store
+        from api import tokens as api_tokens
+
+        async def _body():
+            return {"onAir": on_air}
+
+        req = types.SimpleNamespace(
+            headers={"User-Agent": "test"}, remote="1.2.3.4",
+            json=_body, can_read_body=True)
+        patches = {
+            "LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": "test-secret",
+            "_guest_ok": lambda r: True, "caller_tier": lambda r: tier,
+        }
+        old = {k: getattr(api_tokens, k) for k in patches}
+        old_load = settings_store.load
+        settings_store.load = lambda: {"allow_on_air": allow}
+        api_tokens._recent_mints[:] = []
+        api_tokens._caller_last.clear()
+        try:
+            for k, v in patches.items():
+                setattr(api_tokens, k, v)
+            resp = asyncio.run(api_tokens.handle_token(req))
+        finally:
+            for k, v in old.items():
+                setattr(api_tokens, k, v)
+            settings_store.load = old_load
+            api_tokens._live_calls.clear()
+        return resp.status, _json.loads(resp.body.decode())
+
+    def test_a_tier_short_of_the_row_is_refused_plainly(self):
+        status, body = self._mint(allow="admin", tier="open")
+        self.assertEqual(status, 403)
+        self.assertNotIn("tier", body["error"].lower())   # in-world wording
+
+    def test_a_cleared_ask_mints_the_lettered_room(self):
+        status, body = self._mint(allow="guest", tier="guest")
+        self.assertEqual(status, 200)
+        self.assertTrue(body["room"].startswith("callin-gl-"), body["room"])
+
+    def test_off_means_nobody_including_admin(self):
+        status, _ = self._mint(allow="off", tier="admin")
+        self.assertEqual(status, 403)
+
+    def test_a_plain_call_is_untouched_by_the_gate(self):
+        status, body = self._mint(allow="off", on_air=False)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["room"].startswith("callin-o-"), body["room"])
+
+    def test_feedback_accepts_the_lettered_room(self):
+        # The rating rides the room name after the call; a shape gate that
+        # never learned the letter would 400 every on-air caller's thumbs.
+        import asyncio
+        import types
+
+        from api import tokens as api_tokens
+        from call import record as call_record
+
+        async def _body():
+            return {"room": "callin-gl-0123456789ab", "rating": "up"}
+
+        req = types.SimpleNamespace(headers={}, json=_body)
+        old = call_record.rate
+        call_record.rate = lambda *a: True
+        try:
+            resp = asyncio.run(api_tokens.handle_call_feedback(req))
+        finally:
+            call_record.rate = old
+        self.assertEqual(resp.status, 200)

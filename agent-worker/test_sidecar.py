@@ -36,6 +36,7 @@ from tests.test_settings import (  # noqa: F401
     TestAnUpgradeClosesNoDoorAndHandsOutNoPower,
     TestACommentedEnvValueIsNamedAtBoot,
     TestTheStationPlayerShipsOff,
+    TestTheOnAirLetterRidesTheRoomName,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,
@@ -61,6 +62,7 @@ from tests.test_http import (  # noqa: F401
     TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
     TestTheSettingsGearIsForTheOperator,
+    TestTheOnAirDoorIsGatedAtTheMint,
 )
 from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,

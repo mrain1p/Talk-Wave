@@ -163,7 +163,7 @@ class CallRelay:
         """One clip to the voice queue — after asking settings whether this
         broadcast is still allowed to exist."""
         cfg = settings_store.permissions_for(settings_store.load(), self.tier)
-        if not cfg.get("call_on_air"):
+        if not cfg.get("allow_on_air"):
             chunk["wav"].unlink(missing_ok=True)
             await self._close_locked(
                 "the operator switched on-air calls off", say_outro=False)
