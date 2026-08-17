@@ -619,7 +619,11 @@
     // button is pressed, but `room` is only assigned after the token mint, so
     // a board keyed on `room` alone sat over a connected call — the operator
     // saw LINES ARE OPEN above a live transcript at 0:17.
-    const busy = !!room || chatOpen
+    // `inConversation()` catches what the flags below cannot: the soundbite
+    // studio has no room, no chat socket and no .oncall, so the poll painted
+    // LINES ARE OPEN over a caller mid-recording (operator's screenshot,
+    // 2026-08-17) — the same shape as the 0:17 incident, one surface later.
+    const busy = !!room || chatOpen || inConversation()
       || document.querySelector('.card').classList.contains('oncall')
       || (capBox.classList.contains('on') && capBox.children.length)
       || !$('guestGate').hidden || !$('setupNudge').hidden
@@ -1635,7 +1639,12 @@
       // Several station reads in a row have failed server-side: the card
       // still paints from cache, but the operator should see it's limping
       // rather than discovering thin prompts later.
-      if (!room) {
+      // `!inConversation()` and not just `!room`: the soundbite studio holds
+      // no room, so the poll blanked its instruction line 20s in and painted
+      // the idle board over a caller mid-take (operator's screenshot,
+      // 2026-08-17). The studio's own status writes are not the poll's to
+      // overwrite.
+      if (!room && !inConversation()) {
         if (d.degraded) {
           setStatus('Station responding slowly — some info may be stale', 'connecting');
         } else if (lineClosedNow) {
@@ -3641,6 +3650,10 @@
     $('vmAction').textContent = '';
     $('vmReview').hidden = true;
     $('vmStudio').hidden = false;
+    // The idle board may already be painted in the box, and the poll no
+    // longer repaints (or hides) anything while the studio is open — so the
+    // hand-off is ours: board away, studio in.
+    $('idleBoard').hidden = true;
     setCardMode('vmstudio');
     vmPaintButtons('idle');
     setStatus('Press Record and say your piece — the DJ airs it after you '
