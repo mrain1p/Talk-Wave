@@ -2735,6 +2735,29 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn('"swipePlayer"', self.live_py)
         self.assertIn("d.swipePlayer", self.js)
 
+    def test_the_listener_actions_ride_the_players_own_door(self):
+        # /player/like and /player/request WRITE to the station. They must
+        # not exist while the player is switched off, and they answer to the
+        # same guest door as the phone. The station side is public listener
+        # API with its own per-IP limits — this door only ever narrows it.
+        src = (AGENT_WORKER / "api" / "player.py").read_text(encoding="utf-8")
+        door = src.split("def _door")[1][:900]
+        self.assertIn('get("swipe_player")', door)
+        self.assertIn("_guest_ok", door)
+        for handler in ("handle_player_like_status", "handle_player_like",
+                        "handle_player_request"):
+            body = src.split(f"async def {handler}")[1][:220]
+            self.assertIn("_door(request)", body)
+
+    def test_the_queue_travels_only_while_the_player_is_on(self):
+        # A /state read per /live rebuild is not free on a rate-limited
+        # station — the phone card shows none of it, so it is only fetched
+        # for deployments that actually switched the player on.
+        self.assertIn('"upNext"', self.live_py)
+        gate = self.live_py.split("up_next = []")[1][:200]
+        self.assertIn('cfg.get("swipe_player")', gate)
+        self.assertIn("d.upNext", self.js)
+
     def test_the_record_travels_as_structure_and_the_art_is_proxied(self):
         # The sheet renders the same analysis strip the station's own player
         # does (genre · BPM · key · mood) — from /live, not from a second

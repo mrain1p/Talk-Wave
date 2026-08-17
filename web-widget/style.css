@@ -798,7 +798,9 @@
      pulldown/tab/bookmark"). Visible only while the player is closed; the
      way back up is the grabber at the dock's foot. Neutral surface tones on
      purpose: nothing red rides the handle. */
-  .ribbon {
+  /* .card-prefixed: the card's own `.card button` costume outranks a bare
+     class, and it dressed the bookmark as a control-height button. */
+  .card .ribbon {
     position: absolute; top: 0; left: 50%; transform: translateX(-50%);
     z-index: 70; width: 76px; height: 24px; padding: 0;
     background: var(--granite); border: 1px solid var(--edge); border-top: 0;
@@ -806,12 +808,12 @@
     display: flex; align-items: center; justify-content: center;
     touch-action: none;
   }
-  .ribbon .grip {
+  .card .ribbon .grip {
     width: 30px; height: 4px; border-radius: 2px;
     background: var(--sage-dim); display: block;
   }
-  .ribbon:hover .grip { background: var(--alpenglow); }
-  .ribbon[hidden] { display: none; }
+  .card .ribbon:hover .grip { background: var(--alpenglow); }
+  .card .ribbon[hidden] { display: none; }
 
   /* ---- The player's own anatomy: the operator's 3a handoff, token for
      token. Header ribbon / glow art / title block / chips / progress /
@@ -914,13 +916,13 @@
     display: flex; flex-direction: column; gap: 10px;
   }
   .plctl { display: flex; align-items: center; gap: 12px; }
-  .plheart {
+  .card .plheart {
     width: 44px; height: 44px; flex: none; border: 1px solid var(--edge);
     background: transparent; color: var(--sage); font-size: 18px;
     line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
   }
-  .plheart.liked { color: var(--coral); border-color: var(--coral); }
-  .plheart[hidden] { display: none; }
+  .card .plheart.liked { color: var(--coral); border-color: var(--coral); }
+  .card .plheart[hidden] { display: none; }
   .plnote { color: var(--sage-dim); font-size: 13px; flex: none; }
   /* The same drawn fader as the card's — a browser-native accent-color
      slider is a different height on every platform, which is the exact
@@ -967,15 +969,15 @@
   .plreqmsg:empty { display: none; }
   /* The way home: the same grip as the top bookmark, now at the sheet's
      foot — "the pulldown stays on the bottom when the page is switched". */
-  .plgrab {
+  .card .plgrab {
     align-self: center; width: 76px; height: 20px; padding: 0;
     background: transparent; border: 0; cursor: grab;
     display: flex; align-items: center; justify-content: center;
     touch-action: none;
   }
-  .plgrab .grip { width: 34px; height: 4px; border-radius: 2px;
+  .card .plgrab .grip { width: 34px; height: 4px; border-radius: 2px;
                   background: var(--sage-dim); display: block; }
-  .plgrab:hover .grip { background: var(--alpenglow); }
+  .card .plgrab:hover .grip { background: var(--alpenglow); }
 
   /* The door into the player is a chip that is pressed, not read — the one
      pill that acts like a button. Green while the stream is actually

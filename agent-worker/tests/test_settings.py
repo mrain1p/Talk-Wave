@@ -961,3 +961,8 @@ class TestTheStationPlayerShipsOff(_TempStores):
 
         self._write_store({"swipe_player": True})
         self.assertTrue(settings_store.load()["swipe_player"])
+
+    def test_the_front_page_stays_the_phone_until_chosen(self):
+        import settings as settings_store
+
+        self.assertIs(settings_store.FIELDS["start_on_player"][1], False)

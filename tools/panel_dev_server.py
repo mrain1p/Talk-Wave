@@ -276,6 +276,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # The player's listener actions, from fixtures — enough to drive the
+        # heart filling and the SENT beat without a station.
+        if self.path.split("?")[0] == "/player/like":
+            return self._json({"ok": True, "liked": True, "count": 4})
+        if self.path.split("?")[0] == "/player/request":
+            return self._json({"success": True, "message": "Sent to the booth"})
         # A posted settings patch really lands in the stub's TEMP store —
         # /live reads the store back, so the closed-line states (pause the
         # line, switch a mode off) can be driven end to end in a browser.
@@ -543,6 +549,12 @@ class Handler(BaseHTTPRequestHandler):
                 # Like callsPaused above: from the stub's own settings, so
                 # ticking the box in the panel offers the player on the card.
                 "swipePlayer": bool(settings_store.load().get("swipe_player")),
+                "playerStart": bool(settings_store.load().get("start_on_player")),
+                # One queued record and a weather line, so the player's
+                # panels and header exercise their filled states.
+                "upNext": [{"title": "Esta noche", "artist": "Federico Aubele",
+                            "requestedBy": "Marco"}],
+                "weather": "cloudy 70°F",
                 # A show palette, so the theme cycle's third stop exists here.
                 "stationTheme": {"mode": "dark", "tokens": {
                     "--bg": "#1a2320", "--card": "#22302a", "--ink": "#e8efe9",
@@ -555,6 +567,11 @@ class Handler(BaseHTTPRequestHandler):
         # reach `playing` for real — the sandbox has no station to pull.
         if path == "/stream":
             return self._send(200, _stream_wav(), "audio/wav")
+
+        # The heart's current state, from a fixture.
+        if path == "/player/like":
+            return self._json({"enabled": True, "songId": "s1",
+                               "liked": False, "count": 3})
 
         # Same two extensionless routes token_server serves — /settings is
         # the panel's one address; the old /panel 404s here like it does on

@@ -228,6 +228,27 @@ async def handle_live(request: web.Request) -> web.Response:
         stream_url, stream_alternates = await tune_in.resolve(
             cfg, settings_store.station_base_url()
         )
+        # The player's UP NEXT panel: the station's own queue snapshot, read
+        # only when the player is switched on — the phone card shows none of
+        # it, and a /state read per rebuild is not free on a rate-limited
+        # station.
+        up_next = []
+        if cfg.get("swipe_player"):
+            snap = await station.state()
+            for item in (snap.get("upcoming") or [])[:2]:
+                if item.get("title"):
+                    up_next.append({
+                        "title": item.get("title"),
+                        "artist": item.get("artist") or None,
+                        "requestedBy": item.get("requestedBy") or None,
+                    })
+        # The header's weather readout, from the context the station already
+        # sends with /now-playing — same source its own player reads.
+        wx = (now.get("context") or {}).get("weather") or {}
+        weather_line = (
+            f"{wx['condition']} {wx['temp']}°{wx.get('tempUnit') or ''}"
+            if wx.get("condition") not in (None, "", "unknown")
+            and wx.get("temp") is not None else None)
         payload = (
                 {
                     "reachable": reachable,
@@ -286,6 +307,12 @@ async def handle_live(request: web.Request) -> web.Response:
                     # resolved URL before it shows the gesture, so a switch
                     # flipped on with no reachable stream offers nothing.
                     "swipePlayer": bool(cfg.get("swipe_player")),
+                    # Which face the page opens on; the widget still requires
+                    # the player to actually be offered before honouring it.
+                    "playerStart": bool(cfg.get("start_on_player")),
+                    # The player's queue panel and header weather.
+                    "upNext": up_next,
+                    "weather": weather_line,
                     # Everything that is a look rather than a fact — the theme,
                     # the corner controls, which lines of the who's-on-air
                     # block each surface paints, the photo's shape, the Call
