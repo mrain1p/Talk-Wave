@@ -526,8 +526,22 @@ async def handle_vm_greeting(request: web.Request) -> web.StreamResponse:
     clip = await greetings.ensure_clip(persona, dj, cfg)
     if not clip:
         raise web.HTTPNotFound()
-    return web.FileResponse(clip, headers={
-        "Cache-Control": "no-store", "Content-Type": "audio/wav"})
+    # The WORDS ride a header beside the audio, URI-encoded (headers are
+    # latin-1 and a greeting is not): the studio captions what the DJ is
+    # saying while the voice plays. Keyed off the clip actually served —
+    # staged_clip falls back across personas, and the caption must match
+    # the voice, not the ask.
+    headers = {"Cache-Control": "no-store", "Content-Type": "audio/wav"}
+    try:
+        from urllib.parse import quote
+
+        text = str((greetings.read_index().get(clip.stem) or {})
+                   .get("text") or "")
+        if text:
+            headers["X-Greeting-Text"] = quote(text)
+    except Exception:                                         # noqa: BLE001
+        pass
+    return web.FileResponse(clip, headers=headers)
 
 
 async def handle_vm_air_clip(request: web.Request) -> web.StreamResponse:
