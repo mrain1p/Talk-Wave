@@ -450,9 +450,16 @@ async def handle_vm_draft_send(request: web.Request) -> web.Response:
     vm_deliver.hold(str(draft.get("transcript") or "(no transcript)"), "",
                     delivered=f"soundbite/{result.get('backend')}",
                     note=str(result.get("receipt") or "")[:300])
-    # Sent or failed, the audio does not outlive the attempt: the caller
-    # still has their voice; we should not.
-    vm_review.delete(draft_id)
+    # Sent or failed, the audio does not outlive the attempt — but WHEN it
+    # dies depends on the backend. caller-voice pushed a URL the mixer
+    # fetches LAZILY, when the queue reaches the clip after the DJ's intro:
+    # deleting here beat the fetch to it, the mixer got a 404, and the
+    # operator heard the DJ speak around a hole where their own voice
+    # should have been (2026-08-17, RIDs 65/69). The clip now dies at the
+    # claim (handle_vm_air_clip), with the sweep as the net if the mixer
+    # never comes; every other backend has no later reader, so it dies now.
+    if result.get("backend") != "caller-voice":
+        vm_review.delete(draft_id)
 
     status = 200 if result.get("ok") else 502
     return _cors(request, web.json_response(
@@ -474,11 +481,19 @@ async def handle_vm_draft_delete(request: web.Request) -> web.Response:
 async def handle_vm_air_clip(request: web.Request) -> web.StreamResponse:
     """The mixer's one fetch. Public by design — the mixer is curl on another
     network — so the token IS the credential: unguessable, ~2 minutes, burned
-    by this claim (voicemail/review.py owns those rules)."""
+    by this claim (voicemail/review.py owns those rules).
+
+    Served from memory and deleted BEFORE the response goes out: this claim
+    is the clip's one reader, and it is also the moment "the audio does not
+    outlive the attempt" comes due — the send handler cannot delete it (the
+    mixer fetches lazily and 404'd on a draft deleted at send), so the fetch
+    itself is where the voice leaves the disk."""
     from voicemail import review as vm_review
 
     path = vm_review.claim_air_token(request.match_info.get("token", ""))
     if not path:
         raise web.HTTPNotFound()
-    return web.FileResponse(path, headers={
+    data = path.read_bytes()
+    vm_review.delete(path.stem)
+    return web.Response(body=data, headers={
         "Cache-Control": "no-store", "Content-Type": "audio/wav"})

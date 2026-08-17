@@ -1190,6 +1190,24 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertIn("switched off", result2["receipt"])
         self.assertIn("do NOT claim it worked", station2.says[0])
 
+    def test_the_clip_dies_at_the_claim_not_at_the_send(self):
+        # The mixer fetches the pushed URL LAZILY — when the queue reaches
+        # the clip, after the DJ's intro has played. Deleting the draft at
+        # send beat that fetch by seven seconds and the mixer got a 404: the
+        # operator heard the DJ speak around a hole where their own voice
+        # should have been (2026-08-17). So caller-voice defers deletion to
+        # the claim itself, which serves from memory and removes the files
+        # before the response goes out; every other backend deletes at send.
+        import inspect
+
+        from api import voicemail as api_vm
+
+        send_src = inspect.getsource(api_vm.handle_vm_draft_send)
+        self.assertIn('!= "caller-voice"', send_src)
+        clip_src = inspect.getsource(api_vm.handle_vm_air_clip)
+        self.assertIn("read_bytes", clip_src)
+        self.assertIn("vm_review.delete(path.stem)", clip_src)
+
     def test_the_studio_declares_its_own_visibility_in_the_rig(self):
         # The rig ships reserved-but-hidden (`visibility: hidden`) and every
         # band that should show must opt in — the chat input learned this
