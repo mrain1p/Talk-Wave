@@ -88,7 +88,14 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
     from call.providers import build_llm
     from call.tools.registry import mcp_allowlist  # noqa: F401  (documented gate)
 
-    allowed = ["request"]
+    # Requests ride allow_requests, the same master switch the live line and
+    # the soundbite studio gate on — a line that takes no requests holds the
+    # message rather than pushing it down the request pipe regardless. Default
+    # "open" (the shipped default), so only an operator who set it "off" loses
+    # the request path here.
+    allowed = []
+    if str(cfg.get("allow_requests") or "open").lower() != "off":
+        allowed.append("request")
     if str(cfg.get("allow_announcements") or "off") != "off":
         allowed.append("air")
     if str(cfg.get("allow_skills") or "off") != "off":
@@ -108,7 +115,8 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
         "A radio station's answering machine took this message:\n"
         f"  {text[:800]}\n\n"
         "Pick ONE action. Answer with bare JSON only:\n"
-        '  {"action": "request", "text": "<what to ask the station to play>"}\n'
+        + ('  {"action": "request", "text": "<what to ask the station to '
+           'play>"}\n' if "request" in allowed else "")
         + ('  {"action": "air", "text": "<one line for the DJ to read>"}\n'
            if "air" in allowed else "")
         + (('  {"action": "skill", "name": "<one of: '

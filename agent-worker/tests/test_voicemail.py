@@ -1102,13 +1102,16 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
                 self.queries.append(q)
                 return self.hits
 
+        # Requests and exact-id queueing both on for this caller — the gates
+        # the resolver now reads, the same ones a live call reads at pickup.
+        CFG = {"allow_requests": "open", "allow_exact_queue": "open"}
         old = providers.build_llm
         try:
             hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
             providers.build_llm = lambda cfg, **k: _FakeLLM(
                 '{"action": "queue", "query": "landslide fleetwood mac"}')
             st = _SearchStation([hit])
-            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
+            action = asyncio.run(preview.resolve(st, CFG, "play landslide"))
             self.assertEqual(action["kind"], "queue")
             self.assertEqual(action["track"]["id"], "t9",
                              "the preview must hold the LIBRARY's id — send "
@@ -1117,22 +1120,106 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
 
             # Same verdict, empty library: a request, and the label says so.
             st2 = _SearchStation([])
-            action = asyncio.run(preview.resolve(st2, {}, "play landslide"))
+            action = asyncio.run(preview.resolve(st2, CFG, "play landslide"))
             self.assertEqual(action["kind"], "request")
 
             # The model says none, or says nonsense: no action, both times.
             providers.build_llm = lambda cfg, **k: _FakeLLM('{"action": "none"}')
-            action = asyncio.run(preview.resolve(st, {}, "hi mum"))
+            action = asyncio.run(preview.resolve(st, CFG, "hi mum"))
             self.assertEqual(action["kind"], "none")
             providers.build_llm = lambda cfg, **k: _FakeLLM("not json at all")
-            action = asyncio.run(preview.resolve(st, {}, "hello"))
+            action = asyncio.run(preview.resolve(st, CFG, "hello"))
             self.assertEqual(action["kind"], "none")
 
             # And an empty transcript never wakes the model at all.
             providers.build_llm = lambda cfg, **k: (_ for _ in ()).throw(
                 AssertionError("the LLM must not be built for silence"))
-            action = asyncio.run(preview.resolve(st, {}, "   "))
+            action = asyncio.run(preview.resolve(st, CFG, "   "))
             self.assertEqual(action["kind"], "none")
+        finally:
+            providers.build_llm = old
+
+    def test_a_vibe_message_stages_a_request_like_the_live_line(self):
+        # The bug this defends: "play something a bit lighter" — a MOOD — came
+        # back "no action asked for" (RID 280, 2026-08-17), because the studio
+        # only ever offered a NAMED track, while the live line's
+        # subwave_request_song takes a mood and lets the station's picker
+        # resolve it. The studio now stages that SAME request.
+        action = asyncio.run(self._resolve(
+            '{"action": "queue", "query": "something a bit lighter"}',
+            hits=[], transcript="play something a bit lighter this morning",
+            cfg={"allow_requests": "open", "allow_exact_queue": "open"}))
+        self.assertEqual(action["kind"], "request",
+                         "a mood must stage a request, not 'no action'")
+        self.assertIn("lighter", action["text"])
+
+    def test_music_and_exact_queue_ride_their_own_switches(self):
+        # Consistent with the live line: a music ask rides allow_requests, and
+        # an exact-id pin rides allow_exact_queue. Off, nothing is staged; on
+        # without exact-queue, a found track is a REQUEST (the station picks),
+        # not a by-id queue that would skip its rate limit.
+        hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
+        verdict = '{"action": "queue", "query": "landslide"}'
+
+        # Requests OFF: no music action, and the model is never even built.
+        off = asyncio.run(self._resolve(
+            verdict, hits=[hit], transcript="play landslide",
+            cfg={"allow_requests": "off"}, no_llm=True))
+        self.assertEqual(off["kind"], "none")
+
+        # Requests on, exact-queue OFF: a found track stages a REQUEST.
+        req = asyncio.run(self._resolve(
+            verdict, hits=[hit], transcript="play landslide",
+            cfg={"allow_requests": "open"}))
+        self.assertEqual(req["kind"], "request",
+                         "without allow_exact_queue a named track is a "
+                         "request, never a by-id queue")
+
+        # Both on: the exact record is pinned by id — the receipts discipline.
+        both = asyncio.run(self._resolve(
+            verdict, hits=[hit], transcript="play landslide",
+            cfg={"allow_requests": "open", "allow_exact_queue": "open"}))
+        self.assertEqual(both["kind"], "queue")
+        self.assertEqual(both["track"]["id"], "t9")
+
+    async def _resolve(self, verdict, *, hits, transcript, cfg, no_llm=False):
+        """Run preview.resolve with a stubbed one-shot LLM and search — the
+        shared harness for the studio's resolver tests."""
+        import call.providers as providers
+        from voicemail import preview
+
+        class _Stream:
+            async def __aenter__(s):
+                return s
+
+            async def __aexit__(s, *a):
+                return False
+
+            def __aiter__(s):
+                async def _gen():
+                    d = type("D", (), {"content": verdict})()
+                    yield type("C", (), {"delta": d})()
+                return _gen()
+
+        class _LLM:
+            def chat(self, chat_ctx=None):
+                return _Stream()
+
+            async def aclose(self):
+                pass
+
+        class _St:
+            async def search_library(self, q, *a, **k):
+                return list(hits)
+
+        old = providers.build_llm
+        try:
+            providers.build_llm = (
+                (lambda cfg, **k: (_ for _ in ()).throw(
+                    AssertionError("the model must not be built when nothing "
+                                   "is permitted")))
+                if no_llm else (lambda cfg, **k: _LLM()))
+            return await preview.resolve(_St(), cfg, transcript)
         finally:
             providers.build_llm = old
 
@@ -1322,7 +1409,9 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         try:
             providers.build_llm = lambda cfg, **k: _Llm()
             st = _St()
-            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
+            action = asyncio.run(preview.resolve(
+                st, {"allow_requests": "open", "allow_exact_queue": "open"},
+                "play landslide"))
             self.assertEqual(action["kind"], "queue",
                              "the by-variant retry must reach the hit")
             self.assertGreater(len(st.queries), 1)
