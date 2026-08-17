@@ -21,7 +21,11 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#f6f5f3" media="(prefers-color-scheme: light)" />
-<link rel="icon" href="/favicon.png" sizes="32x32" />
+<!-- The mark: the caller's wave meets the DJ's. The .ico bundles hand-tuned
+     16/32/48 whole-pixel variants (the 14-bar art fills in below ~48px); the
+     SVG is for browsers that scale one file themselves. -->
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <!-- iOS reads neither the manifest's display mode nor its name. -->
 <meta name="mobile-web-app-capable" content="yes" />

@@ -22,7 +22,9 @@
    Bump CACHE when the precache list changes. The worker script itself is
    served no-cache, so a new one is picked up on the next navigation. */
 
-const CACHE = 'talkwave-v1';
+// v2: the brand mark landed (0.97.29) and icon-192.png changed bytes under
+// the same name — a bump is the only way the offline shell's copy follows.
+const CACHE = 'talkwave-v2';
 
 // The page, and the two scripts and stylesheet it cannot start without.
 // Unversioned URLs on purpose: at install time we do not know the ?v= tags,

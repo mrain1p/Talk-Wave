@@ -1,3 +1,5 @@
+<img src="docs/mark.svg" width="320" alt="Talk Wave — the caller's voice and the DJ's, meeting in the middle">
+
 # Talk Wave
 
 **A call-in phone line for your [SUB/WAVE](https://github.com/perminder-klair/subwave) AI radio station.** A listener presses one button in the browser and talks with whoever is live on air — and the DJ can act on the station mid-call: find a record by name or by how it *sounds*, queue it, take it back out again, put a shoutout on the broadcast.
