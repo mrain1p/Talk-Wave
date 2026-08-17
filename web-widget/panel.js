@@ -98,6 +98,24 @@
       // and the sections right under it each explain themselves.
       hdr.querySelector('em').textContent = '';
       anchor.parentNode.insertBefore(hdr, anchor);
+      // The Players page is the one page with furniture of its own — the
+      // tab strip and the pinned preview live in a static wrapper
+      // (#cardWrap) — so its sections are moved INTO the wrapper's settings
+      // column rather than into the page flow. The schema still owns their
+      // order; the wrapper is parked where the band's sections would sit.
+      if (sup.id === 'card' && $('cardWrap')) {
+        anchor.parentNode.insertBefore($('cardWrap'), anchor);
+        members.forEach((g) => {
+          const sec = byId[g.id];
+          sec.classList.add('cardblock');
+          // Blocks stay open — 1a's whole point is every element's controls
+          // against the pinned card, and hover-highlight cannot reach into
+          // a shut drawer. The toggle guard below puts a closed one back.
+          sec.open = true;
+          $('cardCol').appendChild(sec);
+        });
+        return;
+      }
       members.forEach((g) => anchor.parentNode.insertBefore(byId[g.id], anchor));
     });
 
@@ -221,6 +239,19 @@
       // loud, to match layoutPanel's console warning about the mismatch.
       on(sec, searching || !id || id === page);
     });
+    // The Players page: the wrapper shows with its page (or whenever a
+    // search needs the sections inside it), and the current tab decides
+    // which of its sections are on screen. Searching lifts the tab filter
+    // and turns the wrapper into a plain results column — no tab strip, no
+    // preview — the same way it parks the dashboard.
+    const wrap = $('cardWrap');
+    if (wrap) {
+      on(wrap, searching || page === 'card');
+      wrap.classList.toggle('searching', searching);
+      wrap.querySelectorAll('details.sec').forEach((sec) => {
+        sec.classList.toggle('offtab', !searching && cardTabOf(sec) !== cardTab);
+      });
+    }
     // Save/Reset belong under the pages that hold form fields.
     on(document.querySelector('#panel .actions'),
        searching || (page !== 'dash' && page !== 'diag'));
@@ -251,6 +282,11 @@
       history.pushState(null, '', '#' + id);
       paintPage();
     }
+    // A Players section may stand on another tab — reaching it means
+    // turning to that tab too, or the scroll lands on nothing.
+    if (sec.classList.contains('cardblock') && cardTabOf(sec) !== cardTab) {
+      setCardTab(cardTabOf(sec));
+    }
     sec.open = true;
     sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -261,6 +297,165 @@
     // you left means nothing on the one you arrived at.
     window.scrollTo({ top: 0 });
   });
+
+  // ------------------------------------------------- the Players page tabs
+  // Three tabs over one page (the operator's design handoff, direction 1a):
+  // THE CARD is the element blocks in card order, BEHAVIOUR is what a call
+  // does with nothing visual about it, EMBED is the frame and the snippet.
+  // The schema owns section ORDER; this map only says which tab a section
+  // stands on — a card group missing here lands on THE CARD, which is where
+  // a new element block would belong anyway.
+  const CARD_TABS = {
+    topcorner: 'card', whosonair: 'card', linebox: 'card', talkbar: 'card',
+    buttons: 'card', surface: 'card',
+    phone: 'behaviour', feedback: 'behaviour',
+    embed: 'embed',
+  };
+  let cardTab = 'card';
+
+  function cardTabOf(sec) {
+    return CARD_TABS[sec.dataset.group] || 'card';
+  }
+
+  function setCardTab(which) {
+    cardTab = which;
+    [['cardTabCard', 'card'], ['cardTabBehaviour', 'behaviour'],
+     ['cardTabEmbed', 'embed']].forEach(([id, tab]) => {
+      const b = $(id);
+      if (b) b.classList.toggle('on', tab === which);
+    });
+    paintPage();
+    // Opening the Embed tab is a request to SEE the embed — flip the
+    // preview, the same move picking a shape already makes.
+    if (which === 'embed' && previewSurface !== 'embed') setPreviewSurface('embed');
+  }
+
+  if ($('cardTabCard')) {
+    $('cardTabCard').onclick = () => setCardTab('card');
+    $('cardTabBehaviour').onclick = () => setCardTab('behaviour');
+    $('cardTabEmbed').onclick = () => setCardTab('embed');
+  }
+
+  // The card page's blocks are always open (see layoutPanel); this puts a
+  // closed one straight back, whichever path shut it — the summary click,
+  // or the search teardown folding what it had opened.
+  document.addEventListener('toggle', (e) => {
+    const sec = e.target;
+    if (sec && sec.classList && sec.classList.contains('cardblock')
+        && !sec.open) sec.open = true;
+  }, true);
+
+  // "N on page · M in embed" — the tab strip's live tally of the card's
+  // toggleable elements, following the CHECKBOXES rather than what was
+  // saved, so it always agrees with the preview beside it. The link-out
+  // counts only while it exists at all. The same eleven-element list the
+  // old section tag counted; the embed simply has no gear.
+  const COUNT_ELS = ['caller_help', 'theme_toggle', 'settings_gear',
+    'push_to_talk', 'dj_avatar', 'dj_show', 'dj_tagline', 'now_playing',
+    'voicemail_button', 'chat_button', 'signin'];
+  function paintCardCounts() {
+    const el = $('cardCounts');
+    if (!el) return;
+    const val = (f) => {
+      const box = $(f);
+      return box ? box.checked : !!resolved[f];
+    };
+    let onPage = COUNT_ELS.filter((k) => val('show_' + k)).length;
+    let inEmb = COUNT_ELS.filter((k) => $('embed_' + k) && val('embed_' + k)).length;
+    if (val('corner_link_enabled')) {
+      if (val('show_corner_link')) onPage += 1;
+      if (val('embed_corner_link')) inEmb += 1;
+    }
+    el.textContent = onPage + ' on page · ' + inEmb + ' in embed';
+  }
+
+  // ------------------------------------------- hover → spotlight the card
+  // Hovering a settings row outlines the element it controls on the preview
+  // card (the handoff's discovery gesture — the row says which element it
+  // owns with data-spot, written in the markup beside the fields). The card
+  // side is call.js's swtv:spotlight handler, preview frames only. Focusing
+  // a line-box wording field goes further: the card's line box shows that
+  // state's text — the typed value, or the built-in default the placeholder
+  // carries — until blur, so the operator reads the wording ON the card
+  // rather than imagining it there.
+  function sendToPreview(msg) {
+    const f = previewFrame();
+    if (!f) return;
+    try { f.contentWindow.postMessage(msg, location.origin); }
+    catch (e) { /* the preview is a nicety; never let it break the form */ }
+  }
+
+  (function bindCardSpotlight() {
+    const col = $('cardCol');
+    if (!col) return;
+    let current = null;
+    col.addEventListener('mouseover', (e) => {
+      const row = e.target.closest ? e.target.closest('[data-spot]') : null;
+      const name = row && col.contains(row) ? row.dataset.spot : null;
+      if (name !== current) {
+        current = name;
+        sendToPreview({ type: 'swtv:spotlight', el: name || null });
+      }
+    });
+    col.addEventListener('mouseleave', () => {
+      if (current) {
+        current = null;
+        sendToPreview({ type: 'swtv:spotlight', el: null });
+      }
+    });
+
+    const lineField = (el) =>
+      el && el.id && el.id.indexOf('word_') === 0
+        && el.closest('[data-group="linebox"]') ? el : null;
+    const sendLinePreview = (el) => {
+      sendToPreview({
+        type: 'swtv:linepreview',
+        text: el
+          ? (el.value || String(el.placeholder || '').replace(/^default:\s*/, ''))
+          : null,
+      });
+    };
+    col.addEventListener('focusin', (e) => {
+      const el = lineField(e.target);
+      if (el) sendLinePreview(el);
+    });
+    col.addEventListener('focusout', (e) => {
+      if (lineField(e.target)) sendLinePreview(null);
+    });
+    col.addEventListener('input', (e) => {
+      const el = lineField(e.target);
+      if (el && document.activeElement === el) sendLinePreview(el);
+    });
+  })();
+
+  // The other direction: clicking an element ON the card flashes the block
+  // that owns it — the same data-spot names, reported by call.js from
+  // inside the frame.
+  addEventListener('message', (e) => {
+    const f = $('previewFrame');
+    if (!f || e.source !== f.contentWindow) return;
+    if (!e.data || e.data.type !== 'subwave-callin:spot') return;
+    const spot = String(e.data.el || '').replace(/[^a-z]/g, '');
+    const row = spot
+      && document.querySelector('#cardCol [data-spot="' + spot + '"]');
+    const sec = row && row.closest('details.sec');
+    if (!sec) return;
+    if (cardTabOf(sec) !== cardTab) setCardTab(cardTabOf(sec));
+    sec.classList.remove('flash');
+    void sec.offsetWidth;   // restart the animation when re-clicked
+    sec.classList.add('flash');
+    sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  // The mobile dock: on a phone the preview aside pins to the bottom of the
+  // screen and this chevron folds the card away so the settings get the
+  // height back. Open by default — the live card is the page's point.
+  if ($('dockChev')) {
+    $('dockChev').onclick = () => {
+      const folded = $('cardAside').classList.toggle('folded');
+      $('dockChev').textContent = folded ? '▴' : '▾';
+    };
+  }
 
   function adoptSchema(schema) {
     SCHEMA = schema || { groups: [], fields: {} };
@@ -715,18 +910,39 @@
     setTag('tagTunein', resolved.tune_in_on_call
       ? 'on · ' + resolved.tune_in_volume + '%' : 'off — requests may be refused');
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
-    setTag('tagPlayer', (resolved.call_button_uses_name ? "DJ's name" : 'generic label')
-      + ' · ' + (resolved.widget_theme || 'auto'));
-    // Counted, not listed: eleven element names would not fit a tag. The
-    // embed column simply has no gear (an embed never loads this panel), so
-    // the missing embed_settings_gear reads as false and the counts stay
-    // honest without a special case.
-    const surfEls = ['caller_help', 'theme_toggle', 'settings_gear',
-      'push_to_talk', 'dj_avatar', 'dj_show', 'dj_tagline', 'now_playing',
-      'voicemail_button', 'chat_button', 'signin'];
-    setTag('tagSurface',
-      surfEls.filter((k) => resolved['show_' + k]).length + ' on page · '
-      + surfEls.filter((k) => resolved['embed_' + k]).length + ' in embed');
+    // The Players page's per-block tags. Counted or named, never listed —
+    // a tag is a glance, and the first word is the state (setTag colours
+    // it). The whole-page tally lives in the tab strip (paintCardCounts).
+    const onPage = (k) => !!resolved['show_' + k];
+    const inEmb = (k) => !!resolved['embed_' + k];
+    const corner = ['caller_help', 'theme_toggle', 'settings_gear', 'signin'];
+    const linkOn = !!resolved.corner_link_enabled;
+    setTag('tagTopcorner',
+      (corner.filter(onPage).length + (linkOn && resolved.show_corner_link ? 1 : 0))
+      + ' on page · '
+      + (corner.filter(inEmb).length + (linkOn && resolved.embed_corner_link ? 1 : 0))
+      + ' in embed');
+    const who = ['dj_avatar', 'dj_show', 'dj_tagline', 'now_playing'];
+    setTag('tagWhosonair', who.filter(onPage).length + ' of 4 · '
+      + (resolved.avatar_style || 'round') + ' photo');
+    const lineWords = ['word_ringing', 'word_answering', 'word_connecting',
+      'word_waiting', 'word_online', 'word_recording', 'word_closed',
+      'word_message_only', 'word_ended'];
+    const reworded = lineWords.filter((f) => String(resolved[f] || '').trim()).length;
+    setTag('tagLinebox', reworded ? reworded + ' reworded' : 'built-in wording');
+    setTag('tagTalkbar', resolved.show_push_to_talk ? 'on' : 'off — open mic');
+    setTag('tagButtons', doorOrderValue().map((n) =>
+      (DOORS.find((d) => d[0] === n) || [n, n])[1].toLowerCase()).join(' · '));
+    setTag('tagSurface', (resolved.widget_theme || 'auto')
+      + (resolved.widget_skin && resolved.widget_skin !== 'default'
+          ? ' · ' + resolved.widget_skin : ''));
+    setTag('tagPhone', (resolved.default_to_speaker ? 'loudspeaker' : 'earpiece')
+      + (resolved.swipe_player ? ' · player' : ''));
+    const fb = [resolved.ask_call_feedback && 'calls',
+                resolved.ask_chat_feedback && 'texts',
+                resolved.ask_vm_feedback && 'voicemail'].filter(Boolean);
+    setTag('tagFeedback', fb.length ? 'asks · ' + fb.join(' · ') : 'never asks');
+    paintCardCounts();
     paintDash();
   }
 
@@ -1958,6 +2174,11 @@
       let n = hdr.nextElementSibling, anyVisible = false;
       while (n && !n.classList.contains('supergroup')) {
         if (n.tagName === 'DETAILS' && n.style.display !== 'none') anyVisible = true;
+        // The Players page's sections live inside the wrapper, not as
+        // siblings — look through it, or its band always reads as empty.
+        if (n.id === 'cardWrap'
+            && [...n.querySelectorAll('details.sec')].some(
+                 (d) => d.style.display !== 'none')) anyVisible = true;
         n = n.nextElementSibling;
       }
       hdr.style.display = anyVisible ? '' : 'none';
@@ -2011,7 +2232,7 @@
         ? (stage.classList.contains('open')
             ? 'Press it again to close'
             : 'Press the button to see the card open')
-        : 'unsaved changes shown live';
+        : 'live · unsaved';
     }
   }
   if ($('previewTrigger')) {
@@ -2713,10 +2934,12 @@
   //
   // Which fields matter is read from the SCHEMA rather than listed, so a look
   // setting added later is previewed without anyone remembering to come here.
-  // Both halves of the old Player settings section (split in 0.10.47), and
-  // the embed section since its outline tick (0.10.51) — a change in any is
-  // a change the preview frame must repaint for.
-  const LOOK_GROUPS = new Set(['surface', 'player', 'embed']);
+  // Every element block of the Players page's CARD tab, plus the embed frame
+  // options — a change in any is a change the preview frame must repaint
+  // for. The two BEHAVIOUR groups are excluded on the tab's own rule:
+  // nothing visual lives there.
+  const LOOK_GROUPS = new Set(['topcorner', 'whosonair', 'linebox', 'talkbar',
+                               'buttons', 'surface', 'embed']);
   function isLookField(f) {
     return !!(SCHEMA.fields[f] && LOOK_GROUPS.has(SCHEMA.fields[f].group));
   }
@@ -2934,6 +3157,11 @@
       // Say so when nothing matched — a page of collapsed nothing read as
       // the panel being broken, not as a miss.
       if ($('searchMiss')) $('searchMiss').hidden = !needle || anywhere;
+      // Clearing hands the rows back with removeProperty, which also wipes
+      // what applyVisibility had hidden — so the link-out address, the
+      // custom call label and every other `needs` row sat visible for a
+      // switch that was off until the next field edit. Re-apply the rules.
+      if (!needle) applyVisibility();
     };
     box.oninput = () => {
       // A value that arrives while the box does not hold focus was not
@@ -2986,8 +3214,9 @@
         if (f === 'sound_pack' || f.indexOf('sound_') === 0) window.Panel.sounds.paintSlotCards();
         // The card in the frame follows the form, not the save button. That
         // is the entire point: you find out what "DJ photo off" looks like
-        // before you commit it to everyone who rings.
-        if (isLookField(f)) queuePreview();
+        // before you commit it to everyone who rings. The tab strip's
+        // element tally follows the same edits.
+        if (isLookField(f)) { queuePreview(); paintCardCounts(); }
       };
       el.addEventListener('input', onChange);
       el.addEventListener('change', onChange);

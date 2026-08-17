@@ -4259,6 +4259,12 @@
     body:not(.compact) .meters .meter.dj { order: 1; }
   }
 
+  /* The panel's hover-highlight, worn by the CARD (preview frames only):
+     the element a hovered settings row controls takes the accent outline —
+     call.js paints the class from swtv:spotlight, and only in ?preview=1
+     frames, so a real caller can never meet it. */
+  .spot { outline: 2px solid var(--accent); outline-offset: 2px; }
+
   /* --- the panel's live preview ------------------------------------------
      Panel-only. The frame holds the real call page, so everything inside it
      is styled by the rules above rather than by anything here — which is the
@@ -4347,6 +4353,109 @@
   }
   .previewstage[data-shape="button"].open #previewFrame {
     z-index: 2; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  }
+
+  /* --- the Players page (design handoff, direction 1a) --------------------
+     One wrapper, three tabs, and the preview pinned in a right column that
+     never scrolls away — the old page's preview section did, which was the
+     handoff's third diagnosis. The sections inside are ordinary details.sec
+     moved in by layoutPanel(); .cardblock dresses them as always-open
+     element blocks. On a phone the aside becomes the bottom dock instead
+     (the media query below, handoff 2a). */
+  .cardwrap { margin: 0 0 8px; }
+  @media (min-width: 1000px) {
+    .cardwrap:not(.searching) {
+      display: grid; grid-template-columns: minmax(0, 1fr) 430px;
+      gap: 0 22px; align-items: start;
+    }
+    .cardwrap:not(.searching) .cardtabs { grid-column: 1 / -1; }
+    /* Pinned below the sticky page-picker band — the pin is the point. */
+    .cardwrap:not(.searching) .cardaside {
+      position: sticky; top: calc(var(--stickybar, 96px) + 10px);
+    }
+  }
+  .cardtabs { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+  /* Search is a results view over every page: it shows the wrapper for the
+     sections inside, but the page furniture — tabs, preview — steps aside
+     the way the dashboard does. */
+  .cardwrap.searching .cardtabs,
+  .cardwrap.searching .cardaside { display: none; }
+  .cardtab {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase;
+    padding: 7px 14px; cursor: pointer; border-radius: 8px;
+    border: 1px solid var(--line2); background: transparent; color: var(--dim);
+  }
+  .cardtab:hover { color: var(--text); }
+  .cardtab.on { color: var(--accent); border-color: var(--accent); }
+  .cardcounts {
+    margin-left: auto; font-family: var(--font-mono); font-size: 8.5px;
+    font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ok);
+  }
+  /* The tab filter. A CLASS for the same reason .offpage is one: search and
+     applyVisibility both own inline display on these sections, and a third
+     hand on one property is how things end up visible that should not be. */
+  .offtab { display: none !important; }
+
+  /* The blocks: bordered, titled, always open (panel.js keeps them so).
+     The summary is the block header — micro-label name in the accent,
+     blurb as the sub-line, state chip — and the chevron goes; there is
+     nothing to fold. */
+  details.sec.cardblock {
+    border: 1px solid var(--line); border-radius: 12px; margin: 0 0 14px;
+  }
+  details.sec.cardblock > summary { cursor: default; }
+  details.sec.cardblock > summary .chev { display: none; }
+  details.sec.cardblock > summary .secname { color: var(--accent); }
+  /* Hover a row and the block that owns it takes the accent edge — the same
+     signal its element wears on the preview card at that moment. */
+  details.sec.cardblock:has(:is(.row, .prow, label.check):hover) {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  }
+  details.sec.cardblock :is(.row, .prow, label.check):hover {
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  /* "This block owns what you clicked on the card" — call.js reports the
+     click, panel.js scrolls here and flashes once. */
+  details.sec.cardblock.flash { animation: blockflash 1.2s ease-out 1; }
+  @keyframes blockflash {
+    0%, 35% { border-color: var(--accent);
+              background: color-mix(in srgb, var(--accent) 9%, transparent); }
+    100% { border-color: var(--line); background: transparent; }
+  }
+  /* Indented sub-rows: the field belongs to the row above it — the photo's
+     shape, the link's address. */
+  .cardblock .row.indent, .cardblock .prow.indent { margin-left: 22px; }
+
+  /* The aside. The .preview box inside keeps its own skin; .dockbody exists
+     for the phone, where the chevron folds it away. */
+  .cardaside .preview { margin: 0; }
+  .dockchev { display: none; }
+
+  /* The phone (handoff 2a): the preview leaves the flow and docks to the
+     bottom edge, card scaled down, settings scrolling clear above it. */
+  @media (max-width: 999px) {
+    .cardwrap:not(.searching) .cardaside {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+      background: var(--bg); border-top: 2px solid var(--accent);
+      box-shadow: 0 -10px 26px rgba(0, 0, 0, .35);
+    }
+    .cardwrap:not(.searching) .cardaside .preview { border: 0; }
+    .cardwrap:not(.searching) .dockchev {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 24px; cursor: pointer;
+      border: 1px solid var(--line2); background: transparent; color: var(--dim);
+      font: 700 11px/1 var(--font-mono);
+    }
+    .cardaside .dockbody { max-height: 370px; overflow-y: auto; }
+    .cardaside .dockbody .previewstage { zoom: 0.78; }
+    .cardaside.folded .dockbody { display: none; }
+    /* The dock floats over the page — leave room so the last block and the
+       Save row can scroll clear of it, and give the room back when the
+       operator folds the card away. */
+    .cardwrap:not(.searching) { padding-bottom: 440px; }
+    .cardwrap:not(.searching):has(.cardaside.folded) { padding-bottom: 60px; }
   }
 
   /* --- installed as an app -----------------------------------------------
