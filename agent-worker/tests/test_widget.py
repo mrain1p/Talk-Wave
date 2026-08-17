@@ -958,6 +958,26 @@ class TestTheCallerCanChooseWhichWayOut(unittest.TestCase):
         self.assertNotIn("offerSpeakerButton", route)
         self.assertNotIn("framed", route)
 
+    def test_the_button_needs_a_device_not_just_a_function(self):
+        # Chrome on Android ships setSinkId while the Android platform
+        # cannot re-route an individual stream, and it lists no audiooutput
+        # devices — so a button drawn off function existence alone sat dead
+        # on the operator's phone (2026-08-17). The offer rides a probe of
+        # what the device list actually contains.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        block = call_js.split("function offerSpeakerButton()")[1][:220]
+        self.assertIn("canRoute === true", block)
+        probe = call_js.split("async function probeRouting()")[1][:600]
+        self.assertIn("audiooutput", probe)
+
+    def test_a_refused_route_does_not_relabel_the_button(self):
+        # The label follows the AUDIO: flipping it on a refused route is the
+        # button claiming the sound moved when it did not.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        route = call_js.split("async function routeAudio(")[1]
+        route = route[:route.index("\n  }")]
+        self.assertIn("if (moved) onSpeaker = want", route)
+
     def test_wanting_the_loudspeaker_does_not_ask_for_play_and_record(self):
         # The Audio Session spec says play-and-record is the type that may be
         # routed to the receiver. Asking for it while wanting the speaker is

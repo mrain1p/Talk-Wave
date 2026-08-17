@@ -851,8 +851,22 @@
     return !!(navigator.audioSession && 'type' in navigator.audioSession);
   }
 
+  // Which sink id carries the wanted route. '' is the default device — the
+  // loudspeaker everywhere this API exists. The earpiece has no reserved id,
+  // so it is found by LABEL among the outputs; labels only exist once the
+  // mic permission is granted, which is the only time this matters.
+  async function sinkFor(wantSpeaker) {
+    if (wantSpeaker) return '';
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const ear = devs.find((d) => d.kind === 'audiooutput'
+        && /earpiece|receiver|handset/i.test(d.label || ''));
+      return ear ? ear.deviceId : null;
+    } catch (e) { return null; }
+  }
+
   async function routeAudio(toSpeaker) {
-    onSpeaker = !!toSpeaker;
+    const want = !!toSpeaker;
     let moved = false;
 
     if (audioSessionSupported()) {
@@ -866,20 +880,23 @@
       } catch (e) { /* the platform kept its own answer */ }
     }
 
-    // Only worth asking when the caller wants the loudspeaker: the default
-    // output IS the speaker on every platform that implements this, and
-    // there is no "earpiece" device id to switch back to.
-    if (onSpeaker && djEl && typeof djEl.setSinkId === 'function') {
-      try { await djEl.setSinkId(''); moved = true; } catch (e) { /* no */ }
+    // Both directions, where a sink exists to name. The old shape only ever
+    // asked on the way TO the loudspeaker, so on Chromium the earpiece press
+    // routed nothing and only relabelled the button (operator's phone,
+    // 2026-08-17). A null sink means this platform has no device to name for
+    // that direction — nothing is attempted and `moved` stays honest.
+    const sink = await sinkFor(want);
+    if (sink !== null && djEl && typeof djEl.setSinkId === 'function') {
+      try { await djEl.setSinkId(sink); moved = true; } catch (e) { /* no */ }
     }
     // …and the graph, when the voices are married into it — the element is
     // muted then, so routing it alone would move nothing anybody can hear.
     // AudioContext.setSinkId is Chromium-only; elsewhere this is a no-op and
     // the honest answer is the one `moved` already carries.
-    if (onSpeaker && fx) {
+    if (sink !== null && fx) {
       const c = ctx();
       if (c && typeof c.setSinkId === 'function') {
-        try { await c.setSinkId(''); moved = true; } catch (e) { /* no */ }
+        try { await c.setSinkId(sink); moved = true; } catch (e) { /* no */ }
       }
     }
 
@@ -918,10 +935,31 @@
           && typeof window.AudioContext.prototype.setSinkId === 'function');
   }
 
+  // Whether the platform will actually MOVE audio, which is a different
+  // question from whether the function exists: Chrome on Android ships
+  // setSinkId while the Android platform cannot re-route an individual
+  // stream (the Chrome team's own words), and the tell is that it lists no
+  // audiooutput devices at all. The operator's phone showed exactly the
+  // failure the comment above predicts — a button pressed, nothing moved,
+  // the call concluded broken (2026-08-17). Probed once, re-probed when the
+  // devices change (a Bluetooth headset arriving is a routing change).
+  let canRoute = null;
+  async function probeRouting() {
+    if (audioSessionSupported()) canRoute = true;
+    else if (!platformCanRoute()) canRoute = false;
+    else {
+      try {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        canRoute = devs.some((d) => d.kind === 'audiooutput');
+      } catch (e) { canRoute = false; }
+    }
+    paintSpeakerBtn();
+  }
+
   function offerSpeakerButton() {
     return !framed
       && matchMedia('(pointer: coarse)').matches
-      && platformCanRoute();
+      && canRoute === true;
   }
 
   function paintSpeakerBtn() {
@@ -937,6 +975,10 @@
     b.classList.toggle('on', !onSpeaker);
   }
   paintSpeakerBtn();
+  probeRouting();
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', probeRouting);
+  }
 
   function setStatus(text, state) {
     statusText.textContent = text;
