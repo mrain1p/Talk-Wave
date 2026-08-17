@@ -865,11 +865,21 @@ class TestADraftIsHeldBrieflyAndLeavesNoOrphans(unittest.TestCase):
         token = self.review.mint_air_token(d["id"])
         self.assertTrue(token)
         self.assertIsNone(self.review.claim_air_token("invented"))
+        # The mixer HEAD-probes before it downloads: peeking must not spend
+        # the token — a probe that burned it left the real GET a 404 six
+        # milliseconds later and the caller's voice aired as a hole
+        # (2026-08-17, the operator's third silent take).
+        self.assertIsNotNone(self.review.peek_air_token(token))
+        self.assertIsNotNone(self.review.peek_air_token(token),
+                             "peek twice, still unspent")
+        self.assertIsNone(self.review.peek_air_token("invented"))
         path = self.review.claim_air_token(token)
         self.assertIsNotNone(path)
         self.assertIsNone(self.review.claim_air_token(token),
                           "a claimed token must be dead — the URL is the "
                           "credential and it was just spent")
+        self.assertIsNone(self.review.peek_air_token(token),
+                          "and dead to the probe as well")
         # An expired token is dead even on its first claim.
         token2 = self.review.mint_air_token(d["id"])
         data = self.review.get(d["id"])

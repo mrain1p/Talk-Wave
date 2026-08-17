@@ -63,7 +63,16 @@ The recording happens **in the caller's browser** — playback is instant, re-re
 
 **The action preview is the point.** Before sending, the caller sees exactly what send will do — not "this looks like a request" but *"Queue: Landslide — Fleetwood Mac"*, resolved against your library to a real track id at review time. Send executes that record, never a re-interpretation of the words. A message naming a track the library doesn't hold previews as a request; one asking for a different DJ previews as a takeover **only if** your *Show takeovers* permission is on (the same switch the live line rides, checked again at send); anything else previews as "no station action — the message just plays." And the DJ's on-air reaction is chosen **after** the station answers: a refused queue is never claimed as a track that's coming.
 
-**This is the one place the sidecar keeps caller audio, and it holds it on terms.** The card says the message may be played on air. A draft lives only between recording and decision: deleted on send, on re-record, and on walking away; a fifteen-minute sweep catches what a crash leaves; and the URL the mixer fetches a clip from is unguessable, single-use, and dead in two minutes. Sent or failed, the audio does not outlive the attempt — the transcript lands in the panel's messages list like any voicemail, labelled `soundbite/<backend>`.
+**This is the one place the sidecar keeps caller audio, and it holds it on terms.** The card says the message may be played on air. A draft lives only between recording and decision, and the exact moment the audio leaves the disk depends on how it went:
+
+| What happened | The audio is deleted… |
+|---|---|
+| Sent, caller's own voice aired | at the mixer's fetch — served from memory, gone before the response ends (the mixer collects lazily, after the DJ's intro, so deleting at send aired a hole where the caller's voice belonged) |
+| Sent, the DJ read it (or any failure) | at send — nothing will ever read it again |
+| Re-recorded, or *Never mind* | immediately |
+| Walked away, browser closed, crash | the fifteen-minute sweep |
+
+The URL the mixer fetches from is unguessable, spent by its one download, and dead in two minutes regardless — the mixer's HEAD probe checks it without spending it, so the probe cannot rob the download that follows. Sent or failed, the transcript lands in the panel's messages list like any voicemail, labelled `soundbite/<backend>`, with the receipt naming what actually aired.
 
 ### How it airs: two backends
 

@@ -192,6 +192,28 @@ def mint_air_token(draft_id: str) -> str | None:
     return token
 
 
+def peek_air_token(token: str) -> Path | None:
+    """Is this token valid, WITHOUT spending it. The mixer probes the URL
+    with a HEAD before it downloads — and a HEAD that burned the token left
+    the real GET a 404 six milliseconds later (2026-08-17, the operator's
+    third silent take). Read-only: same checks as the claim, no mutation."""
+    if not token:
+        return None
+    try:
+        entries = list(DRAFTS_DIR.glob("*.json"))
+    except (FileNotFoundError, OSError):
+        return None
+    for sidecar in entries:
+        data = get(sidecar.stem)
+        if not data or data.get("airToken") != token:
+            continue
+        if time.time() - float(data.get("airTokenAt") or 0) > AIR_TOKEN_TTL_SECS:
+            return None
+        path = audio_path(sidecar.stem)
+        return path if path.is_file() else None
+    return None
+
+
 def claim_air_token(token: str) -> Path | None:
     """One fetch, then the URL is dead. Returns the audio path on the single
     valid claim, None for everything else — expired, reused, invented."""

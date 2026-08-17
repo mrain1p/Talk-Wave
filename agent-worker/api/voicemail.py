@@ -490,7 +490,19 @@ async def handle_vm_air_clip(request: web.Request) -> web.StreamResponse:
     itself is where the voice leaves the disk."""
     from voicemail import review as vm_review
 
-    path = vm_review.claim_air_token(request.match_info.get("token", ""))
+    token = request.match_info.get("token", "")
+    # The mixer sends a HEAD probe before it downloads, and aiohttp routes
+    # HEAD through this handler — a probe that burned the single-use token
+    # left the real GET a 404 six milliseconds later and the caller's voice
+    # aired as a hole again. HEAD peeks; only the GET spends.
+    if request.method == "HEAD":
+        path = vm_review.peek_air_token(token)
+        if not path:
+            raise web.HTTPNotFound()
+        return web.Response(headers={
+            "Cache-Control": "no-store", "Content-Type": "audio/wav",
+            "Content-Length": str(path.stat().st_size)})
+    path = vm_review.claim_air_token(token)
     if not path:
         raise web.HTTPNotFound()
     data = path.read_bytes()
