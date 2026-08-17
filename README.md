@@ -36,7 +36,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 
 **Three ways to reach the booth**
 - **Live calls** — full-duplex voice with barge-in, live captions, and a DJ who knows the show it's on.
-- **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. See [Voicemail](docs/VOICEMAIL.md).
+- **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. Or run the line as a **soundbite studio**: the caller records a take, reviews the transcript and exactly what sending will do, and their own voice airs with the DJ around it. See [Voicemail](docs/VOICEMAIL.md).
 - **The text line** — the same DJ, typed. Works where WebRTC can't.
 
 **A real station on the other end**
@@ -148,7 +148,7 @@ The README is the short version. The detail lives here:
 | **[Calling from outside your network](docs/networking.md)** | The topologies, the TLS front door, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
-| **[Voicemail](docs/VOICEMAIL.md)** | The answering machine: staged greetings, where messages go, and what is deliberately never recorded |
+| **[Voicemail](docs/VOICEMAIL.md)** | The answering machine and the soundbite studio: staged greetings, where messages go, and the terms on which anything is recorded |
 | **[How a call actually works](docs/the-call.md)** | The path one sentence takes: the prompt and what it costs, the tool surface, how a request is triaged, and everything that can make the DJ speak |
 
 ## Under the hood
