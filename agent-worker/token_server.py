@@ -42,11 +42,23 @@ from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
 from api.live import (
     handle_avatar,
+    handle_cover,
     handle_health,
     handle_live,
     handle_live_preview,
 )
+from api.player import (
+    handle_player_like,
+    handle_player_like_status,
+    handle_player_request,
+)
 from api.voicemail import (
+    handle_vm_air_clip,
+    handle_vm_draft_audio,
+    handle_vm_draft_create,
+    handle_vm_draft_delete,
+    handle_vm_draft_send,
+    handle_vm_greeting,
     handle_voicemail_clear,
     handle_voicemail_clip,
     handle_voicemail_clip_delete,
@@ -142,7 +154,24 @@ def build_app() -> web.Application:
     app.router.add_options("/voicemail/greeting/{persona_id}", handle_options)
     app.router.add_options("/voicemail/stage", handle_options)
     app.router.add_options("/voicemail/messages", handle_options)
+    # The soundbite line (guest): record → review → send. /vm-air is the one
+    # public route — the mixer's single tokened fetch, see handle_vm_air_clip.
+    app.router.add_post("/voicemail/draft", handle_vm_draft_create)
+    app.router.add_get("/voicemail/draft/{draft_id}/audio", handle_vm_draft_audio)
+    app.router.add_post("/voicemail/draft/{draft_id}/send", handle_vm_draft_send)
+    app.router.add_delete("/voicemail/draft/{draft_id}", handle_vm_draft_delete)
+    app.router.add_options("/voicemail/draft", handle_options)
+    app.router.add_options("/voicemail/draft/{draft_id}", handle_options)
+    app.router.add_options("/voicemail/draft/{draft_id}/send", handle_options)
+    app.router.add_get("/vm-greeting", handle_vm_greeting)
+    app.router.add_get("/vm-air/{token}", handle_vm_air_clip)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
+    app.router.add_get("/cover/{track_id}", handle_cover)
+    app.router.add_get("/player/like", handle_player_like_status)
+    app.router.add_post("/player/like", handle_player_like)
+    app.router.add_options("/player/like", handle_options)
+    app.router.add_post("/player/request", handle_player_request)
+    app.router.add_options("/player/request", handle_options)
     app.router.add_get("/settings/sounds", handle_sounds_list)
     app.router.add_post("/settings/sounds", handle_sound_upload)
     app.router.add_options("/settings/sounds", handle_options)

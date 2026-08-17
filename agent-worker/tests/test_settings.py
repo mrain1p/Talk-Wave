@@ -932,3 +932,37 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         self.assertEqual("before", settings_store.load()["action_cards"])
         self._write_store({"llm_provider": "openai"})
         self.assertEqual("after", settings_store.load()["action_cards"])
+
+
+class TestTheStationPlayerShipsOff(_TempStores):
+    """A gesture surface appearing on every deployed card unasked is the
+    0.9.61 shape again — and without a public https tune_in_url the player
+    would open onto silence behind TLS. New card behaviour arrives switched
+    off and is opened as a decision."""
+
+    def _write_store(self, data: dict) -> None:
+        import json
+
+        import settings as settings_store
+
+        settings_store.SETTINGS_PATH.write_text(
+            json.dumps(data), encoding="utf-8")
+
+    def test_off_by_default_and_off_for_existing_stores(self):
+        import settings as settings_store
+
+        self.assertIs(settings_store.FIELDS["swipe_player"][1], False)
+        # A store from before the setting existed keeps the closed door.
+        self._write_store({"llm_provider": "openai"})
+        self.assertFalse(settings_store.load().get("swipe_player"))
+
+    def test_the_operators_yes_is_honoured(self):
+        import settings as settings_store
+
+        self._write_store({"swipe_player": True})
+        self.assertTrue(settings_store.load()["swipe_player"])
+
+    def test_the_front_page_stays_the_phone_until_chosen(self):
+        import settings as settings_store
+
+        self.assertIs(settings_store.FIELDS["start_on_player"][1], False)

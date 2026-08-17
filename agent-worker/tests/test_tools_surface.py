@@ -38,6 +38,19 @@ class TestExposedSurface(unittest.TestCase):
         "GET /health": "public",
         "GET /live": "public",                 # what the call card renders
         "GET /avatar/{persona_id}": "public",  # proxied so embeds work on https
+        # Public like the avatar and for the same reason — and like the
+        # station's own /cover/:id, which answers unauthenticated listeners.
+        # It reads art by track id and writes nothing.
+        "GET /cover/{track_id}": "public",
+        # The player's listener actions. "public" here means not admin-gated;
+        # each self-gates in api/player._door — the player switch must be ON
+        # and the caller through the phone's own guest door — and the station
+        # side of both is public listener API with its own per-IP limits.
+        # Writes, but the station's own page hands the same writes to any
+        # listener; the MCP allowlist still owns everything the DJ does.
+        "GET /player/like": "public",
+        "POST /player/like": "public",
+        "POST /player/request": "public",
         "GET /sounds/{name}": "public",        # uploaded call sounds
         "GET /sound-lib/{name}": "public",     # bundled clips — the widget plays them on every caller's page
         "POST /settings/sounds/meta": "admin", # category edits on the sound board
@@ -93,6 +106,22 @@ class TestExposedSurface(unittest.TestCase):
         "GET /voicemail/greeting/{persona_id}": "admin",
         "POST /voicemail/greeting/{persona_id}": "admin",
         "DELETE /voicemail/greeting/{persona_id}": "admin",
+        # The soundbite line. "public" is this column's coarseness again:
+        # every draft route checks the guest code AND the machine's own tier
+        # door (allow_voicemail via tier_reaches, in _draft_gate) — the
+        # census only reads the admin gate.
+        "POST /voicemail/draft": "public",
+        "GET /voicemail/draft/{draft_id}/audio": "public",
+        "POST /voicemail/draft/{draft_id}/send": "public",
+        "DELETE /voicemail/draft/{draft_id}": "public",
+        # The studio's pickup greeting — the same staged clip the machine
+        # answers with, behind the same guest gate as the draft routes.
+        "GET /vm-greeting": "public",
+        # Truly public, by design: the mixer's ONE fetch of a finished clip —
+        # it is curl on another network and can hold no password. The
+        # unguessable token is the credential; review.py burns it on first
+        # claim and expires it in two minutes, so the URL a log leaks is dead.
+        "GET /vm-air/{token}": "public",
         "DELETE /settings/sounds/{name}": "admin",
         "GET /prompt": "admin",
         "GET /calls": "admin",

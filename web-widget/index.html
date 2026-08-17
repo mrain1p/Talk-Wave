@@ -21,7 +21,11 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#f6f5f3" media="(prefers-color-scheme: light)" />
-<link rel="icon" href="/favicon.png" sizes="32x32" />
+<!-- The mark: the caller's wave meets the DJ's. The .ico bundles hand-tuned
+     16/32/48 whole-pixel variants (the 14-bar art fills in below ~48px); the
+     SVG is for browsers that scale one file themselves. -->
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <!-- iOS reads neither the manifest's display mode nor its name. -->
 <meta name="mobile-web-app-capable" content="yes" />
@@ -154,6 +158,11 @@
         <span class="chips" id="stateRow">
           <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
           <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
+          <!-- The door into the station player, only when the operator has
+               switched it on AND a stream resolved — a chip that opens onto
+               silence is worse than no chip. The swipe gesture is the other
+               way in; this is the one a mouse (and a screen reader) gets. -->
+          <button class="pill listenchip" id="listenChip" type="button" hidden>Listen</button>
         </span>
       </div>
 
@@ -279,6 +288,29 @@
         <button id="chatSendBtn" type="button">Send</button>
       </div>
 
+      <!-- The soundbite studio: greeting → record → review → send. Shown only
+           in the 'vmstudio' card mode; everything else on the card hides (the
+           same one-mode-at-a-time rule as chat). The transcript, the action
+           preview and the send receipt all render in the LINEBOX above, as
+           caption lines and action cards — the box does the work instead of
+           sitting empty (operator's redesign, 2026-08-17). The record bar is
+           the real talk bar's markup so it looks and answers like one. -->
+      <div class="vmstudio" id="vmStudio" hidden>
+        <div class="vmbarrow" id="vmBarRow">
+          <button class="pttbar" id="vmRecBtn" type="button" aria-pressed="false">
+            <span class="pttmain" id="vmRecMain">Hold to record</span>
+            <span class="keycap" aria-hidden="true">Space</span>
+          </button>
+          <button id="vmCloseBtn" type="button">Cancel</button>
+        </div>
+        <div class="vmgrid" id="vmGrid" hidden>
+          <button id="vmPlayBtn" type="button">▶&nbsp;Play</button>
+          <button id="vmRerecBtn" type="button">↺&nbsp;Rerecord</button>
+          <button id="vmSendBtn" type="button">Send&nbsp;➤</button>
+          <button id="vmCancelBtn" type="button">Cancel</button>
+        </div>
+      </div>
+
       <!-- The last row of the card, on every surface. Idle it is Call (and
            the machine's door, if offered); on a call it is Hang up, full
            width, exactly where a thumb expects it. -->
@@ -287,6 +319,57 @@
         <button id="chatBtn" hidden>Text the booth</button>
         <button id="vmBtn" hidden>Leave a message</button>
         <button id="hangBtn" hidden>Hang up</button>
+      </div>
+    </div>
+
+    <!-- The station player: a SHEET pulled down over the card by the ribbon
+         at the top edge (operator's design — "a page wipe with the card
+         coming over the frame"), swiped back up to reveal the phone. A
+         direct child of the card, NOT a rig row, and that is load-bearing:
+         .rig reserves visibility for the call's own rows, and the first
+         build sat inside it — laid out, measured by every probe, painting
+         nothing (operator's phone, 2026-08-17). Full page and the installed
+         app only, never an embed. -->
+    <button class="ribbon" id="playerTab" type="button" hidden
+            aria-label="Pull down the station player"><span class="grip" aria-hidden="true"></span></button>
+    <div class="player" id="playerView" hidden role="region" aria-label="Station player">
+      <!-- The operator's 3a "Glow player" handoff, in the card's own tokens:
+           header ribbon, glow art, 30px title, amber chips, the two info
+           panels, and a docked action bar. The grabber at the dock's foot is
+           the way back up — the top tab hides while the player is open. -->
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="plheadmeta" id="plHeadMeta"></span></div>
+      <div class="plscroll">
+        <span class="plartwrap"><img class="plglow" id="plGlow" alt="" aria-hidden="true" hidden /><span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span></span>
+        <div class="pltrack" id="plTrack"></div>
+        <div class="plalbum" id="plAlbum"></div>
+        <div class="pltags" id="plTags"></div>
+        <div class="plprog"><span class="plel" id="plElapsed"></span><span class="plbar" aria-hidden="true"><span class="plfill"></span></span><span class="pllen" id="plLen"></span></div>
+        <div class="plpanel">
+          <div class="plpanelhead"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next<span class="plpanelmeta" id="plNextMeta"></span></div>
+          <div class="plpanelbody" id="plNextBody"></div>
+        </div>
+        <div class="plpanel">
+          <div class="plpanelhead"><span class="ppip live" aria-hidden="true"></span>In the booth<span class="plpanelmeta" id="plBoothMeta"></span></div>
+          <div class="plpanelbody" id="plBoothBody"></div>
+        </div>
+      </div>
+      <div class="pldock">
+        <div class="plctl">
+          <button class="plheart" id="plHeartBtn" type="button" aria-pressed="false" aria-label="Like this track" hidden>&#9825;</button>
+          <span class="plnote" aria-hidden="true">&#9834;</span>
+          <input type="range" id="plVol" min="0" max="100" value="100" aria-label="Player volume" />
+          <span class="plvu" id="plVu" aria-hidden="true"></span>
+        </div>
+        <!-- Requests above the transport (operator's order): the input reads
+             first, the big PAUSE stays nearest the thumb. -->
+        <div class="plreq">
+          <input type="text" id="plReqInput" maxlength="200" autocomplete="off"
+                 placeholder="Request: An artist, song, mood, or vibe." />
+          <button id="plReqSend" type="button">Send</button>
+        </div>
+        <div class="plreqmsg" id="plReqMsg"></div>
+        <button id="plPlayBtn" type="button">Pause</button>
+        <button class="plgrab" id="plGrab" type="button" aria-label="Back to the phone"><span class="grip" aria-hidden="true"></span></button>
       </div>
     </div>
   </div>

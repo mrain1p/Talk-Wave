@@ -233,6 +233,29 @@ LOG_RECORDS = [
 LIVEKIT_TAG = ('<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0'
                '/dist/livekit-client.umd.min.js"></script>')
 
+_STREAM_WAV: bytes | None = None
+
+
+def _stream_wav() -> bytes:
+    """Six seconds of a quiet 220Hz tone, built once, stdlib only."""
+    global _STREAM_WAV
+    if _STREAM_WAV is None:
+        import io
+        import math
+        import struct
+        import wave
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(22050)
+            w.writeframes(b"".join(
+                struct.pack("<h", int(6000 * math.sin(2 * math.pi * 220 * t / 22050)))
+                for t in range(22050 * 6)))
+        _STREAM_WAV = buf.getvalue()
+    return _STREAM_WAV
+
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code: int, body, ctype: str) -> None:
@@ -253,6 +276,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # The player's listener actions, from fixtures — enough to drive the
+        # heart filling and the SENT beat without a station.
+        if self.path.split("?")[0] == "/player/like":
+            return self._json({"ok": True, "liked": True, "count": 4})
+        if self.path.split("?")[0] == "/player/request":
+            return self._json({"success": True, "message": "Sent to the booth"})
         # A posted settings patch really lands in the stub's TEMP store —
         # /live reads the store back, so the closed-line states (pause the
         # line, switch a mode off) can be driven end to end in a browser.
@@ -487,6 +516,17 @@ class Handler(BaseHTTPRequestHandler):
                 "name": "Francesca", "show": "The Piazza · Golden-era pop",
                 "tagline": "Velvet Harmonies & Mediterranean Dreams.",
                 "track": "I Want You — The Cadets",
+                # The structured record the player sheet renders. The art
+                # points at a file this origin actually serves, so the art
+                # path is exercised for real.
+                "nowPlaying": {
+                    "title": "I Want You", "artist": "The Cadets",
+                    "album": "Parisian Café", "year": 2009,
+                    "genres": ["Contemporary Jazz", "Jazz"],
+                    "bpm": 92.3, "key": "5A",
+                    "moods": ["Reflective", "Calm"],
+                    "art": "/icon-512.png",
+                },
                 # Everything switched on, so the ask list is at its tallest —
                 # which is the case the overlay exists for.
                 "canAsk": {"allow_requests": True, "allow_library_search": True,
@@ -500,13 +540,38 @@ class Handler(BaseHTTPRequestHandler):
                 **__import__("api.live", fromlist=["live"]).look_payload(
                     settings_store.load(), "Francesca"),
                 "limits": {"maxCallSeconds": 480, "idlePromptSecs": 20},
-                "stream": {"url": "", "alternates": [], "tuneIn": False, "volume": 10},
+                # A stream the sandbox can actually play: the stub's own
+                # /stream WAV. Real deployments carry the station's mount
+                # here; what the card needs from the fixture is only that a
+                # URL resolved and audio comes out when asked.
+                "stream": {"url": "/stream", "alternates": [],
+                           "tuneIn": False, "volume": 10},
+                # Like callsPaused above: from the stub's own settings, so
+                # ticking the box in the panel offers the player on the card.
+                "swipePlayer": bool(settings_store.load().get("swipe_player")),
+                "playerStart": bool(settings_store.load().get("start_on_player")),
+                # One queued record and a weather line, so the player's
+                # panels and header exercise their filled states.
+                "upNext": [{"title": "Esta noche", "artist": "Federico Aubele",
+                            "requestedBy": "Marco"}],
+                "weather": "cloudy 70°F",
                 # A show palette, so the theme cycle's third stop exists here.
                 "stationTheme": {"mode": "dark", "tokens": {
                     "--bg": "#1a2320", "--card": "#22302a", "--ink": "#e8efe9",
                     "--muted": "#9fb3a8", "--line": "#33443c",
                     "--accent": "#d9a441", "--accent-ink": "#141a17"}},
             })
+
+        # A playable stand-in for the station stream: six seconds of a soft
+        # tone, synthesized on first ask. Enough for the card's player to
+        # reach `playing` for real — the sandbox has no station to pull.
+        if path == "/stream":
+            return self._send(200, _stream_wav(), "audio/wav")
+
+        # The heart's current state, from a fixture.
+        if path == "/player/like":
+            return self._json({"enabled": True, "songId": "s1",
+                               "liked": False, "count": 3})
 
         # Same two extensionless routes token_server serves — /settings is
         # the panel's one address; the old /panel 404s here like it does on

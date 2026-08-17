@@ -311,6 +311,19 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "voicemail_greeting_mode": (None, "fresh"),
     "voicemail_max_seconds": (None, 30),
     "voicemail_destination": (None, "hold"),
+    # The soundbite studio (2026-08-17): the voicemail door repurposed into
+    # record → review → send-to-air. "machine" keeps the classic answering
+    # machine, so flipping a deployment is the operator's act, never an
+    # upgrade's.
+    "voicemail_flow": (None, "machine"),
+    "vm_air_backend": (None, "dj-reads"),
+    # Blank = the station's own default (broadcast:1234), reachable only when
+    # talkwave-web shares the station's docker network. No panel row — see
+    # the schema note; the env name is the promised override path.
+    "vm_mixer_telnet": ("VM_MIXER_TELNET", ""),
+    # Blank = derived from HOST_IP:8100 — the published port the mixer already
+    # fetches music through (probe-proven). No panel row either.
+    "vm_air_base_url": ("VM_AIR_BASE_URL", ""),
     "max_call_seconds": (None, 600),
     # Floor on the DJ hanging up by itself. A model that decides a call is
     # finished after two words is worse than one that lingers, so nothing can
@@ -480,6 +493,18 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "corner_link_icon":    (None, "radio"),
     "show_corner_link":    (None, True),
     "embed_corner_link":   (None, True),
+    # The station player: the ribbon at the card's top edge pulls it down
+    # over the phone (full page and the installed app only, never an embed —
+    # the host page there usually IS a player), playing the same stream
+    # tune-in uses. Off by default, twice over: a gesture surface appearing
+    # on every deployed card unasked is the 0.9.61 shape again, and without
+    # a public https tune_in_url the player would open onto silence behind
+    # TLS.
+    "swipe_player":       (None, False),
+    # Which face the page opens on. The player as the front page makes the
+    # widget the station's app with a phone behind it; off keeps the phone
+    # first. Audio still waits for the browser's one allowed tap either way.
+    "start_on_player":    (None, False),
     # No `embed_settings_gear`. An embed never loads the panel's code, so a
     # gear there opens nothing — offering the operator a switch for it would
     # be offering a switch that does nothing whichever way it is set.
@@ -1478,6 +1503,21 @@ SCHEMA: dict[str, dict] = {
         help="Auto follows the viewer and keeps the toggle. Light and dark force "
              "one and hide it. Inherit matches the page the widget is embedded "
              "in; on this page it behaves as auto."),
+    "swipe_player": dict(group="player", kind="check",
+        label="Swipe-up station player",
+        help="The ribbon at the card's top edge pulls down a full station "
+             "player: cover art, what's playing, the queue, likes and song "
+             "requests. It plays the Stream URL from Calls → Tune the caller "
+             "in, so behind TLS that must be the station's public https "
+             "stream. This page and the installed app only, never an embed. "
+             "Starting a call or a recording stops the music."),
+    "start_on_player": dict(group="player", kind="check",
+        label="Start on the player",
+        needs=("swipe_player", True),
+        help="The page opens onto the player, and pulling it up reveals the "
+             "phone — the widget becomes the station's app with a call "
+             "button behind it. Browsers still wait for one tap before any "
+             "audio starts; that is their rule, not a fault."),
     "min_call_seconds": dict(group="closing", kind="number",
         label="Earliest hang-up (s)",
         help="The floor under the DJ ending a call itself. 60 by default: a model "
@@ -1652,6 +1692,32 @@ SCHEMA: dict[str, dict] = {
         label="Message ceiling (s)",
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
+    "voicemail_flow": dict(group="voicemail", kind="select",
+        label="The line is",
+        help="The answering machine takes a message as text — no audio is "
+             "ever kept. The soundbite studio records the caller, shows them "
+             "the transcript and what sending will do, and puts the approved "
+             "take on air with the DJ around it; the audio is deleted the "
+             "moment it airs. Both flows answer to the same door: the "
+             "Voicemail permission under Permissions decides which callers "
+             "may leave a message."),
+    # vm_mixer_telnet and vm_air_base_url deliberately have no schema entry —
+    # the station_mcp_url ruling (0.10.80, operator's) applied again on
+    # 2026-08-17, the operator's own words: "if it's derived couldn't we just
+    # remove it". Both derive correctly on any ordinary deployment
+    # (broadcast:1234; http://HOST_IP:8100 — the probe-proven URL), and the
+    # rare exception overrides them in settings.json or the environment.
+    "vm_air_backend": dict(group="voicemail", kind="select",
+        label="A soundbite airs as",
+        help="'The DJ reads it' works on any deployment — plain station "
+             "admin API. 'The caller's own voice' plays the recording on the "
+             "station's voice channel (music ducked, proper level) and needs "
+             "one deployment step: this container joined to the station's "
+             "docker network, so the mixer's telnet (broadcast:1234) is "
+             "reachable. The clip URL derives from HOST_IP. Falls back to "
+             "the DJ reading, out loud in the receipt, whenever the doors "
+             "are missing. Unusual layouts can override vm_mixer_telnet and "
+             "vm_air_base_url in settings.json or the environment."),
     "voicemail_destination": dict(group="voicemail", kind="select", label="Messages go",
         help="'Held for you' is the safe default — messages land below, and "
              "nothing reaches the air without you. The rest act on the station "
@@ -1879,6 +1945,14 @@ STATIC_CHOICES = {
     "voicemail_greeting_mode": [
         ("staged", "Staged clips — instant, rendered ahead of time"),
         ("fresh", "Fresh each call — in persona, staged clip as the backup"),
+    ],
+    "voicemail_flow": [
+        ("machine", "Answering machine — a message as text, no audio kept"),
+        ("studio", "Soundbite studio — record, review, send to air"),
+    ],
+    "vm_air_backend": [
+        ("dj-reads", "The DJ reads it — works everywhere"),
+        ("caller-voice", "The caller's own voice — needs the mixer doors"),
     ],
     "voicemail_when": [
         ("closed", "When a live call is impossible (busy, off air, live calls off)"),
@@ -2507,7 +2581,8 @@ def beneath() -> dict:
 # station_mcp_url — a browser autofilling a name into a text box — which meant
 # the agent got NO station tools on any call and invented library results
 # instead. The field accepted it silently and nothing downstream complained.
-URL_FIELDS = ("station_base_url", "station_mcp_url", "llm_base_url", "tts_base_url")
+URL_FIELDS = ("station_base_url", "station_mcp_url", "llm_base_url",
+              "tts_base_url", "vm_air_base_url")
 
 _URLISH = re.compile(r"^(https?|wss?)://[^\s/?#]+", re.IGNORECASE)
 

@@ -630,6 +630,12 @@
      was present but invisible (visibility inherited from .rig), which is
      exactly the "I still can't see the text area" the operator reported. */
   .rig > .chatrow { visibility: visible; }
+  /* The soundbite studio is the chatrow's lesson relearned: it lives in the
+     rig, is meaningful off a call, and shipped inheriting reserved-hidden —
+     laid out, occupying its rows, invisible. The operator met a studio with
+     no Record button, and the probe's offsetParent check saw nothing wrong
+     because offsetParent is blind to visibility. */
+  .rig > .vmstudio { visibility: visible; }
   /* Idle, the volume gives up its WIDTH as well as its ink. It was
      `visibility: hidden` alone, which keeps the box — on an embed that box was
      most of the band, and it squeezed the two waveforms into 65px between the
@@ -715,6 +721,270 @@
      here the flex fill owns the height — so drop .open's fixed 44vh back to the
      normal basis and let the rig's spare room size it, same as every mode. */
   .card[data-mode="chat"] .linebox { max-height: none; }
+
+  /* The soundbite studio: recording keeps the caller's own meter (the same
+     "is it registering?" feedback voicemail earned) and nothing of the
+     call's — no talk bar (the Record button IS the mic control), no DJ
+     meter, no doors. The review half fills the transcript's box so the card
+     keeps one footprint across record → review. */
+  .card[data-mode="vmstudio"] .talkrow,
+  .card[data-mode="vmstudio"] .actionrow,
+  .card[data-mode="vmstudio"] .after,
+  .card[data-mode="vmstudio"] .meters .dj,
+  .card[data-mode="vmstudio"] .meters .vol { display: none !important; }
+  .card:not([data-mode="vmstudio"]) .vmstudio { display: none !important; }
+  .vmstudio { display: flex; flex-direction: column; gap: 8px; }
+  /* The display rules here would beat the UA's [hidden] — say it explicitly. */
+  .vmstudio[hidden], .vmbarrow[hidden], .vmgrid[hidden] { display: none !important; }
+  /* Record state: the bar carries the row, Cancel rides beside it — the same
+     proportions as the talk row it replaces. The bar reuses .pttbar wholesale
+     (markup and class), so it lights, presses and reads like the real one. */
+  .vmbarrow { display: flex; gap: 8px; }
+  .vmbarrow .pttbar { flex: 1 1 auto; min-width: 0; }
+  .vmbarrow > #vmCloseBtn { flex: 0 0 auto; }
+  /* Review state: four verbs, two rows (operator's sketch). min-width:0 so a
+     label can never push its cell — words were leaving their boxes on a
+     phone (operator's screenshots, 2026-08-17). */
+  .vmgrid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .vmgrid button {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The bar's mobile fix, kept: without touch-action a long press starts a
+     text-selection gesture that cancels the pointer mid-take. */
+  #vmRecBtn { touch-action: none; -webkit-user-select: none; user-select: none; }
+
+  /* The station player: a SHEET pulled down over the card, not a card mode.
+     The wipe is the design — the operator's ask is the player coming down
+     over the phone page like a shade, and going back up the same way — so
+     it overlays whatever the card was showing and touches none of the bands
+     beneath. A direct child of .card on purpose: .rig reserves visibility
+     for the call's own rows, and the first build sat inside it — laid out,
+     measured by every geometry probe, painting NOTHING (operator's phone,
+     2026-08-17). An absolutely-positioned sheet with its own opaque surface
+     cannot fail that way: if it arrives at all, it is visibly a surface. */
+  .player {
+    position: absolute; inset: 0; z-index: 60;
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center; padding: 0; overflow: hidden;
+    background-color: var(--pine);
+    border-radius: inherit;
+    transform: translateY(-103%);
+    transition: transform .38s cubic-bezier(.32, .72, .28, 1);
+    will-change: transform;
+  }
+  .card.playeropen .player { transform: translateY(0); }
+  /* The finger owns the sheet mid-drag; the transition takes over on release. */
+  .player.dragging { transition: none; }
+  /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
+     At rest the sheet is display:none, so nothing sits off-canvas. */
+  .player[hidden] { display: none !important; }
+  /* While the sheet is rendered the card clips, so the wipe stays inside the
+     card's own corners. The ask popup is position:fixed and does not care. */
+  .card:has(.player:not([hidden])) { overflow: clip; }
+  /* On a phone the player IS the screen (the operator's ask: "the full
+     space allotment") — fixed to the viewport, square corners, out from
+     under the body's gutters. position:fixed escapes the card's clip, which
+     is exactly the point. */
+  @media (max-width: 700px) {
+    body:not(.compact) .player { position: fixed; inset: 0;
+                                 border-radius: 0; z-index: 90; }
+  }
+
+  /* The ribbon: a BOOKMARK hanging from the card's top edge — the operator's
+     correction to a bare floating grip ("it should look more like a
+     pulldown/tab/bookmark"). Visible only while the player is closed; the
+     way back up is the grabber at the dock's foot. Neutral surface tones on
+     purpose: nothing red rides the handle. */
+  /* .card-prefixed: the card's own `.card button` costume outranks a bare
+     class, and it dressed the bookmark as a control-height button. */
+  .card .ribbon {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    z-index: 70; width: 76px; height: 24px; padding: 0;
+    background: var(--granite); border: 1px solid var(--edge); border-top: 0;
+    border-radius: 0 0 6px 6px; cursor: grab;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  .card .ribbon .grip {
+    width: 30px; height: 4px; border-radius: 2px;
+    background: var(--sage-dim); display: block;
+  }
+  .card .ribbon:hover .grip { background: var(--alpenglow); }
+  .card .ribbon[hidden] { display: none; }
+
+  /* ---- The player's own anatomy: the operator's 3a handoff, token for
+     token. Header ribbon / glow art / title block / chips / progress /
+     info panels, then the docked action bar. -------------------------- */
+  .plhead {
+    flex: none; width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px 12px; border-bottom: 1px solid var(--hairline);
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+  }
+  .plhead .pip { width: 8px; height: 8px; background: var(--coral);
+                 border-radius: 0; display: block; }
+  .plheadmeta { margin-left: auto; color: var(--sage-dim);
+                font: 400 11px/1 var(--font-mono); letter-spacing: .08em;
+                text-transform: none; }
+  /* The middle scrolls if a short viewport must, so the dock never leaves
+     the bottom; on the mockup's 844px frame nothing actually scrolls. */
+  .plscroll {
+    flex: 1 1 auto; min-height: 0; width: 100%; overflow-y: auto;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 16px 12px;
+  }
+  /* The art, glowing: a blurred copy of the SAME artwork behind it, so the
+     halo recolors per record. The DJ's photo steps in when a record has no
+     art; initials after that. */
+  .plartwrap { position: relative; width: min(240px, 62cqw); aspect-ratio: 1;
+               flex: none; }
+  .plglow {
+    position: absolute; left: -10px; top: -6px;
+    width: calc(100% + 20px); height: calc(100% + 12px);
+    filter: blur(36px) saturate(1.15); opacity: .3;
+  }
+  .plart { position: absolute; inset: 0; display: block; }
+  .plart img, .plmono {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; border-radius: 6px;
+    border: 1px solid var(--edge); background: var(--granite-hi);
+  }
+  .plmono {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--coral); font: 700 44px/1 var(--font-mono);
+  }
+  .plart img[hidden], .plmono[hidden], .plglow[hidden] { display: none; }
+  .pltrack {
+    margin-top: 16px;
+    font: 800 clamp(22px, 8cqw, 30px)/1.1 var(--font-body);
+    letter-spacing: .05em; text-transform: uppercase;
+  }
+  .plalbum { font-size: 13px; color: var(--sage); margin-top: 4px; }
+  .plalbum:empty { display: none; }
+  /* The analysis strip: genre · BPM · key · mood. Amber, like the playhead —
+     the mockup's reading of "metadata is playback-coloured". */
+  .pltags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+            margin-top: 12px; }
+  .pltags:empty { display: none; }
+  .pltags .pill { color: var(--amber); border-color: var(--edge);
+                  font-size: 9px; letter-spacing: .12em; height: auto;
+                  padding: 6px 8px; }
+  .plprog { display: flex; align-items: center; gap: 10px; width: 100%;
+            margin-top: 16px; }
+  .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
+          font-variant-numeric: tabular-nums; }
+  .plel:empty { display: none; }
+  .plbar { flex: 1 1 auto; height: 4px; background: var(--hairline);
+           position: relative; overflow: hidden; display: block; }
+  .plbar .plfill { position: absolute; inset: 0 auto 0 0;
+           width: var(--pl-progress, 0%); background: var(--amber);
+           transition: width .9s linear; }
+  .pllen { font: 700 11px/1 var(--font-mono); color: var(--sage-dim);
+           font-variant-numeric: tabular-nums; }
+  /* The two info panels share one anatomy: pip + micro label + right meta,
+     body lines beneath. The pip carries the state — coral means live. */
+  .plpanel {
+    width: 100%; border: 1px solid var(--edge); border-radius: 6px;
+    background: var(--pine); padding: 9px 12px; text-align: left;
+    margin-top: 8px;
+  }
+  .plscroll .plpanel:first-of-type { margin-top: 14px; }
+  .plpanelhead {
+    display: flex; align-items: center; gap: 7px;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+  }
+  .ppip { width: 7px; height: 7px; background: var(--edge); border-radius: 0;
+          display: block; }
+  .ppip.live { background: var(--coral); }
+  .plpanelmeta { margin-left: auto; color: var(--sage-dim); font-weight: 400;
+                 letter-spacing: .08em; text-transform: none; }
+  .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage); }
+  .plpanelbody .pltit { font-size: 14px; font-weight: 700;
+                        color: var(--alpenglow); }
+  .plpanelbody .plsub { font-size: 12px; color: var(--sage); margin-top: 2px; }
+  /* The docked action bar: heart · volume · meter, the big transport, the
+     request row, and the grabber home. Granite over the pine panels, same
+     as the mockup's bottom bar. */
+  .pldock {
+    flex: none; width: 100%; background: var(--granite);
+    border-top: 1px solid var(--hairline);
+    padding: 12px 16px calc(8px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .plctl { display: flex; align-items: center; gap: 12px; }
+  .card .plheart {
+    width: 44px; height: 44px; flex: none; border: 1px solid var(--edge);
+    background: transparent; color: var(--sage); font-size: 18px;
+    line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
+  }
+  .card .plheart.liked { color: var(--coral); border-color: var(--coral); }
+  .card .plheart[hidden] { display: none; }
+  .plnote { color: var(--sage-dim); font-size: 13px; flex: none; }
+  /* The same drawn fader as the card's — a browser-native accent-color
+     slider is a different height on every platform, which is the exact
+     thing TestTheCardIsOneHeightAndStaysThere exists to stop. */
+  #plVol { flex: 1 1 auto; }
+  /* The VU meter: eleven bars breathing while the stream plays, frozen the
+     moment it pauses — animation-play-state, driven by .player.playing. */
+  .plvu { display: flex; align-items: flex-end; gap: 3px; height: 16px;
+          flex: none; }
+  .plvu span {
+    width: 3px; height: var(--h, 10px); background: var(--coral);
+    transform-origin: bottom; transform: scaleY(.3);
+    animation: pleq var(--d, 700ms) ease-in-out alternate infinite;
+    animation-delay: var(--dl, 0ms); animation-play-state: paused;
+    display: block;
+  }
+  .player.playing .plvu span { animation-play-state: running; }
+  @keyframes pleq { from { transform: scaleY(.2); } to { transform: scaleY(1); } }
+  /* The transport: filled while playing, outlined while stopped — the one
+     filled control on the sheet, same as the card's own primary. */
+  #plPlayBtn {
+    width: 100%; height: 48px; border: 1px solid var(--coral);
+    background: var(--coral); color: var(--alpenglow);
+    font: 700 12px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case); border-radius: 0; cursor: pointer;
+  }
+  .player:not(.playing) #plPlayBtn { background: transparent;
+                                     color: var(--coral); }
+  .plreq { display: flex; gap: 10px; }
+  .plreq input {
+    flex: 1 1 auto; min-width: 0; height: 44px; background: var(--pine);
+    border: 1px solid var(--edge); color: var(--alpenglow);
+    font: 13px var(--font-body); padding: 0 10px; border-radius: 0;
+  }
+  .plreq input::placeholder { color: var(--sage-dim); }
+  #plReqSend {
+    width: 76px; flex: none; height: 44px; background: var(--coral);
+    border: 1px solid var(--coral); color: var(--alpenglow);
+    font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case); border-radius: 0; cursor: pointer;
+  }
+  #plReqSend:disabled { opacity: .7; }
+  .plreqmsg { font-size: 11px; color: var(--coral); text-align: left; }
+  .plreqmsg:empty { display: none; }
+  /* The way home: the same grip as the top bookmark, now at the sheet's
+     foot — "the pulldown stays on the bottom when the page is switched". */
+  .card .plgrab {
+    align-self: center; width: 76px; height: 20px; padding: 0;
+    background: transparent; border: 0; cursor: grab;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  .card .plgrab .grip { width: 34px; height: 4px; border-radius: 2px;
+                  background: var(--sage-dim); display: block; }
+  .card .plgrab:hover .grip { background: var(--alpenglow); }
+
+  /* The door into the player is a chip that is pressed, not read — the one
+     pill that acts like a button. Green while the stream is actually
+     playing, the same state vocabulary as everything else. */
+  .listenchip { cursor: pointer; }
+  .listenchip:hover { color: var(--alpenglow); border-color: var(--sage); }
+  .listenchip.playing { color: var(--sage); border-color: var(--sage); }
 
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
@@ -1037,30 +1307,35 @@
      volume bar and speaker wavelengths"). Padding insets the track by the
      thumb's own half-width, so the ends of the rail are the ends of the
      control. */
-  .vol input[type=range] {
+  .vol input[type=range], #plVol {
     flex: 1; min-width: 0; height: 18px; padding: 0 5px; box-sizing: border-box;
     -webkit-appearance: none; appearance: none;
     background: transparent; cursor: pointer;
   }
   /* --vol is written by applyVolume(); webkit has no ::-moz-range-progress
      equivalent, so the fill is a hard-stop gradient on the track itself. */
-  .vol input[type=range]::-webkit-slider-runnable-track {
+  .vol input[type=range]::-webkit-slider-runnable-track,
+  #plVol::-webkit-slider-runnable-track {
     height: 3px; border-radius: 0;
     background: linear-gradient(to right,
       var(--coral) var(--vol, 100%), var(--hairline) var(--vol, 100%));
   }
-  .vol input[type=range]::-webkit-slider-thumb {
+  .vol input[type=range]::-webkit-slider-thumb, #plVol::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 9px; height: 9px; border-radius: 0; border: 0;
     background: var(--coral); margin-top: -3px;
   }
-  .vol input[type=range]::-moz-range-track { height: 3px; background: var(--hairline); }
-  .vol input[type=range]::-moz-range-progress { height: 3px; background: var(--coral); }
-  .vol input[type=range]::-moz-range-thumb {
+  .vol input[type=range]::-moz-range-track,
+  #plVol::-moz-range-track { height: 3px; background: var(--hairline); }
+  .vol input[type=range]::-moz-range-progress,
+  #plVol::-moz-range-progress { height: 3px; background: var(--coral); }
+  .vol input[type=range]::-moz-range-thumb,
+  #plVol::-moz-range-thumb {
     width: 9px; height: 9px; border-radius: 0; border: 0; background: var(--coral);
   }
-  .vol input[type=range]:focus { outline: none; }
-  .vol input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--amber); }
+  .vol input[type=range]:focus, #plVol:focus { outline: none; }
+  .vol input[type=range]:focus-visible::-webkit-slider-thumb,
+  #plVol:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--amber); }
   .vol .pct {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     font-weight: 700; color: var(--sage-dim); width: 38px; text-align: right;

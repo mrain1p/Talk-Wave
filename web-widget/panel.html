@@ -7,6 +7,9 @@
      is typing into can sit hidden behind it. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
 <title>Talk Wave settings</title>
+<!-- Same mark as the call page — the operator finds this tab by icon too. -->
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <!--
   The operator's surface, served at /settings — the one and only address.
 
@@ -1094,6 +1097,14 @@
           <select id="voicemail_when"></select>
         </div>
         <div class="row">
+          <label for="voicemail_flow">The line is</label>
+          <select id="voicemail_flow"></select>
+        </div>
+        <div class="row">
+          <label for="vm_air_backend">A soundbite airs as</label>
+          <select id="vm_air_backend"></select>
+        </div>
+        <div class="row">
           <label for="voicemail_greeting_mode">Greeting comes from</label>
           <select id="voicemail_greeting_mode"></select>
         </div>
@@ -1454,6 +1465,8 @@
 
         <h4 class="subhead">On the caller's phone</h4>
         <label class="check tickright"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
+        <label class="check tickright"><input type="checkbox" id="swipe_player" /> Swipe-up station player</label>
+        <label class="check tickright"><input type="checkbox" id="start_on_player" /> Start on the player</label>
 
         <h4 class="subhead">After the conversation</h4>
         <!-- One question, three doors — it used to ask the same thing three

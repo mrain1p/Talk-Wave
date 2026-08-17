@@ -228,6 +228,27 @@ async def handle_live(request: web.Request) -> web.Response:
         stream_url, stream_alternates = await tune_in.resolve(
             cfg, settings_store.station_base_url()
         )
+        # The player's UP NEXT panel: the station's own queue snapshot, read
+        # only when the player is switched on — the phone card shows none of
+        # it, and a /state read per rebuild is not free on a rate-limited
+        # station.
+        up_next = []
+        if cfg.get("swipe_player"):
+            snap = await station.state()
+            for item in (snap.get("upcoming") or [])[:2]:
+                if item.get("title"):
+                    up_next.append({
+                        "title": item.get("title"),
+                        "artist": item.get("artist") or None,
+                        "requestedBy": item.get("requestedBy") or None,
+                    })
+        # The header's weather readout, from the context the station already
+        # sends with /now-playing — same source its own player reads.
+        wx = (now.get("context") or {}).get("weather") or {}
+        weather_line = (
+            f"{wx['condition']} {wx['temp']}°{wx.get('tempUnit') or ''}"
+            if wx.get("condition") not in (None, "", "unknown")
+            and wx.get("temp") is not None else None)
         payload = (
                 {
                     "reachable": reachable,
@@ -248,6 +269,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # The answering-machine policy, so the card can offer
                     # "Leave a message" exactly where it paints a refusal.
                     "voicemailWhen": settings_store.voicemail_policy(cfg),
+                    # Which door "Leave a message" opens: the classic machine
+                    # (a LiveKit vm- room) or the soundbite studio (browser
+                    # recording + review). The widget branches on this alone.
+                    "voicemailFlow": str(cfg.get("voicemail_flow") or "machine"),
                     # The widget's expiry maths stayed in minutes; only the SETTING
                     # moved to hours, so the wire stays compatible both ways.
                     "guestSessionMinutes":
@@ -276,6 +301,18 @@ async def handle_live(request: web.Request) -> web.Response:
                         "volume": (int(cfg.get("tune_in_volume") or 0)
                                    if cfg.get("tune_in_audible", True) else 0),
                     },
+                    # Whether the card OFFERS the swipe-up station player.
+                    # Only the operator's switch travels — the stream itself
+                    # is the block above, and the widget also requires a
+                    # resolved URL before it shows the gesture, so a switch
+                    # flipped on with no reachable stream offers nothing.
+                    "swipePlayer": bool(cfg.get("swipe_player")),
+                    # Which face the page opens on; the widget still requires
+                    # the player to actually be offered before honouring it.
+                    "playerStart": bool(cfg.get("start_on_player")),
+                    # The player's queue panel and header weather.
+                    "upNext": up_next,
+                    "weather": weather_line,
                     # Everything that is a look rather than a fact — the theme,
                     # the corner controls, which lines of the who's-on-air
                     # block each surface paints, the photo's shape, the Call
@@ -363,6 +400,26 @@ async def handle_live(request: web.Request) -> web.Response:
                         if track.get("title")
                         else None
                     ),
+                    # The record as STRUCTURE, for the station player's sheet —
+                    # the flat `track` string above stays for the who-row. All
+                    # of it is already in the station's /now-playing answer
+                    # (the same analysis strip its own player renders: genre ·
+                    # BPM · key · mood); this only forwards it. Art goes
+                    # through our own /cover proxy for the same reason the
+                    # avatar does — the station may be unreachable or plain
+                    # http from the caller's browser.
+                    "nowPlaying": {
+                        "title": track.get("title") or None,
+                        "artist": track.get("artist") or None,
+                        "album": track.get("album") or None,
+                        "year": track.get("year"),
+                        "genres": [g for g in (track.get("genres") or []) if g][:4],
+                        "bpm": _num(track.get("bpm")),
+                        "key": track.get("musicalKey") or None,
+                        "moods": [m for m in (track.get("moods") or []) if m][:3],
+                        "art": (f"/cover/{track['subsonic_id']}"
+                                if track.get("subsonic_id") else None),
+                    },
                     # When the record started and how long it runs, so the
                     # now-playing rail can show elapsed and a progress
                     # hairline. Sent as the START INSTANT rather than as an
@@ -405,4 +462,28 @@ async def handle_avatar(request: web.Request) -> web.StreamResponse:
             )
     except Exception as e:
         log.info("avatar fetch failed for %s: %s", persona_id, describe(e))
+        raise web.HTTPNotFound()
+
+
+async def handle_cover(request: web.Request) -> web.StreamResponse:
+    """Proxy the station's album art (/cover/{id}) for the same reason the
+    avatar is proxied: the caller's browser may not be able to reach the
+    station at all, and behind TLS a plain-http image is blocked as mixed
+    content. A day, not five minutes: the station itself calls a song's art
+    immutable-at-the-edge."""
+    from urllib.parse import quote
+
+    track_id = request.match_info["track_id"]
+    root = settings_store.station_base_url()
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(f"{root}/cover/{quote(track_id, safe='')}")
+            r.raise_for_status()
+            return web.Response(
+                body=r.content,
+                content_type=r.headers.get("content-type", "image/jpeg").split(";")[0],
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    except Exception as e:
+        log.info("cover fetch failed for %s: %s", track_id, describe(e))
         raise web.HTTPNotFound()

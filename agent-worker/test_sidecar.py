@@ -35,6 +35,7 @@ from tests.test_settings import (  # noqa: F401
     TestTheGuestExpiryMovedToHoursWithoutMovingAnyonesExpiry,
     TestAnUpgradeClosesNoDoorAndHandsOutNoPower,
     TestACommentedEnvValueIsNamedAtBoot,
+    TestTheStationPlayerShipsOff,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,
@@ -63,6 +64,7 @@ from tests.test_http import (  # noqa: F401
 )
 from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,
+    TestTheStationPlayerKnowsItsPlace,
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
     TestASkinCannotReachPastItsTokens,
@@ -333,6 +335,9 @@ from tests.test_voicemail import (  # noqa: F401
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,
+    TestMasteringMakesAClipTheAirCanCarry,
+    TestADraftIsHeldBrieflyAndLeavesNoOrphans,
+    TestTheSoundbiteAirsWithReceipts,
 )
 from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,

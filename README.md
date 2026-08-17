@@ -1,4 +1,10 @@
-# Talk Wave
+<p align="center">
+  <img src="docs/mark.svg" width="320" alt="Talk-Wave — the caller's voice and the DJ's, meeting in the middle">
+</p>
+
+<h1 align="center">Talk-Wave</h1>
+
+## What it is
 
 **A call-in phone line for your [SUB/WAVE](https://github.com/perminder-klair/subwave) AI radio station.** A listener presses one button in the browser and talks with whoever is live on air — and the DJ can act on the station mid-call: find a record by name or by how it *sounds*, queue it, take it back out again, put a shoutout on the broadcast.
 
@@ -30,7 +36,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 
 **Three ways to reach the booth**
 - **Live calls** — full-duplex voice with barge-in, live captions, and a DJ who knows the show it's on.
-- **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. See [Voicemail](docs/VOICEMAIL.md).
+- **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. Or run the line as a **soundbite studio**: the caller records a take, reviews the transcript and exactly what sending will do, and their own voice airs with the DJ around it. See [Voicemail](docs/VOICEMAIL.md).
 - **The text line** — the same DJ, typed. Works where WebRTC can't.
 
 **A real station on the other end**
@@ -142,7 +148,7 @@ The README is the short version. The detail lives here:
 | **[Calling from outside your network](docs/networking.md)** | The topologies, the TLS front door, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
-| **[Voicemail](docs/VOICEMAIL.md)** | The answering machine: staged greetings, where messages go, and what is deliberately never recorded |
+| **[Voicemail](docs/VOICEMAIL.md)** | The answering machine and the soundbite studio: staged greetings, where messages go, and the terms on which anything is recorded |
 | **[How a call actually works](docs/the-call.md)** | The path one sentence takes: the prompt and what it costs, the tool surface, how a request is triaged, and everything that can make the DJ speak |
 
 ## Under the hood

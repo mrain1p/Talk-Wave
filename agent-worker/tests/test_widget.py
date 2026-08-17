@@ -958,6 +958,26 @@ class TestTheCallerCanChooseWhichWayOut(unittest.TestCase):
         self.assertNotIn("offerSpeakerButton", route)
         self.assertNotIn("framed", route)
 
+    def test_the_button_needs_a_device_not_just_a_function(self):
+        # Chrome on Android ships setSinkId while the Android platform
+        # cannot re-route an individual stream, and it lists no audiooutput
+        # devices — so a button drawn off function existence alone sat dead
+        # on the operator's phone (2026-08-17). The offer rides a probe of
+        # what the device list actually contains.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        block = call_js.split("function offerSpeakerButton()")[1][:220]
+        self.assertIn("canRoute === true", block)
+        probe = call_js.split("async function probeRouting()")[1][:600]
+        self.assertIn("audiooutput", probe)
+
+    def test_a_refused_route_does_not_relabel_the_button(self):
+        # The label follows the AUDIO: flipping it on a refused route is the
+        # button claiming the sound moved when it did not.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        route = call_js.split("async function routeAudio(")[1]
+        route = route[:route.index("\n  }")]
+        self.assertIn("if (moved) onSpeaker = want", route)
+
     def test_wanting_the_loudspeaker_does_not_ask_for_play_and_record(self):
         # The Audio Session spec says play-and-record is the type that may be
         # routed to the receiver. Asking for it while wanting the speaker is
@@ -2695,3 +2715,104 @@ class TestTheCornerControlsAreAllOneSize(unittest.TestCase):
         self.assertIn("13px", rule,
                       "the drawn corner icon is sized differently from the "
                       "glyphs beside it")
+
+
+class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
+    """The swipe-up player is the full page's own feature. The operator's
+    switch travels on /live; an embed is never offered it (the host page
+    there usually IS a player, and two would double the audio); and a live
+    microphone always wins — on speakers the stream comes straight back in
+    through the caller's mic and is transcribed as if they had said it,
+    which is the exact bleed the tune-in volume help already warns about."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(
+            encoding="utf-8")
+
+    def test_the_switch_travels_and_is_read(self):
+        self.assertIn('"swipePlayer"', self.live_py)
+        self.assertIn("d.swipePlayer", self.js)
+
+    def test_the_listener_actions_ride_the_players_own_door(self):
+        # /player/like and /player/request WRITE to the station. They must
+        # not exist while the player is switched off, and they answer to the
+        # same guest door as the phone. The station side is public listener
+        # API with its own per-IP limits — this door only ever narrows it.
+        src = (AGENT_WORKER / "api" / "player.py").read_text(encoding="utf-8")
+        door = src.split("def _door")[1][:900]
+        self.assertIn('get("swipe_player")', door)
+        self.assertIn("_guest_ok", door)
+        for handler in ("handle_player_like_status", "handle_player_like",
+                        "handle_player_request"):
+            body = src.split(f"async def {handler}")[1][:220]
+            self.assertIn("_door(request)", body)
+
+    def test_the_queue_travels_only_while_the_player_is_on(self):
+        # A /state read per /live rebuild is not free on a rate-limited
+        # station — the phone card shows none of it, so it is only fetched
+        # for deployments that actually switched the player on.
+        self.assertIn('"upNext"', self.live_py)
+        gate = self.live_py.split("up_next = []")[1][:200]
+        self.assertIn('cfg.get("swipe_player")', gate)
+        self.assertIn("d.upNext", self.js)
+
+    def test_the_record_travels_as_structure_and_the_art_is_proxied(self):
+        # The sheet renders the same analysis strip the station's own player
+        # does (genre · BPM · key · mood) — from /live, not from a second
+        # fetch — and the art goes through our /cover proxy for the same
+        # reason the avatar does: the station may be unreachable or plain
+        # http from the caller's browser.
+        self.assertIn('"nowPlaying"', self.live_py)
+        self.assertIn('"/cover/', self.live_py)
+        self.assertIn("d.nowPlaying", self.js)
+        routes = (AGENT_WORKER / "token_server.py").read_text(encoding="utf-8")
+        self.assertIn('add_get("/cover/{track_id}", handle_cover)', routes)
+
+    def test_an_embed_is_never_offered_the_player(self):
+        gate = self.js.split("function playerOffered")[1][:400]
+        for refusal in ("!compact", "!framed", "!previewMode"):
+            self.assertIn(refusal, gate)
+
+    def test_the_gesture_only_offers_a_stream_that_resolved(self):
+        # A chip that opens onto silence is worse than no chip: the switch
+        # alone is not enough, the stream URL has to have resolved too.
+        gate = self.js.split("function playerOffered")[1][:400]
+        self.assertIn("d.stream && d.stream.url", gate)
+
+    def test_a_live_microphone_stops_the_music(self):
+        # closePlayer(false) is the sheet AND the audio dying together;
+        # closePlayer(true) would leave the stream feeding the open mic.
+        call = self.js.split("async function startCall")[1][:2400]
+        self.assertIn("closePlayer(false)", call)
+        studio = self.js.split("function vmOpenStudio")[1][:800]
+        self.assertIn("closePlayer(false)", studio)
+
+    def test_the_sheet_is_not_a_rig_row(self):
+        # .rig reserves visibility for the call's own rows — a band inside it
+        # that never says `visibility: visible` has geometry and paints
+        # NOTHING. The first player build shipped exactly that: every rect
+        # and offsetParent probe passed, and the operator's phone showed a
+        # blank card (2026-08-17). The sheet lives on the card itself.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        rig_open = html.index('id="rig"')
+        player_at = html.index('id="playerView"')
+        actionrow = html.index('class="actionrow"', rig_open)
+        self.assertGreater(
+            player_at, actionrow,
+            "the player sheet sits among the rig's rows again — .rig's "
+            "visibility reservation will blank it")
+        # Between the rig's last row and the sheet, BOTH the actionrow and
+        # the rig itself must have closed — one </div> means the sheet is
+        # still a rig child, inheriting the reservation.
+        self.assertGreaterEqual(
+            html[actionrow:player_at].count("</div>"), 2,
+            "the player sheet is still inside the rig")
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        block = css[css.index("\n  .player {"):]
+        block = block[:block.index("}")]
+        self.assertIn("position: absolute", block,
+                      "the player is no longer an overlay sheet — if it "
+                      "rejoins the card's flow, it inherits somebody's "
+                      "visibility again")

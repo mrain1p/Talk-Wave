@@ -29,6 +29,10 @@ UPSTREAM-REQUEST-*.md
 # name the operator's own box. Same rule as the drafts above.
 HANDOVER*.md
 subwave-openapi.json
+# Design handoff bundles (the brand-mark zip and any successor). The shipped
+# assets are committed in web-widget/ and docs/; the bundle is the working
+# source that produced them, and it stays on the operator's machine.
+*.zip
 # Worked-off notes retire here rather than sitting beside the live ones
 # looking like open work (the three audit docs moved 2026-08-11, ~95% done,
 # survivors folded into the tracked backlog first).

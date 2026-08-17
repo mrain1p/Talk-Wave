@@ -1,13 +1,18 @@
 """Voicemail: the answering machine's promises, held to.
 
-The design constraint that shapes every test here: nothing is recorded as
-audio, a missing clip must never mean a silent pickup, and a message the
-station refuses must land in the operator's list rather than vanishing.
+The design constraints that shape every test here: a missing clip must never
+mean a silent pickup, and a message the station refuses must land in the
+operator's list rather than vanishing. The classic machine records nothing as
+audio; the soundbite flow (review.py, master.py) deliberately reverses that —
+it HOLDS a caller's clip so it can be aired — and the tests below hold it to
+the terms of that reversal: briefly, deletably, and never as an orphan.
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -654,3 +659,681 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
         from voicemail import capture
 
         self.assertGreaterEqual(capture._SETTLE_SECS, 6.0)
+
+
+def _tone_wav(path: Path, freqs: list[float], secs: float, *, rate: int = 16000,
+              channels: int = 1, gain: float = 0.5,
+              lead_silence: float = 0.0, tail_silence: float = 0.0) -> None:
+    """A synthetic 'caller': sine content between stretches of silence."""
+    import wave
+
+    def _samples(n_secs: float, loud: bool) -> list[int]:
+        n = int(rate * n_secs)
+        if not loud:
+            return [0] * n
+        out = []
+        for i in range(n):
+            v = sum(math.sin(2 * math.pi * f * i / rate) for f in freqs)
+            out.append(int(32767 * gain * v / max(1, len(freqs))))
+        return out
+
+    body = (_samples(lead_silence, False) + _samples(secs, True)
+            + _samples(tail_silence, False))
+    frames = b"".join(struct.pack("<h", v) * channels for v in body)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(frames)
+
+
+def _tone_power(samples: list[int], freq: float, rate: int = 16000) -> float:
+    """Energy at one frequency — a single DFT bin, enough to compare bands."""
+    re = sum(v * math.cos(2 * math.pi * freq * i / rate)
+             for i, v in enumerate(samples))
+    im = sum(v * math.sin(2 * math.pi * freq * i / rate)
+             for i, v in enumerate(samples))
+    return (re * re + im * im) / max(1, len(samples)) ** 2
+
+
+class TestMasteringMakesAClipTheAirCanCarry(unittest.TestCase):
+    """The chain exists because the first caller clip ever aired was decoded
+    end to end by the mixer and heard by nobody — speech's 18 dB crest factor
+    let it sit 7 dB under the music while its peaks claimed it was loud."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def _master(self, src: str, dst: str = "out.wav", max_secs: float = 30.0):
+        from voicemail import master as m
+
+        return m.master(self.tmp / src, self.tmp / dst, max_secs)
+
+    def test_anything_in_becomes_the_one_format_the_air_takes(self):
+        import wave
+
+        # 44.1k stereo with dead air both sides — the shape a browser upload
+        # actually has, not the shape the chain would prefer.
+        _tone_wav(self.tmp / "in.wav", [440.0, 880.0], 1.0, rate=44100,
+                  channels=2, lead_silence=0.6, tail_silence=0.8)
+        stats = self._master("in.wav")
+        with wave.open(str(self.tmp / "out.wav"), "rb") as w:
+            self.assertEqual((w.getnchannels(), w.getsampwidth(),
+                              w.getframerate()), (1, 2, 16000))
+        # Trimmed to the speech plus margins, not the 2.4s the file held.
+        self.assertLess(stats["seconds"], 1.6)
+        self.assertGreater(stats["seconds"], 0.8)
+        self.assertLessEqual(stats["peakDb"], -0.5)
+
+    def test_input_level_does_not_change_the_outcome(self):
+        # The systematic promise made to the operator: normalise INTO the
+        # drive, so a quiet phone and a hot phone land at the same level and
+        # only the noise floor differs.
+        _tone_wav(self.tmp / "quiet.wav", [500.0], 1.0, gain=0.05)
+        _tone_wav(self.tmp / "hot.wav", [500.0], 1.0, gain=0.9)
+        quiet = self._master("quiet.wav", "q-out.wav")
+        hot = self._master("hot.wav", "h-out.wav")
+        self.assertLess(abs(quiet["rmsDb"] - hot["rmsDb"]), 1.5)
+
+    def test_the_band_pass_keeps_the_voice_and_drops_the_fight(self):
+        import wave
+
+        # Rumble far louder than the voice going in; the voice must win
+        # coming out — that reversal IS the band-pass doing its job.
+        _tone_wav(self.tmp / "in.wav", [100.0], 1.5, gain=0.8)
+        with wave.open(str(self.tmp / "in.wav"), "rb") as w:
+            rumble_only = w.readframes(w.getnframes())
+        _tone_wav(self.tmp / "voice.wav", [1000.0], 1.5, gain=0.2)
+        with wave.open(str(self.tmp / "voice.wav"), "rb") as w:
+            voice_only = w.readframes(w.getnframes())
+        mixed = [a + b for a, b in
+                 zip(struct.unpack("<%dh" % (len(rumble_only) // 2), rumble_only),
+                     struct.unpack("<%dh" % (len(voice_only) // 2), voice_only))]
+        with wave.open(str(self.tmp / "mix.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(struct.pack(
+                "<%dh" % len(mixed),
+                *[max(-32768, min(32767, v)) for v in mixed]))
+        self._master("mix.wav")
+        with wave.open(str(self.tmp / "out.wav"), "rb") as w:
+            out = list(struct.unpack("<%dh" % (w.getnframes()),
+                                     w.readframes(w.getnframes())))
+        self.assertGreater(_tone_power(out, 1000.0),
+                           _tone_power(out, 100.0) * 4)
+
+    def test_silence_is_refused_not_aired(self):
+        _tone_wav(self.tmp / "in.wav", [500.0], 0.0, lead_silence=3.0)
+        with self.assertRaises(ValueError):
+            self._master("in.wav")
+
+    def test_the_ceiling_is_the_callers_not_the_files(self):
+        _tone_wav(self.tmp / "in.wav", [500.0], 10.0)
+        stats = self._master("in.wav", max_secs=2.0)
+        self.assertLessEqual(stats["seconds"], 2.5)
+
+    def test_the_adapter_can_read_a_finished_clips_length(self):
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "in.wav", [500.0], 1.0)
+        self._master("in.wav")
+        self.assertAlmostEqual(m.wav_seconds(self.tmp / "out.wav"),
+                               1.0, delta=0.4)
+
+
+class TestADraftIsHeldBrieflyAndLeavesNoOrphans(unittest.TestCase):
+    """The soundbite flow stores a stranger's voice — the first thing in this
+    codebase that does. These tests are the terms: every exit deletes it, the
+    sweep catches what a crash leaves, and the air URL dies on first use."""
+
+    def setUp(self):
+        from voicemail import review
+
+        self.review = review
+        self.tmp = Path(tempfile.mkdtemp())
+        self._old = review.DRAFTS_DIR
+        review.DRAFTS_DIR = self.tmp
+
+    def tearDown(self):
+        self.review.DRAFTS_DIR = self._old
+
+    def _draft(self, at: float | None = None) -> dict:
+        src = self.tmp / "mastered.wav"
+        src.write_bytes(b"RIFFfakewav")
+        d = self.review.create(src, {"seconds": 1.0}, "guest")
+        if at is not None:
+            d["at"] = at
+            self.review._write_sidecar(d["id"], d)
+        return d
+
+    def test_the_move_into_the_store_can_cross_filesystems(self):
+        # The mastered clip is born in the container's /tmp; the drafts live
+        # on the /data bind mount. Path.replace is a bare rename and EXDEV'd
+        # on the first real upload (2026-08-17) after every test had passed
+        # here, where both paths share a device — so the requirement is
+        # pinned at the source: shutil.move, which copies across the seam.
+        import inspect
+
+        from voicemail import review
+
+        src = inspect.getsource(review.create)
+        self.assertIn("shutil.move", src)
+        self.assertNotIn(".replace(", src)
+
+    def test_create_moves_the_clip_and_annotate_writes_back(self):
+        src = self.tmp / "mastered.wav"
+        src.write_bytes(b"RIFFfakewav")
+        d = self.review.create(src, {"seconds": 1.0}, "guest")
+        self.assertFalse(src.exists(), "the mastered clip must be MOVED — "
+                         "a second copy is a copy nobody deletes")
+        self.assertTrue(self.review.audio_path(d["id"]).is_file())
+        self.review.annotate(d["id"], transcript="play landslide",
+                             action={"kind": "queue", "trackId": "abc"})
+        back = self.review.get(d["id"])
+        self.assertEqual(back["transcript"], "play landslide")
+        self.assertEqual(back["action"]["trackId"], "abc")
+
+    def test_every_exit_deletes_both_files(self):
+        d = self._draft()
+        self.review.delete(d["id"])
+        self.assertIsNone(self.review.get(d["id"]))
+        self.assertFalse(self.review.audio_path(d["id"]).exists())
+        # And a hostile id never reaches the filesystem.
+        self.assertIsNone(self.review.get("../../settings"))
+        self.review.delete("../../settings")   # must simply do nothing
+
+    def test_the_sweep_removes_expired_drafts_and_orphaned_audio(self):
+        import time as _time
+
+        # fresh first: create() runs the sweep itself, so a draft backdated
+        # before another create would already be gone — which is the sweep
+        # doing its job, not the sweep being provable.
+        fresh = self._draft()
+        old = self._draft(at=_time.time() - self.review.DRAFT_TTL_SECS - 5)
+        (self.tmp / "orphan.wav").write_bytes(b"RIFF")   # crash leftover
+        removed = self.review.sweep()
+        self.assertGreaterEqual(removed, 2)
+        self.assertIsNone(self.review.get(old["id"]))
+        self.assertIsNotNone(self.review.get(fresh["id"]))
+        self.assertFalse((self.tmp / "orphan.wav").exists())
+
+    def test_the_air_url_is_single_use_and_expires(self):
+        import time as _time
+
+        d = self._draft()
+        token = self.review.mint_air_token(d["id"])
+        self.assertTrue(token)
+        self.assertIsNone(self.review.claim_air_token("invented"))
+        # The mixer HEAD-probes before it downloads: peeking must not spend
+        # the token — a probe that burned it left the real GET a 404 six
+        # milliseconds later and the caller's voice aired as a hole
+        # (2026-08-17, the operator's third silent take).
+        self.assertIsNotNone(self.review.peek_air_token(token))
+        self.assertIsNotNone(self.review.peek_air_token(token),
+                             "peek twice, still unspent")
+        self.assertIsNone(self.review.peek_air_token("invented"))
+        path = self.review.claim_air_token(token)
+        self.assertIsNotNone(path)
+        self.assertIsNone(self.review.claim_air_token(token),
+                          "a claimed token must be dead — the URL is the "
+                          "credential and it was just spent")
+        self.assertIsNone(self.review.peek_air_token(token),
+                          "and dead to the probe as well")
+        # An expired token is dead even on its first claim.
+        token2 = self.review.mint_air_token(d["id"])
+        data = self.review.get(d["id"])
+        data["airTokenAt"] = _time.time() - self.review.AIR_TOKEN_TTL_SECS - 5
+        self.review._write_sidecar(d["id"], data)
+        self.assertIsNone(self.review.claim_air_token(token2))
+
+
+class _AdapterStation:
+    """Records what the adapter asks of the station, answers as told.
+    (Not _FakeStation — this module already has one with another shape.)"""
+
+    def __init__(self, queue_ok: bool = True, say_ok: bool = True):
+        self.says: list[str] = []
+        self.queued: list[dict] = []
+        self._queue_ok = queue_ok
+        self._say_ok = say_ok
+
+    async def dj_say(self, text, mode="styled", kind="callin"):
+        self.says.append(text)
+        return {"ok": self._say_ok, "spoken": text}
+
+    async def queue_track(self, track):
+        self.queued.append(track)
+        return ({"ok": True} if self._queue_ok
+                else {"ok": False, "error": "blocklist says no"})
+
+    async def submit_request(self, text, name=""):
+        return {"ok": True}
+
+    async def pin_show(self, show_id, minutes):
+        self.pinned = (show_id, minutes)
+        return {"ok": True}
+
+
+class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
+    """The adapter's contract: the close the DJ speaks is chosen AFTER the
+    station answered, the caller-voice backend degrades to dj-reads out loud,
+    and the mixer push carries a single-use URL — never a path."""
+
+    def setUp(self):
+        import os as _os
+
+        from voicemail import air, review
+
+        self.air = air
+        self.review = review
+        self.tmp = Path(tempfile.mkdtemp())
+        self._old_dir = review.DRAFTS_DIR
+        review.DRAFTS_DIR = self.tmp
+        self._old_env = {k: _os.environ.get(k) for k in ("HOST_IP", "TOKEN_PORT")}
+
+    def tearDown(self):
+        import os as _os
+
+        self.review.DRAFTS_DIR = self._old_dir
+        for k, v in self._old_env.items():
+            if v is None:
+                _os.environ.pop(k, None)
+            else:
+                _os.environ[k] = v
+
+    def _draft(self, action: dict | None = None) -> dict:
+        src = self.tmp / "m.wav"
+        src.write_bytes(b"RIFFfake")
+        d = self.review.create(src, {"seconds": 1.0}, "guest")
+        return self.review.annotate(
+            d["id"], transcript="play landslide for danny",
+            action=action if action is not None else {})
+
+    def _fake_mixer(self, reply: bytes = b"409\nEND\n") -> tuple[str, list]:
+        import socket as _socket
+        import threading
+
+        got: list[bytes] = []
+        srv = _socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(4)
+        port = srv.getsockname()[1]
+
+        def _serve():
+            # Loop: the adapter probes reachability on one connection and
+            # pushes on another — a single accept ate the probe and the push
+            # found nobody home, downgrading the very test of caller-voice.
+            while True:
+                try:
+                    conn, _ = srv.accept()
+                except OSError:
+                    return
+                with conn:
+                    conn.settimeout(3)
+                    buf = b""
+                    try:
+                        while b"quit" not in buf:
+                            chunk = conn.recv(1024)
+                            if not chunk:
+                                break
+                            buf += chunk
+                    except OSError:
+                        pass
+                    if buf:
+                        got.append(buf)
+                        try:
+                            conn.sendall(reply)
+                        except OSError:
+                            pass
+
+        threading.Thread(target=_serve, daemon=True).start()
+        self.addCleanup(srv.close)
+        return f"127.0.0.1:{port}", got
+
+    def test_dj_reads_is_honest_about_a_refused_action(self):
+        station = _AdapterStation(queue_ok=False)
+        draft = self._draft({"kind": "queue",
+                             "track": {"id": "t1", "title": "Landslide",
+                                       "artist": "Fleetwood Mac"}})
+        result = asyncio.run(self.air.deliver(
+            station, {"vm_air_backend": "dj-reads"}, draft))
+        self.assertEqual(result["backend"], "dj-reads")
+        self.assertFalse(result["ok"])
+        self.assertIn("do NOT claim it worked", station.says[0])
+        self.assertIn("refused", result["receipt"])
+
+    def test_the_push_waits_out_the_mixers_poll(self):
+        # /dj/say 200 = the intro is WRITTEN to say.txt; the mixer READS it
+        # on a 0.5s poll, and a telnet push landing inside that window put
+        # the caller's clip on air before either DJ line (2026-08-17). The
+        # wait between the intro and the push is load-bearing; this pins it
+        # to at least the poll interval.
+        import inspect
+        import re
+
+        from voicemail import air
+
+        src = inspect.getsource(air.deliver)
+        intro_at = src.index("hand over to the caller")
+        push_at = src.index("telnet_push(cfg")
+        sleep = re.search(r"asyncio\.sleep\(([0-9.]+)\)", src[intro_at:push_at])
+        self.assertIsNotNone(sleep, "the intro→push wait is gone")
+        self.assertGreaterEqual(float(sleep.group(1)), 0.5)
+
+    def test_caller_voice_pushes_a_token_url_and_closes_on_the_receipt(self):
+        addr, got = self._fake_mixer()
+        station = _AdapterStation()
+        draft = self._draft({"kind": "queue",
+                             "track": {"id": "t1", "title": "Landslide"}})
+        result = asyncio.run(self.air.deliver(
+            station,
+            {"vm_air_backend": "caller-voice", "vm_mixer_telnet": addr,
+             "vm_air_base_url": "http://192.168.1.245:8100"},
+            draft))
+        self.assertEqual(result["backend"], "caller-voice")
+        self.assertTrue(result["ok"])
+        self.assertIn("RID 409", result["receipt"])
+        self.assertEqual(len(station.says), 2, "intro and close, no more")
+        self.assertIn("queued Landslide", result["receipt"])
+        sent = got[0].decode()
+        self.assertIn("voice_queue.push http://192.168.1.245:8100/vm-air/",
+                      sent)
+        # The URL is the credential: never a bare path, never a guessable id.
+        self.assertNotIn(draft["id"], sent)
+
+    def test_an_unreachable_mixer_downgrades_out_loud(self):
+        station = _AdapterStation()
+        draft = self._draft()
+        result = asyncio.run(self.air.deliver(
+            station,
+            {"vm_air_backend": "caller-voice",
+             "vm_mixer_telnet": "127.0.0.1:1",     # nothing listens on 1
+             "vm_air_base_url": "http://192.168.1.245:8100"},
+            draft))
+        self.assertEqual(result["backend"], "dj-reads")
+        self.assertIn("caller-voice unavailable", result["receipt"])
+
+    def test_preview_resolves_to_a_track_and_falls_safe_everywhere_else(self):
+        # The preview IS the receipts discipline moved earlier: a queue
+        # verdict must come back holding the library's own id, and every
+        # failure shape — no hits, a "none", garbage from the model — must
+        # land on no-action, never on a guess.
+        import call.providers as providers
+        from voicemail import preview
+
+        class _FakeStream:
+            def __init__(self, text):
+                self._text = text
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            def __aiter__(self):
+                async def _gen():
+                    class _D:  # the two-attribute shape resolve() reads
+                        pass
+                    d = _D()
+                    d.content = self._text
+                    c = _D()
+                    c.delta = d
+                    yield c
+                return _gen()
+
+        class _FakeLLM:
+            def __init__(self, text):
+                self._text = text
+
+            def chat(self, chat_ctx=None):
+                return _FakeStream(self._text)
+
+            async def aclose(self):
+                pass
+
+        class _SearchStation:
+            def __init__(self, hits):
+                self.hits = hits
+                self.queries = []
+
+            async def search_library(self, q, *a, **k):
+                self.queries.append(q)
+                return self.hits
+
+        old = providers.build_llm
+        try:
+            hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
+            providers.build_llm = lambda cfg, **k: _FakeLLM(
+                '{"action": "queue", "query": "landslide fleetwood mac"}')
+            st = _SearchStation([hit])
+            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
+            self.assertEqual(action["kind"], "queue")
+            self.assertEqual(action["track"]["id"], "t9",
+                             "the preview must hold the LIBRARY's id — send "
+                             "executes this record, never the words again")
+            self.assertIn("Landslide", action["label"])
+
+            # Same verdict, empty library: a request, and the label says so.
+            st2 = _SearchStation([])
+            action = asyncio.run(preview.resolve(st2, {}, "play landslide"))
+            self.assertEqual(action["kind"], "request")
+
+            # The model says none, or says nonsense: no action, both times.
+            providers.build_llm = lambda cfg, **k: _FakeLLM('{"action": "none"}')
+            action = asyncio.run(preview.resolve(st, {}, "hi mum"))
+            self.assertEqual(action["kind"], "none")
+            providers.build_llm = lambda cfg, **k: _FakeLLM("not json at all")
+            action = asyncio.run(preview.resolve(st, {}, "hello"))
+            self.assertEqual(action["kind"], "none")
+
+            # And an empty transcript never wakes the model at all.
+            providers.build_llm = lambda cfg, **k: (_ for _ in ()).throw(
+                AssertionError("the LLM must not be built for silence"))
+            action = asyncio.run(preview.resolve(st, {}, "   "))
+            self.assertEqual(action["kind"], "none")
+        finally:
+            providers.build_llm = old
+
+    def test_a_takeover_rides_the_live_lines_own_switch(self):
+        # "Change the DJ" from a voicemail is the furthest-reaching thing the
+        # studio can do, so it rides allow_takeover — the SAME switch the
+        # live line uses — read at preview AND again at send.
+        import call.providers as providers
+        from voicemail import preview
+
+        class _Llm:
+            def chat(self, chat_ctx=None):
+                self.prompt = chat_ctx.items[-1].content[0] if chat_ctx else ""
+
+                class _S:
+                    async def __aenter__(s):
+                        return s
+
+                    async def __aexit__(s, *a):
+                        return False
+
+                    def __aiter__(s):
+                        async def _gen():
+                            class _D:
+                                pass
+                            d = _D()
+                            d.content = '{"action":"takeover","who":"duke"}'
+                            c = _D()
+                            c.delta = d
+                            yield c
+                        return _gen()
+                return _S()
+
+            async def aclose(self):
+                pass
+
+        class _St:
+            async def schedule(self):
+                return {"shows": [{"id": "s1", "name": "The Alibi Room",
+                                   "personaId": "p1"}]}
+
+            async def personas(self):
+                return [{"id": "p1", "name": "Duke Sterling"}]
+
+            async def search_library(self, q, *a, **k):
+                return []
+
+        old = providers.build_llm
+        try:
+            providers.build_llm = lambda cfg, **k: _Llm()
+            on = asyncio.run(preview.resolve(
+                _St(), {"allow_takeover": True}, "put duke on"))
+            self.assertEqual(on["kind"], "takeover")
+            self.assertEqual(on["showId"], "s1")
+            self.assertIn("Duke Sterling", on["label"])
+            # Switch off: even a model that answers takeover anyway resolves
+            # to nothing — the option was never offered and never honoured.
+            off = asyncio.run(preview.resolve(
+                _St(), {}, "put duke on"))
+            self.assertEqual(off["kind"], "none")
+        finally:
+            providers.build_llm = old
+
+        # Send-time: the adapter executes the pin, and refuses honestly when
+        # the switch went off between preview and send.
+        station = _AdapterStation()
+        draft = self._draft({"kind": "takeover", "showId": "s1",
+                             "show": "The Alibi Room", "who": "Duke Sterling"})
+        result = asyncio.run(self.air.deliver(
+            station, {"vm_air_backend": "dj-reads", "allow_takeover": True},
+            draft))
+        self.assertTrue(result["ok"])
+        self.assertEqual(station.pinned, ("s1", 60))
+        self.assertIn("Duke Sterling", result["receipt"])
+
+        station2 = _AdapterStation()
+        draft2 = self._draft({"kind": "takeover", "showId": "s1",
+                              "show": "The Alibi Room", "who": "Duke"})
+        result2 = asyncio.run(self.air.deliver(
+            station2, {"vm_air_backend": "dj-reads"}, draft2))
+        self.assertFalse(result2["ok"])
+        self.assertFalse(hasattr(station2, "pinned"))
+        self.assertIn("switched off", result2["receipt"])
+        self.assertIn("do NOT claim it worked", station2.says[0])
+
+    def test_the_clip_dies_at_the_claim_not_at_the_send(self):
+        # The mixer fetches the pushed URL LAZILY — when the queue reaches
+        # the clip, after the DJ's intro has played. Deleting the draft at
+        # send beat that fetch by seven seconds and the mixer got a 404: the
+        # operator heard the DJ speak around a hole where their own voice
+        # should have been (2026-08-17). So caller-voice defers deletion to
+        # the claim itself, which serves from memory and removes the files
+        # before the response goes out; every other backend deletes at send.
+        import inspect
+
+        from api import voicemail as api_vm
+
+        send_src = inspect.getsource(api_vm.handle_vm_draft_send)
+        self.assertIn('!= "caller-voice"', send_src)
+        clip_src = inspect.getsource(api_vm.handle_vm_air_clip)
+        self.assertIn("read_bytes", clip_src)
+        self.assertIn("vm_review.delete(path.stem)", clip_src)
+
+    def test_the_studio_declares_its_own_visibility_in_the_rig(self):
+        # The rig ships reserved-but-hidden (`visibility: hidden`) and every
+        # band that should show must opt in — the chat input learned this
+        # ("present but invisible", operator-reported) and the studio
+        # relearned it: laid out, occupying its rows, no Record button
+        # anywhere (operator's screenshot, 2026-08-17). offsetParent checks
+        # saw nothing wrong, because offsetParent is blind to visibility —
+        # which is why this is pinned at the stylesheet, not probed at runtime.
+        from tests.support import REPO
+
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        if ".rig {\n    visibility: hidden" not in css.replace("\r\n", "\n"):
+            self.skipTest("the rig no longer reserves-hidden")
+        self.assertIn(".rig > .vmstudio { visibility: visible; }",
+                      css.replace("\r\n", "\n"))
+
+    def test_the_studio_answers_to_the_machines_own_tier_door(self):
+        # The first build hard-refused the open tier, while the operator's
+        # real line runs allow_voicemail=open — their strangers could record
+        # a whole take and only learn at upload that nobody would accept it.
+        # One door for both flows: the studio gate must walk the same
+        # tier_reaches ladder the vm mint walks, and never carry a hardcoded
+        # tier opinion of its own.
+        import inspect
+
+        from api import voicemail as api_vm
+
+        src = inspect.getsource(api_vm._draft_gate)
+        self.assertIn("tier_reaches", src)
+        self.assertIn("allow_voicemail", src)
+        self.assertNotIn('!= "open"', src)
+
+    def test_the_search_retries_without_the_by_connector(self):
+        # Found by the first live probe of the shipping prompt: the model's
+        # query kept the caller's "by" ("Landslide by Fleetwood Mac"), the
+        # station's every-word search returned nothing, and a track the
+        # library holds five times over previewed as a mere request.
+        import call.providers as providers
+        from voicemail import preview
+
+        class _Llm:
+            def chat(self, chat_ctx=None):
+                class _S:
+                    async def __aenter__(s):
+                        return s
+
+                    async def __aexit__(s, *a):
+                        return False
+
+                    def __aiter__(s):
+                        async def _gen():
+                            class _D:
+                                pass
+                            d = _D()
+                            d.content = ('{"action":"queue","query":'
+                                         '"Landslide by Fleetwood Mac"}')
+                            c = _D()
+                            c.delta = d
+                            yield c
+                        return _gen()
+                return _S()
+
+            async def aclose(self):
+                pass
+
+        class _St:
+            def __init__(self):
+                self.queries = []
+
+            async def search_library(self, q, *a, **k):
+                self.queries.append(q)
+                return ([{"id": "t1", "title": "Landslide",
+                          "artist": "Fleetwood Mac"}]
+                        if "by" not in q.lower().split() else [])
+
+        old = providers.build_llm
+        try:
+            providers.build_llm = lambda cfg, **k: _Llm()
+            st = _St()
+            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
+            self.assertEqual(action["kind"], "queue",
+                             "the by-variant retry must reach the hit")
+            self.assertGreater(len(st.queries), 1)
+        finally:
+            providers.build_llm = old
+
+    def test_the_air_base_url_prefers_the_setting_then_host_ip(self):
+        import os as _os
+
+        self.assertEqual(
+            self.air.air_base_url({"vm_air_base_url": "http://x:9/"}),
+            "http://x:9")
+        _os.environ["HOST_IP"] = "192.168.1.245"
+        _os.environ.pop("TOKEN_PORT", None)
+        self.assertEqual(self.air.air_base_url({}),
+                         "http://192.168.1.245:8100")
+        _os.environ.pop("HOST_IP", None)
+        self.assertEqual(self.air.air_base_url({}), "",
+                         "no setting and no HOST_IP must read as 'no base', "
+                         "which the adapter treats as caller-voice being "
+                         "unavailable — never a URL with an empty host")
