@@ -807,6 +807,20 @@ class TestADraftIsHeldBrieflyAndLeavesNoOrphans(unittest.TestCase):
             self.review._write_sidecar(d["id"], d)
         return d
 
+    def test_the_move_into_the_store_can_cross_filesystems(self):
+        # The mastered clip is born in the container's /tmp; the drafts live
+        # on the /data bind mount. Path.replace is a bare rename and EXDEV'd
+        # on the first real upload (2026-08-17) after every test had passed
+        # here, where both paths share a device — so the requirement is
+        # pinned at the source: shutil.move, which copies across the seam.
+        import inspect
+
+        from voicemail import review
+
+        src = inspect.getsource(review.create)
+        self.assertIn("shutil.move", src)
+        self.assertNotIn(".replace(", src)
+
     def test_create_moves_the_clip_and_annotate_writes_back(self):
         src = self.tmp / "mastered.wav"
         src.write_bytes(b"RIFFfakewav")

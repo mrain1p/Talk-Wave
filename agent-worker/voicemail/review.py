@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shutil
 import time
 from pathlib import Path
 
@@ -88,7 +89,12 @@ def create(mastered_wav: Path, stats: dict, tier: str) -> dict:
     """
     draft_id = secrets.token_urlsafe(9)
     DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
-    mastered_wav.replace(audio_path(draft_id))
+    # shutil.move, not Path.replace: the mastered clip is born in the
+    # container's /tmp and the drafts live on the /data bind mount, and a
+    # bare rename cannot cross that seam — EXDEV, thrown on the very first
+    # real upload (2026-08-17, "the studio is not answering") after every
+    # test had passed on a machine where both paths share a device.
+    shutil.move(str(mastered_wav), str(audio_path(draft_id)))
     try:
         os.chmod(audio_path(draft_id), 0o644)
     except OSError:

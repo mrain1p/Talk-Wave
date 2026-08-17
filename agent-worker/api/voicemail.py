@@ -361,12 +361,12 @@ async def handle_vm_draft_create(request: web.Request) -> web.Response:
 
     fd, raw_name = tempfile.mkstemp(suffix=".wav")
     raw = Path(raw_name)
+    mastered = raw.with_suffix(".mastered.wav")
     try:
         import os as _os
 
         with _os.fdopen(fd, "wb") as f:
             f.write(bytes(body))
-        mastered = raw.with_suffix(".mastered.wav")
         try:
             stats = vm_master.master(raw, mastered, ceiling)
         except ValueError as e:
@@ -379,7 +379,11 @@ async def handle_vm_draft_create(request: web.Request) -> web.Response:
                 status=400))
         draft = vm_review.create(mastered, stats, caller_tier(request))
     finally:
+        # Both temps, whatever happened: a create() that failed after the
+        # master leaves the clip in /tmp otherwise (it did, three times,
+        # while the EXDEV bug 500'd this route).
         raw.unlink(missing_ok=True)
+        mastered.unlink(missing_ok=True)
 
     transcript = await vm_preview.transcribe(
         cfg, vm_review.audio_path(draft["id"]))
