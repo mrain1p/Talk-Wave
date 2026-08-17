@@ -800,27 +800,41 @@
   .ribbon:hover .grip { background: var(--alpenglow); }
   .ribbon[hidden] { display: none; }
 
-  .plart { position: relative; width: 96px; height: 96px; }
-  .plart img {
-    width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+  /* NOW PLAYING, in the eyebrow's own voice — the station page opens its
+     player block with exactly this label and the card keeps the accent. */
+  .plnow { display: flex; align-items: center; gap: 7px;
+           font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+           text-transform: var(--skin-label-case); color: var(--coral); }
+  .plnow .pip { width: 7px; height: 7px; background: var(--coral);
+                border-radius: 0; display: block; }
+  /* ALBUM ART, not a portrait: square whatever the photo-shape setting says,
+     because records are. Sized against the CARD (cqw — the card is a named
+     container), so an embed-width card and a phone both keep proportion.
+     The DJ's photo steps in when a record has no art; initials after that. */
+  .plart { position: relative; width: clamp(110px, 42cqw, 190px);
+           aspect-ratio: 1; }
+  .plart img, .plmono {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; border-radius: 0;
     border: 1px solid var(--hairline); background: var(--granite-hi);
   }
   .plmono {
-    position: absolute; inset: 0; display: flex; align-items: center;
-    justify-content: center; border-radius: 50%;
-    border: 1px solid var(--hairline); background: var(--granite-hi);
-    color: var(--coral); font: 700 30px/1 var(--font-mono);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--coral); font: 700 34px/1 var(--font-mono);
   }
-  /* The card's own photo-shape choice applies here too. */
-  .card[data-avatar="square"] .plart img,
-  .card[data-avatar="square"] .plmono { border-radius: 0; }
   .plart img[hidden], .plmono[hidden] { display: none; }
-  .pltrack { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .pltrack { font-size: 18px; font-weight: 700; line-height: 1.25; }
+  /* The analysis strip: genre · BPM · key · mood, in the card's own pill
+     costume. Chips are read, not pressed, so no pointer affordance. */
+  .pltags { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
+  .pltags:empty { display: none; }
+  .plalbum { font-size: 12.5px; color: var(--sage); }
+  .plalbum:empty { display: none; }
   .plwho { font: 700 10px/1.4 var(--font-mono); letter-spacing: .12em;
            text-transform: var(--skin-label-case); color: var(--sage-dim); }
   /* The same 3px hairline the now-playing rail draws, fed by its own
      variable — the rail's is hidden in this mode, not borrowed. */
-  .plbar { width: min(100%, 260px); height: 3px; background: var(--granite-hi);
+  .plbar { width: min(100%, 300px); height: 3px; background: var(--granite-hi);
            position: relative; overflow: hidden; }
   .plbar .plfill { position: absolute; inset: 0 auto 0 0;
            width: var(--pl-progress, 0%); background: var(--coral);

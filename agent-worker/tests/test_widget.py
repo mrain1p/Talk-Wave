@@ -2715,6 +2715,18 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn('"swipePlayer"', self.live_py)
         self.assertIn("d.swipePlayer", self.js)
 
+    def test_the_record_travels_as_structure_and_the_art_is_proxied(self):
+        # The sheet renders the same analysis strip the station's own player
+        # does (genre · BPM · key · mood) — from /live, not from a second
+        # fetch — and the art goes through our /cover proxy for the same
+        # reason the avatar does: the station may be unreachable or plain
+        # http from the caller's browser.
+        self.assertIn('"nowPlaying"', self.live_py)
+        self.assertIn('"/cover/', self.live_py)
+        self.assertIn("d.nowPlaying", self.js)
+        routes = (AGENT_WORKER / "token_server.py").read_text(encoding="utf-8")
+        self.assertIn('add_get("/cover/{track_id}", handle_cover)', routes)
+
     def test_an_embed_is_never_offered_the_player(self):
         gate = self.js.split("function playerOffered")[1][:400]
         for refusal in ("!compact", "!framed", "!previewMode"):

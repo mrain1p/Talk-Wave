@@ -373,6 +373,26 @@ async def handle_live(request: web.Request) -> web.Response:
                         if track.get("title")
                         else None
                     ),
+                    # The record as STRUCTURE, for the station player's sheet —
+                    # the flat `track` string above stays for the who-row. All
+                    # of it is already in the station's /now-playing answer
+                    # (the same analysis strip its own player renders: genre ·
+                    # BPM · key · mood); this only forwards it. Art goes
+                    # through our own /cover proxy for the same reason the
+                    # avatar does — the station may be unreachable or plain
+                    # http from the caller's browser.
+                    "nowPlaying": {
+                        "title": track.get("title") or None,
+                        "artist": track.get("artist") or None,
+                        "album": track.get("album") or None,
+                        "year": track.get("year"),
+                        "genres": [g for g in (track.get("genres") or []) if g][:4],
+                        "bpm": _num(track.get("bpm")),
+                        "key": track.get("musicalKey") or None,
+                        "moods": [m for m in (track.get("moods") or []) if m][:3],
+                        "art": (f"/cover/{track['subsonic_id']}"
+                                if track.get("subsonic_id") else None),
+                    },
                     # When the record started and how long it runs, so the
                     # now-playing rail can show elapsed and a progress
                     # hairline. Sent as the START INSTANT rather than as an
@@ -415,4 +435,28 @@ async def handle_avatar(request: web.Request) -> web.StreamResponse:
             )
     except Exception as e:
         log.info("avatar fetch failed for %s: %s", persona_id, describe(e))
+        raise web.HTTPNotFound()
+
+
+async def handle_cover(request: web.Request) -> web.StreamResponse:
+    """Proxy the station's album art (/cover/{id}) for the same reason the
+    avatar is proxied: the caller's browser may not be able to reach the
+    station at all, and behind TLS a plain-http image is blocked as mixed
+    content. A day, not five minutes: the station itself calls a song's art
+    immutable-at-the-edge."""
+    from urllib.parse import quote
+
+    track_id = request.match_info["track_id"]
+    root = settings_store.station_base_url()
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.get(f"{root}/cover/{quote(track_id, safe='')}")
+            r.raise_for_status()
+            return web.Response(
+                body=r.content,
+                content_type=r.headers.get("content-type", "image/jpeg").split(";")[0],
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    except Exception as e:
+        log.info("cover fetch failed for %s: %s", track_id, describe(e))
         raise web.HTTPNotFound()

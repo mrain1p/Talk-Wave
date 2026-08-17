@@ -327,8 +327,15 @@
     <button class="ribbon" id="playerTab" type="button" hidden
             aria-label="Pull down the station player"><span class="grip" aria-hidden="true"></span></button>
     <div class="player" id="playerView" hidden role="region" aria-label="Station player">
+      <!-- The station page's grammar — NOW PLAYING, the art, the title, the
+           analysis strip (genre · BPM · key · mood), artist · album · year —
+           stacked and centered for a card a third its width, in the card's
+           own costume: mono micro-labels, pill chips, square art. -->
+      <div class="plnow"><span class="pip" aria-hidden="true"></span>Now playing</div>
       <span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span>
       <div class="pltrack" id="plTrack"></div>
+      <div class="pltags" id="plTags"></div>
+      <div class="plalbum" id="plAlbum"></div>
       <div class="plwho" id="plWho"></div>
       <div class="plbar" aria-hidden="true"><span class="plfill"></span></div>
       <div class="plclock"><span id="plElapsed"></span><span class="pllen" id="plLen"></span></div>

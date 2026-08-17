@@ -861,7 +861,7 @@
         // the spec says may be routed to the receiver. The mic keeps
         // capturing either way — the type is a hint about what the page is
         // doing, not a capture permission.
-        navigator.audioSession.type = onSpeaker ? 'playback' : 'play-and-record';
+        navigator.audioSession.type = want ? 'playback' : 'play-and-record';
         moved = true;
       } catch (e) { /* the platform kept its own answer */ }
     }
@@ -883,6 +883,9 @@
       }
     }
 
+    // The label follows the AUDIO, not the press: flipping it on a refused
+    // route is the button lying about where the sound is.
+    if (moved) onSpeaker = want;
     paintSpeakerBtn();
     return moved;
   }
@@ -3846,23 +3849,51 @@
 
   function paintPlayer() {
     const d = shown || live || {};
+    const np = d.nowPlaying || {};
     const img = $('plArt'), mono = $('plMono');
     if (img && mono) {
-      if (d.avatar) {
-        // Only on change — re-setting src on every poll re-fetches the image.
-        if (img.getAttribute('src') !== d.avatar) img.src = d.avatar;
+      // The record's own art, else the DJ's photo, else initials — each
+      // step taken only when the one before actually failed to load.
+      const art = np.art || d.avatar || '';
+      if (art) {
+        // Only on change — re-setting src on every poll re-fetches it.
+        if (img.getAttribute('src') !== art) { img.src = art; }
         img.hidden = false; mono.hidden = true;
         img.onerror = () => {
+          if (np.art && img.getAttribute('src') === np.art && d.avatar) {
+            img.src = d.avatar;
+            return;
+          }
           img.hidden = true;
-          mono.textContent = monogram(d.name); mono.hidden = false;
+          mono.textContent = monogram(np.artist || d.name);
+          mono.hidden = false;
         };
       } else {
         img.hidden = true;
         mono.textContent = monogram(d.name); mono.hidden = false;
       }
     }
-    $('plTrack').textContent = d.track
+    $('plTrack').textContent = np.title || d.track
       || (d.onAir ? 'Live broadcast' : 'Nobody in the booth');
+    // The analysis strip the station's own player renders — genre · BPM ·
+    // key · mood — as chips. Capped: six chips wrap to two rows on a narrow
+    // card and stay readable; a full mood list does not.
+    const tags = [].concat(np.genres || []);
+    if (np.bpm) tags.push((Math.round(np.bpm * 10) / 10) + ' BPM');
+    if (np.key) tags.push(np.key);
+    (np.moods || []).forEach((m) => tags.push(m));
+    const row = $('plTags');
+    if (row) {
+      row.innerHTML = '';
+      tags.slice(0, 6).forEach((t) => {
+        const el = document.createElement('span');
+        el.className = 'pill';
+        el.textContent = t;
+        row.appendChild(el);
+      });
+    }
+    $('plAlbum').textContent =
+      [np.artist, np.album, np.year].filter(Boolean).join(' · ');
     $('plWho').textContent = playerDead
       ? 'The stream would not play here'
       : [d.name, d.show].filter((v) => v && v !== '…').join(' — ');
@@ -3904,12 +3935,14 @@
   function feedMediaSession() {
     if (!('mediaSession' in navigator)) return;
     const d = shown || live || {};
+    const np = d.nowPlaying || {};
+    const art = np.art || d.avatar;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: d.track || d.name || 'Live broadcast',
-        artist: d.name || '',
-        album: d.show || '',
-        artwork: d.avatar ? [{ src: new URL(d.avatar, location.href).href }] : [],
+        title: np.title || d.track || d.name || 'Live broadcast',
+        artist: np.artist || d.name || '',
+        album: np.album || d.show || '',
+        artwork: art ? [{ src: new URL(art, location.href).href }] : [],
       });
       navigator.mediaSession.setActionHandler('play', () => startPlayerAudio());
       navigator.mediaSession.setActionHandler('pause', () => stopPlayerAudio());

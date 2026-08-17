@@ -38,6 +38,10 @@ class TestExposedSurface(unittest.TestCase):
         "GET /health": "public",
         "GET /live": "public",                 # what the call card renders
         "GET /avatar/{persona_id}": "public",  # proxied so embeds work on https
+        # Public like the avatar and for the same reason — and like the
+        # station's own /cover/:id, which answers unauthenticated listeners.
+        # It reads art by track id and writes nothing.
+        "GET /cover/{track_id}": "public",
         "GET /sounds/{name}": "public",        # uploaded call sounds
         "GET /sound-lib/{name}": "public",     # bundled clips — the widget plays them on every caller's page
         "POST /settings/sounds/meta": "admin", # category edits on the sound board

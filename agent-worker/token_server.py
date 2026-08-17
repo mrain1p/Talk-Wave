@@ -42,6 +42,7 @@ from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
 from api.live import (
     handle_avatar,
+    handle_cover,
     handle_health,
     handle_live,
     handle_live_preview,
@@ -158,6 +159,7 @@ def build_app() -> web.Application:
     app.router.add_options("/voicemail/draft/{draft_id}/send", handle_options)
     app.router.add_get("/vm-air/{token}", handle_vm_air_clip)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
+    app.router.add_get("/cover/{track_id}", handle_cover)
     app.router.add_get("/settings/sounds", handle_sounds_list)
     app.router.add_post("/settings/sounds", handle_sound_upload)
     app.router.add_options("/settings/sounds", handle_options)

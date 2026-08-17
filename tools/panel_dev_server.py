@@ -510,6 +510,17 @@ class Handler(BaseHTTPRequestHandler):
                 "name": "Francesca", "show": "The Piazza · Golden-era pop",
                 "tagline": "Velvet Harmonies & Mediterranean Dreams.",
                 "track": "I Want You — The Cadets",
+                # The structured record the player sheet renders. The art
+                # points at a file this origin actually serves, so the art
+                # path is exercised for real.
+                "nowPlaying": {
+                    "title": "I Want You", "artist": "The Cadets",
+                    "album": "Parisian Café", "year": 2009,
+                    "genres": ["Contemporary Jazz", "Jazz"],
+                    "bpm": 92.3, "key": "5A",
+                    "moods": ["Reflective", "Calm"],
+                    "art": "/icon-512.png",
+                },
                 # Everything switched on, so the ask list is at its tallest —
                 # which is the case the overlay exists for.
                 "canAsk": {"allow_requests": True, "allow_library_search": True,
