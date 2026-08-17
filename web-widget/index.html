@@ -360,13 +360,15 @@
           <input type="range" id="plVol" min="0" max="100" value="100" aria-label="Player volume" />
           <span class="plvu" id="plVu" aria-hidden="true"></span>
         </div>
-        <button id="plPlayBtn" type="button">Pause</button>
+        <!-- Requests above the transport (operator's order): the input reads
+             first, the big PAUSE stays nearest the thumb. -->
         <div class="plreq">
           <input type="text" id="plReqInput" maxlength="200" autocomplete="off"
-                 placeholder="Request: something slower… your name optional" />
+                 placeholder="Request: An artist, song, mood, or vibe." />
           <button id="plReqSend" type="button">Send</button>
         </div>
         <div class="plreqmsg" id="plReqMsg"></div>
+        <button id="plPlayBtn" type="button">Pause</button>
         <button class="plgrab" id="plGrab" type="button" aria-label="Back to the phone"><span class="grip" aria-hidden="true"></span></button>
       </div>
     </div>
