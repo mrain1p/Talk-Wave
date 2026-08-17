@@ -639,6 +639,9 @@
      hidden, because their controls are meaningless off a call.
      Visibility is inherited but a child may declare its own. */
   .rig > .linebox, .rig > .meters, .rig > .actionrow { visibility: visible; }
+  /* The phone-in switch opts back in like every band — the reservation trap
+     that shipped the studio's Record button laid out and invisible. */
+  .rig > .onairrow { visibility: visible; }
   /* The text line's input row lives in the rig too, and it is the ONE control
      that is meaningful off a call — so it declares its own visibility rather
      than inheriting the rig's reserved-hidden. Without this the chat input

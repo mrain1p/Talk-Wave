@@ -282,6 +282,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "liked": True, "count": 4})
         if self.path.split("?")[0] == "/player/request":
             return self._json({"success": True, "message": "Sent to the booth"})
+        # The dump card's press, from a fixture: the stub never has a live
+        # phone-in, so the honest answer is the real route's quiet-line one.
+        if self.path.split("?")[0] == "/on-air/dump":
+            return self._json({"ok": False, "live": False,
+                               "note": "no phone-in is on the air right now"})
         # A posted settings patch really lands in the stub's TEMP store —
         # /live reads the store back, so the closed-line states (pause the
         # line, switch a mode off) can be driven end to end in a browser.
@@ -504,7 +509,8 @@ class Handler(BaseHTTPRequestHandler):
             import voice_effects
             return self._json({"effects": voice_effects.read()})
         if path == "/health":
-            return self._json({"ok": True, "version": "dev", "livekit": "ws://stub"})
+            return self._json({"ok": True, "version": "dev",
+                               "livekit": "ws://stub", "onAirLive": False})
         if path == "/live":
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
@@ -563,9 +569,26 @@ class Handler(BaseHTTPRequestHandler):
                      "requestedBy": None},
                 ],
                 # The studio's door, so the machine flow can be driven here:
-                # the button appears, and it opens the browser studio.
-                "voicemailWhen": "always",
-                "voicemailFlow": "studio",
+                # the button appears, and it opens the browser studio. From
+                # stored_only, NOT load(): load() fills DEFAULTS ("closed",
+                # "machine"), so an `or` fallback on it never fires and the
+                # fixture's studio door silently vanished — only a value the
+                # driver actually saved may override the fixture.
+                "voicemailWhen": str(settings_store.stored_only()
+                                     .get("voicemail_when") or "always"),
+                "voicemailFlow": str(settings_store.stored_only()
+                                     .get("voicemail_flow") or "studio"),
+                # The phone-in door, from the store like callsPaused — but
+                # with no mixer in the stub, `offered` mirrors the setting
+                # alone. Save allow_on_air=open in the panel (or POST it) and
+                # the card grows the Live-on-air toggle.
+                "onAirCalls": {
+                    "offered": settings_store.normalise_tier(
+                        settings_store.load().get("allow_on_air"))
+                    != settings_store.TIER_OFF,
+                    "tier": settings_store.normalise_tier(
+                        settings_store.load().get("allow_on_air")),
+                },
                 "playerDuck": 10,
                 "booth": {"text": "This one's for anyone still up with the "
                                   "windows open — Beegie Adair, gentle as "
