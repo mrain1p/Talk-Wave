@@ -662,10 +662,14 @@
     if ($('routeSwitch') && !$('routeSwitch').hidden) {
       box.hidden = false;
       box.innerHTML = '';
+      const oa = (d && d.onAirCalls) || {};
       const line = document.createElement('div');
       line.className = 'routeline ' + (onAirPick ? 'live' : 'priv');
+      // With only the voicemail door live, the ON AIR promise narrows to
+      // what is actually true: the recording airs, the call would not.
       line.textContent = onAirPick
-        ? word('route_live', 'Broadcast — live on air')
+        ? (oa.calls ? word('route_live', 'Broadcast — live on air')
+                    : word('route_vm_live', 'Your recording airs on the station'))
         : word('route_priv', "It's just you and {dj}")
             .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
       box.appendChild(line);
@@ -1517,7 +1521,14 @@
     // gate, and never on a voicemail-only line with no live door for it to
     // modify. Hidden means OFF — a switch the caller cannot see must never
     // stay silently armed from an earlier paint.
-    const onAirHere = !!(d.onAirCalls && d.onAirCalls.offered)
+    // The two on-air doors, separately: a live CALL needs the mixer, an
+    // on-air VOICEMAIL only needs the studio, and each has its own quick
+    // kill on the dashboard. The switch stands while EITHER door is open;
+    // a door that is shut simply stays private whatever the route says.
+    const oaDoors = d.onAirCalls || {};
+    const callsLive = !!oaDoors.calls;
+    const vmGoesLive = !!oaDoors.voicemail;
+    const onAirHere = (callsLive || vmGoesLive)
       && !lineClosedNow && !needsCode && !vmOnly;
     if (!onAirHere) onAirPick = false;
     // The 4c word switch (design handoff, 2026-08-17): route is the single
@@ -1533,6 +1544,10 @@
       cardEl.classList.toggle('routed', onAirHere);
       cardEl.classList.toggle('route-on', onAirHere && onAirPick);
       cardEl.classList.toggle('route-off', onAirHere && !onAirPick);
+      // The CTA only dresses live when a live CALL is actually on offer —
+      // an on-air route with only the voicemail door open keeps the booth
+      // button private and lets the message door carry the coral.
+      cardEl.classList.toggle('cta-live', onAirHere && onAirPick && callsLive);
     }
     // The operator can put the machine on the card as its own button,
     // per surface. With the button up, Call never morphs — two clear
@@ -1541,7 +1556,7 @@
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
     $('vmBtn').hidden = !vmButton;
     if (vmButton) setBtn($('vmBtn'), 'vm', 'mail',
-                         onAirHere && onAirPick
+                         onAirHere && onAirPick && vmGoesLive
                            ? word('vm_button_live', 'Record for air')
                            : word('vm_button', 'Leave a message'));
     // The text line's door, same rules as the machine's: the kill switch
@@ -1578,7 +1593,7 @@
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
       setBtn(callBtn, 'vm', 'mail',
-             onAirHere && onAirPick
+             onAirHere && onAirPick && vmGoesLive
                ? word('vm_button_live', 'Record for air')
                : word('vm_button', 'Leave a message'));
     } else {
@@ -1587,8 +1602,9 @@
       // another: solid coral when the call broadcasts, the cool outline for
       // the private line (the CSS keys off .route-on/.route-off). Without
       // the switch, the operator's own label stands as ever.
-      setBtn(callBtn, 'call', onAirHere && !onAirPick ? 'chat' : 'phone',
-             onAirPick ? word('call_live', 'Call in live')
+      setBtn(callBtn, 'call',
+             onAirHere && !(onAirPick && callsLive) ? 'chat' : 'phone',
+             onAirPick && callsLive ? word('call_live', 'Call in live')
                : onAirHere ? word('call_offair', 'Call the booth')
                : callLabel());
     }
@@ -2717,10 +2733,13 @@
   async function startCall(asVoicemail) {
     const myGen = ++callGen;
     vmCall = !!asVoicemail;
-    // Pinned at the press: the toggle's word is only a REQUEST — the server
-    // re-gates it at the mint and the worker preflights the transport, so
-    // this flag means "asked to be live", never "is live".
-    onAirCall = !vmCall && onAirPick;
+    // Pinned at the press: the route is only a REQUEST — the server re-gates
+    // it at the mint and the worker preflights the transport, so this flag
+    // means "asked to be live", never "is live". Only when the CALLS door is
+    // actually open: an on-air route with just the voicemail door live must
+    // not ask the mint for a broadcast call it would refuse.
+    onAirCall = !vmCall && onAirPick
+      && !!(live && live.onAirCalls && live.onAirCalls.calls);
     vmBeepHeard = false;
 
     // A call or a voicemail is a different mode from the text line — you are
@@ -3755,8 +3774,14 @@
     // message for the DJ) — whatever the operator's global flow says. One
     // switch, one meaning: does what I do next go out on the station?
     const d = shown || live || {};
-    if (d.onAirCalls && d.onAirCalls.offered && !$('routeSwitch').hidden) {
+    // With the switch up and the VOICEMAIL door open, the caller's route
+    // decides. A killed voicemail door means private whatever the route
+    // says; no switch at all falls back to the operator's legacy flow.
+    if (d.onAirCalls && d.onAirCalls.voicemail && !$('routeSwitch').hidden) {
       return onAirPick ? 'studio' : 'machine';
+    }
+    if (d.onAirCalls && d.onAirCalls.offered && !$('routeSwitch').hidden) {
+      return 'machine';
     }
     return d.voicemailFlow || 'machine';
   }

@@ -866,3 +866,51 @@ class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
         status2, body2 = self._mint(allow="guest", tier="guest", on_air=False)
         self.assertEqual(status2, 200)
         self.assertTrue(body2["room"].startswith("callin-g-"))
+
+    def test_the_dashboard_quick_kill_stops_live_calls_only(self):
+        # The Live-on-air cluster's calls kill: narrower than the tier row —
+        # the operator stops the phone-in going out without closing the
+        # feature or touching the voicemail door. Busy-shaped, in-world.
+        import settings as settings_store
+
+        def mint_with(cfg):
+            import asyncio as _a
+            import json as _json
+            import types as _t
+
+            from api import tokens as at
+
+            async def _body():
+                return {"onAir": True}
+
+            req = _t.SimpleNamespace(headers={"User-Agent": "t"},
+                                     remote="1.2.3.4", json=_body,
+                                     can_read_body=True)
+            patches = {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s",
+                       "_guest_ok": lambda r: True,
+                       "caller_tier": lambda r: "guest"}
+            old = {k: getattr(at, k) for k in patches}
+            oldl = settings_store.load
+            settings_store.load = lambda: cfg
+            at._recent_mints[:] = []
+            at._caller_last.clear()
+            try:
+                for k, v in patches.items():
+                    setattr(at, k, v)
+                resp = _a.run(at.handle_token(req))
+            finally:
+                for k, v in old.items():
+                    setattr(at, k, v)
+                settings_store.load = oldl
+                at._live_calls.clear()
+            return resp.status, _json.loads(resp.body.decode())
+
+        status, body = mint_with({"allow_on_air": "guest",
+                                  "on_air_calls_enabled": False})
+        self.assertEqual(status, 429)
+        self.assertTrue(body.get("busy"))
+        # The kill off (or simply absent — deployed stores predate it) lets
+        # the same ask through.
+        status2, body2 = mint_with({"allow_on_air": "guest"})
+        self.assertEqual(status2, 200)
+        self.assertTrue(body2["room"].startswith("callin-gl-"))

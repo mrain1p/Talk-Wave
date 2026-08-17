@@ -252,6 +252,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # voicemail on is a voicemail-only line; off with voicemail off is a
     # closed line that says so.
     "live_calls_enabled":    (None, True),
+    # The Live-on-air cluster's two quick kills, one per door. They narrow
+    # allow_on_air (the tier row stays the master): the dashboard flips
+    # these without touching who may use the feature. On by default so
+    # opening the tier row lights both doors at once.
+    "on_air_calls_enabled":    (None, True),
+    "on_air_voicemail_enabled": (None, True),
     # The master switch, then when the machine answers. voicemail_when used
     # to carry both jobs with its 'never' option, and the operator read the
     # section as having no on/off at all.
@@ -1725,6 +1731,16 @@ SCHEMA: dict[str, dict] = {
              "Voicemail below — the two switches together are the line's "
              "mode: phone, phone with a machine, voicemail-only, or "
              "closed."),
+    "on_air_calls_enabled": dict(group="usage", kind="check",
+        label="Calls may go on air",
+        help="The Live-on-air cluster's quick kill for the phone-in: off, "
+             "the ON AIR route stops offering live calls without touching "
+             "the permission row or the voicemail door."),
+    "on_air_voicemail_enabled": dict(group="usage", kind="check",
+        label="Voicemails may go on air",
+        help="Same quick kill for the message door: off, the ON AIR route "
+             "stops offering the studio and every message is a private one "
+             "for you."),
     "voicemail_greeting_mode": dict(group="voicemail", kind="select",
         label="Greeting comes from",
         help="Staged clips answer instantly. 'Fresh each call' writes a new "
@@ -1749,14 +1765,13 @@ SCHEMA: dict[str, dict] = {
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
     "voicemail_flow": dict(group="voicemail", kind="select",
-        label="The line is",
-        help="The answering machine takes a message as text — no audio is "
-             "ever kept. The soundbite studio records the caller, shows them "
-             "the transcript and what sending will do, and puts the approved "
-             "take on air with the DJ around it; the audio is deleted the "
-             "moment it airs. Both flows answer to the same door: the "
-             "Voicemail permission under Permissions decides which callers "
-             "may leave a message."),
+        label="Without the switch, the line is",
+        help="Only matters while the ON AIR | OFF AIR switch is NOT on the "
+             "card (the Go-live row off, or its voicemail door killed on "
+             "the dashboard). With the switch up, the caller chooses: OFF "
+             "AIR is the machine (a private message as text, no audio "
+             "kept), ON AIR is the soundbite studio (record, review, aired "
+             "with the DJ around it, audio deleted the moment it airs)."),
     # vm_mixer_telnet and vm_air_base_url deliberately have no schema entry —
     # the station_mcp_url ruling (0.10.80, operator's) applied again on
     # 2026-08-17, the operator's own words: "if it's derived couldn't we just

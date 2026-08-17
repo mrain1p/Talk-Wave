@@ -1019,3 +1019,17 @@ class TestTheOnAirLetterRidesTheRoomName(_TempStores):
         self.assertTrue(cfg["allow_on_air"])
         self.assertFalse(settings_store.permissions_for(
             {"allow_on_air": "guest"}, "open")["allow_on_air"])
+
+
+class TestTheOnAirQuickKillsShipOpen(_TempStores):
+    """The dashboard's two Live-on-air kills default ON: opening the tier
+    row lights both doors at once, and a store written before the kills
+    existed behaves identically after the upgrade."""
+
+    def test_both_doors_default_on(self):
+        self.assertIs(settings_store.FIELDS["on_air_calls_enabled"][1], True)
+        self.assertIs(
+            settings_store.FIELDS["on_air_voicemail_enabled"][1], True)
+        cfg = settings_store.load()
+        self.assertTrue(cfg.get("on_air_calls_enabled"))
+        self.assertTrue(cfg.get("on_air_voicemail_enabled"))

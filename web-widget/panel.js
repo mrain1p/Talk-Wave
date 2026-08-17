@@ -1009,10 +1009,20 @@
     mb('modeLiveBtn', liveOn);
     mb('modeVmBtn', vmOn2);
     mb('modeChatBtn', chatOn);
+    // The Live-on-air cluster's two quick kills, painted like the Lines
+    // rows above them — same helper, same vocabulary.
+    const oacOn = $('on_air_calls_enabled')
+      ? $('on_air_calls_enabled').checked : !!resolved.on_air_calls_enabled;
+    const oavOn = $('on_air_voicemail_enabled')
+      ? $('on_air_voicemail_enabled').checked
+      : !!resolved.on_air_voicemail_enabled;
+    mb('modeOnAirCallsBtn', oacOn);
+    mb('modeOnAirVmBtn', oavOn);
     // The two doors hang off the line itself: while it is paused nothing
     // answers whichever way they point — the server refuses the mint — so
     // they grey out and stop taking presses until the line reopens.
-    ['modeLiveBtn', 'modeVmBtn', 'modeChatBtn'].forEach((id) => {
+    ['modeLiveBtn', 'modeVmBtn', 'modeChatBtn',
+     'modeOnAirCallsBtn', 'modeOnAirVmBtn'].forEach((id) => {
       if ($(id)) $(id).disabled = paused;
     });
 
@@ -1806,24 +1816,31 @@
     wire('modeLiveBtn', 'live_calls_enabled');
     wire('modeVmBtn', 'voicemail_enabled');
     wire('modeChatBtn', 'chat_enabled');
+    wire('modeOnAirCallsBtn', 'on_air_calls_enabled');
+    wire('modeOnAirVmBtn', 'on_air_voicemail_enabled');
     // The broadcast-delay dump: posts immediately like every dash control,
     // and the card's own note line carries the server's answer — dumped, or
     // no phone-in live. Never through Save; a dump is not a form draft.
     const dump = $('dumpBtn');
     if (dump) dump.onclick = async () => {
-      const note = dump.querySelector('.cn');
+      const note = $('pullNote');
+      const resting = 'pulls whoever is live — the turn in hand never airs';
       dump.disabled = true;
       try {
         const r = await afetch('/on-air/dump', { method: 'POST' });
         const d = await r.json().catch(() => ({}));
         note.textContent = !r.ok
           ? (d.error || 'refused')
-          : d.ok ? 'dumped — the held turn will not air'
+          : d.ok ? 'pulled — the held turn will not air'
                  : (d.note || 'no phone-in is on the air right now');
       } catch (e) {
         note.textContent = 'unreachable — try again';
       } finally {
         dump.disabled = false;
+        // The answer has its moment, then the card goes back to saying what
+        // it does — a stale "unreachable" sat on the operator's dashboard
+        // for a whole session (their screenshot, 2026-08-17).
+        setTimeout(() => { note.textContent = resting; }, 6000);
       }
     };
   }

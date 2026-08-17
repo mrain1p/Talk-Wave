@@ -1296,10 +1296,10 @@
   /* The Call button wears the route: solid coral when the call is going
      out live (the existing primary look), the cool outline when it is a
      private line to the booth. */
-  .card.routed.route-off .actionrow #callBtn:not([hidden]):not(:disabled) {
+  .card.routed:not(.cta-live) .actionrow #callBtn:not([hidden]):not(:disabled) {
     background: transparent; border: 1px solid var(--cool); color: var(--cool);
   }
-  .card.routed.route-off .actionrow #callBtn:not([hidden]):not(:disabled):hover {
+  .card.routed:not(.cta-live) .actionrow #callBtn:not([hidden]):not(:disabled):hover {
     background: rgba(74, 139, 141, .12);
   }
 
@@ -2781,6 +2781,29 @@
   /* The dump row ships [hidden] until the on-air door opens, and the grid
      rule above would beat the UA's hidden — the slot-card lesson. */
   .linerow[hidden] { display: none; }
+  /* The Live-on-air cluster: the two door kills side by side, the pull
+     control full width beneath, its own micro-label above — the Lines
+     grammar, one row deeper. */
+  #onAirLine { margin-top: 12px; }
+  #onAirLine[hidden] { display: none; }
+  #onAirLine .lineslabel { margin: 0 0 6px; }
+  /* Stacked full-width rows (operator's ask — no side-by-side pair). */
+  .linerow.onairpull { grid-template-columns: 1fr; }
+  .linerow.onairpull + .linerow.onairpull { margin-top: 8px; }
+  /* The pull row: the card states, its BUTTON acts (operator's ask) —
+     coral-edged where the toggles wear their switches. */
+  .linerow .ctrlcard.pullcard { cursor: default; }
+  /* In the card grid's own switch column ("sw"), where the toggles wear
+     their knobs — a real button in the place the hand already knows. */
+  .pullbtn {
+    grid-area: sw; justify-self: end; align-self: center;
+    padding: 9px 12px; background: transparent; cursor: pointer;
+    border: 1px solid var(--coral); color: var(--coral); border-radius: 0;
+    font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .12em;
+  }
+  .pullbtn:hover { background: rgba(224, 83, 61, .12); }
+  .pullbtn:disabled { opacity: .5; cursor: default; }
   @media (max-width: 940px) {
     .stationstrip { grid-template-columns: repeat(2, 1fr); }
   }

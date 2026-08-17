@@ -582,17 +582,22 @@ class Handler(BaseHTTPRequestHandler):
                                      .get("voicemail_when") or "always"),
                 "voicemailFlow": str(settings_store.stored_only()
                                      .get("voicemail_flow") or "studio"),
-                # The phone-in door, from the store like callsPaused — but
-                # with no mixer in the stub, `offered` mirrors the setting
-                # alone. Save allow_on_air=open in the panel (or POST it) and
-                # the card grows the Live-on-air toggle.
-                "onAirCalls": {
-                    "offered": settings_store.normalise_tier(
-                        settings_store.load().get("allow_on_air"))
-                    != settings_store.TIER_OFF,
-                    "tier": settings_store.normalise_tier(
-                        settings_store.load().get("allow_on_air")),
-                },
+                # The phone-in doors, from the store like callsPaused — but
+                # with no mixer in the stub, the CALLS door mirrors its
+                # settings alone. Save allow_on_air=open in the panel (or
+                # POST it) and the card grows the route switch; the two
+                # dashboard kills drive their doors from here too.
+                "onAirCalls": (lambda s: (lambda tier: {
+                    "offered": tier != settings_store.TIER_OFF
+                    and (bool(s.get("on_air_calls_enabled", True))
+                         or bool(s.get("on_air_voicemail_enabled", True))),
+                    "calls": tier != settings_store.TIER_OFF
+                    and bool(s.get("on_air_calls_enabled", True)),
+                    "voicemail": tier != settings_store.TIER_OFF
+                    and bool(s.get("on_air_voicemail_enabled", True)),
+                    "tier": tier,
+                })(settings_store.normalise_tier(s.get("allow_on_air"))))(
+                    settings_store.load()),
                 "playerDuck": 10,
                 "booth": {"text": "This one's for anyone still up with the "
                                   "windows open — Beegie Adair, gentle as "

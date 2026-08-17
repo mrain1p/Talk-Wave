@@ -224,6 +224,10 @@
                tabindex="-1" aria-hidden="true" />
         <input type="checkbox" id="chat_enabled" class="fieldonly"
                tabindex="-1" aria-hidden="true" />
+        <input type="checkbox" id="on_air_calls_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
+        <input type="checkbox" id="on_air_voicemail_enabled" class="fieldonly"
+               tabindex="-1" aria-hidden="true" />
         <div class="lines">
           <p class="lineslabel">Lines <em>the three ways through the door above</em></p>
           <div class="linerow">
@@ -259,17 +263,36 @@
               <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
             </button>
           </div>
-          <!-- The broadcast-delay dump. Standing furniture whenever the
-               on-air row is open (the panel does not poll, so a lamp that
-               only lit during a call would never light): the press asks the
-               server, and the answer — dumped, or no phone-in live — lands
-               on the card itself. -->
-          <div class="linerow" id="onAirLine" hidden>
-            <button type="button" id="dumpBtn" class="ctrlcard">
-              <span class="ck">On-air phone-in</span>
-              <span class="cv">DUMP</span>
-              <span class="cn">kills the turn still in hand before it airs</span>
-            </button>
+          <!-- The Live-on-air cluster (operator's ask): the phone-in's two
+               doors as quick kills in the Lines grammar, and the pull
+               control beneath — no jargon on it. Standing whenever the
+               Go-live row is open; the panel does not poll, so the pull's
+               press itself asks the server what is live. -->
+          <div id="onAirLine" hidden>
+            <p class="lineslabel">Live on air <em>the phone-in's two doors</em></p>
+            <div class="linerow onairpull">
+              <button type="button" id="modeOnAirCallsBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Live Call</span>
+                <span class="cv"></span>
+              </button>
+            </div>
+            <div class="linerow onairpull">
+              <button type="button" id="modeOnAirVmBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Aired Voicemails</span>
+                <span class="cv"></span>
+              </button>
+            </div>
+            <div class="linerow onairpull">
+              <!-- A visible BUTTON, not a whole-card control (operator's
+                   ask): the row states, the button acts. -->
+              <div class="ctrlcard pullcard" id="pullRow">
+                <span class="ck">On-air transmission</span>
+                <span class="cn" id="pullNote">pulls whoever is live — the turn in hand never airs</span>
+                <button type="button" id="dumpBtn" class="pullbtn">PULL OFF AIR</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

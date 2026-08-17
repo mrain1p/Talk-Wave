@@ -86,10 +86,15 @@ _ONAIR_PROBE_TTL = 30.0
 
 
 async def _on_air_door(cfg: dict) -> dict:
-    offered = settings_store.normalise_tier(
-        cfg.get("allow_on_air")) != settings_store.TIER_OFF
+    """The two on-air doors, answered separately: a live CALL needs the
+    mixer's telnet (the relay pushes real clips), but an on-air VOICEMAIL
+    does not — the studio's dj-reads backend airs over the plain admin API
+    when the mixer is missing. Each door also rides its own dashboard quick
+    kill, so the operator can stop one without touching the other."""
+    tier = settings_store.normalise_tier(cfg.get("allow_on_air"))
+    enabled = tier != settings_store.TIER_OFF
     reachable = False
-    if offered:
+    if enabled and cfg.get("on_air_calls_enabled", True):
         import asyncio
 
         from onair import transport
@@ -101,12 +106,17 @@ async def _on_air_door(cfg: dict) -> dict:
                 and await asyncio.to_thread(transport.mixer_reachable, cfg))
             _onair_probe["at"] = now
         reachable = _onair_probe["ok"]
+    calls = (enabled and bool(cfg.get("on_air_calls_enabled", True))
+             and reachable)
+    voicemail = enabled and bool(cfg.get("on_air_voicemail_enabled", True))
     return {
-        # The one flag the widget branches on: the door exists AND works.
-        "offered": offered and reachable,
+        # Kept for older widgets: any door at all.
+        "offered": calls or voicemail,
+        "calls": calls,
+        "voicemail": voicemail,
         # The tier the row is set to, so the card can explain a lock rather
-        # than silently hiding the toggle from a caller one code short.
-        "tier": settings_store.normalise_tier(cfg.get("allow_on_air")),
+        # than silently hiding the switch from a caller one code short.
+        "tier": tier,
     }
 
 

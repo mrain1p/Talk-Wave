@@ -303,6 +303,15 @@ async def handle_token(request: web.Request) -> web.Response:
             return _cors(request, web.json_response(
                 {"error": "This line can't put callers on the air."},
                 status=403))
+        if on_air and not cfg.get("on_air_calls_enabled", True):
+            # The dashboard's quick kill for the phone-in door, narrower
+            # than the tier row: the operator stopped live calls going out
+            # without closing the feature. Busy-shaped — a stale tab gets
+            # the engaged tone, not an error code.
+            return _cors(request, web.json_response(
+                {"error": "The booth isn't putting callers on the air "
+                          "right now — call in off the air instead.",
+                 "busy": True}, status=429))
         if on_air and on_air_call_live():
             # ONE phone-in at a time. The station has a single voice queue,
             # and the first deployed test proved what two live calls do to
