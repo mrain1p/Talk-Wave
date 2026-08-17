@@ -252,3 +252,77 @@ def drop_stale(known_persona_ids: list[str]) -> None:
             changed = True
     if changed:
         _write_index(index)
+
+
+# One render at a time: ensure_clip below spends the operator's TTS money,
+# and two studio opens racing must not both pay for the same clip.
+_render_lock = None
+
+
+def _lock():
+    global _render_lock
+    import asyncio
+
+    if _render_lock is None:
+        _render_lock = asyncio.Lock()
+    return _render_lock
+
+
+async def ensure_clip(persona: dict, dj: dict, cfg: dict):
+    """A greeting clip for this persona, staged or rendered on demand.
+
+    The staged clip answers first. With nothing staged the line is rendered
+    HERE, through the exact machinery staging uses, and cached in the same
+    index — the classic machine speaks the greeting live at every pickup,
+    and the studio going silent instead was heard on the operator's own
+    phone (ring, beep, no voice; 2026-08-17). The cache bounds the spend: a
+    stranger opening the studio can cost at most one render per persona,
+    never one per visit. Returns a Path, or None when the render failed.
+    """
+    pid = str((persona or {}).get("id") or "")
+    if pid in ("", "default"):
+        pid = STATION_ID
+    clip = staged_clip(pid)
+    if clip:
+        return clip
+
+    from station_config import StationConfig
+    from tts_adapter import AdapterTTS, resolve_adapter
+
+    station_name = str((dj or {}).get("station") or "")
+    show_name = str((dj or {}).get("show") or (dj or {}).get("showName") or "")
+    name = str((persona or {}).get("name") or "")
+    sc = StationConfig(base_url=cfg.get("station_base_url"))
+    try:
+        if pid == STATION_ID:
+            voice = str(cfg.get("tts_voice") or "")
+            text = greeting_text_for(pid, cfg, station_name, "", show_name)
+        else:
+            voice = await sc.voice_for(pid)
+            text = greeting_text_for(pid, cfg, station_name, name, show_name)
+    finally:
+        await sc.aclose()
+
+    key = render_key(text, voice, str(cfg.get("tts_mode", "")),
+                     str(cfg.get("tts_adapter") or ""))
+    async with _lock():
+        if needs_render(pid, key):
+            tts = AdapterTTS(
+                voice=voice,
+                base_url=cfg.get("tts_base_url") or "",
+                adapter_path=resolve_adapter(cfg.get("tts_adapter")),
+                model=cfg.get("tts_model") or "",
+                mode=str(cfg.get("tts_mode", "cloud")),
+            )
+            pcm = bytearray()
+            try:
+                async for ev in tts.synthesize(text):
+                    pcm.extend(ev.frame.data.tobytes())
+            except Exception:                                 # noqa: BLE001
+                return None
+            finally:
+                await tts.aclose()
+            if not pcm:
+                return None
+            write_clip(pid, key, text, voice, bytes(pcm), tts.sample_rate)
+    return staged_clip(pid)

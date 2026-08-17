@@ -479,11 +479,14 @@ async def handle_vm_draft_delete(request: web.Request) -> web.Response:
 
 
 async def handle_vm_greeting(request: web.Request) -> web.StreamResponse:
-    """The staged greeting for whoever is on air, played at the studio's
-    pickup — the operator's ask: the DJ's own voicemail voice stays part of
-    the process when the flow is the studio. Same clips the machine plays,
-    same fallback order (this persona → the station → any), guest-gated like
-    every studio route. 404 when nothing is staged; the card skips silently."""
+    """The greeting for whoever is on air, played at the studio's pickup —
+    the operator's ask: the DJ's own voicemail voice stays part of the
+    process. A staged clip answers first; with nothing staged the greeting
+    is rendered ON DEMAND (greetings.ensure_clip — cached, locked, one
+    render per persona at most) — the classic machine speaks this line live
+    at every pickup, and the studio going silent instead was heard on the
+    operator's own phone (ring, beep, no voice; 2026-08-17). 404 only when
+    the render itself fails; the card then goes straight to the beep."""
     if not _draft_gate(request):
         raise web.HTTPUnauthorized()
 
@@ -492,14 +495,16 @@ async def handle_vm_greeting(request: web.Request) -> web.StreamResponse:
     secrets_store.apply_to_env()
     cfg = settings_store.load()
     station = StationClient(base_url=cfg.get("station_base_url"))
-    persona = {}
+    persona, dj = {}, {}
     try:
         persona = await station.resolve_live_persona()
+        dj = await station.live_dj()
     except Exception as e:                                    # noqa: BLE001
         log.info("vm greeting could not resolve the live persona: %s", e)
     finally:
         await station.aclose()
-    clip = greetings.staged_clip(str((persona or {}).get("id") or ""))
+
+    clip = await greetings.ensure_clip(persona, dj, cfg)
     if not clip:
         raise web.HTTPNotFound()
     return web.FileResponse(clip, headers={

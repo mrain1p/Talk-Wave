@@ -308,9 +308,11 @@
              stylesheet's grid, so the source order stays tab order. -->
         <div class="vmgrid" id="vmGrid" hidden>
           <button id="vmSendBtn" type="button">Send&nbsp;to&nbsp;booth&nbsp;➤</button>
-          <button id="vmPlayBtn" type="button">▶&nbsp;Play</button>
-          <button id="vmRerecBtn" type="button">↺&nbsp;Rerecord</button>
-          <button id="vmCancelBtn" type="button">✕&nbsp;Cancel</button>
+          <!-- Icon over word, so a third of a narrow card never truncates a
+               verb — "RER…" reached the operator's phone. -->
+          <button id="vmPlayBtn" type="button"><span class="vico" aria-hidden="true">▶</span>Play</button>
+          <button id="vmRerecBtn" type="button"><span class="vico" aria-hidden="true">↺</span>Rerecord</button>
+          <button id="vmCancelBtn" type="button"><span class="vico" aria-hidden="true">✕</span>Cancel</button>
         </div>
       </div>
 
@@ -367,7 +369,7 @@
              first, the big PAUSE stays nearest the thumb. -->
         <div class="plreq">
           <input type="text" id="plReqInput" maxlength="200" autocomplete="off"
-                 placeholder="Request: An artist, song, mood, or vibe." />
+                 placeholder="Request: An artist, song, or vibe." />
           <button id="plReqSend" type="button">Send</button>
         </div>
         <div class="plreqmsg" id="plReqMsg"></div>
