@@ -1514,11 +1514,11 @@
         applyVolume();
       }
 
-      // The station player follows every poll: the chip appears or goes as
-      // the operator's switch and the stream come and go, and an open deck
-      // repaints for a record change without the caller doing anything.
+      // The station player follows every poll: the ribbon and chip appear or
+      // go as the operator's switch and the stream come and go, and an open
+      // sheet repaints for a record change without the caller doing anything.
       paintListenChip();
-      if (cardMode() === 'player') paintPlayer();
+      if (playerOpen) paintPlayer();
       if (playerEl) feedMediaSession();
 
       if (!d.reachable) { paintOffAir('offline'); return; }
@@ -2519,9 +2519,9 @@
     // The station player cannot survive a live microphone: on speakers the
     // stream comes straight back in through the caller's mic and gets
     // transcribed as if they had said it — and the call's own tune-in takes
-    // over at pickup anyway, at the volume that job calls for.
-    stopPlayerAudio();
-    $('playerView').hidden = true;
+    // over at pickup anyway, at the volume that job calls for. false = the
+    // audio dies with the sheet.
+    closePlayer(false);
 
     // AFTER any chat teardown (endChat resets the mode to idle) — this is the
     // mode the call runs in. The card switches to the call's own controls,
@@ -3643,9 +3643,9 @@
   function vmOpenStudio() {
     vmDraft = null; vmClip = null;
     // Recording and the station player do not mix — the take would carry
-    // the broadcast, and on speakers the transcript would too.
-    stopPlayerAudio();
-    $('playerView').hidden = true;
+    // the broadcast, and on speakers the transcript would too. false = the
+    // audio dies with the sheet.
+    closePlayer(false);
     $('vmTranscript').textContent = '';
     $('vmAction').textContent = '';
     $('vmReview').hidden = true;
@@ -3744,23 +3744,27 @@
   };
 
   // ------------------------------------------------------- station player
-  // A swipe up on the idle card opens the station as a player — the same
-  // stream tune-in plays under a call, but as the SUBJECT: full volume,
-  // progress, transport. The point is the installed app on a phone: one
-  // card that is the station in your pocket, listen with a swipe, call with
-  // a button. Full page only — an embed's host page usually IS a player,
-  // and two of them would double the audio.
+  // The ribbon at the card's top edge pulls the station down OVER the phone
+  // page — a sheet, wiping down like a shade, swiped back up to reveal the
+  // card again (the operator's design, 2026-08-17, replacing a swipe-up
+  // card mode whose band never painted). Same stream tune-in plays under a
+  // call, but as the SUBJECT: full volume, progress, transport. The point
+  // is the installed app on a phone: one card that is the station in your
+  // pocket. Full page only — an embed's host page usually IS a player, and
+  // two of them would double the audio.
   //
-  // The audio outlives the view on purpose: swiping back down to the phone
-  // keeps the music going (the chip stays green and says so), the way every
-  // pocket player keeps playing behind its mini bar. Only a live microphone
-  // ends it — see startCall and vmOpenStudio — because on speakers the
-  // stream comes straight back in through the mic.
+  // The audio outlives the sheet on purpose: pushing it back up keeps the
+  // music going (the chip stays green and says so), the way every pocket
+  // player keeps playing behind its mini bar. Only a live microphone ends
+  // it — see startCall and vmOpenStudio — because on speakers the stream
+  // comes straight back in through the mic.
 
   function cardMode() {
     const card = document.querySelector('.card');
     return (card && card.dataset.mode) || 'idle';
   }
+
+  let playerOpen = false, playerHideTimer = 0;
 
   function playerOffered() {
     const d = shown || live || {};
@@ -3793,7 +3797,7 @@
       onDead: () => {
         playerDead = true;
         paintPlayerButtons();
-        if (cardMode() === 'player') paintPlayer();
+        if (playerOpen) paintPlayer();
       },
     });
     paintPlayerButtons();
@@ -3811,24 +3815,52 @@
   }
 
   function openPlayer() {
-    if (!playerOffered() || inConversation()) return;
-    $('playerView').hidden = false;
-    setCardMode('player');
+    if (!playerOffered() || inConversation() || playerOpen) return;
+    clearTimeout(playerHideTimer);
+    const sheet = $('playerView');
+    sheet.hidden = false;
+    // The sheet must be RENDERED before the class flips, or there is
+    // nothing for the transition to slide — the reflow read is the fence.
+    void sheet.offsetHeight;
+    document.querySelector('.card').classList.add('playeropen');
+    playerOpen = true;
     paintPlayer();
     startPlayerAudio();
-    notifyHeight();
+    paintListenChip();
   }
 
   function closePlayer(keepAudio) {
     if (!keepAudio) stopPlayerAudio();
-    $('playerView').hidden = true;
-    if (cardMode() === 'player') setCardMode('idle');
+    if (!playerOpen) { $('playerView').hidden = true; paintListenChip(); return; }
+    playerOpen = false;
+    document.querySelector('.card').classList.remove('playeropen');
+    // display:none only after the wipe has left. A timer, not transitionend:
+    // transition events never fire in a hidden pane, and a sheet stuck
+    // half-rendered would hold the card's overflow clipped for ever.
+    clearTimeout(playerHideTimer);
+    playerHideTimer = setTimeout(() => {
+      if (!playerOpen) $('playerView').hidden = true;
+    }, 450);
     paintListenChip();
-    notifyHeight();
   }
 
   function paintPlayer() {
     const d = shown || live || {};
+    const img = $('plArt'), mono = $('plMono');
+    if (img && mono) {
+      if (d.avatar) {
+        // Only on change — re-setting src on every poll re-fetches the image.
+        if (img.getAttribute('src') !== d.avatar) img.src = d.avatar;
+        img.hidden = false; mono.hidden = true;
+        img.onerror = () => {
+          img.hidden = true;
+          mono.textContent = monogram(d.name); mono.hidden = false;
+        };
+      } else {
+        img.hidden = true;
+        mono.textContent = monogram(d.name); mono.hidden = false;
+      }
+    }
     $('plTrack').textContent = d.track
       || (d.onAir ? 'Live broadcast' : 'Nobody in the booth');
     $('plWho').textContent = playerDead
@@ -3844,19 +3876,26 @@
   }
 
   function paintListenChip() {
-    const chip = $('listenChip');
+    const chip = $('listenChip'), tab = $('playerTab');
     if (!chip) return;
     if (!playerOffered()) {
       // The operator can pull the player out from under a caller mid-song —
       // honour it on the next poll rather than playing on with the door gone.
       chip.hidden = true;
+      if (tab) tab.hidden = true;
       if (playerEl) stopPlayerAudio();
-      if (cardMode() === 'player') closePlayer();
+      if (playerOpen) closePlayer();
       return;
     }
-    chip.hidden = cardMode() !== 'idle';
+    const idle = cardMode() === 'idle';
+    chip.hidden = !idle || playerOpen;
     chip.classList.toggle('playing', !!playerEl);
     chip.textContent = playerEl ? 'Playing' : 'Listen';
+    if (tab) {
+      tab.hidden = !idle;
+      tab.setAttribute('aria-label', playerOpen
+        ? 'Push the player back up' : 'Pull down the station player');
+    }
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -3886,10 +3925,11 @@
     } catch (e) {}
   }
 
-  // The gesture. Touch, not pointer: this is a phone move, and the mouse
-  // path is the chip and the hint button. A swipe that starts on a control
-  // is a press, not a gesture, and a slow or mostly-horizontal drag is a
-  // scroll — both fall through untouched.
+  // The plain swipe, anywhere on the card: down pulls the station in, up
+  // pushes it away. Touch, not pointer: this is a phone move, and the mouse
+  // path is the ribbon, the chip and the hint button. A swipe that starts
+  // on a control is a press, not a gesture, and a slow or mostly-horizontal
+  // drag is a scroll — both fall through untouched.
   (function bindSwipe() {
     const card = document.querySelector('.card');
     if (!card) return;
@@ -3898,8 +3938,7 @@
       armed = false;
       if (e.touches.length !== 1) return;
       if (e.target.closest('button, a, input, select, textarea')) return;
-      const m = cardMode();
-      if (m === 'idle' ? !playerOffered() : m !== 'player') return;
+      if (playerOpen ? false : (cardMode() !== 'idle' || !playerOffered())) return;
       armed = true;
       sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
     }, { passive: true });
@@ -3910,9 +3949,73 @@
       if (!t || Date.now() - st > 800) return;
       const dx = t.clientX - sx, dy = t.clientY - sy;
       if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
-      if (dy < 0 && cardMode() === 'idle') openPlayer();
-      else if (dy > 0 && cardMode() === 'player') closePlayer(true);
+      if (dy > 0 && !playerOpen) openPlayer();
+      else if (dy < 0 && playerOpen) closePlayer(true);
     }, { passive: true });
+  })();
+
+  // The ribbon: press it and the sheet FOLLOWS the finger — the page wipe
+  // the operator asked for, not a tap that teleports. Release past a fifth
+  // of the card and it commits; short of that it settles back. A plain tap
+  // (no travel) toggles, which is also the mouse's way in.
+  (function bindRibbon() {
+    const tab = $('playerTab'), sheet = $('playerView');
+    const card = document.querySelector('.card');
+    if (!tab || !sheet || !card) return;
+    let startY = 0, dragging = false, moved = false, wasOpen = false;
+
+    tab.addEventListener('touchstart', (e) => {
+      if (!playerOffered() || inConversation()) return;
+      dragging = true; moved = false; wasOpen = playerOpen;
+      startY = e.touches[0].clientY;
+      if (!wasOpen) {
+        // Rendered under the finger from the first pixel of travel.
+        clearTimeout(playerHideTimer);
+        sheet.hidden = false;
+        paintPlayer();
+      }
+      sheet.classList.add('dragging');
+    }, { passive: true });
+
+    tab.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const dy = e.touches[0].clientY - startY;
+      const h = card.getBoundingClientRect().height || 1;
+      if (Math.abs(dy) > 6) moved = true;
+      const shownPct = wasOpen
+        ? 1 - Math.min(1, Math.max(0, -dy / h))
+        : Math.min(1, Math.max(0, dy / h));
+      sheet.style.transform =
+        'translateY(' + (-103 * (1 - shownPct)).toFixed(2) + '%)';
+    }, { passive: true });
+
+    const settle = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      sheet.classList.remove('dragging');
+      const t = e.changedTouches && e.changedTouches[0];
+      const dy = t ? t.clientY - startY : 0;
+      const h = card.getBoundingClientRect().height || 1;
+      const shouldOpen = wasOpen ? (-dy / h) < 0.2 : (dy / h) > 0.2;
+      if (shouldOpen && !playerOpen) openPlayer();
+      else if (!shouldOpen && playerOpen) closePlayer(true);
+      else if (!shouldOpen && !playerOpen) {
+        // Released short of the threshold: slide home, then put it away.
+        clearTimeout(playerHideTimer);
+        playerHideTimer = setTimeout(() => {
+          if (!playerOpen) sheet.hidden = true;
+        }, 450);
+      }
+      // Cleared AFTER the state settles, so the transition animates from
+      // wherever the finger left the sheet rather than snapping first.
+      sheet.style.transform = '';
+    };
+    tab.addEventListener('touchend', settle);
+    tab.addEventListener('touchcancel', settle);
+    tab.addEventListener('click', () => {
+      if (moved) { moved = false; return; }   // the click after a real drag
+      if (playerOpen) closePlayer(true); else openPlayer();
+    });
   })();
 
   $('listenChip').onclick = () => {

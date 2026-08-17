@@ -2727,7 +2727,37 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn("d.stream && d.stream.url", gate)
 
     def test_a_live_microphone_stops_the_music(self):
+        # closePlayer(false) is the sheet AND the audio dying together;
+        # closePlayer(true) would leave the stream feeding the open mic.
         call = self.js.split("async function startCall")[1][:2400]
-        self.assertIn("stopPlayerAudio()", call)
+        self.assertIn("closePlayer(false)", call)
         studio = self.js.split("function vmOpenStudio")[1][:800]
-        self.assertIn("stopPlayerAudio()", studio)
+        self.assertIn("closePlayer(false)", studio)
+
+    def test_the_sheet_is_not_a_rig_row(self):
+        # .rig reserves visibility for the call's own rows — a band inside it
+        # that never says `visibility: visible` has geometry and paints
+        # NOTHING. The first player build shipped exactly that: every rect
+        # and offsetParent probe passed, and the operator's phone showed a
+        # blank card (2026-08-17). The sheet lives on the card itself.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        rig_open = html.index('id="rig"')
+        player_at = html.index('id="playerView"')
+        actionrow = html.index('class="actionrow"', rig_open)
+        self.assertGreater(
+            player_at, actionrow,
+            "the player sheet sits among the rig's rows again — .rig's "
+            "visibility reservation will blank it")
+        # Between the rig's last row and the sheet, BOTH the actionrow and
+        # the rig itself must have closed — one </div> means the sheet is
+        # still a rig child, inheriting the reservation.
+        self.assertGreaterEqual(
+            html[actionrow:player_at].count("</div>"), 2,
+            "the player sheet is still inside the rig")
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        block = css[css.index("\n  .player {"):]
+        block = block[:block.index("}")]
+        self.assertIn("position: absolute", block,
+                      "the player is no longer an overlay sheet — if it "
+                      "rejoins the card's flow, it inherits somebody's "
+                      "visibility again")

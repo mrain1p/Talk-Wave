@@ -305,27 +305,6 @@
         </div>
       </div>
 
-      <!-- The station player, opened by a swipe up on the idle card or the
-           LISTEN chip. Its own card mode, same one-mode-at-a-time rule as
-           chat and the studio: the phone's bands hide and this one flexes
-           into their room, so the card keeps ONE footprint. Full page and
-           the installed app only — never an embed, where the host page
-           usually IS a player and a second one would double the audio. -->
-      <div class="player" id="playerView" hidden>
-        <!-- No artwork of its own: the identity header above stays in this
-             mode, and the DJ's photo and name ARE the player's art. The band
-             is only what a player adds — the record, its progress, and the
-             transport. -->
-        <div class="pltrack" id="plTrack"></div>
-        <div class="plwho" id="plWho"></div>
-        <div class="plbar" aria-hidden="true"><span class="plfill"></span></div>
-        <div class="plclock"><span id="plElapsed"></span><span class="pllen" id="plLen"></span></div>
-        <div class="plrow">
-          <button id="plPlayBtn" type="button">Pause</button>
-        </div>
-        <button class="plhint" id="plHint" type="button">Swipe down for the phone</button>
-      </div>
-
       <!-- The last row of the card, on every surface. Idle it is Call (and
            the machine's door, if offered); on a call it is Hang up, full
            width, exactly where a thumb expects it. -->
@@ -335,6 +314,28 @@
         <button id="vmBtn" hidden>Leave a message</button>
         <button id="hangBtn" hidden>Hang up</button>
       </div>
+    </div>
+
+    <!-- The station player: a SHEET pulled down over the card by the ribbon
+         at the top edge (operator's design — "a page wipe with the card
+         coming over the frame"), swiped back up to reveal the phone. A
+         direct child of the card, NOT a rig row, and that is load-bearing:
+         .rig reserves visibility for the call's own rows, and the first
+         build sat inside it — laid out, measured by every probe, painting
+         nothing (operator's phone, 2026-08-17). Full page and the installed
+         app only, never an embed. -->
+    <button class="ribbon" id="playerTab" type="button" hidden
+            aria-label="Pull down the station player"><span class="grip" aria-hidden="true"></span></button>
+    <div class="player" id="playerView" hidden role="region" aria-label="Station player">
+      <span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span>
+      <div class="pltrack" id="plTrack"></div>
+      <div class="plwho" id="plWho"></div>
+      <div class="plbar" aria-hidden="true"><span class="plfill"></span></div>
+      <div class="plclock"><span id="plElapsed"></span><span class="pllen" id="plLen"></span></div>
+      <div class="plrow">
+        <button id="plPlayBtn" type="button">Pause</button>
+      </div>
+      <button class="plhint" id="plHint" type="button">Swipe up for the phone</button>
     </div>
   </div>
 
