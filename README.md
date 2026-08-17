@@ -145,6 +145,7 @@ The README is the short version. The detail lives here:
 | **[Quick start](docs/quickstart.md)** | Nothing to a working call in ten minutes |
 | **[What to run](docs/models.md)** | Which model and voice, ideal to minimal, and where a caller notices |
 | **[Settings reference](docs/settings.md)** | Every setting, its default, and what it changes |
+| **[The dashboard](docs/dashboard.md)** | The panel's landing page: the station tiles, the Transmission switch ladder and its one rule, the pull, and the activity charts |
 | **[Calling from outside your network](docs/networking.md)** | The topologies, the TLS front door, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
