@@ -106,6 +106,18 @@ a request in it ("hi, it's <name> — can you play <track> later?"), then hang u
 must precede the beep, the widget must show the machine hearing them, and the receipt must say
 what became of the message.
 
+**Soundbite studio** (only when the operator has set Voicemail → "The line is" to the studio):
+press Leave a message, record a request naming a REAL library track, and check the review card
+before sending — the transcript must carry the track's name and the action line must name THAT
+track ("Queue: …"), because send executes the previewed record, not a re-read of the words.
+Send, and listen for the segment: DJ intro → the caller's own voice (if the mixer doors are
+wired; the DJ reading it back is the documented fallback and the receipt says which happened)
+→ the DJ's close. Two honesty cases worth one take each: a message asking for a track the
+library does not hold must preview as a request, not a queue; and if the queue is refused at
+send time the close must not claim the track is coming. The receipt lands under Voicemail →
+Messages labelled soundbite/<backend>; the draft audio must be GONE from data/voicemail/drafts
+afterwards — sent or failed, the clip does not outlive the attempt.
+
 ## The review — grade the transcripts, then say what to tweak
 
 Records: `data/calls/*.json` on the NAS bind-mount, or the panel's **Recent calls** (calls,

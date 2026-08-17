@@ -716,6 +716,34 @@
      normal basis and let the rig's spare room size it, same as every mode. */
   .card[data-mode="chat"] .linebox { max-height: none; }
 
+  /* The soundbite studio: recording keeps the caller's own meter (the same
+     "is it registering?" feedback voicemail earned) and nothing of the
+     call's — no talk bar (the Record button IS the mic control), no DJ
+     meter, no doors. The review half fills the transcript's box so the card
+     keeps one footprint across record → review. */
+  .card[data-mode="vmstudio"] .talkrow,
+  .card[data-mode="vmstudio"] .actionrow,
+  .card[data-mode="vmstudio"] .after,
+  .card[data-mode="vmstudio"] .meters .dj,
+  .card[data-mode="vmstudio"] .meters .vol { display: none !important; }
+  .card:not([data-mode="vmstudio"]) .vmstudio { display: none !important; }
+  .vmstudio { display: flex; flex-direction: column; gap: 8px; }
+  .vmreview { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+  /* The display rules above would beat the UA's [hidden] — say it explicitly. */
+  .vmstudio[hidden], .vmreview[hidden] { display: none !important; }
+  .vmtranscript {
+    border: 1px solid var(--line);
+    padding: 8px 10px; font-size: 13px; line-height: 1.45;
+    max-height: 120px; overflow-y: auto; white-space: pre-wrap;
+  }
+  .vmtranscript:empty { display: none; }
+  .vmaction { font-size: 12px; color: var(--dim); padding: 0 2px; }
+  .vmaction:empty { display: none; }
+  .vmstudiorow { display: flex; gap: 8px; }
+  .vmstudiorow button { flex: 1 1 auto; }
+  /* Recording state rides the button, not a second status line. */
+  #vmRecBtn[aria-pressed="true"] { border-color: var(--warn, #c0392b); }
+
   /* Button, state pill and timer share one row — every status lives beside
      the action, never below it. No rule under it: whatever follows is either
      absent or a bordered block of its own, and a rule that sometimes ends the

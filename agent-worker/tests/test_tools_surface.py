@@ -93,6 +93,18 @@ class TestExposedSurface(unittest.TestCase):
         "GET /voicemail/greeting/{persona_id}": "admin",
         "POST /voicemail/greeting/{persona_id}": "admin",
         "DELETE /voicemail/greeting/{persona_id}": "admin",
+        # The soundbite line. "public" is this column's coarseness again:
+        # every draft route checks the guest code AND refuses the open tier
+        # in the handler (_draft_gate) — the census only reads the admin gate.
+        "POST /voicemail/draft": "public",
+        "GET /voicemail/draft/{draft_id}/audio": "public",
+        "POST /voicemail/draft/{draft_id}/send": "public",
+        "DELETE /voicemail/draft/{draft_id}": "public",
+        # Truly public, by design: the mixer's ONE fetch of a finished clip —
+        # it is curl on another network and can hold no password. The
+        # unguessable token is the credential; review.py burns it on first
+        # claim and expires it in two minutes, so the URL a log leaks is dead.
+        "GET /vm-air/{token}": "public",
         "DELETE /settings/sounds/{name}": "admin",
         "GET /prompt": "admin",
         "GET /calls": "admin",

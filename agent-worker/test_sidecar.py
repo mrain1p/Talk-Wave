@@ -333,6 +333,9 @@ from tests.test_voicemail import (  # noqa: F401
     TestGreetingClipsFollowWhatTheyWereRenderedFrom,
     TestTheBeepIsRealAudio,
     TestTheMachineAnswersThroughTheRightRefusals,
+    TestMasteringMakesAClipTheAirCanCarry,
+    TestADraftIsHeldBrieflyAndLeavesNoOrphans,
+    TestTheSoundbiteAirsWithReceipts,
 )
 from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,

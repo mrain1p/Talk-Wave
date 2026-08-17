@@ -47,6 +47,11 @@ from api.live import (
     handle_live_preview,
 )
 from api.voicemail import (
+    handle_vm_air_clip,
+    handle_vm_draft_audio,
+    handle_vm_draft_create,
+    handle_vm_draft_delete,
+    handle_vm_draft_send,
     handle_voicemail_clear,
     handle_voicemail_clip,
     handle_voicemail_clip_delete,
@@ -142,6 +147,16 @@ def build_app() -> web.Application:
     app.router.add_options("/voicemail/greeting/{persona_id}", handle_options)
     app.router.add_options("/voicemail/stage", handle_options)
     app.router.add_options("/voicemail/messages", handle_options)
+    # The soundbite line (guest): record → review → send. /vm-air is the one
+    # public route — the mixer's single tokened fetch, see handle_vm_air_clip.
+    app.router.add_post("/voicemail/draft", handle_vm_draft_create)
+    app.router.add_get("/voicemail/draft/{draft_id}/audio", handle_vm_draft_audio)
+    app.router.add_post("/voicemail/draft/{draft_id}/send", handle_vm_draft_send)
+    app.router.add_delete("/voicemail/draft/{draft_id}", handle_vm_draft_delete)
+    app.router.add_options("/voicemail/draft", handle_options)
+    app.router.add_options("/voicemail/draft/{draft_id}", handle_options)
+    app.router.add_options("/voicemail/draft/{draft_id}/send", handle_options)
+    app.router.add_get("/vm-air/{token}", handle_vm_air_clip)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
     app.router.add_get("/settings/sounds", handle_sounds_list)
     app.router.add_post("/settings/sounds", handle_sound_upload)

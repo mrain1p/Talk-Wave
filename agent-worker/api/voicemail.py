@@ -288,3 +288,185 @@ async def handle_voicemail_clear(request: web.Request) -> web.Response:
         return _refuse(request)
     vm_deliver.clear_messages()
     return _cors(request, web.json_response({"ok": True, "messages": []}))
+
+
+# --- the soundbite line: record → review → send ----------------------------
+# GUEST endpoints, not admin: the caller is the reviewer. The line is tiered
+# — open callers are refused outright (the operator's line is code-gated and
+# the card greys the door for strangers), and everything a draft holds is
+# deleted on every exit (see voicemail/review.py, which owns the terms).
+
+# Hard ceiling on one upload. The widget sends 16 kHz mono (≤ ~1 MB at the
+# default 30s), but master() accepts any PCM WAV and a 44.1k stereo take of
+# the same message is ~5 MB — read in chunks with our own cap rather than
+# through aiohttp's 1 MB default, and refuse politely past it.
+_UPLOAD_CEILING = 8 * 1024 * 1024
+
+
+def _guest_refuse(request: web.Request) -> web.Response:
+    from api.auth import caller_tier
+
+    if request.get("auth_error"):
+        return _refuse(request)
+    if caller_tier(request) == "open":
+        return _cors(request, web.json_response(
+            {"error": "leaving a message needs a caller code on this line"},
+            status=403))
+    return _refuse(request)
+
+
+def _draft_gate(request: web.Request) -> bool:
+    from api.auth import _guest_ok, caller_tier
+
+    return _guest_ok(request) and caller_tier(request) != "open"
+
+
+async def handle_vm_draft_create(request: web.Request) -> web.Response:
+    """One recording in, one reviewable draft out: mastered, transcribed,
+    and with the action send would take already resolved to real ids."""
+    if not _draft_gate(request):
+        return _guest_refuse(request)
+
+    import tempfile
+    from pathlib import Path
+
+    from api.auth import caller_tier
+    from voicemail import master as vm_master
+    from voicemail import preview as vm_preview
+    from voicemail import review as vm_review
+
+    body = bytearray()
+    async for chunk in request.content.iter_chunked(64 * 1024):
+        body.extend(chunk)
+        if len(body) > _UPLOAD_CEILING:
+            return _cors(request, web.json_response(
+                {"error": "that recording is too large"}, status=413))
+    if not body:
+        return _cors(request, web.json_response(
+            {"error": "no audio arrived"}, status=400))
+
+    import secrets_store
+
+    secrets_store.apply_to_env()
+    cfg = settings_store.load()
+    ceiling = max(5, int(cfg.get("voicemail_max_seconds") or 30))
+
+    fd, raw_name = tempfile.mkstemp(suffix=".wav")
+    raw = Path(raw_name)
+    try:
+        import os as _os
+
+        with _os.fdopen(fd, "wb") as f:
+            f.write(bytes(body))
+        mastered = raw.with_suffix(".mastered.wav")
+        try:
+            stats = vm_master.master(raw, mastered, ceiling)
+        except ValueError as e:
+            return _cors(request, web.json_response(
+                {"error": str(e)}, status=400))
+        except Exception as e:                                # noqa: BLE001
+            log.warning("draft mastering failed: %s", e)
+            return _cors(request, web.json_response(
+                {"error": "that file is not audio this line can play"},
+                status=400))
+        draft = vm_review.create(mastered, stats, caller_tier(request))
+    finally:
+        raw.unlink(missing_ok=True)
+
+    transcript = await vm_preview.transcribe(
+        cfg, vm_review.audio_path(draft["id"]))
+    station = StationClient(base_url=cfg.get("station_base_url"))
+    try:
+        action = await vm_preview.resolve(station, cfg, transcript)
+    finally:
+        await station.aclose()
+    draft = vm_review.annotate(draft["id"], transcript=transcript,
+                               action=action)
+
+    return _cors(request, web.json_response({
+        "id": draft["id"],
+        "transcript": transcript,
+        "sttOk": bool(transcript),
+        "stats": draft.get("stats") or {},
+        "action": action,
+    }))
+
+
+async def handle_vm_draft_audio(request: web.Request) -> web.StreamResponse:
+    """The caller playing their own take back before sending it."""
+    if not _draft_gate(request):
+        raise web.HTTPUnauthorized()
+    from voicemail import review as vm_review
+
+    draft_id = request.match_info.get("draft_id", "")
+    path = vm_review.audio_path(draft_id) if vm_review.get(draft_id) else None
+    if not path or not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={
+        "Cache-Control": "no-store", "Content-Type": "audio/wav"})
+
+
+async def handle_vm_draft_send(request: web.Request) -> web.Response:
+    """The approved draft, on air — and gone from disk either way."""
+    if not _draft_gate(request):
+        return _guest_refuse(request)
+
+    import secrets_store
+    from voicemail import air as vm_air
+    from voicemail import review as vm_review
+
+    draft_id = request.match_info.get("draft_id", "")
+    draft = vm_review.get(draft_id)
+    if not draft:
+        return _cors(request, web.json_response(
+            {"error": "that draft has expired — record it again"}, status=404))
+
+    secrets_store.apply_to_env()
+    cfg = settings_store.load()
+    station = StationClient(base_url=cfg.get("station_base_url"))
+    try:
+        result = await vm_air.deliver(station, cfg, draft)
+    except Exception as e:                                    # noqa: BLE001
+        log.warning("soundbite delivery crashed: %s", e)
+        result = {"ok": False, "backend": "none",
+                  "receipt": f"delivery crashed: {e}"}
+    finally:
+        await station.aclose()
+
+    # The operator's record survives the draft: same list the classic
+    # machine writes, labelled with how it went out.
+    vm_deliver.hold(str(draft.get("transcript") or "(no transcript)"), "",
+                    delivered=f"soundbite/{result.get('backend')}",
+                    note=str(result.get("receipt") or "")[:300])
+    # Sent or failed, the audio does not outlive the attempt: the caller
+    # still has their voice; we should not.
+    vm_review.delete(draft_id)
+
+    status = 200 if result.get("ok") else 502
+    return _cors(request, web.json_response(
+        {"ok": bool(result.get("ok")),
+         "backend": result.get("backend"),
+         "receipt": result.get("receipt")}, status=status))
+
+
+async def handle_vm_draft_delete(request: web.Request) -> web.Response:
+    """Re-record and abandon both land here."""
+    if not _draft_gate(request):
+        return _guest_refuse(request)
+    from voicemail import review as vm_review
+
+    vm_review.delete(request.match_info.get("draft_id", ""))
+    return _cors(request, web.json_response({"ok": True}))
+
+
+async def handle_vm_air_clip(request: web.Request) -> web.StreamResponse:
+    """The mixer's one fetch. Public by design — the mixer is curl on another
+    network — so the token IS the credential: unguessable, ~2 minutes, burned
+    by this claim (voicemail/review.py owns those rules)."""
+    from voicemail import review as vm_review
+
+    path = vm_review.claim_air_token(request.match_info.get("token", ""))
+    if not path:
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={
+        "Cache-Control": "no-store", "Content-Type": "audio/wav"})

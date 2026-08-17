@@ -3402,7 +3402,223 @@
     });
   }
 
-  $('vmBtn').onclick = () => { if (!room && !previewMode) startCall(true); };
+  // ------------------------------------------------------- soundbite studio
+  // The voicemail door's second flow (live.voicemailFlow === 'studio'):
+  // record in the BROWSER, review the transcript and the resolved action,
+  // then send to air. No LiveKit and no room — the take is assembled here as
+  // a 16 kHz mono WAV (MediaRecorder's webm would need a decoder the server
+  // doesn't carry) and uploaded once; playback is the local blob, so
+  // re-records cost nothing. The server masters, transcribes, and answers
+  // with what sending will actually DO — a resolved track, not a guess — and
+  // send executes exactly that record. The caller is the reviewer.
+  let vmDraft = null, vmRec = null, vmClip = null, vmPlayer = null, vmBusy = false;
+
+  function vmFlow() { return ((shown || live || {}).voicemailFlow) || 'machine'; }
+
+  function vmCeiling() {
+    return ((live && live.limits && live.limits.voicemailMaxSeconds) || 30);
+  }
+
+  function vmKeyHeaders(extra) {
+    const h = Object.assign({}, extra || {});
+    if (callKey()) h['X-Call-Key'] = callKey();
+    return h;
+  }
+
+  // Float32 chunks at the context's own rate -> one 16 kHz mono 16-bit WAV.
+  // Linear resample, same judgement as the server's reader: fine for speech,
+  // no dependencies, and the upload is under a megabyte at the default cap.
+  function vmToWav(chunks, rate) {
+    let n = 0;
+    for (const c of chunks) n += c.length;
+    const all = new Float32Array(n);
+    let off = 0;
+    for (const c of chunks) { all.set(c, off); off += c.length; }
+    const outN = Math.floor(n * 16000 / rate);
+    const pcm = new Int16Array(outN);
+    for (let i = 0; i < outN; i++) {
+      const pos = i * (n - 1) / Math.max(1, outN - 1);
+      const lo = Math.floor(pos), hi = Math.min(lo + 1, n - 1), fr = pos - lo;
+      const v = all[lo] * (1 - fr) + all[hi] * fr;
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
+    }
+    const buf = new ArrayBuffer(44 + pcm.length * 2);
+    const dv = new DataView(buf);
+    const str = (at, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(at + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+    dv.setUint16(22, 1, true); dv.setUint32(24, 16000, true);
+    dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, 'data'); dv.setUint32(40, pcm.length * 2, true);
+    new Int16Array(buf, 44).set(pcm);
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  function vmPaintButtons(state) {
+    const rec = $('vmRecBtn'), play = $('vmPlayBtn'), send = $('vmSendBtn');
+    rec.setAttribute('aria-pressed', state === 'recording' ? 'true' : 'false');
+    rec.textContent = state === 'recording' ? 'Stop'
+      : state === 'review' ? 'Record again' : 'Record';
+    rec.disabled = state === 'busy';
+    play.hidden = send.hidden = state !== 'review';
+    $('vmCloseBtn').disabled = state === 'busy';
+  }
+
+  async function vmStartRec() {
+    // A fresh take abandons the old draft — server side too, so the audio
+    // never outlives the caller's decision to replace it.
+    if (vmDraft) {
+      fetch('/voicemail/draft/' + vmDraft.id,
+            { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
+      vmDraft = null;
+    }
+    if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
+    $('vmReview').hidden = true;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      setStatus('Microphone blocked — allow it and try again', 'error');
+      return;
+    }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    proc.onaudioprocess = (ev) =>
+      chunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+    // Through a zero gain, or the caller hears themselves: some engines only
+    // run a ScriptProcessor that reaches the destination.
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+    anYou = analyserFor(stream.getAudioTracks()[0]);
+    vmRec = { ctx, proc, src, sink, stream, chunks, rate: ctx.sampleRate };
+    const secs = vmCeiling();
+    vmRec.stopTimer = setTimeout(vmStopRec, secs * 1000);
+    vmPaintButtons('recording');
+    setStatus('Recording — up to ' + secs + 's. Stop when you’re done.', 'connected');
+  }
+
+  async function vmStopRec() {
+    const r = vmRec;
+    if (!r) return;
+    vmRec = null;
+    clearTimeout(r.stopTimer);
+    try { r.proc.disconnect(); r.src.disconnect(); r.sink.disconnect(); } catch (e) {}
+    r.stream.getTracks().forEach((t) => t.stop());
+    try { r.ctx.close(); } catch (e) {}
+    anYou = null;
+    if (!r.chunks.length) { vmPaintButtons('idle'); return; }
+    vmClip = vmToWav(r.chunks, r.rate);
+    vmBusy = true;
+    vmPaintButtons('busy');
+    setStatus('One moment — listening back…', 'connecting');
+    try {
+      const resp = await fetch('/voicemail/draft', {
+        method: 'POST',
+        headers: vmKeyHeaders({ 'Content-Type': 'audio/wav' }),
+        body: vmClip,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'the studio is not answering');
+      vmDraft = data;
+      $('vmTranscript').textContent = data.transcript
+        || '(couldn’t make out words — play it back, or record again)';
+      $('vmAction').textContent = (data.action && data.action.label) || '';
+      $('vmReview').hidden = false;
+      vmPaintButtons('review');
+      setStatus('Play it back, then send it to air — or record another take.',
+                'connected');
+    } catch (e) {
+      vmPaintButtons('idle');
+      setStatus(String(e.message || e), 'error');
+    } finally {
+      vmBusy = false;
+      notifyHeight();
+    }
+  }
+
+  async function vmSend() {
+    if (!vmDraft || vmBusy) return;
+    vmBusy = true;
+    vmPaintButtons('busy');
+    setStatus('Sending to air…', 'connecting');
+    let receipt = '';
+    try {
+      const resp = await fetch('/voicemail/draft/' + vmDraft.id + '/send',
+                               { method: 'POST', headers: vmKeyHeaders() });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.receipt || data.error || 'that didn’t go out');
+      }
+      receipt = 'On its way to air'
+        + (vmDraft.action && vmDraft.action.kind !== 'none'
+           && vmDraft.action.label ? ' — ' + vmDraft.action.label.toLowerCase() : '');
+    } catch (e) {
+      vmBusy = false;
+      vmPaintButtons('review');
+      setStatus(String(e.message || e), 'error');
+      return;
+    }
+    vmBusy = false;
+    vmDraft = null;             // the server deleted it, sent or failed
+    vmCloseStudio(receipt);
+  }
+
+  function vmOpenStudio() {
+    vmDraft = null; vmClip = null;
+    $('vmTranscript').textContent = '';
+    $('vmAction').textContent = '';
+    $('vmReview').hidden = true;
+    $('vmStudio').hidden = false;
+    setCardMode('vmstudio');
+    vmPaintButtons('idle');
+    setStatus('Press Record and say your piece — the DJ airs it after you '
+              + 'approve it.', 'connected');
+    notifyHeight();
+  }
+
+  function vmCloseStudio(receipt) {
+    if (vmRec) {                 // mid-recording: stop hardware, keep nothing
+      const r = vmRec; vmRec = null;
+      clearTimeout(r.stopTimer);
+      try { r.proc.disconnect(); r.src.disconnect(); r.sink.disconnect(); } catch (e) {}
+      r.stream.getTracks().forEach((t) => t.stop());
+      try { r.ctx.close(); } catch (e) {}
+      anYou = null;
+    }
+    if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
+    if (vmDraft) {
+      fetch('/voicemail/draft/' + vmDraft.id,
+            { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
+      vmDraft = null;
+    }
+    $('vmStudio').hidden = true;
+    setCardMode('idle');
+    setStatus(receipt || word('ended', 'Call ended'));
+    refreshLive();
+    notifyHeight();
+  }
+
+  $('vmRecBtn').onclick = () => {
+    if (vmBusy) return;
+    if (vmRec) vmStopRec(); else vmStartRec();
+  };
+  $('vmPlayBtn').onclick = () => {
+    if (!vmClip) return;
+    if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
+    vmPlayer = new Audio(URL.createObjectURL(vmClip));
+    vmPlayer.play().catch(() => {});
+  };
+  $('vmSendBtn').onclick = vmSend;
+  $('vmCloseBtn').onclick = () => vmCloseStudio('');
+
+  $('vmBtn').onclick = () => {
+    if (room || previewMode) return;
+    if (vmFlow() === 'studio') vmOpenStudio(); else startCall(true);
+  };
   hangBtn.onclick = () => endCall(false);
   $('spkBtn').onclick = () => { routeAudio(!onSpeaker); };
 

@@ -248,6 +248,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # The answering-machine policy, so the card can offer
                     # "Leave a message" exactly where it paints a refusal.
                     "voicemailWhen": settings_store.voicemail_policy(cfg),
+                    # Which door "Leave a message" opens: the classic machine
+                    # (a LiveKit vm- room) or the soundbite studio (browser
+                    # recording + review). The widget branches on this alone.
+                    "voicemailFlow": str(cfg.get("voicemail_flow") or "machine"),
                     # The widget's expiry maths stayed in minutes; only the SETTING
                     # moved to hours, so the wire stays compatible both ways.
                     "guestSessionMinutes":

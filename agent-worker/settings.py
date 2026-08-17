@@ -311,6 +311,18 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "voicemail_greeting_mode": (None, "fresh"),
     "voicemail_max_seconds": (None, 30),
     "voicemail_destination": (None, "hold"),
+    # The soundbite studio (2026-08-17): the voicemail door repurposed into
+    # record → review → send-to-air. "machine" keeps the classic answering
+    # machine, so flipping a deployment is the operator's act, never an
+    # upgrade's.
+    "voicemail_flow": (None, "machine"),
+    "vm_air_backend": (None, "dj-reads"),
+    # Blank = the station's own default (broadcast:1234), reachable only when
+    # talkwave-web shares the station's docker network.
+    "vm_mixer_telnet": (None, ""),
+    # Blank = derived from HOST_IP:8100 — the published port the mixer already
+    # fetches music through.
+    "vm_air_base_url": (None, ""),
     "max_call_seconds": (None, 600),
     # Floor on the DJ hanging up by itself. A model that decides a call is
     # finished after two words is worse than one that lingers, so nothing can
@@ -1652,6 +1664,34 @@ SCHEMA: dict[str, dict] = {
         label="Message ceiling (s)",
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
+    "voicemail_flow": dict(group="voicemail", kind="select",
+        label="The line is",
+        help="The answering machine takes a message as text — no audio is "
+             "ever kept. The soundbite studio records the caller, shows them "
+             "the transcript and what sending will do, and puts the approved "
+             "take on air with the DJ around it; the audio is deleted the "
+             "moment it airs. The studio needs a caller code — strangers on "
+             "an open line are refused."),
+    "vm_air_backend": dict(group="voicemail", kind="select",
+        label="A soundbite airs as",
+        help="'The DJ reads it' works on any deployment — plain station "
+             "admin API. 'The caller's own voice' plays the recording on the "
+             "station's voice channel (music ducked, proper level) and needs "
+             "two doors: this container on the station's docker network, and "
+             "the mixer telnet below. Falls back to the DJ reading, out "
+             "loud in the receipt, whenever those are missing."),
+    "vm_mixer_telnet": dict(group="voicemail", kind="text",
+        label="Mixer telnet",
+        placeholder="broadcast:1234",
+        help="Where the station mixer's telnet listens, reachable only from "
+             "the station's own docker network. Blank uses the station's "
+             "default name."),
+    "vm_air_base_url": dict(group="voicemail", kind="text",
+        label="Clip fetch base",
+        placeholder="derived: http://<HOST_IP>:8100",
+        help="The URL the mixer fetches a soundbite from — this container's "
+             "published port, the same way the mixer already fetches its "
+             "music. Blank derives it from HOST_IP."),
     "voicemail_destination": dict(group="voicemail", kind="select", label="Messages go",
         help="'Held for you' is the safe default — messages land below, and "
              "nothing reaches the air without you. The rest act on the station "
@@ -1879,6 +1919,14 @@ STATIC_CHOICES = {
     "voicemail_greeting_mode": [
         ("staged", "Staged clips — instant, rendered ahead of time"),
         ("fresh", "Fresh each call — in persona, staged clip as the backup"),
+    ],
+    "voicemail_flow": [
+        ("machine", "Answering machine — a message as text, no audio kept"),
+        ("studio", "Soundbite studio — record, review, send to air"),
+    ],
+    "vm_air_backend": [
+        ("dj-reads", "The DJ reads it — works everywhere"),
+        ("caller-voice", "The caller's own voice — needs the mixer doors"),
     ],
     "voicemail_when": [
         ("closed", "When a live call is impossible (busy, off air, live calls off)"),
@@ -2507,7 +2555,8 @@ def beneath() -> dict:
 # station_mcp_url — a browser autofilling a name into a text box — which meant
 # the agent got NO station tools on any call and invented library results
 # instead. The field accepted it silently and nothing downstream complained.
-URL_FIELDS = ("station_base_url", "station_mcp_url", "llm_base_url", "tts_base_url")
+URL_FIELDS = ("station_base_url", "station_mcp_url", "llm_base_url",
+              "tts_base_url", "vm_air_base_url")
 
 _URLISH = re.compile(r"^(https?|wss?)://[^\s/?#]+", re.IGNORECASE)
 

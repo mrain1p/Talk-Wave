@@ -279,6 +279,23 @@
         <button id="chatSendBtn" type="button">Send</button>
       </div>
 
+      <!-- The soundbite studio: record → review → send. Shown only in the
+           'vmstudio' card mode; everything else on the card hides (the same
+           one-mode-at-a-time rule as chat). The review half fills the box the
+           captions normally use, so the card keeps ONE footprint. -->
+      <div class="vmstudio" id="vmStudio" hidden>
+        <div class="vmreview" id="vmReview" hidden>
+          <div class="vmtranscript" id="vmTranscript" aria-live="polite"></div>
+          <div class="vmaction" id="vmAction"></div>
+        </div>
+        <div class="vmstudiorow">
+          <button id="vmRecBtn" type="button">Record</button>
+          <button id="vmPlayBtn" type="button" hidden>Play it back</button>
+          <button id="vmSendBtn" type="button" hidden>Send to air</button>
+          <button id="vmCloseBtn" type="button">Never mind</button>
+        </div>
+      </div>
+
       <!-- The last row of the card, on every surface. Idle it is Call (and
            the machine's door, if offered); on a call it is Hang up, full
            width, exactly where a thumb expects it. -->
