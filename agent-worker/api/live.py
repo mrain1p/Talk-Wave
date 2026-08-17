@@ -236,7 +236,7 @@ async def handle_live(request: web.Request) -> web.Response:
         booth_line = None
         if cfg.get("swipe_player"):
             snap = await station.state()
-            for item in (snap.get("upcoming") or [])[:2]:
+            for item in (snap.get("upcoming") or [])[:6]:
                 if item.get("title"):
                     up_next.append({
                         "title": item.get("title"),

@@ -552,8 +552,20 @@ class Handler(BaseHTTPRequestHandler):
                 "playerStart": bool(settings_store.load().get("start_on_player")),
                 # One queued record and a weather line, so the player's
                 # panels and header exercise their filled states.
-                "upNext": [{"title": "Esta noche", "artist": "Federico Aubele",
-                            "requestedBy": "Marco"}],
+                "upNext": [
+                    {"title": "Esta noche", "artist": "Federico Aubele",
+                     "requestedBy": "Marco"},
+                    {"title": "Final Transmission", "artist": "All India Radio",
+                     "requestedBy": None},
+                    {"title": "Weightless Part 5", "artist": "Marconi Union",
+                     "requestedBy": "Ana"},
+                    {"title": "Otherworlds", "artist": "Abakus",
+                     "requestedBy": None},
+                ],
+                # The studio's door, so the machine flow can be driven here:
+                # the button appears, and it opens the browser studio.
+                "voicemailWhen": "always",
+                "voicemailFlow": "studio",
                 "booth": {"text": "This one's for anyone still up with the "
                                   "windows open — Beegie Adair, gentle as "
                                   "ever, and the rain agrees.",
