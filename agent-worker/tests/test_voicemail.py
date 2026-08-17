@@ -1003,6 +1003,24 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertIn("do NOT claim it worked", station.says[0])
         self.assertIn("refused", result["receipt"])
 
+    def test_the_push_waits_out_the_mixers_poll(self):
+        # /dj/say 200 = the intro is WRITTEN to say.txt; the mixer READS it
+        # on a 0.5s poll, and a telnet push landing inside that window put
+        # the caller's clip on air before either DJ line (2026-08-17). The
+        # wait between the intro and the push is load-bearing; this pins it
+        # to at least the poll interval.
+        import inspect
+        import re
+
+        from voicemail import air
+
+        src = inspect.getsource(air.deliver)
+        intro_at = src.index("hand over to the caller")
+        push_at = src.index("telnet_push(cfg")
+        sleep = re.search(r"asyncio\.sleep\(([0-9.]+)\)", src[intro_at:push_at])
+        self.assertIsNotNone(sleep, "the intro→push wait is gone")
+        self.assertGreaterEqual(float(sleep.group(1)), 0.5)
+
     def test_caller_voice_pushes_a_token_url_and_closes_on_the_receipt(self):
         addr, got = self._fake_mixer()
         station = _AdapterStation()

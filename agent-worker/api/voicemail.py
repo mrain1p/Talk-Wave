@@ -478,6 +478,34 @@ async def handle_vm_draft_delete(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"ok": True}))
 
 
+async def handle_vm_greeting(request: web.Request) -> web.StreamResponse:
+    """The staged greeting for whoever is on air, played at the studio's
+    pickup — the operator's ask: the DJ's own voicemail voice stays part of
+    the process when the flow is the studio. Same clips the machine plays,
+    same fallback order (this persona → the station → any), guest-gated like
+    every studio route. 404 when nothing is staged; the card skips silently."""
+    if not _draft_gate(request):
+        raise web.HTTPUnauthorized()
+
+    import secrets_store
+
+    secrets_store.apply_to_env()
+    cfg = settings_store.load()
+    station = StationClient(base_url=cfg.get("station_base_url"))
+    persona = {}
+    try:
+        persona = await station.resolve_live_persona()
+    except Exception as e:                                    # noqa: BLE001
+        log.info("vm greeting could not resolve the live persona: %s", e)
+    finally:
+        await station.aclose()
+    clip = greetings.staged_clip(str((persona or {}).get("id") or ""))
+    if not clip:
+        raise web.HTTPNotFound()
+    return web.FileResponse(clip, headers={
+        "Cache-Control": "no-store", "Content-Type": "audio/wav"})
+
+
 async def handle_vm_air_clip(request: web.Request) -> web.StreamResponse:
     """The mixer's one fetch. Public by design — the mixer is curl on another
     network — so the token IS the credential: unguessable, ~2 minutes, burned

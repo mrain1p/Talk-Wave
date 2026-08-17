@@ -193,6 +193,17 @@ async def deliver(station, cfg: dict, draft: dict) -> dict:
             "A listener called in and their recorded message is about to "
             "play on air. In one short sentence, hand over to the caller — "
             "do not summarise what they say.")
+        if ok_intro:
+            # /dj/say's 200 means the intro is WRITTEN to the mixer's handoff
+            # file, not read from it — the mixer polls say.txt every 0.5s,
+            # while the telnet push lands in voice_queue instantly. Pushing
+            # inside that window queued the caller's clip AHEAD of the intro
+            # and the operator heard their own voice land before either DJ
+            # line (2026-08-17). Out-wait the poll; a clip cannot beat an
+            # intro that is already in the queue.
+            import asyncio
+
+            await asyncio.sleep(0.8)
         token = review.mint_air_token(str(draft.get("id")))
         rid = telnet_push(cfg, f"{base}/vm-air/{token}") if token else None
         if rid is None:

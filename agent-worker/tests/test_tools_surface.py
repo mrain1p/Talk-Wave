@@ -42,6 +42,15 @@ class TestExposedSurface(unittest.TestCase):
         # station's own /cover/:id, which answers unauthenticated listeners.
         # It reads art by track id and writes nothing.
         "GET /cover/{track_id}": "public",
+        # The player's listener actions. "public" here means not admin-gated;
+        # each self-gates in api/player._door — the player switch must be ON
+        # and the caller through the phone's own guest door — and the station
+        # side of both is public listener API with its own per-IP limits.
+        # Writes, but the station's own page hands the same writes to any
+        # listener; the MCP allowlist still owns everything the DJ does.
+        "GET /player/like": "public",
+        "POST /player/like": "public",
+        "POST /player/request": "public",
         "GET /sounds/{name}": "public",        # uploaded call sounds
         "GET /sound-lib/{name}": "public",     # bundled clips — the widget plays them on every caller's page
         "POST /settings/sounds/meta": "admin", # category edits on the sound board
@@ -105,6 +114,9 @@ class TestExposedSurface(unittest.TestCase):
         "GET /voicemail/draft/{draft_id}/audio": "public",
         "POST /voicemail/draft/{draft_id}/send": "public",
         "DELETE /voicemail/draft/{draft_id}": "public",
+        # The studio's pickup greeting — the same staged clip the machine
+        # answers with, behind the same guest gate as the draft routes.
+        "GET /vm-greeting": "public",
         # Truly public, by design: the mixer's ONE fetch of a finished clip —
         # it is curl on another network and can hold no password. The
         # unguessable token is the credential; review.py burns it on first

@@ -685,6 +685,7 @@
         $('plElapsed').textContent = '';
         $('plLen').textContent = '';
         deck.style.setProperty('--pl-progress', '0%');
+        if (!deck.hidden) paintHeadMeta();
       }
       return;
     }
@@ -703,6 +704,8 @@
       $('plElapsed').textContent = mmss(shown);
       $('plLen').textContent = npLength ? mmss(npLength) : '';
       deck.style.setProperty('--pl-progress', pct);
+      // The header's wall clock rides the same tick while the sheet is up.
+      if (!deck.hidden) paintHeadMeta();
     }
   }
   // One second is the right cadence for a clock that shows whole seconds, and
@@ -802,9 +805,16 @@
       if (s.get() !== el) return;
       el.play().then(() => {
         if (s.get() === el) s.onPlaying(el);
-      }).catch(() => {
+      }).catch((err) => {
         if (s.get() !== el) return;
         s.set(null);
+        // Autoplay refused is the BROWSER's answer about this page, not this
+        // mount's failure — walking the alternates would just collect the
+        // same refusal N times and end claiming the stream is dead.
+        if (err && err.name === 'NotAllowedError') {
+          if (s.onBlocked) s.onBlocked();
+          return;
+        }
         playFirstWorking(urls, i + 1, slot);
       });
     } catch (e) {
@@ -1532,6 +1542,17 @@
         // are the ones the line above just applied.
         followStationPalette(d);
         lastCanAsk = askSignature(d);
+        // The operator can make the player the page's FRONT — it opens
+        // without the wipe (this is the starting face, not a transition)
+        // and audio waits for the browser's one allowed tap, which the
+        // NotAllowedError path answers honestly.
+        if (d.playerStart && playerOffered() && !inConversation()) {
+          const sheet = $('playerView');
+          sheet.classList.add('dragging');
+          openPlayer();
+          void sheet.offsetHeight;
+          sheet.classList.remove('dragging');
+        }
       } else {
         followStationPalette(d);
         // A tier change (signing in or out) changes what this caller may ask
@@ -2537,6 +2558,13 @@
       playerEl.volume = Math.min(1, getVolume() / 100);
       playerEl.muted = getVolume() <= 0;
     }
+    // The player's fader is a second handle on the SAME volume — value and
+    // drawn fill both, since the fill is a gradient stop, not the browser's.
+    const pv = $('plVol');
+    if (pv) {
+      if (pv.value !== String(getVolume())) pv.value = getVolume();
+      pv.style.setProperty('--vol', getVolume() + '%');
+    }
   }
   $('volSlider').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
   applyVolume();      // paint the fill at whatever volume we start on
@@ -3524,6 +3552,9 @@
   // Set when a HOLD was released while the mic permission prompt still had
   // the start in flight — the recording honours the lift the moment it lands.
   let vmAbortStart = false;
+  // The DJ's staged greeting, playing at pickup; and a session counter so a
+  // greeting fetched for a studio the caller already closed never plays.
+  let vmGreet = null, vmSession = 0;
 
   function vmFlow() { return ((shown || live || {}).voicemailFlow) || 'machine'; }
 
@@ -3566,14 +3597,59 @@
     return new Blob([buf], { type: 'audio/wav' });
   }
 
+  // The studio drives the SAME state chip a call does — its absence was the
+  // operator's report ("i dont see any status chips like when we are in call
+  // in or text"). The mapping borrows the call's colours: recording reads as
+  // listening (the mic is live), working reads as thinking.
+  function vmSetChip(state, text) {
+    const chip = $('stateChip');
+    if (!chip) return;
+    chip.hidden = false;
+    chip.dataset.state = state;
+    $('stateText').textContent = text;
+  }
+
+  function vmDropChip() {
+    const chip = $('stateChip');
+    if (chip) { chip.hidden = true; chip.dataset.state = 'idle'; }
+  }
+
+  // One caption line + one action card: the linebox is the studio's stage
+  // (operator's redesign — "i dont think we are using the space well in the
+  // transcript area"), so the transcript, the action preview and the send
+  // receipt all land there, through the same renderers a call uses.
+  function vmLine(id, who, text) {
+    $('lineBox').classList.add('open');
+    capBox.classList.add('on');
+    addCaption(id, who, text, true, true);
+  }
+
+  function vmClearBox() {
+    capNodes.clear();
+    delete lastByWho.you;
+    delete lastByWho.dj;
+    capBox.innerHTML = '';
+  }
+
   function vmPaintButtons(state) {
-    const rec = $('vmRecBtn'), play = $('vmPlayBtn'), send = $('vmSendBtn');
-    rec.setAttribute('aria-pressed', state === 'recording' ? 'true' : 'false');
-    rec.textContent = state === 'recording' ? 'Recording — let go to stop'
-      : state === 'review' ? 'Record again' : 'Hold to record';
-    rec.disabled = state === 'busy';
-    play.hidden = send.hidden = state !== 'review';
-    $('vmCloseBtn').disabled = state === 'busy';
+    const bar = $('vmRecBtn'), main = $('vmRecMain');
+    const rec = state === 'recording';
+    bar.setAttribute('aria-pressed', rec ? 'true' : 'false');
+    bar.classList.toggle('on', rec);
+    main.textContent = rec ? word('vm_recording', 'Recording — let go to stop')
+      : state === 'greeting' ? word('vm_talkover', 'Hold to record — you can talk over the greeting')
+      : word('vm_record', 'Hold to record');
+    bar.disabled = state === 'busy' || state === 'sending';
+    // Record state shows the bar row; review shows the 2×2 verb grid
+    // (operator's sketch). Sending keeps the grid, disabled, so the card
+    // does not jump while the receipt is on its way.
+    $('vmBarRow').hidden = state === 'review' || state === 'sending';
+    $('vmGrid').hidden = !(state === 'review' || state === 'sending');
+    const busyish = state === 'busy' || state === 'sending';
+    $('vmCloseBtn').disabled = busyish;
+    ['vmPlayBtn', 'vmRerecBtn', 'vmSendBtn', 'vmCancelBtn'].forEach((id) => {
+      $(id).disabled = state === 'sending';
+    });
   }
 
   async function vmStartRec() {
@@ -3585,7 +3661,10 @@
       vmDraft = null;
     }
     if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
-    $('vmReview').hidden = true;
+    // Talk-over: pressing the bar mid-greeting answers it, like the real
+    // machine — and a new take restarts the box's story.
+    if (vmGreet) { vmGreet.pause(); vmGreet = null; }
+    vmClearBox();
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -3610,7 +3689,8 @@
     const secs = vmCeiling();
     vmRec.stopTimer = setTimeout(vmStopRec, secs * 1000);
     vmPaintButtons('recording');
-    setStatus('Recording — up to ' + secs + 's. Let go, or tap, to stop.', 'connected');
+    vmSetChip('listening', word('vm_chip_rec', 'Recording'));
+    setStatus('Up to ' + secs + 's — let go, or tap, to stop.', 'connected');
     if (vmAbortStart) {
       // The finger lifted while the permission prompt held the start in
       // flight; honour the lift now rather than recording an empty room.
@@ -3628,11 +3708,17 @@
     r.stream.getTracks().forEach((t) => t.stop());
     try { r.ctx.close(); } catch (e) {}
     anYou = null;
-    if (!r.chunks.length) { vmPaintButtons('idle'); return; }
+    if (!r.chunks.length) { vmPaintButtons('idle'); vmSetChip('idle', word('vm_chip_ready', 'Ready')); return; }
     vmClip = vmToWav(r.chunks, r.rate);
     vmBusy = true;
     vmPaintButtons('busy');
-    setStatus('One moment — listening back…', 'connecting');
+    // The transcript arrives AFTER the take here, unlike a live call's
+    // streaming captions — there is no room and no streaming STT to ride, so
+    // the whole clip is transcribed at once on upload. The operator accepted
+    // that ("we can still have it for after the voicemail ends"); the chip's
+    // job is to make the wait read as work rather than as a hang.
+    vmSetChip('thinking', word('vm_chip_busy', 'Listening back…'));
+    setStatus('', 'connecting');
     try {
       const resp = await fetch('/voicemail/draft', {
         method: 'POST',
@@ -3642,15 +3728,21 @@
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.error || 'the studio is not answering');
       vmDraft = data;
-      $('vmTranscript').textContent = data.transcript
-        || '(couldn’t make out words — play it back, or record again)';
-      $('vmAction').textContent = (data.action && data.action.label) || '';
-      $('vmReview').hidden = false;
+      // The take and its consequence, in the box — a caption line for what
+      // was heard, an action card for what send will DO.
+      vmLine('vm-take', 'you', data.transcript
+        || '(couldn’t make out words — play it back, or record again)');
+      const act = data.action || {};
+      addSystemLine(act.kind === 'queue' || act.kind === 'request' ? '♪'
+                    : act.kind === 'takeover' ? '📻' : '✉',
+                    act.label || 'No station action — the message just plays',
+                    '');
       vmPaintButtons('review');
-      setStatus('Play it back, then send it to air — or record another take.',
-                'connected');
+      vmSetChip('idle', word('vm_chip_review', 'Ready to send'));
+      setStatus('Play it, send it, or record another take.', 'connected');
     } catch (e) {
       vmPaintButtons('idle');
+      vmSetChip('idle', word('vm_chip_ready', 'Ready'));
       setStatus(String(e.message || e), 'error');
     } finally {
       vmBusy = false;
@@ -3661,9 +3753,9 @@
   async function vmSend() {
     if (!vmDraft || vmBusy) return;
     vmBusy = true;
-    vmPaintButtons('busy');
-    setStatus('Sending to air…', 'connecting');
-    let receipt = '';
+    vmPaintButtons('sending');
+    vmSetChip('thinking', word('vm_chip_sending', 'Sending to air…'));
+    setStatus('', 'connecting');
     try {
       const resp = await fetch('/voicemail/draft/' + vmDraft.id + '/send',
                                { method: 'POST', headers: vmKeyHeaders() });
@@ -3671,29 +3763,30 @@
       if (!resp.ok || !data.ok) {
         throw new Error(data.receipt || data.error || 'that didn’t go out');
       }
-      receipt = 'On its way to air'
-        + (vmDraft.action && vmDraft.action.kind !== 'none'
-           && vmDraft.action.label ? ' — ' + vmDraft.action.label.toLowerCase() : '');
+      // The receipt joins the story in the box, over the transcript it
+      // belongs to — the same card a call's tool runs render as.
+      addSystemLine('📡', word('vm_sent', 'On its way to air'),
+                    String(data.receipt || ''));
     } catch (e) {
       vmBusy = false;
       vmPaintButtons('review');
+      vmSetChip('idle', word('vm_chip_review', 'Ready to send'));
       setStatus(String(e.message || e), 'error');
       return;
     }
     vmBusy = false;
     vmDraft = null;             // the server deleted it, sent or failed
-    vmCloseStudio(receipt);
+    vmCloseStudio(true);
   }
 
   function vmOpenStudio() {
     vmDraft = null; vmClip = null;
+    vmSession += 1;
     // Recording and the station player do not mix — the take would carry
     // the broadcast, and on speakers the transcript would too. false = the
     // audio dies with the sheet.
     closePlayer(false);
-    $('vmTranscript').textContent = '';
-    $('vmAction').textContent = '';
-    $('vmReview').hidden = true;
+    vmClearBox();
     $('vmStudio').hidden = false;
     // The idle board may already be painted in the box, and the poll no
     // longer repaints (or hides) anything while the studio is open — so the
@@ -3701,12 +3794,46 @@
     $('idleBoard').hidden = true;
     setCardMode('vmstudio');
     vmPaintButtons('idle');
-    setStatus('Press Record and say your piece — the DJ airs it after you '
+    vmSetChip('idle', word('vm_chip_ready', 'Ready'));
+    setStatus('Hold the bar and say your piece — the DJ airs it after you '
               + 'approve it.', 'connected');
     notifyHeight();
+    vmPlayGreeting(vmSession);
   }
 
-  function vmCloseStudio(receipt) {
+  // The answering machine's own voice stays part of the process (operator:
+  // "I don't want to lose the voicemail lines from the dj") — the staged
+  // greeting the operator rendered per persona plays when the studio picks
+  // up, and holding the bar talks over it, exactly like the real machine.
+  async function vmPlayGreeting(session) {
+    let blobUrl = '';
+    try {
+      const r = await fetch('/vm-greeting', { headers: vmKeyHeaders() });
+      if (!r.ok) return;                   // nothing staged — skip silently
+      blobUrl = URL.createObjectURL(await r.blob());
+    } catch (e) {
+      return;
+    }
+    if (session !== vmSession || vmRec || cardMode() !== 'vmstudio') return;
+    vmGreet = new Audio(blobUrl);
+    vmSetChip('speaking', word('vm_chip_greet', 'Greeting'));
+    vmPaintButtons('greeting');
+    const done = () => {
+      URL.revokeObjectURL(blobUrl);
+      if (session !== vmSession) return;
+      vmGreet = null;
+      if (!vmRec && cardMode() === 'vmstudio' && !vmBusy) {
+        vmPaintButtons('idle');
+        vmSetChip('idle', word('vm_chip_ready', 'Ready'));
+      }
+    };
+    vmGreet.onended = done;
+    vmGreet.onerror = done;
+    vmGreet.play().catch(done);
+  }
+
+  function vmCloseStudio(sent) {
+    vmSession += 1;
     if (vmRec) {                 // mid-recording: stop hardware, keep nothing
       const r = vmRec; vmRec = null;
       clearTimeout(r.stopTimer);
@@ -3716,14 +3843,26 @@
       anYou = null;
     }
     if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
+    if (vmGreet) { vmGreet.pause(); vmGreet = null; }
     if (vmDraft) {
       fetch('/voicemail/draft/' + vmDraft.id,
             { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
       vmDraft = null;
     }
     $('vmStudio').hidden = true;
+    vmDropChip();
     setCardMode('idle');
-    setStatus(receipt || word('ended', 'Call ended'));
+    if (sent) {
+      // The receipt card stays on the ended card, like a call's transcript.
+      setStatus(word('vm_sent', 'On its way to air'));
+    } else {
+      // Cancelled: the box's half-told story goes with it, so the idle board
+      // is not blocked by leftover captions nobody sent.
+      vmClearBox();
+      capBox.classList.remove('on');
+      $('lineBox').classList.remove('open');
+      setStatus('');
+    }
     refreshLive();
     notifyHeight();
   }
@@ -3773,6 +3912,26 @@
       if (vmBusy) return;
       if (vmRec) vmStopRec(); else vmStartRec();
     });
+    // Space mirrors the hold, exactly as it does on the talk bar — the
+    // keycap on the bar promises it ("it should be similar", operator).
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || e.repeat || pressed) return;
+      if (cardMode() !== 'vmstudio' || vmBusy) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      pressed = true;
+      downAt = Date.now();
+      recBefore = !!vmRec;
+      vmAbortStart = false;
+      if (!vmRec) vmStartRec();
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code !== 'Space' || !pressed) return;
+      if (cardMode() !== 'vmstudio') return;
+      e.preventDefault();
+      release();
+    });
   })();
   $('vmPlayBtn').onclick = () => {
     if (!vmClip) return;
@@ -3780,8 +3939,10 @@
     vmPlayer = new Audio(URL.createObjectURL(vmClip));
     vmPlayer.play().catch(() => {});
   };
+  $('vmRerecBtn').onclick = () => { if (!vmBusy) vmStartRec(); };
   $('vmSendBtn').onclick = vmSend;
-  $('vmCloseBtn').onclick = () => vmCloseStudio('');
+  $('vmCloseBtn').onclick = () => vmCloseStudio(false);
+  $('vmCancelBtn').onclick = () => vmCloseStudio(false);
 
   $('vmBtn').onclick = () => {
     if (room || previewMode) return;
@@ -3844,6 +4005,9 @@
         paintPlayerButtons();
         if (playerOpen) paintPlayer();
       },
+      // The browser wants its one tap first — the sheet opens quiet with
+      // PLAY lit, which is the honest reading, not a dead stream.
+      onBlocked: () => { playerDead = false; paintPlayerButtons(); },
     });
     paintPlayerButtons();
   }
@@ -3892,34 +4056,40 @@
   function paintPlayer() {
     const d = shown || live || {};
     const np = d.nowPlaying || {};
-    const img = $('plArt'), mono = $('plMono');
+    const img = $('plArt'), mono = $('plMono'), glow = $('plGlow');
     if (img && mono) {
       // The record's own art, else the DJ's photo, else initials — each
-      // step taken only when the one before actually failed to load.
+      // step taken only when the one before actually failed to load. The
+      // glow is a blurred copy of the SAME image, so it recolors per record.
       const art = np.art || d.avatar || '';
       if (art) {
         // Only on change — re-setting src on every poll re-fetches it.
         if (img.getAttribute('src') !== art) { img.src = art; }
+        if (glow && glow.getAttribute('src') !== art) glow.src = art;
         img.hidden = false; mono.hidden = true;
+        if (glow) glow.hidden = false;
         img.onerror = () => {
           if (np.art && img.getAttribute('src') === np.art && d.avatar) {
             img.src = d.avatar;
+            if (glow) glow.src = d.avatar;
             return;
           }
           img.hidden = true;
+          if (glow) glow.hidden = true;
           mono.textContent = monogram(np.artist || d.name);
           mono.hidden = false;
         };
       } else {
         img.hidden = true;
+        if (glow) glow.hidden = true;
         mono.textContent = monogram(d.name); mono.hidden = false;
       }
     }
     $('plTrack').textContent = np.title || d.track
       || (d.onAir ? 'Live broadcast' : 'Nobody in the booth');
     // The analysis strip the station's own player renders — genre · BPM ·
-    // key · mood — as chips. Capped: six chips wrap to two rows on a narrow
-    // card and stay readable; a full mood list does not.
+    // key · mood — as chips. Capped where a full mood list would wrap the
+    // strip into a paragraph.
     const tags = [].concat(np.genres || []);
     if (np.bpm) tags.push((Math.round(np.bpm * 10) / 10) + ' BPM');
     if (np.key) tags.push(np.key);
@@ -3927,7 +4097,7 @@
     const row = $('plTags');
     if (row) {
       row.innerHTML = '';
-      tags.slice(0, 6).forEach((t) => {
+      tags.slice(0, 8).forEach((t) => {
         const el = document.createElement('span');
         el.className = 'pill';
         el.textContent = t;
@@ -3936,15 +4106,74 @@
     }
     $('plAlbum').textContent =
       [np.artist, np.album, np.year].filter(Boolean).join(' · ');
-    $('plWho').textContent = playerDead
-      ? 'The stream would not play here'
-      : [d.name, d.show].filter((v) => v && v !== '…').join(' — ');
+
+    // UP NEXT: the station's own queue. The pip only goes live when
+    // something is actually queued — a lit pip over an empty panel is the
+    // kind of lie the board rules exist to prevent.
+    const nx = (d.upNext || [])[0];
+    const nextBody = $('plNextBody');
+    if (nextBody) {
+      $('plNextMeta').textContent = nx
+        ? (d.upNext.length > 1 ? d.upNext.length + ' queued' : '1 queued')
+        : 'queue empty';
+      $('plNextPip').classList.toggle('live', !!nx);
+      nextBody.innerHTML = '';
+      if (nx) {
+        const t = document.createElement('div');
+        t.className = 'pltit'; t.textContent = nx.title;
+        nextBody.appendChild(t);
+        const sub = [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
+          .filter(Boolean).join(' · ');
+        if (sub) {
+          const s = document.createElement('div');
+          s.className = 'plsub'; s.textContent = sub;
+          nextBody.appendChild(s);
+        }
+      } else {
+        nextBody.textContent = 'Nothing queued — send a request below.';
+      }
+    }
+    // IN THE BOOTH: who is on and what they are doing, from the same facts
+    // the identity header paints.
+    const boothBody = $('plBoothBody');
+    if (boothBody) {
+      $('plBoothMeta').textContent = playerDead
+        ? 'stream unavailable' : (d.onAir ? 'live' : 'off air');
+      boothBody.innerHTML = '';
+      const t = document.createElement('div');
+      t.className = 'pltit';
+      t.textContent = (d.name && d.name !== '…') ? d.name : 'The booth';
+      boothBody.appendChild(t);
+      const subText = [d.show, d.tagline].filter(Boolean).join(' — ');
+      if (subText) {
+        const s = document.createElement('div');
+        s.className = 'plsub'; s.textContent = subText;
+        boothBody.appendChild(s);
+      }
+    }
+    paintHeadMeta();
+    refreshHeart(np.title || '');
     paintPlayerButtons();
+  }
+
+  // The header's right side: the local clock, and the station's weather when
+  // it sent one — the same readout its own player wears.
+  function paintHeadMeta() {
+    const el = $('plHeadMeta');
+    if (!el) return;
+    const t = new Date();
+    const hr = t.getHours() % 12 || 12;
+    const clock = hr + ':' + String(t.getMinutes()).padStart(2, '0')
+      + (t.getHours() < 12 ? ' am' : ' pm');
+    const wx = ((shown || live || {}).weather) || '';
+    el.textContent = clock + (wx ? ' · ' + wx : '');
   }
 
   function paintPlayerButtons() {
     const btn = $('plPlayBtn');
     if (btn) btn.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+    const pv = $('playerView');
+    if (pv) pv.classList.toggle('playing', !!playerEl);
     paintListenChip();
   }
 
@@ -3965,9 +4194,9 @@
     chip.classList.toggle('playing', !!playerEl);
     chip.textContent = playerEl ? 'Playing' : 'Listen';
     if (tab) {
-      tab.hidden = !idle;
-      tab.setAttribute('aria-label', playerOpen
-        ? 'Push the player back up' : 'Pull down the station player');
+      // The bookmark only hangs while the player is closed — the way back
+      // up is the grabber at the dock's foot, where the finger already is.
+      tab.hidden = !idle || playerOpen;
     }
   }
 
@@ -4093,10 +4322,147 @@
     });
   })();
 
+  // The grabber at the dock's foot: the way back up, with the same
+  // finger-following drag as the bookmark — always from the open state.
+  (function bindGrab() {
+    const grab = $('plGrab'), sheet = $('playerView');
+    const card = document.querySelector('.card');
+    if (!grab || !sheet || !card) return;
+    let startY = 0, dragging = false, moved = false;
+
+    grab.addEventListener('touchstart', (e) => {
+      if (!playerOpen) return;
+      dragging = true; moved = false;
+      startY = e.touches[0].clientY;
+      sheet.classList.add('dragging');
+    }, { passive: true });
+    grab.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const dy = e.touches[0].clientY - startY;
+      const h = card.getBoundingClientRect().height || 1;
+      if (Math.abs(dy) > 6) moved = true;
+      const hiddenPct = Math.min(1, Math.max(0, -dy / h));
+      sheet.style.transform = 'translateY(' + (-103 * hiddenPct).toFixed(2) + '%)';
+    }, { passive: true });
+    const settle = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      sheet.classList.remove('dragging');
+      const t = e.changedTouches && e.changedTouches[0];
+      const dy = t ? t.clientY - startY : 0;
+      const h = card.getBoundingClientRect().height || 1;
+      if ((-dy / h) > 0.2 && playerOpen) closePlayer(true);
+      sheet.style.transform = '';
+    };
+    grab.addEventListener('touchend', settle);
+    grab.addEventListener('touchcancel', settle);
+    grab.addEventListener('click', () => {
+      if (moved) { moved = false; return; }
+      closePlayer(true);
+    });
+  })();
+
+  // The VU meter: eleven bars built once, each with its own height, pace
+  // and phase, so the strip breathes rather than marches. CSS pauses them
+  // whenever .player loses .playing — the meter never dances over silence.
+  (function buildVu() {
+    const vu = $('plVu');
+    if (!vu) return;
+    [7, 12, 9, 16, 11, 14, 8, 13, 10, 15, 6].forEach((h, i) => {
+      const b = document.createElement('span');
+      b.style.setProperty('--h', h + 'px');
+      b.style.setProperty('--d', (450 + ((i * 137) % 750)) + 'ms');
+      b.style.setProperty('--dl', '-' + ((i * 211) % 900) + 'ms');
+      vu.appendChild(b);
+    });
+  })();
+
+  // The heart. Add-only, matching the station's listener like — un-liking
+  // is an operator act there, not a listener one. songId rides along so a
+  // track change between paint and press gets the station's 409 instead of
+  // the wrong record getting the heart.
+  let plLiked = false, plLikeSong = null, plHeartFor = '';
+  function plKeyHeaders(extra) {
+    const h = extra || {};
+    if (callKey()) h['X-Call-Key'] = callKey();
+    return h;
+  }
+  async function refreshHeart(trackKey) {
+    const b = $('plHeartBtn');
+    if (!b || !playerOpen) return;
+    if (trackKey === plHeartFor) return;   // same record, nothing to re-ask
+    plHeartFor = trackKey;
+    try {
+      const r = await fetch('/player/like', { headers: plKeyHeaders() });
+      const d = await r.json();
+      if (!r.ok || d.enabled === false) { b.hidden = true; return; }
+      plLiked = !!d.liked; plLikeSong = d.songId || null;
+      paintHeart(d.count);
+    } catch (e) { b.hidden = true; }
+  }
+  function paintHeart(count) {
+    const b = $('plHeartBtn');
+    if (!b) return;
+    b.hidden = false;
+    b.textContent = plLiked ? '♥' : '♡';
+    b.classList.toggle('liked', plLiked);
+    b.setAttribute('aria-pressed', plLiked ? 'true' : 'false');
+    b.title = count ? count + ' likes' : 'Like this track';
+  }
+  $('plHeartBtn').onclick = async () => {
+    if (plLiked) return;
+    plLiked = true; paintHeart();       // optimistic; walked back on refusal
+    try {
+      const r = await fetch('/player/like', {
+        method: 'POST',
+        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(plLikeSong ? { songId: plLikeSong } : {}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'no');
+      paintHeart(d.count);
+    } catch (e) { plLiked = false; paintHeart(); }
+  };
+
+  // The request row: the station's own listener request box, relayed. The
+  // button says SENT for a moment (the mockup's beat); a refusal shows the
+  // station's own words — they are written for listeners.
+  async function plSendRequest() {
+    const input = $('plReqInput'), btn = $('plReqSend'), msg = $('plReqMsg');
+    const text = (input.value || '').trim();
+    if (!text) { input.focus(); return; }
+    btn.disabled = true; btn.textContent = 'Sending';
+    msg.textContent = '';
+    try {
+      const r = await fetch('/player/request', {
+        method: 'POST',
+        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ text }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.success === false) {
+        throw new Error(d.message || d.error || 'the booth did not answer');
+      }
+      input.value = '';
+      btn.textContent = 'Sent';
+      setTimeout(() => { btn.textContent = 'Send'; btn.disabled = false; }, 1600);
+    } catch (e) {
+      msg.textContent = String(e.message || e);
+      btn.textContent = 'Send'; btn.disabled = false;
+    }
+  }
+  $('plReqSend').onclick = plSendRequest;
+  $('plReqInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') plSendRequest();
+  });
+
+  // The player's own volume, and the card's, are ONE volume — two handles
+  // on the same fader, kept in step by applyVolume.
+  $('plVol').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
+
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();
   };
-  $('plHint').onclick = () => closePlayer(true);
   $('plPlayBtn').onclick = () => {
     if (playerEl) stopPlayerAudio(); else startPlayerAudio();
   };

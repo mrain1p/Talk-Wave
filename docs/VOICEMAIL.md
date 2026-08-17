@@ -54,12 +54,14 @@ Its own switch on the dashboard, beside Live calls — and the kill switch outra
 The same door, repurposed into a produced radio segment: the caller's own voice on your airwaves, with the DJ around it — but nothing reaches the air the caller has not seen and approved first.
 
 ```
-Hold to record (up to the ceiling)  →  the transcript, and what sending will DO
-   →  play it back · record another take · send
+the DJ's staged greeting answers (talk over it, like any machine)
+   →  hold to record (up to the ceiling)
+   →  in the transcript box: what was heard, and what sending will DO
+   →  Play · Rerecord · Send · Cancel
    →  on air: DJ intro  →  the caller's take  →  the DJ reacts, honestly
 ```
 
-The recording happens **in the caller's browser** — playback is instant, re-records are free, and one upload happens only when they are happy. The Record button is the talk bar in another costume: press and hold to record, let go to stop, or tap to latch it on. The server masters the take for broadcast (trim, telephone band, level), transcribes it with the same STT a live call uses, and answers with the review card.
+The recording happens **in the caller's browser** — playback is instant, re-records are free, and one upload happens only when they are happy. The record bar is the call's talk bar in another costume: press and hold to record, let go to stop, tap to latch it on, and Space mirrors the hold. The same state chip a call wears narrates the stages (Greeting, Recording, Listening back, Ready to send), and the transcript box is the stage: the caller's words land as a caption line, the resolved action as a card, and the send receipt joins them and stays on the ended card. The transcript arrives after the take rather than streaming — there is no live STT session to ride — which is a deliberate trade for a flow with no LiveKit room at all. The server masters the take for broadcast (trim, telephone band, level), transcribes it with the same STT a live call uses, and answers with the review card.
 
 **The action preview is the point.** Before sending, the caller sees exactly what send will do — not "this looks like a request" but *"Queue: Landslide — Fleetwood Mac"*, resolved against your library to a real track id at review time. Send executes that record, never a re-interpretation of the words. A message naming a track the library doesn't hold previews as a request; one asking for a different DJ previews as a takeover **only if** your *Show takeovers* permission is on (the same switch the live line rides, checked again at send); anything else previews as "no station action — the message just plays." And the DJ's on-air reaction is chosen **after** the station answers: a refused queue is never claimed as a track that's coming.
 

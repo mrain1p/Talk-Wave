@@ -288,20 +288,26 @@
         <button id="chatSendBtn" type="button">Send</button>
       </div>
 
-      <!-- The soundbite studio: record → review → send. Shown only in the
-           'vmstudio' card mode; everything else on the card hides (the same
-           one-mode-at-a-time rule as chat). The review half fills the box the
-           captions normally use, so the card keeps ONE footprint. -->
+      <!-- The soundbite studio: greeting → record → review → send. Shown only
+           in the 'vmstudio' card mode; everything else on the card hides (the
+           same one-mode-at-a-time rule as chat). The transcript, the action
+           preview and the send receipt all render in the LINEBOX above, as
+           caption lines and action cards — the box does the work instead of
+           sitting empty (operator's redesign, 2026-08-17). The record bar is
+           the real talk bar's markup so it looks and answers like one. -->
       <div class="vmstudio" id="vmStudio" hidden>
-        <div class="vmreview" id="vmReview" hidden>
-          <div class="vmtranscript" id="vmTranscript" aria-live="polite"></div>
-          <div class="vmaction" id="vmAction"></div>
+        <div class="vmbarrow" id="vmBarRow">
+          <button class="pttbar" id="vmRecBtn" type="button" aria-pressed="false">
+            <span class="pttmain" id="vmRecMain">Hold to record</span>
+            <span class="keycap" aria-hidden="true">Space</span>
+          </button>
+          <button id="vmCloseBtn" type="button">Cancel</button>
         </div>
-        <div class="vmstudiorow">
-          <button id="vmRecBtn" type="button">Record</button>
-          <button id="vmPlayBtn" type="button" hidden>Play it back</button>
-          <button id="vmSendBtn" type="button" hidden>Send to air</button>
-          <button id="vmCloseBtn" type="button">Never mind</button>
+        <div class="vmgrid" id="vmGrid" hidden>
+          <button id="vmPlayBtn" type="button">▶&nbsp;Play</button>
+          <button id="vmRerecBtn" type="button">↺&nbsp;Rerecord</button>
+          <button id="vmSendBtn" type="button">Send&nbsp;➤</button>
+          <button id="vmCancelBtn" type="button">Cancel</button>
         </div>
       </div>
 
@@ -327,22 +333,42 @@
     <button class="ribbon" id="playerTab" type="button" hidden
             aria-label="Pull down the station player"><span class="grip" aria-hidden="true"></span></button>
     <div class="player" id="playerView" hidden role="region" aria-label="Station player">
-      <!-- The station page's grammar — NOW PLAYING, the art, the title, the
-           analysis strip (genre · BPM · key · mood), artist · album · year —
-           stacked and centered for a card a third its width, in the card's
-           own costume: mono micro-labels, pill chips, square art. -->
-      <div class="plnow"><span class="pip" aria-hidden="true"></span>Now playing</div>
-      <span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span>
-      <div class="pltrack" id="plTrack"></div>
-      <div class="pltags" id="plTags"></div>
-      <div class="plalbum" id="plAlbum"></div>
-      <div class="plwho" id="plWho"></div>
-      <div class="plbar" aria-hidden="true"><span class="plfill"></span></div>
-      <div class="plclock"><span id="plElapsed"></span><span class="pllen" id="plLen"></span></div>
-      <div class="plrow">
-        <button id="plPlayBtn" type="button">Pause</button>
+      <!-- The operator's 3a "Glow player" handoff, in the card's own tokens:
+           header ribbon, glow art, 30px title, amber chips, the two info
+           panels, and a docked action bar. The grabber at the dock's foot is
+           the way back up — the top tab hides while the player is open. -->
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="plheadmeta" id="plHeadMeta"></span></div>
+      <div class="plscroll">
+        <span class="plartwrap"><img class="plglow" id="plGlow" alt="" aria-hidden="true" hidden /><span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span></span>
+        <div class="pltrack" id="plTrack"></div>
+        <div class="plalbum" id="plAlbum"></div>
+        <div class="pltags" id="plTags"></div>
+        <div class="plprog"><span class="plel" id="plElapsed"></span><span class="plbar" aria-hidden="true"><span class="plfill"></span></span><span class="pllen" id="plLen"></span></div>
+        <div class="plpanel">
+          <div class="plpanelhead"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next<span class="plpanelmeta" id="plNextMeta"></span></div>
+          <div class="plpanelbody" id="plNextBody"></div>
+        </div>
+        <div class="plpanel">
+          <div class="plpanelhead"><span class="ppip live" aria-hidden="true"></span>In the booth<span class="plpanelmeta" id="plBoothMeta"></span></div>
+          <div class="plpanelbody" id="plBoothBody"></div>
+        </div>
       </div>
-      <button class="plhint" id="plHint" type="button">Swipe up for the phone</button>
+      <div class="pldock">
+        <div class="plctl">
+          <button class="plheart" id="plHeartBtn" type="button" aria-pressed="false" aria-label="Like this track" hidden>&#9825;</button>
+          <span class="plnote" aria-hidden="true">&#9834;</span>
+          <input type="range" id="plVol" min="0" max="100" value="100" aria-label="Player volume" />
+          <span class="plvu" id="plVu" aria-hidden="true"></span>
+        </div>
+        <button id="plPlayBtn" type="button">Pause</button>
+        <div class="plreq">
+          <input type="text" id="plReqInput" maxlength="200" autocomplete="off"
+                 placeholder="Request: something slower… your name optional" />
+          <button id="plReqSend" type="button">Send</button>
+        </div>
+        <div class="plreqmsg" id="plReqMsg"></div>
+        <button class="plgrab" id="plGrab" type="button" aria-label="Back to the phone"><span class="grip" aria-hidden="true"></span></button>
+      </div>
     </div>
   </div>
 

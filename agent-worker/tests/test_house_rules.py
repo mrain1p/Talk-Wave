@@ -714,6 +714,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "beep as a cue, the bounded recording, delivery, and now the "
             "caller seeing their own words land. Same subject-placement rule "
             "as the test modules below.",
+        "agent-worker/tests/test_tools_surface.py":
+            "a census, not prose: the ROUTES and TOOLS manifests gain a "
+            "pinned line (and its justifying comment) every time the surface "
+            "gains a route or a tool, and pinning a new route should not "
+            "have to come and edit this list — the same declaration-table "
+            "reasoning as settings.py. The assertions are a page; the "
+            "manifests are the length. Crossed the ceiling on 2026-08-17 "
+            "when the soundbite routes and the cover proxy were pinned in "
+            "one evening.",
         "agent-worker/tests/test_chat.py":
             "one subject: the text line — the door, the flood brakes, the "
             "typed register of the one brain, and now where a tool run's "
