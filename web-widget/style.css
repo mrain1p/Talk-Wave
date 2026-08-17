@@ -741,7 +741,11 @@
   .vmaction:empty { display: none; }
   .vmstudiorow { display: flex; gap: 8px; }
   .vmstudiorow button { flex: 1 1 auto; }
-  /* Recording state rides the button, not a second status line. */
+  /* Recording state rides the button, not a second status line. The button
+     is the talk bar in the studio's costume, so it takes the bar's mobile
+     fix too: without touch-action a long press starts a text-selection
+     gesture that cancels the pointer and ends the take mid-sentence. */
+  #vmRecBtn { touch-action: none; -webkit-user-select: none; user-select: none; }
   #vmRecBtn[aria-pressed="true"] { border-color: var(--warn, #c0392b); }
 
   /* Button, state pill and timer share one row — every status lives beside

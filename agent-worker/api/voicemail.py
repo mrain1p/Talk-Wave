@@ -304,21 +304,29 @@ _UPLOAD_CEILING = 8 * 1024 * 1024
 
 
 def _guest_refuse(request: web.Request) -> web.Response:
-    from api.auth import caller_tier
-
     if request.get("auth_error"):
         return _refuse(request)
-    if caller_tier(request) == "open":
-        return _cors(request, web.json_response(
-            {"error": "leaving a message needs a caller code on this line"},
-            status=403))
-    return _refuse(request)
+    return _cors(request, web.json_response(
+        {"error": "The booth doesn't take messages on this line."},
+        status=403))
 
 
 def _draft_gate(request: web.Request) -> bool:
+    """Who may use the studio: the SAME tier door as the classic machine.
+
+    The first build hard-refused the open tier — and the operator's own line
+    is front_access=open with allow_voicemail=open, so their strangers could
+    record a take and only learn at upload that nobody would accept it. The
+    machine already has the answer (allow_voicemail: open/guest/admin, the
+    ladder tokens.py walks for a vm mint); one line, one door, both flows.
+    """
     from api.auth import _guest_ok, caller_tier
 
-    return _guest_ok(request) and caller_tier(request) != "open"
+    if not _guest_ok(request):
+        return False
+    cfg = settings_store.load()
+    return settings_store.tier_reaches(cfg.get("allow_voicemail"),
+                                       caller_tier(request))
 
 
 async def handle_vm_draft_create(request: web.Request) -> web.Response:

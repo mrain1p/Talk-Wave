@@ -1671,8 +1671,9 @@ SCHEMA: dict[str, dict] = {
              "ever kept. The soundbite studio records the caller, shows them "
              "the transcript and what sending will do, and puts the approved "
              "take on air with the DJ around it; the audio is deleted the "
-             "moment it airs. The studio needs a caller code — strangers on "
-             "an open line are refused."),
+             "moment it airs. Both flows answer to the same door: the "
+             "Voicemail permission under Permissions decides which callers "
+             "may leave a message."),
     # vm_mixer_telnet and vm_air_base_url deliberately have no schema entry —
     # the station_mcp_url ruling (0.10.80, operator's) applied again on
     # 2026-08-17, the operator's own words: "if it's derived couldn't we just

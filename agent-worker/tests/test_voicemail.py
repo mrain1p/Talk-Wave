@@ -1176,6 +1176,22 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertIn("switched off", result2["receipt"])
         self.assertIn("do NOT claim it worked", station2.says[0])
 
+    def test_the_studio_answers_to_the_machines_own_tier_door(self):
+        # The first build hard-refused the open tier, while the operator's
+        # real line runs allow_voicemail=open — their strangers could record
+        # a whole take and only learn at upload that nobody would accept it.
+        # One door for both flows: the studio gate must walk the same
+        # tier_reaches ladder the vm mint walks, and never carry a hardcoded
+        # tier opinion of its own.
+        import inspect
+
+        from api import voicemail as api_vm
+
+        src = inspect.getsource(api_vm._draft_gate)
+        self.assertIn("tier_reaches", src)
+        self.assertIn("allow_voicemail", src)
+        self.assertNotIn('!= "open"', src)
+
     def test_the_search_retries_without_the_by_connector(self):
         # Found by the first live probe of the shipping prompt: the model's
         # query kept the caller's "by" ("Landslide by Fleetwood Mac"), the

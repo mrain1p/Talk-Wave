@@ -3412,6 +3412,9 @@
   // with what sending will actually DO — a resolved track, not a guess — and
   // send executes exactly that record. The caller is the reviewer.
   let vmDraft = null, vmRec = null, vmClip = null, vmPlayer = null, vmBusy = false;
+  // Set when a HOLD was released while the mic permission prompt still had
+  // the start in flight — the recording honours the lift the moment it lands.
+  let vmAbortStart = false;
 
   function vmFlow() { return ((shown || live || {}).voicemailFlow) || 'machine'; }
 
@@ -3457,8 +3460,8 @@
   function vmPaintButtons(state) {
     const rec = $('vmRecBtn'), play = $('vmPlayBtn'), send = $('vmSendBtn');
     rec.setAttribute('aria-pressed', state === 'recording' ? 'true' : 'false');
-    rec.textContent = state === 'recording' ? 'Stop'
-      : state === 'review' ? 'Record again' : 'Record';
+    rec.textContent = state === 'recording' ? 'Recording — let go to stop'
+      : state === 'review' ? 'Record again' : 'Hold to record';
     rec.disabled = state === 'busy';
     play.hidden = send.hidden = state !== 'review';
     $('vmCloseBtn').disabled = state === 'busy';
@@ -3498,7 +3501,13 @@
     const secs = vmCeiling();
     vmRec.stopTimer = setTimeout(vmStopRec, secs * 1000);
     vmPaintButtons('recording');
-    setStatus('Recording — up to ' + secs + 's. Stop when you’re done.', 'connected');
+    setStatus('Recording — up to ' + secs + 's. Let go, or tap, to stop.', 'connected');
+    if (vmAbortStart) {
+      // The finger lifted while the permission prompt held the start in
+      // flight; honour the lift now rather than recording an empty room.
+      vmAbortStart = false;
+      vmStopRec();
+    }
   }
 
   async function vmStopRec() {
@@ -3602,10 +3611,52 @@
     notifyHeight();
   }
 
-  $('vmRecBtn').onclick = () => {
-    if (vmBusy) return;
-    if (vmRec) vmStopRec(); else vmStartRec();
-  };
+  // The Record button IS the talk bar, in the studio's costume — the
+  // operator's standing rule is push-to-talk on every surface, and the first
+  // studio build shipped it as a plain click ("i cant do a push to talk on
+  // the voicemail path", operator, 2026-08-17). Same shape as bindPtt: press
+  // starts, a hold ends when the finger lifts, a TAP latches the recording
+  // on until the next tap. Keyboard activation (Enter/Space fire click with
+  // no pointer session) keeps the plain toggle.
+  (function bindVmRec() {
+    const btn = $('vmRecBtn');
+    if (!btn) return;
+    let downAt = 0, pressed = false, recBefore = false, viaPointer = false;
+
+    btn.addEventListener('pointerdown', (e) => {
+      if (vmBusy) return;
+      e.preventDefault();
+      btn.setPointerCapture?.(e.pointerId);
+      pressed = true;
+      viaPointer = true;
+      downAt = Date.now();
+      recBefore = !!vmRec;
+      vmAbortStart = false;
+      if (!vmRec) vmStartRec();          // press always opens the mic
+    });
+    const release = () => {
+      if (!pressed) return;
+      pressed = false;
+      const held = Date.now() - downAt >= HOLD_MS;
+      if (held || recBefore) {
+        // The first press ever pauses on the browser's mic permission
+        // prompt, so the recording may not exist yet when the finger lifts
+        // — remember the intent and vmStartRec honours it on arrival.
+        if (vmRec) vmStopRec(); else vmAbortStart = true;
+      }
+    };
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    // A long press on mobile otherwise raises the OS context menu, which
+    // cancels the pointer mid-hold and stops the take — same swallow as the
+    // talk bar, for the same reason.
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+    btn.addEventListener('click', () => {
+      if (viaPointer) { viaPointer = false; return; }
+      if (vmBusy) return;
+      if (vmRec) vmStopRec(); else vmStartRec();
+    });
+  })();
   $('vmPlayBtn').onclick = () => {
     if (!vmClip) return;
     if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }

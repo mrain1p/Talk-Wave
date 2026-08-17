@@ -94,8 +94,9 @@ class TestExposedSurface(unittest.TestCase):
         "POST /voicemail/greeting/{persona_id}": "admin",
         "DELETE /voicemail/greeting/{persona_id}": "admin",
         # The soundbite line. "public" is this column's coarseness again:
-        # every draft route checks the guest code AND refuses the open tier
-        # in the handler (_draft_gate) — the census only reads the admin gate.
+        # every draft route checks the guest code AND the machine's own tier
+        # door (allow_voicemail via tier_reaches, in _draft_gate) — the
+        # census only reads the admin gate.
         "POST /voicemail/draft": "public",
         "GET /voicemail/draft/{draft_id}/audio": "public",
         "POST /voicemail/draft/{draft_id}/send": "public",
