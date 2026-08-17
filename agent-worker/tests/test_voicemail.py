@@ -1418,3 +1418,47 @@ class TestTheStudioGreetingIsRenderedOnceNotPerVisit(unittest.TestCase):
                           f"ensure_clip no longer uses {piece} — either the "
                           "cache or the lock is gone, and either way a guest "
                           "can now spend unbounded TTS money")
+
+
+class TestResamplingDoesNotAlias(unittest.TestCase):
+    """A 12 kHz tone in a 48 kHz recording must DIE on the way to 16 kHz,
+    not fold into the voice band as grit. Unfiltered linear decimation
+    reflects it to 4 kHz inside the speech range, and the drive then
+    amplifies exactly that — heard as "my voice sounds pretty bad" on the
+    first live relay test (2026-08-17), on the studio and the call alike."""
+
+    def _tone48(self, path, freq, secs=0.6):
+        import math
+        import struct
+        import wave
+
+        rate = 48000
+        n = int(rate * secs)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(struct.pack(
+                "<%dh" % n,
+                *[int(20000 * math.sin(2 * math.pi * freq * i / rate))
+                  for i in range(n)]))
+
+    def test_a_12k_tone_dies_where_a_1k_tone_survives(self):
+        import math
+        import tempfile
+        from pathlib import Path
+
+        from voicemail import master as m
+
+        with tempfile.TemporaryDirectory() as td:
+            hi, lo = Path(td) / "hi.wav", Path(td) / "lo.wav"
+            self._tone48(hi, 12000)
+            self._tone48(lo, 1000)
+            rms = lambda xs: math.sqrt(sum(v * v for v in xs) / len(xs))  # noqa: E731
+            hi_rms = rms(m.read_wav_any(hi, 30))
+            lo_rms = rms(m.read_wav_any(lo, 30))
+            # ~-19 dB from two low-pass passes; the unfiltered fold-down sat
+            # near a THIRD of the in-band level, which is why it was audible.
+            self.assertLess(hi_rms, lo_rms * 0.15,
+                            "ultrasonics must be filtered out, not folded "
+                            "into the voice band")

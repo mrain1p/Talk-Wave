@@ -303,6 +303,17 @@ async def handle_token(request: web.Request) -> web.Response:
             return _cors(request, web.json_response(
                 {"error": "This line can't put callers on the air."},
                 status=403))
+        if on_air and on_air_call_live():
+            # ONE phone-in at a time. The station has a single voice queue,
+            # and the first deployed test proved what two live calls do to
+            # it: their clips and brackets interleave into one broadcast —
+            # a dead call's sign-off landed inside a real call's segment.
+            # In-world and busy-shaped, so the widget's engaged-tone path
+            # handles it like any other full line.
+            return _cors(request, web.json_response(
+                {"error": "Someone's already live on the air — give it a "
+                          "minute, or call in off the air.",
+                 "busy": True}, status=429))
         if not voicemail and (settings_store.voicemail_policy(cfg) == "always"
                               or not cfg.get("live_calls_enabled", True)):
             # A voicemail-only line: the widget offers Leave a message and a

@@ -233,7 +233,10 @@ class TestTheRelayObeysTheOperatorMidCall(_RelayCase):
         self.assertEqual([g for g in got if b"voice_queue.push" in g], [],
                          "neither the held turn nor the new one airs")
         self.assertTrue(r.dumped)
-        self.assertEqual(len(station.says), 2, "intro, then the sign-off")
+        # NOTHING aired before the dump (the only clip was still in hand),
+        # so there is nobody on the stream to thank: intro alone.
+        self.assertEqual(len(station.says), 1, "intro only — no sign-off "
+                         "for a broadcast that carried no caller")
 
     def test_a_stale_marker_is_spent_not_obeyed(self):
         async def run():
@@ -266,7 +269,43 @@ class TestTheRelayObeysTheOperatorMidCall(_RelayCase):
         self.assertEqual(len(pushes), 1, "the held turn dies with the dump")
         self.assertTrue(r.dumped)
         self.assertFalse(r.active)
-        self.assertEqual(len(station.says), 2, "the outro still airs")
+        self.assertEqual(len(station.says), 2,
+                         "a clip aired, so the sign-off still does")
+
+
+class TestTheBracketsOnlyAirWhenACallerDoes(_RelayCase):
+    # The first deployed test (2026-08-17): a call whose media never arrived
+    # aired "a caller is coming on the air…", a minute of nothing, then a
+    # thank-you to nobody — interleaved into a REAL call's broadcast. The
+    # intro now waits for the first clip; the outro requires an aired one.
+    def test_a_call_with_no_audio_airs_not_one_word(self):
+        async def run():
+            station = _FakeStation()
+            r, got = self._relay(station=station)
+            self.assertTrue(await r.open())
+            await r.close("the call ended")
+            return r, got, station
+
+        r, got, station = asyncio.run(run())
+        self.assertEqual(station.says, [], "no intro, no outro, nothing")
+        self.assertEqual([g for g in got if b"voice_queue.push" in g], [])
+        self.assertEqual(r.pushed, 0)
+
+    def test_the_intro_fires_at_the_first_clip_not_at_pickup(self):
+        async def run():
+            station = _FakeStation()
+            r, got = self._relay(station=station)
+            await r.open()
+            armed_says = len(station.says)
+            await r.feed(self._feed_file("t1.wav"), "dj", 2.0)
+            live_says = len(station.says)
+            await r.close("done")
+            return armed_says, live_says, station
+
+        armed_says, live_says, station = asyncio.run(run())
+        self.assertEqual(armed_says, 0, "armed is silent")
+        self.assertEqual(live_says, 1, "the first clip opens the broadcast")
+        self.assertIn("caller is on the line", station.says[0])
 
 
 class TestTheRelayFallsBackOutLoud(_RelayCase):

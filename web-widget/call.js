@@ -3739,15 +3739,39 @@
     return h;
   }
 
+  // One biquad low-pass pass (RBJ, Q .707) — the same filter the server's
+  // mastering runs, restated here because the aliasing has to die BEFORE
+  // the decimation below, which happens in this file.
+  function vmLowpass(x, freq, rate) {
+    const w0 = 2 * Math.PI * freq / rate;
+    const a = Math.sin(w0) / (2 * 0.707), c = Math.cos(w0), n = 1 + a;
+    const b0 = (1 - c) / 2 / n, b1 = (1 - c) / n, b2 = (1 - c) / 2 / n;
+    const a1 = (-2 * c) / n, a2 = (1 - a) / n;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    const y = new Float32Array(x.length);
+    for (let i = 0; i < x.length; i++) {
+      const v = x[i];
+      const o = b0 * v + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = v; y2 = y1; y1 = o;
+      y[i] = o;
+    }
+    return y;
+  }
+
   // Float32 chunks at the context's own rate -> one 16 kHz mono 16-bit WAV.
-  // Linear resample, same judgement as the server's reader: fine for speech,
-  // no dependencies, and the upload is under a megabyte at the default cap.
+  // Linear resample, same judgement as the server's reader: fine for speech
+  // — but only once band-limited. Unfiltered, the decimation folds every
+  // mic frequency above 8 kHz back INTO the voice as inharmonic grit, and
+  // the server's drive then amplifies it: "my voice sounds pretty bad" on
+  // the first deployed test. Two low-pass passes at 7 kHz first (~-24
+  // dB/oct), mirroring the server-side fix in voicemail/master.py.
   function vmToWav(chunks, rate) {
     let n = 0;
     for (const c of chunks) n += c.length;
-    const all = new Float32Array(n);
+    let all = new Float32Array(n);
     let off = 0;
     for (const c of chunks) { all.set(c, off); off += c.length; }
+    if (rate > 16000) all = vmLowpass(vmLowpass(all, 7000, rate), 7000, rate);
     const outN = Math.floor(n * 16000 / rate);
     const pcm = new Int16Array(outN);
     for (let i = 0; i < outN; i++) {

@@ -64,6 +64,9 @@ class CallRelay:
         self.tier = tier
         self.record = record
         self.active = False
+        # Armed is not live: active means the relay will take clips, _live
+        # means the intro has aired and the window clock is running.
+        self._live = False
         self.dumped = False
         self._seq = 0
         self._held: dict | None = None
@@ -74,12 +77,18 @@ class CallRelay:
 
     # -- lifecycle ---------------------------------------------------------
     async def open(self) -> bool:
-        """Preflight the transport, put the intro on air, start the window.
+        """Preflight the transport and ARM — nothing airs yet.
 
         False means the call goes ahead OFF air — the caller pressed the
         button in good faith, and a dead mixer is our problem, not theirs.
         The record says why, out loud, because a silently-absent broadcast
         is the studio's "week not noticing the network stanza" all over.
+
+        The intro waits for the first clip (_go_live). The first deployed
+        test aired the brackets around a call whose media never arrived:
+        listeners got "a caller is coming on the air…", a minute of nothing,
+        then a thank-you to nobody. A broadcast that never has a first clip
+        now never says a word.
         """
         base = transport.air_base_url(self.cfg)
         reachable = base and await asyncio.to_thread(
@@ -90,7 +99,18 @@ class CallRelay:
             log.warning("%s (room=%s)", why, self.room)
             self._problem(why)
             return False
+        # Spend any marker a previous call left, so an old dump cannot
+        # behead this caller's first turn.
+        await asyncio.to_thread(chunks.take_dump)
+        self.active = True
+        self._live = False
+        self._tool("on air: armed — the broadcast opens at the first clip")
+        return True
 
+    async def _go_live(self) -> None:
+        """The intro, and the window clock — at the FIRST clip, holding the
+        feed lock. The clip that triggered this is then HELD by lag-by-one,
+        so the intro precedes any caller audio by at least one full turn."""
         ok = await self._say(
             "A listener is coming on the air, live, right now. In one short "
             "sentence, tell the audience a caller is on the line and hand "
@@ -104,12 +124,8 @@ class CallRelay:
             self._problem("the on-air intro failed; the call aired without one")
         window = float(self.cfg.get("on_air_max_seconds") or 0) or 240.0
         self._deadline = time.time() + window
-        # Spend any marker a previous call left, so an old dump cannot
-        # behead this caller's first turn.
-        await asyncio.to_thread(chunks.take_dump)
-        self.active = True
+        self._live = True
         self._tool(f"on air: window open ({window:.0f}s max)")
-        return True
 
     async def feed(self, wav: Path, kind: str, seconds: float) -> None:
         """One finished clip, in conversation order. kind is 'caller' or
@@ -131,6 +147,8 @@ class CallRelay:
                 await self._close_locked("dumped by the operator",
                                          say_outro=True)
                 return
+            if not self._live:
+                await self._go_live()
             if time.time() > self._deadline:
                 wav.unlink(missing_ok=True)
                 await self._close_locked(
@@ -167,7 +185,10 @@ class CallRelay:
             await self._push(self._held)
         self._held = None
         self._tool(f"off air: {reason} ({self.pushed} clips aired)")
-        if say_outro:
+        # The outro only follows a broadcast that happened: with zero clips
+        # aired there is nobody on the stream to thank, and the first
+        # deployed test proved a thank-you to nobody is worse than silence.
+        if say_outro and self.pushed > 0:
             await self._say(
                 "The live caller segment on air just ended. In one short "
                 "sentence, thank the caller and carry the show on — do not "

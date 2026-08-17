@@ -341,6 +341,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestADraftIsHeldBrieflyAndLeavesNoOrphans,
     TestTheSoundbiteAirsWithReceipts,
     TestTheStudioGreetingIsRenderedOnceNotPerVisit,
+    TestResamplingDoesNotAlias,
 )
 from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,
@@ -379,6 +380,7 @@ from tests.test_onair import (  # noqa: F401
     TestTheRelayHoldsOneTurnBack,
     TestTheRelayObeysTheOperatorMidCall,
     TestTheRelayFallsBackOutLoud,
+    TestTheBracketsOnlyAirWhenACallerDoes,
     TestTheCallerTapRidesTheTurnBoundaries,
     TestTheDJTeeCutsOnSegments,
 )

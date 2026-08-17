@@ -78,9 +78,16 @@ def read_wav_any(path: Path, max_secs: float) -> list[float]:
         samples = [sum(samples[i:i + ch]) // ch
                    for i in range(0, len(samples) - ch + 1, ch)]
     out = [float(v) for v in samples]
+    if rate > TARGET_RATE and out:
+        # Anti-alias BEFORE decimating. Linear resample with no filter folds
+        # everything above 8 kHz back INTO the voice band as inharmonic grit
+        # — heard as "my voice sounds pretty bad" on the first live relay
+        # test (2026-08-17), on a chain whose drive then amplified exactly
+        # that. Two passes of the gentle biquad give ~-24 dB/oct at 7 kHz,
+        # which is what makes the linear step below honest for speech.
+        out = _lowpass(_lowpass(out, 7000.0, rate), 7000.0, rate)
     if rate != TARGET_RATE and out:
-        # Linear resample — same judgement as the beep: good enough for
-        # band-limited speech, no dependencies.
+        # Linear resample — good enough for speech ONCE band-limited above.
         n = int(len(out) * TARGET_RATE / rate)
         res = []
         for i in range(n):

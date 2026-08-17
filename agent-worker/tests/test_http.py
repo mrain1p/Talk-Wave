@@ -846,3 +846,23 @@ class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
         finally:
             call_record.rate = old
         self.assertEqual(resp.status, 200)
+
+    def test_one_phone_in_at_a_time(self):
+        # The station has ONE voice queue, and the first deployed test
+        # proved what two live calls do to it: their clips and brackets
+        # interleaved into a single broadcast. Busy-shaped and in-world,
+        # so the widget's engaged-tone path just works.
+        import time as _t
+
+        from api import tokens as api_tokens
+
+        api_tokens._live_calls["callin-gl-aaaabbbbcccc"] = _t.time()
+        status, body = self._mint(allow="guest", tier="guest")
+        self.assertEqual(status, 429)
+        self.assertTrue(body.get("busy"))
+        self.assertNotIn("queue", body["error"].lower())
+        # A PLAIN call still connects while someone is on the air.
+        api_tokens._live_calls["callin-gl-aaaabbbbcccc"] = _t.time()
+        status2, body2 = self._mint(allow="guest", tier="guest", on_air=False)
+        self.assertEqual(status2, 200)
+        self.assertTrue(body2["room"].startswith("callin-g-"))
