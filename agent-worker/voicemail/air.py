@@ -32,84 +32,21 @@ result — never a promise made before the station answered.
 from __future__ import annotations
 
 import logging
-import os
-import socket
 
+# The transport lives in onair.transport since the live-call relay became its
+# second consumer; these names are re-exported because this module IS the
+# studio's air interface and its tests read them here. `deliver` below is the
+# studio's orchestration of that shared transport, nothing more.
+from onair.transport import (  # noqa: F401  (air_base_url et al are our API)
+    DEFAULT_MIXER,
+    air_base_url,
+    mixer_address,
+    mixer_reachable,
+    telnet_push,
+)
 from voicemail import review
 
 log = logging.getLogger("callin.voicemail")
-
-# Where the mixer's telnet lives. The station's own controller default
-# (liquidsoap-control.ts): host `broadcast`, port 1234 — resolvable only from
-# the station's docker network, which is the one deployment step this backend
-# asks for.
-DEFAULT_MIXER = "broadcast:1234"
-
-_TELNET_TIMEOUT = 4.0
-
-
-def mixer_address(cfg: dict) -> tuple[str, int]:
-    raw = str(cfg.get("vm_mixer_telnet") or "").strip() or DEFAULT_MIXER
-    host, _, port = raw.partition(":")
-    try:
-        return host or "broadcast", int(port or 1234)
-    except ValueError:
-        return host or "broadcast", 1234
-
-
-def mixer_reachable(cfg: dict) -> bool:
-    """A plain TCP connect — cheap enough to run per send, honest enough to
-    pick the backend with. Unreachable is normal (no shared network) and
-    means dj-reads, not an error."""
-    host, port = mixer_address(cfg)
-    try:
-        with socket.create_connection((host, port), timeout=2.0):
-            return True
-    except OSError:
-        return False
-
-
-def telnet_push(cfg: dict, uri: str) -> str | None:
-    """``voice_queue.push <uri>`` — returns the RID the mixer minted, or None.
-
-    The response format is the one measured on the live mixer: the RID on its
-    own line, then END. (409 in the first probe was the request id, not an
-    HTTP status — worth saying because everyone reads it as one.)
-    """
-    host, port = mixer_address(cfg)
-    try:
-        with socket.create_connection((host, port),
-                                      timeout=_TELNET_TIMEOUT) as sock:
-            sock.settimeout(_TELNET_TIMEOUT)
-            sock.sendall(f"voice_queue.push {uri}\nquit\n".encode())
-            raw = b""
-            while b"END" not in raw and len(raw) < 4096:
-                chunk = sock.recv(1024)
-                if not chunk:
-                    break
-                raw += chunk
-    except OSError as e:
-        log.warning("mixer telnet push failed: %s", e)
-        return None
-    for line in raw.decode(errors="replace").splitlines():
-        line = line.strip()
-        if line.isdigit():
-            return line
-    log.warning("mixer answered the push without a RID: %r", raw[:120])
-    return None
-
-
-def air_base_url(cfg: dict) -> str:
-    """Where the mixer fetches clips from: the operator's setting, else the
-    published token-server port on the host IP the deployment already knows
-    (HOST_IP is load-bearing for LiveKit, so it is reliably set). The mixer
-    reaches host-published ports today — that is how it gets its music."""
-    explicit = str(cfg.get("vm_air_base_url") or "").strip().rstrip("/")
-    if explicit:
-        return explicit
-    host = os.environ.get("HOST_IP", "").strip()
-    port = os.environ.get("TOKEN_PORT", "8100").strip() or "8100"
-    return f"http://{host}:{port}" if host else ""
 
 
 def _quote(text: str, limit: int = 420) -> str:
