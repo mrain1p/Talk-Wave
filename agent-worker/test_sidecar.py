@@ -372,6 +372,14 @@ from tests.test_house_rules import (  # noqa: F401
     TestTheSuiteIsNotQuietlyNotRunning,
     TestTheWrittenInstructionsStillDescribeTheCode,
 )
+from tests.test_onair import (  # noqa: F401
+    TestOnAirChunksAreTokenedAndShortLived,
+    TestTheRelayHoldsOneTurnBack,
+    TestTheRelayObeysTheOperatorMidCall,
+    TestTheRelayFallsBackOutLoud,
+    TestTheCallerTapRidesTheTurnBoundaries,
+    TestTheDJTeeCutsOnSegments,
+)
 
 
 if __name__ == "__main__":
