@@ -117,7 +117,7 @@ def _quote(text: str, limit: int = 420) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
-async def _run_action(station, action: dict) -> tuple[str, bool]:
+async def _run_action(station, cfg: dict, action: dict) -> tuple[str, bool]:
     """Execute the ONE action the caller approved, exactly as resolved at
     review time. Returns (receipt line, ok)."""
     kind = str((action or {}).get("kind") or "none")
@@ -138,6 +138,20 @@ async def _run_action(station, action: dict) -> tuple[str, bool]:
         if result.get("ok", True) and not result.get("error"):
             return "sent as a request", True
         return f"request failed: {result.get('error')}", False
+    if kind == "takeover":
+        # The switch is read AGAIN at send: settings are re-read per action
+        # everywhere else, and a preview minted while takeover was allowed
+        # must not execute after the operator turned it off.
+        if not cfg.get("allow_takeover"):
+            return "takeovers are switched off on this line", False
+        result = await station.pin_show(str(action.get("showId") or ""), 60)
+        who = str(action.get("who") or action.get("show") or "that show")
+        if result.get("ok"):
+            return (f"put {who}'s show on air ({action.get('show')}) for the "
+                    "next hour — it starts at the end of the current record"),\
+                   True
+        return (f"the station refused the takeover: "
+                f"{result.get('error') or 'no reason given'}"), False
     return f"unknown action '{kind}' — did nothing", False
 
 
@@ -190,7 +204,7 @@ async def deliver(station, cfg: dict, draft: dict) -> dict:
         else:
             if not ok_intro:
                 note = "the intro line failed; the clip aired without one"
-            act_receipt, act_ok = await _run_action(station, action)
+            act_receipt, act_ok = await _run_action(station, cfg, action)
             closing = (
                 f"A caller's message just played on air, saying: "
                 f"\"{transcript}\". "
@@ -211,7 +225,7 @@ async def deliver(station, cfg: dict, draft: dict) -> dict:
                     "lines": lines}
 
     # dj-reads — by choice, or as the fallback either failure above took.
-    act_receipt, act_ok = await _run_action(station, action)
+    act_receipt, act_ok = await _run_action(station, cfg, action)
     read = (
         f"A listener called in with this message: \"{transcript}\". "
         "Tell the listeners a caller rang in and read the message to them "

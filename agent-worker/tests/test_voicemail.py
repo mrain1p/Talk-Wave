@@ -886,6 +886,10 @@ class _AdapterStation:
     async def submit_request(self, text, name=""):
         return {"ok": True}
 
+    async def pin_show(self, show_id, minutes):
+        self.pinned = (show_id, minutes)
+        return {"ok": True}
+
 
 class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
     """The adapter's contract: the close the DJ speaks is chosen AFTER the
@@ -1007,6 +1011,224 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
             draft))
         self.assertEqual(result["backend"], "dj-reads")
         self.assertIn("caller-voice unavailable", result["receipt"])
+
+    def test_preview_resolves_to_a_track_and_falls_safe_everywhere_else(self):
+        # The preview IS the receipts discipline moved earlier: a queue
+        # verdict must come back holding the library's own id, and every
+        # failure shape — no hits, a "none", garbage from the model — must
+        # land on no-action, never on a guess.
+        import call.providers as providers
+        from voicemail import preview
+
+        class _FakeStream:
+            def __init__(self, text):
+                self._text = text
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            def __aiter__(self):
+                async def _gen():
+                    class _D:  # the two-attribute shape resolve() reads
+                        pass
+                    d = _D()
+                    d.content = self._text
+                    c = _D()
+                    c.delta = d
+                    yield c
+                return _gen()
+
+        class _FakeLLM:
+            def __init__(self, text):
+                self._text = text
+
+            def chat(self, chat_ctx=None):
+                return _FakeStream(self._text)
+
+            async def aclose(self):
+                pass
+
+        class _SearchStation:
+            def __init__(self, hits):
+                self.hits = hits
+                self.queries = []
+
+            async def search_library(self, q, *a, **k):
+                self.queries.append(q)
+                return self.hits
+
+        old = providers.build_llm
+        try:
+            hit = {"id": "t9", "title": "Landslide", "artist": "Fleetwood Mac"}
+            providers.build_llm = lambda cfg, **k: _FakeLLM(
+                '{"action": "queue", "query": "landslide fleetwood mac"}')
+            st = _SearchStation([hit])
+            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
+            self.assertEqual(action["kind"], "queue")
+            self.assertEqual(action["track"]["id"], "t9",
+                             "the preview must hold the LIBRARY's id — send "
+                             "executes this record, never the words again")
+            self.assertIn("Landslide", action["label"])
+
+            # Same verdict, empty library: a request, and the label says so.
+            st2 = _SearchStation([])
+            action = asyncio.run(preview.resolve(st2, {}, "play landslide"))
+            self.assertEqual(action["kind"], "request")
+
+            # The model says none, or says nonsense: no action, both times.
+            providers.build_llm = lambda cfg, **k: _FakeLLM('{"action": "none"}')
+            action = asyncio.run(preview.resolve(st, {}, "hi mum"))
+            self.assertEqual(action["kind"], "none")
+            providers.build_llm = lambda cfg, **k: _FakeLLM("not json at all")
+            action = asyncio.run(preview.resolve(st, {}, "hello"))
+            self.assertEqual(action["kind"], "none")
+
+            # And an empty transcript never wakes the model at all.
+            providers.build_llm = lambda cfg, **k: (_ for _ in ()).throw(
+                AssertionError("the LLM must not be built for silence"))
+            action = asyncio.run(preview.resolve(st, {}, "   "))
+            self.assertEqual(action["kind"], "none")
+        finally:
+            providers.build_llm = old
+
+    def test_a_takeover_rides_the_live_lines_own_switch(self):
+        # "Change the DJ" from a voicemail is the furthest-reaching thing the
+        # studio can do, so it rides allow_takeover — the SAME switch the
+        # live line uses — read at preview AND again at send.
+        import call.providers as providers
+        from voicemail import preview
+
+        class _Llm:
+            def chat(self, chat_ctx=None):
+                self.prompt = chat_ctx.items[-1].content[0] if chat_ctx else ""
+
+                class _S:
+                    async def __aenter__(s):
+                        return s
+
+                    async def __aexit__(s, *a):
+                        return False
+
+                    def __aiter__(s):
+                        async def _gen():
+                            class _D:
+                                pass
+                            d = _D()
+                            d.content = '{"action":"takeover","who":"duke"}'
+                            c = _D()
+                            c.delta = d
+                            yield c
+                        return _gen()
+                return _S()
+
+            async def aclose(self):
+                pass
+
+        class _St:
+            async def schedule(self):
+                return {"shows": [{"id": "s1", "name": "The Alibi Room",
+                                   "personaId": "p1"}]}
+
+            async def personas(self):
+                return [{"id": "p1", "name": "Duke Sterling"}]
+
+            async def search_library(self, q, *a, **k):
+                return []
+
+        old = providers.build_llm
+        try:
+            providers.build_llm = lambda cfg, **k: _Llm()
+            on = asyncio.run(preview.resolve(
+                _St(), {"allow_takeover": True}, "put duke on"))
+            self.assertEqual(on["kind"], "takeover")
+            self.assertEqual(on["showId"], "s1")
+            self.assertIn("Duke Sterling", on["label"])
+            # Switch off: even a model that answers takeover anyway resolves
+            # to nothing — the option was never offered and never honoured.
+            off = asyncio.run(preview.resolve(
+                _St(), {}, "put duke on"))
+            self.assertEqual(off["kind"], "none")
+        finally:
+            providers.build_llm = old
+
+        # Send-time: the adapter executes the pin, and refuses honestly when
+        # the switch went off between preview and send.
+        station = _AdapterStation()
+        draft = self._draft({"kind": "takeover", "showId": "s1",
+                             "show": "The Alibi Room", "who": "Duke Sterling"})
+        result = asyncio.run(self.air.deliver(
+            station, {"vm_air_backend": "dj-reads", "allow_takeover": True},
+            draft))
+        self.assertTrue(result["ok"])
+        self.assertEqual(station.pinned, ("s1", 60))
+        self.assertIn("Duke Sterling", result["receipt"])
+
+        station2 = _AdapterStation()
+        draft2 = self._draft({"kind": "takeover", "showId": "s1",
+                              "show": "The Alibi Room", "who": "Duke"})
+        result2 = asyncio.run(self.air.deliver(
+            station2, {"vm_air_backend": "dj-reads"}, draft2))
+        self.assertFalse(result2["ok"])
+        self.assertFalse(hasattr(station2, "pinned"))
+        self.assertIn("switched off", result2["receipt"])
+        self.assertIn("do NOT claim it worked", station2.says[0])
+
+    def test_the_search_retries_without_the_by_connector(self):
+        # Found by the first live probe of the shipping prompt: the model's
+        # query kept the caller's "by" ("Landslide by Fleetwood Mac"), the
+        # station's every-word search returned nothing, and a track the
+        # library holds five times over previewed as a mere request.
+        import call.providers as providers
+        from voicemail import preview
+
+        class _Llm:
+            def chat(self, chat_ctx=None):
+                class _S:
+                    async def __aenter__(s):
+                        return s
+
+                    async def __aexit__(s, *a):
+                        return False
+
+                    def __aiter__(s):
+                        async def _gen():
+                            class _D:
+                                pass
+                            d = _D()
+                            d.content = ('{"action":"queue","query":'
+                                         '"Landslide by Fleetwood Mac"}')
+                            c = _D()
+                            c.delta = d
+                            yield c
+                        return _gen()
+                return _S()
+
+            async def aclose(self):
+                pass
+
+        class _St:
+            def __init__(self):
+                self.queries = []
+
+            async def search_library(self, q, *a, **k):
+                self.queries.append(q)
+                return ([{"id": "t1", "title": "Landslide",
+                          "artist": "Fleetwood Mac"}]
+                        if "by" not in q.lower().split() else [])
+
+        old = providers.build_llm
+        try:
+            providers.build_llm = lambda cfg, **k: _Llm()
+            st = _St()
+            action = asyncio.run(preview.resolve(st, {}, "play landslide"))
+            self.assertEqual(action["kind"], "queue",
+                             "the by-variant retry must reach the hit")
+            self.assertGreater(len(st.queries), 1)
+        finally:
+            providers.build_llm = old
 
     def test_the_air_base_url_prefers_the_setting_then_host_ip(self):
         import os as _os

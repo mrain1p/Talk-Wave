@@ -318,11 +318,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "voicemail_flow": (None, "machine"),
     "vm_air_backend": (None, "dj-reads"),
     # Blank = the station's own default (broadcast:1234), reachable only when
-    # talkwave-web shares the station's docker network.
-    "vm_mixer_telnet": (None, ""),
+    # talkwave-web shares the station's docker network. No panel row — see
+    # the schema note; the env name is the promised override path.
+    "vm_mixer_telnet": ("VM_MIXER_TELNET", ""),
     # Blank = derived from HOST_IP:8100 — the published port the mixer already
-    # fetches music through.
-    "vm_air_base_url": (None, ""),
+    # fetches music through (probe-proven). No panel row either.
+    "vm_air_base_url": ("VM_AIR_BASE_URL", ""),
     "max_call_seconds": (None, 600),
     # Floor on the DJ hanging up by itself. A model that decides a call is
     # finished after two words is worse than one that lingers, so nothing can
@@ -1672,26 +1673,23 @@ SCHEMA: dict[str, dict] = {
              "take on air with the DJ around it; the audio is deleted the "
              "moment it airs. The studio needs a caller code — strangers on "
              "an open line are refused."),
+    # vm_mixer_telnet and vm_air_base_url deliberately have no schema entry —
+    # the station_mcp_url ruling (0.10.80, operator's) applied again on
+    # 2026-08-17, the operator's own words: "if it's derived couldn't we just
+    # remove it". Both derive correctly on any ordinary deployment
+    # (broadcast:1234; http://HOST_IP:8100 — the probe-proven URL), and the
+    # rare exception overrides them in settings.json or the environment.
     "vm_air_backend": dict(group="voicemail", kind="select",
         label="A soundbite airs as",
         help="'The DJ reads it' works on any deployment — plain station "
              "admin API. 'The caller's own voice' plays the recording on the "
              "station's voice channel (music ducked, proper level) and needs "
-             "two doors: this container on the station's docker network, and "
-             "the mixer telnet below. Falls back to the DJ reading, out "
-             "loud in the receipt, whenever those are missing."),
-    "vm_mixer_telnet": dict(group="voicemail", kind="text",
-        label="Mixer telnet",
-        placeholder="broadcast:1234",
-        help="Where the station mixer's telnet listens, reachable only from "
-             "the station's own docker network. Blank uses the station's "
-             "default name."),
-    "vm_air_base_url": dict(group="voicemail", kind="text",
-        label="Clip fetch base",
-        placeholder="derived: http://<HOST_IP>:8100",
-        help="The URL the mixer fetches a soundbite from — this container's "
-             "published port, the same way the mixer already fetches its "
-             "music. Blank derives it from HOST_IP."),
+             "one deployment step: this container joined to the station's "
+             "docker network, so the mixer's telnet (broadcast:1234) is "
+             "reachable. The clip URL derives from HOST_IP. Falls back to "
+             "the DJ reading, out loud in the receipt, whenever the doors "
+             "are missing. Unusual layouts can override vm_mixer_telnet and "
+             "vm_air_base_url in settings.json or the environment."),
     "voicemail_destination": dict(group="voicemail", kind="select", label="Messages go",
         help="'Held for you' is the safe default — messages land below, and "
              "nothing reaches the air without you. The rest act on the station "
