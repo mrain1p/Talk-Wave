@@ -592,6 +592,15 @@
     <details data-group="ears" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Ears</span><em class="secblurb"></em><span class="tag" id="tagEars"></span></summary>
       <div class="body">
+        <!-- The two real choices, as bullets (operator's ask, same session
+             as the Whisper ladder below) — the schema help stays one line. -->
+        <div class="hint wide" style="margin-top:0">
+          Two real ways to hear:
+          <ul class="ladder">
+            <li><strong>Built-in Whisper</strong> — runs in this container; no key, no network, pays in CPU per turn.</li>
+            <li><strong>A cloud ear</strong> — word-by-word captions and better accuracy on names, most noticeable from a phone in a noisy room. OpenAI and Google reuse the Brains key; Deepgram takes its own key below and is the most accurate of the three on phone audio.</li>
+          </ul>
+        </div>
         <div class="row">
           <label for="stt_provider">Provider</label>
           <select id="stt_provider"></select>

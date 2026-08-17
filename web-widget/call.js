@@ -655,6 +655,22 @@
     const paused = !!(d && d.callsPaused);
     const dj = (($('djName').textContent) || '').trim();
     const onAir = !!(d && d.onAir);
+    // The 4c stage message: while the word switch is up, the stage says
+    // where the call will go — coral for the broadcast, the cool teal for
+    // the private line — instead of listing doors. The switch hides itself
+    // through every closed/gated state, so this can never mask one.
+    if ($('routeSwitch') && !$('routeSwitch').hidden) {
+      box.hidden = false;
+      box.innerHTML = '';
+      const line = document.createElement('div');
+      line.className = 'routeline ' + (onAirPick ? 'live' : 'priv');
+      line.textContent = onAirPick
+        ? word('route_live', 'Broadcast — live on air')
+        : word('route_priv', "It's just you and {dj}")
+            .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
+      box.appendChild(line);
+      return;
+    }
     // Each door twice: is it OFFERED at all, and is it usable right now. The
     // second is what earns the strike-through — a board that lists a way in
     // the card will refuse is worse than one that lists nothing.
@@ -1504,14 +1520,19 @@
     const onAirHere = !!(d.onAirCalls && d.onAirCalls.offered)
       && !lineClosedNow && !needsCode && !vmOnly;
     if (!onAirHere) onAirPick = false;
-    if ($('onAirRow')) {
-      $('onAirRow').hidden = !onAirHere;
-      $('onAirTgl').setAttribute('aria-checked', onAirPick ? 'true' : 'false');
-      // The armed label says what is about to happen, in the row itself —
-      // no second hint line, so the card's height never moves.
-      $('onAirWord').textContent = onAirPick
-        ? word('onair_armed', 'Live on air — this call is broadcast')
-        : word('onair_off', 'Live on air');
+    // The 4c word switch (design handoff, 2026-08-17): route is the single
+    // source of truth, and the segment, the stage frame, the stage message
+    // and the Call button all derive from it in this one paint.
+    if ($('routeSwitch')) {
+      $('routeSwitch').hidden = !onAirHere;
+      $('routeOn').classList.toggle('on', onAirPick);
+      $('routeOn').setAttribute('aria-checked', onAirPick ? 'true' : 'false');
+      $('routeOff').classList.toggle('on', !onAirPick);
+      $('routeOff').setAttribute('aria-checked', onAirPick ? 'false' : 'true');
+      const cardEl = document.querySelector('.card');
+      cardEl.classList.toggle('routed', onAirHere);
+      cardEl.classList.toggle('route-on', onAirHere && onAirPick);
+      cardEl.classList.toggle('route-off', onAirHere && !onAirPick);
     }
     // The operator can put the machine on the card as its own button,
     // per surface. With the button up, Call never morphs — two clear
@@ -1562,11 +1583,14 @@
                : word('vm_button', 'Leave a message'));
     } else {
       callBtn.disabled = false;
-      // The armed toggle re-labels the one door rather than adding another:
-      // same button, same size, the sign now tells the truth about where
-      // the call goes.
-      setBtn(callBtn, 'call', 'phone',
-             onAirPick ? word('call_live', 'Call in live') : callLabel());
+      // The route re-labels and re-dresses the one door rather than adding
+      // another: solid coral when the call broadcasts, the cool outline for
+      // the private line (the CSS keys off .route-on/.route-off). Without
+      // the switch, the operator's own label stands as ever.
+      setBtn(callBtn, 'call', onAirHere && !onAirPick ? 'chat' : 'phone',
+             onAirPick ? word('call_live', 'Call in live')
+               : onAirHere ? word('call_offair', 'Call the booth')
+               : callLabel());
     }
   }
 
@@ -3338,11 +3362,19 @@
   callBtn.onclick = () => {
     if (!room && !previewMode) startCall(callBtn.dataset.vm === '1');
   };
-  if ($('onAirTgl')) $('onAirTgl').onclick = () => {
-    if (room) return;                 // pinned once a call exists
-    onAirPick = !onAirPick;
-    paintIdleButtons(live || {});
-  };
+  // Each cell selects its route (a two-option radio, per the handoff); the
+  // pick repaints every derived surface at once, and repaints the BOARD too
+  // — the stage message is one of them.
+  if ($('routeOn')) {
+    const pickRoute = (broadcast) => {
+      if (room) return;               // pinned once a call exists
+      onAirPick = broadcast;
+      paintIdleButtons(live || {});
+      paintBoard(live);
+    };
+    $('routeOn').onclick = () => pickRoute(true);
+    $('routeOff').onclick = () => pickRoute(false);
+  }
   // ------------------------------------------------- the text line
   // A chat is a WebSocket to /chat/ws and the same caption box the call
   // writes — no LiveKit, no room, no microphone, which is exactly the point:
@@ -3723,7 +3755,7 @@
     // message for the DJ) — whatever the operator's global flow says. One
     // switch, one meaning: does what I do next go out on the station?
     const d = shown || live || {};
-    if (d.onAirCalls && d.onAirCalls.offered && !$('onAirRow').hidden) {
+    if (d.onAirCalls && d.onAirCalls.offered && !$('routeSwitch').hidden) {
       return onAirPick ? 'studio' : 'machine';
     }
     return d.voicemailFlow || 'machine';

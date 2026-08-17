@@ -175,6 +175,21 @@
          buttons are an overlay strip INSIDE this box, not bands of their
          own, because every band that appears after a call used to grow the
          card and move the host page under whoever was reading it. -->
+    <!-- The route: the operator's design 4c, the "word switch" — ON AIR |
+         OFF AIR straddling the stage's top edge, both the control and the
+         status. A SIBLING of the linebox, not a child: the box scrolls its
+         own overflow, so anything poking above its border is sheared off
+         (seen in the stub). Normal flow with a negative bottom margin makes
+         the straddle without an absolute anchor. Exists only while the
+         phone-in door is open AND the mixer probe answered; the frame, the
+         stage message and the Call button all follow it. -->
+    <div class="routeswitch" id="routeSwitch" hidden role="radiogroup"
+         aria-label="Where this call goes">
+      <button type="button" class="rcell" id="routeOff" role="radio"
+              aria-checked="true"><span class="rpip" aria-hidden="true"></span>OFF AIR</button>
+      <button type="button" class="rcell live" id="routeOn" role="radio"
+              aria-checked="false"><span class="rpip" aria-hidden="true"></span>ON AIR</button>
+    </div>
     <div class="linebox" id="lineBox">
       <!-- The skin's idle artefact — a platter, a dial, a reticle. Empty and
            invisible unless a skin fills --skin-art in, absolutely positioned
@@ -315,18 +330,6 @@
           <button id="vmRerecBtn" type="button"><span class="vico" aria-hidden="true">↺</span>Rerecord</button>
           <button id="vmCancelBtn" type="button"><span class="vico" aria-hidden="true">✕</span>Cancel</button>
         </div>
-      </div>
-
-      <!-- The phone-in switch. Exists only while the operator's on-air door
-           is open AND the server's mixer probe answered — one choice, zero
-           extra steps: the same Call button just means live. Hidden the
-           moment a call starts (.oncall), like the doors beneath it. -->
-      <div class="onairrow" id="onAirRow" hidden>
-        <button id="onAirTgl" type="button" role="switch" aria-checked="false">
-          <span class="onairdot" aria-hidden="true"></span>
-          <span id="onAirWord">Live on air</span>
-          <span class="onairknob" aria-hidden="true"></span>
-        </button>
       </div>
 
       <!-- The last row of the card, on every surface. Idle it is Call (and

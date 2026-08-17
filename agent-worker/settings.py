@@ -1022,16 +1022,8 @@ SCHEMA: dict[str, dict] = {
 
     # --- ears ---
     "stt_provider": dict(group="ears", kind="select", label="Provider",
-        help="Two real choices: the BUILT-IN Whisper, which is the default and "
-             "needs nothing — it is in this container already, no key, no "
-             "network — or a CLOUD ear, which buys word-by-word captions and "
-             "better accuracy on names, most noticeable from a phone in a noisy "
-             "room. Which cloud you pick is only a question of which key you "
-             "have: OpenAI and Google reuse the key you already entered under "
-             "Brains, so they cost you nothing new. Deepgram is a separate "
-             "company with its own account and its own key, in the box below "
-             "— it is listed because it is the most accurate of the three on "
-             "phone audio, not because anything here needs it."),
+        help="Built-in needs nothing and pays in CPU; a cloud ear needs a "
+             "key and hears better — the notes above spell out the trade."),
     "stt_model": dict(group="ears", kind="select", label="Model",
         help="Smallest to largest — base.en is the default because it is "
              "light, not because it hears best. The ladder under the field "
