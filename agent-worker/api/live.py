@@ -233,6 +233,7 @@ async def handle_live(request: web.Request) -> web.Response:
         # it, and a /state read per rebuild is not free on a rate-limited
         # station.
         up_next = []
+        booth_line = None
         if cfg.get("swipe_player"):
             snap = await station.state()
             for item in (snap.get("upcoming") or [])[:2]:
@@ -242,6 +243,18 @@ async def handle_live(request: web.Request) -> web.Response:
                         "artist": item.get("artist") or None,
                         "requestedBy": item.get("requestedBy") or None,
                     })
+            # IN THE BOOTH is what the DJ is SAYING, not who they are — the
+            # operator's correction to a panel that restated the identity
+            # header. The station serves /session exactly for a player booth
+            # feed: the live session's own turns, sfx already dropped. The
+            # newest turn with words in it is the panel.
+            feed = await station.session_feed()
+            for m in reversed(feed.get("messages") or []):
+                text = str(m.get("text") or "").strip()
+                if text:
+                    booth_line = {"text": demojibake(text)[:280],
+                                  "kind": m.get("kind") or None}
+                    break
         # The header's weather readout, from the context the station already
         # sends with /now-playing — same source its own player reads.
         wx = (now.get("context") or {}).get("weather") or {}
@@ -310,8 +323,9 @@ async def handle_live(request: web.Request) -> web.Response:
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": bool(cfg.get("start_on_player")),
-                    # The player's queue panel and header weather.
+                    # The player's queue panel, booth line and header weather.
                     "upNext": up_next,
+                    "booth": booth_line,
                     "weather": weather_line,
                     # Everything that is a look rather than a fact — the theme,
                     # the corner controls, which lines of the who's-on-air

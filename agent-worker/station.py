@@ -185,6 +185,12 @@ class StationClient:
     async def state(self) -> dict:
         return await self._get("/state")
 
+    async def session_feed(self) -> dict:
+        """The live DJ session's chat history — the station serves it FOR a
+        player booth feed (its own words), sfx already filtered out. Empty
+        when nobody is on."""
+        return await self._get("/session")
+
     async def themes(self) -> dict:
         """The station's theme registry and which one is on air.
 
