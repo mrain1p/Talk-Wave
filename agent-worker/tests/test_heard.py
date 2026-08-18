@@ -15,7 +15,7 @@ from __future__ import annotations
 import time
 import unittest
 
-from call.heard import MAX_REPLY_GAP_SECS, HeardMeter, _percentile
+from call.heard import MAX_REPLY_GAP_SECS, MIN_CUT_SECS, HeardMeter, _percentile
 
 
 class TestTheWaitIsMeasuredFromWhenTheCallerStopped(unittest.TestCase):
@@ -134,6 +134,43 @@ class TestThePercentileDoesNotInventNumbers(unittest.TestCase):
         self.assertEqual(_percentile([1.0, 2.0, 9.0], 90), 9.0)
         self.assertEqual(_percentile([], 50), 0.0)
 
+
+
+class TestAClearedSynthesisIsNotSomebodyTalkingOver(unittest.TestCase):
+    """The first deployed call wrote two cut-offs and zero barge-ins.
+
+    Both were interrupted playbacks of 0.05s and 0.02s — a synthesis cleared
+    before it started, not a sentence anybody talked over. Read back, that
+    record said the caller cut the DJ off twice, which is simply not what
+    happened, and the whole point of this block is to be the honest account of
+    what reached their ears.
+
+    Same call call/tee.py makes with MIN_CLIP_SECS, for the same reason.
+    """
+
+    def test_a_blip_is_not_recorded_as_something_they_heard(self):
+        m = HeardMeter()
+        m.dj_speaking()
+        m.playback_finished(played=0.02, interrupted=True)
+        self.assertEqual(m.cut_off, [])
+
+    def test_a_real_cut_line_is_still_kept(self):
+        m = HeardMeter()
+        m.dj_speaking()
+        m.playback_finished(played=1.4, interrupted=True, heard_text="right, let me")
+        self.assertEqual(len(m.cut_off), 1)
+        self.assertEqual(m.cut_off[0]["playedSecs"], 1.4)
+
+    def test_a_blip_still_counts_as_a_barge_in_when_the_caller_caused_it(self):
+        # The two halves answer different questions: "did they interrupt" is
+        # about the caller, "what did they hear" is about the audio. A blip is
+        # a real interruption and an empty thing to have heard.
+        m = HeardMeter()
+        m.dj_speaking()
+        m.caller_started()
+        m.playback_finished(played=0.02, interrupted=True)
+        self.assertEqual(len(m.barge_ins), 1)
+        self.assertEqual(m.cut_off, [])
 
 if __name__ == "__main__":
     unittest.main()

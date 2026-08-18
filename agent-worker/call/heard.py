@@ -37,6 +37,24 @@ every postmortem and every "did the DJ repeat itself" judgement reads that
 transcript. Where the two disagree, the grader is reading a call that did not
 happen.
 
+**Reading this against `ThinkMeter`, because the two look like they disagree
+and do not.** They measure different populations on purpose. `replyGap` counts
+only replies the caller actually HEARD — a turn the model failed to produce
+never reaches audio, so it is absent here while still landing in ThinkMeter's
+average. On the first deployed call this file ever ran (2026-08-18), a Gemini
+504 pushed ThinkMeter's `typical` to 3.2s while `replyGap` p50 read 1.24s, and
+the numbers were both correct: `typical` is a MEAN (`total / turns`) with a
+10.9s failure in four samples, and three of those four started in under 1.5s.
+Do not "fix" one to match the other.
+
+What this measures precisely: from the session declaring the caller has
+stopped, to the DJ's audio starting. Endpointing sits inside that window and
+is the point. What sits OUTSIDE it is the VAD's own silence-confirmation
+window — the SDK knows the true end-of-speech instant and passes it internally
+as `last_speaking_time`, but `UserStateChangedEvent` does not carry it, so it
+cannot be reached from here. The number is therefore a floor on what the
+caller waited, never an overstatement.
+
 Nothing here may ever cost the turn it is measuring: every handler swallows
 its own errors, exactly like `attach_think_pace`.
 """
@@ -55,6 +73,14 @@ log = logging.getLogger("callin.agent")
 # as "how long a reply took" would put a minute-long pause in the same average
 # as a 900ms one and make the whole measurement useless.
 MAX_REPLY_GAP_SECS = 30.0
+
+# Below this, nothing intelligible reached the caller and there is no cut-off
+# worth recording. Same call `call/tee.py` makes with MIN_CLIP_SECS, for the
+# same reason: an interrupted playback of 0.02s is not a sentence somebody
+# talked over, it is a synthesis that was cleared before it started. The first
+# deployed call wrote two such entries and zero barge-ins, which reads as "the
+# caller cut the DJ off twice" and is simply not what happened.
+MIN_CUT_SECS = 0.25
 
 
 def _percentile(values: list[float], pct: float) -> float:
@@ -130,6 +156,8 @@ class HeardMeter:
             # the DJ to the DJ's audio actually stopping.
             self.barge_ins.append(round(time.monotonic() - self._barge_since, 3))
             self._barge_since = 0.0
+        if float(played or 0) < MIN_CUT_SECS:
+            return          # cleared before it started — see MIN_CUT_SECS
         entry: dict = {"playedSecs": round(float(played or 0), 2)}
         if heard_text:
             entry["heard"] = heard_text[:400]

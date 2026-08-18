@@ -397,6 +397,7 @@ from tests.test_heard import (  # noqa: F401
     TestTheBargeInIsMeasuredAndAlwaysReported,
     TestWhatTheCallerActuallyHeardIsKept,
     TestThePercentileDoesNotInventNumbers,
+    TestAClearedSynthesisIsNotSomebodyTalkingOver,
 )
 
 
