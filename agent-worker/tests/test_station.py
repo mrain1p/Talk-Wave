@@ -860,3 +860,116 @@ class TestTheDJsLanguageSurvivesTheRead(unittest.TestCase):
             {"name": "Brock", "id": "p_brock", "soul": "…"},
             [{"id": "p_brock", "name": "Brock", "language": ""}])
         self.assertEqual(out.get("language"), "")
+
+
+class TestTheMintsHeadStartIsFreshOrNothing(unittest.TestCase):
+    """station_prefetch: the worker must never answer off worse data than its
+    own read would get, so recall() refuses stale, mismatched or empty
+    snapshots outright and the ringing falls back to reading the station —
+    exactly what happened before the head start existed."""
+
+    SNAP = {"dj": {"name": "Dalia"}, "personas": [{"id": "p1", "name": "Dalia"}],
+            "now_playing": {}, "state": {}, "session": {}, "schedule": {},
+            "skills": []}
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        import station_prefetch
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old_path = station_prefetch.PATH
+        station_prefetch.PATH = Path(self._tmp.name) / "station-prefetch.json"
+
+    def tearDown(self):
+        import station_prefetch
+
+        station_prefetch.PATH = self._old_path
+        self._tmp.cleanup()
+
+    def test_a_fresh_matching_snapshot_comes_back(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {}}, with_skills=False)
+        got = station_prefetch.recall(with_skills=False)
+        self.assertIsNotNone(got)
+        snap, station_settings = got
+        self.assertEqual("Dalia", snap["dj"]["name"])
+        self.assertEqual({"values": {}}, station_settings)
+
+    def test_stale_is_refused(self):
+        import json
+        import time
+
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {}, with_skills=False)
+        d = json.loads(station_prefetch.PATH.read_text(encoding="utf-8"))
+        d["t"] = time.time() - station_prefetch.MAX_AGE_SECS - 1
+        station_prefetch.PATH.write_text(json.dumps(d), encoding="utf-8")
+        self.assertIsNone(station_prefetch.recall(with_skills=False))
+
+    def test_a_skills_mismatch_is_refused(self):
+        # The prompt would gain or lose segments the operator's settings
+        # decided otherwise about, mid-ring.
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {}, with_skills=True)
+        self.assertIsNone(station_prefetch.recall(with_skills=False))
+
+    def test_a_snapshot_of_a_down_station_is_refused(self):
+        # The station was unreachable at mint time: every read came back
+        # empty. Two seconds later it deserves the retry the worker's own
+        # read effectively is, not an adopted blank.
+        import station_prefetch
+
+        empty = dict(self.SNAP, dj={}, personas=[])
+        station_prefetch.store(empty, {}, with_skills=False)
+        self.assertIsNone(station_prefetch.recall(with_skills=False))
+
+    def test_garbage_on_disk_is_a_miss_not_a_crash(self):
+        import station_prefetch
+
+        station_prefetch.PATH.parent.mkdir(parents=True, exist_ok=True)
+        station_prefetch.PATH.write_text("{not json", encoding="utf-8")
+        self.assertIsNone(station_prefetch.recall(with_skills=False))
+
+    def test_no_file_is_a_miss(self):
+        import station_prefetch
+
+        self.assertIsNone(station_prefetch.recall(with_skills=False))
+
+    def test_capture_stores_what_the_clients_answered(self):
+        # capture() builds its own clients by name, so faking the two classes
+        # at module level is faking exactly what it reaches for.
+        import station as station_mod
+        import station_config as station_config_mod
+        import station_prefetch
+
+        snap = self.SNAP
+
+        class FakeStation:
+            async def snapshot(self, with_skills=False):
+                return dict(snap)
+
+            async def aclose(self):
+                pass
+
+        class FakeCfg:
+            async def settings(self):
+                return {"values": {"personas": []}}
+
+            async def aclose(self):
+                pass
+
+        old = (station_mod.StationClient, station_config_mod.StationConfig)
+        station_mod.StationClient = FakeStation
+        station_config_mod.StationConfig = FakeCfg
+        try:
+            asyncio.run(station_prefetch.capture(with_skills=False))
+        finally:
+            station_mod.StationClient, station_config_mod.StationConfig = old
+        got = station_prefetch.recall(with_skills=False)
+        self.assertIsNotNone(got)
+        self.assertEqual({"values": {"personas": []}}, got[1])

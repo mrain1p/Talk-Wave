@@ -35,6 +35,7 @@ import brain
 import llm_pace
 import settings as settings_store
 import speech_filter
+import station_prefetch
 from log_setup import describe
 import station_config as station_config_mod
 from station import StationClient
@@ -133,6 +134,14 @@ def turn_handling(cfg: dict) -> dict:
 class CallSession:
     def __init__(self, ctx: JobContext) -> None:
         self.ctx = ctx
+        # The DISPATCHED room name, not the rtc room's: this object is built
+        # before ctx.connect() now (the join rides prepare()'s station wait),
+        # and rtc.Room only learns its own name once connected — read early it
+        # is "", which tier_from_room reads as the lowest tier. The job info
+        # carries the name from the moment of dispatch. Test fakes carry only
+        # ctx.room.name, hence the fallback.
+        job_room = getattr(getattr(ctx, "job", None), "room", None)
+        self.room_name = str(getattr(job_room, "name", "") or ctx.room.name)
         # Re-read per call, so a settings change applies to the next caller
         # without restarting the worker.
         #
@@ -142,17 +151,23 @@ class CallSession:
         # truthy — so a cfg that reached a tool builder unresolved would switch
         # on every permission the operator had turned off. It is resolved once,
         # here, and there is no path to the tool builders that skips it.
-        self.tier = settings_store.tier_from_room(ctx.room.name)
+        self.tier = settings_store.tier_from_room(self.room_name)
         self.cfg = settings_store.permissions_for(settings_store.load(), self.tier)
         self.station = StationClient()
         self.station_cfg = StationConfig()
+        # The station's MCP endpoint, built (and its connect started) in
+        # prepare() so the handshake happens under the ringing, not in front
+        # of the greeting.
+        self.station_tools = None
+        self._tools_warm = None
+        self.allowed_tool_count = 0
 
         # The caller chose the on-air door AND this tier still clears it —
         # the mint already gated the choice inside the signed room name, but
         # the worker re-reads settings per call, so an operator who switched
         # the feature off between mint and pickup wins here. The relay itself
         # is built (and the transport preflighted) in start().
-        self.on_air_asked = (settings_store.on_air_from_room(ctx.room.name)
+        self.on_air_asked = (settings_store.on_air_from_room(self.room_name)
                              and bool(self.cfg.get("allow_on_air")))
         self.relay: CallRelay | None = None
         self._tee: tee_mod.TeeHandle | None = None
@@ -212,37 +227,98 @@ class CallSession:
         # fires. The SDK runs shutdown callbacks concurrently, but slot release
         # (a POST) and the record write (local disk) are independent, so order
         # doesn't matter; _on_shutdown no longer releases the slot itself.
+        # self.room_name, not ctx.room.name: a call that dies before the join
+        # completes shuts down with the rtc room still nameless, and a slot
+        # released under "" is a slot that stays held.
         ctx.add_shutdown_callback(
-            lambda: lifecycle.release_call_slot(ctx.room.name))
+            lambda: lifecycle.release_call_slot(self.room_name))
         # Cancel outstanding background tasks (the ~50s late-match poller) so
         # they can't write to the record after it is finalised. Registered
         # here so it fires even on an early-call failure.
         ctx.add_shutdown_callback(lambda: background.cancel_all())
 
     # -- ringing ----------------------------------------------------------
-    async def prepare(self) -> None:
+    async def prepare(self, connecting=None) -> None:
         """Resolve who answers and what they know. The caller hears every
-        millisecond of this as ringing, which is why the station reads are one
-        concurrent snapshot rather than six serial ones."""
+        millisecond of this as ringing, which is why everything here rides ONE
+        concurrent wait: the station snapshot, the voice map, the TTS voice
+        list, the station's MCP handshake — and the room join itself, when the
+        entrypoint hands its coroutine in. None of them needs another's
+        answer, and every serial wait this list used to hold was measured on a
+        real caller's ringing first (12s+ pickups, 2026-08-10)."""
+        import asyncio
+        import contextlib
+
+        join = asyncio.create_task(connecting) if connecting is not None else None
+        try:
+            await self._resolve()
+        except BaseException:
+            # The join must not outlive a failed prepare: an orphaned connect
+            # would hold the room open with nobody coming to answer it.
+            if join is not None:
+                join.cancel()
+                with contextlib.suppress(BaseException):
+                    await join
+            raise
+        if join is not None:
+            await join
+        if self.record:
+            self.record.leg("prepared")
+
+    async def _resolve(self) -> None:
+        """The work of prepare(): who answers, in what voice, knowing what."""
         # The last of the four places that published tts_mode into os.environ.
         # It was here so voice resolution read the right registry — cloud and
         # local voices are not interchangeable — but station_config asks
         # settings.tts_mode(), which reads the settings file, and the adapter
         # is told its mode directly now. Nothing reads the variable any more.
+        import asyncio
+
+        # The MCP handshake starts NOW and finishes whenever it finishes.
+        # It used to sit SERIAL in start(), in front of the greeting, where a
+        # congested station could hold it for its whole 7s cap (measured
+        # 2026-08-10). MCPToolset.setup() at session start awaits this same
+        # connect if it is still in flight, skips it when it is done, and
+        # retries it when the warm-up failed — so starting early can only
+        # ever move the wait under the ringing, never add one.
+        self.station_tools = self._station_server()
+        self._tools_warm = asyncio.create_task(self._warm_station_tools())
+        self.ctx.add_shutdown_callback(lambda: lifecycle.cancel(self._tools_warm))
+
+        # The TTS voice list needs nothing the station knows, so it rides the
+        # same wait — it was the one read still sitting serial at the tail of
+        # prepare (behind pick_speakable_voice below).
+        async def _speakable() -> list:
+            return await available_voices(
+                str(self.cfg.get("tts_base_url") or "").strip(),
+                adapter_path=resolve_adapter(self.cfg.get("tts_adapter")),
+                mode=str(self.cfg.get("tts_mode", "")),
+            )
+
         # The voices map does NOT depend on which persona answers — it is the
         # whole station's persona->voice mirror — so it rides in the SAME
         # concurrent wait as the snapshot instead of a serial read after it.
-        # Serially it added a second station timeout's worth of ringing behind
-        # the first; on the slow station a caller reported (12s+ to pick up),
-        # that was most of the regression. voice_for() below then reuses the
-        # /settings response this warmed (StationConfig caches per path), so it
-        # costs no further network.
-        import asyncio
-
-        snap, _voice_map = await asyncio.gather(
-            self.station.snapshot(with_skills=bool(self.cfg.get("allow_skills"))),
-            self.station_cfg.persona_voices(),
-        )
+        # voice_for() below then reuses the /settings response this warmed
+        # (StationConfig caches per path), so it costs no further network.
+        #
+        # And when the token server prefetched this call's snapshot at mint
+        # time (station_prefetch.py), both station reads are already answered:
+        # the snapshot is adopted as-is and /settings is primed into the
+        # cache, so the ringing carries no station wait at all.
+        want_skills = bool(self.cfg.get("allow_skills"))
+        recalled = station_prefetch.recall(with_skills=want_skills)
+        if recalled is not None:
+            snap, station_settings = recalled
+            self.station_cfg.prime("/settings", station_settings)
+            _voice_map, speakable = await asyncio.gather(
+                self.station_cfg.persona_voices(), _speakable(),
+            )
+        else:
+            snap, _voice_map, speakable = await asyncio.gather(
+                self.station.snapshot(with_skills=want_skills),
+                self.station_cfg.persona_voices(),
+                _speakable(),
+            )
         self.persona = self._resolve_persona(snap)
 
         # The catalogue the station returned is every skill it HAS. Narrow it to
@@ -276,8 +352,12 @@ class CallSession:
             # cached /settings read voice_for() just warmed — free here.
             speak_clock=await self.station_cfg.speak_clock(),
         )
-        self.record = CallRecord(self.ctx.room.name, self.persona, self.cfg,
+        self.record = CallRecord(self.room_name, self.persona, self.cfg,
                                  self.tier, started=self.started_at)
+        # Which path the ringing took, so a slow-pickup report can tell a
+        # missed head start from a slow station without a shell.
+        self.record.setup_note(
+            "snapshot", "prefetched" if recalled is not None else "fetched")
         # The ducking timeline rides with the guard and lands on the record at
         # the end — see call/air_log.py. Attached here rather than built in the
         # guard so a guard nobody is recording carries no cost.
@@ -288,14 +368,7 @@ class CallSession:
         # backend does not have used to mean a call where the DJ never spoke
         # at all, with a green pipeline check, because that check tests the
         # CONFIGURED voice and never the one the on-air persona resolves to.
-        self.voice, why = pick_speakable_voice(
-            self.voice,
-            await available_voices(
-                str(self.cfg.get("tts_base_url") or "").strip(),
-                adapter_path=resolve_adapter(self.cfg.get("tts_adapter")),
-                mode=str(self.cfg.get("tts_mode", "")),
-            ),
-        )
+        self.voice, why = pick_speakable_voice(self.voice, speakable)
         if why:
             log.warning("%s", why)
             self.record.problem(why)
@@ -315,8 +388,58 @@ class CallSession:
             return roster[override]
         return self.station.persona_from(snap["dj"], snap["personas"])
 
+    def _station_server(self) -> mcp.MCPServerHTTP:
+        """The station's MCP endpoint for this call. Built (and connected —
+        see _warm_station_tools) during ringing; start() hands it to the
+        toolset already open on a healthy station."""
+        # Several station tools (search_library among them) are admin-gated and
+        # are rejected outright without credentials, which surfaces mid-call as
+        # the DJ saying it's "locked out of the controls".
+        mcp_headers = station_config_mod.mcp_headers()
+        if not mcp_headers:
+            log.warning(
+                "no station admin credentials — admin-gated tools like "
+                "subwave_search_library will be refused during the call"
+            )
+
+        # Fail CLOSED on an empty allowlist. The SDK reads an empty list as
+        # "no filter — expose every tool the station's MCP server offers",
+        # including the destructive ones (skip_track, play_sfx, …). Today the
+        # list is never empty (five READ tools are always MCP-served), so this
+        # is defence in depth — but the failure direction is unsafe, and a
+        # sentinel that matches no real tool keeps the surface shut if those
+        # reads ever move (0.10.57 review).
+        allowed_tools = mcp_allowlist(self.cfg)
+        self.allowed_tool_count = len(allowed_tools)
+        gated_tools = allowed_tools or ["__none__"]
+
+        return mcp.MCPServerHTTP(
+            url=settings_store.station_mcp_url(),
+            transport_type="streamable_http",
+            allowed_tools=gated_tools,
+            headers=mcp_headers or None,
+            # 7s, down from 15. This connect used to happen BEFORE the
+            # greeting, so on a slow/overloaded station it sat 15s of silence
+            # in front of the caller before the DJ said hello (measured
+            # 2026-08-10, a congested NAS). It starts under the ringing now,
+            # but the cap stays: greeting late is worse than starting with
+            # the local tools and the MCP catalogue arriving a moment in.
+            client_session_timeout_seconds=7,
+        )
+
+    async def _warm_station_tools(self) -> None:
+        """Open the MCP session while the caller still hears ringing.
+
+        Failure costs nothing here: MCPToolset.setup() checks the server at
+        session start and retries the connect exactly where it used to run."""
+        try:
+            await self.station_tools.initialize()
+        except Exception as e:                                  # noqa: BLE001
+            log.info("station tools connect deferred to session start: %s",
+                     describe(e))
+
     # -- picking up -------------------------------------------------------
-    def _build_tools(self) -> tuple[list[str], list]:
+    def _build_tools(self) -> list:
         guarded = bool(self.cfg.get("avoid_on_air_overlap"))
         local = build_on_air_tools(
             self.cfg, self.station, self.actions, self.air, guarded=guarded,
@@ -336,7 +459,7 @@ class CallSession:
             self.ctx, lambda: self.session, self.started_at,
             float(self.cfg.get("min_call_seconds") or 0),
         )
-        return mcp_allowlist(self.cfg), local
+        return local
 
     async def start(self) -> None:
         """Build the voice session and put the DJ on the line."""
@@ -347,7 +470,7 @@ class CallSession:
         # mixer then never carries. The intro line airs during what the
         # caller still hears as ringing.
         if self.on_air_asked:
-            relay = CallRelay(self.station, self.cfg, self.ctx.room.name,
+            relay = CallRelay(self.station, self.cfg, self.room_name,
                               tier=self.tier, record=self.record)
             if await relay.open():
                 self.relay = relay
@@ -376,53 +499,23 @@ class CallSession:
             # A failed open already wrote why to the record; the call simply
             # proceeds as a private one.
 
-        allowed_tools, local_tools = self._build_tools()
+        local_tools = self._build_tools()
 
         log.info(
             "call starting room=%s tier=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
-            self.ctx.room.name, self.tier, self.persona["name"], self.persona["id"],
+            self.room_name, self.tier, self.persona["name"], self.persona["id"],
             self.cfg["llm_provider"], self.cfg["llm_model"],
             self.cfg["tts_mode"], self.voice,
-            len(allowed_tools) + len(local_tools),
-        )
-
-        # Several station tools (search_library among them) are admin-gated and
-        # are rejected outright without credentials, which surfaces mid-call as
-        # the DJ saying it's "locked out of the controls".
-        mcp_headers = station_config_mod.mcp_headers()
-        if not mcp_headers:
-            log.warning(
-                "no station admin credentials — admin-gated tools like "
-                "subwave_search_library will be refused during the call"
-            )
-
-        # Fail CLOSED on an empty allowlist. The SDK reads an empty list as
-        # "no filter — expose every tool the station's MCP server offers",
-        # including the destructive ones (skip_track, play_sfx, …). Today the
-        # list is never empty (five READ tools are always MCP-served), so this
-        # is defence in depth — but the failure direction is unsafe, and a
-        # sentinel that matches no real tool keeps the surface shut if those
-        # reads ever move (0.10.57 review).
-        gated_tools = allowed_tools or ["__none__"]
-
-        station_tools = mcp.MCPServerHTTP(
-            url=settings_store.station_mcp_url(),
-            transport_type="streamable_http",
-            allowed_tools=gated_tools,
-            headers=mcp_headers or None,
-            # 7s, down from 15. This connect happens BEFORE the greeting, so on
-            # a slow/overloaded station it sat 15s of silence in front of the
-            # caller before the DJ said hello (measured 2026-08-10, a congested
-            # NAS). The tools resolve fast on a healthy station; when they
-            # don't, greeting late is worse than starting with the local tools
-            # and the MCP catalogue arriving a moment into the call.
-            client_session_timeout_seconds=7,
+            self.allowed_tool_count + len(local_tools),
         )
 
         # MCPToolset rather than the session's mcp_servers argument, which is
         # deprecated: the toolset is just another entry in `tools`, so the
-        # station's tools and our own wrappers arrive by the same route.
-        toolset = mcp.MCPToolset(id="subwave", mcp_server=station_tools)
+        # station's tools and our own wrappers arrive by the same route. The
+        # server it wraps was built — and its connect started — back in
+        # prepare(), under the ringing; setup() reuses that session or, if the
+        # warm-up failed, retries the connect here as it always did.
+        toolset = mcp.MCPToolset(id="subwave", mcp_server=self.station_tools)
 
         self.session = AgentSession(
             stt=build_stt(self.cfg),
@@ -460,6 +553,8 @@ class CallSession:
         # and the barge-in half of the pair would read zero on exactly the
         # calls it matters most on.
         heard_mod.attach_heard(self.session, self.pacing, air=self.air)
+        if self.record:
+            self.record.leg("onLine")
 
     def _attach_behaviours(self) -> None:
         """Everything that runs for the life of the call."""
@@ -505,6 +600,8 @@ class CallSession:
         ctx.add_shutdown_callback(self._on_shutdown)
 
     async def greet(self) -> None:
+        if self.record:
+            self.record.leg("greeting")
         await greeting.greet(self.session, self.cfg, record=self.record,
                               air=self.air)
 
@@ -535,7 +632,7 @@ class CallSession:
         log.info(
             "call ended room=%s persona=%s duration=%.0fs caller_turns=%d "
             "llm=%s/%s tts=%s ended=%s",
-            self.ctx.room.name, self.persona.get("name"),
+            self.room_name, self.persona.get("name"),
             duration, self.heard["n"],
             self.cfg.get("llm_provider"), self.cfg.get("llm_model"),
             self.cfg.get("tts_mode"), reason or "-",
@@ -555,7 +652,7 @@ class CallSession:
         if paced:
             gap, barge = paced.get("replyGap", {}), paced.get("bargeIn", {})
             print(
-                f"call pacing room={self.ctx.room.name} "
+                f"call pacing room={self.room_name} "
                 f"replies={gap.get('n', 0)} p50={gap.get('p50', 0):.2f}s "
                 f"p90={gap.get('p90', 0):.2f}s worst={gap.get('worst', 0):.2f}s "
                 f"| barge_ins={barge.get('n', 0)} "

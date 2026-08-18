@@ -128,19 +128,20 @@ def prewarm(proc: JobProcess) -> None:
 async def entrypoint(ctx: JobContext) -> None:
     """One job = one call. Everything about the call itself lives on
     CallSession; this only decides whether to answer at all."""
-    await ctx.connect()
+    # The DISPATCHED room name decides who answers, and the job info carries
+    # it from the moment of dispatch — the rtc room only learns its own name
+    # once connected, which now happens under the ringing rather than first.
+    room_name = ctx.job.room.name
 
     # Media-path probes from the pipeline check are real rooms, but answering
     # one with a full agent session would spend an LLM+TTS round on nothing.
-    #
-    # Shut the job down rather than just returning. Returning leaves the job
-    # process sitting in the room until the SDK's own timeout notices nobody is
-    # there — measured at 20 seconds a probe, ending in four
-    # `data channel closed unexpectedly` ERRORs each time. Five probes while
-    # diagnosing one deployment put twenty error lines in the log that meant
-    # nothing, which is exactly the noise that makes a real error easy to miss.
-    if ctx.room.name.startswith("probe-"):
-        log.info("media-path probe %s — not starting an agent session", ctx.room.name)
+    # Shut the job down rather than just returning: a job left sitting in the
+    # room takes the SDK's ~20s no-participant timeout to die and logs four
+    # meaningless `data channel closed` ERRORs doing it — exactly the noise
+    # that makes a real error easy to miss.
+    if room_name.startswith("probe-"):
+        await ctx.connect()
+        log.info("media-path probe %s — not starting an agent session", room_name)
         ctx.shutdown(reason="media-path probe")
         return
 
@@ -150,16 +151,17 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # A vm- room is the answering machine, not a degraded call: no agent, no
     # tools, no LLM — a staged greeting, a beep, one utterance through STT.
-    # The prefix is decided when the token is minted, so it is known before
-    # anything connects. See voicemail/capture.py.
-    if ctx.room.name.startswith("vm-"):
+    if room_name.startswith("vm-"):
         from voicemail.capture import answer
 
+        await ctx.connect()
         await answer(ctx)
         return
 
     call = CallSession(ctx)
-    await call.prepare()    # the caller hears this as ringing
+    # The join rides prepare()'s station wait — neither leg needs the other,
+    # and the caller hears both as the same ringing.
+    await call.prepare(connecting=ctx.connect())
     await call.start()      # the DJ is on the line
     await call.greet()
 

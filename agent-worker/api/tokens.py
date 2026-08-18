@@ -17,11 +17,33 @@ from aiohttp import web
 from livekit import api
 
 import settings as settings_store
+import station_prefetch
 from api.auth import _guest_ok, _write_allowed, caller_tier
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_PUBLIC_URL
 from api.wire import _caller_key, _cors
 
 log = logging.getLogger("callin.token")
+
+# In-flight snapshot prefetches, held by strong reference: a bare
+# create_task can be garbage-collected mid-fetch, which would quietly turn
+# the worker's head start off with nothing logged.
+_prefetch_tasks: set = set()
+
+
+def _prefetch_station(cfg: dict, tier: str) -> None:
+    """Start the worker's station reads NOW — see station_prefetch.py.
+
+    The worker re-reads the station the moment this room dispatches, a second
+    or two from here; fetching once now means its ringing finds the answers
+    already on disk. Fire-and-forget: the mint answers at full speed whether
+    or not the station does. Resolved for THIS caller's tier so the snapshot
+    carries skills exactly when the worker will ask for them.
+    """
+    resolved = settings_store.permissions_for(cfg, tier)
+    task = asyncio.get_running_loop().create_task(
+        station_prefetch.capture(with_skills=bool(resolved.get("allow_skills"))))
+    _prefetch_tasks.add(task)
+    task.add_done_callback(_prefetch_tasks.discard)
 
 
 # --- usage controls -------------------------------------------------------
@@ -396,6 +418,10 @@ async def handle_token(request: web.Request) -> web.Response:
         }
         for stale in list(_mint_info)[:-_MINT_INFO_KEEP]:
             _mint_info.pop(stale, None)
+        if not voicemail:
+            # A live call is about to dispatch; the machine reads nothing at
+            # pickup, so only calls earn the head start.
+            _prefetch_station(cfg, tier)
 
     log.info(
         "minted %s token for room=%s identity=%s (%d live, %d this hour)",

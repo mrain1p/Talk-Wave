@@ -790,6 +790,9 @@ class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
         patches = {
             "LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": "test-secret",
             "_guest_ok": lambda r: True, "caller_tier": lambda r: tier,
+            # The head-start kickoff would otherwise reach for a real station
+            # inside asyncio.run's about-to-close loop.
+            "_prefetch_station": lambda cfg, t: None,
         }
         old = {k: getattr(api_tokens, k) for k in patches}
         old_load = settings_store.load
@@ -888,7 +891,8 @@ class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
                                      can_read_body=True)
             patches = {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s",
                        "_guest_ok": lambda r: True,
-                       "caller_tier": lambda r: "guest"}
+                       "caller_tier": lambda r: "guest",
+                       "_prefetch_station": lambda cfg, t: None}
             old = {k: getattr(at, k) for k in patches}
             oldl = settings_store.load
             settings_store.load = lambda: cfg
@@ -914,3 +918,67 @@ class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
         status2, body2 = mint_with({"allow_on_air": "guest"})
         self.assertEqual(status2, 200)
         self.assertTrue(body2["room"].startswith("callin-gl-"))
+
+
+class TestTheMintGivesTheWorkerAHeadStart(unittest.TestCase):
+    """Minting a live call starts the station prefetch — the worker's ringing
+    finds the answers on disk instead of re-asking the station (2.5s of every
+    pickup, measured 2026-08-18). A probe answers no station questions and
+    the machine reads nothing at pickup, so neither mints one."""
+
+    def _mint(self, body=None, cfg=None):
+        import asyncio
+        import types
+
+        import settings as settings_store
+        from api import tokens as api_tokens
+
+        sent = body or {}
+
+        async def _body():
+            return sent
+
+        req = types.SimpleNamespace(
+            headers={"User-Agent": "test"}, remote="1.2.3.4",
+            json=_body, can_read_body=True)
+        kicked = []
+        patches = {
+            "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s",
+            "_guest_ok": lambda r: True, "caller_tier": lambda r: "open",
+            "_write_allowed": lambda r: True,
+            "_prefetch_station": lambda c, t: kicked.append((c, t)),
+        }
+        old = {k: getattr(api_tokens, k) for k in patches}
+        old_load = settings_store.load
+        settings_store.load = lambda: dict(cfg or {})
+        api_tokens._recent_mints[:] = []
+        api_tokens._caller_last.clear()
+        try:
+            for k, v in patches.items():
+                setattr(api_tokens, k, v)
+            resp = asyncio.run(api_tokens.handle_token(req))
+        finally:
+            for k, v in old.items():
+                setattr(api_tokens, k, v)
+            settings_store.load = old_load
+            api_tokens._live_calls.clear()
+        return resp.status, kicked
+
+    def test_a_live_call_mints_with_the_head_start(self):
+        status, kicked = self._mint()
+        self.assertEqual(200, status)
+        self.assertEqual(1, len(kicked))
+        self.assertEqual("open", kicked[0][1])
+
+    def test_a_probe_does_not(self):
+        status, kicked = self._mint(body={"probe": True})
+        self.assertEqual(200, status)
+        self.assertEqual([], kicked)
+
+    def test_a_voicemail_does_not(self):
+        status, kicked = self._mint(
+            body={"voicemail": True},
+            cfg={"voicemail_enabled": True, "voicemail_when": "always",
+                 "allow_voicemail": "open"})
+        self.assertEqual(200, status)
+        self.assertEqual([], kicked)

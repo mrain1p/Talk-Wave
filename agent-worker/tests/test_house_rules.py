@@ -780,6 +780,20 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "agent-worker/call/air.py": (675, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
+        # 0.97.77 pushed it over making the ringing concurrent (the mint-time
+        # snapshot head start, the MCP warm-up, the join riding prepare). The
+        # seam is the phase boundary the docstring has named all along:
+        # everything BEFORE a session exists (prepare/_resolve, the station
+        # server and its warm-up — the ringing) against everything after
+        # (start, the behaviours, greet, shutdown — the live call). They meet
+        # only at the attributes prepare leaves behind. Deliberately NOT cut
+        # in the change that grew it: the pickup path was reworked in that
+        # same change, and a slow or broken pickup must have one candidate
+        # cause, not two.
+        "agent-worker/call/session.py": (695, "the ringing half (prepare, "
+                                              "resolve, the station server) "
+                                              "split from the live half "
+                                              "(start, behaviours, shutdown)"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
         # already named in web-widget/CLAUDE.md and is genuinely two viewers:
         # the LOG viewer (renderLog, the level filter, the tail) against the

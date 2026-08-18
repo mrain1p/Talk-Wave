@@ -64,6 +64,7 @@ from tests.test_http import (  # noqa: F401
     TestUsageControls,
     TestTheSettingsGearIsForTheOperator,
     TestTheOnAirDoorIsGatedAtTheMint,
+    TestTheMintGivesTheWorkerAHeadStart,
 )
 from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,
@@ -138,8 +139,10 @@ from tests.test_call_record import (  # noqa: F401
     TestTheCallRecordHearsBothSides,
     TestTheCallRecordSaysWhoRang,
     TestTheRecordAndItsProblemsShareOneClock,
+    TestThePickupTimelineIsWrittenDown,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestRingingRidesTheMintsHeadStart,
     TestTheBriefingStopsBeingWrongWhenTheStationMovesOn,
     TestNothingInACallOverwritesSomethingElse,
     TestASlowModelGetsRoomRatherThanFailing,
@@ -294,6 +297,7 @@ from tests.test_station import (  # noqa: F401
     TestTheHoldMatchesHowLongTheStationWillTalk,
     TestTheLiveShowRecordSurvivesTheScheduleLookup,
     TestTheStationLogSaysWhatWasSaid,
+    TestTheMintsHeadStartIsFreshOrNothing,
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
@@ -384,6 +388,7 @@ from tests.test_house_rules import (  # noqa: F401
 from tests.test_onair import (  # noqa: F401
     TestOnAirChunksAreTokenedAndShortLived,
     TestTheRelayHoldsOneTurnBack,
+    TestTheHoldIsAPromiseNotAnAccident,
     TestTheRelayObeysTheOperatorMidCall,
     TestTheRelayFallsBackOutLoud,
     TestTheBracketsOnlyAirWhenACallerDoes,

@@ -177,7 +177,9 @@ class TestCallStructure(unittest.TestCase):
         self.assertLess(len(body.splitlines()), 40)
         self.assertIn("probe-", body)          # still refuses probe rooms
         self.assertIn("vm-", body)             # and routes the machine's rooms
-        for phase in ("prepare()", "start()", "greet()"):
+        # prepare( rather than prepare(): the join coroutine rides in as its
+        # argument now, so the phases stay separate but the first takes one.
+        for phase in ("prepare(", "start()", "greet()"):
             self.assertIn(phase, body)
 
     def test_every_lifecycle_hook_is_registered(self):
@@ -3668,3 +3670,145 @@ class TestTheBriefingStopsBeingWrongWhenTheStationMovesOn(unittest.TestCase):
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="lovely")))
         self.assertEqual([], added)
+
+
+class TestRingingRidesTheMintsHeadStart(_TempStores):
+    """prepare() adopts the mint-time snapshot instead of re-asking the
+    station, says which it did in the record, starts the MCP handshake under
+    the ring rather than in front of the greeting, and carries the room join
+    on the same wait. Every one of these was a serial leg a real caller heard
+    as ringing first (2.5s measured healthy, 2026-08-18; 12s+ congested)."""
+
+    SNAP = {"dj": {"name": "Dalia"}, "personas": [{"id": "p1", "name": "Dalia"}],
+            "now_playing": {}, "state": {}, "session": {}, "schedule": {},
+            "skills": []}
+
+    class _FakeCtx:
+        def __init__(self, name="callin-o-abcdef123456"):
+            self.room = types.SimpleNamespace(name="")   # pre-join: nameless
+            self.job = types.SimpleNamespace(
+                room=types.SimpleNamespace(name=name))
+            self.shutdown_callbacks = []
+
+        def add_shutdown_callback(self, cb):
+            self.shutdown_callbacks.append(cb)
+
+    class _FakeMCPServer:
+        built = []
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.initialized_called = False
+            type(self).built.append(self)
+
+        async def initialize(self):
+            self.initialized_called = True
+
+    def setUp(self):
+        super().setUp()
+        from pathlib import Path
+
+        import brain as brain_mod
+        import station as station_mod
+        from call import session as session_mod
+
+        self._mods = (brain_mod, station_mod, session_mod)
+        self._olds = (brain_mod.build_system_prompt, station_mod._PERSONA_FILE,
+                      session_mod.mcp, session_mod.available_voices,
+                      session_mod.pick_speakable_voice)
+
+        async def fake_prompt(*a, **k):
+            return "prompt"
+
+        async def fake_voices(*a, **k):
+            return ["test-voice"]
+
+        brain_mod.build_system_prompt = fake_prompt
+        station_mod._PERSONA_FILE = Path(self._tmp.name) / "last-persona.json"
+        self._FakeMCPServer.built = []
+        session_mod.mcp = types.SimpleNamespace(MCPServerHTTP=self._FakeMCPServer)
+        session_mod.available_voices = fake_voices
+        session_mod.pick_speakable_voice = lambda v, voices: (v or "test-voice", "")
+
+    def tearDown(self):
+        brain_mod, station_mod, session_mod = self._mods
+        (brain_mod.build_system_prompt, station_mod._PERSONA_FILE,
+         session_mod.mcp, session_mod.available_voices,
+         session_mod.pick_speakable_voice) = self._olds
+        super().tearDown()
+
+    def _session(self):
+        from call.session import CallSession
+
+        s = CallSession(self._FakeCtx())
+        calls = {"snapshot": 0}
+        snap = self.SNAP
+
+        async def counting_snapshot(with_skills=False):
+            calls["snapshot"] += 1
+            return dict(snap)
+
+        s.station.snapshot = counting_snapshot
+        return s, calls
+
+    def test_a_fresh_head_start_replaces_the_station_read(self):
+        import station_prefetch
+
+        s, calls = self._session()
+        station_prefetch.store(self.SNAP, {},
+                               with_skills=bool(s.cfg.get("allow_skills")))
+        asyncio.run(s.prepare())
+        self.assertEqual(0, calls["snapshot"],
+                         "the mint already read the station for this call")
+        self.assertEqual("prefetched", s.record.data["setup"]["snapshot"])
+        self.assertEqual("Dalia", s.persona["name"])
+
+    def test_no_head_start_means_the_worker_reads_as_before(self):
+        s, calls = self._session()
+        asyncio.run(s.prepare())
+        self.assertEqual(1, calls["snapshot"])
+        self.assertEqual("fetched", s.record.data["setup"]["snapshot"])
+
+    def test_the_mcp_handshake_starts_under_the_ring(self):
+        s, _ = self._session()
+        asyncio.run(s.prepare())
+        self.assertEqual(1, len(self._FakeMCPServer.built))
+        self.assertTrue(self._FakeMCPServer.built[0].initialized_called,
+                        "the connect must start in prepare, not start()")
+        self.assertIs(s.station_tools, self._FakeMCPServer.built[0])
+
+    def test_the_join_rides_the_ringing_and_finishes_with_it(self):
+        s, _ = self._session()
+        joined = {"done": False}
+
+        async def connect():
+            joined["done"] = True
+
+        asyncio.run(s.prepare(connecting=connect()))
+        self.assertTrue(joined["done"], "prepare must await the join it was handed")
+        self.assertEqual("callin-o-abcdef123456", s.room_name,
+                         "the dispatched name, known before the join")
+
+    def test_a_failed_prepare_cancels_the_join(self):
+        import brain as brain_mod
+
+        s, _ = self._session()
+
+        async def broken_prompt(*a, **k):
+            raise RuntimeError("prompt assembly died")
+
+        brain_mod.build_system_prompt = broken_prompt
+        state = {"cancelled": False}
+
+        async def connect():
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                state["cancelled"] = True
+                raise
+
+        with self.assertRaises(RuntimeError):
+            asyncio.run(s.prepare(connecting=connect()))
+        self.assertTrue(state["cancelled"],
+                        "an orphaned join would hold the room open with "
+                        "nobody coming to answer it")

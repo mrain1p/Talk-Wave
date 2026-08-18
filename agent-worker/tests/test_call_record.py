@@ -1213,3 +1213,30 @@ class TestASwallowedRequestIsWrittenDown(unittest.TestCase):
         session, record = self._attach()
         self._said(session, "Sure thing, I'll get that on for you.")
         self.assertEqual(record.problems, [])
+
+
+class TestThePickupTimelineIsWrittenDown(unittest.TestCase):
+    """The pickup used to be a black box between startedAt and firstWordAt:
+    diagnosing 2026-08-18's slow connects meant probing the station, the TTS
+    backend and the model by hand to find which leg the wait lived in (it was
+    the model). The leg stamps and the snapshot-source note make the next
+    slow-pickup report readable off the record alone."""
+
+    def _record(self):
+        from call.record import CallRecord
+
+        return CallRecord("callin-o-abcdef123456", {"id": "p1", "name": "D"},
+                          {}, "open")
+
+    def test_legs_land_as_seconds_since_the_caller_arrived(self):
+        r = self._record()
+        r.leg("prepared")
+        r.leg("onLine")
+        setup = r.data["setup"]
+        self.assertGreaterEqual(setup["preparedSecs"], 0.0)
+        self.assertGreaterEqual(setup["onLineSecs"], setup["preparedSecs"])
+
+    def test_the_snapshot_source_is_named(self):
+        r = self._record()
+        r.setup_note("snapshot", "prefetched")
+        self.assertEqual("prefetched", r.data["setup"]["snapshot"])

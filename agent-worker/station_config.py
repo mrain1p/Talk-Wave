@@ -345,6 +345,23 @@ class StationConfig:
         self._cache[path] = data
         return data
 
+    def prime(self, path: str, payload: dict) -> None:
+        """Adopt a response fetched by ANOTHER process as this client's cache.
+
+        The mint-time snapshot prefetch (station_prefetch.py) reads /settings
+        in the token server a second or two before the worker would read it
+        again; priming it here means persona_voices, persona_skills, voice_for
+        and speak_clock — which all deliberately ride the one cached /settings
+        read — cost the call no network at all.
+
+        Only a non-empty payload, and only when this client is authed: {} is
+        what a failed or unauthenticated read looks like, and caching one
+        would stop persona_voices falling back to the last-known-good voices
+        exactly when that fallback is the point.
+        """
+        if self._authed and isinstance(payload, dict) and payload:
+            self._cache[path] = payload
+
     async def settings(self) -> dict:
         """Admin-only, so it needs THIS client to be carrying credentials —
         not merely for some to exist in the store."""

@@ -128,6 +128,24 @@ class CallRecord:
              "who": who, "text": text[:MAX_TEXT]}
         )
 
+    def leg(self, name: str) -> None:
+        """Stamp how far into the call one setup moment landed, in seconds.
+
+        The pickup used to be a black box between startedAt and firstWordAt:
+        diagnosing 2026-08-18's slow connects meant probing the station, the
+        TTS backend and the model by hand to find which leg the ~15s lived in
+        (it was the model). Three stamps — prepared, onLine, greeting — make
+        the next slow-pickup report readable off this one file instead.
+        """
+        self.data.setdefault("setup", {})[f"{name}Secs"] = round(
+            time.time() - self.started, 2)
+
+    def setup_note(self, name: str, value) -> None:
+        """One named fact about the pickup, beside the leg stamps — e.g.
+        whether the station snapshot came from the mint's prefetch or from
+        the worker's own reads."""
+        self.data.setdefault("setup", {})[name] = value
+
     def first_word(self) -> None:
         """When the DJ's audio actually STARTS, once per call.
 
