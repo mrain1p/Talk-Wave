@@ -383,6 +383,7 @@ from tests.test_onair import (  # noqa: F401
     TestTheRelayFallsBackOutLoud,
     TestTheBracketsOnlyAirWhenACallerDoes,
     TestTheLiveCallDoorTellsTheWorkersTruth,
+    TestTheLiveSegmentLandsInsteadOfStopping,
 )
 from tests.test_tee import (  # noqa: F401
     TestTheAirGetsTheConversationInOrder,

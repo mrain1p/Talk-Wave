@@ -43,7 +43,7 @@ from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
 from onair.relay import CallRelay
 
-from . import (asks as asks_mod, background, comeback, door,
+from . import (asks as asks_mod, background, clocks, comeback, door,
                floor as floor_mod, greeting, handoff, heard as heard_mod,
                lifecycle, postmortem, promise_guard, tee as tee_mod)
 from .actions import CallActions
@@ -358,13 +358,21 @@ class CallSession:
                 self.air.enabled = False
                 if self.record:
                     self.record.data["config"]["onAir"] = True
+                # The window is NAMED, not just enforced. A DJ that does not
+                # know how long its segment runs cannot pace one — and the
+                # window is enforced regardless, so without this a live
+                # phone-in simply stopped mid-thought whenever the clock ran
+                # out. Radio does not end a segment that way.
+                window = int(self.cfg.get("on_air_max_seconds") or 0) or 240
                 self.instructions += (
                     "\n\nThis call is LIVE ON AIR: the conversation is "
                     "broadcast on the station as it happens, a few seconds "
                     "behind. Keep it broadcast-clean and keep the pace "
                     "bright. Never read out private details — numbers, "
                     "addresses, codes — the listeners hear everything the "
-                    "caller says.")
+                    f"caller says. The segment runs about {window // 60} "
+                    f"minute(s) — pace it so it lands rather than stops, and "
+                    "you will be told when you are near the end.")
             # A failed open already wrote why to the record; the call simply
             # proceeds as a private one.
 
@@ -490,6 +498,10 @@ class CallSession:
         # hand-over line has already explained.
         lifecycle.attach_working_line(ctx, session, cfg, air=self.air,
                                       actions=self.actions)
+        # A no-op off air — seconds_left() is 0 unless a relay is actually
+        # live — so it attaches unconditionally rather than behind a branch
+        # that would then need testing twice.
+        clocks.attach_on_air_wrap(ctx, session, self.relay, floor=self.floor)
         ctx.add_shutdown_callback(self._on_shutdown)
 
     async def greet(self) -> None:

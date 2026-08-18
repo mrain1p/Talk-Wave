@@ -245,6 +245,19 @@ class CallRelay:
             log.warning("on-air dj line failed: %s", e)
             return False
 
+    def seconds_left(self) -> float:
+        """How much of the on-air window remains, or 0 when it is not running.
+
+        The clock starts at the FIRST CLIP, not at pickup — a segment that
+        never got a caller's voice into it has no window to be near the end
+        of. Read by call/clocks.py, which is what actually cues the wrap: the
+        relay knows the time and the session owns the DJ's mouth, and keeping
+        those apart is why this returns a number rather than saying anything.
+        """
+        if not (self.active and self._live and self._deadline):
+            return 0.0
+        return max(0.0, self._deadline - time.time())
+
     def dropped(self, kind: str, why: str) -> None:
         """A turn that never reached the air, and which of the seven ways it
         went.

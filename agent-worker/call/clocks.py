@@ -32,6 +32,12 @@ log = logging.getLogger("callin.agent")
 # check-in for good, and only the first of those is worth fixing here.
 SPEAKING_GRACE_BEATS = 8
 
+# How long before the on-air window closes the DJ is cued to wrap. Enough for
+# a caller to get a last word in and the DJ to land the segment; short enough
+# that it is not most of a short window. The window itself is the operator's
+# setting, this is the courtesy in front of it.
+WRAP_CUE_SECS = 30.0
+
 
 def _speaking_now(session) -> bool:
     """Is the caller mid-word RIGHT NOW, by voice rather than by transcript."""
@@ -417,3 +423,81 @@ def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict,
 
     task = asyncio.create_task(_end_when_over_time())
     ctx.add_shutdown_callback(lambda: _cancel(task))
+
+
+def attach_on_air_wrap(ctx: JobContext, session: AgentSession, relay,
+                       floor=None) -> None:
+    """Tell the DJ the live segment is nearly over, once, before it ends.
+
+    The on-air window was enforced and never announced: `onair/relay.py` saw
+    its deadline pass, signed the segment off and said an outro, and the first
+    the DJ knew of any of it was that it had happened. So a live phone-in
+    stopped rather than landed — the conversation was simply cut at whatever
+    sentence the clock fell on, in front of the audience.
+
+    Radio does not end a segment that way, and the fix is the ordinary
+    courtesy every other system extends before a hard cutoff: say how long is
+    left while there is still time to use it. The DJ is told the window's
+    length in its prompt (see call/session.py) and told when it is nearly gone
+    here, so it can wrap a caller up in its own words instead of being
+    interrupted by the relay's outro.
+
+    A quiet no-op off air: `seconds_left()` returns 0 unless a relay is live,
+    so a private call attaches this and never hears from it.
+
+    Fourth thing in this file that speaks on a clock — see the table in
+    docs/the-call.md, and note it takes the floor for the same reason the
+    time-limit sign-off does.
+    """
+    if relay is None:
+        return
+
+    async def _watch() -> None:
+        cued = False
+        while not cued:
+            await asyncio.sleep(2.0)
+            left = 0.0
+            try:
+                left = float(relay.seconds_left())
+            except Exception:                                   # noqa: BLE001
+                return          # the relay went away; nothing to wrap
+            if left <= 0:
+                continue        # not live yet, or already off air
+            if left > WRAP_CUE_SECS:
+                continue
+            cued = True
+            log.info("on-air window has %.0fs left — cueing the wrap", left)
+            # Through the floor like the sign-off: this fires on its own clock
+            # and would otherwise land on top of the come-back or the promise
+            # nudge. Losing the race costs the wrap line, not the segment —
+            # the relay still signs off cleanly either way.
+            if floor is not None:
+                async with floor.take("the on-air wrap cue") as mine:
+                    if not mine:
+                        return
+                    await _wrap(session, left)
+                return
+            await _wrap(session, left)
+
+    task = asyncio.create_task(_watch())
+    ctx.add_shutdown_callback(lambda: _cancel(task))
+
+
+async def _wrap(session: AgentSession, left: float) -> None:
+    # No canned fallback here, deliberately, unlike the sign-offs above: those
+    # exist because a caller left holding a dead line is worse than a stock
+    # phrase. This one is a courtesy inside a segment that ends cleanly on its
+    # own, so a generated line or nothing is the honest pair — a kiosk voice
+    # in front of the whole audience is the worse failure.
+    try:
+        await session.generate_reply(instructions=(
+            "Your live on-air segment with this caller is nearly over — about "
+            f"{int(left)} seconds. Start winding it up in your own voice: let "
+            "them get their last word in, and don't announce a countdown or "
+            "read out the number of seconds. One short line, then carry on "
+            "normally until it ends."
+        ))
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:                                      # noqa: BLE001
+        log.debug("the on-air wrap cue failed (harmless): %s", e)

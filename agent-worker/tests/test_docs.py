@@ -126,14 +126,15 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
         self.assertTrue(all(t.gate == NEVER for t in TOOLS if t.served == NONE))
 
     def test_everything_that_can_make_the_dj_speak_is_in_the_call_doc(self):
-        """docs/the-call.md lists the nine things that can start a DJ turn, and
+        """docs/the-call.md lists everything that can start a DJ turn, and
         which of them wait for the broadcast to finish.
 
-        That list is the whole point of the page. Nine separate places can make
+        That list is the whole point of the page. Ten separate places can make
         the DJ talk — each added for a real incident, none aware of the others —
-        and three of them do not check the air. A tenth added quietly is exactly
-        the kind of thing that only shows up as "the caller heard two of the
-        same voice", so the page has to fail the build rather than fall behind.
+        and three of them do not check the air. An eleventh added quietly is
+        exactly the kind of thing that only shows up as "the caller heard two of
+        the same voice", so the page has to fail the build rather than fall
+        behind.
 
         Mechanical, like everything else here: it checks the module is NAMED,
         not that the page describes it well.

@@ -1,6 +1,6 @@
 """Who has the floor — so two of the DJ's own turns never start at once.
 
-Nine things can make the DJ speak and they were added one incident at a time,
+Ten things can make the DJ speak and they were added one incident at a time,
 each checking whatever the incident was about. Reading them against each other
 (docs/the-call.md has the table) shows most of that is already covered:
 

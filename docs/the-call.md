@@ -97,7 +97,7 @@ Measured on the deployed worker, 2026-08-14, `gemini-3.1-flash-lite`, three roun
 
 ## 5. Who may speak
 
-Nine things can start a DJ turn. Each was added for a real incident, and **they do not know about each other** — there is no single "the DJ speaks now" gate. The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires for CALLER turns only, so it covers the reply path and nothing else.
+Ten things can start a DJ turn. Each was added for a real incident, and **they do not know about each other** — there is no single "the DJ speaks now" gate. The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires for CALLER turns only, so it covers the reply path and nothing else.
 
 | What speaks | Where | Waits for clear air? |
 |---|---|---|
@@ -109,13 +109,14 @@ Nine things can start a DJ turn. Each was added for a real incident, and **they 
 | the hand-over line | `call/air.py` watch loop | it is the air |
 | the promise nudge | `call/promise_guard.py` | yes, since 0.10.146 |
 | the time-limit sign-off | `call/clocks.py` | yes, since 0.10.146 |
+| the on-air wrap cue | `call/clocks.py` | n/a — only fires on a live phone-in, where the ducking is off because the broadcast IS the call |
 | the provider apology | `call/lifecycle.py` | no — 20s cooldown only, and deliberately: it exists because the line has already gone silent |
 
 The promise nudge is one entry and three conditions, which is worth knowing before reading it as one rule: the DJ promised and called nothing; the DJ said it was already done and nothing ran; and, since 0.10.154, the DJ told the caller it landed after a tool came back **refused**. That third one was invisible for a long time because it is the case where a tool call really did happen — the guard cleared itself on the very call that failed. It is one guard because the repair is the same in all three: make it true, or say plainly that it isn't.
 
 The bottom two did not, until this table was written and they were read against each other. The nudge is the one most likely to have been heard: it fires a second or so after the DJ says "let me have a dig", which is exactly when a queued link lands.
 
-**And the air is only half the question — the other half is each other.** Reading the nine against each other showed that six already cannot collide: the greeting is a one-shot at pickup, the late match and the idle ladder both wait for `agent_state == "listening"` (false while anything is generating), and the hand-over line *is* the air. The remaining three — the promise nudge, the come-back, the time-limit sign-off — each fire on their own clock and knew nothing of the others. [`call/floor.py`](../agent-worker/call/floor.py) is a lock and deliberately nothing more: it cannot decide who *should* speak, only stop two turns starting at once, and it counts collisions into the record so the next reader can tell whether it was ever needed.
+**And the air is only half the question — the other half is each other.** Reading them against each other showed that most already cannot collide: the greeting is a one-shot at pickup, the late match and the idle ladder both wait for `agent_state == "listening"` (false while anything is generating), and the hand-over line *is* the air. The ones left — the promise nudge, the come-back, the time-limit sign-off, and since 0.97.66 the on-air wrap cue — each fire on their own clock and knew nothing of the others. [`call/floor.py`](../agent-worker/call/floor.py) is a lock and deliberately nothing more: it cannot decide who *should* speak, only stop two turns starting at once, and it counts collisions into the record so the next reader can tell whether it was ever needed.
 
 The split between `call/lifecycle.py` and `call/clocks.py` follows this distinction — lifecycle OBSERVES a call and never speaks; clocks own a timer and generate a turn when it runs out.
 

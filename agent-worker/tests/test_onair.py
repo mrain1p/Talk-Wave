@@ -445,5 +445,43 @@ class TestTheLiveCallDoorTellsTheWorkersTruth(_ChunkStore):
                          "door open forever")
 
 
+class TestTheLiveSegmentLandsInsteadOfStopping(unittest.TestCase):
+    """The on-air window was enforced and never announced.
+
+    onair/relay.py watched its deadline pass, signed the segment off and said
+    an outro, and the first the DJ knew of any of it was that it had happened
+    — so a live phone-in was cut at whatever sentence the clock fell on, in
+    front of the audience. Radio does not end a segment that way.
+    """
+
+    def test_the_clock_starts_at_the_first_clip_not_at_pickup(self):
+        # A segment that never got a caller's voice into it has no window to
+        # be near the end of, so there is nothing to wrap and nobody to hear
+        # it. Same reason the brackets are lazy.
+        r = relay_mod.CallRelay(_FakeStation(), {}, "callin-g-abcdef123456")
+        self.assertEqual(r.seconds_left(), 0.0, "armed is not live")
+        r.active = True
+        self.assertEqual(r.seconds_left(), 0.0, "active is still not live")
+
+    def test_a_live_segment_reports_what_is_left(self):
+        r = relay_mod.CallRelay(_FakeStation(), {}, "callin-g-abcdef123456")
+        r.active = True
+        r._live = True
+        r._deadline = time.time() + 45
+        left = r.seconds_left()
+        self.assertGreater(left, 40)
+        self.assertLessEqual(left, 45)
+
+    def test_a_closed_segment_stops_reporting(self):
+        # Otherwise the wrap cue would fire at a caller whose broadcast has
+        # already ended — a line about being nearly out of time, said
+        # privately, about nothing.
+        r = relay_mod.CallRelay(_FakeStation(), {}, "callin-g-abcdef123456")
+        r.active, r._live = True, True
+        r._deadline = time.time() + 45
+        r.active = False
+        self.assertEqual(r.seconds_left(), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
