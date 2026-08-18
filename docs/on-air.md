@@ -2,7 +2,7 @@
 
 [← back to the README](../README.md)
 
-A caller's conversation with the DJ, going out on the station's broadcast while it happens. This page is the whole feature: what listeners actually hear, the three consents that all have to agree before anyone airs, the operator's pull, what happens when the plumbing is missing, the one compose stanza the wiring needs, and the terms on which a caller's voice touches a disk. The switches live on [the dashboard](dashboard.md); the delivery cousin for recorded messages — the soundbite studio — is on [the voicemail page](VOICEMAIL.md).
+A caller's conversation with the DJ, going out on the station's broadcast while it happens. This page is the whole feature: what listeners actually hear, the three consents that all have to agree before anyone airs, the operator's pull, what happens when the plumbing is missing, the one compose stanza the wiring needs, and the terms on which a caller's voice touches a disk. The switches live on the panel's own **On air** page, mirrored on [the dashboard](dashboard.md); the delivery cousin for recorded messages — the soundbite studio — is on [the voicemail page](VOICEMAIL.md).
 
 ## What listeners actually hear
 
@@ -21,7 +21,7 @@ One phone-in holds the air at a time — while one is live, the ON AIR route ref
 Nobody airs by accident. Three separate consents stand between a caller and the broadcast, and any one of them alone says no:
 
 - **Go live on the station** — the tier row under Caller permissions: off, anyone, guest code, or admin. Off means nobody, the admin included. The route is minted into the signed room name at pickup, so a caller cannot put themselves on air mid-call.
-- **The dashboard's two doors** — the Live on air cluster's quick kills, [documented with the dashboard](dashboard.md): **Live Call** and **Aired Voicemails**, one per door, so you can close one without touching the other. Live calls need the mixer's telnet below; aired voicemails don't — the studio's DJ-reads backend airs over the plain admin API. A closed door just means private: callers still talk to the DJ, they just don't reach the broadcast.
+- **The two doors** — quick kills on the panel's On air page (**Doors to air**), mirrored by the dashboard's Live on air cluster [documented with it](dashboard.md): **Live Call** and **Aired Voicemails**, one per door, so you can close one without touching the other. Live calls need the mixer's telnet below; aired voicemails don't — the studio's DJ-reads backend airs over the plain admin API. A closed door just means private: callers still talk to the DJ, they just don't reach the broadcast.
 - **The caller's own switch** — the ON AIR | OFF AIR route on the card's top edge. It defaults to OFF AIR, is never remembered between visits, and locks the moment anything is running. One switch arms both doors: with it on, a call relays live, and a recorded message goes to [the soundbite studio](VOICEMAIL.md) for air instead of the private machine.
 
 Settings are re-read before **every push** — tighter than the per-call re-read the rest of the system promises — so flipping a door shut mid-broadcast stops the next clip, not the next caller.

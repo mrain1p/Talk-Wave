@@ -2864,6 +2864,10 @@
   .row.moot select, .row.moot input, .check.moot input, .prow.moot input {
     pointer-events: none;
   }
+  /* A permission row is display:contents — it owns no box, so opacity on it
+     paints nothing at all. Grey its grid items instead; the pointer-events
+     rule above already reaches its select and tier boxes by descent. */
+  .permrow.moot > * { opacity: .4; }
 
   /* Matrix help, inside the label cell: same muted voice as every hint,
      flowing after the label on its own line's terms. */

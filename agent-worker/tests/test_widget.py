@@ -344,9 +344,22 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         supers = {g: sup for g, sup, *_ in settings_store.GROUPS}
         self.assertEqual(supers["voicemail"], "voicemail")
         self.assertEqual(supers["chat"], "texts")
-        for g in ("call", "turns", "closing", "onair", "tunein",
+        for g in ("call", "turns", "closing", "tunein",
                   "callback", "sounds", "effects"):
             self.assertEqual(supers[g], "calls", f"{g} left the Calls page")
+        # 0.97.81 gave the on-air route its own page (operator's ask): the
+        # two quick kills got their first settings rows, and ducking moved
+        # in beside them — it is about the one broadcast voice, not the
+        # call. The tier row and its dials deliberately STAY under Caller
+        # permissions; the panel greys them while both doors are shut, and
+        # that greying only reads if the doors have a page of their own.
+        for g in ("airdoors", "onair"):
+            self.assertEqual(supers[g], "air", f"{g} left the On air page")
+        for f in ("on_air_calls_enabled", "on_air_voicemail_enabled",
+                  "vm_air_backend"):
+            self.assertEqual(
+                settings_store.SCHEMA[f]["group"], "airdoors",
+                f"{f} left the Doors-to-air section")
         # Transcripts moved to the booth page at 0.10.64 (operator's call):
         # the records cover calls, chats and voicemails alike.
         for g in ("context", "style", "record"):

@@ -224,10 +224,6 @@
                tabindex="-1" aria-hidden="true" />
         <input type="checkbox" id="chat_enabled" class="fieldonly"
                tabindex="-1" aria-hidden="true" />
-        <input type="checkbox" id="on_air_calls_enabled" class="fieldonly"
-               tabindex="-1" aria-hidden="true" />
-        <input type="checkbox" id="on_air_voicemail_enabled" class="fieldonly"
-               tabindex="-1" aria-hidden="true" />
         <div class="lines">
           <p class="lineslabel">Lines <em>the three ways through the door above</em></p>
           <div class="linerow">
@@ -267,7 +263,11 @@
                doors as quick kills in the Lines grammar, and the pull
                control beneath — no jargon on it. Standing whenever the
                Go-live row is open; the panel does not poll, so the pull's
-               press itself asks the server what is live. -->
+               press itself asks the server what is live. Since the On air
+               page (0.97.81) the two switches' REAL checkboxes are that
+               page's Doors-to-air rows, not fieldonly inputs here — these
+               buttons reach them by id, which works from anywhere in the
+               document. -->
           <div id="onAirLine" hidden>
             <p class="lineslabel">Live on air <em>the phone-in's two doors</em></p>
             <div class="linerow onairpull">
@@ -970,6 +970,25 @@
       </div>
     </details>
 
+    <details data-group="airdoors" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Doors to air</span><em class="secblurb"></em><span class="tag" id="tagAirdoors"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The caller's half is the
+          ON AIR | OFF AIR switch on the card; these two are yours, one per
+          door. Who may use the route at all — and the on-air window and
+          delay around it — is the <strong>Go live on the station</strong>
+          row under <em>Caller permissions</em>, which greys while both
+          doors here are shut. The dashboard's Live-on-air cluster flips
+          the same two switches.</p>
+        <label class="check"><input type="checkbox" id="on_air_calls_enabled" /> Calls may go on air</label>
+        <label class="check"><input type="checkbox" id="on_air_voicemail_enabled" /> Voicemails may go on air</label>
+        <div class="row">
+          <label for="vm_air_backend">A soundbite airs as</label>
+          <select id="vm_air_backend"></select>
+        </div>
+      </div>
+    </details>
+
     <details data-group="tunein" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Tune the caller into the station</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
       <div class="body">
@@ -1169,10 +1188,10 @@
           <label for="voicemail_flow">The line is</label>
           <select id="voicemail_flow"></select>
         </div>
-        <div class="row">
-          <label for="vm_air_backend">A soundbite airs as</label>
-          <select id="vm_air_backend"></select>
-        </div>
+        <!-- "A soundbite airs as" lives on the On air page now (0.97.81) —
+             it is about the airing, not the machine. byKind fills the FIRST
+             id match, so a copy left here would be the one that saves while
+             the visible one sat dead. -->
         <div class="row">
           <label for="voicemail_greeting_mode">Greeting comes from</label>
           <select id="voicemail_greeting_mode"></select>

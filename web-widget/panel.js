@@ -913,6 +913,17 @@
     // of seconds here described something that almost never happens.
     setTag('tagOnair', resolved.avoid_on_air_overlap
       ? 'waits for quiet air' : 'talks over the broadcast');
+    // Live reads, like the dashboard cluster these doors share — and the
+    // tier row outranks both doors: with Go live off, two open doors lead
+    // to a route nobody may take, and "on" would be the tag lying.
+    const doorOn = (id) => ($(id) ? $(id).checked : !!resolved[id]);
+    setTag('tagAirdoors', permTier('allow_on_air') === 'off'
+      ? 'off — Go live is off under Caller permissions'
+      : doorOn('on_air_calls_enabled')
+        ? (doorOn('on_air_voicemail_enabled')
+            ? 'on · calls + voicemails' : 'on · calls only')
+        : doorOn('on_air_voicemail_enabled')
+          ? 'on · voicemails only' : 'off — both doors shut');
     setTag('tagTunein', resolved.tune_in_on_call
       ? 'on · ' + resolved.tune_in_volume + '%' : 'off — requests may be refused');
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
@@ -1275,11 +1286,12 @@
     // The duck with a close and no open. A stored 0 beats the default and
     // nothing anywhere said so — the operator spent an evening on ducking
     // that "felt off in general" with the lead silently disabled.
-    // page 'calls', not 'safety': the `onair` section lives under Calls (see
-    // GROUPS), so this pinned the wrong chip in the picker and sent the
-    // operator to a page the section it names is not on.
+    // The page must follow the `onair` section wherever GROUPS files it —
+    // 'calls' once pinned the wrong chip in the picker, and since 0.97.81
+    // the section lives on the On air page. A test walks every item here
+    // against the schema now, which is how this move was caught.
     if (on('avoid_on_air_overlap') && num('on_air_handover_secs') === 0) {
-      items.push({ page: 'calls', group: 'onair',
+      items.push({ page: 'air', group: 'onair',
                    label: 'Set the hand-over lead',
                    note: 'overlap protection is on but the lead is 0 — the DJ '
                      + 'is cut off the instant the station speaks, with no '
@@ -1795,7 +1807,10 @@
       }
     } finally {
       if (btn) btn.disabled = false;
-      paintDash();
+      // paintTags rather than paintDash: the Doors-to-air section tag reads
+      // the same two switches these buttons flip, and paintTags ends by
+      // calling paintDash anyway.
+      paintTags();
       applyVisibility();
       markClean();
     }
@@ -2131,6 +2146,19 @@
     // The mirror rule: with the machine off, the card never offers it, so
     // the options that put its button up are equally moot.
     const MOOT_WITHOUT_VM = ['show_voicemail_button', 'embed_voicemail_button'];
+    // With both doors to air shut, the Go-live tier row and its two dials
+    // still stand under Caller permissions — a permission for a route that
+    // cannot happen (operator's ask, 0.97.81). Greyed, not hidden, the same
+    // shape as the two lists above: the operator can still read what comes
+    // back when a door reopens.
+    const oacOn = $('on_air_calls_enabled')
+      ? $('on_air_calls_enabled').checked : !!resolved.on_air_calls_enabled;
+    const oavOn = $('on_air_voicemail_enabled')
+      ? $('on_air_voicemail_enabled').checked
+      : !!resolved.on_air_voicemail_enabled;
+    const airShut = !oacOn && !oavOn;
+    const MOOT_WITHOUT_AIR = ['allow_on_air', 'on_air_max_seconds',
+                              'on_air_delay_secs'];
 
     // The line status outranks everything in the card section: paused (or
     // both modes off) the card shows its closed face whatever is set here,
@@ -2181,6 +2209,13 @@
           ? 'Voicemail is off (its own page, or the dashboard’s Lines) '
             + '— the card never offers the machine, whichever way this '
             + 'points.' : '';
+      }
+      if (MOOT_WITHOUT_AIR.indexOf(f) !== -1) {
+        anchor.classList.toggle('moot', airShut);
+        anchor.title = airShut
+          ? 'Both doors to air are shut (the On air page, or the dashboard’s '
+            + 'Live-on-air cluster) — nobody reaches the broadcast whatever '
+            + 'this grants.' : '';
       }
 
       let visible = true;
@@ -3258,6 +3293,13 @@
         // The Voicemail card reads the machine's who and where live too.
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'voicemail') {
           paintDash();
+        }
+        // The On air page's rows feed the dashboard cluster and their own
+        // section tag; paintTags ends by calling paintDash. The Caller
+        // permissions greying follows these switches too, but the
+        // applyVisibility call above already repaints that.
+        if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'airdoors') {
+          paintTags();
         }
         // The slot cards and the shelf's used-for chips read the sound
         // fields live — a URL being typed, or the set changing name.

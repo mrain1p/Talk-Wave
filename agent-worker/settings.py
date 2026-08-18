@@ -887,6 +887,16 @@ SUPERGROUPS = [
     ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
     ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
     ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
+    # The on-air feature's own page (operator's ask, 2026-08-18). The two
+    # quick kills were dashboard-only controls with no settings row anywhere,
+    # the ducking pair sat under Calls, and the soundbite's airing backend
+    # under Voicemail — so "may a caller reach the broadcast" was answered
+    # across three pages. The tier row and its two dials deliberately STAY
+    # under Caller permissions with every other permission; the panel greys
+    # them while both doors here are shut. The id is "air", not "onair" —
+    # that string is already the ducking section's group id, and one word
+    # holding two addresses is the Transmission lesson again.
+    ("air",       "On air",               "The broadcast door — what goes out live, and on whose say-so."),
     ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
     ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
@@ -947,10 +957,6 @@ GROUPS = [
     # closing settings were. A fair question deserves a section.
     ("turns",    "calls",  "Turn-taking",        "When the DJ decides you've finished."),
     ("closing",  "calls",  "Closing the call",   "How a call ends, in character."),
-    # Was inside Caller permissions, where it read as a fourth station-wide
-    # permission. It is not a permission at all: it decides what happens when
-    # the call DJ and the on-air DJ are the same voice.
-    ("onair",    "calls",  "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
     ("tunein",   "calls",  "Tune the caller into the station",
      "Whether the caller counts as a listener, and whether they hear the broadcast."),
     ("callback", "calls",  "Back-to-air commentary", "One line after the call — nothing more."),
@@ -964,6 +970,14 @@ GROUPS = [
     # called Voicemail under a page called Voicemail, which read as a stutter.
     ("voicemail", "voicemail", "The machine",     "When the booth can't pick up, the machine does."),
     ("chat",      "texts",  "Text line",          "Typed chat with whoever is on air — same brain, no microphone."),
+
+    # The On air page: the phone-in's reach for the broadcast, gathered from
+    # the three pages it was scattered across. Ducking has moved twice now —
+    # out of Caller permissions (it read as a fourth station-wide permission,
+    # and it is not a permission at all), then out of Calls: it is about the
+    # one broadcast voice, not the call, so it lives beside the doors.
+    ("airdoors", "air",    "Doors to air",        "The phone-in's two doors — close one without touching the other."),
+    ("onair",    "air",    "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
 
     # The Players page reorganized to the operator's design handoff ("Players
     # Settings Reorganization", direction 1a): one block per card ELEMENT, in
@@ -1741,17 +1755,17 @@ SCHEMA: dict[str, dict] = {
              "Voicemail below — the two switches together are the line's "
              "mode: phone, phone with a machine, voicemail-only, or "
              "closed."),
-    "on_air_calls_enabled": dict(group="usage", kind="check",
+    "on_air_calls_enabled": dict(group="airdoors", kind="check",
         label="Calls may go on air",
-        help="The Live-on-air cluster's quick kill for the phone-in: off, "
-             "the ON AIR route stops offering live calls without touching "
-             "the permission row or the voicemail door, and a phone-in "
-             "already on the air stops at its next clip."),
-    "on_air_voicemail_enabled": dict(group="usage", kind="check",
+        help="The phone-in door: off, the ON AIR route stops offering live "
+             "calls without touching who may use the route or the voicemail "
+             "door, and a phone-in already on the air stops at its next clip. "
+             "The dashboard's Live-on-air cluster flips this same switch."),
+    "on_air_voicemail_enabled": dict(group="airdoors", kind="check",
         label="Voicemails may go on air",
-        help="Same quick kill for the message door: off, the ON AIR route "
-             "stops offering the studio and every message is a private one "
-             "for you."),
+        help="The message door's same kill: off, the ON AIR route stops "
+             "offering the studio and every message is a private one for "
+             "you."),
     "voicemail_greeting_mode": dict(group="voicemail", kind="select",
         label="Greeting comes from",
         help="Staged clips answer instantly. 'Fresh each call' writes a new "
@@ -1789,7 +1803,7 @@ SCHEMA: dict[str, dict] = {
     # remove it". Both derive correctly on any ordinary deployment
     # (broadcast:1234; http://HOST_IP:8100 — the probe-proven URL), and the
     # rare exception overrides them in settings.json or the environment.
-    "vm_air_backend": dict(group="voicemail", kind="select",
+    "vm_air_backend": dict(group="airdoors", kind="select",
         label="A soundbite airs as",
         help="'The DJ reads it' works on any deployment — plain station "
              "admin API. 'The caller's own voice' plays the recording on the "
