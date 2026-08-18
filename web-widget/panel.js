@@ -784,7 +784,7 @@
       blankLabel: blankFor('stt_model', 'a model'),
       labels: {
         'tiny.en': 'tiny.en — fastest, hears the least; half the CPU of base',
-        'base.en': 'base.en — light (default); misses words on phone audio',
+        'base.en': 'base.en — light (default)',
         'small.en': 'small.en — hears phone audio clearly better; ~3x base per turn',
         'medium.en': 'medium.en — hears the most; ~8x base — test before trusting it',
       } });
