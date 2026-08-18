@@ -768,6 +768,18 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # cutting — the two splits that came out of 0.9.102 and 0.9.106 both
     # started as one.
     SPLITTING = {
+        # 0.97.73 pushed it over with the mid-call track note (the frozen-
+        # briefing fix — docs/the-call.md's last open disagreement). The seam
+        # is real and has been in the file all along: the GUARD half (the air
+        # state machine — verdicts, holds, the watch loop, and now the track
+        # note) against the AGENT half (CallAgent, the reply path: the door
+        # hint, the note injection, the wait-for-clear). They meet only at
+        # the guard object CallAgent is handed. Deliberately NOT cut in the
+        # change that grew it — a regression in either half would get two
+        # candidate causes, the same deferral panel-viewers.js records.
+        "agent-worker/call/air.py": (675, "the CallAgent half (the reply "
+                                          "path) split from the guard half "
+                                          "(the air state machine)"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
         # already named in web-widget/CLAUDE.md and is genuinely two viewers:
         # the LOG viewer (renderLog, the level filter, the tail) against the

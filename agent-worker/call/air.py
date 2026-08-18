@@ -118,6 +118,19 @@ class OnAirGuard(AirVerdict):
         self._announced_id = ""
         self.on_air = False
         self._clear = asyncio.Event()
+        # The briefing is frozen at pickup — the one disagreement
+        # docs/the-call.md still records — and max_call_seconds defaults to
+        # 300 while a track runs three to four minutes, so the DJ routinely
+        # discusses a record that stopped playing. The watch loop already
+        # reads the station's /state every POLL_SECS for the djLog and threw
+        # the current track away; now a mid-call CHANGE stages one sentence
+        # here, and the reply path injects it as a system note on the next
+        # caller turn (see CallAgent.on_user_turn_completed — the same
+        # Gemini-safe insertion point the door hint uses). Staged, not
+        # spoken: a context push that generates a turn would perturb the
+        # turn-taking, which is worse than a stale fact.
+        self._last_track: str | None = None
+        self.track_note = ""
         self._clear.set()
         # When WE put something on air we know it is about to make sound, and
         # we know before the station's log does. Waiting for the poll to notice
@@ -395,6 +408,39 @@ class OnAirGuard(AirVerdict):
 
     PUSH_TICK = 1.0     # the push file is local and cheap — read it every second
 
+    def _note_track(self, st: dict | None) -> None:
+        """Stage one sentence when the track on air CHANGES mid-call.
+
+        The first sighting stages nothing — that is the track the briefing
+        already describes, and telling the DJ what it already knows would be
+        a sentence spent on nothing. Overwrites an unconsumed note on a
+        second change: the caller only ever needs the newest truth, and two
+        stacked corrections read as a DJ narrating its own paperwork.
+        """
+        cur = (st or {}).get("current") or {}
+        title = str(cur.get("title") or "").strip()
+        if not title:
+            return
+        artist = str(cur.get("artist") or "").strip()
+        key = f"{title}\x00{artist}"
+        if self._last_track is None:
+            self._last_track = key
+            return
+        if key == self._last_track:
+            return
+        self._last_track = key
+        by = f' by {artist}' if artist else ""
+        self.track_note = (
+            f'[The station has moved on while you were talking: playing now '
+            f'is "{title}"{by}. Your briefing\'s now-playing line is out of '
+            f'date. Don\'t announce the change unprompted — just stop being '
+            f'wrong about what\'s on if it comes up.]'
+        )
+        log.info("the track changed mid-call — briefing note staged: %s%s",
+                 title, by)
+        if getattr(self, "air_log", None):
+            self.air_log.note(f"track changed mid-call: {title}{by}")
+
     async def watch(self, session: AgentSession) -> None:
         """Watch the push file every second and poll the station every
         POLL_SECS, and flip the gate. Started as a task for the life of the
@@ -418,7 +464,23 @@ class OnAirGuard(AirVerdict):
             if tick % poll_every == 0:
                 was_failing = poll_failed
                 try:
-                    speech = await self.station.on_air_speech()
+                    # One /state read serves both questions: the djLog for
+                    # "is the broadcast talking", and the current track for
+                    # "has the world moved on since the briefing". getattr,
+                    # because every test fake of the station implements
+                    # on_air_speech alone — a fake without state() keeps the
+                    # old single-call path and simply never notes a track,
+                    # while a real read that FAILS still lands in the except
+                    # below exactly once (no second timeout spent retrying
+                    # the same congested box through on_air_speech's own
+                    # internal read).
+                    state_read = getattr(self.station, "state", None)
+                    if state_read is None:
+                        speech = await self.station.on_air_speech()
+                    else:
+                        st = await state_read()
+                        speech = await self.station.on_air_speech(state=st)
+                        self._note_track(st)
                     speech_read_at = time.time()
                     poll_failed = False
                     if not said_baseline and getattr(self, "air_log", None):
@@ -594,6 +656,19 @@ class CallAgent(Agent):
                 # their line would be a record of something they never said.
                 turn_ctx.add_message(role="system", content=hint)
                 log.info("the last line held the door open — steering this one")
+        # The staged track note, consumed on the same Gemini-safe insertion
+        # point as the door hint — a system message on the reply path, never
+        # a generated turn. See _note_track for why it is staged rather than
+        # pushed the moment the station moves on.
+        note = getattr(self._guard, "track_note", "")
+        if note:
+            self._guard.track_note = ""
+            turn_ctx.add_message(role="system", content=note)
+            log.info("the station moved on mid-call — the briefing is "
+                     "refreshed for this turn")
+            if getattr(self._guard, "air_log", None):
+                self._guard.air_log.note("stale now-playing corrected on the "
+                                         "reply path")
         waited = await self._guard.wait_until_clear()
         if waited >= 2:
             log.info("held the caller's reply %.0fs while the on-air DJ was talking",

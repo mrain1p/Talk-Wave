@@ -3572,3 +3572,99 @@ class TestNothingInACallOverwritesSomethingElse(unittest.TestCase):
             "assigned twice in CallSession.__init__, so the second silently "
             "replaces the first and everything reading the first breaks at "
             f"runtime: {clashes}")
+
+
+class TestTheBriefingStopsBeingWrongWhenTheStationMovesOn(unittest.TestCase):
+    """The one disagreement docs/the-call.md still recorded: the briefing is
+    frozen at pickup, max_call_seconds defaults to 300, and a track runs three
+    to four minutes — so the DJ routinely discussed a record that had stopped
+    playing.
+
+    The fix rides plumbing that already existed: the guard's watch loop reads
+    /state every POLL_SECS for the djLog and used to throw the current track
+    away. A mid-call CHANGE now stages one sentence, and the reply path
+    injects it as a system note — the same Gemini-safe insertion point the
+    door hint uses, because a context push that GENERATES a turn perturbs the
+    turn-taking, which is worse than a stale fact.
+    """
+
+    def _guard(self):
+        from call.air import OnAirGuard
+
+        return OnAirGuard(None, {"avoid_on_air_overlap": False})
+
+    def test_the_first_sighting_is_the_briefings_track_and_stages_nothing(self):
+        g = self._guard()
+        g._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        self.assertEqual(g.track_note, "",
+                         "the briefing already covers the pickup track — a "
+                         "note here is a sentence spent on nothing")
+
+    def test_a_change_stages_the_new_truth(self):
+        g = self._guard()
+        g._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        g._note_track({"current": {"title": "Dreams", "artist": "Fleetwood Mac"}})
+        self.assertIn('"Dreams" by Fleetwood Mac', g.track_note)
+        self.assertIn("out of date", g.track_note)
+
+    def test_a_second_change_overwrites_the_first(self):
+        # The caller only ever needs the newest truth; two stacked corrections
+        # read as a DJ narrating its own paperwork.
+        g = self._guard()
+        g._note_track({"current": {"title": "A", "artist": "One"}})
+        g._note_track({"current": {"title": "B", "artist": "Two"}})
+        g._note_track({"current": {"title": "C", "artist": "Three"}})
+        self.assertIn('"C"', g.track_note)
+        self.assertNotIn('"B"', g.track_note)
+
+    def test_an_empty_read_neither_stages_nor_forgets(self):
+        # A timed-out /state hands back nothing; treating that as "the track
+        # changed to nothing" would fire a note on every congested poll.
+        g = self._guard()
+        g._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        g._note_track({})
+        g._note_track(None)
+        self.assertEqual(g.track_note, "")
+        g._note_track({"current": {"title": "Dreams", "artist": "Fleetwood Mac"}})
+        self.assertIn('"Dreams"', g.track_note,
+                      "the baseline must survive a failed read in between")
+
+    def test_the_note_reaches_the_model_and_is_consumed(self):
+        from call.air import CallAgent, OnAirGuard
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        guard._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        guard._note_track({"current": {"title": "Dreams", "artist": "Fleetwood Mac"}})
+        agent = CallAgent("instructions", guard)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="what's playing?")))
+        self.assertEqual(1, len(added))
+        role, content = added[0]
+        self.assertEqual("system", role,
+                         "a note from us must not be filed as the caller's words")
+        self.assertIn('"Dreams"', content)
+        self.assertEqual(guard.track_note, "", "consumed — a stale correction "
+                         "repeated every turn is worse than the stale fact")
+
+    def test_a_call_where_nothing_changes_costs_nothing(self):
+        from call.air import CallAgent, OnAirGuard
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        guard._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        guard._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        agent = CallAgent("instructions", guard)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="lovely")))
+        self.assertEqual([], added)
