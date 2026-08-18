@@ -40,6 +40,27 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 The bundled Whisper (`base.en`) needs no key, no network and no GPU, which is why it is the default. It mishears names, song titles and accents — on a request line, exactly the vocabulary that matters. Deepgram or a cloud transcriber is the cheapest of the three upgrades.
 
+**The four bundled sizes buy accuracy with the caller's silence.** The bundled Whisper only starts once the caller stops talking, so its whole runtime lands in the pause before the DJ answers, on top of the model and the voice. Measured with the shipped settings (int8 on CPU, four threads, greedy decoding), transcribing the same ~6-second caller turn five times per size, on one ordinary desktop CPU:
+
+| Model | Download | In memory | A ~6s turn | CPU spent on it | Cost vs `base.en` |
+|---|---|---|---|---|---|
+| `tiny.en` | 78 MB | ~130 MB | ~0.35s | ~1.2 CPU-s | half |
+| `base.en` | 148 MB | ~175 MB | ~0.7s | ~2.3 CPU-s | — |
+| `small.en` | 486 MB | ~370 MB | ~2.2s | ~7 CPU-s | 3x |
+| `medium.en` | 1.5 GB | ~930 MB | ~5.5s | ~20 CPU-s | 8x |
+
+Your absolute times will differ with the CPU — the ratios are what travel. The **speed test** measures the size you picked on your own box, on real speech.
+
+**The cost per turn is nearly flat, so short turns pay the most per word.** Whisper processes audio in 30-second windows, and almost every caller turn fits in one: tripling the utterance to 17 seconds cost only 20-30% more than the 6-second turn, on every size. A caller's "yeah, that one" costs almost as much as their longest story.
+
+**Against the ~1.5s turn budget:** `base.en` fits with room left for the model and the voice. `small.en` spends the whole budget by itself, and `medium.en` is several times over it — the line reads as dead while it thinks. The bigger sizes belong where nobody is waiting, voicemail being the obvious case; if live accuracy is the problem, a cloud transcriber is faster *and* better than climbing the size ladder.
+
+**While it runs, it takes its four cores.** Every size saturated its four threads (~3.5 cores effective), so the CPU column is also what the rest of the box gives up mid-turn — and `medium.en`'s process peaked just under 2 GB while transcribing, which on a small host is an eviction notice for something else.
+
+**Switching sizes costs the next call a model load.** The worker prewarms the size configured at startup; pick a different one in the panel and the first turn of the next call carries the load — about 2 seconds for the smaller pair up to 6 for `medium.en`, once per worker process.
+
+**What this bench cannot tell you.** On a clean, clearly-spoken test line all four sizes came back essentially identical. The sizes separate on names, accents, background noise and phone-band audio — exactly the vocabulary a request line lives on. Size is a hedge against hard audio, and the table is the price of the hedge, paid on every turn.
+
 ## Where the caller notices
 
 | What the caller experiences | The number behind it |
