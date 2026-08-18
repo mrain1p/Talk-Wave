@@ -34,15 +34,15 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 **OK — a fast local backend.** Anything speaking a simple HTTP speech API can be pointed at with an adapter; the files in `agent-worker/tts-adapters/` are the worked examples. Pick for speed on the call leg, not for the best sound you can achieve offline.
 
-One tester's field reports, plus this stack's own VibeVoice numbers. The speed column is what was seen; the naturalness column is opinion, not a measurement — and whatever you pick, **Test voice** is the arbiter on your box. Every row clones voices from a short reference clip:
+One tester's field reports, plus this stack's own VibeVoice numbers — every engine here is self-hosted, running on your own hardware, not a cloud service. The speed column is what was seen; the naturalness column is opinion, not a measurement — and whatever you pick, **Test voice** is the arbiter on your box. Every row clones voices from a short reference clip:
 
-| Engine | Speed | Naturalness |
+| Self-hosted engine | Speed | Naturalness |
 |---|---|---|
 | PocketTTS | Very fast on CPU — the tester's first recommendation | Clean for a 100M model; the leanest sound of the fast three |
 | LuxTTS | Fast, on CPU or GPU | 48kHz output, cloning that belies its size |
 | Chatterbox Turbo | Still quick on CPU | Expressive, takes emotion tags in the text |
 | OmniVoice | Not as fast — measure against 1.0x before a caller does | Excellent |
-| Echo-TTS, Fish (self-hosted) | Typically too slow for a fluid conversation | Excellent — exactly the trade |
+| Echo-TTS, Fish | Typically too slow for a fluid conversation | Excellent — exactly the trade |
 | VibeVoice | Slower than playback on a shared 16GB GPU, measured below | The best sound this stack has run |
 
 The bottom of the table is one trade seen three times: the engines that sound best pay for it in realtime factor. Fish's hosted service, by contrast, ships as a ready cloud adapter.
