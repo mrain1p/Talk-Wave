@@ -453,8 +453,8 @@ def attach_on_air_wrap(ctx: JobContext, session: AgentSession, relay,
         return
 
     async def _watch() -> None:
-        cued = False
-        while not cued:
+        seen_live = False
+        while True:
             await asyncio.sleep(2.0)
             left = 0.0
             try:
@@ -462,18 +462,32 @@ def attach_on_air_wrap(ctx: JobContext, session: AgentSession, relay,
             except Exception:                                   # noqa: BLE001
                 return          # the relay went away; nothing to wrap
             if left <= 0:
-                continue        # not live yet, or already off air
+                # Not live yet — or the window has CLOSED under us, which ends
+                # the errand: a wrap for a segment already signed off would be
+                # a line about being nearly out of time, said privately, about
+                # nothing.
+                if seen_live:
+                    return
+                continue
+            seen_live = True
             if left > WRAP_CUE_SECS:
                 continue
-            cued = True
-            log.info("on-air window has %.0fs left — cueing the wrap", left)
             # Through the floor like the sign-off: this fires on its own clock
             # and would otherwise land on top of the come-back or the promise
-            # nudge. Losing the race costs the wrap line, not the segment —
-            # the relay still signs off cleanly either way.
+            # nudge. But fire-once-and-give-up was measured as fire-NEVER: on
+            # both live calls of 2026-08-18 the cue lost the floor to an
+            # ordinary reply turn — a lively conversation always has one in
+            # flight — and the one chance was spent. So a lost race RETRIES
+            # while the window still has enough left for the line to mean
+            # anything; only the floor being won, or the window closing, ends
+            # the errand.
             if floor is not None:
                 async with floor.take("the on-air wrap cue") as mine:
                     if not mine:
+                        if left > 6.0:
+                            continue
+                        log.info("the wrap cue never got the floor — the "
+                                 "window closes unannounced")
                         return
                     await _wrap(session, left)
                 return
