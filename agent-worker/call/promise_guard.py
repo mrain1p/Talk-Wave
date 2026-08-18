@@ -146,8 +146,27 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         # for you" is normally settled the moment the DJ reaches for a tool,
         # and the tool it reached for was the one that said no. Measured on the
         # refusals set, both judged rounds, 2026-08-14.
+        #
+        # `is_error` FIRST, and it is the half that was missing. The SDK marks
+        # a tool that raised, `lifecycle._log_tools` has read that flag off
+        # this very event since 0.10.146 to mark the record — and this guard,
+        # reading the same event two handlers away, went on re-deriving the
+        # same fact by pattern-matching the tool's prose. A wrapper whose
+        # wording drifted, or one that failed in a way nobody had written a
+        # phrase for, was a refusal this could not see: the caller is told it
+        # landed, and the one mechanism built to catch exactly that stays
+        # quiet. The structured answer was in hand the whole time.
+        #
+        # The prose match stays underneath rather than being replaced. They
+        # catch different things and only one is authoritative about each: a
+        # tool can return a perfectly successful call whose CONTENT is the
+        # station saying no (a rate limit, a blocklist), which raises nothing
+        # and is invisible to `is_error`.
         for out in (getattr(ev, "function_call_outputs", None) or []):
-            if out is not None and reads_as_a_refusal(getattr(out, "output", "")):
+            if out is None:
+                continue
+            if (bool(getattr(out, "is_error", False))
+                    or reads_as_a_refusal(getattr(out, "output", ""))):
                 state["refused"] = True
                 break
 

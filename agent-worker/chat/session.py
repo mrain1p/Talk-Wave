@@ -35,6 +35,7 @@ import uuid
 import settings as settings_store
 from chat import openers
 from promises import unbacked
+from spoken_rules import reads_as_a_refusal
 from station import StationClient
 
 log = logging.getLogger("callin.chat")
@@ -67,6 +68,18 @@ _NUDGE = {
         "they have already read it. If it comes back refused, or you have no tool for it, "
         "tell them plainly that it did not go through — do not leave them believing it "
         "did.]"),
+    # The voice line has had this since 0.10.154 and the text line never got
+    # it, though both share the classifier that produces the verdict. Worded
+    # for typing rather than speaking, and — like its spoken twin — it never
+    # asks for a tool: the station has already answered, the answer was no,
+    # and the only thing owed is saying so.
+    "refused": (
+        "[The tool you just called came back REFUSED — the thing did not happen — and the "
+        "line you just typed tells the caller it did, or that it is on its way. Do not call "
+        "that tool again: you already have the station's answer, and asking twice does not "
+        "change it. Say plainly, in your own voice and in the world, that it did not go "
+        "through and why, and offer what you CAN do instead. Do not apologise twice or "
+        "explain the machinery — one honest sentence and move on.]"),
 }
 
 def route_action_cards(mode: str, on_event):
@@ -320,6 +333,18 @@ class ChatSession:
         # it is NOT done" about something it had done correctly, and spent a
         # turn apologising for it.
         acted_at = int(getattr(self.actions, "count", 0) or 0)
+        # Did anything the model called come back refused, in ANY round of
+        # this message? The voice line has nudged this since 0.10.154 — the
+        # DJ tells the caller it landed after the station said no, which is
+        # the failure the caller cannot catch, because they hang up believing
+        # a record is coming that nobody queued. The text line shares the
+        # classifier (`promises.unbacked`) and never passed it this third
+        # flag, so the same sentence in a chat window went unchallenged.
+        #
+        # `_run_tool` has returned the flag all along; nothing downstream read
+        # it. Same shape as the voice guard's own gap: the structured answer
+        # was already in hand.
+        refused_any = False
         for _ in range(MAX_TOOL_ROUNDS):
             text_out, calls = "", []
             stream = model.chat(chat_ctx=ctx, tools=tools)
@@ -352,6 +377,7 @@ class ChatSession:
                 kind = unbacked(
                     text_out, tools_ran=False,
                     acted=int(getattr(self.actions, "count", 0) or 0) > acted_at,
+                    refused=refused_any,
                 ) if (nudge_left and tools) else ""
                 if kind:
                     nudge_left = False
@@ -395,6 +421,13 @@ class ChatSession:
             for call in calls:
                 result, is_error = await self._run_tool(by_name, call)
                 ran.append((call.name, str(result), is_error))
+                # Both halves, like the voice guard: the raised flag is
+                # authoritative about a tool that blew up, and the prose is
+                # the only signal when the STATION said no — a rate limit or
+                # a blocklist is a perfectly successful call whose content is
+                # a refusal, and it raises nothing.
+                if is_error or reads_as_a_refusal(str(result)):
+                    refused_any = True
             ctx.add_message(role="user", content=_tool_report(ran))
         else:
             log.warning("chat %s: model still calling tools after %d "

@@ -462,6 +462,41 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
 
         self.assertIs(chat_session.unbacked, promise_guard.unbacked)
 
+    def test_both_lines_can_nudge_every_verdict_the_classifier_returns(self):
+        """Sharing the classifier is only half of parity — the nudges have to
+        cover what it can say.
+
+        `promises.unbacked` returns three verdicts. The phone has had a nudge
+        for all three since 0.10.154; the text line carried two, and passing it
+        a refusal would have looked up a key that was not there and taken the
+        whole reply down with a KeyError. It never crashed only because nothing
+        ever passed `refused=` on that surface — which was itself the bug.
+        """
+        import chat.session as chat_session
+        from call import promise_guard
+
+        verdicts = {"promise", "claim", "refused"}
+        self.assertTrue(
+            verdicts <= set(promise_guard._NUDGE),
+            "the phone lost a verdict it used to answer for")
+        missing = verdicts - set(chat_session._NUDGE)
+        self.assertEqual(
+            missing, set(),
+            f"promises.unbacked can return {missing} and the text line has no "
+            "nudge for it — the lookup raises and the caller's reply dies")
+
+    def test_a_refusal_the_station_wrote_in_prose_is_still_a_refusal(self):
+        # is_error catches a tool that RAISED. It says nothing about a
+        # perfectly successful call whose content is the station saying no —
+        # a rate limit, a blocklist — which is the commoner shape by far. Both
+        # signals, or the guard is blind to whichever half it dropped.
+        from spoken_rules import reads_as_a_refusal
+
+        self.assertTrue(reads_as_a_refusal(
+            "That didn't go through — the station refused it."))
+        self.assertFalse(reads_as_a_refusal(
+            "Added to the queue: Firestone. It is NOT playing yet."))
+
 
 class TestTheTextLineFeelsLikeAConversation(_TempStores):
     """The text line was answering with silence until the caller typed, never
