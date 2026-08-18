@@ -305,6 +305,7 @@ from tests.test_station import (  # noqa: F401
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestADevBootCannotStealTheLiveRegistration,
     TestAFailedProbeQuotesTheProvider,
     TestAProbeNamesOnlyWhatItSaw,
     TestTheAirFileRemembersWhatHappened,

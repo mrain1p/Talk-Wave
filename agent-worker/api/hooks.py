@@ -167,6 +167,10 @@ def _registration_due() -> bool:
     `registered` true from the old one, so the new station never got a
     receiver and the card silently fell back to polling for good.
     """
+    if not register_enabled():
+        # No retry loop for a switch somebody set on purpose — the reason is
+        # already standing in the hooks row.
+        return False
     station = settings_store.station_base_url()
     if _hook_state.get("registered") and _hook_state.get("station") == station:
         # …unless the station is pushing with a header we cannot verify, which
@@ -242,6 +246,27 @@ def _stand_down(detail: str, *, permanent: bool) -> None:
                     _hook_state["attempts"])
 
 
+def register_enabled() -> bool:
+    """Whether THIS instance may claim the station's push address.
+
+    The station keeps ONE row per webhook id and registration is an upsert —
+    so a second Talk Wave instance pointed at the same station silently
+    replaces the first's callback URL with its own. Measured, not theorized
+    (2026-08-18): a local dev boot for a widget check re-pointed the live
+    deployment's registration at the dev PC, and its ducking degraded to the
+    4s poll with nothing logged anywhere — a victim that stops receiving
+    pushes looks exactly like a quiet station, and a successfully-registered
+    process never re-asserts.
+
+    Default ON: a deployment must not need a flag to work. run-local.ps1 and
+    the repo's preview launcher set it off, because a dev boot beside a real
+    deployment is the one shape that meets two instances — flip it back on
+    deliberately when webhook code itself is under test.
+    """
+    return os.environ.get("CALLIN_HOOK_REGISTER", "1").strip().lower() not in (
+        "0", "false", "off", "no")
+
+
 async def register_station_webhook() -> None:
     """Register our receiver with the station, idempotently.
 
@@ -251,6 +276,15 @@ async def register_station_webhook() -> None:
     used to try first was accepted with a 200 and quietly changed nothing.
     """
     from station_config import admin_credentials
+
+    if not register_enabled():
+        # Said in the panel's hooks row, not just skipped: an operator who
+        # set the flag and forgot deserves the reason in front of them.
+        _hook_state.update(registered=False, detail=(
+            "registration is switched off on this instance "
+            "(CALLIN_HOOK_REGISTER=0) — it will not claim the station's "
+            "push address, and the air guard runs on the 4s poll"))
+        return
 
     user, password = admin_credentials()
     if not (user and password):

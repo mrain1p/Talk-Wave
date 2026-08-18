@@ -1200,3 +1200,51 @@ class TestAFailedProbeQuotesTheProvider(unittest.TestCase):
         from api.diagnostics import _plain_error
 
         self.assertEqual("nope", _plain_error(ValueError("nope")))
+
+
+class TestADevBootCannotStealTheLiveRegistration(_StationWebhooks):
+    """The station keeps ONE webhook row per id and registration is an
+    upsert, so a second Talk Wave instance silently re-points the first's
+    pushes at itself. Measured 2026-08-18: a local widget-check boot stole
+    the live deployment's registration and its ducking degraded to the 4s
+    poll with nothing logged. CALLIN_HOOK_REGISTER=0 is the guardrail the
+    dev launchers set; a deployment needs no flag to work."""
+
+    def test_the_switch_off_registers_nothing_and_says_why(self):
+        os.environ["CALLIN_HOOK_REGISTER"] = "0"
+        try:
+            station = self.register(_FakeStation())
+            self.assertEqual([], station.rows,
+                             "a switched-off instance touched the station")
+            self.assertFalse(self.hooks._hook_state["registered"])
+            self.assertIn("CALLIN_HOOK_REGISTER",
+                          self.hooks._hook_state["detail"])
+            self.assertFalse(self.hooks._registration_due(),
+                             "the warm tick must not retry a deliberate switch")
+        finally:
+            os.environ.pop("CALLIN_HOOK_REGISTER", None)
+
+    def test_the_default_is_on_because_deployments_need_no_flag(self):
+        os.environ.pop("CALLIN_HOOK_REGISTER", None)
+        station = self.register(_FakeStation())
+        self.assertEqual(1, len(station.rows), station.rows)
+
+    def test_the_dev_launchers_actually_set_it(self):
+        # The guardrail only guards if the launchers use it: run-local for
+        # the local stack, the wrapper for the preview browser, and the
+        # launcher config pointing at the wrapper rather than at
+        # token_server directly.
+        from tests.support import REPO
+
+        self.assertIn("CALLIN_HOOK_REGISTER",
+                      (REPO / "run-local.ps1").read_text(encoding="utf-8"))
+        wrapper = (REPO / "tools" / "preview_token_server.py").read_text(
+            encoding="utf-8")
+        self.assertIn('setdefault("CALLIN_HOOK_REGISTER", "0")', wrapper)
+        # launch.json is gitignored (operator-local, like data/), so a fresh
+        # clone has none to check — but where one exists it must boot through
+        # the wrapper, or the guardrail guards nothing on this machine.
+        launch = REPO / ".claude" / "launch.json"
+        if launch.exists():
+            self.assertIn("preview_token_server",
+                          launch.read_text(encoding="utf-8"))
