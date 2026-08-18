@@ -108,10 +108,10 @@
         members.forEach((g) => {
           const sec = byId[g.id];
           sec.classList.add('cardblock');
-          // Blocks stay open — 1a's whole point is every element's controls
-          // against the pinned card, and hover-highlight cannot reach into
-          // a shut drawer. The toggle guard below puts a closed one back.
-          sec.open = true;
+          // Closed to start, foldable like every other section (operator's
+          // ask, 2026-08-18 — 1a forced them all open and the page arrived
+          // as one long wall). Clicking an element on the preview card
+          // still reaches inside: the spot handler opens the block it owns.
           $('cardCol').appendChild(sec);
         });
         return;
@@ -336,15 +336,6 @@
     $('cardTabEmbed').onclick = () => setCardTab('embed');
   }
 
-  // The card page's blocks are always open (see layoutPanel); this puts a
-  // closed one straight back, whichever path shut it — the summary click,
-  // or the search teardown folding what it had opened.
-  document.addEventListener('toggle', (e) => {
-    const sec = e.target;
-    if (sec && sec.classList && sec.classList.contains('cardblock')
-        && !sec.open) sec.open = true;
-  }, true);
-
   // "N on page · M in embed" — the tab strip's live tally of the card's
   // toggleable elements, following the CHECKBOXES rather than what was
   // saved, so it always agrees with the preview beside it. The link-out
@@ -441,6 +432,9 @@
     const sec = row && row.closest('details.sec');
     if (!sec) return;
     if (cardTabOf(sec) !== cardTab) setCardTab(cardTabOf(sec));
+    // Blocks start closed now — a flash inside a shut drawer is invisible,
+    // so the click that named the element also opens its block.
+    sec.open = true;
     sec.classList.remove('flash');
     void sec.offsetWidth;   // restart the animation when re-clicked
     sec.classList.add('flash');

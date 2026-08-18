@@ -4237,9 +4237,22 @@
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
-     notifyHeight() flips this on for a single synchronous read. */
-  body.measuring { min-height: 0; }
+     notifyHeight() flips this on for a single synchronous read.
+     !important, and the card's own height too: the panel's preview aside is
+     430px wide, so INSIDE that frame the phone rules apply — height: 100dvh
+     on the card, and a body min-height whose selector outweighs this class —
+     and the card echoed the frame's own height straight back at it. The
+     preview sat pinned at the 300px placeholder with a third of the card
+     behind a scrollbar (operator's screenshot, 2026-08-18). */
+  body.measuring { min-height: 0 !important; }
   body.measuring .card { flex: 0 0 auto; }
+  /* Non-compact only: the phone rules being neutralized are all
+     :not(.compact) themselves, and the COMPACT card's height is fixed by
+     design — collapsing it here under-reported the embed by 150px and the
+     frame clipped it (caught in the same verification pass). */
+  body:not(.compact).measuring .card {
+    height: auto !important; min-height: 0 !important;
+  }
   body.measuring .card .rig { margin-top: 0; }
 
   /* Overlay mode: the ask list is taller than the frame, so embed.js has made
@@ -4473,9 +4486,9 @@
      One wrapper, three tabs, and the preview pinned in a right column that
      never scrolls away — the old page's preview section did, which was the
      handoff's third diagnosis. The sections inside are ordinary details.sec
-     moved in by layoutPanel(); .cardblock dresses them as always-open
-     element blocks. On a phone the aside becomes the bottom dock instead
-     (the media query below, handoff 2a). */
+     moved in by layoutPanel(); .cardblock dresses them as element blocks.
+     On a phone the aside becomes the bottom dock instead (the media query
+     below, handoff 2a). */
   .cardwrap { margin: 0 0 8px; }
   @media (min-width: 1000px) {
     .cardwrap:not(.searching) {
@@ -4512,15 +4525,14 @@
      hand on one property is how things end up visible that should not be. */
   .offtab { display: none !important; }
 
-  /* The blocks: bordered, titled, always open (panel.js keeps them so).
-     The summary is the block header — micro-label name in the accent,
-     blurb as the sub-line, state chip — and the chevron goes; there is
-     nothing to fold. */
+  /* The blocks: bordered, titled, and folded like any other section. 1a
+     shipped them forced open — every element's controls against the pinned
+     card — and the page arrived as one long wall; the operator asked for a
+     scannable start instead (2026-08-18). The summary keeps the accent
+     name, and the chevron is back because there is something to fold. */
   details.sec.cardblock {
     border: 1px solid var(--line); border-radius: 12px; margin: 0 0 14px;
   }
-  details.sec.cardblock > summary { cursor: default; }
-  details.sec.cardblock > summary .chev { display: none; }
   details.sec.cardblock > summary .secname { color: var(--accent); }
   /* Hover a row and the block that owns it takes the accent edge — the same
      signal its element wears on the preview card at that moment. */
