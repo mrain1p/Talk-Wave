@@ -6,7 +6,9 @@ A caller's conversation with the DJ, going out on the station's broadcast while 
 
 ## What listeners actually hear
 
-The station has no live input — everything that airs is a file its mixer fetches. So a "live" phone-in is a relay: each finished utterance, the caller's and the DJ's, becomes a short clip pushed onto the station's voice queue in conversation order. The queue is first-in-first-out and the music duck holds across back-to-back items, so what listeners hear is the conversation, tightened — the model's thinking gaps don't air — running about one exchange behind the room, on a stream every listener already hears twenty-odd seconds late.
+The station has no live input — everything that airs is a file its mixer fetches. So a "live" phone-in is a relay: each finished utterance, the caller's and the DJ's, becomes a short clip pushed onto the station's voice queue in conversation order. The queue is first-in-first-out and the music duck holds across back-to-back items, so what listeners hear is the conversation, tightened — the model's thinking gaps don't air — running about one exchange behind the room, on a stream every listener hears a couple of seconds late.
+
+That last number is worth being precise about, because the obvious one is wrong. The station reports `streamBufferSeconds` as 22 and Icecast really does burst 22 seconds of audio on connect — but a browser throws most of that away, and a plain `<audio>` element was measured sitting a rock-steady **2.3 seconds** behind the newest buffered byte for a whole run (2026-08-13, against the operator's own station; the working is in [`call/air_log.py`](../agent-worker/call/air_log.py)). 22 describes the burst SIZE, not the playhead. Anywhere a number is needed, `audibleIn` is recorded per push so the gap can be read off a real call rather than argued from a config value that turns out to describe something else.
 
 The lag is not an apology, it is the dump button. Real phone-in radio runs on a deliberate delay for exactly this reason: a turn that has not aired yet can still be killed. The relay holds exactly one finished clip back — a turn airs when the one after it completes — which keeps the mixer's queue fed, so the duck never lifts mid-conversation, and keeps one turn of take-back in hand at all times.
 
@@ -27,6 +29,8 @@ Settings are re-read before **every push** — tighter than the per-call re-read
 ## The pull
 
 **PULL OFF AIR**, on the dashboard's On-air transmission row, is the operator's dump: the turn in hand and the one arriving both die unaired, the DJ signs the segment off, and the call itself carries on — the caller may not even notice. The press itself asks the server whether a phone-in is actually live, so pressed on a quiet line it says so and kills nothing, and a leftover press can never behead the next caller's first turn.
+
+**What it protects depends on where you are listening**, and that is worth knowing before you rely on it. The dump kills what has not been pushed yet — it cannot reach back for something already in the mixer's queue. So the question is how far behind the room you are when you decide to press it. Monitoring the **panel**, you are watching the conversation as the worker sees it, and the whole lag-by-one turn is still yours to kill. Monitoring the **stream**, you are a turn plus a couple of seconds behind, so what made you reach for the button has already gone out and you are killing what comes after it. Neither is wrong — a phone-in you are half-watching is more realistically monitored on the stream — but the panel is the surface where the dump does what the word implies. Anything that must never air is a caller who should not have been given the ON AIR route in the first place; the three consents above are the real control, and the dump is the one you keep for the thing nobody predicted.
 
 ## When the plumbing is missing
 
