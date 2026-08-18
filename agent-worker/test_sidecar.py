@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheOnAirDelayIsTheOperatorsDial,
     TestAConfigValueCannotNameAFileOnTheDisk,
     TestANeighbouringServiceIsNotOnLocalhost,
     TestBootLaysTheDataSkeleton,

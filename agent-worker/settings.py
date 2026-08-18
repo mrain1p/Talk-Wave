@@ -189,6 +189,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # channel, because the station's own segments queue behind a live call.
     "allow_on_air":       (None, "off"),
     "on_air_max_seconds": (None, 240),
+    "on_air_delay_secs":  (None, 6),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -1180,6 +1181,15 @@ SCHEMA: dict[str, dict] = {
              "them off air and the call carries on privately. The station's own "
              "segments queue behind a live call, so shorter is kinder to the "
              "programme. Blank = 240."),
+    "on_air_delay_secs": dict(group="perms", kind="number", admin=True,
+        label="On-air delay (s)",
+        needs=("allow_on_air", TIERS),
+        help="Your take-back window: how long a finished turn is held before "
+             "it airs, and roughly how far the broadcast runs behind the call. "
+             "PULL OFF AIR can kill any turn inside this window. A flowing "
+             "conversation airs faster than this on its own; the number is the "
+             "ceiling, not a pause added to every turn. 2–30 seconds; "
+             "blank = 6."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good",
         help="Puts the track playing now on the station's never-play list: out of the "

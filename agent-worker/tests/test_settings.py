@@ -1021,6 +1021,43 @@ class TestTheOnAirLetterRidesTheRoomName(_TempStores):
             {"allow_on_air": "guest"}, "open")["allow_on_air"])
 
 
+class TestTheOnAirDelayIsTheOperatorsDial(unittest.TestCase):
+    """`on_air_delay_secs` is the take-back window the hold cap guarantees —
+    the operator's editorial dial, not an engineering constant. It has to
+    actually reach the relay, because a control that saves and drives nothing
+    is worse than no control (the avoid_on_air_overlap lesson).
+    """
+
+    def _relay(self, cfg):
+        from onair.relay import CallRelay
+
+        return CallRelay(None, cfg, "callin-g-abcdef123456")
+
+    def test_the_default_matches_what_shipped(self):
+        # 0.97.78 shipped the cap as a constant 6; the setting must not move
+        # any deployment that never touches the row.
+        self.assertEqual(settings_store.FIELDS["on_air_delay_secs"][1], 6)
+        self.assertEqual(self._relay({}).max_held_secs, 6.0)
+
+    def test_the_dial_reaches_the_hold(self):
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 12}).max_held_secs, 12.0)
+
+    def test_the_floor_holds_because_zero_must_not_mean_no_window(self):
+        # A second off-switch for a safety control is the quiet_secs trap:
+        # the pull must always have SOME window, so 0 clamps to the floor
+        # the panel's help promises rather than meaning "push immediately".
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 0}).max_held_secs, 6.0,
+            "0 is falsy and falls through to the default, like blank")
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 1}).max_held_secs, 2.0)
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 900}).max_held_secs, 30.0)
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": "nonsense"}).max_held_secs, 6.0)
+
+
 class TestTheOnAirQuickKillsShipOpen(_TempStores):
     """The dashboard's two Live-on-air kills default ON: opening the tier
     row lights both doors at once, and a store written before the kills
