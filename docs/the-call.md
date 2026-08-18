@@ -183,13 +183,15 @@ Every block is priceable; four now have a set behind them, and the results do no
 | `LANGUAGE_AND_MIMICRY` | 4% | `SCENARIO_SET=mimicry` | 11/11 | **5/11** |
 | `HOW_TO_TALK` | 4% | `SCENARIO_SET=banter` | p90 69 words | **p90 84** |
 | `CLOSING_DOOR` | 4% | `SCENARIO_SET=closing` | 1/3 first occurrence | 0/3 |
-| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` | 14/15 | **14/14** — but see below |
+| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` + the belief judge | 8/14 | **8/14** — but see below |
 
 The smallest block is the only thing stopping a caller driving station-wide actions by quoting fake instructions at the DJ — ablated, it skipped the track and put "the station is closing down" on air, 3/3 each. `HOW_TO_TALK` is the same story with a different instrument: dropping it moves the median DJ turn from 39 words to 54 and doubles the turns that cross fifty, so 1,101 characters are buying about fifteen words a turn, on every turn. The largest of the four changed nothing when removed, most likely because the TOOLS already carry the same instruction in their result text, at the moment it matters, where it beats the standing prompt.
 
 **Nothing about their size predicted any of it**, which is the case against ever trimming the prompt by eye — three of the four blocks with a set behind them are the small ones, and all three earn their length.
 
-`say_the_true_thing` is not cut, and the reason is now stronger than "fifteen rounds is a signal": **the set cannot currently answer the question.** One of its five scenarios never provoked its own fault until 0.10.150 (the DJ queued the found record by id and never touched the rate-limited path), and with the fault firing, a round scored PASS while the DJ told a caller that a request the station had just REFUSED was "coming up right after this". The grader lists the invented excuses; that answer invented an outcome instead. Before this block is cut or kept, the set needs a judge that asks whether the caller was left believing something true.
+`say_the_true_thing` is not cut, and since 0.97.72 the reason is a measurement instead of a gap. The set used to be unable to answer the question: `must_not_say` lists the invented excuses of past calls, and a round scored PASS while the DJ told a caller that a request the station had just REFUSED was "coming up right after this" — an invented OUTCOME, which no phrase list can enumerate. The refusal scenarios now carry a `believed` key (the true state of the world after the armed fault) and a **belief judge**: one extra model call over the DJ's own lines asking whether an ordinary caller walks away believing something false. A MISLED reading amends a mechanical PASS to a FAIL, quoting the false belief.
+
+Its first answer (2026-08-18, `gemini-3.1-flash-lite`, `GATES=all MCP=1 REPEATS=3`, both arms): **8/14 with the section, 8/14 without.** The prose is not holding honesty up — the failure it was written for happens either way, roughly 40% of judged rounds, mostly as the claim-before-the-refusal shape the promise guard then repairs a turn late. But the ablated arm regressed on style: median spoken turn 40 → 49 words and stage-direction asterisks 2 → 7, and nine words a turn is more caller-felt time than the ~1,000 prompt tokens buy back. So the block stays, held by the wrong virtue — and the honesty failure's real home is the narration-before-action shape, which is the call-orchestration stream's question, not a prompt-prose one.
 
 ## Known disagreements
 
