@@ -50,6 +50,18 @@ SAY_POLL_SECS = 0.8
 # conversation with holes in it.
 MAX_CONSECUTIVE_FAILURES = 2
 
+# How long the lag-by-one may HOLD a finished turn before pushing it anyway.
+# The hold exists for the dump, but its length was whatever the next turn
+# happened to take — endpointing, the model thinking, then the DJ's whole
+# answer playing out in the room — so a caller's turn sat unaired for 10-25
+# seconds and the broadcast filled the gap with music swells (~24s, measured
+# on the first live tests). The take-back window that bought was accidental:
+# sometimes half a minute, guaranteed nothing. This cap trades the accident
+# for a promise — every finished turn stays killable for THIS long, and the
+# air runs about this far behind the room instead of a full turn. Ordering
+# is untouched: the timer only ever pushes the clip already at the head.
+MAX_HELD_SECS = 6.0
+
 
 class CallRelay:
     """One call's on-air feed. Built armed-but-idle; open() starts the
@@ -70,6 +82,11 @@ class CallRelay:
         self.dumped = False
         self._seq = 0
         self._held: dict | None = None
+        # An attribute rather than the module constant read directly, so a
+        # test about the timer can compress six real seconds the way the air
+        # guard's tests compress theirs.
+        self.max_held_secs = MAX_HELD_SECS
+        self._hold_timer: asyncio.Task | None = None
         self._failures = 0
         self._deadline = 0.0
         self._lock = asyncio.Lock()
@@ -154,10 +171,50 @@ class CallRelay:
                 return
             self._seq += 1
             chunk = {"wav": wav, "kind": kind, "seconds": seconds,
-                     "seq": self._seq}
+                     "seq": self._seq, "heldAt": time.time()}
             held, self._held = self._held, chunk
             if held:
                 await self._push(held)
+            self._arm_hold_timer(chunk)
+
+    def _arm_hold_timer(self, chunk: dict) -> None:
+        """Bound the hold — see MAX_HELD_SECS. One timer, re-armed per clip;
+        the previous one is cancelled rather than left to wake up and find
+        its clip already pushed by a successor's arrival."""
+        if self._hold_timer is not None:
+            self._hold_timer.cancel()
+
+        async def _expire() -> None:
+            try:
+                await asyncio.sleep(self.max_held_secs)
+            except asyncio.CancelledError:
+                return
+            async with self._lock:
+                # Only the clip this timer was armed FOR, and only if it is
+                # still the one in hand — a successor arriving between the
+                # sleep and the lock has already pushed it the ordinary way.
+                if not self.active or self._held is not chunk:
+                    return
+                # The dump outranks the timer, exactly as it outranks feed():
+                # a marker pressed during the hold kills the held turn — that
+                # is the window the cap exists to guarantee.
+                if await asyncio.to_thread(chunks.take_dump):
+                    self.dumped = True
+                    self._held["wav"].unlink(missing_ok=True)
+                    self._held = None
+                    await self._close_locked("dumped by the operator",
+                                             say_outro=True)
+                    return
+                if time.time() > self._deadline:
+                    self._held["wav"].unlink(missing_ok=True)
+                    self._held = None
+                    await self._close_locked(
+                        "the on-air window closed", say_outro=True)
+                    return
+                held, self._held = self._held, None
+                await self._push(held)
+
+        self._hold_timer = asyncio.create_task(_expire())
 
     async def close(self, reason: str, *, say_outro: bool = True) -> None:
         async with self._lock:
@@ -179,6 +236,9 @@ class CallRelay:
         if not self.active:
             return
         self.active = False
+        if self._hold_timer is not None:
+            self._hold_timer.cancel()
+            self._hold_timer = None
         if self._held and not self.dumped:
             await self._push(self._held)
         self._held = None
@@ -232,9 +292,14 @@ class CallRelay:
             return
         self._failures = 0
         self.pushed += 1
+        # The held time is the instrument the next latency question reads —
+        # the same reason the pickup grew its leg stamps. "held 6.0s" on every
+        # line means the timer is doing the releasing; "held 14s" means it is
+        # broken; small varying numbers mean the conversation is flowing.
+        held_for = time.time() - float(chunk.get("heldAt") or time.time())
         self._tool(
             f"aired turn {chunk['seq']} ({chunk['kind']}, "
-            f"{chunk['seconds']:.1f}s, RID {rid})")
+            f"{chunk['seconds']:.1f}s, RID {rid}, held {held_for:.1f}s)")
 
     async def _say(self, instruction: str) -> bool:
         try:

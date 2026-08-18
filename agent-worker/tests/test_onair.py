@@ -196,6 +196,69 @@ class TestTheRelayHoldsOneTurnBack(_RelayCase):
         self.assertIn("thank the caller", station.says[1])
 
 
+class TestTheHoldIsAPromiseNotAnAccident(_RelayCase):
+    """MAX_HELD_SECS bounds the lag-by-one.
+
+    The hold exists for the dump, but its length was whatever the NEXT turn
+    happened to take — endpointing, the model thinking, the DJ's whole answer
+    playing out — so a caller's turn sat unaired for 10-25 seconds and the
+    broadcast filled the gap with music swells (~24s, measured on the first
+    live tests). The cap trades that accident for a promise: every finished
+    turn stays killable for exactly this long, and then it airs.
+    """
+
+    def test_a_turn_with_no_successor_airs_when_the_hold_expires(self):
+        async def run():
+            r, got = self._relay()
+            r.max_held_secs = 0.15
+            self.assertTrue(await r.open())
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            before = len([g for g in got if b"voice_queue.push" in g])
+            await asyncio.sleep(0.6)
+            after = len([g for g in got if b"voice_queue.push" in g])
+            await r.close("done")
+            return before, after
+
+        before, after = asyncio.run(run())
+        self.assertEqual(before, 0, "the hold is real — nothing airs at once")
+        self.assertEqual(after, 1,
+                         "the cap expired and the turn aired on its own — a "
+                         "caller must not wait out the DJ's whole next answer "
+                         "to be heard on the broadcast")
+
+    def test_a_successor_arriving_first_keeps_the_ordinary_path(self):
+        async def run():
+            r, got = self._relay()
+            r.max_held_secs = 5.0            # far beyond this test's life
+            self.assertTrue(await r.open())
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 3.0)
+            n = len([g for g in got if b"voice_queue.push" in g])
+            await r.close("done")
+            return n
+
+        self.assertEqual(asyncio.run(run()), 1,
+                         "lag-by-one unchanged when the conversation flows")
+
+    def test_the_dump_pressed_during_the_hold_still_kills_the_turn(self):
+        # The window the cap exists to GUARANTEE: a marker pressed while the
+        # clip is in hand must kill it when the timer fires, not lose the race.
+        async def run():
+            r, got = self._relay()
+            r.max_held_secs = 0.15
+            self.assertTrue(await r.open())
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            chunks.request_dump()
+            await asyncio.sleep(0.6)
+            pushes = len([g for g in got if b"voice_queue.push" in g])
+            return r, pushes
+
+        r, pushes = asyncio.run(run())
+        self.assertEqual(pushes, 0, "the dumped turn never aired")
+        self.assertTrue(r.dumped)
+        self.assertFalse(r.active, "the segment closed with the dump")
+
+
 class TestTheRelayObeysTheOperatorMidCall(_RelayCase):
     def test_switching_the_feature_off_stops_the_next_push(self):
         # Settings are re-read per CALL by invariant; a live broadcast is
