@@ -55,6 +55,16 @@ as `last_speaking_time`, but `UserStateChangedEvent` does not carry it, so it
 cannot be reached from here. The number is therefore a floor on what the
 caller waited, never an overstatement.
 
+The wait has TWO start paths, and the second exists because the first is
+blind on a held talk bar: the bar-hold claims the user turn, the SDK pins
+`user_state` while a claim is active, and the transition this module listens
+for never fires — all four of the operator's real PTT calls on 2026-08-18
+wrote `replyGap n=0` while tap-to-latch calls measured fine. So
+`lifecycle.attach_turn_commit` also stamps `caller_stopped()` at the moment
+it commits a bar release, which is the caller explicitly saying "your turn".
+On surfaces where both paths fire, the later stamp merely restarts a wait a
+moment before the reply — the recorded gap only ever shrinks by that sliver.
+
 Nothing here may ever cost the turn it is measuring: every handler swallows
 its own errors, exactly like `attach_think_pace`.
 """

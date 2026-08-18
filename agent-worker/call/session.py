@@ -572,7 +572,7 @@ class CallSession:
         lifecycle.attach_error_recovery(session, self.record, self.think)
         lifecycle.attach_think_pace(session, self.think)
         lifecycle.attach_first_word(session, self.record)
-        lifecycle.attach_turn_commit(ctx, session)
+        lifecycle.attach_turn_commit(ctx, session, pacing=self.pacing)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_card_flush(session, self.actions)
         # Attached after card_flush and before the idle watch on purpose: it

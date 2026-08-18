@@ -2162,7 +2162,7 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
     when the caller was actually mid-turn: committing silence would make
     the DJ answer nothing."""
 
-    def _wire(self, user_state, raises=None):
+    def _wire(self, user_state, raises=None, pacing=None):
         from call import lifecycle
 
         calls = []
@@ -2177,7 +2177,7 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
         ctx = types.SimpleNamespace(room=room)
         session = types.SimpleNamespace(user_state=user_state,
                                         commit_user_turn=commit)
-        lifecycle.attach_turn_commit(ctx, session)
+        lifecycle.attach_turn_commit(ctx, session, pacing=pacing)
         return handlers["data_received"], calls
 
     def test_release_commits_only_a_turn_in_progress(self):
@@ -2197,6 +2197,43 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
         # rather than letting one late release take the teardown down.
         fire, _ = self._wire("speaking", raises=RuntimeError("draining"))
         fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+
+    def test_a_committed_release_starts_the_pacing_wait(self):
+        """The meter's blind spot on a held bar, closed at the commit.
+
+        The hold claims the user turn and the SDK pins `user_state` while a
+        claim is active, so the state transition the meter normally listens
+        for never fires — four real PTT calls on 2026-08-18 wrote replyGap
+        n=0 while tap-to-latch calls measured fine. The commit is the caller
+        explicitly saying "your turn", which is the honest start of the wait.
+        """
+        from call.heard import HeardMeter
+
+        m = HeardMeter()
+        fire, calls = self._wire("speaking", pacing=m)
+        fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+        self.assertEqual(1, len(calls))
+        self.assertGreater(m._waiting_since, 0, "the wait started")
+        m.dj_speaking()
+        self.assertEqual(len(m.replies), 1,
+                         "a held-bar turn finally produces a reply gap")
+
+    def test_a_release_that_commits_nothing_measures_nothing(self):
+        # No turn committed = no reply coming = nothing to time. Stamping
+        # here would measure the idle ladder as if it were an answer.
+        from call.heard import HeardMeter
+
+        m = HeardMeter()
+        fire, calls = self._wire("listening", pacing=m)
+        fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+        self.assertEqual([], calls)
+        self.assertEqual(m._waiting_since, 0.0)
+        # And a draining session raising mid-commit stamps nothing either.
+        m2 = HeardMeter()
+        fire, _ = self._wire("speaking", raises=RuntimeError("draining"),
+                             pacing=m2)
+        fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+        self.assertEqual(m2._waiting_since, 0.0)
 
     def test_the_widget_announces_the_release(self):
         from tests.support import REPO
