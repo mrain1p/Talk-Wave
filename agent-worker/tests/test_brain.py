@@ -655,3 +655,45 @@ class TestTheDJKnowsTheStationsShows(unittest.TestCase):
     def test_without_either_setting_the_prompt_stays_lean(self):
         text = self._context({"allow_takeover": False, "context_schedule": False})
         self.assertNotIn("Other shows on this station", text)
+
+
+class TestTheDJIsToldItsOwnLanguage(_TempStores):
+    """The prompt states the station's per-DJ language — mirrored, not
+    inferred. See TestTheDJsLanguageSurvivesTheRead for the call that made
+    this necessary; this half proves the field reaches the DJ's eyes.
+    """
+
+    def _build(self, persona) -> str:
+        import asyncio
+
+        from station import StationClient
+
+        snapshot = {"dj": {}, "personas": [], "now_playing": {},
+                    "state": {}, "session": {}, "schedule": {}}
+
+        async def build() -> str:
+            station = StationClient()
+            try:
+                return await brain.build_system_prompt(
+                    station, persona, snapshot=snapshot)
+            finally:
+                await station.aclose()
+
+        return asyncio.run(build())
+
+    def test_a_named_language_lands_under_who_you_are(self):
+        text = self._build({"id": "p_test", "name": "Rosie",
+                            "soul": "A test soul.",
+                            "language": "Mandarin Chinese"})
+        self.assertIn("You work in Mandarin Chinese", text)
+        who = text.index("# Who you are")
+        facts = text.index("# What's happening on the station")
+        self.assertLess(who, text.index("You work in Mandarin Chinese"))
+        self.assertLess(text.index("You work in Mandarin Chinese"), facts,
+                        "the language belongs to WHO YOU ARE, not to the "
+                        "station facts it exists to outrank")
+
+    def test_no_language_means_no_sentence(self):
+        text = self._build({"id": "p_test", "name": "Brock",
+                            "soul": "A test soul."})
+        self.assertNotIn("You work in", text)

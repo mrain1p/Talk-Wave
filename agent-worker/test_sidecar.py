@@ -215,6 +215,7 @@ from tests.test_takeover import (  # noqa: F401
     TestTheStationEndpointsAreTheOnesUpstreamServes,
 )
 from tests.test_brain import (  # noqa: F401
+    TestTheDJIsToldItsOwnLanguage,
     TestTheDJKnowsTheStationsShows,
     TestACallerCanBeToldNothingIsKept,
     TestBrainSplit,
@@ -234,6 +235,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestTheStationsLanguageIsNotTheDJsLanguage,
     TestTheDJSpeaksAsItselfNotAboutItself,
     TestADoubtedActionIsCheckedNotExplainedAway,
     TestActionBulletsRideTheirOwnSwitch,
@@ -265,6 +267,7 @@ from tests.test_takeover import (  # noqa: F401
     TestLockingTheStationToAGenre,
 )
 from tests.test_station import (  # noqa: F401
+    TestTheDJsLanguageSurvivesTheRead,
     TestTheNeverPlayWritesAndTheGenreLock,
 )
 from tests.test_tools_logic import (  # noqa: F401

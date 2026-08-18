@@ -820,3 +820,43 @@ class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
         out = self._run(client, lambda c: c.set_genre_lock(["  ", ""], 60))
         self.assertFalse(out["ok"])
         self.assertEqual(sent, {})
+
+
+class TestTheDJsLanguageSurvivesTheRead(unittest.TestCase):
+    """The station sets an on-air language per persona, and persona_from used
+    to drop it.
+
+    That dict is CONSTRUCTED — five named fields, everything else discarded —
+    so the one setting that says what language a DJ works in never reached the
+    prompt, and the model inferred one from the briefing instead. Heard on
+    2026-08-18: Brock, an English persona, opened a call in Mandarin because
+    the rotation was Mandarin-titled and the previous presenter works in it.
+    The caller spoke English throughout.
+    """
+
+    def _client(self):
+        from station import StationClient
+        return StationClient()
+
+    def test_the_language_rides_the_dj_read(self):
+        out = self._client().persona_from(
+            {"name": "Rosie", "id": "p_rosie", "soul": "…",
+             "language": "Mandarin Chinese"}, [])
+        self.assertEqual(out.get("language"), "Mandarin Chinese")
+
+    def test_a_dj_read_without_it_falls_back_to_the_roster(self):
+        # /dj times out often enough that the roster is a real path, and the
+        # station's own answer beats an empty string from a thinner read.
+        out = self._client().persona_from(
+            {"name": "Rosie", "id": "p_rosie", "soul": "…"},
+            [{"id": "p_rosie", "name": "Rosie", "language": "Mandarin Chinese"}])
+        self.assertEqual(out.get("language"), "Mandarin Chinese")
+
+    def test_empty_means_english_and_stays_empty(self):
+        # Upstream's own comment: empty = English. An invented "English" here
+        # would put a sentence in every prompt to say what the prompt already
+        # demonstrates.
+        out = self._client().persona_from(
+            {"name": "Brock", "id": "p_brock", "soul": "…"},
+            [{"id": "p_brock", "name": "Brock", "language": ""}])
+        self.assertEqual(out.get("language"), "")

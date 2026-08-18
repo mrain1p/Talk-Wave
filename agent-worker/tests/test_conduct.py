@@ -465,3 +465,43 @@ class TestTheDJSpeaksAsItselfNotAboutItself(unittest.TestCase):
         text = conduct.rules({})
         self.assertIn("Duke reached across the console", text)   # the NO
         self.assertIn("needle's off the groove", text)           # the YES
+
+
+class TestTheStationsLanguageIsNotTheDJsLanguage(unittest.TestCase):
+    """Brock answered a caller in Mandarin on 2026-08-18.
+
+    Brock's own persona is English and carries no CJK at all. The Mandarin came
+    from the BRIEFING: the station was rotating Mandarin-titled tracks, one of
+    the schedule's shows is named in Chinese, and the previous presenter (Rosie,
+    who does work in Mandarin) had her on-air line quoted verbatim into Brock's
+    context. The caller spoke English throughout.
+
+    The rule already said "answer in the language the caller is using" and was
+    not wrong — it just could not apply at PICKUP, which is where this went
+    wrong. The greeting is generated before the caller has said a word, and the
+    greeting instruction actively invites the DJ to let the broadcast colour it,
+    so the only language in front of the model was the station's. Once the
+    opening line was Mandarin the whole call followed it.
+    """
+
+    def test_the_rule_says_station_material_is_not_a_cue(self):
+        from brain.conduct import LANGUAGE_AND_MIMICRY
+
+        text = LANGUAGE_AND_MIMICRY.lower()
+        self.assertIn("not a language cue", text)
+        for needle in ("pickup", "who you are"):
+            self.assertIn(needle, text,
+                          f"the pickup case is the one that failed: {needle!r} "
+                          "missing from the language rule. The rule points at "
+                          "the persona block because that is where the "
+                          "station's own per-DJ language lands — mirrored, "
+                          "not inferred (see station.persona_from).")
+
+    def test_the_rule_still_rides_its_own_section(self):
+        # It is a named, priced, ablatable block and measured 11/11 against
+        # 5/11 without. Growing it must not move it out of the list the budget
+        # report and the ablation switch both read.
+        from brain import conduct
+
+        names = [name for name, _ in conduct.blocks({})]
+        self.assertIn("LANGUAGE_AND_MIMICRY", names)
