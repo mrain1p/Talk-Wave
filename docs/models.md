@@ -18,7 +18,9 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 **Ideal, self-hosted — a 7-8B tool-capable model resident on a GPU.** llama3.1 8B, qwen2.5 7B. Two things decide it and neither is the parameter count: whether the weights are already in VRAM when the call arrives, and how long your prompt is.
 
-**OK — a 3-4B tool-capable model on modest hardware.** llama3.2 3B and its kin; a tester measured 1325ms and his calls worked. What you give up is judgement rather than speed — smaller models pick the wrong tool, or narrate the action instead of taking it ("let me queue that up for you", and nothing is queued).
+**OK — a 3-4B tool-capable model on modest hardware.** llama3.2 3B and its kin; a tester measured 1325ms and his calls worked. What you give up is judgement rather than speed — smaller models pick the wrong tool, or narrate the action instead of taking it ("let me queue that up for you", and nothing is queued). Field notes from another tester agree: gemma-4 E2B and E4B quants (3-4.5GB) run fast on modest hardware, and an 8B squeezed to a 1-bit quant was faster still but came out of it with limited tool calling — the one thing this page keeps saying a call cannot give up.
+
+**Newer is not automatically better at tools.** One operator's anecdote, not a measurement: gemini-3.1-flash-lite has been a reliable call leg while the newer 3.5-flash-lite routed tool calls noticeably worse. When a favourite gets a successor, run the panel's model check before moving the station onto it.
 
 **Minimal — anything that calls tools and answers inside the ceiling.** Below that it is not a slow line, it is no line.
 
@@ -31,6 +33,19 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 **Ideal — a cloud voice built for streaming.** OpenAI, ElevenLabs and Fish Audio adapters ship with it. First audio in the low hundreds of milliseconds, and no GPU contention with the station.
 
 **OK — a fast local backend.** Anything speaking a simple HTTP speech API can be pointed at with an adapter; the files in `agent-worker/tts-adapters/` are the worked examples. Pick for speed on the call leg, not for the best sound you can achieve offline.
+
+One tester's field reports, plus this stack's own VibeVoice numbers. The speed column is what was seen; the naturalness column is opinion, not a measurement — and whatever you pick, **Test voice** is the arbiter on your box. Every row clones voices from a short reference clip:
+
+| Engine | Speed | Naturalness |
+|---|---|---|
+| PocketTTS | Very fast on CPU — the tester's first recommendation | Clean for a 100M model; the leanest sound of the fast three |
+| LuxTTS | Fast, on CPU or GPU | 48kHz output, cloning that belies its size |
+| Chatterbox Turbo | Still quick on CPU | Expressive, takes emotion tags in the text |
+| OmniVoice | Not as fast — measure against 1.0x before a caller does | Excellent |
+| Echo-TTS, Fish (self-hosted) | Typically too slow for a fluid conversation | Excellent — exactly the trade |
+| VibeVoice | Slower than playback on a shared 16GB GPU, measured below | The best sound this stack has run |
+
+The bottom of the table is one trade seen three times: the engines that sound best pay for it in realtime factor. Fish's hosted service, by contrast, ships as a ready cloud adapter.
 
 **The crack: high-quality diffusion TTS on a shared GPU.** VibeVoice sounds the best of anything here and is the most likely to fall behind playback. Measured on a 16GB RTX 5070 Ti: the 1.5B model runs 1.55-1.9x realtime, the 7B AWQ quant 1.10-1.15x — all of them slower than the caller hears them. If the same card also renders the station's on-air segments, an overlapping call and render contend and playback starves. Give the call leg its own card, cheaper settings, or a cloud voice.
 
