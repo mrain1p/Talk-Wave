@@ -171,7 +171,7 @@ class TestTheAirGetsTheConversationInOrder(unittest.TestCase):
         handle.tee = tee.DJTee(_FakeSink())
         handle._start_queue()
 
-        async def _slow_master(raw, cooked, max_secs):
+        async def _slow_master(raw, cooked, max_secs, style="phone"):
             await asyncio.sleep(master_delay)
             cooked.write_bytes(b"RIFF")
             return {"seconds": 1.0}
@@ -247,6 +247,59 @@ class TestTheAirGetsTheConversationInOrder(unittest.TestCase):
 
         asyncio.run(run())
         self.assertEqual(fed, ["dj"], "the breath died; the reply still aired")
+
+
+class TestTheCallerClipWearsTheConfiguredSound(unittest.TestCase):
+    """The phone-band costume was hard-wired until the operator heard it
+    aired (2026-08-18): clean is the default now and the costume is the
+    on_air_caller_sound setting. The tee reads it from the relay's per-call
+    cfg — the same re-read-at-pickup contract every setting has — so this
+    pins the style actually reaching the master, both ways."""
+
+    def _run_one(self, cfg) -> str:
+        styles: list[str] = []
+
+        class _R:
+            def __init__(self):
+                self.cfg = cfg
+
+            async def feed(self, wav, kind, seconds):
+                pass
+
+        async def run():
+            handle = tee.TeeHandle.__new__(tee.TeeHandle)
+            handle.relay = _R()
+            handle.session = None
+            handle.tap = tee.CallerTap(_FakeInput([_Frames.frame(samples=16000)]))
+            handle.tee = tee.DJTee(_FakeSink())
+            handle._start_queue()
+            real = asyncio.to_thread
+
+            async def _to_thread(fn, *a, **k):
+                if getattr(fn, "__name__", "") == "master":
+                    styles.append(a[3] if len(a) > 3 else "MISSING")
+                    a[1].write_bytes(b"RIFF")
+                    return {"seconds": 1.0}
+                return fn(*a, **k)
+
+            asyncio.to_thread = _to_thread
+            try:
+                handle._on_user_state(SimpleNamespace(new_state="speaking"))
+                await handle.tap.__anext__()
+                handle._on_user_state(SimpleNamespace(new_state="listening"))
+                await handle.drain(timeout=5.0)
+            finally:
+                asyncio.to_thread = real
+
+        asyncio.run(run())
+        return styles[0] if styles else "NEVER MASTERED"
+
+    def test_the_costume_is_worn_when_asked_for(self):
+        self.assertEqual(
+            self._run_one({"on_air_caller_sound": "phone"}), "phone")
+
+    def test_clean_is_what_an_untouched_deployment_airs(self):
+        self.assertEqual(self._run_one({}), "clean")
 
 
 if __name__ == "__main__":

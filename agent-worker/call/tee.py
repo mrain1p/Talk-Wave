@@ -24,9 +24,11 @@ Boundaries, because they are the whole trick:
   surgery on the tail of an interrupted line is not worth its bugs until a
   real call proves it is.
 
-The caller's clips get the studio's mastering chain (phone-band is the right
-costume for a caller on radio); the DJ's clips air as synthesized — the DJ
-is the studio side of the conversation and should sound like it.
+The caller's clips get the studio's mastering chain — clean by default since
+the operator heard the phone-band costume aired and vetoed it ("never heard my
+voice sound so bad on a phone call", 2026-08-18); the costume survives as the
+on_air_caller_sound setting. The DJ's clips air as synthesized — the DJ is the
+studio side of the conversation and should sound like it.
 """
 
 from __future__ import annotations
@@ -272,10 +274,15 @@ class TeeHandle:
     async def _finalise_caller(self, frames: list[rtc.AudioFrame]) -> None:
         raw = _scratch_wav("onair-c-")
         cooked = raw.with_suffix(".m.wav")
+        # The relay's cfg is this CALL's settings — re-read at pickup like
+        # everything else — so the operator flipping the sound style applies
+        # to the next caller without a restart, same as every setting.
+        style = str((getattr(self.relay, "cfg", None) or {})
+                    .get("on_air_caller_sound") or "clean")
         try:
             await asyncio.to_thread(_write_wav, frames, raw)
             stats = await asyncio.to_thread(
-                master.master, raw, cooked, MAX_CLIP_SECS)
+                master.master, raw, cooked, MAX_CLIP_SECS, style)
         except ValueError:
             # Nothing audible in the turn — breath, rustle. It doesn't air.
             cooked.unlink(missing_ok=True)

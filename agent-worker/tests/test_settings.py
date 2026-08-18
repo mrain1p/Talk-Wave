@@ -1091,3 +1091,17 @@ class TestTheCountAndHeartShipOn(unittest.TestCase):
         import settings as settings_store
 
         self.assertFalse(settings_store.FIELDS["swipe_player"][1])
+
+
+class TestTheOnAirCallerSoundSetting(_TempStores):
+    """Clean replaced the phone costume as the default ON PURPOSE — the
+    operator's verdict after hearing themselves aired (2026-08-18, "I've
+    never heard my voice sound so bad on a phone call"). The costume stays a
+    stored choice, and blank falls through to clean like every setting."""
+
+    def test_clean_is_the_default_and_the_costume_is_a_choice(self):
+        self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")
+        settings_store.save({"on_air_caller_sound": "phone"})
+        self.assertEqual(settings_store.load()["on_air_caller_sound"], "phone")
+        settings_store.save({"on_air_caller_sound": ""})
+        self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")

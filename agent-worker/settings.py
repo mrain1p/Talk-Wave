@@ -190,6 +190,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "allow_on_air":       (None, "off"),
     "on_air_max_seconds": (None, 240),
     "on_air_delay_secs":  (None, 6),
+    # "clean" — full bandwidth at the clip's own rate, rumble out, levelled.
+    # The phone-band costume is the option, not the default: the first
+    # operator to hear themselves aired called it the worst their voice has
+    # ever sounded on a phone call (2026-08-18), and the default changed with
+    # their say-so. Deployments that never touched this get the new sound.
+    "on_air_caller_sound": (None, "clean"),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -1209,8 +1215,23 @@ SCHEMA: dict[str, dict] = {
              "it airs, and roughly how far the broadcast runs behind the call. "
              "PULL OFF AIR can kill any turn inside this window. A flowing "
              "conversation airs faster than this on its own; the number is the "
-             "ceiling, not a pause added to every turn. 2–30 seconds; "
-             "blank = 6."),
+             "ceiling, not a pause added to every turn. 2–30 seconds; blank "
+             "= 6. It can't be 0 — a turn has to finish before the mixer can "
+             "fetch it, so truly live isn't possible on this transport, and 0 "
+             "would also mean no pull window. And whatever you set, a caller "
+             "with the station playing in earshot hears their own turns come "
+             "back a stream-buffer later (~22s on most setups) — a longer "
+             "delay moves that further out, it doesn't cause it."),
+    "on_air_caller_sound": dict(group="perms", kind="select", admin=True,
+        label="Caller sound on air",
+        needs=("allow_on_air", TIERS),
+        help="How a caller's voice is dressed before it airs. Clean keeps "
+             "their real voice — full bandwidth, just levelled and de-rumbled "
+             "— and is the default because the phone costume reads as bad "
+             "audio on a modern stream, not as a phone. Phone is the "
+             "300–3400 Hz radio-caller costume for stations that want that "
+             "look on purpose. Applies to live phone-ins; the soundbite "
+             "studio's recordings keep the costume either way for now."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good",
         help="Puts the track playing now on the station's never-play list: out of the "
@@ -2064,6 +2085,10 @@ STATIC_CHOICES = {
     "voicemail_flow": [
         ("machine", "Answering machine — a message as text, no audio kept"),
         ("studio", "Soundbite studio — record, review, send to air"),
+    ],
+    "on_air_caller_sound": [
+        ("clean", "Clean — their real voice, levelled (default)"),
+        ("phone", "Phone — the 300–3400 Hz radio-caller costume"),
     ],
     "vm_air_backend": [
         ("dj-reads", "The DJ reads it — works everywhere"),

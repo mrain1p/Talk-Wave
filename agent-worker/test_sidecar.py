@@ -17,6 +17,7 @@ import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
     TestTheOnAirDelayIsTheOperatorsDial,
+    TestTheOnAirCallerSoundSetting,
     TestAConfigValueCannotNameAFileOnTheDisk,
     TestANeighbouringServiceIsNotOnLocalhost,
     TestBootLaysTheDataSkeleton,
@@ -405,6 +406,7 @@ from tests.test_tee import (  # noqa: F401
     TestTheCallerTapRidesTheTurnBoundaries,
     TestTheDJTeeCutsOnSegments,
     TestATurnThatDoesNotAirSaysWhy,
+    TestTheCallerClipWearsTheConfiguredSound,
 )
 from tests.test_heard import (  # noqa: F401
     TestTheWaitIsMeasuredFromWhenTheCallerStopped,

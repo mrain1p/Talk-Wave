@@ -784,6 +784,55 @@ class TestMasteringMakesAClipTheAirCanCarry(unittest.TestCase):
         self.assertAlmostEqual(m.wav_seconds(self.tmp / "out.wav"),
                                1.0, delta=0.4)
 
+    def test_the_clean_style_keeps_the_voice_the_costume_threw_away(self):
+        # The operator's verdict on hearing themselves aired (2026-08-18):
+        # "I've never heard my voice sound so bad on a phone call." The
+        # costume decimates to 16k and cuts at 3400; clean must do neither —
+        # the clip keeps its own rate and a 5 kHz component survives, which
+        # is exactly the content the phone chain is proven (above) to drop.
+        import wave
+
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "in.wav", [500.0, 5000.0], 1.0, rate=44100)
+        stats = m.master(self.tmp / "in.wav", self.tmp / "clean.wav", 30.0,
+                         style="clean")
+        with wave.open(str(self.tmp / "clean.wav"), "rb") as w:
+            self.assertEqual(w.getframerate(), 44100,
+                             "clean resampled a clip it promised to leave be")
+            out = list(struct.unpack("<%dh" % (w.getnframes()),
+                                     w.readframes(w.getnframes())))
+        # Both tones went in at equal strength; clean keeps them comparable.
+        # (The phone chain provably drops the high one — the band-pass test
+        # above is that proof — so this ratio IS the difference between the
+        # two styles.)
+        self.assertGreater(
+            _tone_power(out, 5000.0, rate=44100),
+            _tone_power(out, 500.0, rate=44100) * 0.1,
+            "the 5 kHz component did not survive the clean chain")
+        self.assertLessEqual(stats["peakDb"], -0.5)
+
+    def test_clean_levels_a_quiet_clip_like_a_hot_one(self):
+        # Same systematic promise the phone chain makes: input level must not
+        # change the outcome, only the noise floor.
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "quiet.wav", [500.0], 1.0, gain=0.05)
+        _tone_wav(self.tmp / "hot.wav", [500.0], 1.0, gain=0.9)
+        quiet = m.master(self.tmp / "quiet.wav", self.tmp / "q.wav", 30.0,
+                         style="clean")
+        hot = m.master(self.tmp / "hot.wav", self.tmp / "h.wav", 30.0,
+                       style="clean")
+        self.assertLess(abs(quiet["rmsDb"] - hot["rmsDb"]), 1.5)
+
+    def test_clean_still_refuses_silence(self):
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "in.wav", [500.0], 0.0, lead_silence=3.0)
+        with self.assertRaises(ValueError):
+            m.master(self.tmp / "in.wav", self.tmp / "out.wav", 30.0,
+                     style="clean")
+
 
 class TestADraftIsHeldBrieflyAndLeavesNoOrphans(unittest.TestCase):
     """The soundbite flow stores a stranger's voice — the first thing in this
