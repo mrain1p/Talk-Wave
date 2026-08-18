@@ -245,6 +245,23 @@ class CallRelay:
             log.warning("on-air dj line failed: %s", e)
             return False
 
+    def dropped(self, kind: str, why: str) -> None:
+        """A turn that never reached the air, and which of the seven ways it
+        went.
+
+        A clip can fail to air seven ways — too short, nothing audible once
+        mastered, interrupted before enough of it played, dumped by the
+        operator, the window closing, the push failing, the master erroring —
+        and three of them used to be a bare `return` in call/tee.py. So the
+        one question a live segment has to be able to answer afterwards ("why
+        did the audience not hear that bit") had no answer for three of its
+        seven possible causes, and the record showed a conversation with a
+        hole in it and no explanation.
+
+        Called by the tee as well as from here, which is why it is public.
+        """
+        self._tool(f"not aired ({kind}): {why}")
+
     def _tool(self, line: str) -> None:
         log.info("%s (room=%s)", line, self.room)
         if self.record:

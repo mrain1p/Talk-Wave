@@ -279,10 +279,12 @@ class TeeHandle:
         except ValueError:
             # Nothing audible in the turn — breath, rustle. It doesn't air.
             cooked.unlink(missing_ok=True)
+            self._dropped("caller", "nothing audible once mastered")
             return
         except Exception as e:                                  # noqa: BLE001
             log.warning("caller clip failed to master: %s", e)
             cooked.unlink(missing_ok=True)
+            self._dropped("caller", f"the master failed: {e}")
             return
         finally:
             raw.unlink(missing_ok=True)
@@ -297,9 +299,15 @@ class TeeHandle:
         secs = (sum(f.samples_per_channel for f in frames)
                 / float(frames[0].sample_rate)) if frames else 0.0
         if secs < MIN_CLIP_SECS:
+            self._dropped("dj", f"too short to be a turn ({secs:.2f}s)")
             return
         played = float(getattr(ev, "playback_position", secs) or secs)
         if getattr(ev, "interrupted", False) and played < secs * PLAYED_ENOUGH:
+            # The caller talked over it. Airing a sentence they cut off would
+            # broadcast a conversation that never happened.
+            self._dropped(
+                "dj", f"the caller talked over it ({played:.1f}s of "
+                      f"{secs:.1f}s played)")
             return
         self._enqueue("dj", frames)
 
@@ -310,13 +318,27 @@ class TeeHandle:
         except Exception as e:                                  # noqa: BLE001
             log.warning("dj clip failed to write: %s", e)
             path.unlink(missing_ok=True)
+            self._dropped("dj", f"the clip would not write: {e}")
             return
         if secs < MIN_CLIP_SECS:
             path.unlink(missing_ok=True)
+            self._dropped("dj", f"too short to be a turn ({secs:.2f}s)")
             return
         await self.relay.feed(path, "dj", secs)
 
     # -- plumbing ----------------------------------------------------------
+    def _dropped(self, kind: str, why: str) -> None:
+        """Say why a turn did not reach the air, on the relay's record.
+
+        Three of these paths used to be a bare `return`, so a segment could
+        come out with a hole in it and nothing anywhere said which of the
+        seven causes it was. Never allowed to cost the clip it is explaining.
+        """
+        try:
+            self.relay.dropped(kind, why)
+        except Exception:                                       # noqa: BLE001
+            pass
+
     async def drain(self, timeout: float = 3.0) -> None:
         """Let queued clip work finish before the relay closes — the caller's
         last word is usually still mastering when the hangup lands."""

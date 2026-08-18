@@ -2920,11 +2920,35 @@
       // transcribed, and on a speakerphone the echo canceller is the only thing
       // keeping the DJ's voice out of the caller's transcript. Stated here so
       // the README can promise them and mean it.
+      //
+      // ?mic= exists because only the FIRST of those three has an argument
+      // written down. The echo-canceller case is airtight; noise suppression
+      // and auto-gain rode in beside it on the same sentence and have never
+      // been tested apart. They are not obviously right: browser noise
+      // suppression is tuned for steady noise and is known to gate a quiet or
+      // distant talker to digital silence, and auto-gain pumping moves the
+      // signal that endpointing reads — which is the exact shape of the
+      // calls where nothing the caller says is ever heard. A vendor whose
+      // whole product is turn-taking quality ships AEC on and both of these
+      // OFF.
+      //
+      // So this is the arm switch for settling it with numbers instead of
+      // argument, against call/heard.py's pair. Default is unchanged: no
+      // query param means exactly what shipped before.
+      //   ?mic=ns-off   ?mic=agc-off   ?mic=clean (both off)
+      const micArm = params.get('mic') || '';
+      const capture = {
+        echoCancellation: true,        // never an arm: the argument holds
+        noiseSuppression: !(micArm === 'ns-off' || micArm === 'clean'),
+        autoGainControl:  !(micArm === 'agc-off' || micArm === 'clean'),
+      };
+      if (micArm) {
+        console.info('[talkwave] mic arm %s -> NS=%s AGC=%s', micArm,
+                     capture.noiseSuppression, capture.autoGainControl);
+      }
       room = new LivekitClient.Room({
         adaptiveStream: true, dynacast: true,
-        audioCaptureDefaults: {
-          echoCancellation: true, noiseSuppression: true, autoGainControl: true,
-        },
+        audioCaptureDefaults: capture,
       });
 
       // Nobody has to answer. If the worker is down, mid-restart, or never

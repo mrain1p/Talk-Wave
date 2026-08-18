@@ -53,6 +53,7 @@ names the fix. The classics:
   microphone is refused. The widget's own URL is fine; serve the host page over
   https. Common when testing an embed from a LAN address like
   `http://192.168.1.245:8090` while the iframe points at your real domain.
+- **The mic is granted, the page looks fine, and the DJ still can't hear them** — the call connects, the caller talks, and the transcript stays empty. Before blaming the model or the STT, try the call page with **`?mic=clean`**. The widget asks the browser for echo cancellation, noise suppression and auto-gain; the echo canceller is doing necessary work on a speakerphone, but browser noise suppression is tuned for steady noise and can gate a quiet or distant talker down to digital silence, and auto-gain pumping moves the signal the turn-taking reads. `?mic=ns-off` and `?mic=agc-off` isolate one at a time. The call record's `heard` block and the worker's `call pacing` line say whether it made a difference — read them, don't guess.
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://`
   page is blocked as mixed content, silently. Set **Station stream URL** to an
   https one; the *Station stream* stage says so outright.

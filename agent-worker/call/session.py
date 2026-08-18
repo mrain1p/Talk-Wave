@@ -44,8 +44,8 @@ from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 from onair.relay import CallRelay
 
 from . import (asks as asks_mod, background, comeback, door,
-               floor as floor_mod, greeting, handoff, lifecycle, postmortem,
-               promise_guard, tee as tee_mod)
+               floor as floor_mod, greeting, handoff, heard as heard_mod,
+               lifecycle, postmortem, promise_guard, tee as tee_mod)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -196,6 +196,10 @@ class CallSession:
             label=f"{self.cfg.get('llm_provider')}/{self.cfg.get('llm_model')}",
             budget=llm_pace.attempt_budget(self.cfg.get("llm_provider", ""))[0],
         )
+        # What the caller waited for a REPLY, and what it cost when they talked
+        # over one — see call/heard.py. Built here beside the think meter for
+        # the same reason: a call that dies early still says what it measured.
+        self.heard = heard_mod.HeardMeter()
 
         ctx.add_shutdown_callback(self.station.aclose)
         ctx.add_shutdown_callback(self.station_cfg.aclose)
@@ -441,6 +445,13 @@ class CallSession:
             # Both taps go in only once the session's own IO chain exists,
             # and before greet() — the greeting is the first DJ clip to air.
             self._tee = tee_mod.attach(self.session, self.relay)
+        # AFTER the tee, deliberately, and not in _attach_behaviours with the
+        # rest: the meter listens on session.output.audio, and on an on-air
+        # call the tee has just REPLACED that object with its own. Attached
+        # earlier it would be watching a chain nothing plays through any more,
+        # and the barge-in half of the pair would read zero on exactly the
+        # calls it matters most on.
+        heard_mod.attach_heard(self.session, self.heard, air=self.air)
 
     def _attach_behaviours(self) -> None:
         """Everything that runs for the life of the call."""
@@ -517,6 +528,19 @@ class CallSession:
             self.cfg.get("llm_provider"), self.cfg.get("llm_model"),
             self.cfg.get("tts_mode"), reason or "-",
         )
+        # The pair, on one greppable line, so a harness run or a bad-call
+        # report can be read without opening the record. Both halves or
+        # neither — see call/heard.py for why they are never split up.
+        paced = self.heard.summary()
+        if paced:
+            gap, barge = paced.get("replyGap", {}), paced.get("bargeIn", {})
+            log.info(
+                "call pacing room=%s replies=%d p50=%.2fs p90=%.2fs worst=%.2fs "
+                "| barge_ins=%d p50=%.2fs cut_off=%d",
+                self.ctx.room.name, gap.get("n", 0), gap.get("p50", 0),
+                gap.get("p90", 0), gap.get("worst", 0),
+                barge.get("n", 0), barge.get("p50", 0), len(paced.get("cutOff", [])),
+            )
         # Written before the on-air handoff, which makes an LLM call and can
         # fail — the record of the call must not depend on it succeeding.
         if self.record:
@@ -528,6 +552,7 @@ class CallSession:
                     for role, text in handoff.transcript(self.session, limit=400)
                 ]
                 self.record.finalise(final)
+                self.record.what_they_heard(self.heard.summary())
                 if self.air.air_log:
                     self.air.air_log.write(self.record)
             except Exception as e:

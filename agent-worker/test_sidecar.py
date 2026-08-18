@@ -383,9 +383,18 @@ from tests.test_onair import (  # noqa: F401
     TestTheRelayFallsBackOutLoud,
     TestTheBracketsOnlyAirWhenACallerDoes,
     TestTheLiveCallDoorTellsTheWorkersTruth,
+)
+from tests.test_tee import (  # noqa: F401
     TestTheAirGetsTheConversationInOrder,
     TestTheCallerTapRidesTheTurnBoundaries,
     TestTheDJTeeCutsOnSegments,
+    TestATurnThatDoesNotAirSaysWhy,
+)
+from tests.test_heard import (  # noqa: F401
+    TestTheWaitIsMeasuredFromWhenTheCallerStopped,
+    TestTheBargeInIsMeasuredAndAlwaysReported,
+    TestWhatTheCallerActuallyHeardIsKept,
+    TestThePercentileDoesNotInventNumbers,
 )
 
 

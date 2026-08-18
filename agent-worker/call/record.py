@@ -156,6 +156,18 @@ class CallRecord:
             entry["failed"] = True
         self.data["tools"].append(entry)
 
+    def what_they_heard(self, summary: dict) -> None:
+        """The pacing pair, and the lines the caller talked over.
+
+        Written once at the end from `call/heard.py`. It sits beside the
+        transcript rather than inside it on purpose: `turns` is what was SAID,
+        and where a line was cut those two disagree — so the honest shape is
+        two records that can be held against each other, not one that quietly
+        overwrites the other.
+        """
+        if summary:
+            self.data["heard"] = summary
+
     def problem(self, what: str) -> None:
         if len(self.data["problems"]) >= 50:
             return
