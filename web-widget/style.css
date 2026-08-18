@@ -1250,18 +1250,28 @@
      otherwise inflate these cells to door size (seen in the stub — the
      segment rendered at three times the handoff's 28px). */
   .routeswitch .rcell {
-    display: flex; align-items: center; gap: 7px; padding: 0 11px;
-    height: auto; min-height: 0; min-width: 0; margin: 0;
+    display: flex; align-items: center; justify-content: center;
+    gap: 7px; padding: 0 11px;
+    /* EQUAL CELLS. Sized by content, ON AIR and OFF AIR rendered at two
+       different widths and the switch visibly jumped when toggled
+       (operator screenshot, 2026-08-18). One fixed basis both cells meet,
+       and the pip RESERVES its slot below instead of appearing — so
+       neither selection nor wording moves a pixel. */
+    min-width: 88px;
+    height: auto; min-height: 0; margin: 0;
     background: transparent; border: 0; border-radius: 0; box-shadow: none;
     cursor: pointer; text-transform: uppercase;
     font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     letter-spacing: .14em; color: var(--sage-dim);
   }
   .routeswitch .rcell .rpip {
-    width: 6px; height: 6px; background: currentColor; display: none;
+    width: 6px; height: 6px; background: currentColor;
+    /* Always in the layout, only VISIBLE when on — a pip that appears
+       widens its cell and unbalances the pair. */
+    display: inline-block; visibility: hidden;
     border-radius: 0;
   }
-  .routeswitch .rcell.on .rpip { display: inline-block; }
+  .routeswitch .rcell.on .rpip { visibility: visible; }
   .routeswitch .rcell.on {
     background: rgba(74, 139, 141, .16);
     box-shadow: inset 0 0 0 1px var(--cool); color: var(--cool);
@@ -1277,6 +1287,12 @@
      routed card reserves headroom so the segment can sit proud of the
      frame without touching the row above. */
   .card.routed .linebox { margin-top: 0; }
+  /* The switch straddles the box's top edge by 14px, and the box's own 9px
+     padding left the first transcript line starting BEHIND it — read a
+     finished call back and "Well, you've certainly been persistent" sat half
+     under OFF AIR (operator screenshot, 2026-08-18). Only the routed idle
+     card has a straddle to clear; in-call modes hide the switch entirely. */
+  .card.routed[data-mode="idle"] .linebox { padding-top: 22px; }
   .card.routed.route-on .linebox {
     border-color: rgba(224, 83, 61, .55);
     box-shadow: inset 0 0 40px rgba(224, 83, 61, .06);
@@ -1556,6 +1572,14 @@
   }
   .card .pttbar.on {
     background: var(--amber); color: var(--pine);
+    /* NOT the theme's ink. A station palette is free to make --amber pale and
+       --pine light, and on the operator's deployment it did both — the held
+       bar read "RELEASE TO SEND" in near-white on near-white, an invisible
+       control at the exact moment the caller is transmitting (operator
+       screenshot, 2026-08-18). Mixed from the amber itself, the text is dark
+       on that background whatever the palette does; the plain --pine line
+       above is the fallback for a browser without color-mix. */
+    color: color-mix(in srgb, #14130f 72%, var(--amber));
     box-shadow: 0 0 22px color-mix(in srgb, var(--amber) 34%, transparent);
   }
   /* Held: the broadcast has the microphone. Quiet and clearly not pressable,
@@ -1569,6 +1593,12 @@
   .pttbar .pttmain {
     font: 700 11.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
+    /* The on-hold copy is a sentence in a bar sized for a label, and a
+       centred flex child wider than its box clips at BOTH ends — the
+       operator's screenshot read "LD — THE DJ IS ON THE". Let it shrink and
+       ellipsize instead: the head of the sentence carries the meaning. */
+    min-width: 0; flex: 0 1 auto; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* A keycap, not a second line of copy. The bar used to explain itself
      twice — "Tap to talk" over "or hold it down · space works too" — and was
@@ -1795,6 +1825,16 @@
   .after { position: absolute; left: 9px; right: 9px; bottom: 7px;
            display: flex; align-items: center; gap: 8px; pointer-events: none; }
   .after > * { pointer-events: auto; }
+  /* WITH THE DRAWER OPEN, THE STRIP JOINS THE FLOW. Floating, it sits at its
+     anchor's bottom edge while the opened transcript scrolls beneath it — so
+     TRANSCRIPT and HOW WAS IT? drifted over the conversation and every line
+     passed behind them (operator screenshots, 2026-08-18). In flow it takes
+     its own band under the box and nothing can scroll into it. Closed, it
+     keeps floating: a lone TRANSCRIPT chip over the idle stage is the
+     design. :has() is already load-bearing elsewhere in this sheet. */
+  .card:has(#lineBox.open) .after {
+    position: static; margin: 8px 0 0; pointer-events: auto;
+  }
   /* The drawer toggle is a label on a closed drawer, not an action — it takes
      the 9.5px micro-label the transcript's own speaker labels use. `.card
      button` (0,1,1) outranks a bare class, hence the .card prefix. */

@@ -83,7 +83,9 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
 ## Things that will bite
 
 - **Query params are the config surface.** `?compact=1`, `?captions=full|ticker|off`,
-  `?theme=light|dark`, `?skin=<name>`. Embeds default to the ticker so the widget stays small.
+  `?theme=light|dark`, `?skin=<name>`, `?smooth=0` (turns off the letter-by-letter transcript
+  reveal — smooth is the default, and `prefers-reduced-motion` gets instant paint without
+  asking). Embeds default to the ticker so the widget stays small.
 - **`?mic=ns-off|agc-off|clean` is a diagnostic arm, not a preference.** The capture
   constraints ship as all three on, but only the echo canceller has an argument written down;
   noise suppression and auto-gain rode in on the same sentence and have never been tested

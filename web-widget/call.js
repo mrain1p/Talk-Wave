@@ -2344,10 +2344,54 @@
   }
   function isRow(line) { return line != null && line.indexOf('|') !== -1 && line.trim() !== ''; }
 
+  // Transcript text arrives in bursts — a phrase, a sentence, sometimes a
+  // whole paragraph at once — and slapping each burst in whole made the
+  // transcript visibly jump ("choppy", the operator's word, 2026-08-18). So
+  // arriving text is revealed letter by letter instead, at a rate that adapts
+  // to the backlog: a big burst drains in about a fifth of a second, a small
+  // one trickles, and the reveal can never fall behind the voice. On by
+  // default; ?smooth=0 restores the old instant paint, and a system asking
+  // for reduced motion gets it too.
+  const SMOOTH_CAPTIONS = params.get('smooth') !== '0'
+    && !(window.matchMedia
+         && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function smoothTo(el, text) {
+    if (!SMOOTH_CAPTIONS) { el.textContent = text; return; }
+    const shown = el._shown !== undefined ? el._shown : el.textContent;
+    if (text === shown) return;
+    if (!text.startsWith(shown)) {
+      // A rewrite, not a continuation — an interim transcript correcting
+      // itself. Animating a correction would type over words the caller can
+      // see are wrong; land it whole.
+      el.textContent = text; el._shown = text; el._target = text;
+      return;
+    }
+    el._target = text;
+    if (el._typing) return;          // the running loop will reach the target
+    el._typing = true;
+    const step = () => {
+      const target = el._target || '';
+      const cur = el._shown !== undefined ? el._shown : '';
+      if (cur.length >= target.length) { el._typing = false; return; }
+      // Drain a twelfth of the backlog per frame, at least one letter — a
+      // sentence lands in ~12 frames whatever its length.
+      const n = Math.max(1, Math.round((target.length - cur.length) / 12));
+      el._shown = target.slice(0, cur.length + n);
+      el.textContent = el._shown;
+      followTranscript();            // sticky, not forced — see its comment
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   function renderSaid(el, text) {
     // Fast path: no pipe means no table, so nothing to parse — the overwhelming
     // majority of lines, spoken captions included.
-    if (text.indexOf('|') === -1) { el.textContent = text; el.classList.remove('has-table'); return; }
+    if (text.indexOf('|') === -1) { smoothTo(el, text); el.classList.remove('has-table'); return; }
+    // The table path rebuilds the node wholesale; the reveal state must not
+    // survive into it or the next spoken burst would "continue" from stale text.
+    el._shown = undefined; el._target = undefined;
     const lines = String(text).split('\n');
     el.textContent = '';
     let tabled = false;
