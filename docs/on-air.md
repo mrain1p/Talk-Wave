@@ -34,7 +34,7 @@ A caller who pressed the button in good faith is never punished for the mixer be
 
 - At pickup the relay preflights the mixer. Unreachable, the call goes ahead **off air** and the transcript says why — "no air base URL", or "no reachable mixer" — because the studio once spent a week not noticing a missing network stanza, and a silently absent broadcast is that all over.
 - Two pushes failing back to back means the transport is gone, not unlucky: the relay takes the segment off air out loud rather than airing a conversation with holes in it, and the call continues privately.
-- The dashboard's Live Call door shows shut whenever the probe cannot reach the mixer, so the state is visible before a caller ever finds it.
+- The dashboard's Live Call door answers with the worker's own last word — the process that actually pushes, its verdict written at worker start and at every phone-in — so a half-joined deployment shows the door shut rather than open over calls that quietly fall back.
 
 ## The wiring
 
@@ -63,7 +63,7 @@ networks:
     external: true                                    # created by the station's own compose — joined, not owned
 ```
 
-Both, because the pushing is split across the two processes and reachability is answered per container: **live calls push from the worker** (the relay runs inside the call), **the studio's caller-voice sends push from the web half** (the panel's API lives there), and the dashboard's door probe answers from the web half too. Join only the web and the door shows open while every live call quietly falls back to a private one; join only the worker and calls would air behind a door that claims to be shut.
+Both, because the pushing is split across the two processes and reachability is answered per container: **live calls push from the worker** (the relay runs inside the call), and **the studio's caller-voice sends push from the web half** (the panel's API lives there). The dashboard's Live Call door reads the worker's own verdict, so a half-join is at least visible — join only the web and the door honestly shows shut — but only joining both gives you both features.
 
 Keep `default` in each list: naming any network on a service drops Compose's implicit one, and Talk Wave's own services stop finding each other by name.
 

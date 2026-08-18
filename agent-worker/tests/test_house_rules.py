@@ -789,6 +789,16 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "web-widget/panel-viewers.js": (781, "the log viewer split from the "
                                              "call viewer; they share only "
                                              "Panel.afetch and showResult"),
+        # 0.97.64 pushed it over from two directions in one afternoon: the
+        # door-truth tests (the worker's verdict crossing the seam) and the
+        # running-order tests (the tee queue). The seam is real: the STORE
+        # AND BROADCAST side (chunks, relay, the door) against the TAP side
+        # (the caller/DJ legs and their ordering), which share only the
+        # _ChunkStore base. Not cut in the same change that grew it — a
+        # regression in either stream would get two candidate causes.
+        "agent-worker/tests/test_onair.py": (676, "the tee-tap tests split "
+                                                  "from the chunks/relay/"
+                                                  "door tests"),
         # 0.9.122 pushed it over adding per-adapter auth and the {voice}
         # endpoint templating for ElevenLabs. The seam is real and one-way:
         # discovery (parse_voice_list, available_voices, pick_speakable_voice,

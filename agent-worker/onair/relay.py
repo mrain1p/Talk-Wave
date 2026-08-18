@@ -90,12 +90,10 @@ class CallRelay:
         then a thank-you to nobody. A broadcast that never has a first clip
         now never says a word.
         """
-        base = transport.air_base_url(self.cfg)
-        reachable = base and await asyncio.to_thread(
-            transport.mixer_reachable, self.cfg)
+        reachable, why = await asyncio.to_thread(
+            transport.probe_and_record, self.cfg)
         if not reachable:
-            why = ("on-air call fell back to a private call: "
-                   + ("no air base URL" if not base else "no reachable mixer"))
+            why = "on-air call fell back to a private call: " + why
             log.warning("%s (room=%s)", why, self.room)
             self._problem(why)
             return False
@@ -199,7 +197,13 @@ class CallRelay:
         """One clip to the voice queue — after asking settings whether this
         broadcast is still allowed to exist."""
         cfg = settings_store.permissions_for(settings_store.load(), self.tier)
-        if not cfg.get("allow_on_air"):
+        # The dashboard's Live Call quick kill counts the same as the master
+        # tier row here. It always closed the door to the NEXT caller (the
+        # mint refuses the route); until 0.97.64 it did not stop a broadcast
+        # already running, while the master row did — two switches that both
+        # read "close the door", only one of which closed it.
+        if (not cfg.get("allow_on_air")
+                or not cfg.get("on_air_calls_enabled", True)):
             chunk["wav"].unlink(missing_ok=True)
             await self._close_locked(
                 "the operator switched on-air calls off", say_outro=False)
@@ -214,6 +218,10 @@ class CallRelay:
         if rid is None:
             if token:
                 chunks.discard(token)
+            # A failed adopt never moved the clip, so the source file is
+            # still sitting wherever the tee wrote it — clean it here or a
+            # full store leaks a caller's voice into the container's /tmp.
+            chunk["wav"].unlink(missing_ok=True)
             self._failures += 1
             self._problem(
                 f"an on-air clip failed to push (turn {chunk['seq']}, "

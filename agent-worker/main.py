@@ -85,6 +85,23 @@ def prewarm(proc: JobProcess) -> None:
     """Load VAD once per worker process instead of once per call."""
     proc.userdata["vad"] = silero.VAD.load()
 
+    # Tell the web process whether THIS process can reach the mixer's telnet.
+    # The dashboard's Live Call door reads the verdict from the shared store,
+    # because the web container's own probe runs on different networks and a
+    # half-joined deployment made it claim a door the worker couldn't use.
+    # Prewarm rather than module scope: it runs once per worker process, off
+    # the call path, and re-runs on every process spawn — so a fixed network
+    # (which recreates the container) refreshes the verdict within seconds.
+    try:
+        cfg = settings_store.load()
+        if (settings_store.normalise_tier(cfg.get("allow_on_air"))
+                != settings_store.TIER_OFF):
+            from onair import transport
+
+            transport.probe_and_record(cfg)
+    except Exception as e:                                      # noqa: BLE001
+        log.warning("mixer verdict at prewarm skipped: %s", e)
+
     # If local STT is selected, load the model now — otherwise the first
     # caller waits ~7s mid-call for it.
     #

@@ -63,6 +63,21 @@ def mixer_reachable(cfg: dict) -> bool:
         return False
 
 
+def probe_and_record(cfg: dict) -> tuple[bool, str]:
+    """One preflight, and the verdict written where the web process can read
+    it (onair/chunks.py owns the marker). Called from the WORKER — at prewarm
+    and at every relay arm — because this is the process whose reachability
+    decides whether a phone-in can air, and the dashboard's own probe runs in
+    the web container on a different set of networks."""
+    from onair import chunks
+
+    base = air_base_url(cfg)
+    ok = bool(base) and mixer_reachable(cfg)
+    why = "" if ok else ("no air base URL" if not base else "no reachable mixer")
+    chunks.record_mixer_verdict(ok, why)
+    return ok, why
+
+
 def telnet_push(cfg: dict, uri: str) -> str | None:
     """``voice_queue.push <uri>`` — returns the RID the mixer minted, or None.
 

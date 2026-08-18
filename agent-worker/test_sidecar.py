@@ -382,6 +382,8 @@ from tests.test_onair import (  # noqa: F401
     TestTheRelayObeysTheOperatorMidCall,
     TestTheRelayFallsBackOutLoud,
     TestTheBracketsOnlyAirWhenACallerDoes,
+    TestTheLiveCallDoorTellsTheWorkersTruth,
+    TestTheAirGetsTheConversationInOrder,
     TestTheCallerTapRidesTheTurnBoundaries,
     TestTheDJTeeCutsOnSegments,
 )

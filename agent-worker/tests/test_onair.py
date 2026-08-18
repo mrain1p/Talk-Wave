@@ -214,6 +214,26 @@ class TestTheRelayObeysTheOperatorMidCall(_RelayCase):
                          "no clip airs once the operator said no")
         self.assertFalse(r.active)
 
+    def test_the_dashboards_quick_kill_stops_the_next_clip_too(self):
+        # Until 0.97.64 the Live Call quick kill closed the door only to the
+        # NEXT caller (the mint refuses the route) while the master tier row
+        # stopped a running broadcast at its next clip — two switches that
+        # both read "close the door", only one of which closed it. The
+        # dashboard's own switch now counts the same as the master.
+        async def run():
+            r, got = self._relay()
+            await r.open()
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            settings_store.load = lambda: {"allow_on_air": "open",
+                                           "on_air_calls_enabled": False}
+            await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
+            return r, got
+
+        r, got = asyncio.run(run())
+        self.assertEqual(len([g for g in got if b"voice_queue.push" in g]), 0,
+                         "no clip airs once the quick kill is off")
+        self.assertFalse(r.active)
+
     def test_the_panels_dump_crosses_the_process_seam(self):
         # The dump button lives in the WEB process and the relay in the
         # worker; the marker file in the shared store is the message. A
@@ -327,6 +347,49 @@ class TestTheRelayFallsBackOutLoud(_RelayCase):
         self.assertTrue(any("fell back to a private call" in p
                             for p in record.problems))
 
+    def test_the_open_preflight_leaves_a_verdict_either_way(self):
+        # The verdict marker is how the WEB process learns whether the
+        # WORKER can reach the mixer — its own probe runs on different
+        # networks and answered for the wrong container (2026-08-18).
+        async def run():
+            dead = relay_mod.CallRelay(
+                _FakeStation(), {"vm_mixer_telnet": "127.0.0.1:1",
+                                 "vm_air_base_url": "http://x:8100"},
+                room="callin-g-abcdef123456", tier="guest",
+                record=_FakeRecord())
+            self.assertFalse(await dead.open())
+            no = chunks.mixer_verdict()
+            live, _ = self._relay()
+            self.assertTrue(await live.open())
+            yes = chunks.mixer_verdict()
+            return no, yes
+
+        no, yes = asyncio.run(run())
+        self.assertIsNotNone(no)
+        self.assertFalse(no["ok"])
+        self.assertEqual(no["why"], "no reachable mixer")
+        self.assertIsNotNone(yes)
+        self.assertTrue(yes["ok"])
+
+    def test_a_failed_adopt_does_not_leak_the_callers_voice(self):
+        # adopt() moves the clip; when the move itself fails the source file
+        # would otherwise sit in the container's /tmp until the container
+        # dies — a stranger's voice outliving every deletion rule.
+        async def run():
+            r, got = self._relay()
+            await r.open()
+            old_adopt = chunks.adopt
+            chunks.adopt = lambda wav: None
+            self.addCleanup(lambda: setattr(chunks, "adopt", old_adopt))
+            first = self._feed_file("t1.wav")
+            await r.feed(first, "caller", 2.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
+            return first
+
+        first = asyncio.run(run())
+        self.assertFalse(first.exists(),
+                         "the un-adopted clip must still be deleted")
+
     def test_the_window_closes_itself(self):
         async def run():
             station = _FakeStation()
@@ -340,6 +403,46 @@ class TestTheRelayFallsBackOutLoud(_RelayCase):
         r, station = asyncio.run(run())
         self.assertFalse(r.active)
         self.assertEqual(len(station.says), 2, "the window close says goodbye")
+
+
+class TestTheLiveCallDoorTellsTheWorkersTruth(_ChunkStore):
+    """The dashboard's Live Call door and the widget's ON AIR toggle both
+    come from _on_air_door, which runs in the WEB process — but the WORKER
+    is the process that pushes, and the two containers sit on their own
+    docker networks. A deployment that joined only the web to the station's
+    network showed the door open while every phone-in quietly fell back
+    private (2026-08-18). The worker's written verdict now outranks the
+    web's own probe whenever it is fresh."""
+
+    def _door(self, cfg):
+        from api import live as live_mod
+
+        live_mod._onair_probe["at"] = 0.0
+        live_mod._onair_probe["ok"] = False
+        return asyncio.run(live_mod._on_air_door(cfg))
+
+    def _cfg(self, **extra):
+        # 127.0.0.1:1 refuses instantly, so the web's OWN probe always fails
+        # here — which is exactly the half-joined shape under test.
+        return {"allow_on_air": "open", "on_air_calls_enabled": True,
+                "vm_mixer_telnet": "127.0.0.1:1",
+                "vm_air_base_url": "http://x:8100", **extra}
+
+    def test_a_fresh_no_from_the_worker_shuts_the_door(self):
+        chunks.record_mixer_verdict(False, "no reachable mixer")
+        self.assertFalse(self._door(self._cfg())["calls"])
+
+    def test_a_fresh_ok_from_the_worker_opens_it_over_the_webs_own_probe(self):
+        chunks.record_mixer_verdict(True)
+        self.assertTrue(self._door(self._cfg())["calls"])
+
+    def test_a_stale_verdict_falls_back_to_the_webs_probe(self):
+        chunks.record_mixer_verdict(True)
+        stale = time.time() - chunks.VERDICT_FRESH_SECS - 5
+        os.utime(chunks.SERVE_DIR / "MIXER", (stale, stale))
+        self.assertFalse(self._door(self._cfg())["calls"],
+                         "a worker that stopped talking does not hold the "
+                         "door open forever")
 
 
 class _Frames:
@@ -464,6 +567,109 @@ class TestTheDJTeeCutsOnSegments(unittest.TestCase):
             with wave.open(str(path), "rb") as w:
                 self.assertEqual(w.getnchannels(), 1)
                 self.assertEqual(w.getframerate(), 16000)
+
+
+class TestTheAirGetsTheConversationInOrder(unittest.TestCase):
+    """docs/on-air.md, relay.py's module docstring and feed()'s own docstring
+    all promise the same thing in the same words: clips air "in conversation
+    order". Nothing enforced it.
+
+    The two legs do unequal work — the caller's runs the mastering chain for
+    the phone-band costume, the DJ's writes a WAV and stops — so on a
+    congested box the reply can reach the relay before the turn it answers
+    and the audience hears the answer before the question. The record shows
+    nothing wrong, because the record is built from session history and not
+    from what aired.
+
+    This is the same bug class the studio already met once at the adjacent
+    seam: SAY_POLL_SECS exists because a clip push landed ahead of the intro
+    on 2026-08-17. That one was found on air. This one is not, yet.
+    """
+
+    def _handle(self, relay, master_delay: float):
+        handle = tee.TeeHandle.__new__(tee.TeeHandle)
+        handle.relay = relay
+        handle.session = None
+        handle.tap = tee.CallerTap(_FakeInput([_Frames.frame(samples=16000)]))
+        handle.tee = tee.DJTee(_FakeSink())
+        handle._start_queue()
+
+        async def _slow_master(raw, cooked, max_secs):
+            await asyncio.sleep(master_delay)
+            cooked.write_bytes(b"RIFF")
+            return {"seconds": 1.0}
+
+        # master.master is sync and reached through asyncio.to_thread; the
+        # stand-in is async, so the seam is patched rather than the function.
+        async def _to_thread(fn, *a, **k):
+            if getattr(fn, "__name__", "") == "master":
+                return await _slow_master(*a, **k)
+            return fn(*a, **k)
+
+        return handle, _to_thread
+
+    def test_a_slow_caller_master_still_airs_before_the_dj_reply(self):
+        fed: list[str] = []
+
+        class _R:
+            async def feed(self, wav, kind, seconds):
+                fed.append(kind)
+
+        async def run():
+            handle, to_thread = self._handle(_R(), master_delay=0.25)
+            real = asyncio.to_thread
+            asyncio.to_thread = to_thread
+            try:
+                # The caller finishes a turn...
+                handle._on_user_state(SimpleNamespace(new_state="speaking"))
+                await handle.tap.__anext__()
+                handle._on_user_state(SimpleNamespace(new_state="listening"))
+                # ...and the DJ's reply finishes playing right behind it,
+                # with no mastering in its way.
+                handle.tee.pending.append([_Frames.frame(samples=16000)])
+                handle._on_playback_finished(
+                    SimpleNamespace(playback_position=1.0, interrupted=False))
+                await handle.drain(timeout=5.0)
+            finally:
+                asyncio.to_thread = real
+
+        asyncio.run(run())
+        self.assertEqual(fed, ["caller", "dj"],
+                         "the audience must hear the question before the answer")
+
+    def test_a_clip_that_dies_does_not_stall_the_ones_behind_it(self):
+        """A turn with nothing audible in it is dropped by the master, and the
+        queue has to step over it — a hole that blocked would take the rest of
+        the broadcast with it."""
+        fed: list[str] = []
+
+        class _R:
+            async def feed(self, wav, kind, seconds):
+                fed.append(kind)
+
+        async def run():
+            handle, _ = self._handle(_R(), master_delay=0.0)
+            real = asyncio.to_thread
+
+            async def _to_thread(fn, *a, **k):
+                if getattr(fn, "__name__", "") == "master":
+                    raise ValueError("nothing audible")
+                return fn(*a, **k)
+
+            asyncio.to_thread = _to_thread
+            try:
+                handle._on_user_state(SimpleNamespace(new_state="speaking"))
+                await handle.tap.__anext__()
+                handle._on_user_state(SimpleNamespace(new_state="listening"))
+                handle.tee.pending.append([_Frames.frame(samples=16000)])
+                handle._on_playback_finished(
+                    SimpleNamespace(playback_position=1.0, interrupted=False))
+                await handle.drain(timeout=5.0)
+            finally:
+                asyncio.to_thread = real
+
+        asyncio.run(run())
+        self.assertEqual(fed, ["dj"], "the breath died; the reply still aired")
 
 
 if __name__ == "__main__":

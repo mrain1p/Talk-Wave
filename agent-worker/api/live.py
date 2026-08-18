@@ -97,13 +97,22 @@ async def _on_air_door(cfg: dict) -> dict:
     if enabled and cfg.get("on_air_calls_enabled", True):
         import asyncio
 
-        from onair import transport
+        from onair import chunks, transport
 
         now = time.time()
         if now - _onair_probe["at"] > _ONAIR_PROBE_TTL:
-            _onair_probe["ok"] = bool(
-                transport.air_base_url(cfg)
-                and await asyncio.to_thread(transport.mixer_reachable, cfg))
+            # The WORKER's verdict first — it is the process that pushes,
+            # and this process's own reachability says nothing about it
+            # (separate containers, separate networks). Written at worker
+            # prewarm and at every relay arm; only when the worker has not
+            # spoken recently does this process probe for itself.
+            verdict = chunks.mixer_verdict()
+            if verdict is not None:
+                _onair_probe["ok"] = bool(verdict["ok"])
+            else:
+                _onair_probe["ok"] = bool(
+                    transport.air_base_url(cfg)
+                    and await asyncio.to_thread(transport.mixer_reachable, cfg))
             _onair_probe["at"] = now
         reachable = _onair_probe["ok"]
     calls = (enabled and bool(cfg.get("on_air_calls_enabled", True))

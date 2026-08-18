@@ -1735,7 +1735,8 @@ SCHEMA: dict[str, dict] = {
         label="Calls may go on air",
         help="The Live-on-air cluster's quick kill for the phone-in: off, "
              "the ON AIR route stops offering live calls without touching "
-             "the permission row or the voicemail door."),
+             "the permission row or the voicemail door, and a phone-in "
+             "already on the air stops at its next clip."),
     "on_air_voicemail_enabled": dict(group="usage", kind="check",
         label="Voicemails may go on air",
         help="Same quick kill for the message door: off, the ON AIR route "

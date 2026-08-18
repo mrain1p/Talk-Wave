@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import struct
 import tempfile
 import wave
@@ -54,6 +55,20 @@ MAX_CLIP_SECS = 60.0
 PREROLL_SECS = 0.5
 # An interrupted DJ line that played at least this fraction airs; less dies.
 PLAYED_ENOUGH = 0.6
+
+
+def _scratch_wav(prefix: str) -> Path:
+    """A temp path whose descriptor is CLOSED.
+
+    `mkstemp` hands back an open fd and only the path was ever taken, so the
+    handle leaked for the life of the worker — and on Windows an open handle
+    makes the `unlink` in the finally below raise PermissionError, losing the
+    clip. Harmless on the deployed Linux container, which is why it survived
+    unnoticed; run-local.ps1 is where it bites.
+    """
+    fd, name = tempfile.mkstemp(suffix=".wav", prefix=prefix)
+    os.close(fd)
+    return Path(name)
 
 
 def _write_wav(frames: list[rtc.AudioFrame], path: Path,
@@ -178,7 +193,8 @@ class TeeHandle:
         self.relay = relay
         self.tap: CallerTap | None = None
         self.tee: DJTee | None = None
-        self._tasks: set[asyncio.Task] = set()
+        self._queue: asyncio.Queue | None = None
+        self._worker: asyncio.Task | None = None
 
     def _install(self) -> None:
         self.tap = CallerTap(self.session.input.audio)
@@ -186,8 +202,60 @@ class TeeHandle:
         self.tee = DJTee(self.session.output.audio)
         self.session.output.audio = self.tee
 
+        # Before either handler can fire — a boundary event with nowhere to
+        # queue is a turn that never airs.
+        self._start_queue()
         self.session.on("user_state_changed", self._on_user_state)
         self.tee.on("playback_finished", self._on_playback_finished)
+
+    # -- the running order -------------------------------------------------
+    # Both legs used to finish their own clip on their own task and race each
+    # other to the relay. The caller's leg does strictly more work — it runs
+    # the mastering chain for the phone-band costume, which the DJ's leg skips
+    # entirely — so on a congested box the reply reached the relay before the
+    # turn it answered, and the audience heard the answer before the question.
+    # The record showed nothing wrong: it is built from session history, not
+    # from what aired.
+    #
+    # Three places promise this in the same words — docs/on-air.md, relay.py's
+    # module docstring, and feed()'s own docstring: clips air IN CONVERSATION
+    # ORDER. Nothing enforced it. Now the boundary events claim a place in the
+    # queue at the moment the turn ENDED, and one worker drains it, so no
+    # amount of thread-pool weather can reshuffle what the room did.
+    #
+    # Second time this seam has bitten. SAY_POLL_SECS in onair/relay.py exists
+    # because a clip push landed ahead of the DJ's intro on 2026-08-17 — the
+    # same two-paths-into-one-FIFO shape, found on air and patched with a
+    # sleep. A queue is the version that cannot come back.
+
+    def _start_queue(self) -> None:
+        self._queue = asyncio.Queue()
+        self._worker = asyncio.create_task(self._run_queue())
+
+    def _enqueue(self, kind: str, frames: list[rtc.AudioFrame]) -> None:
+        """Claim this turn's place in the running order, at the moment the
+        turn ended. Everything slow happens later, in the worker."""
+        if self._queue is None:
+            return
+        self._queue.put_nowait((kind, frames))
+
+    async def _run_queue(self) -> None:
+        while True:
+            kind, frames = await self._queue.get()
+            try:
+                if kind == "caller":
+                    await self._finalise_caller(frames)
+                else:
+                    await self._finalise_dj(frames)
+            except asyncio.CancelledError:
+                self._queue.task_done()
+                raise
+            except Exception as e:                              # noqa: BLE001
+                # A clip that dies must not take the ones behind it with it.
+                # A hole that blocked would stall the rest of the broadcast,
+                # which is a worse fault than the one missing turn.
+                log.warning("on-air clip (%s) failed: %s", kind, e)
+            self._queue.task_done()
 
     # -- caller leg --------------------------------------------------------
     def _on_user_state(self, ev) -> None:
@@ -199,10 +267,10 @@ class TeeHandle:
             secs = (sum(f.samples_per_channel for f in frames)
                     / float(frames[0].sample_rate)) if frames else 0.0
             if secs >= MIN_CLIP_SECS:
-                self._spawn(self._finalise_caller(frames))
+                self._enqueue("caller", frames)
 
     async def _finalise_caller(self, frames: list[rtc.AudioFrame]) -> None:
-        raw = Path(tempfile.mkstemp(suffix=".wav", prefix="onair-c-")[1])
+        raw = _scratch_wav("onair-c-")
         cooked = raw.with_suffix(".m.wav")
         try:
             await asyncio.to_thread(_write_wav, frames, raw)
@@ -233,10 +301,10 @@ class TeeHandle:
         played = float(getattr(ev, "playback_position", secs) or secs)
         if getattr(ev, "interrupted", False) and played < secs * PLAYED_ENOUGH:
             return
-        self._spawn(self._finalise_dj(frames))
+        self._enqueue("dj", frames)
 
     async def _finalise_dj(self, frames: list[rtc.AudioFrame]) -> None:
-        path = Path(tempfile.mkstemp(suffix=".wav", prefix="onair-d-")[1])
+        path = _scratch_wav("onair-d-")
         try:
             secs = await asyncio.to_thread(_write_wav, frames, path)
         except Exception as e:                                  # noqa: BLE001
@@ -249,13 +317,15 @@ class TeeHandle:
         await self.relay.feed(path, "dj", secs)
 
     # -- plumbing ----------------------------------------------------------
-    def _spawn(self, coro) -> None:
-        task = asyncio.create_task(coro)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-
     async def drain(self, timeout: float = 3.0) -> None:
-        """Let in-flight clip work finish before the relay closes — the
-        caller's last word is usually still mastering when the hangup lands."""
-        if self._tasks:
-            await asyncio.wait(set(self._tasks), timeout=timeout)
+        """Let queued clip work finish before the relay closes — the caller's
+        last word is usually still mastering when the hangup lands."""
+        if self._queue is None:
+            return
+        try:
+            await asyncio.wait_for(self._queue.join(), timeout=timeout)
+        except asyncio.TimeoutError:
+            log.warning("on-air clips still in hand after %.1fs — the tail "
+                        "does not air", timeout)
+        if self._worker is not None:
+            self._worker.cancel()

@@ -126,6 +126,43 @@ def sweep(ttl_secs: float = CHUNK_TTL_SECS) -> int:
 DUMP_FRESH_SECS = 120
 
 
+# The worker's last word on whether the mixer's telnet answers — FROM the
+# process that pushes. The dashboard's door probe runs in the web container,
+# and the two sit on their own networks, so the web's own reachability said
+# nothing about the worker's: a deployment that joined only the web to the
+# station's network showed the Live Call door OPEN while every phone-in
+# quietly fell back private (seen 2026-08-18, the day the wiring doc first
+# said "join both"). The verdict crosses the seam the way DUMP does — a
+# marker in the shared store, its own mtime as the staleness rule. Fifteen
+# minutes, because fixing the network means recreating the worker container,
+# and its prewarm rewrites the verdict within seconds of the fix.
+VERDICT_FRESH_SECS = 900
+
+
+def record_mixer_verdict(ok: bool, why: str = "") -> None:
+    _ensure_dir()
+    try:
+        (SERVE_DIR / "MIXER").write_text(
+            ("ok" if ok else f"no: {why}"), encoding="utf-8")
+    except OSError as e:
+        log.warning("could not write the mixer verdict: %s", e)
+
+
+def mixer_verdict() -> dict | None:
+    """The worker's verdict, or None when it never spoke or spoke too long
+    ago to trust. Never raises — a corrupt marker reads as absent."""
+    path = SERVE_DIR / "MIXER"
+    try:
+        age = time.time() - path.stat().st_mtime
+        body = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if age > VERDICT_FRESH_SECS:
+        return None
+    return {"ok": body.strip() == "ok",
+            "why": body.partition(":")[2].strip(), "age": age}
+
+
 def request_dump() -> None:
     _ensure_dir()
     try:
