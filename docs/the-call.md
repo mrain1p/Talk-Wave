@@ -1,6 +1,6 @@
 # What happens between a caller speaking and the station acting
 
-Every other page here describes a part: [the settings](settings.md), [the models](models.md), [the network](networking.md), [voicemail](VOICEMAIL.md). This one describes the path a single sentence takes — from the caller's mouth, through the prompt, into a tool, onto the air, and into the record — because until 2026-08-14 nothing did, and a system nobody has read end to end is one where each piece is right and the whole is not.
+Every other page here describes a part: [the settings](settings.md), [the models](models.md), [the network](networking.md), [voicemail](VOICEMAIL.md), [live on air](on-air.md). This one describes the path a single sentence takes — from the caller's mouth, through the prompt, into a tool, onto the air, and into the record — because until 2026-08-14 nothing did, and a system nobody has read end to end is one where each piece is right and the whole is not.
 
 [← back to the README](../README.md)
 
