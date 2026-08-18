@@ -1,6 +1,6 @@
 # What to run
 
-Talk Wave is a phone call, and that is the whole constraint: a caller hears every second you spend thinking, with no spinner to hide behind. This page is what to run, and where a caller starts to notice.
+Talk Wave is a phone call, and that is the whole constraint: a caller hears every second you spend thinking, with no spinner to hide behind. Three models run every call — the brains that think (LLM), the voice that speaks (TTS), and the ears that listen (STT), the same three sections the settings panel wears — and this page is what to run for each, and where a caller starts to notice.
 
 Three numbers decide a call. The settings panel measures all three on your own box — **Diagnostics → full pipeline check**, and the **speed test** for the total.
 
@@ -12,7 +12,7 @@ Three numbers decide a call. The settings panel measures all three on your own b
 
 The realtime factor is the one people skip: it is synthesis time over playback time, so above 1.0 the voice is produced slower than it is heard and falls further behind with every sentence.
 
-## The model
+## THE BRAINS (LLM)
 
 **Ideal — a small, fast, non-reasoning cloud model.** gpt-4.1-mini, gemini-2.5-flash, claude-haiku, deepseek-chat. Reliable tool calling, nothing to host, a fraction of a cent per call. If you have no strong reason to self-host, this is the answer — and the provider list mirrors the station's, so you probably hold one of these keys already.
 
@@ -28,7 +28,7 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 **Ollama has one setting worth changing.** It unloads a model after five idle minutes, so the first call after a quiet hour pays the load time on top of everything else — a DJ that works all afternoon and dies overnight. Set `OLLAMA_KEEP_ALIVE=-1` on any box that answers real calls.
 
-## The voice
+## THE VOICE (TTS)
 
 **Ideal — a cloud voice built for streaming.** OpenAI, ElevenLabs and Fish Audio adapters ship with it. First audio in the low hundreds of milliseconds, and no GPU contention with the station. It bills per character and the DJ speaks on every turn — there is no TTS-side spend ceiling, so the call limits (seconds per call, calls per hour and day) are what bound the worst case.
 
@@ -49,7 +49,7 @@ One tester's field reports, plus this stack's own VibeVoice numbers — every en
 
 **Minimal — the station's own backend, mirrored.** `subwave-remote.json` points the call at whatever the station already speaks through: nothing new to run, one voice to maintain, and the contention above is the price.
 
-## The ears
+## THE EARS (STT)
 
 **Local — the bundled Whisper.** `base.en` needs no key, no network and no GPU, which is why it is the default. It mishears names, song titles and accents — on a request line, exactly the vocabulary that matters.
 
@@ -76,7 +76,7 @@ Your absolute times will differ with the CPU — the ratios are what travel. The
 
 **What this bench cannot tell you.** On a clean, clearly-spoken test line all four sizes came back essentially identical. The sizes separate on names, accents, background noise and phone-band audio — exactly the vocabulary a request line lives on. Size is a hedge against hard audio, and the table is the price of the hedge, paid on every turn.
 
-## Where the caller notices
+## WHERE THE CALLER NOTICES
 
 | What the caller experiences | The number behind it |
 |---|---|
@@ -91,7 +91,7 @@ Your absolute times will differ with the CPU — the ratios are what travel. The
 
 **The ceiling is a live-call constraint.** Text mode and voicemail have no one waiting on the line, so a slower, better model is a perfectly good trade if most of your traffic arrives that way.
 
-## Check yours
+## CHECK YOURS
 
 The **full pipeline check** walks every leg in call order and stops at the first thing that would break; the model and voice stages each make one real, sub-cent call. The **speed test** adds the legs up, which is what the caller actually experiences. Both run the real code paths with a real call's prompt, so what you read is what a caller gets.
 
