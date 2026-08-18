@@ -515,6 +515,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # a public https tune_in_url the player would open onto silence behind
     # TLS.
     "swipe_player":       (None, False),
+    # The card's own listener count and track heart. ON by default, unlike
+    # the player: they are one line of text and one small button on furniture
+    # the card already has, not a new surface — and both degrade to nothing
+    # when the station won't say (no count) or the track line is empty (no
+    # heart).
+    "show_listener_count": (None, True),
+    "show_track_like":    (None, True),
     # Which face the page opens on. The player as the front page makes the
     # widget the station's app with a phone behind it; off keeps the phone
     # first. Audio still waits for the browser's one allowed tap either way.
@@ -1588,6 +1595,18 @@ SCHEMA: dict[str, dict] = {
              "in, so behind TLS that must be the station's public https "
              "stream. This page and the installed app only, never an embed. "
              "Starting a call or a recording stops the music."),
+    "show_listener_count": dict(group="phone", kind="check",
+        label="Listener count on the card",
+        help="The card's ON AIR line adds how many are tuned in — the same "
+             "count the station's own player shows. Only appears when the "
+             "station reports at least one listener, so a quiet hour never "
+             "paints a zero at a caller deciding whether to ring."),
+    "show_track_like": dict(group="phone", kind="check",
+        label="Heart button on the card",
+        help="A small heart beside the record on air — the same public like "
+             "any listener page sends, through the same per-listener limits "
+             "the station already enforces. Works with or without the "
+             "swipe-up player."),
     "start_on_player": dict(group="phone", kind="check",
         label="Start on the player",
         needs=("swipe_player", True),

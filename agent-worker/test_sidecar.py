@@ -37,6 +37,7 @@ from tests.test_settings import (  # noqa: F401
     TestAnUpgradeClosesNoDoorAndHandsOutNoPower,
     TestACommentedEnvValueIsNamedAtBoot,
     TestTheStationPlayerShipsOff,
+    TestTheCountAndHeartShipOn,
     TestTheOnAirLetterRidesTheRoomName,
     TestTheOnAirQuickKillsShipOpen,
 )
@@ -118,6 +119,7 @@ from tests.test_widget import (  # noqa: F401
     TestHiddenActuallyHides,
     TestTheStylesheetParsesToTheEnd,
     TestTheUrlRowsOnlyExistInUrlMode,
+    TestTheCardOffersTheCountAndTheHeart,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestTheLadderLivesInOnePlace,
@@ -194,6 +196,7 @@ from tests.test_tools_surface import (  # noqa: F401
     TestTheDJDescribesRecordsItHasInformationAbout,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
     TestOneRequestCannotTakeTwoQueueSlots,

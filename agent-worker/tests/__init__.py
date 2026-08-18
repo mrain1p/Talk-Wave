@@ -18,3 +18,20 @@ the run pollutes the real data/logs/worker.log.
 import os
 
 os.environ["LOG_TO_FILE"] = "0"
+
+# The push file (hook-air.json) gets the same treatment, for the same reason,
+# and it must be process-wide rather than per-_TempStores class: the air
+# guard's tests read it through call/air_verdict._air_path, and the ones that
+# never touch settings never inherited the redirect — so a REAL push file in
+# data/ made six of them flip. Not hypothetical: booting the local token
+# server for a widget check registers this machine with the live station,
+# and one real voice.start later the suite read "the station is speaking
+# right now" out of the repo's own data directory (2026-08-18, an afternoon
+# of six confusing failures). setdefault, so an explicit path from outside
+# still wins.
+import tempfile as _tempfile
+
+os.environ.setdefault(
+    "CALLIN_HOOK_AIR_PATH",
+    os.path.join(_tempfile.mkdtemp(prefix="callin-test-air-"),
+                 "hook-air.json"))

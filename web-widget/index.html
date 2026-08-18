@@ -106,8 +106,10 @@
              state chips, which on a phone put a long title under two chips and
              overlapped them. Both fit if they stop competing for one row: the
              record is part of WHO IS ON, and the chips are part of the call.
-             Same on the page and in an embed. -->
-        <p class="track" id="npTrack"></p>
+             Same on the page and in an embed. The heart rides the SAME row —
+             a new row would change the card's height, which is the one thing
+             the card promises never to do. -->
+        <div class="trackrow"><p class="track" id="npTrack"></p><button class="nplike" id="npHeart" type="button" aria-pressed="false" aria-label="Like this track" hidden>&#9825;</button></div>
       </div>
     </div>
 

@@ -316,9 +316,11 @@ class StationClient:
         Used to avoid the same persona talking on air and on the call at the
         same time. The words matter as much as the clock: the log records when
         an utterance started, never when it ended, so the guard sizes the end
-        from the words (call/air.speaking_secs). The station stamps `t` as the
-        clip is handed to the playout, so "since" runs from roughly when it
-        became audible.
+        from the words (call/air.speaking_secs). When `t` is stamped depends
+        on the station's generation: pre-1.8 stamps at handoff to the playout
+        (a couple of seconds before it is audible), 1.8+ stamps at air time
+        (its #1390). The guard's HANDOFF_LAG_SECS pad covers the older shape
+        and is deliberately kept for both — see call/air.py.
         """
         from datetime import datetime, timezone
 

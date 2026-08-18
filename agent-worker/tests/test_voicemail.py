@@ -643,7 +643,10 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
         # nothing to hold", empty message). The close is safe now only because
         # the bar is present and a TAP latches the mic open, leaving a message
         # exactly like an open mic. See the pickup branch and the CSS below.
-        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:700]
+        # 1000, up from 700: the speaker probe's re-run (and its why) sits
+        # between the permission and the PTT close since 0.98, and the pin is
+        # about ORDER, not adjacency.
+        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:1000]
         self.assertIn("pttOn() && !pttOpen", after_mic)
         self.assertNotIn("!vmCall && pttOn()", after_mic)
         # The voicemail pickup keeps the bar when PTT is on (only an open-mic

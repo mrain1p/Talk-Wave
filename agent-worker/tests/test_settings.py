@@ -1070,3 +1070,24 @@ class TestTheOnAirQuickKillsShipOpen(_TempStores):
         cfg = settings_store.load()
         self.assertTrue(cfg.get("on_air_calls_enabled"))
         self.assertTrue(cfg.get("on_air_voicemail_enabled"))
+
+
+class TestTheCountAndHeartShipOn(unittest.TestCase):
+    """The card's listener count and track heart are ON by default — the
+    operator's explicit ask (2026-08-18): they are one line of text and one
+    small button on furniture the card already has, not a new surface like
+    the player, which ships off. Both must degrade to nothing on their own
+    (no count when the station won't say, no heart without a track line)."""
+
+    def test_both_ship_on(self):
+        import settings as settings_store
+
+        self.assertTrue(settings_store.FIELDS["show_listener_count"][1])
+        self.assertTrue(settings_store.FIELDS["show_track_like"][1])
+
+    def test_the_player_still_ships_off(self):
+        # The heart's door reads EITHER switch, so this pair is what keeps a
+        # fresh deployment's card working while the player stays a choice.
+        import settings as settings_store
+
+        self.assertFalse(settings_store.FIELDS["swipe_player"][1])

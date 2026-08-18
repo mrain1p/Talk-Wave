@@ -463,6 +463,21 @@
      30px, plus 10px of margin, for a row with nothing in it. That is the whole
      of the "wasted space" on the player page. */
   .nprail:not(:has(.pill:not([hidden]))) { display: none; }
+  /* The record's row: the title, and the heart when the operator offers it.
+     A ROW, not a new line — the card's height is a promise, so the heart
+     shares the height the title already has. */
+  .trackrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .trackrow .track { flex: 1 1 auto; }
+  /* `.card .nplike`, not bare `.nplike`: the card's one-control-height rule
+     (`.card button`, 38px) would win on specificity and inflate the track's
+     row — measured doing exactly that on the first render. */
+  .card .nplike {
+    flex: 0 0 auto; width: 18px; height: 16px; padding: 0; border: 0;
+    background: none; color: var(--sage); font-size: 13px; line-height: 1;
+    cursor: pointer; box-shadow: none;
+  }
+  .card .nplike.liked { color: var(--coral); }
+  .card .nplike[hidden] { display: none; }
   /* The record, in the identity block under the tagline. Same treatment as it
      had on the rail — the only thing that changed is which row it is on. */
   .track {

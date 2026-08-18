@@ -33,6 +33,7 @@ from api.look import (  # noqa: F401
     station_palette,
 )
 from api.sounds import _resolved_sound
+from api.stats import _listener_count
 from api.wire import _cors
 from brain.briefing import demojibake
 from log_setup import describe
@@ -398,6 +399,18 @@ async def handle_live(request: web.Request) -> web.Response:
                     # resolved URL before it shows the gesture, so a switch
                     # flipped on with no reachable stream offers nothing.
                     "swipePlayer": bool(cfg.get("swipe_player")),
+                    # How many are tuned in, from the same /now-playing
+                    # context the station's own player reads (the listener
+                    # sampler parses the identical shapes). None when the
+                    # station won't say or the operator switched the row off
+                    # — the widget only paints a number it was given.
+                    "listeners": (
+                        _listener_count(now)
+                        if cfg.get("show_listener_count", True) else None),
+                    # Whether the card offers the track heart — the same
+                    # public /like any listener page sends, relayed by
+                    # /player/like so LAN and mixed-content deployments work.
+                    "cardLike": bool(cfg.get("show_track_like", True)),
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": bool(cfg.get("start_on_player")),

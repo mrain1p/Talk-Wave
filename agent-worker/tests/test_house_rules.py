@@ -777,7 +777,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the guard object CallAgent is handed. Deliberately NOT cut in the
         # change that grew it — a regression in either half would get two
         # candidate causes, the same deferral panel-viewers.js records.
-        "agent-worker/call/air.py": (675, "the CallAgent half (the reply "
+        # RAISED to 684 (2026-08-18): nine lines of comment recording the
+        # #1390 review — station 1.8 stamps the booth log at air time, the
+        # HANDOFF_LAG pad is deliberately kept, and why. The seam has not
+        # moved; the growth is the write-down of a decision, which is what
+        # this file's comments are for.
+        "agent-worker/call/air.py": (684, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time

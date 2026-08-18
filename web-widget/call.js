@@ -716,6 +716,47 @@
     box.hidden = false;
   }
 
+  // The card's heart — the same add-only public like the player sheet sends,
+  // through the same /player/like relay. Its own state, deliberately not the
+  // sheet's: the card must never claim a heart it did not press, and the two
+  // surfaces meeting on one record is the harmless case (the station counts
+  // both, per its own per-listener limits).
+  let cardLiked = false, cardHeartFor = '';
+  function paintCardHeart(d) {
+    const b = $('npHeart');
+    if (!b) return;
+    const key = String(d.track || '');
+    // `!== false` so a cached /live from an older server keeps the default:
+    // the setting ships ON, and absent must not read as off. And never on a
+    // still-locked gated line: the relay answers 401 there, so the heart
+    // would be a button that silently un-presses itself (measured on the
+    // first local render). It appears with the unlock, like the phone.
+    const show = d.cardLike !== false && !!key
+      && !(d.guestRequired && !callKey());
+    b.hidden = !show;
+    if (!show) return;
+    if (key !== cardHeartFor) { cardHeartFor = key; cardLiked = false; }
+    b.classList.toggle('liked', cardLiked);
+    b.setAttribute('aria-pressed', cardLiked ? 'true' : 'false');
+    b.innerHTML = cardLiked ? '&#9829;' : '&#9825;';
+  }
+  $('npHeart').addEventListener('click', async () => {
+    if (cardLiked) return;               // add-only, matching the station
+    cardLiked = true;                    // optimistic; walked back on refusal
+    paintCardHeart({ track: cardHeartFor, cardLike: true });
+    try {
+      const r = await fetch('/player/like', {
+        method: 'POST',
+        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        body: '{}',
+      });
+      if (!r.ok) throw new Error('refused');
+    } catch (e) {
+      cardLiked = false;
+      paintCardHeart({ track: cardHeartFor, cardLike: true });
+    }
+  });
+
   function paintNowPlaying() {
     const clock = $('npElapsed'), rail = $('npRail'), deck = $('playerView');
     const mmss = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
@@ -990,11 +1031,17 @@
   // Whether the platform will actually MOVE audio, which is a different
   // question from whether the function exists: Chrome on Android ships
   // setSinkId while the Android platform cannot re-route an individual
-  // stream (the Chrome team's own words), and the tell is that it lists no
-  // audiooutput devices at all. The operator's phone showed exactly the
-  // failure the comment above predicts — a button pressed, nothing moved,
-  // the call concluded broken (2026-08-17). Probed once, re-probed when the
-  // devices change (a Bluetooth headset arriving is a routing change).
+  // stream (the Chrome team's own words). The tell has two shapes, and the
+  // first probe only knew one of them. Listing NO audiooutput devices was
+  // caught 2026-08-17; listing exactly ONE (the unnamed "default") slipped
+  // through, and that is most Android Chromes — the button showed, the
+  // press found no earpiece to name, nothing was attempted, and the honest
+  // label rule meant it "did nothing to toggle" (the operator's PWA report,
+  // 2026-08-18). A route needs two ends, so the probe now wants TWO named
+  // outputs before it believes the platform. Probed at load, re-probed when
+  // the devices change (a Bluetooth headset arriving is a routing change)
+  // and again once the mic permission lands, because that is the moment
+  // device labels become readable at all.
   let canRoute = null;
   async function probeRouting() {
     if (audioSessionSupported()) canRoute = true;
@@ -1002,7 +1049,7 @@
     else {
       try {
         const devs = await navigator.mediaDevices.enumerateDevices();
-        canRoute = devs.some((d) => d.kind === 'audiooutput');
+        canRoute = devs.filter((d) => d.kind === 'audiooutput').length >= 2;
       } catch (e) { canRoute = false; }
     }
     paintSpeakerBtn();
@@ -1742,7 +1789,13 @@
       if (!d.onAir)     { paintOffAir('offair');  return; }
 
       $('eyebrow').className = 'eyebrow';
-      $('eyebrowText').textContent = 'On air now';
+      // The listener count rides the ON AIR line — text on furniture the
+      // card already has, so the height promise holds. Only from one
+      // listener up: a quiet hour painting "0 listening" at someone
+      // deciding whether to ring talks them out of it for no reason.
+      $('eyebrowText').textContent = 'On air now'
+        + (typeof d.listeners === 'number' && d.listeners >= 1
+           ? ' · ' + d.listeners + ' listening' : '');
       // The NAME is never switchable: a call card that doesn't say who
       // answers isn't a call card. Everything below it is the operator's
       // call, per surface. Emptied rather than hidden — these are text nodes
@@ -1783,6 +1836,10 @@
       npStart = (parts.track === false || !d.track) ? 0 : (d.trackStartedAt || 0);
       npLength = d.trackSeconds || 0;
       paintNowPlaying();
+      // The heart follows the same per-surface visibility as the track line
+      // it sits beside: a surface whose operator hid the record shows no
+      // heart for it either.
+      paintCardHeart(parts.track === false ? { cardLike: false } : d);
 
       // Shape is one answer for both surfaces — an embed and the page show
       // the same photograph, and nobody has ever wanted it round in one and
@@ -3106,6 +3163,10 @@
       // closes the line straight away — the first press reopens it without
       // a permission prompt mid-sentence.
       await room.localParticipant.setMicrophoneEnabled(true);
+      // The permission just landed = device labels just became readable;
+      // the speaker button's probe gets its one honest look (see
+      // probeRouting). Fire-and-forget — the call must not wait on it.
+      probeRouting();
       // Push-to-talk on a call AND on voicemail (operator's ask): the mic
       // starts closed and the bar opens it. A caller who taps latches it open
       // and leaves a message exactly like an open mic; one who holds is

@@ -51,6 +51,15 @@ class OnAirGuard(AirVerdict):
     # handoff gap from the panel, the two stations that matter both want ~2s,
     # and it sat in the middle of the ducking list looking like a dial worth
     # turning.
+    #
+    # Station 1.8 (its #1390) moved the BOOTH LOG to air-time stamps as well,
+    # so on 1.8+ this pad is ~2s of over-hold — but only on the poll path,
+    # which runs when the voice.* pushes aren't flowing (no webhooks, no admin
+    # creds). Kept deliberately (reviewed 2026-08-18): over-holding is the
+    # safe direction, a pre-1.8 station still needs the pad, and the one
+    # deployment that cares runs the exact lifecycle path anyway. Telling the
+    # two log generations apart from here would cost more than 2s of caution
+    # on a degraded path is worth.
     HANDOFF_LAG_SECS = 2.0
 
     # A banter break is several utterances back to back — voice.end, then
