@@ -3520,3 +3520,55 @@ class TestARefusedActionIsNotReportedAsDone(unittest.TestCase):
         self.assertIn("function_call_outputs", src)
         self.assertIn("reads_as_a_refusal", src)
         self.assertIn("refused=state[\"refused\"]", src)
+
+
+class TestNothingInACallOverwritesSomethingElse(unittest.TestCase):
+    """No attribute may be assigned twice in CallSession.__init__.
+
+    0.97.65 added a pacing meter and called it `self.heard`, which was already
+    the caller-turn counter — a plain `{"n": 0}` that three separate things
+    read. The meter silently replaced it and every one of them broke: the
+    heard-logging handler does `counter["n"] += 1`, the idle watch does
+    `heard.get("n")`, and `_on_shutdown` logs `self.heard["n"]` BEFORE it
+    writes the record. So a quiet caller was never checked on or let go, and
+    every call raised on the way out and wrote no record at all.
+
+    None of it failed a test. Both halves were individually correct and unit
+    tested; the collision exists only in the assembled object, and the suite
+    never assembles one because CallSession needs a live JobContext. It was
+    found by placing a real call against the deployed container and noticing
+    the record was missing.
+
+    So this reads the source rather than the object — the only thing that
+    works without a LiveKit job, and enough, because the fault was one name
+    written twice in one function.
+    """
+
+    def test_no_attribute_is_assigned_twice_in_init(self):
+        import ast
+
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "session.py").read_text(encoding="utf-8")
+        cls = next(n for n in ast.parse(src).body
+                   if isinstance(n, ast.ClassDef) and n.name == "CallSession")
+        init = next(n for n in cls.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "__init__")
+        seen: dict[str, int] = {}
+        clashes: list[str] = []
+        for node in ast.walk(init):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if (isinstance(target, ast.Attribute)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id == "self"):
+                    if target.attr in seen:
+                        clashes.append(f"self.{target.attr} (lines "
+                                       f"{seen[target.attr]} and {node.lineno})")
+                    seen[target.attr] = node.lineno
+        self.assertEqual(
+            clashes, [],
+            "assigned twice in CallSession.__init__, so the second silently "
+            "replaces the first and everything reading the first breaks at "
+            f"runtime: {clashes}")

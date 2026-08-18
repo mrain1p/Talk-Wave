@@ -199,7 +199,7 @@ class CallSession:
         # What the caller waited for a REPLY, and what it cost when they talked
         # over one — see call/heard.py. Built here beside the think meter for
         # the same reason: a call that dies early still says what it measured.
-        self.heard = heard_mod.HeardMeter()
+        self.pacing = heard_mod.HeardMeter()
 
         ctx.add_shutdown_callback(self.station.aclose)
         ctx.add_shutdown_callback(self.station_cfg.aclose)
@@ -459,7 +459,7 @@ class CallSession:
         # earlier it would be watching a chain nothing plays through any more,
         # and the barge-in half of the pair would read zero on exactly the
         # calls it matters most on.
-        heard_mod.attach_heard(self.session, self.heard, air=self.air)
+        heard_mod.attach_heard(self.session, self.pacing, air=self.air)
 
     def _attach_behaviours(self) -> None:
         """Everything that runs for the life of the call."""
@@ -540,19 +540,28 @@ class CallSession:
             self.cfg.get("llm_provider"), self.cfg.get("llm_model"),
             self.cfg.get("tts_mode"), reason or "-",
         )
-        # The pair, on one greppable line, so a harness run or a bad-call
+        # PRINTED, not logged, for the same reason main.py prints its
+        # banner: setup("worker", console=False) leaves log.info a file sink
+        # and an in-memory ring, LOG_TO_FILE is off on a container deploy, and
+        # the panel's log viewer reads the WEB process's ring — so a log line
+        # here reaches nothing a `docker logs` can find. Verified the hard way
+        # on 2026-08-18: this went out as log.info and grepping the deployed
+        # worker for it returned nothing at all.
+        #
+        # The pair on one greppable line, so a harness run or a bad-call
         # report can be read without opening the record. Both halves or
         # neither — see call/heard.py for why they are never split up.
-        paced = self.heard.summary()
+        paced = self.pacing.summary()
         if paced:
             gap, barge = paced.get("replyGap", {}), paced.get("bargeIn", {})
-            log.info(
-                "call pacing room=%s replies=%d p50=%.2fs p90=%.2fs worst=%.2fs "
-                "| barge_ins=%d p50=%.2fs cut_off=%d",
-                self.ctx.room.name, gap.get("n", 0), gap.get("p50", 0),
-                gap.get("p90", 0), gap.get("worst", 0),
-                barge.get("n", 0), barge.get("p50", 0), len(paced.get("cutOff", [])),
-            )
+            print(
+                f"call pacing room={self.ctx.room.name} "
+                f"replies={gap.get('n', 0)} p50={gap.get('p50', 0):.2f}s "
+                f"p90={gap.get('p90', 0):.2f}s worst={gap.get('worst', 0):.2f}s "
+                f"| barge_ins={barge.get('n', 0)} "
+                f"p50={barge.get('p50', 0):.2f}s "
+                f"cut_off={len(paced.get('cutOff', []))}",
+                flush=True)
         # Written before the on-air handoff, which makes an LLM call and can
         # fail — the record of the call must not depend on it succeeding.
         if self.record:
@@ -564,7 +573,7 @@ class CallSession:
                     for role, text in handoff.transcript(self.session, limit=400)
                 ]
                 self.record.finalise(final)
-                self.record.what_they_heard(self.heard.summary())
+                self.record.what_they_heard(self.pacing.summary())
                 if self.air.air_log:
                     self.air.air_log.write(self.record)
             except Exception as e:
