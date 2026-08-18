@@ -56,6 +56,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 - Installs to a phone like an app, and reads like one.
 - Embeds in two lines of HTML — inline card, launcher pill, docked bar, or pop-up. See [Embedding](#embedding).
 - Themes: light, dark, match-the-page, or the station's live show colours. Every string on the card overridable.
+- The card says how many are tuned in and offers the same heart any listener page has — both optional, both on by default.
 - Call sounds from shipped sets — synthesized classics, real public-domain line tones — every slot replaceable with your own.
 - Push to talk, a post-call thumbs, and in-character timeouts so silence never just hangs there.
 

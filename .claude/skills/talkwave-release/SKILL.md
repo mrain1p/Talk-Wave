@@ -14,8 +14,11 @@ Images publish from GitHub Actions to `ghcr.io/mrain1p/talk-wave`:
 | `beta` | `:beta` |
 | `vX.Y.Z` tag | `:X.Y.Z` |
 
-**Work happens on `dev`, not `main`.** The operator does not want iterative tweaks on main
-until a change is ready to publish.
+**Work happens on the operator's active lane — `beta` since 0.97.50 — never directly on
+`main`.** The operator does not want iterative tweaks on main until a change is ready to
+publish. `dev` still exists and builds `:dev`, but the NAS compose has run `:beta` since the
+caller-on-air stream; ask which lane is live before assuming, and check `git log` — the lane
+with today's commits is the active one.
 
 ## When to cut one, and what to call it
 
@@ -50,9 +53,11 @@ went to 97 and not to 9.
      This overrides the default commit convention.
    - Subject style: `0.9.69 - the call transcript stops disagreeing with the call`. Lowercase
      prose, version prefix, describes the *effect*.
-4. **Push to `dev`.** CI builds `:dev`. The operator points compose at `:dev` on the NAS to test.
-5. **When it is good, PR `dev` → `main`.** The suite also runs on those PRs; PRs build no image.
-   Merge, and `:latest` moves.
+4. **Push to the active lane** (`beta` today). CI builds that lane's tag; the NAS compose
+   points at it.
+5. **When it is good, PR the lane → `main`.** The suite also runs on those PRs; PRs build no
+   image. Merge, and `:latest` moves. Keep the other lanes fast-forwarded after the merge so
+   "are these in sync?" stays answerable at a glance.
 6. **Tag and publish the GitHub Release** — merging alone leaves the Releases page stale,
    which sat on v0.9.45 for 85 versions before anyone noticed. The notes are the version's
    CHANGELOG.md entry (write that entry BEFORE the merge — high level, grouped, no laundry

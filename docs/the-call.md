@@ -18,6 +18,8 @@ Every other page here describes a part: [the settings](settings.md), [the models
 
 Three phases in `call/session.py`, in the order the caller experiences them: `prepare()` is everything they hear as ringing, `start()` puts the DJ on the line, `greet()` says hello. The settings are re-read at the top of every call, so a change in the panel reaches the next caller without restarting anything.
 
+The ringing is shorter than it looks on paper, because most of its questions are answered before the worker asks them: the token server prefetches the station snapshot the moment it mints the room (`station_prefetch.py`, adopted only while fresh and refused otherwise), and the room join, the TTS voice list and the station's MCP handshake all ride `prepare()`'s one concurrent wait instead of queuing behind it. The call record's `setup` block writes down what each leg took (`preparedSecs`, `onLineSecs`, `greetingSecs`) and whether the snapshot was `prefetched` or `fetched` — so "calls feel slow to connect" is readable off one record instead of an evening of probes.
+
 ## 1. The prompt, and what it costs
 
 `brain/assemble.py` joins two halves that change for two different reasons:

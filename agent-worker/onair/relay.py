@@ -85,13 +85,15 @@ class CallRelay:
         # The operator's dial since 0.97.79 ("On-air delay"), read per call
         # like every relay setting; MAX_HELD_SECS is the default and the
         # fallback for an unreadable value. Clamped to the range the panel's
-        # help promises — the code and the help text must not disagree about
-        # what 0 means, so 0 becomes the 2-second floor rather than "no
-        # hold": the pull must always have SOME window, and a second
-        # off-switch for a safety control is the trap quiet_secs already
-        # fell into once. An attribute rather than the constant read
-        # directly, so a test about the timer can compress six real seconds
-        # the way the air guard's tests compress theirs.
+        # help promises. Note what the `or` does to 0: it falls to the
+        # 6-second default exactly like blank — it does NOT reach the
+        # 2-second floor. Either way a literal 0 cannot mean "no hold": the
+        # pull must always have SOME window, and a second off-switch for a
+        # safety control is the trap quiet_secs already fell into once. The
+        # floor guards typed-in small values (1 becomes 2). An attribute
+        # rather than the constant read directly, so a test about the timer
+        # can compress six real seconds the way the air guard's tests
+        # compress theirs.
         try:
             self.max_held_secs = min(30.0, max(
                 2.0, float(cfg.get("on_air_delay_secs") or MAX_HELD_SECS)))

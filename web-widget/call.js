@@ -745,10 +745,19 @@
     cardLiked = true;                    // optimistic; walked back on refusal
     paintCardHeart({ track: cardHeartFor, cardLike: true });
     try {
+      // Ask which record the station thinks is on FIRST: songId is its
+      // stale-tap guard, and a press landing just after a track change
+      // would otherwise heart the wrong song. Best-effort — with no answer
+      // the station's own current-track fallback applies.
+      let song = null;
+      try {
+        const s = await fetch('/player/like', { headers: plKeyHeaders() });
+        if (s.ok) song = (await s.json()).songId || null;
+      } catch (e) { /* fall through to the current-track like */ }
       const r = await fetch('/player/like', {
         method: 'POST',
         headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
-        body: '{}',
+        body: JSON.stringify(song ? { songId: song } : {}),
       });
       if (!r.ok) throw new Error('refused');
     } catch (e) {
