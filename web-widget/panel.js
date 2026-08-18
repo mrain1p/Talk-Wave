@@ -783,10 +783,10 @@
     fill('stt_model', (options.sttModels || {})[stt] || [], {
       blankLabel: blankFor('stt_model', 'a model'),
       labels: {
-        'tiny.en': 'tiny.en — fastest, hears the least',
+        'tiny.en': 'tiny.en — fastest, hears the least; half the CPU of base',
         'base.en': 'base.en — light (default); misses words on phone audio',
-        'small.en': 'small.en — hears phone audio clearly better, more CPU per turn',
-        'medium.en': 'medium.en — hears the most; heavy, test before trusting on a NAS',
+        'small.en': 'small.en — hears phone audio clearly better; ~3x base per turn',
+        'medium.en': 'medium.en — hears the most; ~8x base — test before trusting it',
       } });
     $('stt_model').value = overrides.stt_model || '';
     // The ladder describes the BUILT-IN models; behind a cloud pick it
