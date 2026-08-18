@@ -625,6 +625,13 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "hook-air.json")
+            # SAVE AND RESTORE, never pop: tests/__init__.py redirects this
+            # path process-wide so no guard ever reads the repo's real
+            # data/hook-air.json — and since the gate began priming itself
+            # from the file at construction, EVERY guard built after a pop
+            # would read it, not just the ones that ask for pushes. Popping
+            # here is how six unrelated tests flipped on 2026-08-18.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 g = self._guard()
@@ -642,7 +649,10 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
                     "the word count closed the gate while the station was "
                     "still 20 seconds from finishing in the caller's ear")
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_with_no_push_the_word_count_still_answers(self):
         # A station too old to send the voice lifecycle must keep working.
@@ -650,13 +660,19 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as td:
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in the test above.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = os.path.join(td, "none.json")
             try:
                 g = self._guard()
                 self.assertEqual((0.0, 0.0), g.audible_window())
                 self.assertTrue(g._log_says_busy((g.caller_lag(), "a line")))
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_the_stations_own_numbers_outlast_a_short_estimate(self):
         import time
@@ -1755,6 +1771,9 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 with open(p, "w", encoding="utf-8") as f:
@@ -1765,7 +1784,10 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
                     guard.caller_lag(), 22.0,
                     "the first hold of a call still assumes the 2s fallback")
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_the_push_file_reads_back_as_evidence(self):
         # The web process writes the last verified voice push; the guard reads
@@ -1783,6 +1805,9 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 guard = self._guard()
@@ -1803,7 +1828,10 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
                     guard._push_verdict(guard._pushed_state(), time.time()),
                     "a pre-1.8 push entry is still being judged")
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_a_forecast_holds_only_inside_the_handover_window(self):
         # SUB/WAVE 1.8's voice.queued can warn many seconds ahead. The whole
@@ -3103,14 +3131,20 @@ class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
         self._greet(air)
         self.assertEqual(air.asked, [GREET_HOLD_SECS])
 
-    def test_the_hold_is_much_shorter_than_a_mid_call_one(self):
-        # A caller held at pickup has no idea why: there is no conversation
-        # yet for the widget's on-air chip to explain. Silence straight after
-        # the ring reads as a failed call.
+    def test_the_hold_outlasts_the_callers_lag_but_not_the_ceiling(self):
+        # The greet hold runs on CALLER time: a caller joining mid-link still
+        # has their whole stream buffer of it to hear, so a cap under
+        # MAX_CALLER_LAG times out on EVERY mid-link pickup by construction —
+        # 12s did exactly that on room callin-o-643dc6d2993e (2026-08-18),
+        # greeting 28s before the caller's copy of the link finished, while
+        # the widget's hold chip was explaining the wait. The chip is also why
+        # a longer cap is safe now: the wait is no longer unexplained silence.
+        # MAX_HOLD stays above it — the mid-call ceiling is the outer bound.
         from call.air import OnAirGuard
         from call.greeting import GREET_HOLD_SECS
 
-        self.assertLess(GREET_HOLD_SECS, OnAirGuard.MAX_HOLD / 2)
+        self.assertGreater(GREET_HOLD_SECS, OnAirGuard.MAX_CALLER_LAG)
+        self.assertLess(GREET_HOLD_SECS, OnAirGuard.MAX_HOLD)
 
     def test_the_guard_being_off_costs_nothing(self):
         air = self._Air(enabled=False)
@@ -3148,6 +3182,128 @@ class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
         record.problem = record.problems.append
         self._greet(self._Air(wait=2.0), record=record)
         self.assertEqual(record.problems, [])
+
+    def test_the_gate_is_primed_from_the_push_file_at_construction(self):
+        # The watch loop's first pass closes the gate for a mid-link dial-in,
+        # but create_task does not run it synchronously and the fast pickup
+        # (0.97.77) made the greeting quicker than the scheduler. Room
+        # callin-o-643dc6d2993e (2026-08-18): the push file showed a 26.7s
+        # link mid-air when the guard was built, the loop opened the hold at
+        # +2.9s — and the greeting had read the still-open gate at +2.7s, so
+        # the DJ greeted over a broadcast the widget was telling the caller
+        # to hold for. The same evidence must close the gate at construction.
+        import asyncio
+        import json
+        import os
+        import tempfile
+        import time
+
+        from call.air import OnAirGuard
+
+        class _Station:
+            async def on_air_speech(self):
+                return None
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                # The link started at the encoder 25s ago, runs 26.7s, and
+                # the caller is 22s behind — so they are 3s into hearing it
+                # RIGHT NOW. (A push only seconds old is different: the
+                # caller has not started hearing it yet, and outside the
+                # hand-over window the verdict rightly calls that not-busy —
+                # which is also why this entry is older than the buffer.)
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 25, "v": 2,
+                               "phase": "speaking", "durMs": 26700,
+                               "bufSecs": 22.0, "text": "Mid-link."}, f)
+                guard = OnAirGuard(_Station(),
+                                   {"avoid_on_air_overlap": True})
+                self.assertTrue(
+                    guard.on_air,
+                    "a link mid-air at construction left the gate open")
+                waited = asyncio.run(guard.wait_until_clear(timeout=0.1))
+                self.assertGreater(
+                    waited, 0.05,
+                    "the greeting would not have been held")
+                # And the guard being off skips the priming with the rest.
+                off = OnAirGuard(_Station(), {})
+                self.assertFalse(off.on_air)
+            finally:
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
+
+    def test_a_wrongly_primed_gate_is_reopened_by_the_first_look(self):
+        # The priming above reads one file with no poll behind it, so it can
+        # be wrong — a voice.end the web process wrote moments later, a stale
+        # entry. The watch loop's first pass must then take the busy-to-clear
+        # edge and open the gate, not leave the caller held on a hunch.
+        import asyncio
+        import json
+        import os
+        import tempfile
+        import time
+
+        from call.air import OnAirGuard
+
+        class _Station:
+            async def on_air_speech(self):
+                return None
+
+        class _Session:
+            def interrupt(self):
+                pass
+
+            def say(self, *a, **k):
+                pass
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                # Audible in the caller's ears now — same arithmetic as the
+                # priming test above.
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 25, "v": 2,
+                               "phase": "speaking", "durMs": 26700,
+                               "bufSecs": 22.0, "text": "Mid-link."}, f)
+                guard = OnAirGuard(_Station(),
+                                   {"avoid_on_air_overlap": True})
+                self.assertTrue(guard.on_air)
+                # The station stopped talking before the loop's first look.
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time(), "v": 2, "phase": "clear",
+                               "voiceId": "x", "bufSecs": 22.0}, f)
+
+                async def _run():
+                    guard.PUSH_TICK = 0.01
+                    guard.POLL_SECS = 0.01
+                    guard.duck_pad = 0.01
+                    task = asyncio.create_task(guard.watch(_Session()))
+                    for _ in range(200):
+                        await asyncio.sleep(0.01)
+                        if not guard.on_air:
+                            break
+                    task.cancel()
+                    return guard.on_air
+
+                self.assertFalse(
+                    asyncio.run(_run()),
+                    "the first look did not reopen a wrongly primed gate")
+            finally:
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
 
 class TestAHoldAlwaysEnds(unittest.TestCase):

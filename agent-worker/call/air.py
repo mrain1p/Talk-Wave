@@ -141,6 +141,29 @@ class OnAirGuard(AirVerdict):
         self._last_track: str | None = None
         self.track_note = ""
         self._clear.set()
+        # PRIME THE GATE FROM THE LAST VERIFIED PUSH. The watch loop's first
+        # pass closes the gate for a caller who dialled in mid-link — but
+        # create_task does not run that pass synchronously, and the fast
+        # pickup (0.97.77) made the greeting quicker than the scheduler. Room
+        # callin-o-643dc6d2993e (2026-08-18): the push file showed a 26.7s
+        # link mid-air when this constructor ran, the loop opened the hold at
+        # +2.9s — and the greeting had read the still-open gate at +2.7s, so
+        # the DJ greeted over a broadcast the widget was simultaneously
+        # telling the caller to hold for. Same evidence, read at the one
+        # moment nothing else has looked yet. The loop's first pass then
+        # takes the edge as normal, or reopens a gate this primed wrongly —
+        # a stale entry costs one PUSH_TICK, not a held call.
+        if self.enabled:
+            try:
+                verdict = self._push_verdict(self._pushed_state(), time.time())
+            except Exception:                                  # noqa: BLE001
+                verdict = None
+            if verdict and verdict[0] == "busy":
+                self.on_air = True
+                self._clear.clear()
+                self._publish(True)
+                log.info("the station was mid-link before the call began — "
+                         "the gate starts closed")
         # When WE put something on air we know it is about to make sound, and
         # we know before the station's log does. Waiting for the poll to notice
         # left a window in which the DJ carried on talking over its own

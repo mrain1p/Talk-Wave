@@ -781,8 +781,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # #1390 review — station 1.8 stamps the booth log at air time, the
         # HANDOFF_LAG pad is deliberately kept, and why. The seam has not
         # moved; the growth is the write-down of a decision, which is what
-        # this file's comments are for.
-        "agent-worker/call/air.py": (684, "the CallAgent half (the reply "
+        # this file's comments are for. 707: the greeting-race fix (0.98.2)
+        # primes the gate from the push file in the guard's constructor —
+        # the primed state must exist before anyone else looks, so it cannot
+        # live anywhere but the guard half. The split is still owed.
+        "agent-worker/call/air.py": (707, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
