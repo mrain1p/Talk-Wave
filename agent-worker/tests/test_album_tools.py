@@ -23,16 +23,30 @@ def _row(i: int, album: str = "Rumours", artist: str = "Fleetwood Mac",
 
 
 class _Station:
-    """search_library + queue_track, the two calls the bulk tools make."""
+    """search_library + queue_track, the two calls the bulk tools make.
 
-    def __init__(self, rows: list):
+    `rows` answers every query; `by_query` (casefolded query -> rows), when
+    set, answers per query and returns empty for anything unlisted — how the
+    live station really behaves for a punctuated album name. `fail_reads`
+    makes every search answer None: the read FAILED, which is a different
+    fact from an empty result and must stay one.
+    """
+
+    def __init__(self, rows: list, by_query: dict | None = None):
         self.rows = rows
+        self.by_query = by_query
+        self.fail_reads = False
         self.queued: list[dict] = []
         self.searches: list[tuple] = []
         self.refuse: dict[str, str] = {}   # id -> the station's refusal words
 
     async def search_library(self, q, offset=0, limit=30):
         self.searches.append((q, offset, limit))
+        if self.fail_reads:
+            return None
+        if self.by_query is not None:
+            rows = self.by_query.get(" ".join(str(q).casefold().split()), [])
+            return rows[offset:offset + limit]
         return self.rows[offset:offset + limit]
 
     async def queue_track(self, track):
@@ -352,3 +366,98 @@ class TestTheSelfTitledAlbumFlood(unittest.TestCase):
         out = asyncio.run(tool(album="The Beatles"))
         self.assertEqual(len(st.queued), 2)
         self.assertIn('"The Beatles"', out)
+
+
+class TestAFailedReadNeverReadsAsAnEmptyLibrary(unittest.TestCase):
+    """2026-08-19, live: two station searches timed out mid-call and the DJ
+    told the caller their artist wasn't in the library — "I don't have
+    anything by Eminem", then no Beatles albums on the shelf — over a
+    hundred Eminem tracks and the whole White Album on file. The caller said
+    "bullshit" and was right. A failed READ now says it failed, in every
+    tool that reads, and the claim is one incident so the coverage lives
+    together."""
+
+    def test_the_shelf_says_slow_not_empty(self):
+        from call.actions import CallActions
+
+        st = _Station([])
+        st.fail_reads = True
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        out = asyncio.run(tool(artist="Eminem"))
+        self.assertIn("couldn't be READ", out)
+        self.assertNotIn("Nothing on the shelf", out)
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+
+    def test_the_album_queue_says_slow_not_missing(self):
+        st = _Station([])
+        st.fail_reads = True
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours", artist="Fleetwood Mac"))
+        self.assertIn("couldn't be READ", out)
+        self.assertNotIn("Nothing in the racks", out)
+        self.assertEqual(st.queued, [])
+
+    def test_the_name_search_says_slow_not_missing(self):
+        # The same night's other lie, from the 8-row search tool.
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _St:
+            async def search_library(self, q, offset=0, limit=30):
+                return None
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools({"allow_library_search": True},
+                                        _St(), CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        tool = next(t for t in tools
+                    if t.info.name == "subwave_search_library")
+        out = asyncio.run(tool(q="Eminem"))
+        self.assertIn("couldn't be READ", out)
+        self.assertNotIn("No track or artist by that name", out)
+
+
+class TestAPunctuatedFiledNameStillQueues(unittest.TestCase):
+    """The operator's own White Album, live 2026-08-19: the library files it
+    as "The Beatles (The White Album)", and the station's search returns
+    NOTHING for that string — or for "White Album". Only the plain artist
+    query finds the rows, so the tool walks its variants down to the artist
+    and matches the album by punctuation-blind name."""
+
+    ROWS = [_row(i, album="The Beatles (The White Album)",
+                 artist="The Beatles") for i in range(1, 4)]
+
+    def _station(self):
+        # Only the bare artist query answers — the filed name, the joined
+        # album+artist query and "White Album" all return nothing, which is
+        # exactly what the live station did.
+        return _Station([], by_query={"the beatles": self.ROWS})
+
+    def test_the_colloquial_name_finds_the_filed_album(self):
+        st = self._station()
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="White Album", artist="The Beatles"))
+        self.assertEqual(len(st.queued), 3)
+        self.assertIn("The Beatles (The White Album)", out)
+
+    def test_the_full_filed_name_works_too(self):
+        st = self._station()
+        tool = _tools(st)["subwave_queue_album"]
+        asyncio.run(tool(album="The Beatles (The White Album)",
+                         artist="The Beatles"))
+        self.assertEqual(len(st.queued), 3)
+
+    def test_punctuation_differences_do_not_block_the_match(self):
+        rows = [_row(1, album="Sgt. Pepper’s Lonely Hearts Club Band",
+                     artist="The Beatles")]
+        st = _Station([], by_query={"the beatles": rows})
+        tool = _tools(st)["subwave_queue_album"]
+        asyncio.run(tool(album="Sgt Peppers Lonely Hearts Club Band",
+                         artist="The Beatles"))
+        self.assertEqual([t["id"] for t in st.queued], ["id1"])

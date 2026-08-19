@@ -211,6 +211,8 @@ from tests.test_album_tools import (  # noqa: F401
     TestTheShelfIsAReadNotAnAction,
     TestQueueingAMix,
     TestTheSelfTitledAlbumFlood,
+    TestAFailedReadNeverReadsAsAnEmptyLibrary,
+    TestAPunctuatedFiledNameStillQueues,
 )
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,

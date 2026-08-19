@@ -3,6 +3,16 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.10
+
+If the DJ told you it had no albums by an artist you know is on the shelf, that was this — a slow library read was being reported as an empty one.
+
+### The shelf stops lying when it's slow
+
+- **"I don't have anything by Eminem", from a library holding over a hundred of their tracks — that was a timed-out read, not a miss.** A station search that fails now tells the DJ it failed ("the racks are being slow — give it a moment and try again"), with a plain instruction never to report a track, artist or album missing off the back of one. The search also gets the same longer deadline the library browse already had, so the slow reads mostly stop failing at all.
+- **"The Beatles (The White Album)" now queues.** The station's search matches nothing for a parenthesised album name — not even the library's own filed spelling of it. The album tool now walks down to a plain artist search and picks the album off that shelf by name with punctuation ignored, so "the White Album", "White Album" and the full filed name all land on the same record. The same matching forgives "Sgt Peppers" for "Sgt. Pepper's".
+- The idle watcher stays quiet while a big album is fanning out into the queue — the caller is waiting on the DJ, not the other way round, and "still there?" mid-batch blamed them for our pause.
+
 ## 0.98.9
 
 A caller can ask for a whole album, a caller nobody heard no longer reaches the broadcast, taped calls keep the station playing underneath, and the listener count comes out from behind the player's pull tab.
