@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.13
+
+The station's own DJ can now stand down while a phone-in is live, instead of being ducked around.
+
+### Quiet the station during calls
+
+- **A new dial on the On-air ducking page: while a call is up, the station's idents, time checks, links, segments and banter simply don't fire.** Talk Wave flips the station's own Voice switch off for the call and back on within seconds of it ending — music never stops, jingles keep rotating, listener requests still land with their text acknowledgement, and the call's own clips air exactly as before. Three positions: off (the default — this writes a station setting, so it stays your opt-in), during on-air calls, or during every call, because a private caller hears the station through tune-in too. Needs the station admin credentials and a SUB/WAVE from July 2026 or newer; switched on without either, a banner under the row says exactly what is missing instead of failing silently. See [Live on air](docs/on-air.md#quieting-the-stations-own-dj) for the full truth table.
+- **A crash cannot leave the station mute.** Every call heartbeats a marker; the token server is the one restorer, putting the switch back when no marker is fresh — after a taped call's playout finishes airing, within minutes of a worker that died mid-call, and on its first tick after a whole-stack restart, confirmed against the station and retried until it lands. Your hand outranks it everywhere: a station whose Voice you already keep off is never touched, and flipping it back on mid-call makes Talk Wave stand down for good.
+
 ## 0.98.12
 
 Bulk out to match bulk in, an official card when the call's limit is hit, and a mix that only counts once it's really queued — all three from one flailing Wade chat.

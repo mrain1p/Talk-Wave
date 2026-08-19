@@ -267,6 +267,8 @@ Overlap protection: the call DJ and the on-air DJ are one voice.
 | **SUB/WAVE 1.8+** | Exact. The station warns that a voice is coming (`voice.queued`), the call keeps flowing until **Hand over before air** (default 5s) from the forecast landing, the DJ says its hand-over line and steps back, and the measured `voice.start`/`voice.end` bound the hold to the second |
 | **Older** | The hold anchors on the handoff-stamped push and is sized from the words, with **Handoff-to-air lag** (default 2s, ignored for 1.8 evidence) riding the tail |
 
+**Quiet the station during calls** flips the collision the other way: instead of the call waiting for the station's voice, the station's own auto-talk — idents, time checks, links, segments, banter — stands down while a phone-in is live and returns within seconds of it ending. Off by default (it writes the station's own Voice switch, so it is yours to opt into); the other positions are **during on-air calls** and **during every call**. Needs the station admin credentials and a SUB/WAVE from July 2026 or newer — switched on without either, a banner under the row says exactly what is missing. Music, jingles and listener requests keep working throughout, and your own hand on the station's Voice switch always wins. The full truth table — what stands down, what a mid-call show changeover costs, and why a crash cannot leave the station mute — is on [the on-air page](on-air.md#quieting-the-stations-own-dj).
+
 ---
 
 ## Players

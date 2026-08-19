@@ -18,6 +18,7 @@ import tests  # noqa: F401
 from tests.test_settings import (  # noqa: F401
     TestTheOnAirDelayIsTheOperatorsDial,
     TestTheOnAirCallerSoundSetting,
+    TestTheQuietStationSetting,
     TestAConfigValueCannotNameAFileOnTheDisk,
     TestANeighbouringServiceIsNotOnLocalhost,
     TestBootLaysTheDataSkeleton,
@@ -418,6 +419,14 @@ from tests.test_onair import (  # noqa: F401
     TestTheLiveSegmentLandsInsteadOfStopping,
     TestTapeModeAirsTheCallAtHangup,
     TestHeardModeOpensAtTheCallersFirstWord,
+    TestQuietingClaimsBeforeItWrites,
+    TestTheOperatorOutranksTheHush,
+    TestQuietingNeverBlocksTheCall,
+    TestTheJanitorIsTheOneRestorer,
+    TestACrashedCallCannotMuteTheStation,
+    TestHushMarkersAreScopedAndSafe,
+    TestTheLiveVerdictTellsThePanelTheTruth,
+    TestSessionWiringForHush,
 )
 from tests.test_tee import (  # noqa: F401
     TestTheAirGetsTheConversationInOrder,

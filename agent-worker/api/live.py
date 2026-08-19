@@ -37,6 +37,7 @@ from api.stats import _listener_count
 from api.wire import _cors
 from brain.briefing import demojibake
 from log_setup import describe
+from onair import hush
 from station import StationClient
 from version import APP_VERSION
 
@@ -394,6 +395,12 @@ async def handle_live(request: web.Request) -> web.Response:
                     # offering at all (setting on AND mixer reachable), and at
                     # what tier. The mint still enforces the tier for real.
                     "onAirCalls": await _on_air_door(cfg),
+                    # Quiet-the-station wiring, for the panel's banner: scope,
+                    # whether the admin creds it needs exist, and the last
+                    # flip's verdict. None when the feature is off; disk-only,
+                    # so it costs the cached payload nothing (api/onair.py's
+                    # hush_janitor owns the actual switch).
+                    "stationQuiet": hush.live_verdict(cfg),
                     # The widget's expiry maths stayed in minutes; only the SETTING
                     # moved to hours, so the wire stays compatible both ways.
                     "guestSessionMinutes":

@@ -976,6 +976,23 @@
           <label for="on_air_handover_secs">Hand over before air (s)</label>
           <input type="number" id="on_air_handover_secs" min="0" max="30" step="1" />
         </div>
+        <div class="row">
+          <label for="quiet_station_on_calls">Quiet the station during calls</label>
+          <select id="quiet_station_on_calls"></select>
+        </div>
+        <!-- Painted by paintQuietWiring() from /live's stationQuiet verdict:
+             visible only when quieting is saved ON but cannot actually work —
+             missing station admin credentials, or the last flip didn't stick.
+             Same door-truth rule as #onairWiring: switched on and silently
+             doing nothing is the failure worth a banner. -->
+        <div class="banner" id="quietWiring" style="display:none">
+          Quiet-the-station is on, but it isn't working:
+          <span id="quietWiringWhy"></span>. It needs the station admin
+          credentials (the ones that mirror voices) and a SUB/WAVE from
+          July&nbsp;2026 or newer. See the
+          <a href="https://github.com/mrain1p/Talk-Wave/blob/main/docs/on-air.md"
+             target="_blank" rel="noopener">On Air setup instructions</a>.
+        </div>
       </div>
     </details>
 

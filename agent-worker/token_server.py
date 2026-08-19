@@ -86,7 +86,7 @@ from api.sounds import (
     handle_sound_meta,
 )
 from api.chat import handle_chat_ws
-from api.onair import handle_on_air_clip, handle_on_air_dump
+from api.onair import handle_on_air_clip, handle_on_air_dump, hush_janitor
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
 from api.widget import WIDGET_DIR, _assets, handle_index
 from api.wire import handle_options
@@ -208,6 +208,7 @@ def build_app() -> web.Application:
     app.router.add_static("/", WIDGET_DIR, show_index=False, name="widget")
     app.cleanup_ctx.append(keep_station_warm)
     app.cleanup_ctx.append(sample_listeners)
+    app.cleanup_ctx.append(hush_janitor)
     return app
 
 
