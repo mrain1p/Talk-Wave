@@ -18,13 +18,21 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 **Ideal, self-hosted — a 7-8B tool-capable model resident on a GPU.** llama3.1 8B, qwen2.5 7B. Two things decide it and neither is the parameter count: whether the weights are already in VRAM when the call arrives, and how long your prompt is.
 
-**OK — a 3-4B tool-capable model on modest hardware.** llama3.2 3B and its kin; a tester measured 1325ms and their calls worked. What you give up is judgement rather than speed — smaller models pick the wrong tool, or narrate the action instead of taking it ("let me queue that up for you", and nothing is queued). Field notes from another tester: gemma-4 E2B and E4B quants (3-4.5GB) run fast on modest hardware; an 8B squeezed to a 1-bit quant was faster still but lost much of its tool calling on the way down.
+**OK — a 3-4B tool-capable model on modest hardware.** llama3.2 3B and its kin; a tester measured 1325ms and their calls worked. **What you give up is judgement rather than speed** — smaller models pick the wrong tool, or narrate the action instead of taking it ("let me queue that up for you", and nothing is queued).
 
-**Newer is not automatically better at tools.** One operator's anecdote, not a measurement: gemini-3.1-flash-lite has been a reliable call leg while the newer 3.5-flash-lite routed tool calls noticeably worse. When a favourite gets a successor, run the panel's model check before moving the station onto it.
+> Field notes from another tester: gemma-4 E2B and E4B quants (3-4.5GB) run fast on modest hardware. An 8B squeezed to a 1-bit quant was faster still, but lost much of its tool calling on the way down.
 
 **Minimal — anything that calls tools and answers inside the ceiling.** Below that it is not a slow line, it is no line.
 
-**Three things don't work, however good the model is otherwise.** A model without tool calling: the DJ can talk and can never do anything, and the panel's model check says so in one line. A reasoning model on the call leg: it thinks before the first token by design, which is the number a call cannot afford — use the non-reasoning sibling. And 7B+ on CPU: prompt evaluation alone blows the budget, and a call's prompt is not small.
+### Three things don't work, however good the model is otherwise
+
+| Don't | Why |
+|---|---|
+| **A model without tool calling** | the DJ can talk and can never do anything — the panel's model check says so in one line |
+| **A reasoning model on the call leg** | it thinks before the first token by design, which is the number a call cannot afford. Use the non-reasoning sibling |
+| **7B+ on CPU** | prompt evaluation alone blows the budget, and a call's prompt is not small |
+
+**Newer is not automatically better at tools.** One operator's anecdote, not a measurement: gemini-3.1-flash-lite has been a reliable call leg while the newer 3.5-flash-lite routed tool calls noticeably worse. **When a favourite gets a successor, run the panel's model check before moving the station onto it.**
 
 **Ollama has one setting worth changing.** It unloads a model after five idle minutes, so the first call after a quiet hour pays the load time on top of everything else — a DJ that works all afternoon and dies overnight. Set `OLLAMA_KEEP_ALIVE=-1` on any box that answers real calls.
 
@@ -45,7 +53,16 @@ One tester's field reports, plus this stack's own VibeVoice numbers — every en
 | Echo-TTS, Fish | Typically too slow for a fluid conversation | Excellent — exactly the trade |
 | VibeVoice | Slower than playback on a shared 16GB GPU, measured below | The best sound this stack has run |
 
-**The crack: high-quality diffusion TTS on a shared GPU.** VibeVoice sounds the best of anything here and is the most likely to fall behind playback. Measured on a 16GB RTX 5070 Ti: the 1.5B model runs 1.55-1.9x realtime, the 7B AWQ quant 1.10-1.15x — all of them slower than the caller hears them. If the same card also renders the station's on-air segments, an overlapping call and render contend and playback starves. Give the call leg its own card, cheaper settings, or a cloud voice.
+**The crack: high-quality diffusion TTS on a shared GPU.** VibeVoice sounds the best of anything here, and is the most likely to fall behind playback. Measured on a 16GB RTX 5070 Ti:
+
+| VibeVoice model | Realtime factor |
+|---|---|
+| 1.5B | 1.55–1.9x |
+| 7B AWQ quant | 1.10–1.15x |
+
+**All of them are slower than the caller hears them.** And if the same card also renders the station's on-air segments, an overlapping call and render contend, and playback starves.
+
+The ways out: give the call leg its own card, cheaper settings, or a cloud voice.
 
 **Minimal — the station's own backend, mirrored.** `subwave-remote.json` points the call at whatever the station already speaks through: nothing new to run, one voice to maintain, and the contention above is the price.
 
@@ -53,7 +70,11 @@ One tester's field reports, plus this stack's own VibeVoice numbers — every en
 
 **Local — the bundled Whisper.** `base.en` needs no key, no network and no GPU, which is why it is the default. It mishears names, song titles and accents — on a request line, exactly the vocabulary that matters.
 
-**Cloud — better ears that wait less.** Deepgram, OpenAI and Google are wired in; OpenAI and Google reuse the keys already under Brains, Deepgram takes its own and is the most accurate of the three on phone audio. A cloud ear transcribes word by word while the caller is still talking, so captions arrive live and the per-turn silence the table below prices mostly disappears. If live accuracy is the problem, this is faster *and* better than climbing the size ladder; the costs are a key, a network dependency on every turn, and per-minute billing.
+**Cloud — better ears that wait less.** Deepgram, OpenAI and Google are wired in. OpenAI and Google reuse the keys already under Brains; Deepgram takes its own, and is the most accurate of the three on phone audio.
+
+A cloud ear transcribes **word by word while the caller is still talking**, so captions arrive live and the per-turn silence the table below prices mostly disappears. If live accuracy is the problem, this is faster *and* better than climbing the size ladder.
+
+The costs: a key, a network dependency on every turn, and per-minute billing.
 
 **The four bundled sizes buy accuracy with the caller's silence.** The bundled Whisper only starts once the caller stops talking, so its whole runtime lands in the pause before the DJ answers, on top of the model and the voice. Measured with the shipped settings (int8 on CPU, four threads, greedy decoding), transcribing the same ~6-second caller turn five times per size, on one ordinary desktop CPU:
 

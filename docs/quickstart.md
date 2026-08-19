@@ -33,7 +33,7 @@ wget -O livekit.yaml https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/li
 mkdir data && chown -R 1000:1000 ./data && chmod -R u+rwX ./data
 ```
 
-The `chown` matters: the services run as uid 1000, and a `data/` they can't read means no setup ask and a locked panel — the login gate and the logs name it, but never seeing it is better.
+> **The `chown` matters.** The services run as uid 1000, and a `data/` they can't read means no setup ask and a locked panel. The login gate and the logs name it — but never seeing it is better.
 
 Then two edits:
 

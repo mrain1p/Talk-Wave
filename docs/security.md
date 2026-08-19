@@ -28,15 +28,29 @@ Work down it. Each line says what goes wrong if you skip it.
 
 **Who gets what — permissions are a tier, not a switch**
 
-Each caller permission is granted to the *least trusted caller who gets it*: **off**, **anyone**, **guest code**, or **admin**. The tier is decided at the door, travels inside the signed room name, and is resolved before the DJ's tool list is built — a caller cannot raise their own. Put the far-reaching ones on **admin** and they are yours alone while the line stays open to everybody else.
+Each caller permission is granted to the *least trusted caller who gets it*: **off**, **anyone**, **guest code**, or **admin**. The tier is decided at the door, travels inside the signed room name, and is resolved before the DJ's tool list is built — **a caller cannot raise their own.**
 
-- [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. Guest tier by default on a fresh install — only callers you handed the code to — and off on anything upgraded from before 0.10.80.
-- [ ] **`allow_skip_track` / `allow_dj_segment`** reach every listener, not the caller. Admin tier by default on a fresh install (your own phone, nobody else's); off on upgrades.
-- [ ] **`allow_cancel_queue`** takes a not-yet-aired track back out of the queue. The queue is shared, so it can cancel a record a *different* caller asked for — which is exactly why the station exposes no listener-facing cancel of its own. Off by default, and worth leaving there on an open line.
-- [ ] **`allow_sound_search`** is a pair of READS (a “sounds like” search, and the neighbours of the track on air). They queue nothing, change nothing and are not counted against Actions per call — the risk is disclosure of your library's contents, the same as library search, not action.
-- [ ] **`allow_takeover`** pins a different show on air and keeps going after the caller hangs up. Admin tier by default on a fresh install, off on upgrades; needs station admin credentials either way.
-- [ ] **`allow_genre_lock`** holds the whole station to a genre for up to twelve hours, and like a takeover it outlives the call. Quieter than one, which is the risk: a pinned show announces itself on air in a voice listeners recognise, a narrowed playlist does not. Off by default, and it needs a SUB/WAVE new enough to have the control at all — older stations answer that they can't rather than failing.
-- [ ] **`allow_never_play`** — **the furthest-reaching switch here, and the only one with no expiry.** It puts the record on air onto the station's never-play list: out of the queue, out of the fallback playlist, never selected again. Nothing goes out on air to say it happened, so an unwanted ban is found by noticing a record has stopped coming round. Off by default, admin tier, station admin credentials required. The same switch lets a caller *lift* a ban, including one you set yourself — deliberately, so a mistake made from the phone has a way back that doesn't depend on you spotting it.
+Put the far-reaching ones on **admin** and they are yours alone, while the line stays open to everybody else.
+
+| Permission | Fresh install | Upgraded from < 0.10.80 | What it reaches | Outlives the call |
+|---|---|---|---|---|
+| `allow_announcements` | guest | off | every listener | no |
+| `allow_skip_track` / `allow_dj_segment` | admin | off | every listener | no |
+| `allow_cancel_queue` | off | off | another caller's request | no |
+| `allow_sound_search` | off | off | your library's contents (reads only) | no |
+| `allow_takeover` | admin | off | every listener | **yes** |
+| `allow_genre_lock` | off | off | every listener | **yes — up to 12 hours** |
+| `allow_never_play` | off | off | every listener | **yes — permanently** |
+
+The three that need **station admin credentials** either way: `allow_takeover`, `allow_genre_lock`, `allow_never_play`.
+
+- [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. At guest tier that is only callers you handed the code to.
+- [ ] **`allow_cancel_queue`** — the queue is shared, so it can cancel a record a *different* caller asked for. That is exactly why the station exposes no listener-facing cancel of its own. Worth leaving off on an open line.
+- [ ] **`allow_sound_search`** is a pair of READS: a "sounds like" search, and the neighbours of the track on air. They queue nothing, change nothing, and are not counted against Actions per call. The risk is disclosure of your library's contents — the same as library search, not action.
+- [ ] **`allow_genre_lock`** is quieter than a takeover, which is the risk: a pinned show announces itself on air in a voice listeners recognise, a narrowed playlist does not. Needs a SUB/WAVE new enough to have the control at all — older stations answer that they can't, rather than failing.
+- [ ] **`allow_never_play`** — **the furthest-reaching switch here, and the only one with no expiry.** It puts the record on air onto the station's never-play list: out of the queue, out of the fallback playlist, never selected again. Nothing goes out on air to say it happened, so an unwanted ban is found by noticing a record has stopped coming round.
+
+> The same `allow_never_play` switch lets a caller *lift* a ban, including one you set yourself. That is deliberate: a mistake made from the phone has a way back that doesn't depend on you spotting it.
 
 **Privacy — what you keep about people who call**
 
@@ -68,6 +82,18 @@ Both under *Access*, and the store refuses to let them match.
 | **Guest code** | the code you hand out, or the admin password |
 | **Automatic** (default on deployments from before 0.10.80) | open until you set a guest code, then required |
 
-*Open* and *Guest code* are one choice apiece, not a cascade. Choosing a code-gated mode without having set that password refuses every call and the panel says so, rather than falling open. And every mode — *Open* included — waits for the admin password to exist first: an unconfigured deployment refuses all calls until it has an owner.
+*Open* and *Guest code* are one choice apiece, not a cascade:
 
-**Lockout**: 5 wrong tries per address → 5-minute cooldown; a second round → banned until restart, guest failures counted separately. Locked out? `CALLIN_ADMIN_KEY` is always accepted, or restart. The lockout keys on the immediate socket peer — which a client cannot choose — and believes a forwarded address only when `CALLIN_TRUSTED_PROXIES` names the proxy, so set that whenever a reverse proxy is in front.
+- Choosing a code-gated mode **without having set that password refuses every call**, and the panel says so rather than falling open.
+- Every mode — *Open* included — waits for the admin password to exist first. An unconfigured deployment refuses all calls until it has an owner.
+
+### Lockout
+
+| Trigger | Result |
+|---|---|
+| 5 wrong tries from one address | 5-minute cooldown |
+| a second round | banned until restart |
+
+Guest failures are counted separately from admin ones. Locked out? `CALLIN_ADMIN_KEY` is always accepted, or restart.
+
+The lockout keys on the **immediate socket peer**, which a client cannot choose. It believes a forwarded address only when `CALLIN_TRUSTED_PROXIES` names the proxy — so set that whenever a reverse proxy is in front.

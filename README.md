@@ -10,7 +10,7 @@
 
 The call is not the station speaking. It's this sidecar's own realtime voice agent wearing the live persona, and the station is only touched when the agent uses an allowlisted tool.
 
-Please note this was created with use of AI. It is recommended to use it locally and only expose it externally if you know the risks and what you are doing.
+> **Note:** this was created with use of AI. It is recommended to use it locally, and only expose it externally if you know the risks and what you are doing.
 
 <table>
 <tr>
@@ -117,15 +117,38 @@ mkdir -p data && chown -R 1000:1000 data && chmod -R u+rwX data
 docker compose up -d
 ```
 
-Both processes run as **uid 1000**, so `data/` has to belong to it — that is what the third line does. Skip it and the app can't read its own files: no setup ask, a locked panel, and the reason named at the login gate and in the logs.
+> **`data/` must belong to uid 1000** — both processes run as it, and that is what the `chown` line does. Skip it and the app can't read its own files: no setup ask, a locked panel, and the reason named at the login gate and in the logs.
 
-**`HOST_IP`** is the one deployment variable — the docker host's LAN address, driving LiveKit's advertised media address, the browser URL and the webhook callback. That is all `.env` has to say: the LiveKit keypair is read from the mounted `livekit.yaml` (env still overrides), so the secret lives in one file. The rest is panel.
+**Two variables in `.env`, and that is all it has to say:**
 
-**`SUBWAVE_STREAM_URL`** should be the station's public `https://` stream. Left blank it derives from the station's own address, which is plain http on the LAN — and since the widget must be served over TLS for the microphone to work, the browser blocks that stream as mixed content and the caller hears no station. It fails silently, so set it first. A bare origin is enough; the station's published mounts are discovered, mp3 first.
+| Variable | What it is |
+|---|---|
+| **`HOST_IP`** | The docker host's LAN address. Drives LiveKit's advertised media address, the browser URL, and the webhook callback |
+| **`SUBWAVE_STREAM_URL`** | The station's public `https://` stream. A bare origin is enough — the published mounts are discovered, mp3 first |
 
-**Open `https://<HOST_IP>:8443`**, the bundled Caddy TLS front door. Browsers only allow the microphone on HTTPS origins; the first visit shows a one-time certificate screen. Set the admin password, add an API key, run the pipeline check, press Call. Plain `http://<HOST_IP>:8100` reaches everything except placing calls — but it is the admin panel in the clear, so type your password and keys at the `:8443` door, never over `:8100`. See [security](docs/security.md).
+The LiveKit keypair is read from the mounted `livekit.yaml` (env still overrides), so the secret lives in one file. The rest is panel.
 
-**Do you need the bundled Caddy?** Only for TLS, and only because the microphone requires it — it is the zero-config way to get an HTTPS origin on a LAN. If you already run a reverse proxy (Caddy, Traefik, nginx, a NAS's built in one), delete the `caddy` service and terminate TLS there instead — but replicate both routes from the `Caddyfile`, not just one: the widget to `talkwave-web:8100` **and** `/rtc` to `livekit-server:7880` (WebSocket). The `/rtc` half is the one people forget; without it the page loads, the call connects, and no audio ever flows. Set `LIVEKIT_PUBLIC_URL` to `wss://your-hostname` so the browser signals through the same origin.
+> **Set `SUBWAVE_STREAM_URL` first — it fails silently.** Left blank it derives from the station's own address, which is plain http on the LAN. The widget must be served over TLS for the microphone to work, so the browser blocks that stream as mixed content and the caller hears no station.
+
+**Then open `https://<HOST_IP>:8443`** — the bundled Caddy TLS front door. Browsers only allow the microphone on HTTPS origins, and the first visit shows a one-time certificate screen. Set the admin password, add an API key, run the pipeline check, press Call.
+
+Plain `http://<HOST_IP>:8100` reaches everything except placing calls — but it is the admin panel in the clear. Type your password and keys at the `:8443` door, never over `:8100`. See [security](docs/security.md).
+
+<details>
+<summary><b>Already run your own reverse proxy? (Caddy, Traefik, nginx, a NAS's built-in one)</b></summary>
+
+The bundled Caddy is there only for TLS, and only because the microphone requires it — it is the zero-config way to get an HTTPS origin on a LAN.
+
+Delete the `caddy` service and terminate TLS in your own proxy instead, but **replicate both routes from the `Caddyfile`, not just one**:
+
+- the widget → `talkwave-web:8100`
+- `/rtc` → `livekit-server:7880` (WebSocket)
+
+**The `/rtc` half is the one people forget.** Without it the page loads, the call connects, and no audio ever flows.
+
+Then set `LIVEKIT_PUBLIC_URL` to `wss://your-hostname`, so the browser signals through the same origin.
+
+</details>
 
 ### Local, no Docker (Windows)
 
@@ -140,9 +163,21 @@ copy livekit.example.yaml livekit.yaml
 
 ## Privacy
 
-**Station admin credentials are optional, and never leave your box.** Entering your SUB/WAVE admin login unlocks the advanced on-air features — putting a different show on air, running segments and skills, skipping tracks, mirroring persona voices. Without it, everything else still works. The credentials are entered by the operator into their **own self-hosted instance**, stored server-side and write-only (the panel shows only a fixed mask — never the value, never its length), behind the instance's own admin password — and every caller-facing action they unlock is off by default and individually permission-gated. There is no third party anywhere in the path: the author runs no servers at all.
+**There is no third party anywhere in the path.** The author runs no servers at all, nothing phones home, and there is no telemetry.
 
-Two things worth knowing as an operator: caller audio is processed by whichever speech and AI providers **you** configure (it runs fully local with Ollama and the bundled Whisper, or on your own cloud keys), and calls can be transcribed and stored **on your own server** with configurable retention — the card shows a Recording indicator while that's on. Nothing phones home, there is no telemetry, and no caller reaches the broadcast stream unless you open the [on-air doors](docs/on-air.md) — shipped shut, chosen per caller, running a turn behind the room, with a pull-off-air button in your hand.
+**Station admin credentials are optional, and never leave your box.** Entering your SUB/WAVE admin login unlocks the advanced on-air features — putting a different show on air, running segments and skills, skipping tracks, mirroring persona voices. Without it, everything else still works.
+
+- Entered by the operator into their **own self-hosted instance**.
+- Stored server-side and **write-only** — the panel shows a fixed mask, never the value, never its length.
+- Kept behind the instance's own admin password.
+- Every caller-facing action they unlock is **off by default**, and individually permission-gated.
+
+**Two things worth knowing as an operator:**
+
+- **Caller audio** is processed by whichever speech and AI providers *you* configure — fully local with Ollama and the bundled Whisper, or on your own cloud keys.
+- **Calls can be transcribed and stored** on your own server, with configurable retention. The card shows a Recording indicator whenever that is on.
+
+And no caller reaches the broadcast stream unless you open the [on-air doors](docs/on-air.md) — shipped shut, chosen per caller, running a turn behind the room, with a pull-off-air button in your hand.
 
 ## Documentation
 
@@ -170,7 +205,13 @@ The README is the short version. The detail lives here:
 | `talkwave-web` | Mints join tokens (the browser never sees LiveKit secrets), serves widget and panel, proxies station reads |
 | `web-widget` | The call page — installable to a phone's home screen, or a compact embeddable card |
 
-Inside the worker, one call is one `CallSession` and every file under `agent-worker/call/` is named after its job. The tool allowlist is declared **once** in `registry.py` — the runtime surface and the panel's reference both derive from it. The prompt is assembled in `agent-worker/brain/`: what the DJ **knows** and how it **behaves** are separate files that change for separate reasons. Anything that changes the station is a local wrapper rather than a raw MCP call, which is what makes **Actions per call** a real ceiling. Test buttons and the pipeline check measure rather than trust — sample rates are read from the backend's own audio headers, voices are checked for every persona, and when a backend refuses, what it actually said is what you read.
+Inside the worker:
+
+- **One call is one `CallSession`**, and every file under `agent-worker/call/` is named after its job.
+- **The tool allowlist is declared once**, in `registry.py` — the runtime surface and the panel's reference both derive from it.
+- **The prompt is assembled in `agent-worker/brain/`**, where what the DJ *knows* and how it *behaves* are separate files, because they change for separate reasons.
+- **Anything that changes the station is a local wrapper**, never a raw MCP call — which is what makes **Actions per call** a real ceiling.
+- **Test buttons and the pipeline check measure rather than trust.** Sample rates are read from the backend's own audio headers, voices are checked for every persona, and when a backend refuses, what it actually said is what you read.
 
 ## Embedding
 
@@ -181,7 +222,9 @@ Inside the worker, one call is one `CallSession` and every file under `agent-wor
 
 Renders the compact card in an iframe with `allow="microphone"` set (its absence is the classic silent embed failure). The panel never ships in an embed.
 
-**What the card shows in an embed is answered separately** from what it shows on the standalone page — every element block on the panel's **Players** page carries a Page column and an Embed column. The host page usually has its own show heading and now-playing line, and a second copy of both inside the frame is noise. The settings gear is the one thing that is never offered here at any setting: an embed does not load the panel's code, so it would open nothing.
+**What the card shows in an embed is answered separately** from what it shows on the standalone page — every element block on the panel's **Players** page carries a Page column and an Embed column. The host page usually has its own show heading and now-playing line, and a second copy of both inside the frame is noise.
+
+The settings gear is the one thing never offered here at any setting: an embed does not load the panel's code, so it would open nothing.
 
 | Attribute | Effect |
 |---|---|
@@ -194,9 +237,11 @@ Renders the compact card in an iframe with `allow="microphone"` set (its absence
 | `data-mode="launcher\|dock\|button"` | An off-the-shelf shape that *opens on a press* instead of sitting inline: `launcher` is a floating call pill in a page corner, `dock` a slim bar pinned across the bottom, `button` an inline button in the page flow that opens the card in a centred pop-up. All three name who answers (or say the line is closed) before they are pressed, and collapsing one never hangs up a call in progress. Pick one — and preview it — in the panel's **Embed** section |
 | `data-position="left"` | Puts the launcher pill in the left corner (right is the default) |
 
-**The station's own colours** are not an embed attribute — set **Players → Surface → Colours → "The station's own colours"** in the panel and every surface, embeds included, wears the on-air show's palette live from the station's `/themes` (a host's `data-theme` is only the starting point, so it does not block this). A host page can also push its own palette *and fonts* into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` — which repaints in place without dropping a call.
+**The station's own colours** are not an embed attribute. Set **Players → Surface → Colours → "The station's own colours"** in the panel, and every surface — embeds included — wears the on-air show's palette live from the station's `/themes`. A host's `data-theme` is only the starting point, so it does not block this.
 
-Any page you embed on can mint call tokens, so treat an embed as publishing the phone. Set a guest code if that isn't what you want.
+A host page can also push its own palette *and fonts* into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` — which repaints in place without dropping a call.
+
+> **Any page you embed on can mint call tokens**, so treat an embed as publishing the phone. Set a guest code if that isn't what you want.
 
 ## License
 
