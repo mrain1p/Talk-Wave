@@ -341,6 +341,7 @@ from tests.test_voice import (  # noqa: F401
 from tests.test_voicemail import (  # noqa: F401
     TestAMessageIsNeverLost,
     TestAVoicemailIsACallEntryToo,
+    TestTheStudioWearsTheSameSoundDial,
     TestEachPersonaCanHaveItsOwnLine,
     TestTheMachineHasATierDoor,
     TestTheStationAnswersWhenNobodyIsOnAir,

@@ -148,9 +148,14 @@ class CallRelay:
         await asyncio.to_thread(chunks.take_dump)
         self.active = True
         self._live = False
-        self._tool("on air: armed — taping; the broadcast plays when the "
-                   "call ends" if self.tape else
-                   "on air: armed — the broadcast opens at the first clip")
+        # The sound style rides the armed line because nothing else records
+        # it: the clip that would prove it is deleted the moment it airs, so
+        # a soak reading the record needs the claim written down here.
+        sound = str(self.cfg.get("on_air_caller_sound") or "clean")
+        self._tool(("on air: armed — taping; the broadcast plays when the "
+                    "call ends" if self.tape else
+                    "on air: armed — the broadcast opens at the first clip")
+                   + f" (caller sound: {sound})")
         return True
 
     async def _go_live(self) -> None:

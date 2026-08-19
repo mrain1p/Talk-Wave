@@ -1514,3 +1514,21 @@ class TestResamplingDoesNotAlias(unittest.TestCase):
             self.assertLess(hi_rms, lo_rms * 0.15,
                             "ultrasonics must be filtered out, not folded "
                             "into the voice band")
+
+
+class TestTheStudioWearsTheSameSoundDial(unittest.TestCase):
+    """One dial for every caller voice that reaches the air (the operator's
+    parity ask, 2026-08-18): the studio's draft mastering reads
+    on_air_caller_sound exactly like the live tee does, so the review card
+    previews the sound that would actually go out. Pinned at the source
+    because the draft behaviour tests exercise vm_review.create directly and
+    never reach the handler's mastering line."""
+
+    def test_the_draft_master_reads_the_dial(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "api" / "voicemail.py").read_text(
+            encoding="utf-8")
+        call = src.split("vm_master.master(", 1)[1][:220]
+        self.assertIn('cfg.get("on_air_caller_sound")', call,
+                      "the studio stopped reading the caller-sound dial")

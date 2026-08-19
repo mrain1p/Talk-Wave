@@ -1235,8 +1235,10 @@ SCHEMA: dict[str, dict] = {
              "— and is the default because the phone costume reads as bad "
              "audio on a modern stream, not as a phone. Phone is the "
              "300–3400 Hz radio-caller costume for stations that want that "
-             "look on purpose. Applies to live phone-ins; the soundbite "
-             "studio's recordings keep the costume either way for now."),
+             "look on purpose. One dial for every caller voice that reaches "
+             "the air: live phone-ins and the soundbite studio's recordings "
+             "alike, and the studio's review card previews the sound that "
+             "would actually go out."),
     "on_air_call_mode": dict(group="perms", kind="select", admin=True,
         label="When the call airs",
         needs=("allow_on_air", TIERS),
