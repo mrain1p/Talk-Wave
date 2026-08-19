@@ -890,18 +890,30 @@
   .plheadmeta { margin-left: auto; color: var(--sage-dim);
                 font: 400 11px/1 var(--font-mono); letter-spacing: .08em;
                 text-transform: none; }
-  /* The middle scrolls if a short viewport must, so the dock never leaves
-     the bottom; on the mockup's 844px frame nothing actually scrolls. */
+  /* The middle FITS rather than scrolls: the operator's ask, off the web
+     player's screenshot (2026-08-19) — "shouldn't have to scroll on the
+     player; a side bar for the upcoming tracks is fine". The art shrinks
+     first (it is decoration), then the two panels compress onto their own
+     inner scrollbars, which is the one scrolling the ask blesses. The
+     overflow rule stays as a last resort for a viewport shorter than
+     everything's minimums, where clipping would hide the dock's own
+     panels; on any real surface it now shows nothing. */
   .plscroll {
     flex: 1 1 auto; min-height: 0; width: 100%; overflow-y: auto;
     display: flex; flex-direction: column; align-items: center;
-    padding: 18px 16px 12px;
+    padding: 14px 16px 12px;
   }
   /* The art, glowing: a blurred copy of the SAME artwork behind it, so the
      halo recolors per record. The DJ's photo steps in when a record has no
-     art; initials after that. */
-  .plartwrap { position: relative; width: min(240px, 62cqw); aspect-ratio: 1;
-               flex: none; }
+     art; initials after that.
+     --plart-cap is measured by call.js fitPlayerArt(): the card's height is
+     config-driven (how many bands are on) and CSS cannot read it, so the
+     art's ceiling is whatever space is left once everything fixed has its
+     share. Width-driven with the aspect ratio deriving height — the
+     height-driven direction does not reliably transfer in Chromium. */
+  .plartwrap { position: relative;
+               width: min(240px, 62cqw, var(--plart-cap, 999px));
+               aspect-ratio: 1; flex: none; }
   .plglow {
     position: absolute; left: -10px; top: -6px;
     width: calc(100% + 20px); height: calc(100% + 12px);
@@ -953,6 +965,9 @@
     width: 100%; border: 1px solid var(--edge); border-radius: 6px;
     background: var(--pine); padding: 9px 12px; text-align: left;
     margin-top: 8px;
+    /* Compressible: head stays, the body gives its height back through its
+       own scrollbar when the sheet is squeezed. */
+    display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0;
   }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -969,7 +984,9 @@
      the whole queue, the whole booth line, reachable by thumb) — the cap
      only stops one long panel from pushing the dock off a short phone. */
   .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage);
+                 flex: 1 1 auto; min-height: 34px;
                  max-height: 108px; overflow-y: auto; }
+  .plpanelbody:empty { min-height: 0; }
   .plpanelbody .pltit { font-size: 14px; font-weight: 700;
                         color: var(--alpenglow); }
   .plpanelbody .plsub { font-size: 12px; color: var(--sage); margin-top: 2px; }
@@ -2906,6 +2923,17 @@
   label.check .hint.inlabel {
     display: inline; margin: 0 0 0 8px; font-weight: 400;
   }
+  /* Bounded basis, then grow: with basis auto the hint entered the flex row
+     at its full sentence length and the shrink crushed the LABEL to a word
+     per line ("Calls / may / go / on / air" — operator's mobile screenshot,
+     2026-08-19). From 240px it grows into free space instead. */
+  label.check .hint.inlabel { flex: 1 1 240px; }
+  /* On a phone there is no beside — the help takes its own line under the
+     label, indented past the checkbox. */
+  @media (max-width: 620px) {
+    label.check { flex-wrap: wrap; }
+    label.check .hint.inlabel { flex: 1 1 100%; margin: 2px 0 0 23px; }
+  }
   .runbtn.on { border-color: var(--accent); color: var(--accent); }
   /* set / not set beside a credential heading */
   .settingsearch {
@@ -3219,11 +3247,18 @@
      line per setting down a panel with ~50 of them, while the right two
      thirds of the row it described sat empty. Wraps at narrow widths, where
      three columns genuinely do not fit. */
+  /* Top-aligned, not centred: with a long help the row grows several lines
+     tall, and centring floated the label, the control and the admin chip at
+     the paragraph's midpoint — the On air page read as controls scattered
+     down a column of prose (operator's screenshot, 2026-08-19). The
+     paddings put label and help back on the control's own first text line,
+     so one-line rows look exactly as they did. */
   .row {
-    display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
+    display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px;
     flex-wrap: wrap;
   }
-  .row label { flex: 0 0 168px; font-size: 12.5px; color: var(--dim); }
+  .row label { flex: 0 0 168px; font-size: 12.5px; color: var(--dim);
+               padding-top: 8px; }
   /* Bounded rather than greedy. `flex: 1` let a text field take the whole
      row, which is what left the help nowhere to go but underneath — and the
      help is the thing that needs the width, because it is a sentence. A
@@ -3245,7 +3280,10 @@
      when it sat on a line of its own. */
   .row > .hint.inrow {
     flex: 1 1 300px; min-width: 0; margin: 0; text-align: left;
+    padding-top: 7px;
   }
+  /* The chip rides the row's first line too, not the paragraph's middle. */
+  .row > .needsadmin { margin-top: 7px; }
   .row select:focus, .row input:focus,
   .testrow input:focus { outline: none; border-color: var(--accent); }
   /* A field that holds "2" does not need 600px to hold it. Every number in

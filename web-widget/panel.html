@@ -744,21 +744,10 @@
           <div class="row permrow" data-perm="allow_on_air"><select id="allow_on_air"></select></div>
           <div class="row permrow" data-perm="allow_never_play"><select id="allow_never_play"></select></div>
         </div>
-        <div class="row narrow">
-          <label for="on_air_max_seconds">On-air window (s)</label>
-          <input type="number" id="on_air_max_seconds" min="30" max="1800" step="30" />
-        </div>
-        <div class="row">
-          <label for="on_air_delay_secs">On-air delay (s)</label>
-          <input type="number" id="on_air_delay_secs" min="2" max="30" step="1" />
-        </div>
-        <div class="row">
-          <label for="on_air_caller_sound">Caller sound on air</label>
-          <select id="on_air_caller_sound"></select>
-        </div>
-        <!-- "When the call airs" lives on the On air page now (operator's
-             ask, 2026-08-18) — it says how the broadcast is delivered, not
-             what a caller may do. -->
+        <!-- "When the call airs", the on-air window/delay and the caller's
+             on-air sound all live on the On air page now (operator's asks,
+             2026-08-18/19) — they say how the broadcast is delivered, not
+             what a caller may do. Only the tier row above stays here. -->
         <!-- Painted by paintOnairWiring() from /live's door state: visible
              only when go-live is saved ON but the mixer is unreachable from
              this deployment — switched on and silently unable to air is the
@@ -995,19 +984,32 @@
       <div class="body">
         <p class="hint wide" style="margin-top:0">The caller's half is the
           ON AIR | OFF AIR switch on the card; these two are yours, one per
-          door. Who may use the route at all — and the on-air window and
-          delay around it — is the <strong>Go live on the station</strong>
-          row under <em>Caller permissions</em>, which greys while both
-          doors here are shut. The dashboard's Live-on-air cluster flips
-          the same two switches.</p>
+          door. Who may use the route at all is the
+          <strong>Go live on the station</strong> row under
+          <em>Caller permissions</em>, which greys while both doors here are
+          shut. The dashboard's Live-on-air cluster flips the same two
+          switches.</p>
         <label class="check"><input type="checkbox" id="on_air_calls_enabled" /> Calls may go on air</label>
         <label class="check"><input type="checkbox" id="on_air_voicemail_enabled" /> Voicemails may go on air</label>
-        <!-- Moved here from Caller permissions (operator's ask, 2026-08-18):
-             when the broadcast is delivered is a fact about the air, not a
-             permission. -->
+        <!-- Moved here from Caller permissions (operator's asks,
+             2026-08-18/19): when the broadcast is delivered, how long a
+             caller may hold it, the take-back window and how their voice is
+             dressed are facts about the air, not permissions. -->
         <div class="row">
           <label for="on_air_call_mode">When the call airs</label>
           <select id="on_air_call_mode"></select>
+        </div>
+        <div class="row narrow">
+          <label for="on_air_max_seconds">On-air window (s)</label>
+          <input type="number" id="on_air_max_seconds" min="30" max="1800" step="30" />
+        </div>
+        <div class="row narrow">
+          <label for="on_air_delay_secs">On-air delay (s)</label>
+          <input type="number" id="on_air_delay_secs" min="2" max="30" step="1" />
+        </div>
+        <div class="row">
+          <label for="on_air_caller_sound">Caller sound on air</label>
+          <select id="on_air_caller_sound"></select>
         </div>
         <div class="row">
           <label for="vm_air_backend">A soundbite airs as</label>
