@@ -132,6 +132,11 @@ async def _on_air_door(cfg: dict) -> dict:
         # you hang up" are different consents to give.
         "mode": ("after" if str(cfg.get("on_air_call_mode") or "live")
                  == "after" else "live"),
+        # The quick kill's own state, so the panel can tell "the operator
+        # closed this door" apart from "the mixer is unreachable" — calls
+        # being false means either, and only one of them deserves a wiring
+        # warning (the operator's ask, 2026-08-18).
+        "enabled": bool(cfg.get("on_air_calls_enabled", True)),
     }
 
 

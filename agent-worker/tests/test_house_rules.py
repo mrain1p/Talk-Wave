@@ -791,9 +791,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
         # they belong beside canAsk, which is the per-request half of a file
         # whose other half builds the shared payload. That seam (shared build
-        # vs per-caller resolve) is the split when it comes. 623: the door
-        # gained its live/tape mode (0.98.5), five lines on the build side.
-        "agent-worker/api/live.py": (623, "the shared payload build split "
+        # vs per-caller resolve) is the split when it comes. 628: the door
+        # gained its live/tape mode and the quick kill's own state (0.98.5),
+        # ten lines on the build side so the panel's wiring warning can tell
+        # a closed door from a missing network.
+        "agent-worker/api/live.py": (628, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -815,8 +817,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Back over the ceiling at 630 with the tape-mode class (0.98.5); its
         # earlier entry (676) was rightly deleted when a split took it under.
         # The seam is the same one it has always had: the chunk-store half
-        # against the relay-behaviour half.
-        "agent-worker/tests/test_onair.py": (630, "the chunk-store half "
+        # against the relay-behaviour half. 647: the door's which-kind-of-shut
+        # pin (0.98.6) — it belongs in the door class it extends.
+        "agent-worker/tests/test_onair.py": (647, "the chunk-store half "
                                                   "split from the relay "
                                                   "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was

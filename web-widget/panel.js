@@ -20,7 +20,24 @@
     try { live = await fetch('/live').then((r) => r.json()); }
     catch (e) { live = live || {}; }
     setSounds(live && live.sounds);
+    paintOnairWiring();
     return live;
+  }
+
+  // The wiring warning beside the on-air rows: go-live saved ON while the
+  // mixer is unreachable means nothing can actually air and every phone-in
+  // quietly falls back private — the door-truth failure, seen the day the
+  // wiring doc first said "join both networks". Painted from SAVED state on
+  // every /live refresh (the save path refreshes, so flipping the row on
+  // without the wiring shows this immediately). The quick kill is excluded
+  // on purpose: a door the operator closed is a choice, not a fault.
+  function paintOnairWiring() {
+    const box = $('onairWiring');
+    if (!box) return;
+    const oa = (live && live.onAirCalls) || null;
+    const unwired = !!(oa && oa.tier && oa.tier !== 'off'
+                       && oa.enabled !== false && !oa.calls);
+    box.style.display = unwired ? 'block' : 'none';
   }
 
 

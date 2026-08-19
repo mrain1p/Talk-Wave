@@ -507,6 +507,23 @@ class TestTheLiveCallDoorTellsTheWorkersTruth(_ChunkStore):
                          "a worker that stopped talking does not hold the "
                          "door open forever")
 
+    def test_the_door_says_which_kind_of_shut_it_is(self):
+        # `calls` false means EITHER the operator's quick kill OR a mixer
+        # nobody can reach, and only one of those deserves the panel's wiring
+        # warning. `enabled` carries the kill's own state so the panel can
+        # tell them apart (the operator's ask, 2026-08-18), and `mode` says
+        # live or tape so the stage frame promises the right thing.
+        chunks.record_mixer_verdict(False, "no reachable mixer")
+        unwired = self._door(self._cfg())
+        self.assertFalse(unwired["calls"])
+        self.assertTrue(unwired["enabled"], "the kill was not thrown")
+        killed = self._door(self._cfg(on_air_calls_enabled=False))
+        self.assertFalse(killed["calls"])
+        self.assertFalse(killed["enabled"])
+        self.assertEqual(unwired["mode"], "live")
+        self.assertEqual(
+            self._door(self._cfg(on_air_call_mode="after"))["mode"], "after")
+
 
 class TestTheLiveSegmentLandsInsteadOfStopping(unittest.TestCase):
     """The on-air window was enforced and never announced.
