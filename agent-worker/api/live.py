@@ -182,10 +182,29 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     Cheap: no station reads, just the door check again against the settings
     already in hand.
     """
-    if payload.get("canAsk") is None:
-        return payload                      # the help button is switched off
     tier = caller_tier(request)
     out = dict(payload)
+    # WHICH DOORS THIS CALLER CAN ACTUALLY OPEN, alongside the shared
+    # payload's door states. The card used to offer every open door to every
+    # caller and let the mint refuse: an operator signed out on their own
+    # phone armed ON AIR, pressed Call in live, and got "This line can't put
+    # callers on the air" with no path to the code — several times in one
+    # evening (2026-08-18, rooms callin-o-*). A door the tier doesn't open
+    # is not offered; the sign-in chip is the way to a bigger tier.
+    # Copy-on-write on the nested dict: `out` is a shallow copy of a payload
+    # cached across every caller, and writing into the shared onAirCalls
+    # would leak one caller's verdict to everybody for thirty seconds.
+    cfg_now = settings_store.load()
+    doors = dict(out.get("onAirCalls") or {})
+    doors["mine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_on_air"), tier)
+    out["onAirCalls"] = doors
+    out["voicemailMine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_voicemail"), tier)
+    out["chatMine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_chat"), tier)
+    if payload.get("canAsk") is None:
+        return out                          # the help button is switched off
     out["canAsk"] = {
         k: settings_store.permission_reaches(v, tier)
         for k, v in (payload.get("askTiers") or {}).items()

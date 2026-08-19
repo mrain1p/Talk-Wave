@@ -1347,6 +1347,74 @@ class TestSoundPacks(unittest.TestCase):
         self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
 
 
+class TestTheCardOnlyOffersDoorsTheTierOpens(_TempStores):
+    """The mint has always refused a door above the caller's tier; the card
+    offered it anyway and the refusal was a dead end — the operator, signed
+    out on their own phone, armed ON AIR and got "This line can't put callers
+    on the air" with no path to the code, several times in one evening
+    (2026-08-18, rooms callin-o-*). /live now carries per-caller verdicts
+    (onAirCalls.mine, voicemailMine, chatMine) computed per request, so the
+    widget keeps an unreachable door off the card; the sign-in chip is the
+    climb."""
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        from pathlib import Path
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+
+    def tearDown(self):
+        import admin_auth
+        admin_auth.AUTH_PATH = self._old_auth
+        super().tearDown()
+
+    def _live_for(self, key="", payload=None):
+        from api.live import _for_this_caller
+
+        headers = {"X-Call-Key": key} if key else {}
+        req = types.SimpleNamespace(headers=headers, remote="9.9.9.9")
+        return _for_this_caller(req, payload if payload is not None else {
+            "canAsk": {}, "askTiers": {},
+            "onAirCalls": {"offered": True, "calls": True,
+                           "voicemail": True, "tier": "guest"},
+        })
+
+    def test_a_stranger_is_not_offered_a_guest_only_air_door(self):
+        import admin_auth
+
+        admin_auth.set_guest_password("guest99")
+        # The guest lane has to exist for the code to climb into — same
+        # reason the climb test opens it (the 0.10.80 admin-only default).
+        settings_store.save({"front_access": "guest",
+                             "allow_on_air": "guest",
+                             "allow_voicemail": "open"})
+        stranger = self._live_for()
+        self.assertFalse(stranger["onAirCalls"]["mine"])
+        self.assertTrue(stranger["voicemailMine"])
+        # The same caller with the code IS offered it — the climb works.
+        self.assertTrue(self._live_for("guest99")["onAirCalls"]["mine"])
+
+    def test_the_verdicts_ride_even_with_the_help_switched_off(self):
+        # _for_this_caller returns early when the ask list is off (canAsk
+        # None). The verdicts must be computed BEFORE that return, or a
+        # deployment with the help button off silently loses the door gating
+        # — the exact shape of setting that ships unreachable.
+        settings_store.save({"allow_on_air": "admin"})
+        out = self._live_for(payload={"canAsk": None,
+                                      "onAirCalls": {"calls": True}})
+        self.assertFalse(out["onAirCalls"]["mine"])
+
+    def test_the_shared_payload_is_not_scribbled_on(self):
+        # /live's payload is cached across every caller for thirty seconds;
+        # the verdict is one caller's. Writing it into the nested dict would
+        # hand caller A's answer to caller B.
+        settings_store.save({"allow_on_air": "admin"})
+        payload = {"canAsk": None, "onAirCalls": {"calls": True}}
+        self._live_for(payload=payload)
+        self.assertNotIn("mine", payload["onAirCalls"])
+
+
 class TestSigningInClimbsTheTier(_TempStores):
     """A caller on an open line can hold a guest code or the admin password to
     unlock the commands the operator gated above `anyone`. The server resolves
@@ -1647,8 +1715,11 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
         # The card flips to .oncall + Hang up the instant Call/Voicemail is
         # pressed (no ringing phase), so a 429/401 refusal MUST undo that or the
         # card sits on Hang up over an engaged-tone message (tester-caught).
+        # 2200, not 1400: the 403 branch grew its way-to-the-code fix
+        # (openSignin + the comment saying why) and pushed the idle reset
+        # deeper into the block it has always been in.
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        refusal = js.split("res.status === 429 || res.status === 401", 1)[1][:1400]
+        refusal = js.split("res.status === 429 || res.status === 401", 1)[1][:2200]
         self.assertIn("classList.remove('oncall')", refusal)
         self.assertIn("setCardMode('idle')", refusal)
         self.assertIn("hangBtn.hidden = true", refusal)
@@ -2886,10 +2957,15 @@ class TestTheCardOffersTheCountAndTheHeart(unittest.TestCase):
         gate = self.live_py.split('"cardLike"')[1][:160]
         self.assertIn('cfg.get("show_track_like", True)', gate)
 
-    def test_a_quiet_station_paints_no_zero(self):
-        # "0 listening" at someone deciding whether to ring talks them out of
-        # it for no reason; the count only appears from one listener up.
-        self.assertIn("d.listeners >= 1", self.js)
+    def test_a_known_count_paints_even_at_zero_but_unknown_paints_nothing(self):
+        # The one-listener floor ("0 listening talks a caller out of ringing")
+        # was reversed by the operator on 2026-08-18: the count is a bare
+        # number behind a broadcast mark now, zero included — a quiet-hour
+        # zero next to a glyph reads as a meter, not a verdict. What still
+        # must never paint is an ABSENT count: null means the station would
+        # not say, or the row is off, and 📡 null is gibberish.
+        self.assertIn("d.listeners >= 0", self.js)
+        self.assertIn("typeof d.listeners === 'number'", self.js)
 
     def test_the_heart_shares_the_tracks_row(self):
         # A new row would change the card's height — the one thing the card

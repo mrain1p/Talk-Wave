@@ -682,13 +682,16 @@
     if (d && d.liveCalls !== false) {
       ways.push(['Calls', !paused && !!dj && dj !== '…' && onAir]);
     }
-    if (d && (framed ? d.embedChatBtn : d.chatBtn) !== false && d.chatEnabled) {
+    if (d && (framed ? d.embedChatBtn : d.chatBtn) !== false && d.chatEnabled
+        && d.chatMine !== false) {
       ways.push(['Texts', !paused]);
     }
     // 'never' is not offered; 'closed' is offered only when the booth is shut,
     // which is exactly when the machine is the point. 'always' is always.
+    // A tier the caller doesn't reach is not offered at all — a board that
+    // lists a way in the mint will refuse is worse than one listing nothing.
     const vm = d && d.voicemailWhen;
-    if (vm && vm !== 'never') {
+    if (vm && vm !== 'never' && d.voicemailMine !== false) {
       const shut = paused || !onAir;
       ways.push(['Voicemail', vm === 'always' ? true : shut]);
     }
@@ -1584,8 +1587,15 @@
     const oaDoors = d.onAirCalls || {};
     const callsLive = !!oaDoors.calls;
     const vmGoesLive = !!oaDoors.voicemail;
+    // …and never to a caller whose tier can't open it. The mint always
+    // refused (allow_on_air is a tier row); the card offered the switch
+    // anyway and the refusal was a dead end with no path to the code —
+    // "several times it wouldn't let me" (operator, signed out on their own
+    // phone, 2026-08-18). `mine` is per-request truth from /live; absent
+    // means an older server, which keeps the old behaviour.
     const onAirHere = (callsLive || vmGoesLive)
-      && !lineClosedNow && !needsCode && !vmOnly;
+      && !lineClosedNow && !needsCode && !vmOnly
+      && oaDoors.mine !== false;
     if (!onAirHere) onAirPick = false;
     // The 4c word switch (design handoff, 2026-08-17): route is the single
     // source of truth, and the segment, the stage frame, the stage message
@@ -1609,7 +1619,8 @@
     // per surface. With the button up, Call never morphs — two clear
     // doors beat one door with a changing sign.
     const vmButton = machineOn && !lineClosedNow
-      && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode;
+      && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode
+      && d.voicemailMine !== false;
     $('vmBtn').hidden = !vmButton;
     if (vmButton) setBtn($('vmBtn'), 'vm', 'mail',
                          onAirHere && onAirPick && vmGoesLive
@@ -1619,7 +1630,8 @@
     // outranks it, the door code gates it, and it is per-surface. Never
     // hidden mid-chat — the input row is the conversation.
     const chatButton = !!d.chatEnabled && !lineClosedNow
-      && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode;
+      && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode
+      && d.chatMine !== false;
     if ($('chatBtn')) {
       $('chatBtn').hidden = !chatButton || chatOpen;
       if (chatButton) setBtn($('chatBtn'), 'chat', 'chat', word('chat_button', 'Text the booth'));
@@ -1799,12 +1811,14 @@
 
       $('eyebrow').className = 'eyebrow';
       // The listener count rides the ON AIR line — text on furniture the
-      // card already has, so the height promise holds. Only from one
-      // listener up: a quiet hour painting "0 listening" at someone
-      // deciding whether to ring talks them out of it for no reason.
-      $('eyebrowText').textContent = 'On air now'
-        + (typeof d.listeners === 'number' && d.listeners >= 1
-           ? ' · ' + d.listeners + ' listening' : '');
+      // card already has, so the height promise holds. A broadcast mark and
+      // the bare number, zero included: the operator's call (2026-08-18),
+      // reversing the old one-listener floor — the word "listening" and the
+      // NOW both went with it. Absent stays absent: no number is painted
+      // when the station won't say or the row is switched off.
+      $('eyebrowText').textContent = 'On air'
+        + (typeof d.listeners === 'number' && d.listeners >= 0
+           ? ' · 📡 ' + d.listeners : '');
       // The NAME is never switchable: a call card that doesn't say who
       // answers isn't a call card. Everything below it is the operator's
       // call, per surface. Emptied rather than hidden — these are text nodes
@@ -1957,6 +1971,16 @@
 
   // Visibility only — refreshLive owns the Call button, so the two can't
   // fight over it.
+  // The card knows when the gate is up, as a class CSS can reach: the route
+  // switch straddles the stage's top edge, and with the gate open on a phone
+  // the keyboard compresses the 100dvh card until the switch sits ON the
+  // code input — UNLOCK half-hidden behind ON AIR (operator screenshot,
+  // 2026-08-18). While someone is typing a code, the switch stands down.
+  function syncGateClass() {
+    const card = document.querySelector('.card');
+    if (card) card.classList.toggle('gated', !$('guestGate').hidden);
+  }
+
   function paintGuestGate() {
     const box = $('guestGate');
     // signinMode keeps the gate open when the caller opened it themselves to
@@ -1967,6 +1991,7 @@
     // and an X that reopens on the next poll is worse than no X at all.
     const x = $('guestClose');
     if (x) x.hidden = !signinMode;
+    syncGateClass();
     notifyHeight();
   }
 
@@ -1988,6 +2013,7 @@
       applyControls(shown || live);
       input.value = ''; msg.textContent = '';
       $('guestGate').hidden = true;
+      syncGateClass();
       await refreshLive();
     } catch (e) { msg.textContent = 'Could not check that just now.'; }
   }
@@ -2008,11 +2034,21 @@
     const label = $('guestLabel');
     if (label) label.textContent = 'Sign in for more of what you can ask for.';
     if (msg) msg.textContent = 'Enter the guest code or admin password.';
-    if (input) { input.placeholder = 'Guest code or admin password'; input.focus(); }
+    if (input) {
+      input.placeholder = 'Guest code or admin password';
+      input.focus();
+      // After the phone keyboard has finished arriving — focus() fires
+      // before the viewport resize, and a scroll issued then lands wrong.
+      setTimeout(() => {
+        try { input.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        catch (e) { /* an old browser scrolls however it likes */ }
+      }, 250);
+    }
     // Nothing to close back to when the line itself demands a code — see
     // closeSignin.
     const x = $('guestClose');
     if (x) x.hidden = false;
+    syncGateClass();
     notifyHeight();
   }
 
@@ -2025,6 +2061,7 @@
     if (input) input.value = '';
     if (msg) msg.textContent = '';
     if (box) box.hidden = true;
+    syncGateClass();
     notifyHeight();
   }
 
@@ -2041,6 +2078,7 @@
     if (after > before) {
       input.value = ''; msg.textContent = '';
       $('guestGate').hidden = true;
+      syncGateClass();
       signinMode = false;
       const tier = (live && live.callerTier) || 'guest';
       setStatus(tier === 'admin'
@@ -2840,6 +2878,26 @@
   // against a card that said idle: the DJ heard a caller who thought they had
   // hung up. Reviewed 0.10.57.
   let callGen = 0;
+  // The route chip, for the whole call or recording — a caller must never be
+  // able to forget which way they chose ("once you get in you could forget
+  // which you picked", operator, 2026-08-18). Both states, voicemail
+  // included: ON AIR in coral, OFF AIR in the cool teal — and nothing at all
+  // when the card never offered a route, because a switchless deployment has
+  // no OFF AIR to reassure anyone about.
+  function paintRouteBadge() {
+    const b = $('onAirBadge');
+    if (!b) return;
+    const routed = !!($('routeSwitch') && !$('routeSwitch').hidden);
+    const on = vmCall
+      ? routed && onAirPick
+        && !!(live && live.onAirCalls && live.onAirCalls.voicemail)
+      : onAirCall;
+    b.hidden = !(on || routed);
+    b.classList.toggle('priv', !on);
+    const t = $('onAirBadgeText');
+    if (t) t.textContent = on ? 'ON AIR' : 'OFF AIR';
+  }
+
   async function startCall(asVoicemail) {
     const myGen = ++callGen;
     vmCall = !!asVoicemail;
@@ -2896,9 +2954,8 @@
     hangBtn.hidden = false;
     const card = document.querySelector('.card');
     card.classList.add('oncall');
-    // The broadcast light, for the whole call — a caller must never be able
-    // to forget they chose the air.
-    if ($('onAirBadge')) $('onAirBadge').hidden = !onAirCall;
+    // The route light, for the whole call — see paintRouteBadge.
+    paintRouteBadge();
     // Repainted HERE, like openChat does — the board is only painted when the
     // card is idle and the /live poll runs every 20 seconds, so LINES ARE OPEN
     // stayed up through connecting, pickup and the DJ's first words. Whoever
@@ -2965,6 +3022,13 @@
         if (res.status === 401) {
           localStorage.removeItem(CALL_KEY);
           paintGuestGate();
+        } else if (res.status === 403 && live && live.signinAvailable) {
+          // A door this tier doesn't open, from a caller a code could still
+          // elevate — a stale tab, or a stored key that expired between
+          // paints. The old dead end showed the refusal and nothing else,
+          // several times in one evening (2026-08-18); the sign-in row IS
+          // the fix for a 403, so open it alongside the message.
+          openSignin();
         }
         setStatus(d.error || 'The booth line is tied up — try again shortly.', 'error');
         $('rig').classList.remove('on');

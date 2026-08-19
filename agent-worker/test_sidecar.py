@@ -71,6 +71,7 @@ from tests.test_http import (  # noqa: F401
 )
 from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,
+    TestTheCardOnlyOffersDoorsTheTierOpens,
     TestTheStationPlayerKnowsItsPlace,
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,

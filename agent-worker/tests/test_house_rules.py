@@ -788,6 +788,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "agent-worker/call/air.py": (707, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
+        # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
+        # they belong beside canAsk, which is the per-request half of a file
+        # whose other half builds the shared payload. That seam (shared build
+        # vs per-caller resolve) is the split when it comes.
+        "agent-worker/api/live.py": (618, "the shared payload build split "
+                                          "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
         # seam is the phase boundary the docstring has named all along:

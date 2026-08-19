@@ -1247,6 +1247,10 @@
      WHOLE call — a caller must never be able to forget they are live. */
   .onairchip { color: var(--coral); border-color: var(--coral); font-weight: 700; letter-spacing: .08em; }
   .onairchip .sdot { width: 7px; height: 7px; border-radius: 0; background: currentColor; animation: blink 1.6s infinite; }
+  /* The same chip carrying the OFF AIR answer — the route's teal, and a
+     steady dot: only a live broadcast earns the pulse. */
+  .onairchip.priv { color: var(--cool); border-color: var(--cool); }
+  .onairchip.priv .sdot { animation: none; }
 
   /* ---- The route: the operator's 4c "word switch" (design handoff,
      2026-08-17). ON AIR | OFF AIR rides the stage's top edge, centred,
@@ -1308,6 +1312,13 @@
      under OFF AIR (operator screenshot, 2026-08-18). Only the routed idle
      card has a straddle to clear; in-call modes hide the switch entirely. */
   .card.routed[data-mode="idle"] .linebox { padding-top: 22px; }
+  /* While the code gate is open the switch stands down entirely: with the
+     phone keyboard up the 100dvh card compresses until the straddle sat ON
+     the code input — UNLOCK half-hidden behind ON AIR (operator screenshot,
+     2026-08-18). The gate is an auth moment, not a routing one; the switch
+     comes back the instant the gate closes. */
+  .card.gated .routeswitch { display: none; }
+  .card.gated.routed[data-mode="idle"] .linebox { padding-top: 9px; }
   .card.routed.route-on .linebox {
     border-color: rgba(224, 83, 61, .55);
     box-shadow: inset 0 0 40px rgba(224, 83, 61, .06);
