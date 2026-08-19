@@ -24,6 +24,7 @@ from ..background import spawn
 from .albums import build_album_tools
 from .late_match import _surface_late_match
 from .registry import library_search_needs_mcp
+from .removal import build_removal_tools
 # Re-exported, not merely used: `music._fmt_track` is a name several tests and
 # call sites already reach for, and moving the helpers to their own module is
 # not a reason to make every one of them move too.
@@ -346,67 +347,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
     # Deliberately NOT tied to exact_queue: a caller who can only request can
     # still change their mind, and the thing they want undone is usually the
-    # request, not a pick from a search page.
+    # request, not a pick from a search page. Both un-queue tools — the
+    # single cancel and its batch — live in removal.py.
     if cfg.get("allow_cancel_queue") and not library_search_needs_mcp():
-        @lk_llm.function_tool(name="subwave_cancel_queued_track")
-        async def cancel_queued_track(id: str = "", title: str = "") -> str:
-            """Take a track back OUT of the queue before it airs — the caller
-            changed their mind, or you queued the wrong one. Pass the id if
-            you have it from a search result or a queue read; otherwise pass
-            the title and it will be matched against what's actually queued.
-            Cannot touch the track on air or the one being cued up next: for
-            that, there is only skipping."""
-            if actions.at_limit():
-                return actions.refusal()
-            track_id = (id or "").strip()
-            named = title or track_id
-            if not track_id:
-                # A title is what the DJ actually has after "no, not that one"
-                # — it just said the name out loud. Resolve it against the
-                # real queue rather than making the model produce an id it
-                # never saw.
-                needle = (title or "").strip().casefold()
-                if not needle:
-                    return ("You need to say WHICH track to pull — a title or "
-                            "an id. Ask the caller which one they mean.")
-                state = await station.state()
-                for item in (state.get("upcoming") or []):
-                    t = item if isinstance(item, dict) else {}
-                    if needle in str(t.get("title") or "").casefold():
-                        # /state names it subsonic_id; /dj/search calls the
-                        # same value id. Take either rather than depending on
-                        # which read the DJ happened to come through.
-                        track_id = str(t.get("subsonic_id") or t.get("id") or "")
-                        named = t.get("title") or title
-                        break
-                if not track_id:
-                    return (
-                        f"Nothing called \"{title}\" is in the queue — it may have "
-                        "already played, or it never went in. Tell the caller that "
-                        "plainly rather than saying you pulled it."
-                    )
-
-            res = await station.cancel_queued_track(track_id)
-            if res.get("reason") == "already-playing":
-                return (
-                    f"Too late for \"{named}\" — it's already on air or cued up as "
-                    "the next thing out. It CANNOT be pulled now. Tell the caller "
-                    "straight; if they want it gone you can only skip it, and that "
-                    "cuts it off for everyone listening."
-                )
-            if not res.get("ok"):
-                return (
-                    f"That didn't come out of the queue: "
-                    f"{res.get('error') or 'the station refused it'}. Tell the "
-                    "caller plainly — do NOT claim it's gone."
-                )
-            actions.note("cancel", f"\"{named}\"")
-            return (
-                f"\"{named}\" is out of the queue — it will not play. Say so, and "
-                "if they wanted something in its place, put that in now."
-            )
-
-        tools.append(cancel_queued_track)
+        tools += build_removal_tools(cfg, station, actions)
 
     if cfg.get("allow_requests"):
         @lk_llm.function_tool(name="subwave_request_song")

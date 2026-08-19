@@ -202,7 +202,7 @@ class TestThePromptStopsClaimingRequestsCannotBeCancelled(unittest.TestCase):
         self.assertIn("subwave_cancel_queued_track", rules)
         self.assertNotIn("CANNOT be cancelled", rules)
         # The two limits that make it honest rather than a new way to lie.
-        self.assertIn("the tool refuses", rules)
+        self.assertIn("the tools refuse", rules)
         self.assertIn("a DIFFERENT caller", rules)
 
     def test_with_the_tool_off_the_old_truth_comes_back(self):
@@ -547,3 +547,24 @@ class TestBulkQueueingIsActedOnNotSoldOn(unittest.TestCase):
         with_sound = dict(self.ON, allow_sound_search="open")
         for rules in self._both(with_sound):
             self.assertIn("subwave_search_by_sound", rules)
+
+
+class TestASpokenMixIsNotAMix(unittest.TestCase):
+    """The Wade chat, 2026-08-19: the DJ ran the right searches, announced a
+    Soundgarden/Alice in Chains/Pixies run, and queue_mix never ran — the
+    caller got one track and, later, an apology. The rule and its worked
+    example ride the bulk switch with the rest of the mix teaching."""
+
+    ON = {"allow_requests": "open", "allow_library_search": "open",
+          "allow_album_queue": "open"}
+
+    def test_the_receipt_rule_rides_the_switch(self):
+        from brain import conduct, conduct_chat
+
+        for rules in (conduct.rules(self.ON), conduct_chat.rules(self.ON)):
+            self.assertIn("A mix you have SPOKEN is not a mix", rules)
+            self.assertIn("queue_mix never did", rules)
+            self.assertIn("receipt", rules)
+        off = {k: v for k, v in self.ON.items() if k != "allow_album_queue"}
+        for rules in (conduct.rules(off), conduct_chat.rules(off)):
+            self.assertNotIn("A mix you have SPOKEN is not a mix", rules)

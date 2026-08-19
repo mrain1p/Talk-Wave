@@ -53,6 +53,13 @@ class CallActions:
         # for the same reason: the caller cannot hear it land (it takes over at
         # the next track boundary), so the DJ saying it worked is all they have.
         "takeover": ("🔀", "Show takeover set"),
+        # Bulk out, mirroring the bulk in: one card for a whole clear-out.
+        "clear": ("🧹", "Queued tracks cleared"),
+        # Not an action at all — the card that says NO MORE will happen.
+        # Announced once per call by refusal(); never counted. The operator's
+        # ask (2026-08-19): on the chat that hit the cap, the only voice
+        # saying so was a DJ who dressed it as the scheduler fighting him.
+        "limit": ("⛔", "Call limit reached"),
     }
 
     def __init__(self, limit: int, room=None, mode: str = "before") -> None:
@@ -99,6 +106,10 @@ class CallActions:
         # un-like that" still works once the record has moved on — which is
         # when a caller usually changes their mind. See _target_to_unlike.
         self.last_liked: tuple[str, dict] | None = None
+        # Whether the "call limit reached" card has gone out. Once per call:
+        # the 2026-08-19 chat hit the cap four times in twenty seconds, and
+        # four identical warnings would bury the one that matters.
+        self._limit_announced = False
 
     # How long a promise keeps the check-in quiet. Capped, because a DJ that
     # promises and never delivers would otherwise buy silence for the rest of
@@ -137,11 +148,26 @@ class CallActions:
     def refusal(self) -> str:
         """In-world, and explicit that this is the line's rule rather than the
         station refusing — otherwise the DJ invents a reason."""
+        # The cap as a CARD, once, before the model gets a word in: on the
+        # 2026-08-19 chat the ledger refused four cancels and the DJ described
+        # every one as the scheduler fighting him, claiming pulls that never
+        # ran. The card is the half the persona cannot spin. Not an action —
+        # it never touches count or taken.
+        if not self._limit_announced:
+            self._limit_announced = True
+            icon, label = self.LABELS["limit"]
+            self._deliver({
+                "kind": "limit", "icon": icon, "label": label,
+                "detail": (f"{self.count} action(s) used — this call takes "
+                           "no more; ring back for another round"),
+            })
         return (
             f"You've already put {self.count} things through for this caller, which "
             "is the limit for one call. Don't do any more of those — say warmly that "
             "you'll have to leave it there for this call and they're welcome to ring "
-            "back. Do not blame the station or invent a technical reason."
+            "back. Do not blame the station or invent a technical reason. The caller "
+            "has been shown an official CALL LIMIT REACHED card, so the cap is "
+            "already public — a story that contradicts it will be caught."
         )
 
     def note(self, kind: str, detail: str = "") -> None:
@@ -152,20 +178,21 @@ class CallActions:
         log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)
         self.taken.append((kind, detail))
         self.taken_at.append(time.time())
+        self._deliver({"kind": kind, "icon": icon,
+                       "label": label, "detail": detail})
+
+    def _deliver(self, card: dict) -> None:
+        """One card to whoever is listening — the hook, then the room."""
         if self.on_note is not None:
             try:
-                self.on_note({"kind": kind, "icon": icon,
-                              "label": label, "detail": detail})
+                self.on_note(card)
             except Exception as e:                             # noqa: BLE001
                 log.debug("action note hook failed (harmless): %s", e)
         if self._room is None or self.mode == "off":
             # "off" withholds only the caller-facing card: the count, the
             # taken list and the record's tools entry all still happen.
             return
-        payload = json.dumps({
-            "type": "action", "kind": kind, "icon": icon,
-            "label": label, "detail": detail,
-        }).encode()
+        payload = json.dumps({"type": "action", **card}).encode()
         if self.mode == "after":
             self.held.append(payload)
             return
