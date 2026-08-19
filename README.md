@@ -14,8 +14,14 @@ Please note this was created with use of AI. It is recommended to use it locally
 
 <table>
 <tr>
-<td valign="top"><img src="docs/call.png" width="430" alt="A live call: the DJ mid-sentence, level meters running, live captions — including a library search happening in-conversation" /></td>
-<td valign="top"><img src="docs/settings.png" width="210" alt="The settings panel, folded: every section header summarises its own state" /></td>
+<td width="34%" valign="top"><img src="docs/call-desktop.png" alt="A live call in the station's own show theme: Wade mid-sentence, meters running, live captions, the talk bar open" /></td>
+<td width="33%" valign="top"><img src="docs/settings-desktop.png" alt="The operator's dashboard: who is on air, station health, the three lines with their switches, and the activity charts" /></td>
+<td width="33%" valign="top"><img src="docs/players-desktop.png" alt="The Players page: every card setting grouped under the element it controls, the live card preview beside them" /></td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/call-mobile.png" alt="The same live call on a phone" /></td>
+<td valign="top"><img src="docs/settings-mobile.png" alt="The dashboard on a phone" /></td>
+<td valign="top"><img src="docs/players-mobile.png" alt="The Players page on a phone, in the light theme, with the card preview docked at the bottom" /></td>
 </tr>
 </table>
 
