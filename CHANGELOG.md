@@ -10,7 +10,7 @@ A caller can ask for a whole album, a caller nobody heard no longer reaches the 
 ### Added: albums and mixes
 
 - **"Have you got Rumours? Could you play it all" now has an honest answer.** A new station tool queues a whole album — or a run of hand-picked tracks as a mix — as one action: up to 30 tracks an album, 8 picks a mix, with the same per-call duplicate guard as single queues, so a repeated ask cannot take sixty slots.
-- **It is its own caller permission, "Queue albums and mixes", guest-and-up by default**, with its own example in the "What can I ask?" menu — and it spends one action from the per-call cap, not one per track.
+- **It is its own caller permission, "Queue albums and mixes" — and an upgrade keeps it OFF.** Fresh installs start it at guest; an existing deployment has to flip it on in Caller permissions, because one sentence can fill an hour of the shared queue and that is the operator's call, not an upgrade's. It has its own examples in the "What can I ask?" menu, and a batch spends one action from the per-call cap, not one per track.
 - Track order is kept when the library's own file paths carry it (a normally ripped album) and quietly skipped when they don't — the station doesn't expose canonical running order, and guessing one would be worse.
 
 ### Nothing sent, nothing on air
