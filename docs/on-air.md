@@ -14,6 +14,8 @@ The lag is not an apology, it is the dump button. Real phone-in radio runs on a 
 
 The brackets around the segment are lazy on purpose. The DJ's on-air intro — a caller is coming on the air — airs at the **first clip**, not when the call connects, and the thank-you outro airs only if something actually aired. The first deployed test did it the other way and aired both brackets around a call whose media never arrived: listeners got the announcement, a minute of nothing, and a thank-you to nobody.
 
+**Tape mode** (`When the call airs` → *After the call*, since 0.98.5) trades the lag-by-one for a reel: nothing airs during the call, and the whole conversation plays the moment it ends — intro, the exchange in order, outro. What the wait buys is the dump promise inverted: PULL OFF AIR at **any** moment of the call kills the entire tape before a word of it airs, where live mode can only ever kill the turn still inside its delay window. The On-air window caps the reel's aired length the same way it caps a live segment, the stage frame tells the caller "airs after you hang up" so the consent they give is the one that happens, and the DJ is briefed it is taping rather than live so it does not claim otherwise on air.
+
 One phone-in holds the air at a time — while one is live, the ON AIR route refuses the next caller until it ends. And the **On-air window** setting (default 240 seconds) bounds how long one caller may hold the broadcast: when it closes, the relay signs them off air and the call itself carries on privately. The station's own segments queue behind a live call, so shorter is kinder to the programme.
 
 ## Three switches have to agree

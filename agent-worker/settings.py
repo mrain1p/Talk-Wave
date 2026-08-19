@@ -196,6 +196,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # ever sounded on a phone call (2026-08-18), and the default changed with
     # their say-so. Deployments that never touched this get the new sound.
     "on_air_caller_sound": (None, "clean"),
+    # "live" airs each finished turn seconds behind the room (the lag-by-one
+    # relay); "after" tapes the whole conversation and plays it once the call
+    # ends — the operator's ask (2026-08-18), and the mode where PULL OFF AIR
+    # can kill the entire call before a word of it airs.
+    "on_air_call_mode": (None, "live"),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -1232,6 +1237,17 @@ SCHEMA: dict[str, dict] = {
              "300–3400 Hz radio-caller costume for stations that want that "
              "look on purpose. Applies to live phone-ins; the soundbite "
              "studio's recordings keep the costume either way for now."),
+    "on_air_call_mode": dict(group="perms", kind="select", admin=True,
+        label="When the call airs",
+        needs=("allow_on_air", TIERS),
+        help="Live airs each finished turn a few seconds behind the room — "
+             "radio's classic broadcast delay, with PULL OFF AIR able to kill "
+             "any turn inside the on-air delay window. After the call tapes "
+             "the whole conversation and plays it the moment they hang up: "
+             "the DJ introduces it, the exchange runs in order, and PULL OFF "
+             "AIR any time during the call kills the entire tape before a "
+             "word of it airs. The on-air window still caps how much airs "
+             "either way."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good",
         help="Puts the track playing now on the station's never-play list: out of the "
@@ -2089,6 +2105,10 @@ STATIC_CHOICES = {
     "on_air_caller_sound": [
         ("clean", "Clean — their real voice, levelled (default)"),
         ("phone", "Phone — the 300–3400 Hz radio-caller costume"),
+    ],
+    "on_air_call_mode": [
+        ("live", "Live — each turn airs seconds behind the room (default)"),
+        ("after", "After the call — the whole conversation airs at hangup"),
     ],
     "vm_air_backend": [
         ("dj-reads", "The DJ reads it — works everywhere"),

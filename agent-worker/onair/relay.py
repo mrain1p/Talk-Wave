@@ -22,6 +22,13 @@ start of every CALL by invariant; a live broadcast deserves tighter: the
 operator flipping the feature off mid-call must stop the next clip, not the
 next caller.
 
+TAPE MODE (on_air_call_mode = "after", 0.98.5) trades the lag-by-one for a
+reel: nothing airs during the call, and the whole conversation plays at
+hangup — intro, the exchange in order, outro. The dump promise inverts with
+it: live mode can kill the one turn still inside its delay window; tape mode
+kills the ENTIRE call at any moment before playout, which is the reason an
+operator would accept the wait.
+
 What this module does NOT do: capture audio (call/tee.py feeds it finished
 WAVs), decide that a call is on air (the session arms it), or reach the
 station's disk (the mixer fetches from us; nothing is written to theirs).
@@ -99,6 +106,15 @@ class CallRelay:
                 2.0, float(cfg.get("on_air_delay_secs") or MAX_HELD_SECS)))
         except (TypeError, ValueError):
             self.max_held_secs = MAX_HELD_SECS
+        # TAPE MODE (on_air_call_mode = "after", 0.98.5): nothing airs during
+        # the call. Finished clips collect on the reel and the whole
+        # conversation plays at close — intro, the exchange in order, outro.
+        # What the operator buys with the wait: PULL OFF AIR at any moment of
+        # the call kills the entire tape before a word of it airs, where live
+        # mode can only ever kill the turn still inside its delay window.
+        self.tape = str(cfg.get("on_air_call_mode") or "live") == "after"
+        self._reel: list[dict] = []
+        self._reel_secs = 0.0
         self._hold_timer: asyncio.Task | None = None
         self._failures = 0
         self._deadline = 0.0
@@ -132,7 +148,9 @@ class CallRelay:
         await asyncio.to_thread(chunks.take_dump)
         self.active = True
         self._live = False
-        self._tool("on air: armed — the broadcast opens at the first clip")
+        self._tool("on air: armed — taping; the broadcast plays when the "
+                   "call ends" if self.tape else
+                   "on air: armed — the broadcast opens at the first clip")
         return True
 
     async def _go_live(self) -> None:
@@ -172,8 +190,30 @@ class CallRelay:
                 if self._held:
                     self._held["wav"].unlink(missing_ok=True)
                     self._held = None
+                # say_outro is a request, not a promise: with zero clips
+                # aired (a taped call dumped whole) _close_locked stays
+                # silent — an outro to nobody is the first deployed test's
+                # lesson, and a dumped tape aired NOTHING.
                 await self._close_locked("dumped by the operator",
                                          say_outro=True)
+                return
+            if self.tape:
+                # The reel: no intro yet, no window clock, no hold timer —
+                # nothing is on air. The window caps the REEL instead, so a
+                # marathon call cannot tape an hour of broadcast; what falls
+                # off the end is reported the same way every unaired turn is.
+                window = float(self.cfg.get("on_air_max_seconds") or 0) or 240.0
+                if self._reel_secs + seconds > window:
+                    wav.unlink(missing_ok=True)
+                    self.dropped(kind, "the tape is full "
+                                       f"({self._reel_secs:.0f}s of "
+                                       f"{window:.0f}s allowed)")
+                    return
+                self._seq += 1
+                self._reel.append({"wav": wav, "kind": kind,
+                                   "seconds": seconds, "seq": self._seq,
+                                   "heldAt": time.time()})
+                self._reel_secs += seconds
                 return
             if not self._live:
                 await self._go_live()
@@ -255,6 +295,13 @@ class CallRelay:
         if self._held and not self.dumped:
             await self._push(self._held)
         self._held = None
+        if self.tape and self._reel and not self.dumped:
+            await self._play_reel()
+        # Whatever is still on the reel — a dump, a mixer that stopped
+        # answering mid-playout — is a caller's voice in /tmp. It goes now.
+        for chunk in self._reel:
+            chunk["wav"].unlink(missing_ok=True)
+        self._reel = []
         self._tool(f"off air: {reason} ({self.pushed} clips aired)")
         # The outro only follows a broadcast that happened: with zero clips
         # aired there is nobody on the stream to thank, and the first
@@ -265,6 +312,45 @@ class CallRelay:
                 "sentence, thank the caller and carry the show on — do not "
                 "summarise the conversation.")
         chunks.sweep()
+
+    async def _play_reel(self) -> None:
+        """Tape mode's playout: the whole conversation, at hangup.
+
+        Runs inside _close_locked with the lock held — this IS the close, not
+        a broadcast the close has to wait for. The pushes queue the clips
+        back-to-back in the mixer's FIFO (the duck holds across them, same as
+        the live chain), so the playout itself takes seconds even when the
+        airing takes minutes. The dump marker is consulted between pushes:
+        the un-pushed remainder of a tape is still killable, though once a
+        clip is in the mixer's queue it is the mixer's.
+        """
+        ok = await self._say(
+            "A call with a listener just wrapped, and the recording is about "
+            "to play on the air. In one short sentence, set it up — a caller "
+            "was on the line and here's how it went — without inventing "
+            "their name or what they wanted.")
+        if ok:
+            await asyncio.sleep(SAY_POLL_SECS)
+        else:
+            self._problem("the tape's intro failed; the conversation aired "
+                          "without one")
+        reel, self._reel = self._reel, []
+        for i, chunk in enumerate(reel):
+            if await asyncio.to_thread(chunks.take_dump):
+                self.dumped = True
+                for rest in reel[i:]:
+                    rest["wav"].unlink(missing_ok=True)
+                self._tool("dumped mid-playout — the rest of the tape dies")
+                return
+            if self._failures >= MAX_CONSECUTIVE_FAILURES:
+                for rest in reel[i:]:
+                    rest["wav"].unlink(missing_ok=True)
+                return
+            # The held time would read as the whole call's length here and
+            # look like a broken timer; the playout's own pacing is the
+            # honest number for the record's aired-turn lines.
+            chunk["heldAt"] = time.time()
+            await self._push(chunk)
 
     async def _push(self, chunk: dict) -> None:
         """One clip to the voice queue — after asking settings whether this

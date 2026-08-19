@@ -487,15 +487,31 @@ class CallSession:
                 # phone-in simply stopped mid-thought whenever the clock ran
                 # out. Radio does not end a segment that way.
                 window = int(self.cfg.get("on_air_max_seconds") or 0) or 240
-                self.instructions += (
-                    "\n\nThis call is LIVE ON AIR: the conversation is "
-                    "broadcast on the station as it happens, a few seconds "
-                    "behind. Keep it broadcast-clean and keep the pace "
-                    "bright. Never read out private details — numbers, "
-                    "addresses, codes — the listeners hear everything the "
-                    f"caller says. The segment runs about {window // 60} "
-                    f"minute(s) — pace it so it lands rather than stops, and "
-                    "you will be told when you are near the end.")
+                if self.relay.tape:
+                    # Tape mode's truth is different, and the DJ must not
+                    # claim "as it happens" on a call that airs at hangup —
+                    # and there is no wrap cue to promise: the reel plays
+                    # whole, so there is no live clock to be near the end of.
+                    self.instructions += (
+                        "\n\nThis call is being TAPED FOR AIR: the whole "
+                        "conversation plays on the station the moment the "
+                        "call ends. Keep it broadcast-clean and keep the "
+                        "pace bright. Never read out private details — "
+                        "numbers, addresses, codes — the listeners will hear "
+                        f"everything the caller says. About {window // 60} "
+                        "minute(s) of it can air — pace it so it lands "
+                        "rather than stops.")
+                else:
+                    self.instructions += (
+                        "\n\nThis call is LIVE ON AIR: the conversation is "
+                        "broadcast on the station as it happens, a few "
+                        "seconds behind. Keep it broadcast-clean and keep "
+                        "the pace bright. Never read out private details — "
+                        "numbers, addresses, codes — the listeners hear "
+                        "everything the caller says. The segment runs about "
+                        f"{window // 60} minute(s) — pace it so it lands "
+                        "rather than stops, and you will be told when you "
+                        "are near the end.")
             # A failed open already wrote why to the record; the call simply
             # proceeds as a private one.
 

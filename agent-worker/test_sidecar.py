@@ -401,6 +401,7 @@ from tests.test_onair import (  # noqa: F401
     TestTheBracketsOnlyAirWhenACallerDoes,
     TestTheLiveCallDoorTellsTheWorkersTruth,
     TestTheLiveSegmentLandsInsteadOfStopping,
+    TestTapeModeAirsTheCallAtHangup,
 )
 from tests.test_tee import (  # noqa: F401
     TestTheAirGetsTheConversationInOrder,

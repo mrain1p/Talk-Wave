@@ -791,8 +791,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
         # they belong beside canAsk, which is the per-request half of a file
         # whose other half builds the shared payload. That seam (shared build
-        # vs per-caller resolve) is the split when it comes.
-        "agent-worker/api/live.py": (618, "the shared payload build split "
+        # vs per-caller resolve) is the split when it comes. 623: the door
+        # gained its live/tape mode (0.98.5), five lines on the build side.
+        "agent-worker/api/live.py": (623, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -804,10 +805,20 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # in the change that grew it: the pickup path was reworked in that
         # same change, and a slow or broken pickup must have one candidate
         # cause, not two.
-        "agent-worker/call/session.py": (695, "the ringing half (prepare, "
+        # 710: tape mode's prompt variant (0.98.5) — the on-air framing forks
+        # on relay.tape, and the fork has to live where the live framing
+        # lives. The seam above is untouched by it.
+        "agent-worker/call/session.py": (710, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
+        # Back over the ceiling at 630 with the tape-mode class (0.98.5); its
+        # earlier entry (676) was rightly deleted when a split took it under.
+        # The seam is the same one it has always had: the chunk-store half
+        # against the relay-behaviour half.
+        "agent-worker/tests/test_onair.py": (630, "the chunk-store half "
+                                                  "split from the relay "
+                                                  "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
         # already named in web-widget/CLAUDE.md and is genuinely two viewers:
         # the LOG viewer (renderLog, the level filter, the tail) against the

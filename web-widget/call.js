@@ -666,10 +666,15 @@
       const line = document.createElement('div');
       line.className = 'routeline ' + (onAirPick ? 'live' : 'priv');
       // With only the voicemail door live, the ON AIR promise narrows to
-      // what is actually true: the recording airs, the call would not.
+      // what is actually true: the recording airs, the call would not. And
+      // tape mode is its own promise — the conversation airs at hangup, not
+      // as you speak — so the stage says which consent is being given.
       line.textContent = onAirPick
-        ? (oa.calls ? word('route_live', 'Broadcast — live on air')
-                    : word('route_vm_live', 'Your recording airs on the station'))
+        ? (oa.calls
+            ? (oa.mode === 'after'
+                ? word('route_tape', 'Broadcast — airs after you hang up')
+                : word('route_live', 'Broadcast — live on air'))
+            : word('route_vm_live', 'Your recording airs on the station'))
         : word('route_priv', "It's just you and {dj}")
             .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
       box.appendChild(line);

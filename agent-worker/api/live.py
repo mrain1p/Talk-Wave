@@ -127,6 +127,11 @@ async def _on_air_door(cfg: dict) -> dict:
         # The tier the row is set to, so the card can explain a lock rather
         # than silently hiding the switch from a caller one code short.
         "tier": tier,
+        # Live relay or tape — the stage message tells the caller which
+        # promise they are accepting, because "live on air" and "airs after
+        # you hang up" are different consents to give.
+        "mode": ("after" if str(cfg.get("on_air_call_mode") or "live")
+                 == "after" else "live"),
     }
 
 

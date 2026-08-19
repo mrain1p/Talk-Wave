@@ -546,5 +546,85 @@ class TestTheLiveSegmentLandsInsteadOfStopping(unittest.TestCase):
         self.assertEqual(r.seconds_left(), 0.0)
 
 
+class TestTapeModeAirsTheCallAtHangup(_RelayCase):
+    """on_air_call_mode = "after" (0.98.5): nothing airs during the call and
+    the whole conversation plays at close — the operator's ask, and the mode
+    where PULL OFF AIR kills the ENTIRE call before a word of it airs, where
+    live mode can only ever kill the turn still inside its delay window."""
+
+    def test_nothing_airs_until_close_then_everything_in_order(self):
+        async def run():
+            station = _FakeStation()
+            r, got = self._relay(station=station, on_air_call_mode="after")
+            self.assertTrue(await r.open())
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 3.0)
+            await r.feed(self._feed_file("t3.wav"), "caller", 1.0)
+            pushed_mid = len([g for g in got if b"voice_queue.push" in g])
+            await r.close("the call ended")
+            return r, got, pushed_mid, station
+
+        r, got, pushed_mid, station = asyncio.run(run())
+        pushes = [g for g in got if b"voice_queue.push" in g]
+        self.assertEqual(pushed_mid, 0, "a taped turn aired during the call")
+        self.assertEqual(len(pushes), 3, "the whole reel plays at hangup")
+        self.assertEqual(r.pushed, 3)
+        self.assertEqual(len(station.says), 2,
+                         "intro and outro around the tape, no more")
+        self.assertIn("recording", station.says[0])
+        self.assertIn("thank the caller", station.says[1])
+
+    def test_a_dump_during_the_call_kills_the_whole_tape_silently(self):
+        # The tape's whole argument: at any moment of the call the operator
+        # can make the broadcast never have happened. And with zero clips
+        # aired there is nobody on the stream to say an outro to — a dumped
+        # tape must not speak at all (the first deployed test's lesson, in
+        # its tape shape).
+        async def run():
+            station = _FakeStation()
+            r, got = self._relay(station=station, on_air_call_mode="after")
+            await r.open()
+            await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 3.0)
+            chunks.request_dump()
+            await r.feed(self._feed_file("t3.wav"), "caller", 1.0)
+            await r.close("the call ended")
+            return r, got, station
+
+        r, got, station = asyncio.run(run())
+        self.assertTrue(r.dumped)
+        self.assertEqual([g for g in got if b"voice_queue.push" in g], [],
+                         "a dumped tape aired something")
+        self.assertEqual(station.says, [], "a dumped tape spoke on air")
+
+    def test_the_window_caps_the_reel(self):
+        # on_air_max_seconds bounds AIRED seconds in both modes. In tape mode
+        # that is the reel's sum — a marathon call must not tape an hour of
+        # broadcast — and what falls off the end is reported like any other
+        # unaired turn, while the call itself carries on.
+        async def run():
+            record = _FakeRecord()
+            r, got = self._relay(record=record, on_air_call_mode="after",
+                                 on_air_max_seconds=5)
+            await r.open()
+            await r.feed(self._feed_file("t1.wav"), "caller", 3.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 3.0)
+            await r.feed(self._feed_file("t3.wav"), "caller", 1.0)
+            await r.close("the call ended")
+            return r, got, record
+
+        r, got, record = asyncio.run(run())
+        self.assertEqual(
+            len([g for g in got if b"voice_queue.push" in g]), 2,
+            "the tape aired more than the window allows")
+        self.assertTrue(any("tape is full" in t for t in record.tools),
+                        "the dropped turn left no trace in the record")
+
+    def test_an_untouched_deployment_still_runs_live(self):
+        # The default is the behaviour every existing deployment already has.
+        r, _ = self._relay()
+        self.assertFalse(r.tape)
+
+
 if __name__ == "__main__":
     unittest.main()
