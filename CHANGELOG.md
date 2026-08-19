@@ -3,6 +3,23 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.11
+
+The station player stops growing its own scrollbar, and the On air page gets every on-air dial and a layout that reads.
+
+### The player fits
+
+- **If the web player made you scroll to reach the volume row, that was this.** The sheet now fits whatever card it opens over: the artwork gives its height back first, the Up next and booth panels compress onto their own scrollbars — the one kind of scrolling that stays — and the dock never leaves the bottom.
+
+### The On air page
+
+- **On-air window, On-air delay and Caller sound on air moved to the On air page**, beside "When the call airs" and the two doors — they say how the broadcast is delivered, not what a caller may do, so Caller permissions was the wrong shelf. Only the Go live tier row stays with the permissions.
+- **The page stops reading as controls scattered down a column of prose.** Rows with long help used to centre their control and Station-admin chip at the paragraph's midpoint; everything now sits on the row's first line, and dropdown choices are cut to what the select can actually show ("The caller's own voice — needs the mixe" no more).
+
+### Panel polish, both widths
+
+- **Checkbox labels stop crushing to a word per line.** "Calls may go on air" reads as a sentence again on desktop, and on a phone the help takes its own line under the label instead of squeezing beside it.
+
 ## 0.98.10
 
 If the DJ told you it had no albums by an artist you know is on the shelf, that was this — a slow library read was being reported as an empty one.

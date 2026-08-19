@@ -1224,14 +1224,19 @@ SCHEMA: dict[str, dict] = {
              "quietly stays private and the transcript says why. The turn still "
              "in hand is a working broadcast delay: it can be dumped before it "
              "airs."),
-    "on_air_max_seconds": dict(group="perms", kind="number", admin=True,
+    # The window, the delay and the caller's sound live on the On air page
+    # with the other airing choices (operator's ask, 2026-08-19, the same
+    # move "When the call airs" made the day before): they describe how the
+    # broadcast is delivered, not what a caller may do. The tier row alone
+    # stays under Caller permissions.
+    "on_air_max_seconds": dict(group="airdoors", kind="number", admin=True,
         label="On-air window (s)",
         needs=("allow_on_air", TIERS),
         help="How long one caller may hold the broadcast before the relay signs "
              "them off air and the call carries on privately. The station's own "
              "segments queue behind a live call, so shorter is kinder to the "
              "programme. Blank = 240."),
-    "on_air_delay_secs": dict(group="perms", kind="number", admin=True,
+    "on_air_delay_secs": dict(group="airdoors", kind="number", admin=True,
         label="On-air delay (s)",
         needs=("allow_on_air", TIERS),
         help="Your take-back window: how long a finished turn is held before "
@@ -1245,7 +1250,7 @@ SCHEMA: dict[str, dict] = {
              "with the station playing in earshot hears their own turns come "
              "back a stream-buffer later (~22s on most setups) — a longer "
              "delay moves that further out, it doesn't cause it."),
-    "on_air_caller_sound": dict(group="perms", kind="select", admin=True,
+    "on_air_caller_sound": dict(group="airdoors", kind="select", admin=True,
         label="Caller sound on air",
         needs=("allow_on_air", TIERS),
         help="How a caller's voice is dressed before it airs. Clean keeps "
@@ -2130,18 +2135,22 @@ STATIC_CHOICES = {
         ("machine", "Answering machine — a message as text, no audio kept"),
         ("studio", "Soundbite studio — record, review, send to air"),
     ],
+    # Option labels here are cut to what a 260px select can SHOW — the
+    # operator's screenshot had "The caller's own voice — needs the mixe"
+    # and every mode's consequence clause amputated mid-word. The clause the
+    # label gives up already lives in the field's help, whole.
     "on_air_caller_sound": [
-        ("clean", "Clean — their real voice, levelled (default)"),
-        ("phone", "Phone — the 300–3400 Hz radio-caller costume"),
+        ("clean", "Clean — their real voice (default)"),
+        ("phone", "Phone — the radio-caller costume"),
     ],
     "on_air_call_mode": [
-        ("live", "Live — each turn airs seconds behind the room (default)"),
-        ("heard", "Live, once the caller is heard — an unanswered call airs nothing"),
-        ("after", "After the call — the whole conversation airs at hangup"),
+        ("live", "Live — just behind the room (default)"),
+        ("heard", "Live, once the caller is heard"),
+        ("after", "After the call — airs at hangup"),
     ],
     "vm_air_backend": [
         ("dj-reads", "The DJ reads it — works everywhere"),
-        ("caller-voice", "The caller's own voice — needs the mixer doors"),
+        ("caller-voice", "Their own voice — via the mixer"),
     ],
     "voicemail_when": [
         ("closed", "When a live call is impossible (busy, off air, live calls off)"),

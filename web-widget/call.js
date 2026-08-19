@@ -1825,7 +1825,7 @@
       // go as the operator's switch and the stream come and go, and an open
       // sheet repaints for a record change without the caller doing anything.
       paintListenChip();
-      if (playerOpen) paintPlayer();
+      if (playerOpen) { paintPlayer(); fitPlayerArt(); }
       if (playerEl) feedMediaSession();
 
       if (!d.reachable) { paintOffAir('offline'); return; }
@@ -4603,7 +4603,7 @@
       onDead: () => {
         playerDead = true;
         paintPlayerButtons();
-        if (playerOpen) paintPlayer();
+        if (playerOpen) { paintPlayer(); fitPlayerArt(); }
       },
       // The browser wants its one tap first — the sheet opens quiet with
       // PLAY lit, which is the honest reading, not a dead stream.
@@ -4646,6 +4646,7 @@
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
     paintPlayer();
+    fitPlayerArt();
     // NO music yet — opening shows the deck, and PLAY starts it (operator's
     // correction: the sheet was playing the moment it arrived). Music that
     // was already going keeps going.
@@ -4666,6 +4667,28 @@
     }, 450);
     paintListenChip();
   }
+
+  // The sheet FITS instead of scrolling (operator's ask, 2026-08-19): the
+  // art gives its height back first, the info panels compress onto their own
+  // scrollbars second, and only a viewport shorter than everything's minimums
+  // ever sees the sheet's own scrollbar. Measured rather than styled because
+  // the card's height is config-driven — how many bands the operator has on —
+  // and CSS cannot read it: the art's ceiling is whatever space is left once
+  // everything fixed has its share.
+  function fitPlayerArt() {
+    const sheet = $('playerView');
+    if (!sheet || sheet.hidden) return;
+    const scroll = sheet.querySelector('.plscroll');
+    const art = sheet.querySelector('.plartwrap');
+    if (!scroll || !art) return;
+    sheet.style.removeProperty('--plart-cap');   // measure from natural size
+    const over = scroll.scrollHeight - scroll.clientHeight;
+    if (over <= 0) return;
+    const now = art.getBoundingClientRect().height;
+    const cap = Math.max(104, Math.floor(now - over));
+    if (cap < now) sheet.style.setProperty('--plart-cap', cap + 'px');
+  }
+  window.addEventListener('resize', () => { if (playerOpen) fitPlayerArt(); });
 
   function paintPlayer() {
     const d = shown || live || {};
@@ -4910,6 +4933,7 @@
         clearTimeout(playerHideTimer);
         sheet.hidden = false;
         paintPlayer();
+        fitPlayerArt();
       }
       sheet.classList.add('dragging');
     }, { passive: true });
