@@ -853,7 +853,8 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         for field in ("allow_announcements", "allow_skills",
                       "allow_exact_queue", "allow_favorite",
                       "allow_unfavorite", "allow_skip_track",
-                      "allow_dj_segment", "allow_takeover"):
+                      "allow_dj_segment", "allow_takeover",
+                      "allow_album_queue"):
             self.assertEqual(cfg[field], "off",
                              f"an upgrade handed out {field}")
 
@@ -869,6 +870,7 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         self.assertEqual(cfg["allow_skills"], "guest")
         self.assertEqual(cfg["allow_takeover"], "admin")
         self.assertEqual(cfg["allow_favorite"], "open")
+        self.assertEqual(cfg["allow_album_queue"], "guest")
 
     def test_saving_an_old_store_locks_its_behaviour_in(self):
         import json

@@ -596,8 +596,15 @@ class Handler(BaseHTTPRequestHandler):
                     "voicemail": tier != settings_store.TIER_OFF
                     and bool(s.get("on_air_voicemail_enabled", True)),
                     "tier": tier,
+                    "mode": ("after"
+                             if str(s.get("on_air_call_mode") or "live")
+                             == "after" else "live"),
                 })(settings_store.normalise_tier(s.get("allow_on_air"))))(
                     settings_store.load()),
+                # The header's count and the player head's twin, same gate as
+                # the real payload: absent when the row is switched off.
+                "listeners": (3 if settings_store.load()
+                              .get("show_listener_count", True) else None),
                 "playerDuck": 10,
                 "booth": {"text": "This one's for anyone still up with the "
                                   "windows open — Beegie Adair, gentle as "

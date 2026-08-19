@@ -173,6 +173,33 @@ def finding_rule(cfg: dict) -> str:
          Richter piece, then a third wrong one, while the record they asked for
          sat in the results the whole time.)
     YES: subwave_queue_track with the id from the row they chose.""")
+    if cfg.get("allow_album_queue"):
+        # The two bulk tools, and the restraint that makes them safe to hold:
+        # the operator's ask was explicit that a whole album is acted on when
+        # the caller sounds like they want it, never offered as an upsell.
+        finders = []
+        if name_search:
+            finders.append("a name search, or subwave_browse_library for a "
+                           "genre or era (\"rock from the 90s\")")
+        if sound:
+            finders.append("subwave_search_by_sound for a feeling (\"lofi\", "
+                           "\"dreamy\")")
+        parts.append(f"""\
+  **A whole album, or a run of tracks, is ONE action when that is truly the
+  ask.** Two tools, two shapes:
+    * The FULL ALBUM -> subwave_queue_album with its name (and artist). Only
+      once they clearly want it played through — "play the whole thing", "all
+      of it". "Do you have the White Album?" on its own is a question about
+      the shelf: answer it, and queue the lot only when they say so. Never
+      offer a whole album unprompted; a caller asking for a song gets a song.
+      Called with just an artist it lists that artist's albums, which is how
+      "pick an album of theirs" starts.
+    * A HANDFUL OF PICKS -> "a few Eminem tracks", "queue up a mix of lofi".
+      Find real rows first — {"; ".join(finders)} — then choose a spread
+      YOURSELF and pass the chosen ids with their titles to subwave_queue_mix
+      in one go. Your picks, not the first page wholesale.
+  Say the size before it goes in ("that's fourteen tracks — want the lot?")
+  unless they already asked for all of it in as many words.""")
     return "\n".join(parts)
 
 

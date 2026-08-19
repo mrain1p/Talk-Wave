@@ -719,6 +719,7 @@
           <div class="phead"><span>Also on this call</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
           <div class="row permrow" data-perm="allow_sound_search"><select id="allow_sound_search"></select></div>
           <div class="row permrow" data-perm="allow_exact_queue"><select id="allow_exact_queue"></select></div>
+          <div class="row permrow" data-perm="allow_album_queue"><select id="allow_album_queue"></select></div>
           <div class="row permrow" data-perm="allow_cancel_queue"><select id="allow_cancel_queue"></select></div>
           <div class="row permrow" data-perm="allow_unfavorite"><select id="allow_unfavorite"></select></div>
           <div class="row permrow" data-perm="allow_announcements"><select id="allow_announcements"></select></div>
@@ -755,10 +756,9 @@
           <label for="on_air_caller_sound">Caller sound on air</label>
           <select id="on_air_caller_sound"></select>
         </div>
-        <div class="row">
-          <label for="on_air_call_mode">When the call airs</label>
-          <select id="on_air_call_mode"></select>
-        </div>
+        <!-- "When the call airs" lives on the On air page now (operator's
+             ask, 2026-08-18) — it says how the broadcast is delivered, not
+             what a caller may do. -->
         <!-- Painted by paintOnairWiring() from /live's door state: visible
              only when go-live is saved ON but the mixer is unreachable from
              this deployment — switched on and silently unable to air is the
@@ -1002,6 +1002,13 @@
           the same two switches.</p>
         <label class="check"><input type="checkbox" id="on_air_calls_enabled" /> Calls may go on air</label>
         <label class="check"><input type="checkbox" id="on_air_voicemail_enabled" /> Voicemails may go on air</label>
+        <!-- Moved here from Caller permissions (operator's ask, 2026-08-18):
+             when the broadcast is delivered is a fact about the air, not a
+             permission. -->
+        <div class="row">
+          <label for="on_air_call_mode">When the call airs</label>
+          <select id="on_air_call_mode"></select>
+        </div>
         <div class="row">
           <label for="vm_air_backend">A soundbite airs as</label>
           <select id="vm_air_backend"></select>

@@ -29,6 +29,19 @@ it: live mode can kill the one turn still inside its delay window; tape mode
 kills the ENTIRE call at any moment before playout, which is the reason an
 operator would accept the wait.
 
+NOTHING SENT, NOTHING AIRED (0.98.9). A caller who was never heard — dead
+media path, blocked microphone, plain silence — leaves only the DJ's half,
+and a broadcast of the DJ talking to nobody is worse than no broadcast. A
+tape with no caller clip on it therefore stays in the drawer,
+unconditionally: at hangup the reel is known and the check costs nothing.
+Live mode cannot know in advance, so the same guarantee there is a mode of
+its own (on_air_call_mode = "heard"): the broadcast opens at the first
+CALLER clip, the DJ's opening waits on the reel until then, and a call
+where the caller never speaks airs nothing at all — bought with a start
+that airs about one exchange late, which is why it is the operator's choice
+rather than the default (their ask, 2026-08-18: nothing sent, nothing
+delivered to the booth — or a setting where that would delay the delivery).
+
 What this module does NOT do: capture audio (call/tee.py feeds it finished
 WAVs), decide that a call is on air (the session arms it), or reach the
 station's disk (the mixer fetches from us; nothing is written to theirs).
@@ -112,7 +125,12 @@ class CallRelay:
         # What the operator buys with the wait: PULL OFF AIR at any moment of
         # the call kills the entire tape before a word of it airs, where live
         # mode can only ever kill the turn still inside its delay window.
-        self.tape = str(cfg.get("on_air_call_mode") or "live") == "after"
+        mode = str(cfg.get("on_air_call_mode") or "live")
+        self.tape = mode == "after"
+        # "heard" (0.98.9): live, but the broadcast only opens at the first
+        # CALLER clip — see the module docstring. The reel doubles as the
+        # pre-air hold for the DJ's opening lines while nobody has spoken.
+        self.wait_for_heard = mode == "heard"
         self._reel: list[dict] = []
         self._reel_secs = 0.0
         self._hold_timer: asyncio.Task | None = None
@@ -154,6 +172,8 @@ class CallRelay:
         sound = str(self.cfg.get("on_air_caller_sound") or "clean")
         self._tool(("on air: armed — taping; the broadcast plays when the "
                     "call ends" if self.tape else
+                    "on air: armed — the broadcast opens at the caller's "
+                    "first word" if self.wait_for_heard else
                     "on air: armed — the broadcast opens at the first clip")
                    + f" (caller sound: {sound})")
         return True
@@ -202,17 +222,24 @@ class CallRelay:
                 await self._close_locked("dumped by the operator",
                                          say_outro=True)
                 return
-            if self.tape:
+            if self.tape or (self.wait_for_heard and not self._live
+                             and kind != "caller"):
                 # The reel: no intro yet, no window clock, no hold timer —
-                # nothing is on air. The window caps the REEL instead, so a
-                # marathon call cannot tape an hour of broadcast; what falls
-                # off the end is reported the same way every unaired turn is.
+                # nothing is on air. Tape mode fills it for the playout at
+                # close; "heard" mode parks the DJ's opening on it until the
+                # caller actually says something, because a broadcast opened
+                # on the greeting alone is how a whole segment aired against
+                # a caller whose media never arrived. The window caps the
+                # reel in both uses, so a marathon call cannot tape an hour
+                # of broadcast; what falls off the end is reported the same
+                # way every unaired turn is.
                 window = float(self.cfg.get("on_air_max_seconds") or 0) or 240.0
                 if self._reel_secs + seconds > window:
                     wav.unlink(missing_ok=True)
-                    self.dropped(kind, "the tape is full "
-                                       f"({self._reel_secs:.0f}s of "
-                                       f"{window:.0f}s allowed)")
+                    self.dropped(kind, ("the tape is full " if self.tape else
+                                        "the hold before air is full ")
+                                       + f"({self._reel_secs:.0f}s of "
+                                         f"{window:.0f}s allowed)")
                     return
                 self._seq += 1
                 self._reel.append({"wav": wav, "kind": kind,
@@ -222,18 +249,39 @@ class CallRelay:
                 return
             if not self._live:
                 await self._go_live()
-            if time.time() > self._deadline:
+                # "heard" mode arrives here on the caller's first clip: the
+                # DJ's parked opening airs first, in order, through the same
+                # lag-by-one dance as everything else. The heldAt stamps are
+                # left real — the greeting truly did wait on the caller, and
+                # the record's held times are what the guarantee cost.
+                reel, self._reel = self._reel, []
+                self._reel_secs = 0.0
+                for parked in reel:
+                    if not self.active:
+                        parked["wav"].unlink(missing_ok=True)
+                        continue
+                    await self._feed_live(parked)
+            if not self.active:
                 wav.unlink(missing_ok=True)
-                await self._close_locked(
-                    "the on-air window closed", say_outro=True)
                 return
             self._seq += 1
-            chunk = {"wav": wav, "kind": kind, "seconds": seconds,
-                     "seq": self._seq, "heldAt": time.time()}
-            held, self._held = self._held, chunk
-            if held:
-                await self._push(held)
-            self._arm_hold_timer(chunk)
+            await self._feed_live({"wav": wav, "kind": kind,
+                                   "seconds": seconds, "seq": self._seq,
+                                   "heldAt": time.time()})
+
+    async def _feed_live(self, chunk: dict) -> None:
+        """The live dance for one clip, lock held: the deadline check, the
+        lag-by-one swap, the hold timer. Split from feed() when "heard" mode
+        needed to run a parked reel through exactly this and nothing else."""
+        if time.time() > self._deadline:
+            chunk["wav"].unlink(missing_ok=True)
+            await self._close_locked(
+                "the on-air window closed", say_outro=True)
+            return
+        held, self._held = self._held, chunk
+        if held:
+            await self._push(held)
+        self._arm_hold_timer(chunk)
 
     def _arm_hold_timer(self, chunk: dict) -> None:
         """Bound the hold — see MAX_HELD_SECS. One timer, re-armed per clip;
@@ -300,8 +348,17 @@ class CallRelay:
         if self._held and not self.dumped:
             await self._push(self._held)
         self._held = None
-        if self.tape and self._reel and not self.dumped:
-            await self._play_reel()
+        if self._reel and not self.dumped:
+            if self.tape and any(c["kind"] == "caller" for c in self._reel):
+                await self._play_reel()
+            else:
+                # A reel with no caller on it is the DJ talking to nobody —
+                # a dead media path, a blocked microphone, or plain silence.
+                # A tape like that stays in the drawer, and "heard" mode's
+                # parked opening never got the caller that would have opened
+                # the broadcast. Said in the record either way, because a
+                # broadcast that silently never happened reads as a fault.
+                self._tool("the caller was never heard — nothing airs")
         # Whatever is still on the reel — a dump, a mixer that stopped
         # answering mid-playout — is a caller's voice in /tmp. It goes now.
         for chunk in self._reel:

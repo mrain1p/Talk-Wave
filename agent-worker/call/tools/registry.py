@@ -109,6 +109,24 @@ TOOLS: tuple[Tool, ...] = (
          "request endpoint's rate limit, so Actions per call is the only thing "
          "pacing a caller.",
          needs_station_admin=True),
+    Tool("subwave_queue_album", "allow_album_queue", LOCAL,
+         "Queues a whole album — every track of it the library holds — as one "
+         "action. Asked with only an artist, it lists their albums and queues "
+         "nothing.",
+         "Station admin credentials required. Rides the same no-rate-limit "
+         "queue path as the exact pick, so the caps are this sidecar's own: "
+         "30 tracks an album, one action against the call's limit for the "
+         "whole batch. The DJ queues an album only when the caller clearly "
+         "asked for the lot — it never offers one unprompted.",
+         needs_station_admin=True),
+    Tool("subwave_queue_mix", "allow_album_queue", LOCAL,
+         "Queues a run of picked tracks in one action — a few by one artist, "
+         "or a genre/era mix built from real search and browse rows.",
+         "Station admin credentials required. Shares the album switch on "
+         "purpose: both are bulk queueing, one sentence taking several queue "
+         "slots, and an operator who allows one has decided the real "
+         "question. Capped at 8 picks a batch; one action per batch.",
+         needs_station_admin=True),
     Tool("subwave_cancel_queued_track", "allow_cancel_queue", LOCAL,
          "Takes a queued track back out before it airs.",
          "Station admin credentials required. The station refuses once the "

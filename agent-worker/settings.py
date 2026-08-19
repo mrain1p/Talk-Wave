@@ -131,6 +131,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # stranger still goes through the resolver and it leans on
     # `max_actions_per_call` to keep one code-holder in check.
     "allow_exact_queue":  (None, "guest"),
+    # Bulk queueing: a whole album, or a run of picks, in one action. Guest
+    # tier like the exact queue it is the plural of — but where one pick takes
+    # one slot, one of these can take thirty, so it is its own grant and
+    # _migrate stamps it off for every store that predates it.
+    "allow_album_queue":  (None, "guest"),
     # Finding music by how it sounds, and by the station's own tags. Open, at
     # the same tier as library search, because these are reads that change
     # nothing and cost the station nothing a browse of its admin Library tab
@@ -733,6 +738,7 @@ TIERED_PERMISSIONS = (
     "allow_library_search",
     "allow_sound_search",
     "allow_exact_queue",
+    "allow_album_queue",
     "allow_cancel_queue",
     "allow_favorite",
     "allow_unfavorite",
@@ -909,9 +915,11 @@ SUPERGROUPS = [
     # quick kills were dashboard-only controls with no settings row anywhere,
     # the ducking pair sat under Calls, and the soundbite's airing backend
     # under Voicemail — so "may a caller reach the broadcast" was answered
-    # across three pages. The tier row and its two dials deliberately STAY
+    # across three pages. The tier row and its dials deliberately STAY
     # under Caller permissions with every other permission; the panel greys
-    # them while both doors here are shut. The id is "air", not "onair" —
+    # them while both doors here are shut. "When the call airs" moved the
+    # other way (operator's ask, same day): it says how the broadcast is
+    # delivered, not what a caller may do. The id is "air", not "onair" —
     # that string is already the ducking section's group id, and one word
     # holding two addresses is the Transmission lesson again.
     ("air",       "On air",               "The broadcast door — what goes out live, and on whose say-so."),
@@ -1134,6 +1142,16 @@ SCHEMA: dict[str, dict] = {
         help="Queues the recording the caller chose out of the search results, "
              "rather than re-matching the words. Skips the station's request rate "
              "limit, so Actions per call is the only thing pacing it."),
+    "allow_album_queue": dict(group="perms", kind="select", tiered=True, label="Queue albums and mixes",
+        admin=True,
+        needs=("allow_library_search", TIERS),
+        help="Bulk queueing: \"have you got Rumours? play the lot\" queues the "
+             "whole album, and a run of picks (\"a few Eminem tracks\", \"a 90s "
+             "rock mix\") goes in as one batch. Same unlimited queue path as the "
+             "exact pick, so the caps are this line's own: 30 tracks an album, 8 "
+             "a mix, and each batch counts once against Actions per call. The DJ "
+             "only queues an album when the caller clearly wants the lot — it "
+             "never offers one unprompted."),
     "allow_cancel_queue": dict(group="perms", kind="select", tiered=True, label="Take a track back out of the queue",
         admin=True,
         help="Lets a caller undo a request before it airs — the station refuses "
@@ -1239,17 +1257,25 @@ SCHEMA: dict[str, dict] = {
              "the air: live phone-ins and the soundbite studio's recordings "
              "alike, and the studio's review card previews the sound that "
              "would actually go out."),
-    "on_air_call_mode": dict(group="perms", kind="select", admin=True,
+    # Lives on the On air page beside the other airing choices (operator's
+    # ask, 2026-08-18) — it says how the broadcast is delivered, not what a
+    # caller may do, so Caller permissions was the wrong shelf for it.
+    "on_air_call_mode": dict(group="airdoors", kind="select", admin=True,
         label="When the call airs",
         needs=("allow_on_air", TIERS),
         help="Live airs each finished turn a few seconds behind the room — "
              "radio's classic broadcast delay, with PULL OFF AIR able to kill "
-             "any turn inside the on-air delay window. After the call tapes "
-             "the whole conversation and plays it the moment they hang up: "
-             "the DJ introduces it, the exchange runs in order, and PULL OFF "
-             "AIR any time during the call kills the entire tape before a "
-             "word of it airs. The on-air window still caps how much airs "
-             "either way."),
+             "any turn inside the on-air delay window. Live once heard opens "
+             "the broadcast at the caller's first words instead of the DJ's "
+             "hello, so a call where the caller is never heard airs nothing "
+             "at all — the start airs about one exchange later, which is the "
+             "price of the guarantee. After the call tapes the whole "
+             "conversation and plays it the moment they hang up: the DJ "
+             "introduces it, the exchange runs in order, PULL OFF AIR any "
+             "time during the call kills the entire tape before a word of it "
+             "airs — and a tape where the caller was never heard stays in "
+             "the drawer. The on-air window still caps how much airs in "
+             "every mode."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good",
         help="Puts the track playing now on the station's never-play list: out of the "
@@ -2110,6 +2136,7 @@ STATIC_CHOICES = {
     ],
     "on_air_call_mode": [
         ("live", "Live — each turn airs seconds behind the room (default)"),
+        ("heard", "Live, once the caller is heard — an unanswered call airs nothing"),
         ("after", "After the call — the whole conversation airs at hangup"),
     ],
     "vm_air_backend": [
@@ -2587,7 +2614,7 @@ def _lay_data_skeleton(data_dir) -> None:
 # lands); save() marks every store it writes with THIS ceiling, which is
 # what tells a store that merely never set a field apart from one written
 # before the field's default moved.
-STORE_REV = 5
+STORE_REV = 6
 
 
 def _migrate(stored: dict) -> dict:
@@ -2669,6 +2696,12 @@ def _migrate(stored: dict) -> dict:
         for field in ("allow_genre_lock", "allow_never_play"):
             if field not in stored:
                 stored[field] = TIER_OFF
+    # 0.98.10: bulk queueing (albums and mixes). A POWER — one sentence can
+    # fill an hour of the shared queue — so the 0.9.61 rule applies: stamped
+    # off for every store that predates it, granted only from the panel.
+    if _coerce(stored.get("_rev"), 1) < 6:
+        if "allow_album_queue" not in stored:
+            stored["allow_album_queue"] = TIER_OFF
     # 0.10.92: receipt placement stopped being chat-only — action_cards now
     # covers calls, texts and voicemail. A stored chat-era answer becomes the
     # operator's answer for every door; a store that never set it follows the

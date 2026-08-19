@@ -34,6 +34,11 @@ class CallActions:
         # card needs to see the undo land, and "Song request scheduled" for a
         # cancellation is the exact confusion the receipts exist to prevent.
         "cancel": ("🚫", "Queued track pulled"),
+        # Bulk queueing: the whole batch is one action and one receipt — a
+        # caller who asked for an album in one sentence should not watch
+        # thirty cards land for it.
+        "album": ("💿", "Album queued"),
+        "mix": ("🎶", "Mix queued"),
         "like": ("❤️", "Liked the track on air"),
         "unlike": ("🤍", "Removed the like"),
         "announcement": ("📢", "Message sent to air"),

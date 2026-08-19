@@ -1,0 +1,354 @@
+"""The bulk queue: a whole album, or a run of picks, as one action.
+
+Everything here fakes the station. The row shapes are what station.search_library
+really returns — /dj/search rows with title/artist/album/year/duration/path and
+a blockedBy marker on never-play tracks — because the album tool's whole job is
+reading those rows honestly: which album the caller means, what may not be
+offered, and what order a ripped library actually files things in.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import unittest
+
+
+def _row(i: int, album: str = "Rumours", artist: str = "Fleetwood Mac",
+         **extra) -> dict:
+    d = {"id": f"id{i}", "title": f"Track {i}", "artist": artist,
+         "album": album, "year": 1977, "duration": 180,
+         "path": f"{artist}/{album}/{i:02d} - Track {i}.mp3"}
+    d.update(extra)
+    return d
+
+
+class _Station:
+    """search_library + queue_track, the two calls the bulk tools make."""
+
+    def __init__(self, rows: list):
+        self.rows = rows
+        self.queued: list[dict] = []
+        self.searches: list[tuple] = []
+        self.refuse: dict[str, str] = {}   # id -> the station's refusal words
+
+    async def search_library(self, q, offset=0, limit=30):
+        self.searches.append((q, offset, limit))
+        return self.rows[offset:offset + limit]
+
+    async def queue_track(self, track):
+        why = self.refuse.get(track.get("id"))
+        if why:
+            return {"ok": False, "error": why}
+        self.queued.append(track)
+        return {"ok": True, "queuePosition": len(self.queued)}
+
+
+def _tools(station, actions=None, cfg=None):
+    from call.actions import CallActions
+    from call.tools import music
+    from call.tools.music import build_library_tools
+
+    orig = music.library_search_needs_mcp
+    music.library_search_needs_mcp = lambda: False   # as if creds were set
+    try:
+        built = build_library_tools(
+            {"allow_album_queue": True, **(cfg or {})}, station,
+            actions or CallActions(5))
+    finally:
+        music.library_search_needs_mcp = orig
+    return {t.info.name: t for t in built}
+
+
+class TestTheBulkToolsRideTheirSwitch(unittest.TestCase):
+    """One switch, deliberately not the exact queue's: one sentence taking
+    thirty slots is a bigger grant than one taking one, and an operator who
+    enabled exact picks must not find an upgrade turned album floods on."""
+
+    def test_on_when_the_switch_is_on(self):
+        names = _tools(_Station([]))
+        self.assertIn("subwave_queue_album", names)
+        self.assertIn("subwave_queue_mix", names)
+
+    def test_off_when_the_switch_is_off(self):
+        names = _tools(_Station([]), cfg={"allow_album_queue": False})
+        self.assertNotIn("subwave_queue_album", names)
+        self.assertNotIn("subwave_queue_mix", names)
+
+    def test_never_built_without_station_credentials(self):
+        # Same reasoning as the exact queue: without the credentialed search
+        # there are no ids to queue, so the tool cannot exist honestly.
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: True
+        try:
+            built = build_library_tools(
+                {"allow_album_queue": True}, _Station([]), CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        names = {t.info.name for t in built}
+        self.assertNotIn("subwave_queue_album", names)
+        self.assertNotIn("subwave_queue_mix", names)
+
+    def test_the_album_switch_alone_puts_ids_on_search_rows(self):
+        # A mix is built by passing ids from search rows, so the rows must
+        # carry them even when the single-pick exact queue is off.
+        st = _Station([_row(1)])
+        names = _tools(st, cfg={"allow_library_search": True})
+        out = asyncio.run(names["subwave_search_library"](q="rumours"))
+        self.assertIn("[id: id1]", out)
+
+    def test_the_registry_agrees(self):
+        from call.tools.registry import BY_NAME
+
+        for name in ("subwave_queue_album", "subwave_queue_mix"):
+            self.assertEqual(BY_NAME[name].gate, "allow_album_queue")
+            self.assertTrue(BY_NAME[name].needs_station_admin)
+
+
+class TestQueueingAWholeAlbum(unittest.TestCase):
+    def test_the_album_goes_in_whole_in_the_librarys_filing_order(self):
+        from call.actions import CallActions
+
+        # Rows arrive in search-relevance order, not tracklist order — the
+        # station exposes no track numbers, so path order (the rip's numbered
+        # filenames) is the only running order there is.
+        rows = [_row(3), _row(1), _row(2), _row(9, album="Tusk")]
+        st = _Station(rows)
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours", artist="Fleetwood Mac"))
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id2", "id3"])
+        self.assertIn('"Rumours"', out)
+        self.assertIn("3 track(s)", out)
+        self.assertIn("order the library files them", out)
+        self.assertIn("NOT playing", out)
+        # 9 minutes of programme, said only because every duration was known.
+        self.assertIn("about 9 minutes", out)
+
+    def test_the_whole_batch_is_one_action_not_thirty(self):
+        from call.actions import CallActions
+
+        st = _Station([_row(i) for i in range(1, 6)])
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours"))
+        self.assertEqual(actions.count, 1)
+        self.assertIn("ONE action", out)
+        self.assertEqual(actions.taken[0][0], "album")
+
+    def test_never_play_tracks_are_dropped_and_named(self):
+        st = _Station([
+            _row(1), _row(2, blockedBy={"kind": "rule", "label": "no live cuts"}),
+            _row(3),
+        ])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours"))
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id3"])
+        self.assertIn("never-play", out)
+
+    def test_asking_again_does_not_queue_it_twice(self):
+        # The station queues duplicates on purpose for its own operator (its
+        # #619 bypass), so the per-call ledger is the only guard there is.
+        from call.actions import CallActions
+
+        st = _Station([_row(1), _row(2)])
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        asyncio.run(tool(album="Rumours"))
+        again = asyncio.run(tool(album="Rumours"))
+        self.assertEqual(len(st.queued), 2, "the album went in twice")
+        self.assertIn("ALREADY in the queue", again)
+        self.assertEqual(actions.count, 1)
+
+    def test_two_matching_albums_ask_rather_than_guess(self):
+        st = _Station([
+            _row(1, album="Greatest Hits", artist="Abba"),
+            _row(2, album="Best Hits", artist="Blur"),
+        ])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Hits"))
+        self.assertEqual(st.queued, [])
+        self.assertIn("More than one album", out)
+        self.assertIn("NOTHING queued", out)
+
+    def test_the_artist_settles_a_tie(self):
+        st = _Station([
+            _row(1, album="Greatest Hits", artist="Abba"),
+            _row(2, album="Best Hits", artist="Blur"),
+        ])
+        tool = _tools(st)["subwave_queue_album"]
+        asyncio.run(tool(album="Hits", artist="Blur"))
+        self.assertEqual([t["id"] for t in st.queued], ["id2"])
+
+    def test_a_miss_names_what_the_search_did_find(self):
+        # "No album by that name" next to the albums that DID come back, so
+        # the DJ can re-ask instead of declaring the shelf empty.
+        st = _Station([_row(1)])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Nevermind"))
+        self.assertEqual(st.queued, [])
+        self.assertIn('"Rumours"', out)
+
+    def test_an_empty_library_answer_is_an_honest_miss(self):
+        st = _Station([])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Nevermind"))
+        self.assertIn("Nothing in the racks", out)
+        self.assertIn("don't guess", out)
+
+    def test_a_station_refusal_is_not_reported_as_queued(self):
+        st = _Station([_row(1)])
+        st.refuse["id1"] = "blocked by the station's never-play list"
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours"))
+        self.assertIn("None of", out)
+        self.assertIn("do NOT claim", out)
+
+    def test_a_spent_call_is_refused_before_the_station_is_touched(self):
+        from call.actions import CallActions
+
+        st = _Station([_row(1)])
+        spent = CallActions(1)
+        spent.note("request", "earlier")
+        tool = _tools(st, spent)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours"))
+        self.assertIn("limit", out.lower())
+        self.assertEqual(st.searches, [])
+        self.assertEqual(st.queued, [])
+
+    def test_order_is_not_claimed_when_the_library_has_no_paths(self):
+        st = _Station([_row(2, path=""), _row(1, path="")])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours"))
+        self.assertNotIn("order the library files them", out)
+        # Kept as the station returned them rather than re-sorted by a guess.
+        self.assertEqual([t["id"] for t in st.queued], ["id2", "id1"])
+
+    def test_an_oversized_album_is_capped_and_says_so(self):
+        from call.tools.albums import ALBUM_MAX_TRACKS
+
+        st = _Station([_row(i) for i in range(1, ALBUM_MAX_TRACKS + 4)])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours"))
+        self.assertEqual(len(st.queued), ALBUM_MAX_TRACKS)
+        self.assertIn("capped", out)
+
+
+class TestTheShelfIsAReadNotAnAction(unittest.TestCase):
+    def test_an_artist_alone_lists_their_albums_and_queues_nothing(self):
+        from call.actions import CallActions
+
+        st = _Station([_row(1), _row(2), _row(3, album="Tusk")])
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        out = asyncio.run(tool(artist="Fleetwood Mac"))
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+        self.assertIn('"Rumours"', out)
+        self.assertIn('"Tusk"', out)
+        self.assertIn("NOTHING has been queued", out)
+
+    def test_an_empty_shelf_is_said_plainly(self):
+        st = _Station([])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(artist="Nobody"))
+        self.assertIn("Nothing on the shelf", out)
+
+    def test_no_album_and_no_artist_asks_the_caller(self):
+        st = _Station([_row(1)])
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool())
+        self.assertEqual(st.searches, [])
+        self.assertIn("which album", out.lower())
+
+
+class TestQueueingAMix(unittest.TestCase):
+    def test_picked_ids_go_in_as_one_action_with_their_titles(self):
+        from call.actions import CallActions
+
+        st = _Station([])
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_mix"]
+        out = asyncio.run(tool(
+            picks="id1 Lose Yourself\nid2 Stan", label="Eminem mix"))
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id2"])
+        self.assertEqual([t["title"] for t in st.queued],
+                         ["Lose Yourself", "Stan"])
+        self.assertEqual(actions.count, 1)
+        self.assertEqual(actions.taken[0], ("mix", "Eminem mix"))
+        self.assertIn("playing yet", out)
+        self.assertIn("ONE action", out)
+
+    def test_a_pile_of_picks_is_capped(self):
+        from call.tools.albums import MIX_MAX_PICKS
+
+        st = _Station([])
+        tool = _tools(st)["subwave_queue_mix"]
+        picks = "\n".join(f"id{i} Track {i}" for i in range(1, MIX_MAX_PICKS + 4))
+        out = asyncio.run(tool(picks=picks))
+        self.assertEqual(len(st.queued), MIX_MAX_PICKS)
+        self.assertIn("capped", out)
+
+    def test_a_track_already_queued_this_call_is_not_queued_again(self):
+        from call.actions import CallActions
+
+        st = _Station([])
+        actions = CallActions(5)
+        actions.queued_ids.add("id1")
+        tool = _tools(st, actions)["subwave_queue_mix"]
+        out = asyncio.run(tool(picks="id1 Stan\nid2 Mockingbird"))
+        self.assertEqual([t["id"] for t in st.queued], ["id2"])
+        self.assertIn("ALREADY queued", out)
+
+    def test_a_refused_pick_is_named_not_papered_over(self):
+        st = _Station([])
+        st.refuse["id2"] = "on the never-play list"
+        tool = _tools(st)["subwave_queue_mix"]
+        out = asyncio.run(tool(picks="id1 Stan\nid2 Kim"))
+        self.assertIn("refused", out)
+        self.assertIn('"Kim"', out)
+        self.assertIn("Don't claim", out)
+
+    def test_no_picks_teaches_the_format_and_queues_nothing(self):
+        from call.actions import CallActions
+
+        st = _Station([])
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_mix"]
+        out = asyncio.run(tool(picks="   "))
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+        self.assertIn("one per line", out)
+
+    def test_a_spent_call_is_refused_before_the_station_is_touched(self):
+        from call.actions import CallActions
+
+        st = _Station([])
+        spent = CallActions(1)
+        spent.note("request", "earlier")
+        tool = _tools(st, spent)["subwave_queue_mix"]
+        out = asyncio.run(tool(picks="id1 Stan"))
+        self.assertIn("limit", out.lower())
+        self.assertEqual(st.queued, [])
+
+
+class TestTheSelfTitledAlbumFlood(unittest.TestCase):
+    """"The Beatles" the album matches every Beatles track in the library, so
+    the album's own rows can sit pages deep in the flood — the tool pages
+    where the 8-row search never needs to."""
+
+    def test_the_search_pages_through_a_flood(self):
+        from call.tools import albums
+
+        page = albums._SEARCH_PAGE
+        flood = [_row(i, album="Loose Singles") for i in range(page)]
+        wanted = [_row(page + 1, album="The Beatles", artist="The Beatles"),
+                  _row(page + 2, album="The Beatles", artist="The Beatles")]
+        st = _Station(flood + wanted)
+        tool = _tools(st)["subwave_queue_album"]
+        out = asyncio.run(tool(album="The Beatles"))
+        self.assertEqual(len(st.queued), 2)
+        self.assertIn('"The Beatles"', out)

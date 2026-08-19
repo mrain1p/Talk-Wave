@@ -1501,9 +1501,26 @@
   }
 
   // ------------------------------------------------------------- on air card
+  // One painter for both homes of the listener count — the header line and
+  // the player's Now-playing ribbon. The number is only ever a number
+  // (textContent), the mark is static markup, and absent stays hidden.
+  function paintListeners(spanId, numId, d) {
+    const el = $(spanId);
+    if (!el) return;
+    const n = d && typeof d.listeners === 'number' && d.listeners >= 0;
+    el.hidden = !n;
+    if (n) {
+      $(numId).textContent = d.listeners;
+      el.setAttribute('aria-label', d.listeners + ' listening');
+    }
+  }
+
   function paintOffAir(reason) {
     $('eyebrow').className = 'eyebrow off';
     $('eyebrowText').textContent = reason === 'offline' ? 'Station offline' : 'Off air';
+    // No count on a quiet or unreachable station — a number next to "Off
+    // air" would be counting nobody.
+    $('eyebrowListeners').hidden = true;
     $('djName').textContent = reason === 'offline' ? 'Unreachable' : 'Nobody on air';
     $('djShow').textContent = '';
     $('djTagline').textContent = reason === 'offline'
@@ -1816,14 +1833,15 @@
 
       $('eyebrow').className = 'eyebrow';
       // The listener count rides the ON AIR line — text on furniture the
-      // card already has, so the height promise holds. A broadcast mark and
-      // the bare number, zero included: the operator's call (2026-08-18),
-      // reversing the old one-listener floor — the word "listening" and the
-      // NOW both went with it. Absent stays absent: no number is painted
-      // when the station won't say or the row is switched off.
-      $('eyebrowText').textContent = 'On air'
-        + (typeof d.listeners === 'number' && d.listeners >= 0
-           ? ' · 📡 ' + d.listeners : '');
+      // card already has, so the height promise holds. Zero included: the
+      // operator's call (2026-08-18), reversing the old one-listener floor.
+      // Absent stays absent: no number is painted when the station won't
+      // say or the row is switched off. Its own element with a line-drawn
+      // mark since the same day — the emoji-in-text version pushed the
+      // number under the player's pull tab on a narrow phone, where it was
+      // simply not visible.
+      $('eyebrowText').textContent = 'On air';
+      paintListeners('eyebrowListeners', 'eyebrowListenersN', d);
       // The NAME is never switchable: a call card that doesn't say who
       // answers isn't a call card. Everything below it is the operator's
       // call, per surface. Emptied rather than hidden — these are text nodes
@@ -3161,11 +3179,15 @@
             setStatus('The machine is listening — speak after the beep, transcript only',
                       'connected');
           }
-        } else if (onAirCall) {
+        } else if (onAirCall
+                   && (((live || {}).onAirCalls) || {}).mode !== 'after') {
           // NO station bed under a live call: the stream at this moment is
           // this very conversation, one stream-buffer ago — a caller hearing
           // their own last exchange under the current one cannot hold a
           // thought. They rejoin the listener count when the line clears.
+          // A TAPED call falls through to tune-in below (operator's ask,
+          // 2026-08-18): nothing airs until hangup, so the stream under the
+          // call is just the station playing, same as any private call.
         } else {
         // Now they're actually on a call: tune them into the station so the
         // station counts them as a listener and accepts their requests.
@@ -4648,6 +4670,10 @@
   function paintPlayer() {
     const d = shown || live || {};
     const np = d.nowPlaying || {};
+    // The count beside the Now-playing words (operator's ask, 2026-08-18):
+    // whoever opened the deck is one of the people this number counts. Same
+    // rule as the header's — only a number the station actually gave.
+    paintListeners('plListeners', 'plListenersN', d);
     const img = $('plArt'), mono = $('plMono'), glow = $('plGlow');
     if (img && mono) {
       // The record's own art, else the DJ's photo, else initials — each

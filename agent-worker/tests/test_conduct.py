@@ -505,3 +505,45 @@ class TestTheStationsLanguageIsNotTheDJsLanguage(unittest.TestCase):
 
         names = [name for name, _ in conduct.blocks({})]
         self.assertIn("LANGUAGE_AND_MIMICRY", names)
+
+
+class TestBulkQueueingIsActedOnNotSoldOn(unittest.TestCase):
+    """The operator's ask, near verbatim (2026-08-18): no need to offer the
+    full album by default, but if it sounds like that's what they want, do
+    it. So the rule exists only when the switch does, and the restraint —
+    a question about the shelf is not an order for thirty tracks — is in
+    the words."""
+
+    ON = {"allow_requests": "open", "allow_library_search": "open",
+          "allow_album_queue": "open"}
+
+    def _both(self, cfg):
+        from brain import conduct, conduct_chat
+
+        return conduct.rules(cfg), conduct_chat.rules(cfg)
+
+    def test_the_rule_rides_the_switch(self):
+        for rules in self._both(self.ON):
+            self.assertIn("subwave_queue_album", rules)
+            self.assertIn("subwave_queue_mix", rules)
+        off = {k: v for k, v in self.ON.items() if k != "allow_album_queue"}
+        for rules in self._both(off):
+            self.assertNotIn("subwave_queue_album", rules)
+            self.assertNotIn("subwave_queue_mix", rules)
+
+    def test_an_album_is_never_offered_unprompted(self):
+        for rules in self._both(self.ON):
+            self.assertIn("offer a whole album unprompted", rules)
+            self.assertIn("question about", rules)
+            self.assertIn("a caller asking for a song gets a song", rules)
+
+    def test_the_mix_names_only_finders_that_exist(self):
+        # A taught tool that was never built gets MIMED, not refused — the
+        # exact failure the per-switch action bullets exist to stop. The mix
+        # bullet lists its finders, so each mention rides that finder's own
+        # switch.
+        for rules in self._both(self.ON):
+            self.assertIn("subwave_browse_library", rules)
+        with_sound = dict(self.ON, allow_sound_search="open")
+        for rules in self._both(with_sound):
+            self.assertIn("subwave_search_by_sound", rules)

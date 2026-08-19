@@ -193,6 +193,13 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_station_favourites": "allow_library_search",
         "subwave_already_played": "allow_library_search",
         "subwave_queue_track": "allow_exact_queue",
+        # Bulk queueing, 0.98.10: a whole album, or a curated run of picks,
+        # as ONE action. Their own switch rather than riding the exact queue,
+        # because one sentence taking thirty slots is a bigger grant than one
+        # taking one — an operator who enabled exact picks must not find an
+        # upgrade turned album floods on.
+        "subwave_queue_album": "allow_album_queue",
+        "subwave_queue_mix": "allow_album_queue",
         # Its undo. The station has had DELETE /dj/queue/:id all along, while
         # the prompt told the DJ a request could never be cancelled — so a
         # caller who changed their mind was told it was impossible. Off by

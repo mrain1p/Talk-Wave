@@ -21,6 +21,7 @@ from station import StationClient
 
 from ..actions import CallActions
 from ..background import spawn
+from .albums import build_album_tools
 from .late_match import _surface_late_match
 from .registry import library_search_needs_mcp
 # Re-exported, not merely used: `music._fmt_track` is a name several tests and
@@ -120,6 +121,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
     # Exact queueing needs the ids that only the local search wrapper surfaces.
     exact_queue = bool(cfg.get("allow_exact_queue")) and not library_search_needs_mcp()
+    # Bulk queueing (albums and mixes) needs those same ids — a mix is built
+    # by passing them — so either switch puts ids on the rows.
+    bulk_queue = bool(cfg.get("allow_album_queue")) and not library_search_needs_mcp()
+    ids_shown = exact_queue or bulk_queue
 
     # Where a DESCRIPTION goes, said the same way the prompt says it.
     #
@@ -197,7 +202,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     note = "" if attempt == q else (
                         f" (matched on '{attempt}' — the library needs every word to match)"
                     )
-                    lines = [_fmt_track(t, with_id=exact_queue)
+                    lines = [_fmt_track(t, with_id=ids_shown)
                              for t in items[:PAGE]]
                     more = (f"\n…more beyond this page — call again with "
                             f"page={page + 1} if none of these are it"
@@ -267,7 +272,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 )
             # 8 lines, like a search page: enough to browse down a phone
             # line, small enough not to weigh on every later turn.
-            lines = [_fmt_track(t, with_id=exact_queue) for t in items[:8]]
+            lines = [_fmt_track(t, with_id=ids_shown) for t in items[:8]]
             return ("The newest arrivals in the library, newest first:\n"
                     + "\n".join(lines))
 
@@ -484,6 +489,9 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             )
 
         tools.append(request_song)
+
+    if bulk_queue:
+        tools += build_album_tools(station, actions)
 
     return tools
 

@@ -354,17 +354,22 @@
      ON AIR NOW. A spacer is in the row whatever else is. */
   .eyebrow .spacer { flex: 1 1 auto; }
   .corner { display: flex; align-items: center; margin-left: 10px; }
-  .eyebrow .pip {
-    width: 7px; height: 7px; border-radius: 0; background: var(--coral);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--coral) 60%, transparent);
-    animation: live 2s infinite;
-  }
-  @keyframes live {
-    70%  { box-shadow: 0 0 0 7px color-mix(in srgb, var(--coral) 0%, transparent); }
-    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--coral) 0%, transparent); }
-  }
+  /* The eyebrow's pulsing pip is gone (operator's ask, 2026-08-18): with it
+     and the old emoji glyph, the listener count slid under the player's
+     pull tab on a narrow phone. The words carry the state colour alone. */
   .eyebrow.off { color: var(--sage-dim); }
-  .eyebrow.off .pip { background: var(--sage-dim); animation: none; }
+  /* The listener count, in both of its homes — the header line and the
+     player's Now-playing ribbon. Neutral sage like the corner icons, not
+     the band's coral: the number is information, not state. Both rows are
+     flex with their own gap, so no margins here; [hidden] is re-asserted
+     because inline-flex beats the UA hidden rule. */
+  .eyebrow .listeners, .plhead .listeners {
+    display: inline-flex; align-items: center; gap: 5px; flex: none;
+    color: var(--sage-dim); font: 400 11px/1 var(--font-mono);
+    letter-spacing: .08em;
+  }
+  .eyebrow .listeners svg, .plhead .listeners svg { display: block; }
+  .eyebrow .listeners[hidden], .plhead .listeners[hidden] { display: none; }
 
   /* 60px, and round unless the operator asked for square (`avatar_style`).
      §4.3 said square at 44px, on the reasoning that every other corner in

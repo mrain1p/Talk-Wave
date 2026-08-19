@@ -205,6 +205,13 @@ from tests.test_tools_logic import (  # noqa: F401
     TestOneRequestCannotTakeTwoQueueSlots,
     TestTakingAHeartBackOff,
 )
+from tests.test_album_tools import (  # noqa: F401
+    TestTheBulkToolsRideTheirSwitch,
+    TestQueueingAWholeAlbum,
+    TestTheShelfIsAReadNotAnAction,
+    TestQueueingAMix,
+    TestTheSelfTitledAlbumFlood,
+)
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
     TestALateMatchStillReachesTheCaller,
@@ -246,6 +253,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestBulkQueueingIsActedOnNotSoldOn,
     TestTheStationsLanguageIsNotTheDJsLanguage,
     TestTheDJSpeaksAsItselfNotAboutItself,
     TestADoubtedActionIsCheckedNotExplainedAway,
@@ -404,6 +412,7 @@ from tests.test_onair import (  # noqa: F401
     TestTheLiveCallDoorTellsTheWorkersTruth,
     TestTheLiveSegmentLandsInsteadOfStopping,
     TestTapeModeAirsTheCallAtHangup,
+    TestHeardModeOpensAtTheCallersFirstWord,
 )
 from tests.test_tee import (  # noqa: F401
     TestTheAirGetsTheConversationInOrder,

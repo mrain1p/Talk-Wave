@@ -523,6 +523,10 @@ class TestTheLiveCallDoorTellsTheWorkersTruth(_ChunkStore):
         self.assertEqual(unwired["mode"], "live")
         self.assertEqual(
             self._door(self._cfg(on_air_call_mode="after"))["mode"], "after")
+        # "heard" is a LIVE promise from where the caller stands — the stage
+        # frame only needs to know tape from not-tape.
+        self.assertEqual(
+            self._door(self._cfg(on_air_call_mode="heard"))["mode"], "live")
 
 
 class TestTheLiveSegmentLandsInsteadOfStopping(unittest.TestCase):
@@ -641,6 +645,96 @@ class TestTapeModeAirsTheCallAtHangup(_RelayCase):
         # The default is the behaviour every existing deployment already has.
         r, _ = self._relay()
         self.assertFalse(r.tape)
+        self.assertFalse(r.wait_for_heard)
+
+    def test_a_tape_with_no_caller_on_it_stays_in_the_drawer(self):
+        # The operator's rule (2026-08-18): nothing sent, nothing delivered
+        # to the booth. A caller whose media never arrived — or who never
+        # spoke — leaves a reel of the DJ talking to nobody, and airing that
+        # is worse than airing nothing. Unconditional in tape mode: at
+        # hangup the reel is known, so the check costs no delay.
+        async def run():
+            station = _FakeStation()
+            record = _FakeRecord()
+            r, got = self._relay(station=station, record=record,
+                                 on_air_call_mode="after")
+            await r.open()
+            await r.feed(self._feed_file("t1.wav"), "dj", 3.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
+            await r.close("the call ended")
+            return r, got, station, record
+
+        r, got, station, record = asyncio.run(run())
+        self.assertEqual([g for g in got if b"voice_queue.push" in g], [],
+                         "a caller-less tape aired something")
+        self.assertEqual(station.says, [], "a caller-less tape spoke on air")
+        self.assertTrue(any("never heard" in t for t in record.tools),
+                        "the unaired tape left no trace in the record")
+
+
+class TestHeardModeOpensAtTheCallersFirstWord(_RelayCase):
+    """on_air_call_mode = "heard" (0.98.9): the broadcast opens at the first
+    CALLER clip, the DJ's opening waits on the reel until then, and a call
+    where the caller is never heard airs nothing at all. A mode rather than
+    the default because the guarantee delays the start of the broadcast by
+    about one exchange — the operator's words: nothing sent, nothing
+    delivered to the booth, or at least a setting where that would delay
+    the delivery."""
+
+    def test_nothing_airs_until_the_caller_speaks_then_everything_in_order(self):
+        async def run():
+            station = _FakeStation()
+            record = _FakeRecord()
+            r, got = self._relay(station=station, record=record,
+                                 on_air_call_mode="heard")
+            self.assertTrue(await r.open())
+            await r.feed(self._feed_file("t1.wav"), "dj", 3.0)   # the hello
+            aired_early = len([g for g in got if b"voice_queue.push" in g])
+            said_early = len(station.says)
+            await r.feed(self._feed_file("t2.wav"), "caller", 2.0)
+            await r.feed(self._feed_file("t3.wav"), "dj", 2.5)
+            await r.close("the call ended")
+            return r, got, aired_early, said_early, station, record
+
+        r, got, aired_early, said_early, station, record = asyncio.run(run())
+        self.assertEqual(aired_early, 0,
+                         "the DJ's opening aired before the caller spoke")
+        self.assertEqual(said_early, 0,
+                         "the intro aired before the caller spoke")
+        self.assertEqual(len([g for g in got if b"voice_queue.push" in g]), 3,
+                         "the parked opening never made it to air")
+        self.assertEqual(r.pushed, 3)
+        self.assertEqual(len(station.says), 2,
+                         "intro and outro around the broadcast, no more")
+        self.assertIn("coming on the air", station.says[0])
+        # Conversation order holds: the parked hello airs first, then the
+        # caller's word that opened the broadcast.
+        aired = [t for t in record.tools if "aired turn" in t]
+        self.assertEqual(len(aired), 3)
+        self.assertIn("turn 1 (dj", aired[0])
+        self.assertIn("turn 2 (caller", aired[1])
+        self.assertIn("turn 3 (dj", aired[2])
+
+    def test_a_caller_never_heard_airs_nothing_at_all(self):
+        async def run():
+            station = _FakeStation()
+            record = _FakeRecord()
+            r, got = self._relay(station=station, record=record,
+                                 on_air_call_mode="heard")
+            await r.open()
+            await r.feed(self._feed_file("t1.wav"), "dj", 3.0)
+            await r.feed(self._feed_file("t2.wav"), "dj", 2.0)
+            await r.close("the call ended")
+            return r, got, station, record
+
+        r, got, station, record = asyncio.run(run())
+        self.assertEqual([g for g in got if b"voice_queue.push" in g], [],
+                         "an unopened broadcast aired a clip")
+        self.assertEqual(station.says, [],
+                         "an unopened broadcast spoke on the station")
+        self.assertEqual(r.pushed, 0)
+        self.assertTrue(any("never heard" in t for t in record.tools),
+                        "the silent call left no trace in the record")
 
 
 if __name__ == "__main__":

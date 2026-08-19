@@ -3,6 +3,35 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.9
+
+A caller can ask for a whole album, a caller nobody heard no longer reaches the broadcast, taped calls keep the station playing underneath, and the listener count comes out from behind the player's pull tab.
+
+### Added: albums and mixes
+
+- **"Have you got Rumours? Could you play it all" now has an honest answer.** A new station tool queues a whole album — or a run of hand-picked tracks as a mix — as one action: up to 30 tracks an album, 8 picks a mix, with the same per-call duplicate guard as single queues, so a repeated ask cannot take sixty slots.
+- **It is its own caller permission, "Queue albums and mixes", guest-and-up by default**, with its own example in the "What can I ask?" menu — and it spends one action from the per-call cap, not one per track.
+- Track order is kept when the library's own file paths carry it (a normally ripped album) and quietly skipped when they don't — the station doesn't expose canonical running order, and guessing one would be worse.
+
+### Nothing sent, nothing on air
+
+- **A tape with nobody on it stays in the drawer.** When a caller's media never arrived — or they simply never spoke — the reel held only the DJ's half, and at hangup the station aired an intro, a one-sided conversation and a thank-you to nobody. A caller-less tape now airs nothing at all, and the transcript says why.
+- **Live mode can hold the broadcast until the caller is actually heard.** "When the call airs" grows a third choice, *Live, once the caller is heard*: the DJ's hello waits unaired until the caller's first words, so an unanswered call airs nothing. A choice rather than the new default because the segment's start airs about one exchange late — that delay is the price of the guarantee.
+- The voicemail machine already kept this promise — a message with nothing said delivers nothing to the booth — and is unchanged.
+
+### On a taped call, the station keeps playing
+
+- **The Tune-in bed now rides under taped calls the way it rides under private ones.** Nothing airs until hangup, so the mid-call stream is just the station; hearing your own last exchange under the current one is a live-mode problem, and live mode still silences the bed.
+
+### The card
+
+- **If the listener count was hiding behind the player's pull tab on your phone, that was this.** The pulsing dot before ON AIR is gone and the satellite glyph gave way to a line-drawn mark in the corner icons' own style — at phone width the count now ends 50px clear of the tab where it used to sit underneath it.
+- **The count also rides the player now, beside "Now playing".** Whoever pulled the deck down is one of the people that number counts.
+
+### The panel
+
+- **"When the call airs" moved to the On air page, beside the other airing choices.** It says how the broadcast is delivered, not what a caller may do, so Caller permissions was the wrong shelf; the tier row and its window, delay and sound dials stay put.
+
 ## 0.98.8
 
 The first real phone session's complaints, fixed the same night: callers sound like themselves on air, the greeting waits its turn, the card stops offering doors it will refuse — and a new tape mode airs the whole call at hangup. Covers 0.98.1 through 0.98.8.

@@ -821,8 +821,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # earlier entry (676) was rightly deleted when a split took it under.
         # The seam is the same one it has always had: the chunk-store half
         # against the relay-behaviour half. 647: the door's which-kind-of-shut
-        # pin (0.98.6) — it belongs in the door class it extends.
-        "agent-worker/tests/test_onair.py": (647, "the chunk-store half "
+        # pin (0.98.6) — it belongs in the door class it extends. 741: the
+        # heard-mode class and the caller-less tape pin (0.98.9) — same relay,
+        # same fakes, and the split above is still the one worth making.
+        "agent-worker/tests/test_onair.py": (741, "the chunk-store half "
                                                   "split from the relay "
                                                   "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
