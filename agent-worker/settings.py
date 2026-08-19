@@ -399,6 +399,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # talking over itself. This holds those actions back until the air is
     # clear.
     "avoid_on_air_overlap": (None, True),
+    # The other side of the same negotiation: while a phone-in is live, the
+    # STATION's auto-talk stands down — onair/hush.py flips the station's own
+    # Voice switch off for the call and the token server's janitor restores
+    # it. Off by default: it is a write to the station's settings, and that
+    # stays the operator's decision (the invariant-1 exception, agreed
+    # 2026-08-19).
+    "quiet_station_on_calls": (None, "off"),
     # How many seconds before the broadcast voice actually lands the call DJ
     # hands over, when the station says it is coming (voice.queued, SUB/WAVE
     # 1.8): with a long warning the call keeps flowing and the DJ steps away
@@ -1739,6 +1746,18 @@ SCHEMA: dict[str, dict] = {
         help="Anything sent to air waits for the broadcast to go quiet, and the DJ "
              "steps back from the call while it plays — telling the caller either "
              "side rather than talking over itself."),
+    "quiet_station_on_calls": dict(group="onair", kind="select", admin=True,
+        label="Quiet the station during calls",
+        help="Flips the station's own Voice switch off while a phone-in is live "
+             "and back on within seconds of it ending, so idents, links, time "
+             "checks and segments never talk over a call. Music, jingles and "
+             "listener requests keep working — a request just skips its spoken "
+             "intro, and a show that changes over mid-call starts without its "
+             "greeting. Needs the station admin credentials (the same ones "
+             "that mirror voices) and a SUB/WAVE from July 2026 or newer. "
+             "You'll see Voice toggled off in the station's admin while a "
+             "call is up; flip it back on there mid-call and Talk Wave "
+             "respects your choice and stays out of it."),
     "on_air_handover_secs": dict(group="onair", kind="number",
         label="Hand over before air (s)",
         needs=("avoid_on_air_overlap", True),
@@ -2150,6 +2169,11 @@ STATIC_CHOICES = {
         ("live", "Live — just behind the room (default)"),
         ("heard", "Live, once the caller is heard"),
         ("after", "After the call — airs at hangup"),
+    ],
+    "quiet_station_on_calls": [
+        ("off", "Off — the station talks as usual (default)"),
+        ("on_air", "During on-air calls"),
+        ("all", "During every call — on or off air"),
     ],
     "vm_air_backend": [
         ("dj-reads", "The DJ reads it — works everywhere"),

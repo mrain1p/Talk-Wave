@@ -15,15 +15,47 @@ fetch is the moment a caller's turn leaves the disk.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 
 from aiohttp import web
 
+import settings as settings_store
 from api.auth import _write_allowed
 from api.wire import _cors
-from onair import chunks
+from onair import chunks, hush
 
 log = logging.getLogger("callin.onair")
+
+
+async def hush_janitor(app: web.Application) -> None:
+    """cleanup_ctx: the ONE restorer of the station's Voice switch.
+
+    Workers only ever quiet the station (onair/hush.py); putting it back
+    belongs to exactly one process so per-call job processes can never race
+    each other over the restore. Each tick reconciles: while any call marker
+    is fresh the switch stays down (finishing an assert the worker could not
+    confirm), and once none are, the switch goes back — unless the operator
+    already flipped it themselves, which the tick respects and stands down
+    from. The first tick after a boot is the crash recovery: a stack that
+    died mid-call restores the moment it is back on its feet. Runs even when
+    the setting is off, because the setting being turned off mid-call must
+    not orphan a quieted station — the tick is a no-op unless a flip is
+    actually on record."""
+    interval = float(os.environ.get("HUSH_JANITOR_INTERVAL", "7"))
+
+    async def loop() -> None:
+        while True:
+            await hush.janitor_tick(settings_store.load())
+            await asyncio.sleep(interval)
+
+    task = asyncio.create_task(loop())
+    app["hush_task"] = task
+    try:
+        yield
+    finally:
+        task.cancel()
 
 
 async def handle_on_air_dump(request: web.Request) -> web.Response:

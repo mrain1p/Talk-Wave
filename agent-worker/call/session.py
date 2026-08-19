@@ -42,6 +42,7 @@ from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
+from onair import hush
 from onair.relay import CallRelay
 
 from . import (asks as asks_mod, background, clocks, comeback, door,
@@ -243,6 +244,14 @@ class CallSession:
         # they can't write to the record after it is finalised. Registered
         # here so it fires even on an early-call failure.
         ctx.add_shutdown_callback(lambda: background.cancel_all())
+        # A call that dies before it has a session drops its hush marker here;
+        # a call that started keeps it until the tail of _on_shutdown instead,
+        # because shutdown callbacks run CONCURRENTLY and this one must not
+        # race the tape playout into un-quieting the station mid-reel. The
+        # split is exact: _on_shutdown is only ever registered once a session
+        # exists (_attach_behaviours), so each marker has one owner.
+        ctx.add_shutdown_callback(self._hush_sweep)
+        self._hush_task = None
 
     # -- ringing ----------------------------------------------------------
     async def prepare(self, connecting=None) -> None:
@@ -291,6 +300,19 @@ class CallSession:
         self.station_tools = self._station_server()
         self._tools_warm = asyncio.create_task(self._warm_station_tools())
         self.ctx.add_shutdown_callback(lambda: lifecycle.cancel(self._tools_warm))
+
+        # Quiet the station's own DJ for the whole call, when the operator
+        # asked for that on every call. Rides the ringing beside the other
+        # station reads; never raises and never blocks the pickup — a station
+        # that answers slowly costs the caller nothing, and the token server's
+        # janitor finishes an assert this could not confirm. The on_air scope
+        # engages in start() instead, only once the relay actually arms —
+        # "quiet while broadcasting" must not fire for a call that falls back
+        # private on a dead mixer. Held on self so it cannot be GC'd mid-write
+        # (see api/tokens.py for that failure).
+        if hush.scope(self.cfg) == "all":
+            self._hush_task = asyncio.create_task(
+                hush.engage(self.cfg, self.room_name))
 
         # The TTS voice list needs nothing the station knows, so it rides the
         # same wait — it was the one read still sitting serial at the tail of
@@ -470,6 +492,7 @@ class CallSession:
 
     async def start(self) -> None:
         """Build the voice session and put the DJ on the line."""
+        import asyncio
         # The on-air relay opens BEFORE the session is built, for one reason:
         # the prompt. The DJ must be told it is live before its first word,
         # and the only honest moment to decide that is after the transport
@@ -494,6 +517,12 @@ class CallSession:
                 # phone-in simply stopped mid-thought whenever the clock ran
                 # out. Radio does not end a segment that way.
                 window = int(self.cfg.get("on_air_max_seconds") or 0) or 240
+                # The on_air scope's moment: the relay is armed, this call IS
+                # going to broadcast. (The "all" scope engaged back in
+                # prepare(), where the greeting is still ahead.)
+                if hush.scope(self.cfg) == "on_air":
+                    self._hush_task = asyncio.create_task(
+                        hush.engage(self.cfg, self.room_name))
                 if self.relay.tape:
                     # Tape mode's truth is different, and the DJ must not
                     # claim "as it happens" on a call that airs at hangup —
@@ -591,6 +620,16 @@ class CallSession:
         air_task = asyncio.create_task(self.air.watch(session))
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
 
+        # Keep this call's hush marker fresh, when this call quieted the
+        # station: the janitor reads a stopped heartbeat as a dead job and
+        # restores the station's voice. Cancelled at shutdown like the rest;
+        # the tape playout runs unheartbeated but well inside the freshness
+        # window (see hush.CALL_FRESH_SECS).
+        if (hush.scope(cfg) == "all"
+                or (self.relay and hush.scope(cfg) == "on_air")):
+            hush_beat = asyncio.create_task(hush.heartbeat(self.room_name))
+            ctx.add_shutdown_callback(lambda: lifecycle.cancel(hush_beat))
+
         lifecycle.attach_close_reason(session, self.ended)
         lifecycle.attach_error_recovery(session, self.record, self.think)
         lifecycle.attach_think_pace(session, self.think)
@@ -629,6 +668,13 @@ class CallSession:
                               air=self.air)
 
     # -- hanging up -------------------------------------------------------
+    async def _hush_sweep(self) -> None:
+        """The early-death half of the hush marker's removal — see the
+        registration site in __init__ for why the started-call half lives at
+        the tail of _on_shutdown instead."""
+        if self.session is None:
+            hush.call_ended(self.room_name)
+
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
         try:
@@ -642,6 +688,11 @@ class CallSession:
                 await self.station.aclose()
             except Exception:                                   # noqa: BLE001
                 pass
+            # After the playout above, deliberately: dropping the marker is
+            # what frees the janitor to un-quiet the station, and the reel
+            # must finish airing first. Local disk, so it cannot fail the
+            # record the way a network call could.
+            hush.call_ended(self.room_name)
 
     async def _shutdown_work(self) -> None:
         # The relay closes FIRST, inside this callback rather than as its own

@@ -21,6 +21,7 @@
     catch (e) { live = live || {}; }
     setSounds(live && live.sounds);
     paintOnairWiring();
+    paintQuietWiring();
     return live;
   }
 
@@ -38,6 +39,19 @@
     const unwired = !!(oa && oa.tier && oa.tier !== 'off'
                        && oa.enabled !== false && !oa.calls);
     box.style.display = unwired ? 'block' : 'none';
+  }
+
+  // Same door-truth rule for quiet-the-station: /live's stationQuiet verdict
+  // is null while the setting is off, and carries ok:false with a why when
+  // the saved-on feature cannot actually reach the station's Voice switch —
+  // credentials missing, or the last flip didn't stick.
+  function paintQuietWiring() {
+    const box = $('quietWiring');
+    if (!box) return;
+    const q = (live && live.stationQuiet) || null;
+    const broken = !!(q && q.ok === false);
+    if (broken) $('quietWiringWhy').textContent = q.why || 'the last flip failed';
+    box.style.display = broken ? 'block' : 'none';
   }
 
 

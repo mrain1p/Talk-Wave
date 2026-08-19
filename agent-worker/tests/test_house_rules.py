@@ -795,7 +795,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # gained its live/tape mode and the quick kill's own state (0.98.5),
         # ten lines on the build side so the panel's wiring warning can tell
         # a closed door from a missing network.
-        "agent-worker/api/live.py": (628, "the shared payload build split "
+        # 635: the stationQuiet verdict joined the payload beside the door it
+        # mirrors (quiet-the-station, 0.98.13) — seven lines of key + comment.
+        "agent-worker/api/live.py": (635, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -813,7 +815,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # now closes in _on_shutdown's finally instead of racing it as its
         # own callback (0.98.8, the first tape soak's dead brackets) — the
         # ordering IS the shutdown work, so it cannot live elsewhere.
-        "agent-worker/call/session.py": (730, "the ringing half (prepare, "
+        # 781: quiet-the-station's four hooks (engage on each scope's moment,
+        # the heartbeat, the sweep/tail marker pair) — each is pinned to a
+        # phase by the concurrent-shutdown ordering, so none can move out.
+        "agent-worker/call/session.py": (781, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -824,9 +829,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # pin (0.98.6) — it belongs in the door class it extends. 741: the
         # heard-mode class and the caller-less tape pin (0.98.9) — same relay,
         # same fakes, and the split above is still the one worth making.
-        "agent-worker/tests/test_onair.py": (741, "the chunk-store half "
-                                                  "split from the relay "
-                                                  "half"),
+        # 1003: the hush classes (quiet-the-station, 0.98.13) — they live on
+        # the same _ChunkStore base as everything else here, and the split
+        # worth making is now three-way: chunks / relay / hush.
+        "agent-worker/tests/test_onair.py": (1003, "the chunk-store half "
+                                                   "split from the relay "
+                                                   "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
         # already named in web-widget/CLAUDE.md and is genuinely two viewers:
         # the LOG viewer (renderLog, the level filter, the tail) against the

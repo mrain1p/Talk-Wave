@@ -1105,5 +1105,31 @@ class TestTheOnAirCallerSoundSetting(_TempStores):
         self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")
         settings_store.save({"on_air_caller_sound": "phone"})
         self.assertEqual(settings_store.load()["on_air_caller_sound"], "phone")
+
+
+class TestTheQuietStationSetting(_TempStores):
+    """Quieting the station's own DJ during calls WRITES a station setting —
+    the first feature that does — so off must be the default for every
+    deployment that never touches it (the invariant-1 exception is the
+    operator's to grant, agreed 2026-08-19). onair/hush.py reads the stored
+    choice through scope()."""
+
+    def test_off_is_the_default_and_the_scopes_are_choices(self):
+        from onair import hush
+
+        self.assertEqual(settings_store.load()["quiet_station_on_calls"], "off")
+        self.assertEqual(hush.scope(settings_store.load()), "off")
+        settings_store.save({"quiet_station_on_calls": "all"})
+        self.assertEqual(hush.scope(settings_store.load()), "all")
+        settings_store.save({"quiet_station_on_calls": "on_air"})
+        self.assertEqual(hush.scope(settings_store.load()), "on_air")
+
+    def test_blank_falls_through_to_off_like_every_setting(self):
+        from onair import hush
+
+        settings_store.save({"quiet_station_on_calls": "all"})
+        settings_store.save({"quiet_station_on_calls": ""})
+        self.assertEqual(settings_store.load()["quiet_station_on_calls"], "off")
+        self.assertEqual(hush.scope(settings_store.load()), "off")
         settings_store.save({"on_air_caller_sound": ""})
         self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")

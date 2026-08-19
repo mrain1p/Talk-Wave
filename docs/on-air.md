@@ -100,6 +100,32 @@ Nothing airs during the call, and the whole conversation plays the moment it end
 
 ---
 
+## Quieting the station's own DJ
+
+Ducking manages the collision; this removes it. **Quiet the station during calls** (panel → On-air ducking) flips the station's own **Voice** switch off while a phone-in is live and back on within seconds of it ending, so idents, hourly time checks, between-track links, segments and banter never talk over a call. Three positions: **off** (default), **during on-air calls**, or **during every call** — a private caller hears the station through tune-in too, so quieting off-air calls is a real choice, not a technicality.
+
+It needs two things: the **station admin credentials** (the same ones that mirror persona voices) and a **SUB/WAVE from July 2026 or newer** (v0.48.0's station-wide voice switch). Switched on without either, the panel shows a wiring banner saying exactly what is missing — the switch never fails silently.
+
+**What keeps working while the station is quiet** — these are the station's own rules for its Voice switch, not ours:
+
+| Still happens | Stands down |
+|---|---|
+| Music — picks never stop | Station idents and hourly time checks |
+| Jingles (pre-rendered, on the mixer's own rotation) | Between-track DJ links |
+| Listener requests — queued, with their text acknowledgement | The request's *spoken* intro |
+| Your own manual pushes (`/dj/say`, segment buttons) | Auto segments (weather, news, facts) and banter breaks |
+| This call's own clips — they ride the mixer directly | Programme episode beats |
+
+**If a show changes over mid-call**: the show still starts on time — music steering, filters, the lot — but its boundary greeting is dropped (the station marks it aired rather than queue a stale hello), a programme episode's intro stays pending and opens the next hour instead, and an episode outro whose final-minutes window is entirely covered by a call is lost for that episode. The station's booth log says why each moment stood down ("station voice is off"), so a quiet stretch is legible from its own side.
+
+**The operator always outranks the machine.** A station whose Voice you already keep off is left entirely alone — nothing to flip, nothing to restore. Flip Voice back on in the station's admin mid-call and Talk Wave notices, stands down, and does not touch it again. And expect to *see* it: the Voice toggle in the station's admin sits off while a call is up. That is the feature working, not a fault.
+
+**A crash cannot leave the station mute.** Every call heartbeats a marker while it lives; the token server restores the switch when no marker is fresh — within seconds of a normal hangup (after a taped call's playout finishes airing), within ten minutes of a worker that died mid-call, and on its first tick after a whole-stack restart. The restore is confirmed against the station and retried until it lands.
+
+This is the one place Talk Wave **writes** a station setting — one boolean, merged field-by-field by the station's own settings route, verified from the station's echo, restored to exactly what it was.
+
+---
+
 ## Three switches have to agree
 
 Nobody airs by accident. Three separate consents stand between a caller and the broadcast, and **any one of them alone says no.**

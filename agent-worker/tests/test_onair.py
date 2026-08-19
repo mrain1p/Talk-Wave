@@ -737,5 +737,267 @@ class TestHeardModeOpensAtTheCallersFirstWord(_RelayCase):
                         "the silent call left no trace in the record")
 
 
+class _FakeVoiceSwitch:
+    """The station's /settings surface, as onair/hush.py speaks to it: the
+    stored value rides GET's `values.tts`, and a POST echoes the saved
+    document back. `enabled=None` is a station older than the switch."""
+
+    def __init__(self, enabled=True, post_status=200, sticks=True):
+        self.enabled = enabled
+        self.posts: list[dict] = []
+        self.post_status = post_status
+        self.sticks = sticks
+
+    async def get(self, path):
+        tts = {} if self.enabled is None else {"enabled": self.enabled}
+        body = {"values": {"tts": tts}}
+        return SimpleNamespace(status_code=200, raise_for_status=lambda: None,
+                               json=lambda: body)
+
+    async def post(self, path, json=None):
+        self.posts.append(json)
+        if self.post_status == 200 and self.sticks:
+            self.enabled = json["tts"]["enabled"]
+        body = {"saved": {"tts": ({"enabled": self.enabled}
+                                  if self.sticks else {})}}
+        return SimpleNamespace(status_code=self.post_status,
+                               json=lambda: body, text="nope")
+
+    async def aclose(self):
+        pass
+
+
+class _HushCase(_ChunkStore):
+    """Temp marker store + a fake voice switch in place of the station."""
+
+    def setUp(self):
+        super().setUp()
+        from onair import hush
+
+        self.hush = hush
+        self.switch = _FakeVoiceSwitch()
+        self._old_client = hush._client
+        hush._client = lambda: self.switch
+        self.addCleanup(lambda: setattr(hush, "_client", self._old_client))
+
+    def _engage(self, cfg=None, room="callin-t1"):
+        asyncio.run(self.hush.engage(cfg or {}, room))
+
+    def _tick(self, cfg=None):
+        asyncio.run(self.hush.janitor_tick(cfg or {}))
+
+    def _hushfile(self):
+        return chunks.SERVE_DIR / "HUSH"
+
+
+class TestQuietingClaimsBeforeItWrites(_HushCase):
+    def test_engage_flips_the_switch_and_leaves_a_note_saying_whose(self):
+        self._engage()
+        self.assertEqual(self.switch.posts, [{"tts": {"enabled": False}}],
+                         "the write must be the one-field merge, nothing more")
+        self.assertFalse(self.switch.enabled)
+        import json as _json
+
+        state = _json.loads(self._hushfile().read_text())
+        self.assertTrue(state["prior"], "only a switch that was ON is ours")
+        self.assertTrue(state["verified"], "the POST echo is the verify")
+        self.assertTrue((chunks.SERVE_DIR / "HUSH-CALL-callin-t1").exists())
+
+    def test_a_second_call_rides_the_first_flip_without_more_traffic(self):
+        self._engage(room="callin-a")
+        posts = len(self.switch.posts)
+        self._engage(room="callin-b")
+        self.assertEqual(len(self.switch.posts), posts,
+                         "a sibling call re-wrote a switch already down")
+        self.assertTrue((chunks.SERVE_DIR / "HUSH-CALL-callin-b").exists(),
+                        "the sibling still needs its own marker")
+
+
+class TestTheOperatorOutranksTheHush(_HushCase):
+    def test_a_station_the_operator_muted_is_left_entirely_alone(self):
+        self.switch.enabled = False
+        self._engage()
+        self.assertEqual(self.switch.posts, [])
+        self.assertFalse(self._hushfile().exists(),
+                         "no claim means the janitor will never write either")
+
+    def test_a_station_too_old_for_the_switch_is_not_written_to(self):
+        self.switch.enabled = None
+        self._engage()
+        self.assertEqual(self.switch.posts, [])
+        self.assertFalse(self._hushfile().exists())
+        verdict = (chunks.SERVE_DIR / "HUSH-VERDICT").read_text()
+        self.assertIn("SUB/WAVE", verdict,
+                      "the panel must be told why, not shown a silent no-op")
+
+    def test_an_operator_flip_back_on_mid_call_is_respected(self):
+        self._engage()
+        self.switch.enabled = True          # their hand, in the station admin
+        self.switch.posts.clear()
+        self._tick()                        # call marker still fresh: no-op
+        (chunks.SERVE_DIR / "HUSH-CALL-callin-t1").unlink()
+        self._tick()                        # call over: restore would run now
+        self.assertEqual(self.switch.posts, [],
+                         "the restore wrote over the operator's own choice")
+        self.assertFalse(self._hushfile().exists(),
+                         "standing down still clears the claim")
+
+
+class TestQuietingNeverBlocksTheCall(_HushCase):
+    def test_no_credentials_means_a_verdict_not_an_error(self):
+        self.hush._client = lambda: None
+        self._engage()                       # must not raise
+        self.assertFalse(self._hushfile().exists())
+        self.assertIn("credentials",
+                      (chunks.SERVE_DIR / "HUSH-VERDICT").read_text())
+
+    def test_a_dead_station_costs_the_caller_nothing(self):
+        async def boom(path):
+            raise OSError("connection refused")
+
+        self.switch.get = boom
+        self._engage()                       # must not raise
+        self.assertFalse(self._hushfile().exists())
+
+
+class TestTheJanitorIsTheOneRestorer(_HushCase):
+    def test_the_switch_stays_down_while_any_call_marker_is_fresh(self):
+        self._engage()
+        self.switch.posts.clear()
+        self._tick()
+        self.assertEqual(self.switch.posts, [])
+        self.assertTrue(self._hushfile().exists())
+
+    def test_an_unconfirmed_flip_is_finished_while_the_call_lives(self):
+        # The worker wrote into a station mid-restart: claimed, unverified.
+        self.switch.sticks = False
+        self._engage()
+        self.switch.sticks = True
+        self.switch.enabled = True           # the restart lost the write
+        self.switch.posts.clear()
+        self._tick()
+        self.assertEqual(self.switch.posts, [{"tts": {"enabled": False}}])
+        import json as _json
+
+        self.assertTrue(_json.loads(self._hushfile().read_text())["verified"])
+
+    def test_the_last_call_out_restores_the_voice(self):
+        self._engage()
+        self.hush.call_ended("callin-t1")
+        self.switch.posts.clear()
+        self._tick()
+        self.assertEqual(self.switch.posts, [{"tts": {"enabled": True}}])
+        self.assertTrue(self.switch.enabled)
+        self.assertFalse(self._hushfile().exists())
+
+    def test_a_restore_the_station_missed_is_retried_not_forgotten(self):
+        self._engage()
+        self.hush.call_ended("callin-t1")
+        self.switch.post_status = 500
+        self._tick()
+        self.assertTrue(self._hushfile().exists(),
+                        "a failed restore dropped the claim — nothing would retry")
+        self.switch.post_status = 200
+        self._tick()
+        self.assertTrue(self.switch.enabled)
+        self.assertFalse(self._hushfile().exists())
+
+
+class TestACrashedCallCannotMuteTheStation(_HushCase):
+    def test_a_marker_nobody_heartbeats_goes_stale_and_the_voice_returns(self):
+        self._engage()
+        marker = chunks.SERVE_DIR / "HUSH-CALL-callin-t1"
+        stale = time.time() - self.hush.CALL_FRESH_SECS - 5
+        os.utime(marker, (stale, stale))
+        self.switch.posts.clear()
+        self._tick()
+        self.assertTrue(self.switch.enabled, "the dead job held the station mute")
+        self.assertFalse(marker.exists(), "the spent marker must not linger")
+        self.assertFalse(self._hushfile().exists())
+
+    def test_a_boot_finds_an_orphaned_claim_and_restores(self):
+        # The whole stack died mid-call: HUSH on disk, no markers, switch down.
+        self._engage()
+        self.hush.call_ended("callin-t1")
+        self._tick()                         # this IS the first tick after boot
+        self.assertTrue(self.switch.enabled)
+
+
+class TestHushMarkersAreScopedAndSafe(_HushCase):
+    def test_scope_reads_the_setting_and_nonsense_reads_as_off(self):
+        self.assertEqual(self.hush.scope({}), "off")
+        self.assertEqual(self.hush.scope({"quiet_station_on_calls": "all"}), "all")
+        self.assertEqual(self.hush.scope({"quiet_station_on_calls": "on_air"}),
+                         "on_air")
+        self.assertEqual(self.hush.scope({"quiet_station_on_calls": "sideways"}),
+                         "off")
+
+    def test_a_hostile_room_name_cannot_walk_the_store(self):
+        self._engage(room="../../etc/passwd")
+        for path in chunks.SERVE_DIR.glob("HUSH-CALL-*"):
+            self.assertEqual(path.parent, chunks.SERVE_DIR)
+        self.hush.call_ended("../../etc/passwd")   # and removal finds it too
+        self.assertEqual(list(chunks.SERVE_DIR.glob("HUSH-CALL-*")), [])
+
+    def test_ending_a_call_that_never_marked_is_quiet(self):
+        self.hush.call_ended("callin-never-existed")   # must not raise
+        self.assertEqual(list(chunks.SERVE_DIR.glob("HUSH-CALL-*")), [],
+                         "removing nothing must also CREATE nothing")
+
+
+class TestTheLiveVerdictTellsThePanelTheTruth(_HushCase):
+    def test_off_is_none_so_the_panel_paints_nothing(self):
+        self.assertIsNone(self.hush.live_verdict({}))
+
+    def test_missing_credentials_read_as_not_ok_with_the_why(self):
+        import station_config
+
+        old = station_config.has_admin
+        station_config.has_admin = lambda: False
+        self.addCleanup(lambda: setattr(station_config, "has_admin", old))
+        v = self.hush.live_verdict({"quiet_station_on_calls": "all"})
+        self.assertFalse(v["ok"])
+        self.assertIn("credentials", v["why"])
+
+    def test_a_working_flip_reads_ok_and_quieted(self):
+        import station_config
+
+        old = station_config.has_admin
+        station_config.has_admin = lambda: True
+        self.addCleanup(lambda: setattr(station_config, "has_admin", old))
+        self._engage()
+        v = self.hush.live_verdict({"quiet_station_on_calls": "on_air"})
+        self.assertTrue(v["ok"])
+        self.assertTrue(v["quieted"])
+        self.assertEqual(v["scope"], "on_air")
+
+
+class TestSessionWiringForHush(unittest.TestCase):
+    """Source pins on call/session.py: the marker's two owners and the
+    playout ordering are load-bearing (shutdown callbacks run CONCURRENTLY),
+    and nothing at runtime would fail loudly if the wiring quietly left."""
+
+    def setUp(self):
+        from tests.support import AGENT_WORKER
+
+        self.src = (AGENT_WORKER / "call"
+                    / "session.py").read_text(encoding="utf-8")
+
+    def test_the_sweep_is_registered_before_anything_can_raise(self):
+        self.assertIn("ctx.add_shutdown_callback(self._hush_sweep)", self.src)
+
+    def test_the_started_call_drops_its_marker_after_the_playout(self):
+        shutdown = self.src.split("async def _on_shutdown", 1)[1]
+        aclose = shutdown.index("self.station.aclose()")
+        ended = shutdown.index("hush.call_ended(self.room_name)")
+        self.assertGreater(ended, aclose,
+                           "the marker fell before the tape finished airing")
+
+    def test_the_heartbeat_rides_only_calls_that_quieted(self):
+        self.assertIn('hush.scope(cfg) == "all"', self.src)
+        self.assertIn('hush.scope(cfg) == "on_air"', self.src)
+        self.assertIn("hush.heartbeat(self.room_name)", self.src)
+
+
 if __name__ == "__main__":
     unittest.main()
