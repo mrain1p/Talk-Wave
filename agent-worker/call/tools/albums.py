@@ -36,6 +36,7 @@ decided in music.py so the tests' one patch point keeps working.
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from station import StationClient
@@ -65,6 +66,29 @@ _SHELF_MAX = 10
 
 def _txt(value, limit: int = 120) -> str:
     return str(value or "").strip()[:limit]
+
+
+def _squash(value) -> str:
+    """A name as a caller says it: lowercased, punctuation dropped. "Sgt.
+    Pepper's" and "sgt peppers" must meet in the middle, because one side of
+    every comparison here is a music tag and the other came off a phone line
+    through STT."""
+    text = re.sub(r"['’]", "", str(value or "").casefold())
+    return " ".join(re.sub(r"[\W_]+", " ", text).split())
+
+
+# What a failed READ must say, in one place so neither tool can soften it.
+# On 2026-08-19 two timed-out searches reached the same caller as "I don't
+# have anything by Eminem" and "no Beatles albums on the shelf" — from a
+# library holding over a hundred of one and the whole White Album of the
+# other. They said "bullshit", and were right.
+_READ_FAILED = (
+    "The racks couldn't be READ just now — the station's search timed out. "
+    "Nothing is missing and NOTHING was queued: this is a slow shelf, not an "
+    "empty one. Say the racks are being slow in your own words, give it a "
+    "moment, and try again — never tell the caller the library hasn't got "
+    "something off the back of this."
+)
 
 
 def _group_by_album(rows: list) -> list[dict]:
@@ -129,51 +153,83 @@ def _programme_length(rows: list) -> str:
     return f"about {mins // 60}h{mins % 60:02d} of programme"
 
 
-async def _rows_matching(station: StationClient, queries: list[str]) -> list:
-    """The first query that finds anything, paged until the results thin out.
+async def _rows_for_query(station: StationClient, q: str) -> list | None:
+    """One query, paged until the results thin out. None when the read itself
+    failed — the difference between "no such record" and "couldn't look",
+    which nothing above this may collapse (see station.search_library).
 
     Paging matters here in a way it doesn't for the 8-row search tool: a
     self-titled album's name matches every track by that artist, and the
     album's own rows may sit on page three of the flood.
     """
+    rows: list = []
+    for page in range(_SEARCH_PAGES):
+        batch = await station.search_library(
+            q, offset=page * _SEARCH_PAGE, limit=_SEARCH_PAGE)
+        if batch is None:
+            # A failed page is a failed lookup — unless earlier pages already
+            # delivered, in which case partial rows are still real rows.
+            return rows if rows else None
+        rows.extend(batch)
+        if len(batch) < _SEARCH_PAGE:
+            break
+    return rows
+
+
+def _album_query_variants(album: str, artist: str) -> list[str]:
+    """Queries to try for an album, most specific first.
+
+    Punctuation is the reason this exists: asked for "The Beatles (The White
+    Album)" — the library's own filed name — the station's search returns
+    NOTHING (proven against the live library, 2026-08-19: the parenthesised
+    words poison the whole match), and even "White Album" fails to find the
+    rows. The artist alone always finds them, so it goes last: the candidate
+    matcher then picks the album out of the artist's flood by name.
+    """
+    out: list[str] = []
     seen: set[str] = set()
-    for q in queries:
-        q = (q or "").strip()
-        if not q or q.casefold() in seen:
-            continue
-        seen.add(q.casefold())
-        rows: list = []
-        for page in range(_SEARCH_PAGES):
-            batch = await station.search_library(
-                q, offset=page * _SEARCH_PAGE, limit=_SEARCH_PAGE)
-            rows.extend(batch or [])
-            if len(batch or []) < _SEARCH_PAGE:
-                break
-        if rows:
-            return rows
-    return []
+
+    def add(q: str) -> None:
+        q = " ".join((q or "").split())
+        if q and q.casefold() not in seen:
+            seen.add(q.casefold())
+            out.append(q)
+
+    add(f"{album} {artist}")
+    add(album)
+    inside = re.findall(r"\(([^)]*)\)", album)
+    outside = re.sub(r"\([^)]*\)", " ", album)
+    for part in [outside] + inside:
+        add(f"{part} {artist}")
+        add(part)
+    plain = _squash(album)
+    add(f"{plain} {artist}")
+    add(plain)
+    add(artist)
+    return out
 
 
 def _candidates(groups: list[dict], album_q: str, artist_q: str) -> list[dict]:
-    """Which album(s) the caller could mean. Contains-matching either way,
-    because callers shorten names and libraries lengthen them ("Abbey Road"
-    vs "Abbey Road (2019 Remaster)")."""
-    want = album_q.casefold()
+    """Which album(s) the caller could mean. Punctuation-blind contains
+    matching either way, because callers shorten names, libraries lengthen
+    them ("Abbey Road" vs "Abbey Road (2019 Remaster)"), and neither side
+    spells "Sgt. Pepper's" the way the other does."""
+    want = _squash(album_q)
     cands = []
     for g in groups:
-        have = g["name"].casefold()
-        if want == have or want in have or have in want:
+        have = _squash(g["name"])
+        if want and have and (want == have or want in have or have in want):
             cands.append(g)
     if artist_q and len(cands) > 1:
-        aw = artist_q.casefold()
+        aw = _squash(artist_q)
         by_artist = [g for g in cands
-                     if aw in _main_artist(g["rows"]).casefold()
-                     or any(aw in _txt(r.get("artist")).casefold()
+                     if aw in _squash(_main_artist(g["rows"]))
+                     or any(aw in _squash(r.get("artist"))
                             for r in g["rows"])]
         if by_artist:
             cands = by_artist
     if len(cands) > 1:
-        exact = [g for g in cands if g["name"].casefold() == want]
+        exact = [g for g in cands if _squash(g["name"]) == want]
         if len(exact) == 1:
             cands = exact
     return cands
@@ -190,6 +246,10 @@ async def _queue_rows(station: StationClient, actions: CallActions,
     for i, row in enumerate(rows):
         if time.monotonic() > deadline:
             return queued, refused, dupes, len(rows) - i
+        # The fan-out runs for several seconds on a big album. The caller is
+        # waiting on us, not the other way round — keep the idle watcher off
+        # their back while it runs.
+        actions.mark_working(6.0)
         tid = str(row.get("id") or "")
         if not tid:
             continue
@@ -277,10 +337,13 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
 
         if not album:
             # The shelf: a read, so it costs no action and ignores the cap.
-            rows = await _rows_matching(station, [artist])
+            rows = await _rows_for_query(station, artist)
+            if rows is None:
+                return _READ_FAILED
+            aw = _squash(artist)
             groups = [g for g in _group_by_album(rows)
-                      if artist.casefold() in _main_artist(g["rows"]).casefold()
-                      or any(artist.casefold() in _txt(r.get("artist")).casefold()
+                      if aw in _squash(_main_artist(g["rows"]))
+                      or any(aw in _squash(r.get("artist"))
                              for r in g["rows"])]
             if not groups:
                 return (f"Nothing on the shelf under \"{artist}\" — no albums "
@@ -297,11 +360,35 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
         if actions.at_limit():
             return actions.refusal()
 
-        rows = await _rows_matching(
-            station, [f"{album} {artist}".strip(), album])
-        groups = _group_by_album(rows)
-        cands = _candidates(groups, album, artist)
-        if not cands:
+        # Walk the query variants until one yields a CANDIDATE, not merely
+        # rows: "White Album" happily returns a page of Christmas Albums, and
+        # stopping there is how the right record two variants later never
+        # gets found. The artist-alone variant at the end is the reliable
+        # one for a punctuated filed name — see _album_query_variants.
+        group = None
+        groups: list[dict] = []
+        read_failed = False
+        for q in _album_query_variants(album, artist):
+            rows = await _rows_for_query(station, q)
+            if rows is None:
+                read_failed = True
+                break
+            if not rows:
+                continue
+            groups = _group_by_album(rows) or groups
+            cands = _candidates(groups, album, artist)
+            if len(cands) == 1:
+                group = cands[0]
+                break
+            if len(cands) > 1:
+                lines = [_shelf_line(g) for g in cands[:6]]
+                return ("More than one album answers to that — NOTHING queued "
+                        "yet:\n" + "\n".join(lines) +
+                        "\nAsk the caller which one, then call again with the "
+                        "exact name and artist.")
+        if group is None:
+            if read_failed:
+                return _READ_FAILED
             if groups:
                 seen = ", ".join(f"\"{g['name']}\"" for g in groups[:6])
                 return (f"No album called \"{album}\" in what came back — the "
@@ -312,14 +399,6 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
             return (f"Nothing in the racks matching \"{album}\". Try the "
                     "artist alone to see their shelf, or tell the caller "
                     "plainly it isn't here — don't guess at a tracklist.")
-        if len(cands) > 1:
-            lines = [_shelf_line(g) for g in cands[:6]]
-            return ("More than one album answers to that — NOTHING queued "
-                    "yet:\n" + "\n".join(lines) +
-                    "\nAsk the caller which one, then call again with the "
-                    "exact name and artist.")
-
-        group = cands[0]
         keep, withheld = _drop_blocked(group["rows"])
         if not keep:
             return (f"Every track of \"{group['name']}\" is on this station's "

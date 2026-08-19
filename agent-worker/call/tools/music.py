@@ -180,6 +180,21 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             for attempt in _query_variants(q):
                 items = await station.search_library(
                     attempt, offset=(page - 1) * PAGE, limit=PAGE + 1)
+                if items is None:
+                    # The read failed — a timeout, not an answer. Said as its
+                    # own thing, and immediately, rather than walking the
+                    # remaining variants into the same stall: on 2026-08-19
+                    # this exact miss reached a caller as "I don't have
+                    # anything by Eminem" from a library holding over a
+                    # hundred of their tracks.
+                    return (
+                        "The library couldn't be READ just now — the station's "
+                        "search timed out. That is NOT an empty result and NOT "
+                        "proof anything is missing, so do not tell the caller a "
+                        "track or artist isn't here off the back of it. Say the "
+                        "racks are being slow in your own words, give it a "
+                        "moment, and try again."
+                    )
                 if items:
                     # Page detection reads the RAW count: the extra row is
                     # fetched to prove another page exists, and a blocked row

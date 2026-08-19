@@ -381,8 +381,23 @@ class StationClient:
             return {"ok": False, "error": str(e)[:140]}
 
     async def search_library(self, q: str, offset: int = 0,
-                             limit: int = 30) -> list[dict]:
-        """Term search over the library. Admin-gated; empty list on failure.
+                             limit: int = 30) -> list[dict] | None:
+        """Term search over the library. Admin-gated.
+
+        Returns None when the READ ITSELF failed — a timeout, a 5xx, missing
+        credentials — and a list (possibly empty) only when the station
+        actually answered. The two used to collapse into one empty list, and
+        the difference is a whole conversation: [] means "no such record",
+        None means "I couldn't look". On 2026-08-19 two of these timed out
+        mid-call and the DJ told the caller their artist wasn't in a library
+        that holds over a hundred of their tracks — twice, to the same
+        person, who said "bullshit" and was right.
+
+        LIBRARY_TIMEOUT rather than the 4.5s default, same reasoning as the
+        browse: the route reloads the station's library index when it has
+        gone stale, which against 381k tracks is exactly the slow read that
+        timeout exists for. Warm it answers in ~0.1s; the DJ talks over the
+        cold case.
 
         offset/limit ride /dj/search's own paging (what the station's admin
         Search tab pages with). Mirrored after the station unfenced its wide
@@ -393,13 +408,14 @@ class StationClient:
 
         user, password = admin_credentials()
         if not (user and password):
-            return []
+            return None
         try:
             r = await self._client.get(
                 "/dj/search",
                 params={"q": q, "offset": max(0, int(offset)),
                         "limit": max(1, int(limit))},
                 auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
             )
             r.raise_for_status()
             d = r.json()
@@ -407,7 +423,7 @@ class StationClient:
             return items if isinstance(items, list) else []
         except Exception as e:
             log.warning("library search failed: %s", describe(e))
-            return []
+            return None
 
     async def search_by_sound(self, description: str, limit: int = 12) -> list[dict]:
         """"Sounds like" search: a description, matched against how tracks
