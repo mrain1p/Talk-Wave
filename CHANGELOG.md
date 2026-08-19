@@ -3,6 +3,39 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.8
+
+The first real phone session's complaints, fixed the same night: callers sound like themselves on air, the greeting waits its turn, the card stops offering doors it will refuse — and a new tape mode airs the whole call at hangup. Covers 0.98.1 through 0.98.8.
+
+### Added: tape mode
+
+- **The whole call can air the moment it ends, instead of live.** "When the call airs" sits under the on-air rows: at hangup the DJ introduces the recording, the exchange plays in order, the sign-off follows. Live stays the default.
+- **PULL OFF AIR during a taped call kills the entire broadcast before a word of it airs** — the reason to accept the wait. A dumped tape stays silent: no intro, no thank-you to nobody.
+- **The stage frame says which promise the caller is accepting** — "Broadcast — live on air" or "Broadcast — airs after you hang up" — and the DJ is briefed it is taping, so it never claims "as it happens" on a recording.
+
+### The caller's voice on air
+
+- **"I've never heard my voice sound so bad on a phone call" — that was the phone-band costume, and it is no longer the default.** Callers air clean now: their real voice, full bandwidth, levelled and de-rumbled. The 300–3400 Hz radio-caller costume survives as a choice, for stations that want that look on purpose.
+- **One dial covers everything a caller sends to the air** — live phone-ins and the soundbite studio's recordings alike — and the studio's review card previews the sound that would actually go out.
+
+### Fixes from the first phone session
+
+- **If the DJ greeted you while the card was still saying you were on hold, that was this, twice over.** The overlap guard now knows about a broadcast that was already mid-link before the call began, and the greeting waits up to 30 seconds where the old 12 guaranteed it barged in — checked against the very call that reported it.
+- **"This line can't put callers on the air", several times, with no way forward — the card no longer offers doors your tier can't open.** Signed out on a gated line the ON AIR switch simply isn't there, the sign-in chip is the climb, and a stale tab's refusal opens the sign-in row instead of dead-ending.
+- **The phone keyboard no longer buries the code entry under the ON AIR switch.** While the code gate is open the switch stands down, and the input scrolls itself into view once the keyboard lands.
+- **Once you are in a call or a recording, the card says which way it is going** — ON AIR in coral with the pulse, OFF AIR in the route's teal with a steady dot — so the route you picked cannot be forgotten mid-call.
+- **The header reads ON AIR with a broadcast mark and the bare listener count, zero included** — reversing 0.98.0's one-listener floor at the operator's word. An unknown count still paints nothing.
+
+### The panel
+
+- **Switching Go-live on without the mixer wiring now says so, loudly, with the instructions one click away.** Nothing could air and nothing said why; a banner beside the on-air rows names the problem, links the setup page, and knows the difference between a missing network and your own quick kill.
+- **The On-air delay help says what the dial cannot do**: zero is not possible on this transport (a turn must finish before the mixer can fetch it), and a caller within earshot of the station hears themselves back a stream-buffer later at any delay — the dial only moves it.
+
+### Under the hood
+
+- **A test boot on another machine can no longer steal a live deployment's webhook registration** — found mid-incident on 2026-08-18, fixed in 0.98.1, with the air-guard tests permanently isolated from real push files.
+- **The tape's intro and outro no longer die on a connection another shutdown step already closed** — caught by the first tape soak on the live station, where all nine clips aired and both brackets failed silently. A failed outro is recorded now, like the failed intro always was.
+
 ## 0.98.0
 
 A caller can go out on the broadcast itself, the pickup got measured and then made fast, and the card learned to say who else is listening. Covers 0.97.41 through 0.98.0.
