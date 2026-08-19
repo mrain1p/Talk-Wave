@@ -1158,7 +1158,10 @@ SCHEMA: dict[str, dict] = {
              "once the track is on air or cued up next, and the DJ says so rather "
              "than pretending. OFF by default because the queue is shared: this can "
              "pull a record somebody else asked for, which is why the station gives "
-             "listeners no cancel of their own. Counts against Actions per call."),
+             "listeners no cancel of their own. Also covers clearing a RUN in one "
+             "go (\"remove all the Eminem\") — one action for the whole batch, "
+             "mirroring what queueing an album costs. Counts against Actions per "
+             "call."),
     "allow_favorite": dict(group="perms", kind="select", tiered=True, label="Like the track on air",
         help="Adds a like to the record playing now — the same heart a listener taps "
              "in the app, so it needs no station credentials and changes no one's "

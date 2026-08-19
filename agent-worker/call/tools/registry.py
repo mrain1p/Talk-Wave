@@ -136,6 +136,17 @@ TOOLS: tuple[Tool, ...] = (
          "whole reason the station gives listeners no cancel of their own. "
          "Counts against Actions per call.",
          needs_station_admin=True),
+    Tool("subwave_clear_from_queue", "allow_cancel_queue", LOCAL,
+         "Takes a RUN of waiting tracks back out as one action — everything "
+         "by an artist, a queued album, or a list of titles.",
+         "Station admin credentials required. Rides the cancel switch: the "
+         "same power at batch size, and it exists because an album goes IN "
+         "as one action — before this, undoing one cost an action per track "
+         "and the per-call cap made honest cleanup impossible (2026-08-19). "
+         "The single cancel's caution applies at scale: it can pull tracks "
+         "OTHER callers asked for, which is why the switch stays off by "
+         "default. One action per clear-out, capped at 30 tracks.",
+         needs_station_admin=True),
 
     # --- discovery: the ways to explore a library that are not a name search -
     # Added 0.10.104 after a run of bad calls in which the DJ had one crude

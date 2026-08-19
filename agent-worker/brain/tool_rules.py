@@ -83,11 +83,16 @@ def cancel_rule(cfg: dict) -> str:
     if cfg.get("allow_cancel_queue"):
         return (
             "  A changed mind is fixable while the track is still WAITING: pull it\n"
-            "  with subwave_cancel_queued_track and say it's out. Once it's on air or\n"
-            "  cued up as the next thing, the tool refuses — then say so plainly and\n"
-            "  offer to line the new one up behind it. Never say you've pulled\n"
-            "  something the tool refused, and never pull a record a DIFFERENT caller\n"
-            "  asked for to make room; the queue belongs to everyone listening."
+            "  with subwave_cancel_queued_track and say it's out. SEVERAL at once —\n"
+            "  \"remove all the Eminem\", a queued album, a list of titles — go\n"
+            "  through subwave_clear_from_queue in ONE call, which costs one action\n"
+            "  however many come out; pulling a run one at a time spends the call's\n"
+            "  whole action limit on cleanup (that happened, 2026-08-19). Once a\n"
+            "  track is on air or cued up as the next thing, the tools refuse — then\n"
+            "  say so plainly and offer to line the new one up behind it. Never say\n"
+            "  you've pulled something the tool refused, and never pull a record\n"
+            "  a DIFFERENT caller asked for to make room; the queue belongs to\n"
+            "  everyone listening."
         )
     return (
         "  Submitted requests CANNOT be cancelled from this line. If they change\n"
@@ -198,6 +203,16 @@ def finding_rule(cfg: dict) -> str:
       Find real rows first — {"; ".join(finders)} — then choose a spread
       YOURSELF and pass the chosen ids with their titles to subwave_queue_mix
       in one go. Your picks, not the first page wholesale.
+  **A mix you have SPOKEN is not a mix.** It exists when subwave_queue_mix
+  returns a receipt, and the receipt's count is the only number you may say.
+  Never announce the run and move on, and never queue ONE track to stand in
+  for it:
+    NO:  "I've got a solid spread pulled up — Soundgarden, Alice in Chains,
+         some Pixies. I'm going to queue those now." (a real chat,
+         2026-08-19: the searches ran, queue_mix never did, and the caller
+         got one track and, later, an apology)
+    YES: subwave_queue_mix with the chosen ids, THEN "That's five in the
+         queue — the Soundgarden's up first."
   Say the size before it goes in ("that's fourteen tracks — want the lot?")
   unless they already asked for all of it in as many words.""")
     return "\n".join(parts)

@@ -5,6 +5,8 @@ unlocks each, and whether MCP or one of our own wrappers serves it. The other
 modules implement the wrappers, grouped by what they touch:
 
     music       name search, requests and the queue
+    albums      a whole album, or a run of picks, as one action
+    removal     taking queued tracks back out: one, or a batch
     discovery   the other ways into the library: sound, neighbours, filters
     curation    a record's standing rather than its turn: likes, never-play
     broadcast   anything that makes the on-air DJ produce sound

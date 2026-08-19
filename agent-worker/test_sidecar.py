@@ -192,6 +192,7 @@ from tests.test_call_flow import (  # noqa: F401
 )
 from tests.test_tools_surface import (  # noqa: F401
     TestActionsAllHaveAReceipt,
+    TestTheCapAnnouncesItselfAsACard,
     TestExposedSurface,
     TestStationActionResults,
     TestStationWideTools,
@@ -213,6 +214,7 @@ from tests.test_album_tools import (  # noqa: F401
     TestTheSelfTitledAlbumFlood,
     TestAFailedReadNeverReadsAsAnEmptyLibrary,
     TestAPunctuatedFiledNameStillQueues,
+    TestClearingARunFromTheQueue,
 )
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
@@ -255,6 +257,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestASpokenMixIsNotAMix,
     TestBulkQueueingIsActedOnNotSoldOn,
     TestTheStationsLanguageIsNotTheDJsLanguage,
     TestTheDJSpeaksAsItselfNotAboutItself,

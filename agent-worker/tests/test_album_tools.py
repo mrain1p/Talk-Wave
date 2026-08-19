@@ -461,3 +461,112 @@ class TestAPunctuatedFiledNameStillQueues(unittest.TestCase):
         asyncio.run(tool(album="Sgt Peppers Lonely Hearts Club Band",
                          artist="The Beatles"))
         self.assertEqual([t["id"] for t in st.queued], ["id1"])
+
+
+class TestClearingARunFromTheQueue(unittest.TestCase):
+    """Bulk OUT, mirroring the album's bulk IN. The 2026-08-19 chat: an
+    album went in as one action, "remove all the Eminem" cost one action
+    per track, and the DJ hit the per-call cap with four still queued —
+    then described the cap as the scheduler fighting him."""
+
+    def _tool(self, upcoming, actions=None, too_late=()):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _St:
+            def __init__(self):
+                self.cancelled = []
+                self.state_reads = 0
+
+            async def state(self):
+                self.state_reads += 1
+                return {"upcoming": upcoming}
+
+            async def cancel_queued_track(self, tid):
+                if tid in too_late:
+                    return {"ok": False, "reason": "already-playing",
+                            "error": "that one's already on the way to air"}
+                self.cancelled.append(tid)
+                return {"ok": True}
+
+        st = _St()
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False   # as if creds were set
+        try:
+            built = build_library_tools({"allow_cancel_queue": True}, st,
+                                        actions or CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        names = {t.info.name: t for t in built}
+        return st, names
+
+    QUEUE = [
+        {"subsonic_id": "e1", "title": "Stan", "artist": "Eminem"},
+        {"subsonic_id": "e2", "title": "Kim", "artist": "Eminem"},
+        {"subsonic_id": "e3", "title": "Drug Ballad", "artist": "Eminem"},
+        {"subsonic_id": "x1", "title": "Two Magpies", "artist": "Fink"},
+    ]
+
+    def test_everything_by_the_artist_goes_as_one_action(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        st, names = self._tool(self.QUEUE, actions)
+        out = asyncio.run(names["subwave_clear_from_queue"](artist="Eminem"))
+        self.assertEqual(st.cancelled, ["e1", "e2", "e3"])
+        self.assertEqual(actions.count, 1)
+        self.assertEqual(actions.taken[0][0], "clear")
+        self.assertIn("3 track(s)", out)
+        self.assertIn("ONE action", out)
+        # The bystander's track was never touched.
+        self.assertNotIn("x1", st.cancelled)
+
+    def test_the_next_up_refusal_is_named_not_papered_over(self):
+        st, names = self._tool(self.QUEUE, too_late={"e1"})
+        out = asyncio.run(names["subwave_clear_from_queue"](artist="Eminem"))
+        self.assertEqual(st.cancelled, ["e2", "e3"])
+        self.assertIn("Too late", out)
+        self.assertIn('"Stan"', out)
+        self.assertIn("skip", out)
+
+    def test_an_empty_match_is_honest_and_costs_nothing(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        st, names = self._tool(self.QUEUE, actions)
+        out = asyncio.run(names["subwave_clear_from_queue"](artist="Nirvana"))
+        self.assertEqual(st.cancelled, [])
+        self.assertEqual(actions.count, 0)
+        self.assertIn("Nothing waiting", out)
+        self.assertIn("don't claim", out)
+
+    def test_titles_one_per_line_work_too(self):
+        st, names = self._tool(self.QUEUE)
+        asyncio.run(names["subwave_clear_from_queue"](titles="Kim\nStan"))
+        self.assertEqual(sorted(st.cancelled), ["e1", "e2"])
+
+    def test_a_spent_call_is_refused_before_the_station_is_touched(self):
+        from call.actions import CallActions
+
+        spent = CallActions(1)
+        spent.note("request", "earlier")
+        st, names = self._tool(self.QUEUE, spent)
+        out = asyncio.run(names["subwave_clear_from_queue"](artist="Eminem"))
+        self.assertIn("limit", out.lower())
+        self.assertEqual(st.state_reads, 0)
+        self.assertEqual(st.cancelled, [])
+
+    def test_both_unqueue_tools_ride_the_cancel_switch(self):
+        # The single cancel moved house (music.py -> removal.py); this
+        # guards that the move kept it reachable, beside its batch.
+        st, names = self._tool(self.QUEUE)
+        self.assertIn("subwave_cancel_queued_track", names)
+        self.assertIn("subwave_clear_from_queue", names)
+
+    def test_the_registry_agrees(self):
+        from call.tools.registry import BY_NAME
+
+        tool = BY_NAME["subwave_clear_from_queue"]
+        self.assertEqual(tool.gate, "allow_cancel_queue")
+        self.assertTrue(tool.needs_station_admin)

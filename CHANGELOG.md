@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.12
+
+Bulk out to match bulk in, an official card when the call's limit is hit, and a mix that only counts once it's really queued — all three from one flailing Wade chat.
+
+### The queue empties the way it fills
+
+- **"Remove all the Eminem" is now one ask and one action.** A new tool clears everything waiting by an artist, a queued album, or a list of titles in one go — before this, an album went IN as one action and cost one action per track to take OUT, so the DJ hit the per-call cap mid-cleanup with tracks still queued. It rides the same "Take a track back out of the queue" permission (the same power at batch size), names anything it was too late for, and is capped at 30.
+
+### The cap stops being the DJ's word against yours
+
+- **Hitting the per-call action limit now shows an official CALL LIMIT REACHED card** on the call and chat windows alike, once, the moment the first refusal happens. On the chat that asked for this, the only voice announcing the cap was a DJ describing it as the scheduler fighting him — the card is the half no persona can spin, and the DJ is now told it's already public.
+
+### A promised mix is not a mix
+
+- **If the DJ announced a great run of picks and one lonely track arrived, that was this.** The conduct now teaches, with that chat as the worked example, that a mix exists when the queue-mix receipt comes back — the receipt's count is the only number the DJ may say, and one track queued to stand in for a run is called out as the lie it is.
+
 ## 0.98.11
 
 The station player stops growing its own scrollbar, and the On air page gets every on-air dial and a layout that reads.

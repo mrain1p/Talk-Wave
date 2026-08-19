@@ -205,6 +205,11 @@ class TestExposedSurface(unittest.TestCase):
         # caller who changed their mind was told it was impossible. Off by
         # default: the queue is shared, so this can pull someone else's track.
         "subwave_cancel_queued_track": "allow_cancel_queue",
+        # Its batch, 0.98.12: bulk OUT mirroring the album's bulk IN — an
+        # album took one action to queue and an action per track to unqueue,
+        # so the cap made honest cleanup impossible (2026-08-19). Same
+        # switch as the single cancel: the same power at batch size.
+        "subwave_clear_from_queue": "allow_cancel_queue",
         # The lowest-harm action: a like on the current record, the same heart
         # any listener taps. Public station endpoint, so no admin credentials.
         "subwave_like_track": "allow_favorite",
@@ -616,3 +621,48 @@ class TestTheDJDescribesRecordsItHasInformationAbout(unittest.TestCase):
 
         self.assertIn("[id: t-42]", _fmt_track(track, with_id=True))
         self.assertNotIn("t-42", _fmt_track(track, with_id=False))
+
+
+class TestTheCapAnnouncesItselfAsACard(unittest.TestCase):
+    """The operator's ask (2026-08-19): when the per-call cap refuses, the
+    caller sees an OFFICIAL card say so — not only a DJ who, on the chat
+    that asked for this, dressed the cap as the scheduler fighting him and
+    claimed pulls the ledger had refused. Once per call: that chat hit the
+    cap four times in twenty seconds, and four identical warnings would
+    bury the one that matters."""
+
+    def _spent(self):
+        from call.actions import CallActions
+
+        spent = CallActions(1)
+        spent.note("request", "earlier")
+        return spent
+
+    def test_the_first_refusal_carries_the_card_and_the_rest_stay_quiet(self):
+        spent = self._spent()
+        cards = []
+        spent.on_note = cards.append
+        first = spent.refusal()
+        spent.refusal()
+        spent.refusal()
+        self.assertIn("limit", first)
+        limit_cards = [c for c in cards if c.get("kind") == "limit"]
+        self.assertEqual(len(limit_cards), 1, "the cap card must fire exactly once")
+        self.assertEqual(limit_cards[0]["label"], "Call limit reached")
+        self.assertIn("no more", limit_cards[0]["detail"])
+
+    def test_the_card_is_not_an_action(self):
+        # It announces that nothing more will happen — counting it, or
+        # listing it among things the caller made happen, would both lie.
+        spent = self._spent()
+        spent.on_note = lambda c: None
+        before_count, before_taken = spent.count, list(spent.taken)
+        spent.refusal()
+        self.assertEqual(spent.count, before_count)
+        self.assertEqual(spent.taken, before_taken)
+
+    def test_the_model_is_told_the_card_is_already_public(self):
+        # The refusal text is the model's only steer at that moment; naming
+        # the card is what makes a contradicting story a visible lie.
+        spent = self._spent()
+        self.assertIn("CALL LIMIT REACHED card", spent.refusal())
