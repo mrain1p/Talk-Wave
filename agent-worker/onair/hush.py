@@ -52,14 +52,19 @@ import httpx
 log = logging.getLogger("callin.onair")
 
 # How long a call marker stays trusted without a heartbeat. Heartbeats land
-# every HEARTBEAT_SECS from the worker, so this is ~10 missed beats — a dead
-# job, not a slow one. Deliberately NOT derived from max_call_seconds: 0 there
-# means "no hangup limit", and a formula that reads 0 as short would have the
-# janitor un-quiet the station in the middle of an unlimited call. The tape
-# playout runs after the heartbeat task is cancelled, but a reel is capped by
-# the on-air window (240s default) — well inside this margin.
-CALL_FRESH_SECS = 600.0
-HEARTBEAT_SECS = 60.0
+# every HEARTBEAT_SECS from the worker, so this is 9 missed beats — a dead
+# job, not a slow one (an OOM-killed worker on a swapping NAS is the real
+# shape of this, and the beat has to out-survive swap stalls, which is why
+# the ratio stays wide rather than the ceiling honest-to-a-fault tight).
+# Deliberately NOT derived from max_call_seconds: 0 there means "no hangup
+# limit", and a formula that reads 0 as short would have the janitor
+# un-quiet the station in the middle of an unlimited call. The shutdown —
+# tee drain, tape playout, the record — runs under its own heartbeat
+# (session._on_shutdown), so nothing here needs to out-wait a reel; 0.98.13
+# shipped at 600 for exactly that reason, and the shutdown beat is what let
+# it drop.
+CALL_FRESH_SECS = 180.0
+HEARTBEAT_SECS = 20.0
 
 # Matches the station-client timeout family (StationConfig, 2026-08-10): these
 # sit on the call-setup path and must fail fast, not hold the ringing.

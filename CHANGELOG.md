@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.14
+
+A crashed call gives the station its voice back in about three minutes instead of ten.
+
+### The quiet-station worst case gets tighter
+
+- **If the worker is hard-killed in the middle of a quieted call — the OOM killer on a swapping NAS is the realistic shape of this — the station's own DJ now returns within about three minutes, down from ten.** The call's heartbeat now also runs through the hangup work (the drain and a taped call's whole playout), so the staleness ceiling no longer has to out-wait the longest possible reel: markers beat every 20 seconds and a call is presumed dead after 9 missed beats. Every normal path is unchanged — hangups, tape playouts and graceful restarts already restored within seconds, and still do.
+
 ## 0.98.13
 
 The station's own DJ can now stand down while a phone-in is live, instead of being ducked around.

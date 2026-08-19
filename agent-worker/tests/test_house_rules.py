@@ -815,10 +815,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # now closes in _on_shutdown's finally instead of racing it as its
         # own callback (0.98.8, the first tape soak's dead brackets) — the
         # ordering IS the shutdown work, so it cannot live elsewhere.
-        # 781: quiet-the-station's four hooks (engage on each scope's moment,
-        # the heartbeat, the sweep/tail marker pair) — each is pinned to a
-        # phase by the concurrent-shutdown ordering, so none can move out.
-        "agent-worker/call/session.py": (781, "the ringing half (prepare, "
+        # 794: quiet-the-station's four hooks (engage on each scope's moment,
+        # the heartbeat, the sweep/tail marker pair) plus 0.98.14's shutdown
+        # beat — each is pinned to a phase by the concurrent-shutdown
+        # ordering, so none can move out.
+        "agent-worker/call/session.py": (794, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -829,10 +830,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # pin (0.98.6) — it belongs in the door class it extends. 741: the
         # heard-mode class and the caller-less tape pin (0.98.9) — same relay,
         # same fakes, and the split above is still the one worth making.
-        # 1003: the hush classes (quiet-the-station, 0.98.13) — they live on
-        # the same _ChunkStore base as everything else here, and the split
-        # worth making is now three-way: chunks / relay / hush.
-        "agent-worker/tests/test_onair.py": (1003, "the chunk-store half "
+        # 1025: the hush classes (quiet-the-station, 0.98.13) + 0.98.14's
+        # shutdown-beat and ceiling-ratio pins — they live on the same
+        # _ChunkStore base as everything else here, and the split worth
+        # making is now three-way: chunks / relay / hush.
+        "agent-worker/tests/test_onair.py": (1025, "the chunk-store half "
                                                    "split from the relay "
                                                    "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was

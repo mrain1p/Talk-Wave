@@ -120,7 +120,7 @@ It needs two things: the **station admin credentials** (the same ones that mirro
 
 **The operator always outranks the machine.** A station whose Voice you already keep off is left entirely alone — nothing to flip, nothing to restore. Flip Voice back on in the station's admin mid-call and Talk Wave notices, stands down, and does not touch it again. And expect to *see* it: the Voice toggle in the station's admin sits off while a call is up. That is the feature working, not a fault.
 
-**A crash cannot leave the station mute.** Every call heartbeats a marker while it lives; the token server restores the switch when no marker is fresh — within seconds of a normal hangup (after a taped call's playout finishes airing), within ten minutes of a worker that died mid-call, and on its first tick after a whole-stack restart. The restore is confirmed against the station and retried until it lands.
+**A crash cannot leave the station mute.** Every call heartbeats a marker while it lives — through the tape playout too — and the token server restores the switch when no marker is fresh: within seconds of a normal hangup (after a taped call's playout finishes airing), within about three minutes of a worker that died mid-call, and on its first tick after a whole-stack restart. The restore is confirmed against the station and retried until it lands.
 
 This is the one place Talk Wave **writes** a station setting — one boolean, merged field-by-field by the station's own settings route, verified from the station's echo, restored to exactly what it was.
 
