@@ -216,7 +216,14 @@ class CallSession:
         # the same reason: a call that dies early still says what it measured.
         self.pacing = heard_mod.HeardMeter()
 
-        ctx.add_shutdown_callback(self.station.aclose)
+        # station.aclose is NOT its own shutdown callback any more. The SDK
+        # runs shutdown callbacks CONCURRENTLY, and _on_shutdown keeps using
+        # the client for the relay's brackets and the end-of-call handoff —
+        # so the first tape soak (callin-ol-cd4e089a2eb0, 2026-08-19) had the
+        # playout's intro AND outro die with "Cannot send a request, as the
+        # client has been closed" while all nine clips aired fine over
+        # telnet. The client now closes in _on_shutdown's finally, after
+        # everything that speaks through it has finished.
         ctx.add_shutdown_callback(self.station_cfg.aclose)
         # Release the concurrency slot from __init__, NOT from _on_shutdown at
         # the tail of start(). A call that raises in prepare() or early start()
@@ -624,6 +631,19 @@ class CallSession:
     # -- hanging up -------------------------------------------------------
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
+        try:
+            await self._shutdown_work()
+        finally:
+            # LAST, after the relay's brackets and the handoff have spoken
+            # through it — see the note at the registration site in
+            # __init__ for the tape soak this ordering fixes. A client that
+            # fails to close is a leak, not a reason to lose the record.
+            try:
+                await self.station.aclose()
+            except Exception:                                   # noqa: BLE001
+                pass
+
+    async def _shutdown_work(self) -> None:
         # The relay closes FIRST, inside this callback rather than as its own
         # (the SDK runs shutdown callbacks concurrently, and the off-air line
         # belongs inside the record that is written below): the caller's last

@@ -809,8 +809,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # cause, not two.
         # 710: tape mode's prompt variant (0.98.5) — the on-air framing forks
         # on relay.tape, and the fork has to live where the live framing
-        # lives. The seam above is untouched by it.
-        "agent-worker/call/session.py": (710, "the ringing half (prepare, "
+        # lives. The seam above is untouched by it. 730: the station client
+        # now closes in _on_shutdown's finally instead of racing it as its
+        # own callback (0.98.8, the first tape soak's dead brackets) — the
+        # ordering IS the shutdown work, so it cannot live elsewhere.
+        "agent-worker/call/session.py": (730, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

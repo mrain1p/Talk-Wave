@@ -311,11 +311,17 @@ class CallRelay:
         # The outro only follows a broadcast that happened: with zero clips
         # aired there is nobody on the stream to thank, and the first
         # deployed test proved a thank-you to nobody is worse than silence.
+        # A FAILED outro is recorded like the failed intro is — the first
+        # tape soak lost both brackets to the same closed client and only
+        # the intro left a trace (callin-ol-cd4e089a2eb0, 2026-08-19).
         if say_outro and self.pushed > 0:
-            await self._say(
+            ok = await self._say(
                 "The live caller segment on air just ended. In one short "
                 "sentence, thank the caller and carry the show on — do not "
                 "summarise the conversation.")
+            if not ok:
+                self._problem("the on-air outro failed; the broadcast ended "
+                              "without a sign-off")
         chunks.sweep()
 
     async def _play_reel(self) -> None:

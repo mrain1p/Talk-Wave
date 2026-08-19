@@ -147,6 +147,7 @@ from tests.test_call_record import (  # noqa: F401
     TestThePickupTimelineIsWrittenDown,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestTheStationClientOutlivesTheShutdownWork,
     TestRingingRidesTheMintsHeadStart,
     TestTheBriefingStopsBeingWrongWhenTheStationMovesOn,
     TestNothingInACallOverwritesSomethingElse,

@@ -1525,6 +1525,28 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         self.assertIn("Dave", said[0])
 
 
+class TestTheStationClientOutlivesTheShutdownWork(unittest.TestCase):
+    """The SDK runs shutdown callbacks CONCURRENTLY, and station.aclose was
+    registered as its own — so the first tape soak (callin-ol-cd4e089a2eb0,
+    2026-08-19) had the playout's intro AND outro die on a closed client
+    while all nine clips aired fine over telnet. The client must close in
+    _on_shutdown's own finally, after the relay's brackets and the handoff
+    have spoken through it."""
+
+    def test_aclose_runs_after_the_shutdown_work_not_beside_it(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "session.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn(
+            "add_shutdown_callback(self.station.aclose)", src,
+            "station.aclose is racing the shutdown work again")
+        tail = src.split("async def _on_shutdown", 1)[1]
+        head = tail[:tail.index("async def _shutdown_work")]
+        self.assertIn("finally:", head)
+        self.assertIn("await self.station.aclose()", head)
+
+
 async def _noop_async(*a, **k):
     return None
 
