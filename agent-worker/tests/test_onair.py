@@ -993,6 +993,28 @@ class TestSessionWiringForHush(unittest.TestCase):
         self.assertGreater(ended, aclose,
                            "the marker fell before the tape finished airing")
 
+    def test_the_shutdown_carries_its_own_beat_and_stops_it_before_the_drop(self):
+        # The staleness ceiling is minutes (hush.CALL_FRESH_SECS), which is
+        # only safe because the drain and the tape playout run under this
+        # beat — and the beat must die BEFORE the unlink, or it resurrects
+        # the marker as an orphan the janitor then waits the ceiling out on.
+        shutdown = self.src.split("async def _on_shutdown", 1)[1]
+        beat = shutdown.index("hush.heartbeat(self.room_name)")
+        work = shutdown.index("await self._shutdown_work()")
+        cancel = shutdown.index("lifecycle.cancel(beat)")
+        ended = shutdown.index("hush.call_ended(self.room_name)")
+        self.assertLess(beat, work, "the beat must start before the drain")
+        self.assertLess(cancel, ended, "the beat outlived the marker")
+
+    def test_the_ceiling_tolerates_a_swap_stalled_worker(self):
+        # 180/20 = 9 missed beats. A NAS deep in swap can stall a container
+        # for tens of seconds; a tight ratio would read a slow call as a
+        # dead one and un-quiet the station over a live conversation.
+        from onair import hush
+
+        self.assertGreaterEqual(hush.CALL_FRESH_SECS / hush.HEARTBEAT_SECS, 5,
+                                "the ceiling no longer tolerates missed beats")
+
     def test_the_heartbeat_rides_only_calls_that_quieted(self):
         self.assertIn('hush.scope(cfg) == "all"', self.src)
         self.assertIn('hush.scope(cfg) == "on_air"', self.src)

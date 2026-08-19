@@ -623,8 +623,8 @@ class CallSession:
         # Keep this call's hush marker fresh, when this call quieted the
         # station: the janitor reads a stopped heartbeat as a dead job and
         # restores the station's voice. Cancelled at shutdown like the rest;
-        # the tape playout runs unheartbeated but well inside the freshness
-        # window (see hush.CALL_FRESH_SECS).
+        # _on_shutdown then runs a beat of its own so the tee drain and the
+        # tape playout stay covered to the marker's last moment.
         if (hush.scope(cfg) == "all"
                 or (self.relay and hush.scope(cfg) == "on_air")):
             hush_beat = asyncio.create_task(hush.heartbeat(self.room_name))
@@ -677,6 +677,16 @@ class CallSession:
 
     async def _on_shutdown(self) -> None:
         """Runs after the caller hangs up, so the station reflects the call."""
+        import asyncio
+
+        # The per-call heartbeat dies with the other shutdown callbacks
+        # (they run concurrently), but everything below — the tee drain, a
+        # whole tape playout, the record — still needs the hush marker
+        # fresh, or the janitor would un-quiet the station mid-reel. So the
+        # shutdown carries its own beat, which is what lets the staleness
+        # ceiling be minutes instead of out-waiting the longest possible
+        # playout (0.98.14; it was 600s for exactly that reason).
+        beat = asyncio.create_task(hush.heartbeat(self.room_name))
         try:
             await self._shutdown_work()
         finally:
@@ -691,7 +701,10 @@ class CallSession:
             # After the playout above, deliberately: dropping the marker is
             # what frees the janitor to un-quiet the station, and the reel
             # must finish airing first. Local disk, so it cannot fail the
-            # record the way a network call could.
+            # record the way a network call could. The beat stops first —
+            # a heartbeat racing the unlink would resurrect the marker as
+            # an orphan the janitor then has to wait out.
+            lifecycle.cancel(beat)
             hush.call_ended(self.room_name)
 
     async def _shutdown_work(self) -> None:
