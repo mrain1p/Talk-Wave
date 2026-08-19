@@ -15,8 +15,8 @@ Please note this was created with use of AI. It is recommended to use it locally
 <table>
 <tr>
 <td width="34%" valign="top"><img src="docs/call-desktop.png" alt="A live call in the station's own show theme: Wade mid-sentence, meters running, live captions, the talk bar open" /></td>
-<td width="33%" valign="top"><img src="docs/settings-desktop.png" alt="The operator's dashboard: who is on air, station health, the three lines with their switches, and the activity charts" /></td>
 <td width="33%" valign="top"><img src="docs/player-web.png" alt="The station player, open as the page's front: the record playing with its art and tags, what's up next, the DJ's own line on the segue, and a request box wired to the booth" /></td>
+<td width="33%" valign="top"><img src="docs/settings-desktop.png" alt="The operator's dashboard: who is on air, station health, the three lines with their switches, and the activity charts" /></td>
 </tr>
 <tr>
 <td valign="top"><img src="docs/call-mobile.png" alt="The same live call on a phone" /></td>
