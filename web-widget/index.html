@@ -106,8 +106,10 @@
              state chips, which on a phone put a long title under two chips and
              overlapped them. Both fit if they stop competing for one row: the
              record is part of WHO IS ON, and the chips are part of the call.
-             Same on the page and in an embed. -->
-        <p class="track" id="npTrack"></p>
+             Same on the page and in an embed. The heart rides the SAME row —
+             a new row would change the card's height, which is the one thing
+             the card promises never to do. -->
+        <div class="trackrow"><p class="track" id="npTrack"></p><button class="nplike" id="npHeart" type="button" aria-pressed="false" aria-label="Like this track" hidden>&#9825;</button></div>
       </div>
     </div>
 
@@ -157,6 +159,7 @@
         <span class="npclock" id="npElapsed"></span>
         <span class="chips" id="stateRow">
           <span class="pill statechip" id="stateChip" data-state="idle" hidden><span class="sdot"></span><span id="stateText">Connecting</span></span>
+          <span class="pill onairchip" id="onAirBadge" hidden><span class="sdot"></span><span id="onAirBadgeText">ON AIR</span></span>
           <span class="pill timechip" id="timeChip" hidden><span id="timeText">0:00</span><span class="tmax" id="timeMax"></span></span>
           <!-- The door into the station player, only when the operator has
                switched it on AND a stream resolved — a chip that opens onto
@@ -174,6 +177,21 @@
          buttons are an overlay strip INSIDE this box, not bands of their
          own, because every band that appears after a call used to grow the
          card and move the host page under whoever was reading it. -->
+    <!-- The route: the operator's design 4c, the "word switch" — ON AIR |
+         OFF AIR straddling the stage's top edge, both the control and the
+         status. A SIBLING of the linebox, not a child: the box scrolls its
+         own overflow, so anything poking above its border is sheared off
+         (seen in the stub). Normal flow with a negative bottom margin makes
+         the straddle without an absolute anchor. Exists only while the
+         phone-in door is open AND the mixer probe answered; the frame, the
+         stage message and the Call button all follow it. -->
+    <div class="routeswitch" id="routeSwitch" hidden role="radiogroup"
+         aria-label="Where this call goes">
+      <button type="button" class="rcell" id="routeOff" role="radio"
+              aria-checked="true"><span class="rpip" aria-hidden="true"></span>OFF AIR</button>
+      <button type="button" class="rcell live" id="routeOn" role="radio"
+              aria-checked="false"><span class="rpip" aria-hidden="true"></span>ON AIR</button>
+    </div>
     <div class="linebox" id="lineBox">
       <!-- The skin's idle artefact — a platter, a dial, a reticle. Empty and
            invisible unless a skin fills --skin-art in, absolutely positioned

@@ -33,6 +33,7 @@ from api.look import (  # noqa: F401
     station_palette,
 )
 from api.sounds import _resolved_sound
+from api.stats import _listener_count
 from api.wire import _cors
 from brain.briefing import demojibake
 from log_setup import describe
@@ -64,10 +65,79 @@ _STARTED_AT = time.time()
 
 
 async def handle_health(request: web.Request) -> web.Response:
+    from api.tokens import on_air_call_live
+
     return web.json_response(
         {"ok": True, "version": APP_VERSION, "livekit": LIVEKIT_PUBLIC_URL,
-         "since": _STARTED_AT}
+         "since": _STARTED_AT,
+         # Whether a caller is live on the station's air right now — the
+         # panel's dump control reads its state from here.
+         "onAirLive": on_air_call_live()}
     )
+
+
+# Whether the live-relay transport is actually there, cached briefly: /live
+# is polled by every open widget, and the probe is a real TCP connect with a
+# 2s timeout — unreachable (the normal case: no shared docker network) would
+# otherwise cost every poll two seconds. The widget only offers the
+# Live-on-air toggle when this says yes, so a dead mixer means no toggle
+# rather than a caller choosing a door that dies mid-call.
+_onair_probe = {"at": 0.0, "ok": False}
+_ONAIR_PROBE_TTL = 30.0
+
+
+async def _on_air_door(cfg: dict) -> dict:
+    """The two on-air doors, answered separately: a live CALL needs the
+    mixer's telnet (the relay pushes real clips), but an on-air VOICEMAIL
+    does not — the studio's dj-reads backend airs over the plain admin API
+    when the mixer is missing. Each door also rides its own dashboard quick
+    kill, so the operator can stop one without touching the other."""
+    tier = settings_store.normalise_tier(cfg.get("allow_on_air"))
+    enabled = tier != settings_store.TIER_OFF
+    reachable = False
+    if enabled and cfg.get("on_air_calls_enabled", True):
+        import asyncio
+
+        from onair import chunks, transport
+
+        now = time.time()
+        if now - _onair_probe["at"] > _ONAIR_PROBE_TTL:
+            # The WORKER's verdict first — it is the process that pushes,
+            # and this process's own reachability says nothing about it
+            # (separate containers, separate networks). Written at worker
+            # prewarm and at every relay arm; only when the worker has not
+            # spoken recently does this process probe for itself.
+            verdict = chunks.mixer_verdict()
+            if verdict is not None:
+                _onair_probe["ok"] = bool(verdict["ok"])
+            else:
+                _onair_probe["ok"] = bool(
+                    transport.air_base_url(cfg)
+                    and await asyncio.to_thread(transport.mixer_reachable, cfg))
+            _onair_probe["at"] = now
+        reachable = _onair_probe["ok"]
+    calls = (enabled and bool(cfg.get("on_air_calls_enabled", True))
+             and reachable)
+    voicemail = enabled and bool(cfg.get("on_air_voicemail_enabled", True))
+    return {
+        # Kept for older widgets: any door at all.
+        "offered": calls or voicemail,
+        "calls": calls,
+        "voicemail": voicemail,
+        # The tier the row is set to, so the card can explain a lock rather
+        # than silently hiding the switch from a caller one code short.
+        "tier": tier,
+        # Live relay or tape — the stage message tells the caller which
+        # promise they are accepting, because "live on air" and "airs after
+        # you hang up" are different consents to give.
+        "mode": ("after" if str(cfg.get("on_air_call_mode") or "live")
+                 == "after" else "live"),
+        # The quick kill's own state, so the panel can tell "the operator
+        # closed this door" apart from "the mixer is unreachable" — calls
+        # being false means either, and only one of them deserves a wiring
+        # warning (the operator's ask, 2026-08-18).
+        "enabled": bool(cfg.get("on_air_calls_enabled", True)),
+    }
 
 
 def _secure_origin() -> str:
@@ -122,10 +192,29 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     Cheap: no station reads, just the door check again against the settings
     already in hand.
     """
-    if payload.get("canAsk") is None:
-        return payload                      # the help button is switched off
     tier = caller_tier(request)
     out = dict(payload)
+    # WHICH DOORS THIS CALLER CAN ACTUALLY OPEN, alongside the shared
+    # payload's door states. The card used to offer every open door to every
+    # caller and let the mint refuse: an operator signed out on their own
+    # phone armed ON AIR, pressed Call in live, and got "This line can't put
+    # callers on the air" with no path to the code — several times in one
+    # evening (2026-08-18, rooms callin-o-*). A door the tier doesn't open
+    # is not offered; the sign-in chip is the way to a bigger tier.
+    # Copy-on-write on the nested dict: `out` is a shallow copy of a payload
+    # cached across every caller, and writing into the shared onAirCalls
+    # would leak one caller's verdict to everybody for thirty seconds.
+    cfg_now = settings_store.load()
+    doors = dict(out.get("onAirCalls") or {})
+    doors["mine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_on_air"), tier)
+    out["onAirCalls"] = doors
+    out["voicemailMine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_voicemail"), tier)
+    out["chatMine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_chat"), tier)
+    if payload.get("canAsk") is None:
+        return out                          # the help button is switched off
     out["canAsk"] = {
         k: settings_store.permission_reaches(v, tier)
         for k, v in (payload.get("askTiers") or {}).items()
@@ -301,6 +390,10 @@ async def handle_live(request: web.Request) -> web.Response:
                     # (a LiveKit vm- room) or the soundbite studio (browser
                     # recording + review). The widget branches on this alone.
                     "voicemailFlow": str(cfg.get("voicemail_flow") or "machine"),
+                    # The phone-in door: whether a Live-on-air toggle is worth
+                    # offering at all (setting on AND mixer reachable), and at
+                    # what tier. The mint still enforces the tier for real.
+                    "onAirCalls": await _on_air_door(cfg),
                     # The widget's expiry maths stayed in minutes; only the SETTING
                     # moved to hours, so the wire stays compatible both ways.
                     "guestSessionMinutes":
@@ -335,6 +428,18 @@ async def handle_live(request: web.Request) -> web.Response:
                     # resolved URL before it shows the gesture, so a switch
                     # flipped on with no reachable stream offers nothing.
                     "swipePlayer": bool(cfg.get("swipe_player")),
+                    # How many are tuned in, from the same /now-playing
+                    # context the station's own player reads (the listener
+                    # sampler parses the identical shapes). None when the
+                    # station won't say or the operator switched the row off
+                    # — the widget only paints a number it was given.
+                    "listeners": (
+                        _listener_count(now)
+                        if cfg.get("show_listener_count", True) else None),
+                    # Whether the card offers the track heart — the same
+                    # public /like any listener page sends, relayed by
+                    # /player/like so LAN and mixed-content deployments work.
+                    "cardLike": bool(cfg.get("show_track_like", True)),
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": bool(cfg.get("start_on_player")),

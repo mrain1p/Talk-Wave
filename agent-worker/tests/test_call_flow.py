@@ -177,7 +177,9 @@ class TestCallStructure(unittest.TestCase):
         self.assertLess(len(body.splitlines()), 40)
         self.assertIn("probe-", body)          # still refuses probe rooms
         self.assertIn("vm-", body)             # and routes the machine's rooms
-        for phase in ("prepare()", "start()", "greet()"):
+        # prepare( rather than prepare(): the join coroutine rides in as its
+        # argument now, so the phases stay separate but the first takes one.
+        for phase in ("prepare(", "start()", "greet()"):
             self.assertIn(phase, body)
 
     def test_every_lifecycle_hook_is_registered(self):
@@ -623,6 +625,13 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "hook-air.json")
+            # SAVE AND RESTORE, never pop: tests/__init__.py redirects this
+            # path process-wide so no guard ever reads the repo's real
+            # data/hook-air.json — and since the gate began priming itself
+            # from the file at construction, EVERY guard built after a pop
+            # would read it, not just the ones that ask for pushes. Popping
+            # here is how six unrelated tests flipped on 2026-08-18.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 g = self._guard()
@@ -640,7 +649,10 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
                     "the word count closed the gate while the station was "
                     "still 20 seconds from finishing in the caller's ear")
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_with_no_push_the_word_count_still_answers(self):
         # A station too old to send the voice lifecycle must keep working.
@@ -648,13 +660,19 @@ class TestTheGateDoesNotChatter(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as td:
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in the test above.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = os.path.join(td, "none.json")
             try:
                 g = self._guard()
                 self.assertEqual((0.0, 0.0), g.audible_window())
                 self.assertTrue(g._log_says_busy((g.caller_lag(), "a line")))
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_the_stations_own_numbers_outlast_a_short_estimate(self):
         import time
@@ -1507,6 +1525,28 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         self.assertIn("Dave", said[0])
 
 
+class TestTheStationClientOutlivesTheShutdownWork(unittest.TestCase):
+    """The SDK runs shutdown callbacks CONCURRENTLY, and station.aclose was
+    registered as its own — so the first tape soak (callin-ol-cd4e089a2eb0,
+    2026-08-19) had the playout's intro AND outro die on a closed client
+    while all nine clips aired fine over telnet. The client must close in
+    _on_shutdown's own finally, after the relay's brackets and the handoff
+    have spoken through it."""
+
+    def test_aclose_runs_after_the_shutdown_work_not_beside_it(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "session.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn(
+            "add_shutdown_callback(self.station.aclose)", src,
+            "station.aclose is racing the shutdown work again")
+        tail = src.split("async def _on_shutdown", 1)[1]
+        head = tail[:tail.index("async def _shutdown_work")]
+        self.assertIn("finally:", head)
+        self.assertIn("await self.station.aclose()", head)
+
+
 async def _noop_async(*a, **k):
     return None
 
@@ -1753,6 +1793,9 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 with open(p, "w", encoding="utf-8") as f:
@@ -1763,7 +1806,10 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
                     guard.caller_lag(), 22.0,
                     "the first hold of a call still assumes the 2s fallback")
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_the_push_file_reads_back_as_evidence(self):
         # The web process writes the last verified voice push; the guard reads
@@ -1781,6 +1827,9 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
             os.environ["CALLIN_HOOK_AIR_PATH"] = p
             try:
                 guard = self._guard()
@@ -1801,7 +1850,10 @@ class TestTheAirGuardHoldsTheCallDJBack(unittest.TestCase):
                     guard._push_verdict(guard._pushed_state(), time.time()),
                     "a pre-1.8 push entry is still being judged")
             finally:
-                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
     def test_a_forecast_holds_only_inside_the_handover_window(self):
         # SUB/WAVE 1.8's voice.queued can warn many seconds ahead. The whole
@@ -2160,7 +2212,7 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
     when the caller was actually mid-turn: committing silence would make
     the DJ answer nothing."""
 
-    def _wire(self, user_state, raises=None):
+    def _wire(self, user_state, raises=None, pacing=None):
         from call import lifecycle
 
         calls = []
@@ -2175,7 +2227,7 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
         ctx = types.SimpleNamespace(room=room)
         session = types.SimpleNamespace(user_state=user_state,
                                         commit_user_turn=commit)
-        lifecycle.attach_turn_commit(ctx, session)
+        lifecycle.attach_turn_commit(ctx, session, pacing=pacing)
         return handlers["data_received"], calls
 
     def test_release_commits_only_a_turn_in_progress(self):
@@ -2195,6 +2247,43 @@ class TestTheBarReleaseEndsTheTurn(unittest.TestCase):
         # rather than letting one late release take the teardown down.
         fire, _ = self._wire("speaking", raises=RuntimeError("draining"))
         fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+
+    def test_a_committed_release_starts_the_pacing_wait(self):
+        """The meter's blind spot on a held bar, closed at the commit.
+
+        The hold claims the user turn and the SDK pins `user_state` while a
+        claim is active, so the state transition the meter normally listens
+        for never fires — four real PTT calls on 2026-08-18 wrote replyGap
+        n=0 while tap-to-latch calls measured fine. The commit is the caller
+        explicitly saying "your turn", which is the honest start of the wait.
+        """
+        from call.heard import HeardMeter
+
+        m = HeardMeter()
+        fire, calls = self._wire("speaking", pacing=m)
+        fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+        self.assertEqual(1, len(calls))
+        self.assertGreater(m._waiting_since, 0, "the wait started")
+        m.dj_speaking()
+        self.assertEqual(len(m.replies), 1,
+                         "a held-bar turn finally produces a reply gap")
+
+    def test_a_release_that_commits_nothing_measures_nothing(self):
+        # No turn committed = no reply coming = nothing to time. Stamping
+        # here would measure the idle ladder as if it were an answer.
+        from call.heard import HeardMeter
+
+        m = HeardMeter()
+        fire, calls = self._wire("listening", pacing=m)
+        fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+        self.assertEqual([], calls)
+        self.assertEqual(m._waiting_since, 0.0)
+        # And a draining session raising mid-commit stamps nothing either.
+        m2 = HeardMeter()
+        fire, _ = self._wire("speaking", raises=RuntimeError("draining"),
+                             pacing=m2)
+        fire(types.SimpleNamespace(topic="talkwave.turn-end"))
+        self.assertEqual(m2._waiting_since, 0.0)
 
     def test_the_widget_announces_the_release(self):
         from tests.support import REPO
@@ -3064,14 +3153,20 @@ class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
         self._greet(air)
         self.assertEqual(air.asked, [GREET_HOLD_SECS])
 
-    def test_the_hold_is_much_shorter_than_a_mid_call_one(self):
-        # A caller held at pickup has no idea why: there is no conversation
-        # yet for the widget's on-air chip to explain. Silence straight after
-        # the ring reads as a failed call.
+    def test_the_hold_outlasts_the_callers_lag_but_not_the_ceiling(self):
+        # The greet hold runs on CALLER time: a caller joining mid-link still
+        # has their whole stream buffer of it to hear, so a cap under
+        # MAX_CALLER_LAG times out on EVERY mid-link pickup by construction —
+        # 12s did exactly that on room callin-o-643dc6d2993e (2026-08-18),
+        # greeting 28s before the caller's copy of the link finished, while
+        # the widget's hold chip was explaining the wait. The chip is also why
+        # a longer cap is safe now: the wait is no longer unexplained silence.
+        # MAX_HOLD stays above it — the mid-call ceiling is the outer bound.
         from call.air import OnAirGuard
         from call.greeting import GREET_HOLD_SECS
 
-        self.assertLess(GREET_HOLD_SECS, OnAirGuard.MAX_HOLD / 2)
+        self.assertGreater(GREET_HOLD_SECS, OnAirGuard.MAX_CALLER_LAG)
+        self.assertLess(GREET_HOLD_SECS, OnAirGuard.MAX_HOLD)
 
     def test_the_guard_being_off_costs_nothing(self):
         air = self._Air(enabled=False)
@@ -3109,6 +3204,128 @@ class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
         record.problem = record.problems.append
         self._greet(self._Air(wait=2.0), record=record)
         self.assertEqual(record.problems, [])
+
+    def test_the_gate_is_primed_from_the_push_file_at_construction(self):
+        # The watch loop's first pass closes the gate for a mid-link dial-in,
+        # but create_task does not run it synchronously and the fast pickup
+        # (0.97.77) made the greeting quicker than the scheduler. Room
+        # callin-o-643dc6d2993e (2026-08-18): the push file showed a 26.7s
+        # link mid-air when the guard was built, the loop opened the hold at
+        # +2.9s — and the greeting had read the still-open gate at +2.7s, so
+        # the DJ greeted over a broadcast the widget was telling the caller
+        # to hold for. The same evidence must close the gate at construction.
+        import asyncio
+        import json
+        import os
+        import tempfile
+        import time
+
+        from call.air import OnAirGuard
+
+        class _Station:
+            async def on_air_speech(self):
+                return None
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                # The link started at the encoder 25s ago, runs 26.7s, and
+                # the caller is 22s behind — so they are 3s into hearing it
+                # RIGHT NOW. (A push only seconds old is different: the
+                # caller has not started hearing it yet, and outside the
+                # hand-over window the verdict rightly calls that not-busy —
+                # which is also why this entry is older than the buffer.)
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 25, "v": 2,
+                               "phase": "speaking", "durMs": 26700,
+                               "bufSecs": 22.0, "text": "Mid-link."}, f)
+                guard = OnAirGuard(_Station(),
+                                   {"avoid_on_air_overlap": True})
+                self.assertTrue(
+                    guard.on_air,
+                    "a link mid-air at construction left the gate open")
+                waited = asyncio.run(guard.wait_until_clear(timeout=0.1))
+                self.assertGreater(
+                    waited, 0.05,
+                    "the greeting would not have been held")
+                # And the guard being off skips the priming with the rest.
+                off = OnAirGuard(_Station(), {})
+                self.assertFalse(off.on_air)
+            finally:
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
+
+    def test_a_wrongly_primed_gate_is_reopened_by_the_first_look(self):
+        # The priming above reads one file with no poll behind it, so it can
+        # be wrong — a voice.end the web process wrote moments later, a stale
+        # entry. The watch loop's first pass must then take the busy-to-clear
+        # edge and open the gate, not leave the caller held on a hunch.
+        import asyncio
+        import json
+        import os
+        import tempfile
+        import time
+
+        from call.air import OnAirGuard
+
+        class _Station:
+            async def on_air_speech(self):
+                return None
+
+        class _Session:
+            def interrupt(self):
+                pass
+
+            def say(self, *a, **k):
+                pass
+
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "hook-air.json")
+            # Restore the suite-wide redirect, never pop it away — see the
+            # save/restore note in TestTheGateDoesNotChatter.
+            prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
+            os.environ["CALLIN_HOOK_AIR_PATH"] = p
+            try:
+                # Audible in the caller's ears now — same arithmetic as the
+                # priming test above.
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time() - 25, "v": 2,
+                               "phase": "speaking", "durMs": 26700,
+                               "bufSecs": 22.0, "text": "Mid-link."}, f)
+                guard = OnAirGuard(_Station(),
+                                   {"avoid_on_air_overlap": True})
+                self.assertTrue(guard.on_air)
+                # The station stopped talking before the loop's first look.
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump({"at": time.time(), "v": 2, "phase": "clear",
+                               "voiceId": "x", "bufSecs": 22.0}, f)
+
+                async def _run():
+                    guard.PUSH_TICK = 0.01
+                    guard.POLL_SECS = 0.01
+                    guard.duck_pad = 0.01
+                    task = asyncio.create_task(guard.watch(_Session()))
+                    for _ in range(200):
+                        await asyncio.sleep(0.01)
+                        if not guard.on_air:
+                            break
+                    task.cancel()
+                    return guard.on_air
+
+                self.assertFalse(
+                    asyncio.run(_run()),
+                    "the first look did not reopen a wrongly primed gate")
+            finally:
+                if prev is None:
+                    os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+                else:
+                    os.environ["CALLIN_HOOK_AIR_PATH"] = prev
 
 
 class TestAHoldAlwaysEnds(unittest.TestCase):
@@ -3520,3 +3737,293 @@ class TestARefusedActionIsNotReportedAsDone(unittest.TestCase):
         self.assertIn("function_call_outputs", src)
         self.assertIn("reads_as_a_refusal", src)
         self.assertIn("refused=state[\"refused\"]", src)
+
+
+class TestNothingInACallOverwritesSomethingElse(unittest.TestCase):
+    """No attribute may be assigned twice in CallSession.__init__.
+
+    0.97.65 added a pacing meter and called it `self.heard`, which was already
+    the caller-turn counter — a plain `{"n": 0}` that three separate things
+    read. The meter silently replaced it and every one of them broke: the
+    heard-logging handler does `counter["n"] += 1`, the idle watch does
+    `heard.get("n")`, and `_on_shutdown` logs `self.heard["n"]` BEFORE it
+    writes the record. So a quiet caller was never checked on or let go, and
+    every call raised on the way out and wrote no record at all.
+
+    None of it failed a test. Both halves were individually correct and unit
+    tested; the collision exists only in the assembled object, and the suite
+    never assembles one because CallSession needs a live JobContext. It was
+    found by placing a real call against the deployed container and noticing
+    the record was missing.
+
+    So this reads the source rather than the object — the only thing that
+    works without a LiveKit job, and enough, because the fault was one name
+    written twice in one function.
+    """
+
+    def test_no_attribute_is_assigned_twice_in_init(self):
+        import ast
+
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "session.py").read_text(encoding="utf-8")
+        cls = next(n for n in ast.parse(src).body
+                   if isinstance(n, ast.ClassDef) and n.name == "CallSession")
+        init = next(n for n in cls.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "__init__")
+        seen: dict[str, int] = {}
+        clashes: list[str] = []
+        for node in ast.walk(init):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if (isinstance(target, ast.Attribute)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id == "self"):
+                    if target.attr in seen:
+                        clashes.append(f"self.{target.attr} (lines "
+                                       f"{seen[target.attr]} and {node.lineno})")
+                    seen[target.attr] = node.lineno
+        self.assertEqual(
+            clashes, [],
+            "assigned twice in CallSession.__init__, so the second silently "
+            "replaces the first and everything reading the first breaks at "
+            f"runtime: {clashes}")
+
+
+class TestTheBriefingStopsBeingWrongWhenTheStationMovesOn(unittest.TestCase):
+    """The one disagreement docs/the-call.md still recorded: the briefing is
+    frozen at pickup, max_call_seconds defaults to 300, and a track runs three
+    to four minutes — so the DJ routinely discussed a record that had stopped
+    playing.
+
+    The fix rides plumbing that already existed: the guard's watch loop reads
+    /state every POLL_SECS for the djLog and used to throw the current track
+    away. A mid-call CHANGE now stages one sentence, and the reply path
+    injects it as a system note — the same Gemini-safe insertion point the
+    door hint uses, because a context push that GENERATES a turn perturbs the
+    turn-taking, which is worse than a stale fact.
+    """
+
+    def _guard(self):
+        from call.air import OnAirGuard
+
+        return OnAirGuard(None, {"avoid_on_air_overlap": False})
+
+    def test_the_first_sighting_is_the_briefings_track_and_stages_nothing(self):
+        g = self._guard()
+        g._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        self.assertEqual(g.track_note, "",
+                         "the briefing already covers the pickup track — a "
+                         "note here is a sentence spent on nothing")
+
+    def test_a_change_stages_the_new_truth(self):
+        g = self._guard()
+        g._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        g._note_track({"current": {"title": "Dreams", "artist": "Fleetwood Mac"}})
+        self.assertIn('"Dreams" by Fleetwood Mac', g.track_note)
+        self.assertIn("out of date", g.track_note)
+
+    def test_a_second_change_overwrites_the_first(self):
+        # The caller only ever needs the newest truth; two stacked corrections
+        # read as a DJ narrating its own paperwork.
+        g = self._guard()
+        g._note_track({"current": {"title": "A", "artist": "One"}})
+        g._note_track({"current": {"title": "B", "artist": "Two"}})
+        g._note_track({"current": {"title": "C", "artist": "Three"}})
+        self.assertIn('"C"', g.track_note)
+        self.assertNotIn('"B"', g.track_note)
+
+    def test_an_empty_read_neither_stages_nor_forgets(self):
+        # A timed-out /state hands back nothing; treating that as "the track
+        # changed to nothing" would fire a note on every congested poll.
+        g = self._guard()
+        g._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        g._note_track({})
+        g._note_track(None)
+        self.assertEqual(g.track_note, "")
+        g._note_track({"current": {"title": "Dreams", "artist": "Fleetwood Mac"}})
+        self.assertIn('"Dreams"', g.track_note,
+                      "the baseline must survive a failed read in between")
+
+    def test_the_note_reaches_the_model_and_is_consumed(self):
+        from call.air import CallAgent, OnAirGuard
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        guard._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        guard._note_track({"current": {"title": "Dreams", "artist": "Fleetwood Mac"}})
+        agent = CallAgent("instructions", guard)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="what's playing?")))
+        self.assertEqual(1, len(added))
+        role, content = added[0]
+        self.assertEqual("system", role,
+                         "a note from us must not be filed as the caller's words")
+        self.assertIn('"Dreams"', content)
+        self.assertEqual(guard.track_note, "", "consumed — a stale correction "
+                         "repeated every turn is worse than the stale fact")
+
+    def test_a_call_where_nothing_changes_costs_nothing(self):
+        from call.air import CallAgent, OnAirGuard
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        guard._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        guard._note_track({"current": {"title": "Universe", "artist": "Laraaji"}})
+        agent = CallAgent("instructions", guard)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="lovely")))
+        self.assertEqual([], added)
+
+
+class TestRingingRidesTheMintsHeadStart(_TempStores):
+    """prepare() adopts the mint-time snapshot instead of re-asking the
+    station, says which it did in the record, starts the MCP handshake under
+    the ring rather than in front of the greeting, and carries the room join
+    on the same wait. Every one of these was a serial leg a real caller heard
+    as ringing first (2.5s measured healthy, 2026-08-18; 12s+ congested)."""
+
+    SNAP = {"dj": {"name": "Dalia"}, "personas": [{"id": "p1", "name": "Dalia"}],
+            "now_playing": {}, "state": {}, "session": {}, "schedule": {},
+            "skills": []}
+
+    class _FakeCtx:
+        def __init__(self, name="callin-o-abcdef123456"):
+            self.room = types.SimpleNamespace(name="")   # pre-join: nameless
+            self.job = types.SimpleNamespace(
+                room=types.SimpleNamespace(name=name))
+            self.shutdown_callbacks = []
+
+        def add_shutdown_callback(self, cb):
+            self.shutdown_callbacks.append(cb)
+
+    class _FakeMCPServer:
+        built = []
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.initialized_called = False
+            type(self).built.append(self)
+
+        async def initialize(self):
+            self.initialized_called = True
+
+    def setUp(self):
+        super().setUp()
+        from pathlib import Path
+
+        import brain as brain_mod
+        import station as station_mod
+        from call import session as session_mod
+
+        self._mods = (brain_mod, station_mod, session_mod)
+        self._olds = (brain_mod.build_system_prompt, station_mod._PERSONA_FILE,
+                      session_mod.mcp, session_mod.available_voices,
+                      session_mod.pick_speakable_voice)
+
+        async def fake_prompt(*a, **k):
+            return "prompt"
+
+        async def fake_voices(*a, **k):
+            return ["test-voice"]
+
+        brain_mod.build_system_prompt = fake_prompt
+        station_mod._PERSONA_FILE = Path(self._tmp.name) / "last-persona.json"
+        self._FakeMCPServer.built = []
+        session_mod.mcp = types.SimpleNamespace(MCPServerHTTP=self._FakeMCPServer)
+        session_mod.available_voices = fake_voices
+        session_mod.pick_speakable_voice = lambda v, voices: (v or "test-voice", "")
+
+    def tearDown(self):
+        brain_mod, station_mod, session_mod = self._mods
+        (brain_mod.build_system_prompt, station_mod._PERSONA_FILE,
+         session_mod.mcp, session_mod.available_voices,
+         session_mod.pick_speakable_voice) = self._olds
+        super().tearDown()
+
+    def _session(self):
+        from call.session import CallSession
+
+        s = CallSession(self._FakeCtx())
+        calls = {"snapshot": 0}
+        snap = self.SNAP
+
+        async def counting_snapshot(with_skills=False):
+            calls["snapshot"] += 1
+            return dict(snap)
+
+        s.station.snapshot = counting_snapshot
+        return s, calls
+
+    def test_a_fresh_head_start_replaces_the_station_read(self):
+        import station_prefetch
+
+        s, calls = self._session()
+        station_prefetch.store(self.SNAP, {},
+                               with_skills=bool(s.cfg.get("allow_skills")))
+        asyncio.run(s.prepare())
+        self.assertEqual(0, calls["snapshot"],
+                         "the mint already read the station for this call")
+        self.assertEqual("prefetched", s.record.data["setup"]["snapshot"])
+        self.assertEqual("Dalia", s.persona["name"])
+
+    def test_no_head_start_means_the_worker_reads_as_before(self):
+        s, calls = self._session()
+        asyncio.run(s.prepare())
+        self.assertEqual(1, calls["snapshot"])
+        self.assertEqual("fetched", s.record.data["setup"]["snapshot"])
+
+    def test_the_mcp_handshake_starts_under_the_ring(self):
+        s, _ = self._session()
+        asyncio.run(s.prepare())
+        self.assertEqual(1, len(self._FakeMCPServer.built))
+        self.assertTrue(self._FakeMCPServer.built[0].initialized_called,
+                        "the connect must start in prepare, not start()")
+        self.assertIs(s.station_tools, self._FakeMCPServer.built[0])
+
+    def test_the_join_rides_the_ringing_and_finishes_with_it(self):
+        s, _ = self._session()
+        joined = {"done": False}
+
+        async def connect():
+            joined["done"] = True
+
+        asyncio.run(s.prepare(connecting=connect()))
+        self.assertTrue(joined["done"], "prepare must await the join it was handed")
+        self.assertEqual("callin-o-abcdef123456", s.room_name,
+                         "the dispatched name, known before the join")
+
+    def test_a_failed_prepare_cancels_the_join(self):
+        import brain as brain_mod
+
+        s, _ = self._session()
+
+        async def broken_prompt(*a, **k):
+            raise RuntimeError("prompt assembly died")
+
+        brain_mod.build_system_prompt = broken_prompt
+        state = {"cancelled": False}
+
+        async def connect():
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                state["cancelled"] = True
+                raise
+
+        with self.assertRaises(RuntimeError):
+            asyncio.run(s.prepare(connecting=connect()))
+        self.assertTrue(state["cancelled"],
+                        "an orphaned join would hold the room open with "
+                        "nobody coming to answer it")

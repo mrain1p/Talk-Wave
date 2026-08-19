@@ -463,6 +463,21 @@
      30px, plus 10px of margin, for a row with nothing in it. That is the whole
      of the "wasted space" on the player page. */
   .nprail:not(:has(.pill:not([hidden]))) { display: none; }
+  /* The record's row: the title, and the heart when the operator offers it.
+     A ROW, not a new line — the card's height is a promise, so the heart
+     shares the height the title already has. */
+  .trackrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .trackrow .track { flex: 1 1 auto; }
+  /* `.card .nplike`, not bare `.nplike`: the card's one-control-height rule
+     (`.card button`, 38px) would win on specificity and inflate the track's
+     row — measured doing exactly that on the first render. */
+  .card .nplike {
+    flex: 0 0 auto; width: 18px; height: 16px; padding: 0; border: 0;
+    background: none; color: var(--sage); font-size: 13px; line-height: 1;
+    cursor: pointer; box-shadow: none;
+  }
+  .card .nplike.liked { color: var(--coral); }
+  .card .nplike[hidden] { display: none; }
   /* The record, in the identity block under the tagline. Same treatment as it
      had on the rail — the only thing that changed is which row it is on. */
   .track {
@@ -1228,6 +1243,116 @@
   .micchip.off { color: var(--sage-dim); }
   .micchip.muted { color: var(--coral); }
 
+  /* The broadcast light. Coral like "speaking", but steady-blinking for the
+     WHOLE call — a caller must never be able to forget they are live. */
+  .onairchip { color: var(--coral); border-color: var(--coral); font-weight: 700; letter-spacing: .08em; }
+  .onairchip .sdot { width: 7px; height: 7px; border-radius: 0; background: currentColor; animation: blink 1.6s infinite; }
+  /* The same chip carrying the OFF AIR answer — the route's teal, and a
+     steady dot: only a live broadcast earns the pulse. */
+  .onairchip.priv { color: var(--cool); border-color: var(--cool); }
+  .onairchip.priv .sdot { animation: none; }
+
+  /* ---- The route: the operator's 4c "word switch" (design handoff,
+     2026-08-17). ON AIR | OFF AIR rides the stage's top edge, centred,
+     cutting the frame border — both the control and the status. Coral
+     means broadcast, the cool teal means the private line, everywhere. */
+  .routeswitch {
+    height: 28px; display: flex; align-items: stretch; padding: 2px;
+    margin: 12px auto -14px; width: max-content; position: relative;
+    background: var(--granite); border: 1px solid var(--line2);
+    white-space: nowrap; z-index: 3; border-radius: 0; flex: none;
+    /* Its own opt-in: .rig reserves every band invisible — the trap that
+       has now caught two of this feature's elements. */
+    visibility: visible;
+  }
+  /* Scoped and explicit: the card's one-control-height button rules would
+     otherwise inflate these cells to door size (seen in the stub — the
+     segment rendered at three times the handoff's 28px). */
+  .routeswitch .rcell {
+    display: flex; align-items: center; justify-content: center;
+    gap: 7px; padding: 0 11px;
+    /* EQUAL CELLS. Sized by content, ON AIR and OFF AIR rendered at two
+       different widths and the switch visibly jumped when toggled
+       (operator screenshot, 2026-08-18). One fixed basis both cells meet,
+       and the pip RESERVES its slot below instead of appearing — so
+       neither selection nor wording moves a pixel. */
+    min-width: 88px;
+    height: auto; min-height: 0; margin: 0;
+    background: transparent; border: 0; border-radius: 0; box-shadow: none;
+    cursor: pointer; text-transform: uppercase;
+    font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .14em; color: var(--sage-dim);
+  }
+  .routeswitch .rcell .rpip {
+    width: 6px; height: 6px; background: currentColor;
+    /* Always in the layout, only VISIBLE when on — a pip that appears
+       widens its cell and unbalances the pair. */
+    display: inline-block; visibility: hidden;
+    border-radius: 0;
+  }
+  .routeswitch .rcell.on .rpip { visibility: visible; }
+  .routeswitch .rcell.on {
+    background: rgba(74, 139, 141, .16);
+    box-shadow: inset 0 0 0 1px var(--cool); color: var(--cool);
+  }
+  .routeswitch .rcell.live.on {
+    background: rgba(224, 83, 61, .16);
+    box-shadow: inset 0 0 0 1px var(--coral); color: var(--coral);
+  }
+  .routeswitch .rcell.live.on .rpip { animation: blink 1.6s ease-in-out infinite; }
+
+  /* The stage follows the route: coral border + inner glow while the call
+     would broadcast, the ordinary frame while it is a private line. The
+     routed card reserves headroom so the segment can sit proud of the
+     frame without touching the row above. */
+  .card.routed .linebox { margin-top: 0; }
+  /* The switch straddles the box's top edge by 14px, and the box's own 9px
+     padding left the first transcript line starting BEHIND it — read a
+     finished call back and "Well, you've certainly been persistent" sat half
+     under OFF AIR (operator screenshot, 2026-08-18). Only the routed idle
+     card has a straddle to clear; in-call modes hide the switch entirely. */
+  .card.routed[data-mode="idle"] .linebox { padding-top: 22px; }
+  /* While the code gate is open the switch stands down entirely: with the
+     phone keyboard up the 100dvh card compresses until the straddle sat ON
+     the code input — UNLOCK half-hidden behind ON AIR (operator screenshot,
+     2026-08-18). The gate is an auth moment, not a routing one; the switch
+     comes back the instant the gate closes. */
+  .card.gated .routeswitch { display: none; }
+  .card.gated.routed[data-mode="idle"] .linebox { padding-top: 9px; }
+  .card.routed.route-on .linebox {
+    border-color: rgba(224, 83, 61, .55);
+    box-shadow: inset 0 0 40px rgba(224, 83, 61, .06);
+  }
+  :root[data-theme="light"] .card.routed.route-on .linebox {
+    border-color: rgba(194, 64, 43, .55);
+    box-shadow: inset 0 0 40px rgba(194, 64, 43, .06);
+  }
+  /* The stage message the board paints while the switch is up. */
+  .routeline {
+    font: 700 10px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .22em; text-transform: uppercase; text-align: center;
+  }
+  .routeline.live { color: var(--coral); }
+  .routeline.priv { color: var(--cool); }
+
+  /* The Call button wears the route: solid coral when the call is going
+     out live (the existing primary look), the cool outline when it is a
+     private line to the booth. */
+  .card.routed:not(.cta-live) .actionrow #callBtn:not([hidden]):not(:disabled) {
+    background: transparent; border: 1px solid var(--cool); color: var(--cool);
+  }
+  .card.routed:not(.cta-live) .actionrow #callBtn:not([hidden]):not(:disabled):hover {
+    background: rgba(74, 139, 141, .12);
+  }
+
+  /* The switch leaves with the doors the moment ANY mode starts — mid-flow
+     the route is locked (calls don't silently change broadcast state), and
+     keyed to .oncall alone its predecessor sat half-clipped through the
+     whole voicemail flow (operator's phone, 2026-08-17). */
+  .card.oncall .routeswitch,
+  .card:not([data-mode="idle"]) .routeswitch { display: none; }
+  .routeswitch[hidden] { display: none; }
+
   .timechip { letter-spacing: .1em; font-variant-numeric: tabular-nums; }
   .timechip .tmax { color: var(--sage-dim); font-weight: 400; margin-left: 4px; }
   .timechip.warn { color: var(--amber); border-color: var(--amber); }
@@ -1473,6 +1598,14 @@
   }
   .card .pttbar.on {
     background: var(--amber); color: var(--pine);
+    /* NOT the theme's ink. A station palette is free to make --amber pale and
+       --pine light, and on the operator's deployment it did both — the held
+       bar read "RELEASE TO SEND" in near-white on near-white, an invisible
+       control at the exact moment the caller is transmitting (operator
+       screenshot, 2026-08-18). Mixed from the amber itself, the text is dark
+       on that background whatever the palette does; the plain --pine line
+       above is the fallback for a browser without color-mix. */
+    color: color-mix(in srgb, #14130f 72%, var(--amber));
     box-shadow: 0 0 22px color-mix(in srgb, var(--amber) 34%, transparent);
   }
   /* Held: the broadcast has the microphone. Quiet and clearly not pressable,
@@ -1486,6 +1619,12 @@
   .pttbar .pttmain {
     font: 700 11.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
+    /* The on-hold copy is a sentence in a bar sized for a label, and a
+       centred flex child wider than its box clips at BOTH ends — the
+       operator's screenshot read "LD — THE DJ IS ON THE". Let it shrink and
+       ellipsize instead: the head of the sentence carries the meaning. */
+    min-width: 0; flex: 0 1 auto; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* A keycap, not a second line of copy. The bar used to explain itself
      twice — "Tap to talk" over "or hold it down · space works too" — and was
@@ -1712,6 +1851,16 @@
   .after { position: absolute; left: 9px; right: 9px; bottom: 7px;
            display: flex; align-items: center; gap: 8px; pointer-events: none; }
   .after > * { pointer-events: auto; }
+  /* WITH THE DRAWER OPEN, THE STRIP JOINS THE FLOW. Floating, it sits at its
+     anchor's bottom edge while the opened transcript scrolls beneath it — so
+     TRANSCRIPT and HOW WAS IT? drifted over the conversation and every line
+     passed behind them (operator screenshots, 2026-08-18). In flow it takes
+     its own band under the box and nothing can scroll into it. Closed, it
+     keeps floating: a lone TRANSCRIPT chip over the idle stage is the
+     design. :has() is already load-bearing elsewhere in this sheet. */
+  .card:has(#lineBox.open) .after {
+    position: static; margin: 8px 0 0; pointer-events: auto;
+  }
   /* The drawer toggle is a label on a closed drawer, not an action — it takes
      the 9.5px micro-label the transcript's own speaker labels use. `.card
      button` (0,1,1) outranks a bare class, hence the .card prefix. */
@@ -2695,6 +2844,32 @@
     display: grid; grid-template-columns: minmax(0, 1fr) 150px;
     gap: 8px; align-items: stretch;
   }
+  /* The dump row ships [hidden] until the on-air door opens, and the grid
+     rule above would beat the UA's hidden — the slot-card lesson. */
+  .linerow[hidden] { display: none; }
+  /* The Live-on-air cluster: the two door kills side by side, the pull
+     control full width beneath, its own micro-label above — the Lines
+     grammar, one row deeper. */
+  #onAirLine { margin-top: 12px; }
+  #onAirLine[hidden] { display: none; }
+  #onAirLine .lineslabel { margin: 0 0 6px; }
+  /* Stacked full-width rows (operator's ask — no side-by-side pair). */
+  .linerow.onairpull { grid-template-columns: 1fr; }
+  .linerow.onairpull + .linerow.onairpull { margin-top: 8px; }
+  /* The pull row: the card states, its BUTTON acts (operator's ask) —
+     coral-edged where the toggles wear their switches. */
+  .linerow .ctrlcard.pullcard { cursor: default; }
+  /* In the card grid's own switch column ("sw"), where the toggles wear
+     their knobs — a real button in the place the hand already knows. */
+  .pullbtn {
+    grid-area: sw; justify-self: end; align-self: center;
+    padding: 9px 12px; background: transparent; cursor: pointer;
+    border: 1px solid var(--coral); color: var(--coral); border-radius: 0;
+    font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .12em;
+  }
+  .pullbtn:hover { background: rgba(224, 83, 61, .12); }
+  .pullbtn:disabled { opacity: .5; cursor: default; }
   @media (max-width: 940px) {
     .stationstrip { grid-template-columns: repeat(2, 1fr); }
   }
@@ -2715,6 +2890,10 @@
   .row.moot select, .row.moot input, .check.moot input, .prow.moot input {
     pointer-events: none;
   }
+  /* A permission row is display:contents — it owns no box, so opacity on it
+     paints nothing at all. Grey its grid items instead; the pointer-events
+     rule above already reaches its select and tier boxes by descent. */
+  .permrow.moot > * { opacity: .4; }
 
   /* Matrix help, inside the label cell: same muted voice as every hint,
      flowing after the label on its own line's terms. */
@@ -3091,6 +3270,11 @@
   .check.tickright input { order: 2; margin-left: auto; flex: 0 0 auto; margin-top: 2px; }
   .hint { font-size: 11px; color: var(--dimmer); margin: -3px 0 9px 178px; line-height: 1.4; }
   .hint.wide { margin-left: 0; }
+  /* The Whisper ladder: a list, not a paragraph (operator's ask) — the
+     model names step out in the reading colour, the trades stay dim. */
+  .hint ul.ladder { margin: 4px 0 6px; padding-left: 16px; }
+  .hint ul.ladder li { margin: 2px 0; }
+  .hint ul.ladder strong { color: var(--dim); font-weight: 700; }
 
   /* "Needs the station's own admin credentials." Coral while they are
      missing, grey once they are stored — a switch that quietly never happens
@@ -4123,9 +4307,22 @@
   /* Measuring mode. The stretch above would otherwise report the frame's own
      height straight back to the frame, and a frame sized from that can only
      ever grow — it would never shrink again after a call ended.
-     notifyHeight() flips this on for a single synchronous read. */
-  body.measuring { min-height: 0; }
+     notifyHeight() flips this on for a single synchronous read.
+     !important, and the card's own height too: the panel's preview aside is
+     430px wide, so INSIDE that frame the phone rules apply — height: 100dvh
+     on the card, and a body min-height whose selector outweighs this class —
+     and the card echoed the frame's own height straight back at it. The
+     preview sat pinned at the 300px placeholder with a third of the card
+     behind a scrollbar (operator's screenshot, 2026-08-18). */
+  body.measuring { min-height: 0 !important; }
   body.measuring .card { flex: 0 0 auto; }
+  /* Non-compact only: the phone rules being neutralized are all
+     :not(.compact) themselves, and the COMPACT card's height is fixed by
+     design — collapsing it here under-reported the embed by 150px and the
+     frame clipped it (caught in the same verification pass). */
+  body:not(.compact).measuring .card {
+    height: auto !important; min-height: 0 !important;
+  }
   body.measuring .card .rig { margin-top: 0; }
 
   /* Overlay mode: the ask list is taller than the frame, so embed.js has made
@@ -4359,9 +4556,9 @@
      One wrapper, three tabs, and the preview pinned in a right column that
      never scrolls away — the old page's preview section did, which was the
      handoff's third diagnosis. The sections inside are ordinary details.sec
-     moved in by layoutPanel(); .cardblock dresses them as always-open
-     element blocks. On a phone the aside becomes the bottom dock instead
-     (the media query below, handoff 2a). */
+     moved in by layoutPanel(); .cardblock dresses them as element blocks.
+     On a phone the aside becomes the bottom dock instead (the media query
+     below, handoff 2a). */
   .cardwrap { margin: 0 0 8px; }
   @media (min-width: 1000px) {
     .cardwrap:not(.searching) {
@@ -4398,15 +4595,14 @@
      hand on one property is how things end up visible that should not be. */
   .offtab { display: none !important; }
 
-  /* The blocks: bordered, titled, always open (panel.js keeps them so).
-     The summary is the block header — micro-label name in the accent,
-     blurb as the sub-line, state chip — and the chevron goes; there is
-     nothing to fold. */
+  /* The blocks: bordered, titled, and folded like any other section. 1a
+     shipped them forced open — every element's controls against the pinned
+     card — and the page arrived as one long wall; the operator asked for a
+     scannable start instead (2026-08-18). The summary keeps the accent
+     name, and the chevron is back because there is something to fold. */
   details.sec.cardblock {
     border: 1px solid var(--line); border-radius: 12px; margin: 0 0 14px;
   }
-  details.sec.cardblock > summary { cursor: default; }
-  details.sec.cardblock > summary .chev { display: none; }
   details.sec.cardblock > summary .secname { color: var(--accent); }
   /* Hover a row and the block that owns it takes the accent edge — the same
      signal its element wears on the preview card at that moment. */

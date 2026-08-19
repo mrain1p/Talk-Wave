@@ -78,7 +78,11 @@ OPTIONS = {
                   "openai": ["gpt-4.1-mini"]},
     "modelsDiscovered": {"google": True},
     "sttProviders": ["local", "deepgram", "openai", "google"],
-    "sttModels": {"local": ["base.en", "tiny.en"], "deepgram": ["nova-3"]},
+    # The LOCAL list from the real table, so the panel's Whisper ladder and
+    # its option labels are driven with the true set and order — a trimmed
+    # fixture here made the reordered ladder look broken in the stub.
+    "sttModels": {"local": list(settings_store.STT_MODEL_CHOICES["local"]),
+                  "deepgram": ["nova-3"]},
     "ttsModes": ["cloud", "local"],
     "ttsAdapters": ["local-vibevoice.json", "openai-cloud.json",
                     "elevenlabs-cloud.json"],
@@ -282,6 +286,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "liked": True, "count": 4})
         if self.path.split("?")[0] == "/player/request":
             return self._json({"success": True, "message": "Sent to the booth"})
+        # The dump card's press, from a fixture: the stub never has a live
+        # phone-in, so the honest answer is the real route's quiet-line one.
+        if self.path.split("?")[0] == "/on-air/dump":
+            return self._json({"ok": False, "live": False,
+                               "note": "no phone-in is on the air right now"})
         # A posted settings patch really lands in the stub's TEMP store —
         # /live reads the store back, so the closed-line states (pause the
         # line, switch a mode off) can be driven end to end in a browser.
@@ -504,7 +513,8 @@ class Handler(BaseHTTPRequestHandler):
             import voice_effects
             return self._json({"effects": voice_effects.read()})
         if path == "/health":
-            return self._json({"ok": True, "version": "dev", "livekit": "ws://stub"})
+            return self._json({"ok": True, "version": "dev",
+                               "livekit": "ws://stub", "onAirLive": False})
         if path == "/live":
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
@@ -563,9 +573,31 @@ class Handler(BaseHTTPRequestHandler):
                      "requestedBy": None},
                 ],
                 # The studio's door, so the machine flow can be driven here:
-                # the button appears, and it opens the browser studio.
-                "voicemailWhen": "always",
-                "voicemailFlow": "studio",
+                # the button appears, and it opens the browser studio. From
+                # stored_only, NOT load(): load() fills DEFAULTS ("closed",
+                # "machine"), so an `or` fallback on it never fires and the
+                # fixture's studio door silently vanished — only a value the
+                # driver actually saved may override the fixture.
+                "voicemailWhen": str(settings_store.stored_only()
+                                     .get("voicemail_when") or "always"),
+                "voicemailFlow": str(settings_store.stored_only()
+                                     .get("voicemail_flow") or "studio"),
+                # The phone-in doors, from the store like callsPaused — but
+                # with no mixer in the stub, the CALLS door mirrors its
+                # settings alone. Save allow_on_air=open in the panel (or
+                # POST it) and the card grows the route switch; the two
+                # dashboard kills drive their doors from here too.
+                "onAirCalls": (lambda s: (lambda tier: {
+                    "offered": tier != settings_store.TIER_OFF
+                    and (bool(s.get("on_air_calls_enabled", True))
+                         or bool(s.get("on_air_voicemail_enabled", True))),
+                    "calls": tier != settings_store.TIER_OFF
+                    and bool(s.get("on_air_calls_enabled", True)),
+                    "voicemail": tier != settings_store.TIER_OFF
+                    and bool(s.get("on_air_voicemail_enabled", True)),
+                    "tier": tier,
+                })(settings_store.normalise_tier(s.get("allow_on_air"))))(
+                    settings_store.load()),
                 "playerDuck": 10,
                 "booth": {"text": "This one's for anyone still up with the "
                                   "windows open — Beegie Adair, gentle as "

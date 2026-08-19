@@ -454,6 +454,9 @@ window.Callin = (function () {
     // --- leave a message ---
     { group: 'message', need: 'allow_voicemail', say: '“Can I leave a message for the DJ?”',
       why: 'The answering machine — available wherever the voicemail switches allow it.' },
+    // --- go live ---
+    { group: 'show', need: 'allow_on_air', say: 'Set the switch above to ON AIR before you call.',
+      why: 'The phone-in: your conversation with the DJ goes out on the station while it happens, a few seconds behind. Chosen before the call with the ON AIR | OFF AIR switch, never sprung on you mid-call.' },
   ];
 
   // The other half of the truth: what a caller CANNOT do, and why. Without

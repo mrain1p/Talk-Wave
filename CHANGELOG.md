@@ -3,6 +3,71 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.8
+
+The first real phone session's complaints, fixed the same night: callers sound like themselves on air, the greeting waits its turn, the card stops offering doors it will refuse — and a new tape mode airs the whole call at hangup. Covers 0.98.1 through 0.98.8.
+
+### Added: tape mode
+
+- **The whole call can air the moment it ends, instead of live.** "When the call airs" sits under the on-air rows: at hangup the DJ introduces the recording, the exchange plays in order, the sign-off follows. Live stays the default.
+- **PULL OFF AIR during a taped call kills the entire broadcast before a word of it airs** — the reason to accept the wait. A dumped tape stays silent: no intro, no thank-you to nobody.
+- **The stage frame says which promise the caller is accepting** — "Broadcast — live on air" or "Broadcast — airs after you hang up" — and the DJ is briefed it is taping, so it never claims "as it happens" on a recording.
+
+### The caller's voice on air
+
+- **"I've never heard my voice sound so bad on a phone call" — that was the phone-band costume, and it is no longer the default.** Callers air clean now: their real voice, full bandwidth, levelled and de-rumbled. The 300–3400 Hz radio-caller costume survives as a choice, for stations that want that look on purpose.
+- **One dial covers everything a caller sends to the air** — live phone-ins and the soundbite studio's recordings alike — and the studio's review card previews the sound that would actually go out.
+
+### Fixes from the first phone session
+
+- **If the DJ greeted you while the card was still saying you were on hold, that was this, twice over.** The overlap guard now knows about a broadcast that was already mid-link before the call began, and the greeting waits up to 30 seconds where the old 12 guaranteed it barged in — checked against the very call that reported it.
+- **"This line can't put callers on the air", several times, with no way forward — the card no longer offers doors your tier can't open.** Signed out on a gated line the ON AIR switch simply isn't there, the sign-in chip is the climb, and a stale tab's refusal opens the sign-in row instead of dead-ending.
+- **The phone keyboard no longer buries the code entry under the ON AIR switch.** While the code gate is open the switch stands down, and the input scrolls itself into view once the keyboard lands.
+- **Once you are in a call or a recording, the card says which way it is going** — ON AIR in coral with the pulse, OFF AIR in the route's teal with a steady dot — so the route you picked cannot be forgotten mid-call.
+- **The header reads ON AIR with a broadcast mark and the bare listener count, zero included** — reversing 0.98.0's one-listener floor at the operator's word. An unknown count still paints nothing.
+
+### The panel
+
+- **Switching Go-live on without the mixer wiring now says so, loudly, with the instructions one click away.** Nothing could air and nothing said why; a banner beside the on-air rows names the problem, links the setup page, and knows the difference between a missing network and your own quick kill.
+- **The On-air delay help says what the dial cannot do**: zero is not possible on this transport (a turn must finish before the mixer can fetch it), and a caller within earshot of the station hears themselves back a stream-buffer later at any delay — the dial only moves it.
+
+### Under the hood
+
+- **A test boot on another machine can no longer steal a live deployment's webhook registration** — found mid-incident on 2026-08-18, fixed in 0.98.1, with the air-guard tests permanently isolated from real push files.
+- **The tape's intro and outro no longer die on a connection another shutdown step already closed** — caught by the first tape soak on the live station, where all nine clips aired and both brackets failed silently. A failed outro is recorded now, like the failed intro always was.
+
+## 0.98.0
+
+A caller can go out on the broadcast itself, the pickup got measured and then made fast, and the card learned to say who else is listening. Covers 0.97.41 through 0.98.0.
+
+### Live on air
+
+- **A caller's conversation can air on the station, one finished turn at a time.** Proven on the live mixer: turns air in order, a few seconds behind the room, with the DJ's intro at the first clip and a thank-you only if something actually aired. The whole feature ships shut behind three consents — the operator's permission tier, the caller's own ON AIR switch on the card, and a mixer that actually answered — and has [a page of its own](docs/on-air.md).
+- **PULL OFF AIR kills the turn in hand, and the take-back window is now yours to size.** A finished turn is held before it airs — six seconds by default, an On-air delay dial from 2 to 30 — and the pull can behead any turn still inside it. Pressed on a quiet line it says so and kills nothing.
+- **If the broadcast filled the gaps between exchanges with music swells, that was this.** The hold used to last however long the next turn took (~24s measured); it airs within the dial's window now.
+- **On air got its own settings page**, and the dashboard's go-live rows grey while the feature's doors are shut instead of pretending they stand open.
+
+### The pickup
+
+- **If calls took ten seconds to pick up on a night the provider was slow, most of it is gone.** The station is read the moment Call is pressed rather than after the room connects, and the room join, voice list and station tools all wait together instead of in line. Measured on the live box: ringing fell from ~2.5s to 0.26s and the first word landed at 3 seconds.
+- **Every call now writes down where its pickup time went** — prepared / on line / greeting, plus whether the head start was used — so "calls feel slow" is readable off one record instead of a diagnosis session.
+
+### The card
+
+- **The ON AIR line says how many are tuned in, and the record on air gets a heart.** The count appears from one listener up (a quiet hour never paints a zero at someone deciding whether to ring), and the heart is the same public like any listener page sends. Both are settings under Players → On the caller's phone, both on by default.
+- **If the speakerphone button did nothing on your phone, it now only appears where it can actually move the audio.** Most Android browsers cannot re-route a call's audio at all — the button showed anyway, pressed dead, and read as a broken call. It hides there now and the phone's own controls remain the way.
+- **Push-to-talk calls stopped writing "reply gap n=0".** The meter was blind on a held talk bar — all four real calls on one surface measured nothing while the harness measured fine — and the bar release now starts the clock.
+
+### The DJ's honesty
+
+- **A segment that looked at its material and chose silence is no longer announced as coming.** Station 1.8 lets a skill stand down instead of inventing; the DJ now relays that plainly instead of promising a segment and holding the floor for a minute of nothing.
+- **A DJ whose station rotates foreign-language tracks no longer opens the call in that language.** The persona's own on-air language now travels into the prompt; one English DJ was opening in Mandarin off the previous presenter's patter.
+- **Every line that failed to air now says why** — "the caller talked over it (1.4s of 3.7s played)" — in the record, beside the line.
+
+### Under the hood
+
+- **The whole span is on the test suite's leash**: 480+ tests across 27 modules, including new guards for the pickup timeline, the mint's head start, the stand-down relay, and a test-isolation hole that let a real webhook push flip six air-guard tests.
+
 ## 0.97.40
 
 The player's booth panel says what the DJ is saying.

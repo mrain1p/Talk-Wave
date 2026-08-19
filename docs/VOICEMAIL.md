@@ -82,26 +82,6 @@ The URL the mixer fetches from is unguessable, spent by its one download, and de
 
 ### Wiring caller-voice
 
-Talk Wave serves the mastered clip at a tokened URL and pushes it to the station mixer over its telnet port. The mixer fetches the clip itself, over HTTP, exactly the way it already fetches every music track — nothing is ever written to the station's disk, and nothing needs cleaning up there. Two facts about your Docker layout decide the wiring:
-
-- Compose gives every compose project its own private network, so the station's stack and Talk Wave's cannot see each other's service names — **not a configuration anyone made, just Compose's default**. The mixer's telnet (`broadcast:1234`) only resolves on the station's network.
-- Host-published ports are reachable from everywhere, which is why the clip-fetch half needs no changes at all.
-
-So the one step is joining `talkwave-web` (the web half does the push) to the station's network, and telling it where the mixer fetches from:
-
-```yaml
-  talkwave-web:
-    environment:
-      - VM_AIR_BASE_URL=http://<your-LAN-IP>:8100    # where the mixer fetches a clip — or leave unset if HOST_IP is in your .env
-    networks:
-      - default                                       # keep — the worker reaches this container by name on it
-      - <station-project>_default                     # the station's network, so broadcast:1234 resolves
-
-networks:
-  <station-project>_default:
-    external: true                                    # created by the station's own compose — joined, not owned
-```
-
-Deliberately **not** the alternative of publishing the mixer's telnet port on the host: that port takes unauthenticated commands — push audio on air, skip the record — and publishing it offers that to the whole LAN. The network join offers it to exactly one container.
+Caller-voice rides the same transport as the live phone-in — the clip at a tokened URL, the push over the station mixer's telnet, the mixer fetching the audio itself so nothing is ever written to the station's disk. The deployment step is documented once, [with the live on-air feature](on-air.md): both Talk Wave containers join the station's Docker network, and the mixer is told where to fetch from. Wired for one, the other works too.
 
 Every setting lives on the panel's **Voicemail** page — see the [settings reference](settings.md).

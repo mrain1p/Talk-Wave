@@ -37,7 +37,15 @@ Start-Process -FilePath (Join-Path $root "bin\livekit-server.exe") `
     -RedirectStandardOutput (Join-Path $logDir "livekit.log") `
     -RedirectStandardError (Join-Path $logDir "livekit.err.log")
 
-# 2. Token mint + widget host
+# 2. Token mint + widget host.
+# CALLIN_HOOK_REGISTER=0 unless the caller already set it: the station keeps
+# ONE webhook row per id, so a dev boot beside a real deployment silently
+# re-points the live instance's pushes at this PC (it happened, 2026-08-18 —
+# the live ducking degraded with nothing logged). A dev stack runs fine on
+# the poll fallback; export CALLIN_HOOK_REGISTER=1 first when the webhook
+# code itself is what you are testing — or when THIS is your only instance
+# (a Windows-local production wants its pushes: set it 1 in .env).
+if (-not $env:CALLIN_HOOK_REGISTER) { $env:CALLIN_HOOK_REGISTER = "0" }
 Start-Process -FilePath $python -ArgumentList "token_server.py" `
     -WorkingDirectory (Join-Path $root "agent-worker")
 

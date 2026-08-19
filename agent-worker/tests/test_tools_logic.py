@@ -945,3 +945,52 @@ class TestTakingAHeartBackOff(unittest.TestCase):
             {"allow_favorite": True}, _Station(), CallActions(9))
         like = next(t for t in tools if t.info.name == "subwave_like_track")
         self.assertNotIn("no un-like", like.info.description)
+
+
+class TestASegmentThatStoodDownIsNotReportedAsAiring(unittest.TestCase):
+    """Station 1.8's forced-skill path may answer 200 with `aired: false` and
+    a reason — the skill ran, looked at what it fetched, and had nothing worth
+    saying (their #1416/#1412). Before the tool learned the shape, that answer
+    counted as success: the DJ told the caller a segment was coming and the
+    overlap guard held the floor for a minute of nothing."""
+
+    class _Station:
+        def __init__(self, result):
+            self.result = result
+            self.ran = []
+
+        async def run_skill(self, name):
+            self.ran.append(name)
+            return dict(self.result)
+
+    def _run(self, result):
+        import asyncio
+
+        from call.actions import CallActions
+        from call.air import OnAirGuard
+        from call.tools.broadcast import build_on_air_tools
+
+        station = self._Station(result)
+        guard = OnAirGuard(station, {})
+        tools = {t.info.name: t for t in build_on_air_tools(
+            {"allow_skills": True}, station, CallActions(5), guard,
+            guarded=False, skills=["news"])}
+        out = asyncio.run(tools["subwave_run_skill"](name="news"))
+        return guard, out
+
+    def test_a_stand_down_is_relayed_with_its_reason(self):
+        guard, out = self._run(
+            {"ok": True, "aired": False, "reason": "nothing new since the last run"})
+        self.assertIn("chose not to air", out)
+        self.assertIn("nothing new since the last run", out)
+        self.assertIn("do not promise", out.lower())
+        # And the guard must NOT hold the floor for speech that is not coming.
+        self.assertFalse(guard.on_air,
+                         "a stood-down segment held the on-air gate shut")
+
+    def test_an_older_station_without_the_field_still_counts_as_running(self):
+        # Absent must keep meaning "it ran": stations older than 1.8 send no
+        # `aired` at all, and a strict `is False` is what protects them.
+        guard, out = self._run({"ok": True, "spoken": "the news segment text"})
+        self.assertNotIn("chose not to air", out)
+        self.assertTrue(guard.on_air, "a segment that ran must hold the gate")

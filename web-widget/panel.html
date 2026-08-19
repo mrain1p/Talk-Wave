@@ -259,6 +259,41 @@
               <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
             </button>
           </div>
+          <!-- The Live-on-air cluster (operator's ask): the phone-in's two
+               doors as quick kills in the Lines grammar, and the pull
+               control beneath — no jargon on it. Standing whenever the
+               Go-live row is open; the panel does not poll, so the pull's
+               press itself asks the server what is live. Since the On air
+               page (0.97.81) the two switches' REAL checkboxes are that
+               page's Doors-to-air rows, not fieldonly inputs here — these
+               buttons reach them by id, which works from anywhere in the
+               document. -->
+          <div id="onAirLine" hidden>
+            <p class="lineslabel">Live on air <em>the phone-in's two doors</em></p>
+            <div class="linerow onairpull">
+              <button type="button" id="modeOnAirCallsBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Live Call</span>
+                <span class="cv"></span>
+              </button>
+            </div>
+            <div class="linerow onairpull">
+              <button type="button" id="modeOnAirVmBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Aired Voicemails</span>
+                <span class="cv"></span>
+              </button>
+            </div>
+            <div class="linerow onairpull">
+              <!-- A visible BUTTON, not a whole-card control (operator's
+                   ask): the row states, the button acts. -->
+              <div class="ctrlcard pullcard" id="pullRow">
+                <span class="ck">On-air transmission</span>
+                <span class="cn" id="pullNote">pulls whoever is live — the turn in hand never airs</span>
+                <button type="button" id="dumpBtn" class="pullbtn">PULL OFF AIR</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -580,6 +615,15 @@
     <details data-group="ears" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Ears</span><em class="secblurb"></em><span class="tag" id="tagEars"></span></summary>
       <div class="body">
+        <!-- The two real choices, as bullets (operator's ask, same session
+             as the Whisper ladder below) — the schema help stays one line. -->
+        <div class="hint wide" style="margin-top:0">
+          Two real ways to hear:
+          <ul class="ladder">
+            <li><strong>Built-in Whisper</strong> — runs in this container; no key, no network, pays in CPU per turn.</li>
+            <li><strong>A cloud ear</strong> — word-by-word captions and better accuracy on names, most noticeable from a phone in a noisy room. OpenAI and Google reuse the Brains key; Deepgram takes its own key below and is the most accurate of the three on phone audio.</li>
+          </ul>
+        </div>
         <div class="row">
           <label for="stt_provider">Provider</label>
           <select id="stt_provider"></select>
@@ -587,6 +631,22 @@
         <div class="row">
           <label for="stt_model">Model</label>
           <select id="stt_model"></select>
+        </div>
+        <!-- The Whisper ladder as a LIST, not a paragraph (operator's ask,
+             2026-08-17 — the prose read as if base were the best one).
+             Local provider only; panel.js hides it when a cloud ear is
+             picked, whose model names carry their own meaning. -->
+        <div class="hint wide" id="whisperLadder">
+          The built-in models, smallest to largest — each hears better and
+          costs more CPU per turn than the one above it:
+          <ul class="ladder">
+            <li><strong>tiny.en</strong> — fastest, hears the least; half the CPU of base</li>
+            <li><strong>base.en</strong> — light, the default</li>
+            <li><strong>small.en</strong> — hears phone audio clearly better; ~3x base per turn, the practical ceiling on a NAS</li>
+            <li><strong>medium.en</strong> — hears the most; ~8x base and seconds of silence per turn — test a call before trusting it</li>
+          </ul>
+          A cloud ear with a key (Deepgram’s phone-call model especially)
+          out-hears all four and costs this box nothing.
         </div>
         <p class="hint wide" id="sttSourceNote"></p>
 
@@ -680,7 +740,36 @@
           <div class="row permrow" data-perm="allow_dj_segment"><select id="allow_dj_segment"></select></div>
           <div class="row permrow" data-perm="allow_takeover"><select id="allow_takeover"></select></div>
           <div class="row permrow" data-perm="allow_genre_lock"><select id="allow_genre_lock"></select></div>
+          <div class="row permrow" data-perm="allow_on_air"><select id="allow_on_air"></select></div>
           <div class="row permrow" data-perm="allow_never_play"><select id="allow_never_play"></select></div>
+        </div>
+        <div class="row narrow">
+          <label for="on_air_max_seconds">On-air window (s)</label>
+          <input type="number" id="on_air_max_seconds" min="30" max="1800" step="30" />
+        </div>
+        <div class="row">
+          <label for="on_air_delay_secs">On-air delay (s)</label>
+          <input type="number" id="on_air_delay_secs" min="2" max="30" step="1" />
+        </div>
+        <div class="row">
+          <label for="on_air_caller_sound">Caller sound on air</label>
+          <select id="on_air_caller_sound"></select>
+        </div>
+        <div class="row">
+          <label for="on_air_call_mode">When the call airs</label>
+          <select id="on_air_call_mode"></select>
+        </div>
+        <!-- Painted by paintOnairWiring() from /live's door state: visible
+             only when go-live is saved ON but the mixer is unreachable from
+             this deployment — switched on and silently unable to air is the
+             exact failure the door-truth work exists to surface. -->
+        <div class="banner" id="onairWiring" style="display:none">
+          Go-live is on, but this deployment can't reach the station's mixer —
+          nothing can actually air, and callers stay private. Both Talk Wave
+          containers need to join the station's docker network (and the worker
+          needs the air base URL). See the
+          <a href="https://github.com/mrain1p/Talk-Wave/blob/main/docs/on-air.md"
+             target="_blank" rel="noopener">On Air setup instructions</a>.
         </div>
         <p class="hint wide">Sound effects and playlist rebuilds stay unavailable
           to callers whatever you set here — “Test station + tools” prints the
@@ -901,6 +990,25 @@
       </div>
     </details>
 
+    <details data-group="airdoors" class="sec">
+      <summary><span class="chev">▶</span><span class="secname">Doors to air</span><em class="secblurb"></em><span class="tag" id="tagAirdoors"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The caller's half is the
+          ON AIR | OFF AIR switch on the card; these two are yours, one per
+          door. Who may use the route at all — and the on-air window and
+          delay around it — is the <strong>Go live on the station</strong>
+          row under <em>Caller permissions</em>, which greys while both
+          doors here are shut. The dashboard's Live-on-air cluster flips
+          the same two switches.</p>
+        <label class="check"><input type="checkbox" id="on_air_calls_enabled" /> Calls may go on air</label>
+        <label class="check"><input type="checkbox" id="on_air_voicemail_enabled" /> Voicemails may go on air</label>
+        <div class="row">
+          <label for="vm_air_backend">A soundbite airs as</label>
+          <select id="vm_air_backend"></select>
+        </div>
+      </div>
+    </details>
+
     <details data-group="tunein" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Tune the caller into the station</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
       <div class="body">
@@ -1100,10 +1208,10 @@
           <label for="voicemail_flow">The line is</label>
           <select id="voicemail_flow"></select>
         </div>
-        <div class="row">
-          <label for="vm_air_backend">A soundbite airs as</label>
-          <select id="vm_air_backend"></select>
-        </div>
+        <!-- "A soundbite airs as" lives on the On air page now (0.97.81) —
+             it is about the airing, not the machine. byKind fills the FIRST
+             id match, so a copy left here would be the one that saves while
+             the visible one sat dead. -->
         <div class="row">
           <label for="voicemail_greeting_mode">Greeting comes from</label>
           <select id="voicemail_greeting_mode"></select>
@@ -1544,6 +1652,8 @@
       <summary><span class="chev">▶</span><span class="secname">On the caller's phone</span><em class="secblurb"></em><span class="tag" id="tagPhone"></span></summary>
       <div class="body">
         <label class="check tickright"><input type="checkbox" id="default_to_speaker" /> Start calls on loudspeaker</label>
+        <label class="check tickright"><input type="checkbox" id="show_listener_count" /> Listener count on the card</label>
+        <label class="check tickright"><input type="checkbox" id="show_track_like" /> Heart button on the card</label>
         <label class="check tickright"><input type="checkbox" id="swipe_player" /> Swipe-up station player</label>
         <label class="check tickright"><input type="checkbox" id="start_on_player" /> Start on the player</label>
         <div class="row narrow">

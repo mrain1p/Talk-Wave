@@ -765,3 +765,220 @@ class TestTheSettingsGearIsForTheOperator(_TempStores):
         # The gate is not the fact. isAdmin stays true only for an admin, so
         # anything else reading it is not told a first-run guest is one.
         self.assertFalse(self._payload("open", configured=False)["isAdmin"])
+
+
+class TestTheOnAirDoorIsGatedAtTheMint(unittest.TestCase):
+    """Asking for onAir is a request, not a right: the mint checks the same
+    tier ladder the machine's gate uses, and only a cleared ask puts the
+    letter in the signed room name. The widget hides the toggle when the door
+    is shut, so a refusal here is a hand-built client — told plainly."""
+
+    def _mint(self, allow, tier="open", on_air=True):
+        import asyncio
+        import json as _json
+        import types
+
+        import settings as settings_store
+        from api import tokens as api_tokens
+
+        async def _body():
+            return {"onAir": on_air}
+
+        req = types.SimpleNamespace(
+            headers={"User-Agent": "test"}, remote="1.2.3.4",
+            json=_body, can_read_body=True)
+        patches = {
+            "LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": "test-secret",
+            "_guest_ok": lambda r: True, "caller_tier": lambda r: tier,
+            # The head-start kickoff would otherwise reach for a real station
+            # inside asyncio.run's about-to-close loop.
+            "_prefetch_station": lambda cfg, t: None,
+        }
+        old = {k: getattr(api_tokens, k) for k in patches}
+        old_load = settings_store.load
+        settings_store.load = lambda: {"allow_on_air": allow}
+        api_tokens._recent_mints[:] = []
+        api_tokens._caller_last.clear()
+        try:
+            for k, v in patches.items():
+                setattr(api_tokens, k, v)
+            resp = asyncio.run(api_tokens.handle_token(req))
+        finally:
+            for k, v in old.items():
+                setattr(api_tokens, k, v)
+            settings_store.load = old_load
+            api_tokens._live_calls.clear()
+        return resp.status, _json.loads(resp.body.decode())
+
+    def test_a_tier_short_of_the_row_is_refused_plainly(self):
+        status, body = self._mint(allow="admin", tier="open")
+        self.assertEqual(status, 403)
+        self.assertNotIn("tier", body["error"].lower())   # in-world wording
+
+    def test_a_cleared_ask_mints_the_lettered_room(self):
+        status, body = self._mint(allow="guest", tier="guest")
+        self.assertEqual(status, 200)
+        self.assertTrue(body["room"].startswith("callin-gl-"), body["room"])
+
+    def test_off_means_nobody_including_admin(self):
+        status, _ = self._mint(allow="off", tier="admin")
+        self.assertEqual(status, 403)
+
+    def test_a_plain_call_is_untouched_by_the_gate(self):
+        status, body = self._mint(allow="off", on_air=False)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["room"].startswith("callin-o-"), body["room"])
+
+    def test_feedback_accepts_the_lettered_room(self):
+        # The rating rides the room name after the call; a shape gate that
+        # never learned the letter would 400 every on-air caller's thumbs.
+        import asyncio
+        import types
+
+        from api import tokens as api_tokens
+        from call import record as call_record
+
+        async def _body():
+            return {"room": "callin-gl-0123456789ab", "rating": "up"}
+
+        req = types.SimpleNamespace(headers={}, json=_body)
+        old = call_record.rate
+        call_record.rate = lambda *a: True
+        try:
+            resp = asyncio.run(api_tokens.handle_call_feedback(req))
+        finally:
+            call_record.rate = old
+        self.assertEqual(resp.status, 200)
+
+    def test_one_phone_in_at_a_time(self):
+        # The station has ONE voice queue, and the first deployed test
+        # proved what two live calls do to it: their clips and brackets
+        # interleaved into a single broadcast. Busy-shaped and in-world,
+        # so the widget's engaged-tone path just works.
+        import time as _t
+
+        from api import tokens as api_tokens
+
+        api_tokens._live_calls["callin-gl-aaaabbbbcccc"] = _t.time()
+        status, body = self._mint(allow="guest", tier="guest")
+        self.assertEqual(status, 429)
+        self.assertTrue(body.get("busy"))
+        self.assertNotIn("queue", body["error"].lower())
+        # A PLAIN call still connects while someone is on the air.
+        api_tokens._live_calls["callin-gl-aaaabbbbcccc"] = _t.time()
+        status2, body2 = self._mint(allow="guest", tier="guest", on_air=False)
+        self.assertEqual(status2, 200)
+        self.assertTrue(body2["room"].startswith("callin-g-"))
+
+    def test_the_dashboard_quick_kill_stops_live_calls_only(self):
+        # The Live-on-air cluster's calls kill: narrower than the tier row —
+        # the operator stops the phone-in going out without closing the
+        # feature or touching the voicemail door. Busy-shaped, in-world.
+        import settings as settings_store
+
+        def mint_with(cfg):
+            import asyncio as _a
+            import json as _json
+            import types as _t
+
+            from api import tokens as at
+
+            async def _body():
+                return {"onAir": True}
+
+            req = _t.SimpleNamespace(headers={"User-Agent": "t"},
+                                     remote="1.2.3.4", json=_body,
+                                     can_read_body=True)
+            patches = {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s",
+                       "_guest_ok": lambda r: True,
+                       "caller_tier": lambda r: "guest",
+                       "_prefetch_station": lambda cfg, t: None}
+            old = {k: getattr(at, k) for k in patches}
+            oldl = settings_store.load
+            settings_store.load = lambda: cfg
+            at._recent_mints[:] = []
+            at._caller_last.clear()
+            try:
+                for k, v in patches.items():
+                    setattr(at, k, v)
+                resp = _a.run(at.handle_token(req))
+            finally:
+                for k, v in old.items():
+                    setattr(at, k, v)
+                settings_store.load = oldl
+                at._live_calls.clear()
+            return resp.status, _json.loads(resp.body.decode())
+
+        status, body = mint_with({"allow_on_air": "guest",
+                                  "on_air_calls_enabled": False})
+        self.assertEqual(status, 429)
+        self.assertTrue(body.get("busy"))
+        # The kill off (or simply absent — deployed stores predate it) lets
+        # the same ask through.
+        status2, body2 = mint_with({"allow_on_air": "guest"})
+        self.assertEqual(status2, 200)
+        self.assertTrue(body2["room"].startswith("callin-gl-"))
+
+
+class TestTheMintGivesTheWorkerAHeadStart(unittest.TestCase):
+    """Minting a live call starts the station prefetch — the worker's ringing
+    finds the answers on disk instead of re-asking the station (2.5s of every
+    pickup, measured 2026-08-18). A probe answers no station questions and
+    the machine reads nothing at pickup, so neither mints one."""
+
+    def _mint(self, body=None, cfg=None):
+        import asyncio
+        import types
+
+        import settings as settings_store
+        from api import tokens as api_tokens
+
+        sent = body or {}
+
+        async def _body():
+            return sent
+
+        req = types.SimpleNamespace(
+            headers={"User-Agent": "test"}, remote="1.2.3.4",
+            json=_body, can_read_body=True)
+        kicked = []
+        patches = {
+            "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s",
+            "_guest_ok": lambda r: True, "caller_tier": lambda r: "open",
+            "_write_allowed": lambda r: True,
+            "_prefetch_station": lambda c, t: kicked.append((c, t)),
+        }
+        old = {k: getattr(api_tokens, k) for k in patches}
+        old_load = settings_store.load
+        settings_store.load = lambda: dict(cfg or {})
+        api_tokens._recent_mints[:] = []
+        api_tokens._caller_last.clear()
+        try:
+            for k, v in patches.items():
+                setattr(api_tokens, k, v)
+            resp = asyncio.run(api_tokens.handle_token(req))
+        finally:
+            for k, v in old.items():
+                setattr(api_tokens, k, v)
+            settings_store.load = old_load
+            api_tokens._live_calls.clear()
+        return resp.status, kicked
+
+    def test_a_live_call_mints_with_the_head_start(self):
+        status, kicked = self._mint()
+        self.assertEqual(200, status)
+        self.assertEqual(1, len(kicked))
+        self.assertEqual("open", kicked[0][1])
+
+    def test_a_probe_does_not(self):
+        status, kicked = self._mint(body={"probe": True})
+        self.assertEqual(200, status)
+        self.assertEqual([], kicked)
+
+    def test_a_voicemail_does_not(self):
+        status, kicked = self._mint(
+            body={"voicemail": True},
+            cfg={"voicemail_enabled": True, "voicemail_when": "always",
+                 "allow_voicemail": "open"})
+        self.assertEqual(200, status)
+        self.assertEqual([], kicked)

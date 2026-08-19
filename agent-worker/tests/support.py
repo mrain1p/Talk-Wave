@@ -52,6 +52,13 @@ class _TempStores(unittest.TestCase):
         # load — or worse, rotate — the real deployment's secret in data/.
         self._old_hook_secret = os.environ.get("CALLIN_HOOK_SECRET_PATH")
         os.environ["CALLIN_HOOK_SECRET_PATH"] = str(tmp / "hook-secret.json")
+        # The push file too, PER TEST: tests/__init__ points it at one
+        # process-wide temp file as the floor (so no test can ever read the
+        # real data/hook-air.json — see the note there), but the receiver
+        # tests write and re-read it, and a shared file is how one test's
+        # voice.end became the next test's history.
+        self._old_hook_air = os.environ.get("CALLIN_HOOK_AIR_PATH")
+        os.environ["CALLIN_HOOK_AIR_PATH"] = str(tmp / "hook-air.json")
         # The listener buffer is the newest writable path; redirected here so
         # no inheriting test can touch real data/listeners.json (the sprint
         # review caught it unprotected).
@@ -60,6 +67,12 @@ class _TempStores(unittest.TestCase):
         self._old_listeners = (_stats._samples, _stats._loaded)
         _stats.LISTENERS_PATH = tmp / "listeners.json"
         _stats._samples, _stats._loaded = [], False
+        # The mint-time snapshot prefetch writes into data/ too; redirected so
+        # a mint or prepare test can never leave a head start lying around for
+        # the developer's next real call to pick up.
+        import station_prefetch as _prefetch
+        self._old_prefetch_path = _prefetch.PATH
+        _prefetch.PATH = tmp / "station-prefetch.json"
         self._old_env = {k: os.environ.get(k) for k in self.ENV_VARS}
         for k in self.ENV_VARS:
             os.environ.pop(k, None)
@@ -70,6 +83,8 @@ class _TempStores(unittest.TestCase):
         from api import stats as _stats
         _stats.LISTENERS_PATH = self._old_listeners_path
         _stats._samples, _stats._loaded = self._old_listeners
+        import station_prefetch as _prefetch
+        _prefetch.PATH = self._old_prefetch_path
         if self._old_vfx is None:
             os.environ.pop("VOICE_FX_PATH", None)
         else:
@@ -78,6 +93,10 @@ class _TempStores(unittest.TestCase):
             os.environ.pop("CALLIN_HOOK_SECRET_PATH", None)
         else:
             os.environ["CALLIN_HOOK_SECRET_PATH"] = self._old_hook_secret
+        if self._old_hook_air is None:
+            os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+        else:
+            os.environ["CALLIN_HOOK_AIR_PATH"] = self._old_hook_air
         for k, v in self._old_env.items():
             if v is None:
                 os.environ.pop(k, None)

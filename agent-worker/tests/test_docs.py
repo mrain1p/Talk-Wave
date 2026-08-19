@@ -126,14 +126,15 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
         self.assertTrue(all(t.gate == NEVER for t in TOOLS if t.served == NONE))
 
     def test_everything_that_can_make_the_dj_speak_is_in_the_call_doc(self):
-        """docs/the-call.md lists the nine things that can start a DJ turn, and
+        """docs/the-call.md lists everything that can start a DJ turn, and
         which of them wait for the broadcast to finish.
 
-        That list is the whole point of the page. Nine separate places can make
+        That list is the whole point of the page. Ten separate places can make
         the DJ talk — each added for a real incident, none aware of the others —
-        and three of them do not check the air. A tenth added quietly is exactly
-        the kind of thing that only shows up as "the caller heard two of the
-        same voice", so the page has to fail the build rather than fall behind.
+        and three of them do not check the air. An eleventh added quietly is
+        exactly the kind of thing that only shows up as "the caller heard two of
+        the same voice", so the page has to fail the build rather than fall
+        behind.
 
         Mechanical, like everything else here: it checks the module is NAMED,
         not that the page describes it well.
@@ -158,6 +159,45 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
             f"them: {missing}. Add the row, and say whether it waits for the "
             "air — an injector nobody wrote down is one nobody coordinates.",
         )
+
+    def test_the_record_gaps_the_call_doc_lists_are_still_gaps(self):
+        """docs/the-call.md's "What a record does NOT contain" is the section a
+        reader consults before diagnosing from a call file — it tells them what
+        the record cannot answer, so they stop looking there.
+
+        It described two gaps that 0.10.146 had already closed: tool arguments
+        and the failed marker both reach the voice path now. Every other claim
+        on that page had a test behind it and this one did not, so the page
+        went on teaching a reader to distrust two fields that were sitting
+        right there. Sending someone hunting for a fault in the wrong place is
+        the specific damage a stale line does here.
+
+        Mechanical, and deliberately narrow: it reads what the call path passes
+        to CallRecord.tool() and fails if the page still denies it. A gap that
+        is REALLY a gap keeps its bullet.
+        """
+        lifecycle = (AGENT_WORKER / "call" / "lifecycle.py").read_text(
+            encoding="utf-8")
+        page = (REPO / "docs" / "the-call.md").read_text(encoding="utf-8")
+        marker = "## 7. What a record does NOT contain"
+        self.assertIn(marker, page, "the section was renamed or removed")
+        section = page.split(marker, 1)[1].split("\n## ", 1)[0]
+        # A struck-through bullet is a closed gap kept for its reasoning; only
+        # a live claim can be wrong about the code.
+        live = "\n".join(ln for ln in section.splitlines()
+                         if not ln.lstrip("- ").startswith("~~"))
+
+        for passes, claim, what in (
+            ("with_args(", "carry no arguments", "the tool's arguments"),
+            ("failed=", "not marked failed", "the failed marker"),
+        ):
+            if passes in lifecycle and claim in live:
+                self.fail(
+                    f"docs/the-call.md section 7 still claims a call record is "
+                    f"missing {what}, but call/lifecycle.py passes {passes!r} to "
+                    "CallRecord.tool(). Strike the bullet rather than deleting "
+                    "it — the reason it was written usually still holds."
+                )
 
     def test_every_doc_links_back_to_the_readme(self):
         # Landed on from a search engine, a page in docs/ has to say what it is

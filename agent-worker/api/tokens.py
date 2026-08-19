@@ -17,11 +17,33 @@ from aiohttp import web
 from livekit import api
 
 import settings as settings_store
+import station_prefetch
 from api.auth import _guest_ok, _write_allowed, caller_tier
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_PUBLIC_URL
 from api.wire import _caller_key, _cors
 
 log = logging.getLogger("callin.token")
+
+# In-flight snapshot prefetches, held by strong reference: a bare
+# create_task can be garbage-collected mid-fetch, which would quietly turn
+# the worker's head start off with nothing logged.
+_prefetch_tasks: set = set()
+
+
+def _prefetch_station(cfg: dict, tier: str) -> None:
+    """Start the worker's station reads NOW — see station_prefetch.py.
+
+    The worker re-reads the station the moment this room dispatches, a second
+    or two from here; fetching once now means its ringing finds the answers
+    already on disk. Fire-and-forget: the mint answers at full speed whether
+    or not the station does. Resolved for THIS caller's tier so the snapshot
+    carries skills exactly when the worker will ask for them.
+    """
+    resolved = settings_store.permissions_for(cfg, tier)
+    task = asyncio.get_running_loop().create_task(
+        station_prefetch.capture(with_skills=bool(resolved.get("allow_skills"))))
+    _prefetch_tasks.add(task)
+    task.add_done_callback(_prefetch_tasks.discard)
 
 
 # --- usage controls -------------------------------------------------------
@@ -34,8 +56,9 @@ _caller_last: dict[str, float] = {}      # caller key -> last mint
 
 # A minted room is `<prefix>-<tier?>-<12 hex>`; feedback for anything else was
 # never a real call, so it is rejected before the 10s / 20-scan retry loop
-# rather than tying a request open on a random string (0.10.57 review).
-_ROOM_SHAPE = re.compile(r"^(callin|vm|probe)-([a-z]-)?[0-9a-f]{12}$")
+# rather than tying a request open on a random string (0.10.57 review). The
+# tier segment may carry the on-air letter behind it (`callin-gl-…`).
+_ROOM_SHAPE = re.compile(r"^(callin|vm|probe)-([a-z]l?-)?[0-9a-f]{12}$")
 # And a ceiling on how many feedback waiters may be parked at once, so a flood
 # of well-formed-but-nonexistent rooms can't hold a pile of requests open.
 _feedback_waiters = asyncio.Semaphore(16)
@@ -160,6 +183,19 @@ def _check_usage(request: web.Request, cfg: dict) -> str | None:
     return None
 
 
+def on_air_call_live() -> bool:
+    """Whether any minted, unfinished call chose the on-air door — read off
+    the lettered room names this process minted itself. The panel's dump
+    asks this before arming a marker, so a dump pressed on a quiet line can
+    never behead the next caller's first turn."""
+    import time as _time
+
+    now = _time.time()
+    return any(settings_store.on_air_from_room(room)
+               and now - started < _CALL_ASSUMED_MAX
+               for room, started in _live_calls.items())
+
+
 async def handle_call_ended(request: web.Request) -> web.Response:
     """The widget reports a hangup so a finished call stops counting against
     the concurrency limit immediately, rather than aging out."""
@@ -233,6 +269,8 @@ async def handle_token(request: web.Request) -> web.Response:
         body = {}
     probe = bool(isinstance(body, dict) and body.get("probe"))
     voicemail = bool(isinstance(body, dict) and body.get("voicemail")) and not probe
+    on_air = (bool(isinstance(body, dict) and body.get("onAir"))
+              and not probe and not voicemail)
     if probe and not _write_allowed(request):
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "not allowed",
@@ -277,6 +315,36 @@ async def handle_token(request: web.Request) -> web.Response:
         elif refusal:
             log.info("call refused by usage controls: %s", refusal)
             return _cors(request, web.json_response({"error": refusal, "busy": True}, status=429))
+        if on_air and not settings_store.tier_reaches(
+                cfg.get("allow_on_air"), caller_tier(request)):
+            # Same ladder as the machine's gate: "off" grants nobody and an
+            # unknown value fails closed. The widget only offers the toggle
+            # when /live says the door exists, so a refusal here is a
+            # hand-built client or a stale tab — either way it is told
+            # plainly rather than being put on air anyway.
+            return _cors(request, web.json_response(
+                {"error": "This line can't put callers on the air."},
+                status=403))
+        if on_air and not cfg.get("on_air_calls_enabled", True):
+            # The dashboard's quick kill for the phone-in door, narrower
+            # than the tier row: the operator stopped live calls going out
+            # without closing the feature. Busy-shaped — a stale tab gets
+            # the engaged tone, not an error code.
+            return _cors(request, web.json_response(
+                {"error": "The booth isn't putting callers on the air "
+                          "right now — call in off the air instead.",
+                 "busy": True}, status=429))
+        if on_air and on_air_call_live():
+            # ONE phone-in at a time. The station has a single voice queue,
+            # and the first deployed test proved what two live calls do to
+            # it: their clips and brackets interleave into one broadcast —
+            # a dead call's sign-off landed inside a real call's segment.
+            # In-world and busy-shaped, so the widget's engaged-tone path
+            # handles it like any other full line.
+            return _cors(request, web.json_response(
+                {"error": "Someone's already live on the air — give it a "
+                          "minute, or call in off the air.",
+                 "busy": True}, status=429))
         if not voicemail and (settings_store.voicemail_policy(cfg) == "always"
                               or not cfg.get("live_calls_enabled", True)):
             # A voicemail-only line: the widget offers Leave a message and a
@@ -299,9 +367,12 @@ async def handle_token(request: web.Request) -> web.Response:
     # The last 12 characters stay hex: call/record.py finds a transcript by
     # matching on that suffix, and the widget posts a rating against it.
     tier = "admin" if probe else caller_tier(request)
+    # The on-air letter rides behind the tier, inside the signed name, for
+    # the same reason the tier itself does: a caller cannot flip it.
+    seg = tier[0] + ("l" if on_air else "")
     room = (f"probe-{uuid.uuid4().hex[:12]}" if probe
             else f"vm-{tier[0]}-{uuid.uuid4().hex[:12]}" if voicemail
-            else f"callin-{tier[0]}-{uuid.uuid4().hex[:12]}")
+            else f"callin-{seg}-{uuid.uuid4().hex[:12]}")
     identity = f"caller-{uuid.uuid4().hex[:8]}"
 
     token = (
@@ -347,6 +418,10 @@ async def handle_token(request: web.Request) -> web.Response:
         }
         for stale in list(_mint_info)[:-_MINT_INFO_KEEP]:
             _mint_info.pop(stale, None)
+        if not voicemail:
+            # A live call is about to dispatch; the machine reads nothing at
+            # pickup, so only calls earn the head start.
+            _prefetch_station(cfg, tier)
 
     log.info(
         "minted %s token for room=%s identity=%s (%d live, %d this hour)",

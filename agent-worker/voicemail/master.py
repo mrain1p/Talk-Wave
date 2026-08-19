@@ -13,7 +13,12 @@ mic_chain then carries the rest of the way.
 The band-pass is also the costume: 300-3400 Hz is what a phone line sounds
 like, and a caller on a radio show is SUPPOSED to sound like a phone line —
 full-bandwidth caller audio reads as a second studio mic, which is a small lie
-about where the voice is coming from.
+about where the voice is coming from. That argument lost to the operator's ear
+(2026-08-18, "I've never heard my voice sound so bad on a phone call"): modern
+calls are wideband, so the costume imitates a line nobody hears any more. The
+"clean" style is the answer — full bandwidth at the clip's own rate, rumble
+out, levelled gently — and the on-air tee defaults to it; the costume stays a
+choice for stations that want the 90s look on purpose.
 
 Everything here is stdlib on purpose (wave/struct/math), same as capture.py:
 the suite needs no new dependency and neither does the image. The loops run at
@@ -54,13 +59,12 @@ TRIM_THRESHOLD_DB = -40.0
 TRIM_MARGIN_SECS = 0.12
 
 
-def read_wav_any(path: Path, max_secs: float) -> list[float]:
-    """Any ordinary PCM WAV, as mono floats at TARGET_RATE, hard-capped.
+def _decode_wav(path: Path, max_secs: float) -> tuple[list[float], int]:
+    """Any ordinary PCM WAV, as mono floats at its OWN rate, hard-capped.
 
-    The same conversion capture._wav_as_mono16 does for the beep, re-stated
-    here rather than imported because that reader caps at _BEEP_MAX_SECS (8s)
-    by design — right for a beep, wrong for a message. The cap here is the
-    caller's, from voicemail_max_seconds.
+    The decode half of read_wav_any, split out when the clean style arrived:
+    the phone chain wants everything at TARGET_RATE, the clean chain's whole
+    point is NOT resampling, and both want the same width/channel handling.
     """
     with wave.open(str(path), "rb") as w:
         ch, width, rate = w.getnchannels(), w.getsampwidth(), w.getframerate()
@@ -77,10 +81,28 @@ def read_wav_any(path: Path, max_secs: float) -> list[float]:
     if ch > 1:
         samples = [sum(samples[i:i + ch]) // ch
                    for i in range(0, len(samples) - ch + 1, ch)]
-    out = [float(v) for v in samples]
+    return [float(v) for v in samples], rate
+
+
+def read_wav_any(path: Path, max_secs: float) -> list[float]:
+    """Any ordinary PCM WAV, as mono floats at TARGET_RATE, hard-capped.
+
+    The same conversion capture._wav_as_mono16 does for the beep, re-stated
+    here rather than imported because that reader caps at _BEEP_MAX_SECS (8s)
+    by design — right for a beep, wrong for a message. The cap here is the
+    caller's, from voicemail_max_seconds.
+    """
+    out, rate = _decode_wav(path, max_secs)
+    if rate > TARGET_RATE and out:
+        # Anti-alias BEFORE decimating. Linear resample with no filter folds
+        # everything above 8 kHz back INTO the voice band as inharmonic grit
+        # — heard as "my voice sounds pretty bad" on the first live relay
+        # test (2026-08-17), on a chain whose drive then amplified exactly
+        # that. Two passes of the gentle biquad give ~-24 dB/oct at 7 kHz,
+        # which is what makes the linear step below honest for speech.
+        out = _lowpass(_lowpass(out, 7000.0, rate), 7000.0, rate)
     if rate != TARGET_RATE and out:
-        # Linear resample — same judgement as the beep: good enough for
-        # band-limited speech, no dependencies.
+        # Linear resample — good enough for speech ONCE band-limited above.
         n = int(len(out) * TARGET_RATE / rate)
         res = []
         for i in range(n):
@@ -151,25 +173,54 @@ def trim_silence(samples: list[float], rate: int = TARGET_RATE) -> list[float]:
     return samples[max(0, first - margin):min(len(samples), last + margin)]
 
 
-def master(src: Path, dst: Path, max_secs: float) -> dict:
-    """The whole chain: read anything, trim, band-pass, drive, write 16k mono.
+# The clean style's numbers. The high-pass only takes the rumble that fights
+# the music's low end — 80 Hz is below any voice and above the thumps a phone
+# in a hand produces. The drive is much lighter than the phone chain's 1.6:
+# just enough to pull speech's 18 dB crest factor in so the peak normalise
+# lands the body at a level the voice channel's mic_chain can carry, without
+# reading as saturation.
+CLEAN_HIGHPASS_HZ = 80.0
+CLEAN_DRIVE = 1.25
+
+
+def master(src: Path, dst: Path, max_secs: float, style: str = "phone") -> dict:
+    """The whole chain: read anything, trim, level, write mono.
+
+    Two styles. "phone" is the original costume — band-pass to the telephone
+    octaves, drive, 16 kHz — and stays the default because every existing
+    caller of this function (the voicemail studio, its review card) was built
+    against it. "clean" keeps the clip's own sample rate and full bandwidth,
+    takes only the rumble out, and levels gently: the costume read as
+    "I've never heard my voice sound so bad on a phone call" from the first
+    operator to hear themselves aired (2026-08-18) — modern phone calls are
+    wideband, so the 300–3400 costume sounds worse than the thing it
+    imitates. The on-air tee picks the style per call from settings.
 
     Returns the numbers the review card and the call record want. Raises
     ValueError on a clip with nothing in it — the API turns that into "we
     couldn't hear anything, try again" rather than airing eight seconds of
     room tone.
     """
-    samples = trim_silence(read_wav_any(src, max_secs))
-    if len(samples) < TARGET_RATE * 0.4:
-        raise ValueError("the recording contains no audible speech")
-
-    band = _lowpass(_highpass(samples, BAND_LO_HZ), BAND_HI_HZ)
+    if style == "clean":
+        decoded, rate = _decode_wav(src, max_secs)
+        samples = trim_silence(decoded, rate)
+        if len(samples) < rate * 0.4:
+            raise ValueError("the recording contains no audible speech")
+        band = _highpass(samples, CLEAN_HIGHPASS_HZ, rate)
+        drive = CLEAN_DRIVE
+    else:
+        rate = TARGET_RATE
+        samples = trim_silence(read_wav_any(src, max_secs))
+        if len(samples) < rate * 0.4:
+            raise ValueError("the recording contains no audible speech")
+        band = _lowpass(_highpass(samples, BAND_LO_HZ), BAND_HI_HZ)
+        drive = DRIVE
 
     # Normalise INTO the drive so its knee lands at the same place regardless
     # of how quiet the source was — input level must not change the sound,
     # only the noise floor the caller recorded with.
     k = (PEAK * 32767) / max(1e-9, max(abs(v) for v in band))
-    driven = [32767 * math.tanh(v * k / 32767 * DRIVE) for v in band]
+    driven = [32767 * math.tanh(v * k / 32767 * drive) for v in band]
     k2 = (PEAK * 32767) / max(1e-9, max(abs(v) for v in driven))
     out = [int(max(-32768, min(32767, v * k2))) for v in driven]
 
@@ -177,13 +228,13 @@ def master(src: Path, dst: Path, max_secs: float) -> dict:
     with wave.open(str(dst), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(TARGET_RATE)
+        w.setframerate(rate)
         w.writeframes(struct.pack("<%dh" % len(out), *out))
 
     active = [v for v in out if abs(v) > 32768 * 10 ** (TRIM_THRESHOLD_DB / 20)]
     rms = math.sqrt(sum(v * v for v in active) / len(active)) if active else 0.0
     return {
-        "seconds": round(len(out) / TARGET_RATE, 2),
+        "seconds": round(len(out) / rate, 2),
         "peakDb": round(_dbfs(max(abs(v) for v in out)), 1),
         "rmsDb": round(_dbfs(rms), 1),
     }

@@ -1,6 +1,6 @@
 # What to run
 
-Talk Wave is a phone call, and that is the whole constraint: a caller hears every second you spend thinking, with no spinner to hide behind. This page is what to run, and where a caller starts to notice.
+Talk Wave is a phone call, and that is the whole constraint: a caller hears every second you spend thinking, with no spinner to hide behind. Three models run every call — the brains that think (LLM), the voice that speaks (TTS), and the ears that listen (STT), the same three sections the settings panel wears — and this page is what to run for each, and where a caller starts to notice.
 
 Three numbers decide a call. The settings panel measures all three on your own box — **Diagnostics → full pipeline check**, and the **speed test** for the total.
 
@@ -12,13 +12,15 @@ Three numbers decide a call. The settings panel measures all three on your own b
 
 The realtime factor is the one people skip: it is synthesis time over playback time, so above 1.0 the voice is produced slower than it is heard and falls further behind with every sentence.
 
-## The model
+## THE BRAINS (LLM)
 
 **Ideal — a small, fast, non-reasoning cloud model.** gpt-4.1-mini, gemini-2.5-flash, claude-haiku, deepseek-chat. Reliable tool calling, nothing to host, a fraction of a cent per call. If you have no strong reason to self-host, this is the answer — and the provider list mirrors the station's, so you probably hold one of these keys already.
 
 **Ideal, self-hosted — a 7-8B tool-capable model resident on a GPU.** llama3.1 8B, qwen2.5 7B. Two things decide it and neither is the parameter count: whether the weights are already in VRAM when the call arrives, and how long your prompt is.
 
-**OK — a 3-4B tool-capable model on modest hardware.** llama3.2 3B and its kin; a tester measured 1325ms and his calls worked. What you give up is judgement rather than speed — smaller models pick the wrong tool, or narrate the action instead of taking it ("let me queue that up for you", and nothing is queued).
+**OK — a 3-4B tool-capable model on modest hardware.** llama3.2 3B and its kin; a tester measured 1325ms and their calls worked. What you give up is judgement rather than speed — smaller models pick the wrong tool, or narrate the action instead of taking it ("let me queue that up for you", and nothing is queued). Field notes from another tester: gemma-4 E2B and E4B quants (3-4.5GB) run fast on modest hardware; an 8B squeezed to a 1-bit quant was faster still but lost much of its tool calling on the way down.
+
+**Newer is not automatically better at tools.** One operator's anecdote, not a measurement: gemini-3.1-flash-lite has been a reliable call leg while the newer 3.5-flash-lite routed tool calls noticeably worse. When a favourite gets a successor, run the panel's model check before moving the station onto it.
 
 **Minimal — anything that calls tools and answers inside the ceiling.** Below that it is not a slow line, it is no line.
 
@@ -26,21 +28,55 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 **Ollama has one setting worth changing.** It unloads a model after five idle minutes, so the first call after a quiet hour pays the load time on top of everything else — a DJ that works all afternoon and dies overnight. Set `OLLAMA_KEEP_ALIVE=-1` on any box that answers real calls.
 
-## The voice
+## THE VOICE (TTS)
 
-**Ideal — a cloud voice built for streaming.** OpenAI, ElevenLabs and Fish Audio adapters ship with it. First audio in the low hundreds of milliseconds, and no GPU contention with the station.
+**Ideal — a cloud voice built for streaming.** OpenAI, ElevenLabs and Fish Audio adapters ship with it. First audio in the low hundreds of milliseconds, and no GPU contention with the station. It bills per character and the DJ speaks on every turn — there is no TTS-side spend ceiling, so the call limits (seconds per call, calls per hour and day) are what bound the worst case.
 
 **OK — a fast local backend.** Anything speaking a simple HTTP speech API can be pointed at with an adapter; the files in `agent-worker/tts-adapters/` are the worked examples. Pick for speed on the call leg, not for the best sound you can achieve offline.
+
+One tester's field reports, plus this stack's own VibeVoice numbers — every engine here is self-hosted, your own hardware rather than a cloud service. Speed is what was seen; naturalness is opinion. Every row clones voices from a short reference clip, and whatever you pick, **Test voice** is the arbiter on your box:
+
+| Self-hosted engine | Speed | Naturalness |
+|---|---|---|
+| PocketTTS | Very fast on CPU — the tester's first recommendation | Clean for a 100M model; the leanest sound of the fast three |
+| LuxTTS | Fast, on CPU or GPU | 48kHz output, cloning that belies its size |
+| Chatterbox Turbo | Still quick on CPU | Expressive, takes emotion tags in the text |
+| OmniVoice | Not as fast — measure against 1.0x before a caller does | Excellent |
+| Echo-TTS, Fish | Typically too slow for a fluid conversation | Excellent — exactly the trade |
+| VibeVoice | Slower than playback on a shared 16GB GPU, measured below | The best sound this stack has run |
 
 **The crack: high-quality diffusion TTS on a shared GPU.** VibeVoice sounds the best of anything here and is the most likely to fall behind playback. Measured on a 16GB RTX 5070 Ti: the 1.5B model runs 1.55-1.9x realtime, the 7B AWQ quant 1.10-1.15x — all of them slower than the caller hears them. If the same card also renders the station's on-air segments, an overlapping call and render contend and playback starves. Give the call leg its own card, cheaper settings, or a cloud voice.
 
 **Minimal — the station's own backend, mirrored.** `subwave-remote.json` points the call at whatever the station already speaks through: nothing new to run, one voice to maintain, and the contention above is the price.
 
-## The ears
+## THE EARS (STT)
 
-The bundled Whisper (`base.en`) needs no key, no network and no GPU, which is why it is the default. It mishears names, song titles and accents — on a request line, exactly the vocabulary that matters. Deepgram or a cloud transcriber is the cheapest of the three upgrades.
+**Local — the bundled Whisper.** `base.en` needs no key, no network and no GPU, which is why it is the default. It mishears names, song titles and accents — on a request line, exactly the vocabulary that matters.
 
-## Where the caller notices
+**Cloud — better ears that wait less.** Deepgram, OpenAI and Google are wired in; OpenAI and Google reuse the keys already under Brains, Deepgram takes its own and is the most accurate of the three on phone audio. A cloud ear transcribes word by word while the caller is still talking, so captions arrive live and the per-turn silence the table below prices mostly disappears. If live accuracy is the problem, this is faster *and* better than climbing the size ladder; the costs are a key, a network dependency on every turn, and per-minute billing.
+
+**The four bundled sizes buy accuracy with the caller's silence.** The bundled Whisper only starts once the caller stops talking, so its whole runtime lands in the pause before the DJ answers, on top of the model and the voice. Measured with the shipped settings (int8 on CPU, four threads, greedy decoding), transcribing the same ~6-second caller turn five times per size, on one ordinary desktop CPU:
+
+| Model | Download | In memory | A ~6s turn | CPU spent on it | Cost vs `base.en` |
+|---|---|---|---|---|---|
+| `tiny.en` | 78 MB | ~130 MB | ~0.35s | ~1.2 CPU-s | half |
+| `base.en` | 148 MB | ~175 MB | ~0.7s | ~2.3 CPU-s | — |
+| `small.en` | 486 MB | ~370 MB | ~2.2s | ~7 CPU-s | 3x |
+| `medium.en` | 1.5 GB | ~930 MB | ~5.5s | ~20 CPU-s | 8x |
+
+Your absolute times will differ with the CPU — the ratios are what travel. The **speed test** measures the size you picked on your own box, on real speech.
+
+**The cost per turn is nearly flat, so short turns pay the most per word.** Whisper processes audio in 30-second windows, and almost every caller turn fits in one: tripling the utterance to 17 seconds cost only 20-30% more than the 6-second turn, on every size.
+
+**Against the ~1.5s turn budget:** `base.en` fits with room left for the model and the voice. `small.en` spends the whole budget by itself, and `medium.en` is several times over it — the line reads as dead while it thinks. The bigger sizes belong where nobody is waiting, voicemail being the obvious case.
+
+**While it runs, it takes its four cores.** Every size saturated its four threads (~3.5 cores effective), so the CPU column is also what the rest of the box gives up mid-turn — and `medium.en`'s process peaked just under 2 GB while transcribing, which on a small host is an eviction notice for something else.
+
+**Switching sizes costs the next call a model load.** The worker prewarms the size configured at startup; pick a different one in the panel and the first turn of the next call carries the load — about 2 seconds for the smaller pair up to 6 for `medium.en`, once per worker process.
+
+**What this bench cannot tell you.** On a clean, clearly-spoken test line all four sizes came back essentially identical. The sizes separate on names, accents, background noise and phone-band audio — exactly the vocabulary a request line lives on. Size is a hedge against hard audio, and the table is the price of the hedge, paid on every turn.
+
+## WHERE THE CALLER NOTICES
 
 | What the caller experiences | The number behind it |
 |---|---|
@@ -50,11 +86,12 @@ The bundled Whisper (`base.en`) needs no key, no network and no GPU, which is wh
 | Gaps inside a sentence, worse on long replies | voice realtime factor over 1.0 |
 | A long silence before the DJ says hello | the greeting is a model turn too |
 | The wrong song title comes back | speech-to-text, not the model |
+| A dead beat after the caller stops speaking | a Whisper size too big for the box — see the ears |
 | Fine all day, broken after a quiet night | the local model unloaded — see `OLLAMA_KEEP_ALIVE` |
 
 **The ceiling is a live-call constraint.** Text mode and voicemail have no one waiting on the line, so a slower, better model is a perfectly good trade if most of your traffic arrives that way.
 
-## Check yours
+## CHECK YOURS
 
 The **full pipeline check** walks every leg in call order and stops at the first thing that would break; the model and voice stages each make one real, sub-cent call. The **speed test** adds the legs up, which is what the caller actually experiences. Both run the real code paths with a real call's prompt, so what you read is what a caller gets.
 

@@ -368,7 +368,13 @@ async def handle_vm_draft_create(request: web.Request) -> web.Response:
         with _os.fdopen(fd, "wb") as f:
             f.write(bytes(body))
         try:
-            stats = vm_master.master(raw, mastered, ceiling)
+            # The same dial as the live phone-in (0.98.7, operator's parity
+            # ask): one setting says how caller voices are dressed for the
+            # air, wherever they came from. The review card then previews
+            # the sound that would actually go out.
+            stats = vm_master.master(
+                raw, mastered, ceiling,
+                str(cfg.get("on_air_caller_sound") or "clean"))
         except ValueError as e:
             return _cors(request, web.json_response(
                 {"error": str(e)}, status=400))

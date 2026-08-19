@@ -1,6 +1,6 @@
 # What happens between a caller speaking and the station acting
 
-Every other page here describes a part: [the settings](settings.md), [the models](models.md), [the network](networking.md), [voicemail](VOICEMAIL.md). This one describes the path a single sentence takes — from the caller's mouth, through the prompt, into a tool, onto the air, and into the record — because until 2026-08-14 nothing did, and a system nobody has read end to end is one where each piece is right and the whole is not.
+Every other page here describes a part: [the settings](settings.md), [the models](models.md), [the network](networking.md), [voicemail](VOICEMAIL.md), [live on air](on-air.md). This one describes the path a single sentence takes — from the caller's mouth, through the prompt, into a tool, onto the air, and into the record — because until 2026-08-14 nothing did, and a system nobody has read end to end is one where each piece is right and the whole is not.
 
 [← back to the README](../README.md)
 
@@ -17,6 +17,8 @@ Every other page here describes a part: [the settings](settings.md), [the models
 ```
 
 Three phases in `call/session.py`, in the order the caller experiences them: `prepare()` is everything they hear as ringing, `start()` puts the DJ on the line, `greet()` says hello. The settings are re-read at the top of every call, so a change in the panel reaches the next caller without restarting anything.
+
+The ringing is shorter than it looks on paper, because most of its questions are answered before the worker asks them: the token server prefetches the station snapshot the moment it mints the room (`station_prefetch.py`, adopted only while fresh and refused otherwise), and the room join, the TTS voice list and the station's MCP handshake all ride `prepare()`'s one concurrent wait instead of queuing behind it. The call record's `setup` block writes down what each leg took (`preparedSecs`, `onLineSecs`, `greetingSecs`) and whether the snapshot was `prefetched` or `fetched` — so "calls feel slow to connect" is readable off one record instead of an evening of probes.
 
 ## 1. The prompt, and what it costs
 
@@ -97,7 +99,7 @@ Measured on the deployed worker, 2026-08-14, `gemini-3.1-flash-lite`, three roun
 
 ## 5. Who may speak
 
-Nine things can start a DJ turn. Each was added for a real incident, and **they do not know about each other** — there is no single "the DJ speaks now" gate. The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires for CALLER turns only, so it covers the reply path and nothing else.
+Ten things can start a DJ turn. Each was added for a real incident, and **they do not know about each other** — there is no single "the DJ speaks now" gate. The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires for CALLER turns only, so it covers the reply path and nothing else.
 
 | What speaks | Where | Waits for clear air? |
 |---|---|---|
@@ -109,13 +111,14 @@ Nine things can start a DJ turn. Each was added for a real incident, and **they 
 | the hand-over line | `call/air.py` watch loop | it is the air |
 | the promise nudge | `call/promise_guard.py` | yes, since 0.10.146 |
 | the time-limit sign-off | `call/clocks.py` | yes, since 0.10.146 |
+| the on-air wrap cue | `call/clocks.py` | n/a — only fires on a live phone-in, where the ducking is off because the broadcast IS the call |
 | the provider apology | `call/lifecycle.py` | no — 20s cooldown only, and deliberately: it exists because the line has already gone silent |
 
 The promise nudge is one entry and three conditions, which is worth knowing before reading it as one rule: the DJ promised and called nothing; the DJ said it was already done and nothing ran; and, since 0.10.154, the DJ told the caller it landed after a tool came back **refused**. That third one was invisible for a long time because it is the case where a tool call really did happen — the guard cleared itself on the very call that failed. It is one guard because the repair is the same in all three: make it true, or say plainly that it isn't.
 
 The bottom two did not, until this table was written and they were read against each other. The nudge is the one most likely to have been heard: it fires a second or so after the DJ says "let me have a dig", which is exactly when a queued link lands.
 
-**And the air is only half the question — the other half is each other.** Reading the nine against each other showed that six already cannot collide: the greeting is a one-shot at pickup, the late match and the idle ladder both wait for `agent_state == "listening"` (false while anything is generating), and the hand-over line *is* the air. The remaining three — the promise nudge, the come-back, the time-limit sign-off — each fire on their own clock and knew nothing of the others. [`call/floor.py`](../agent-worker/call/floor.py) is a lock and deliberately nothing more: it cannot decide who *should* speak, only stop two turns starting at once, and it counts collisions into the record so the next reader can tell whether it was ever needed.
+**And the air is only half the question — the other half is each other.** Reading them against each other showed that most already cannot collide: the greeting is a one-shot at pickup, the late match and the idle ladder both wait for `agent_state == "listening"` (false while anything is generating), and the hand-over line *is* the air. The ones left — the promise nudge, the come-back, the time-limit sign-off, and since 0.97.66 the on-air wrap cue — each fire on their own clock and knew nothing of the others. [`call/floor.py`](../agent-worker/call/floor.py) is a lock and deliberately nothing more: it cannot decide who *should* speak, only stop two turns starting at once, and it counts collisions into the record so the next reader can tell whether it was ever needed.
 
 The split between `call/lifecycle.py` and `call/clocks.py` follows this distinction — lifecycle OBSERVES a call and never speaks; clocks own a timer and generate a turn when it runs out.
 
@@ -134,8 +137,9 @@ The first two are held together deliberately — `conduct_chat` imports the medi
 
 Worth knowing before diagnosing from one:
 
-- **A call's tool entries carry no arguments.** The chat line records them (`"search_library returned nothing" is only half an answer — the question is always what it searched FOR`); the voice line, the primary surface, does not.
-- **A call's tool entries are not marked failed.** `CallRecord.tool()` takes the flag and chat passes it; the call path never does, so a call spent talking around three refusals reads as a clean call.
+- ~~A call's tool entries carry no arguments.~~ ~~A call's tool entries are not marked failed.~~ Both closed at 0.10.146: [`call/lifecycle.py`](../agent-worker/call/lifecycle.py) passes `with_args(...)` and `failed=` on the voice path, the way the chat line always did. They are struck rather than deleted because the reasons still hold — `"search_library returned nothing"` is half an answer without the words it searched for, and a call spent talking around three refusals used to read back as a clean call.
+
+  **This section is now pinned by a test**, which is the only reason it can be trusted. It described the record wrongly for the better part of a week: `test_docs.py` guarded the speakers table, the tool surface, the settings sections, the links and the environment variables, and nothing guarded the one section whose whole job is to tell a reader what they cannot diagnose from. A page written to be read end to end is exactly the page a stale line does the most damage in.
 - ~~Nothing pairs an ask to an outcome.~~ Closed at 0.10.147: [`call/asks.py`](../agent-worker/call/asks.py) notes every caller line that asks for something a TOOL would have to do, and the record says so when no action landed afterwards. Detection only — the DJ is never told and no turn is generated. It is the evidence the director question needs: if the archive fills with dropped asks then a director has a case, and if it does not, the turn-by-turn shape is fine.
 
   **Calibrated against the archive at 0.10.149, and it had to be**, because the second half of that sentence is a verdict a deaf instrument would reach on its own. Replayed over 44 real records — the first time it had met a caller rather than scenario text — it heard five of thirteen tool-shaped asks. What it missed was not exotic: "Got any Zeppelin?" and "Can you put Wade on the radio?", which is simply how people ask a radio station for things. With those shapes added it hears fourteen of fourteen, and one archived call now reports a dropped ask — a caller who asked for Zeppelin, was told "let me take a quick look through the racks", and got twenty seconds of silence and a "Still with me?" while no tool ran at all. That record's problems list was empty.
@@ -181,20 +185,20 @@ Every block is priceable; four now have a set behind them, and the results do no
 | `LANGUAGE_AND_MIMICRY` | 4% | `SCENARIO_SET=mimicry` | 11/11 | **5/11** |
 | `HOW_TO_TALK` | 4% | `SCENARIO_SET=banter` | p90 69 words | **p90 84** |
 | `CLOSING_DOOR` | 4% | `SCENARIO_SET=closing` | 1/3 first occurrence | 0/3 |
-| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` | 14/15 | **14/14** — but see below |
+| `say_the_true_thing` | 16% | `SCENARIO_SET=refusals` + the belief judge | 8/14 | **8/14** — but see below |
 
 The smallest block is the only thing stopping a caller driving station-wide actions by quoting fake instructions at the DJ — ablated, it skipped the track and put "the station is closing down" on air, 3/3 each. `HOW_TO_TALK` is the same story with a different instrument: dropping it moves the median DJ turn from 39 words to 54 and doubles the turns that cross fifty, so 1,101 characters are buying about fifteen words a turn, on every turn. The largest of the four changed nothing when removed, most likely because the TOOLS already carry the same instruction in their result text, at the moment it matters, where it beats the standing prompt.
 
 **Nothing about their size predicted any of it**, which is the case against ever trimming the prompt by eye — three of the four blocks with a set behind them are the small ones, and all three earn their length.
 
-`say_the_true_thing` is not cut, and the reason is now stronger than "fifteen rounds is a signal": **the set cannot currently answer the question.** One of its five scenarios never provoked its own fault until 0.10.150 (the DJ queued the found record by id and never touched the rate-limited path), and with the fault firing, a round scored PASS while the DJ told a caller that a request the station had just REFUSED was "coming up right after this". The grader lists the invented excuses; that answer invented an outcome instead. Before this block is cut or kept, the set needs a judge that asks whether the caller was left believing something true.
+`say_the_true_thing` is not cut, and since 0.97.72 the reason is a measurement instead of a gap. The set used to be unable to answer the question: `must_not_say` lists the invented excuses of past calls, and a round scored PASS while the DJ told a caller that a request the station had just REFUSED was "coming up right after this" — an invented OUTCOME, which no phrase list can enumerate. The refusal scenarios now carry a `believed` key (the true state of the world after the armed fault) and a **belief judge**: one extra model call over the DJ's own lines asking whether an ordinary caller walks away believing something false. A MISLED reading amends a mechanical PASS to a FAIL, quoting the false belief.
+
+Its first answer (2026-08-18, `gemini-3.1-flash-lite`, `GATES=all MCP=1 REPEATS=3`, both arms): **8/14 with the section, 8/14 without.** The prose is not holding honesty up — the failure it was written for happens either way, roughly 40% of judged rounds, mostly as the claim-before-the-refusal shape the promise guard then repairs a turn late. But the ablated arm regressed on style: median spoken turn 40 → 49 words and stage-direction asterisks 2 → 7, and nine words a turn is more caller-felt time than the ~1,000 prompt tokens buy back. So the block stays, held by the wrong virtue — and the honesty failure's real home is the narration-before-action shape, which is the call-orchestration stream's question, not a prompt-prose one.
 
 ## Known disagreements
 
-Recorded rather than quietly carried. One is left:
+Recorded rather than quietly carried. None are open.
 
-**The briefing is frozen at pickup.** `update_instructions` is never called, so every station fact is fixed for the life of the call while `max_call_seconds` defaults to 300 and a track runs three to four minutes.
+**~~The briefing is frozen at pickup.~~** Closed at 0.97.73. The volatile lines were made honest first — "Playing when this call connected: …" says *when* it was true instead of asserting a present tense that expires — and the mechanism landed after: the guard's watch loop already reads `/state` every four seconds for the djLog and used to throw the current track away, so a mid-call **change** now stages one sentence on the guard, and `CallAgent.on_user_turn_completed` injects it as a system note on the next caller turn — the same Gemini-safe insertion point the door hint uses. Staged rather than pushed, deliberately: a context note that generated a turn would perturb the turn-taking, and that is worse than a stale fact. The first sighting stages nothing (the briefing covers the pickup track), a second change overwrites the first (the caller only needs the newest truth), and the injection is written into the ducking timeline so a record shows the correction beside the moment it landed. It rides the overlap guard's poll, so a deployment with the overlap guard off keeps the frozen briefing — written down here because that coupling is a choice, not an accident.
 
-Half-fixed: the volatile lines now say *when* they were true ("Playing when this call connected: …", "Coming up after that: …") rather than asserting a present tense that expires. That makes the sentence honest for as long as the call lasts, and it is a correctness fix — the prompt was stating something false — **not a measured improvement**. Whether it changes what the DJ says is untested: the drill reads the station once and cannot advance its clock, so no scenario set can reach this. The full answer is still open: refresh the volatile facts on a track-change push, which the on-air guard already receives every second.
-
-Two others were here and are fixed: triage was stated in three places that disagreed (the table in [§3](#3-request-triage--the-five-ways-into-a-library) is the single source now, and the search wrapper's runtime refusal points at the same tool the prompt does), and four capabilities had no prompt presence when switched on.
+Three others were here and are fixed: triage was stated in three places that disagreed (the table in [§3](#3-request-triage--the-five-ways-into-a-library) is the single source now, and the search wrapper's runtime refusal points at the same tool the prompt does), and four capabilities had no prompt presence when switched on.

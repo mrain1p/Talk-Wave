@@ -42,6 +42,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 **A real station on the other end**
 - Station tools through a hard allowlist — the audience-reaching ones off by default, the destructive ones never exposed.
 - **On-air ducking** — while the broadcast DJ is talking, the call waits its turn. Nothing overlaps, nothing is lost.
+- **Live on air** — a caller can go out on the broadcast itself: the conversation airs one finished turn at a time, a turn behind the room, with a pull-off-air button in your hand the whole way. See [Live on air](docs/on-air.md).
 - Personas, voices and themes discovered live. Point it at another SUB/WAVE and it re-homes itself.
 - Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did.
 
@@ -55,6 +56,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 - Installs to a phone like an app, and reads like one.
 - Embeds in two lines of HTML — inline card, launcher pill, docked bar, or pop-up. See [Embedding](#embedding).
 - Themes: light, dark, match-the-page, or the station's live show colours. Every string on the card overridable.
+- The card says how many are tuned in and offers the same heart any listener page has — both optional, both on by default.
 - Call sounds from shipped sets — synthesized classics, real public-domain line tones — every slot replaceable with your own.
 - Push to talk, a post-call thumbs, and in-character timeouts so silence never just hangs there.
 
@@ -134,7 +136,7 @@ copy livekit.example.yaml livekit.yaml
 
 **Station admin credentials are optional, and never leave your box.** Entering your SUB/WAVE admin login unlocks the advanced on-air features — putting a different show on air, running segments and skills, skipping tracks, mirroring persona voices. Without it, everything else still works. The credentials are entered by the operator into their **own self-hosted instance**, stored server-side and write-only (the panel shows only a fixed mask — never the value, never its length), behind the instance's own admin password — and every caller-facing action they unlock is off by default and individually permission-gated. There is no third party anywhere in the path: the author runs no servers at all.
 
-Two things worth knowing as an operator: caller audio is processed by whichever speech and AI providers **you** configure (it runs fully local with Ollama and the bundled Whisper, or on your own cloud keys), and calls can be transcribed and stored **on your own server** with configurable retention — the card shows a Recording indicator while that's on. Nothing phones home, there is no telemetry, and Talk Wave never touches the broadcast stream.
+Two things worth knowing as an operator: caller audio is processed by whichever speech and AI providers **you** configure (it runs fully local with Ollama and the bundled Whisper, or on your own cloud keys), and calls can be transcribed and stored **on your own server** with configurable retention — the card shows a Recording indicator while that's on. Nothing phones home, there is no telemetry, and no caller reaches the broadcast stream unless you open the [on-air doors](docs/on-air.md) — shipped shut, chosen per caller, running a turn behind the room, with a pull-off-air button in your hand.
 
 ## Documentation
 
@@ -145,10 +147,12 @@ The README is the short version. The detail lives here:
 | **[Quick start](docs/quickstart.md)** | Nothing to a working call in ten minutes |
 | **[What to run](docs/models.md)** | Which model and voice, ideal to minimal, and where a caller notices |
 | **[Settings reference](docs/settings.md)** | Every setting, its default, and what it changes |
+| **[The dashboard](docs/dashboard.md)** | The panel's landing page: the station tiles, the Transmission switch ladder and its one rule, the pull, and the activity charts |
 | **[Calling from outside your network](docs/networking.md)** | The topologies, the TLS front door, and why a call can connect with no audio |
 | **[Security and privacy](docs/security.md)** | The exposure checklist, the two passwords, what is enforced |
 | **[Troubleshooting](docs/troubleshooting.md)** | Known limits, reading a call back, logs and tests |
 | **[Voicemail](docs/VOICEMAIL.md)** | The answering machine and the soundbite studio: staged greetings, where messages go, and the terms on which anything is recorded |
+| **[Live on air](docs/on-air.md)** | The phone-in on the broadcast: what listeners hear, the three consents, the pull, and the wiring both containers need |
 | **[How a call actually works](docs/the-call.md)** | The path one sentence takes: the prompt and what it costs, the tool surface, how a request is triaged, and everything that can make the DJ speak |
 
 ## Under the hood

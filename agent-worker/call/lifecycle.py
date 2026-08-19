@@ -262,7 +262,8 @@ _CLOSE_REASONS = {
 }
 
 
-def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
+def attach_turn_commit(ctx: JobContext, session: AgentSession,
+                       pacing=None) -> None:
     """Push-to-talk's other half: the widget says the turn is OVER.
 
     Releasing the talk bar mutes the mic, and until now that was all it did
@@ -275,6 +276,16 @@ def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
     Guarded on the user actually being mid-turn: a release with nothing
     said must not commit an empty turn and make the DJ answer silence —
     normal endpointing already handled anything that finished earlier.
+
+    `pacing` is the call's HeardMeter, and this is where its wait starts on
+    a held bar. The hold claims the user turn, and the SDK pins `user_state`
+    to "speaking" while a claim is active — so the `user_state_changed`
+    transition the meter normally listens for never fires, and all four of
+    the operator's real PTT calls on 2026-08-18 wrote `replyGap n=0` while
+    the fake-mic tap-to-latch calls measured fine. The commit below is the
+    exact moment the caller said "your turn", which is the honest start of
+    the wait — stamped only when the commit actually lands, because a
+    release with nothing said gets no reply to measure.
     """
 
     def _on_data(packet) -> None:
@@ -287,6 +298,11 @@ def attach_turn_commit(ctx: JobContext, session: AgentSession) -> None:
             # future is fire-and-forget — the transcript still arrives
             # through the ordinary user_input_transcribed path.
             session.commit_user_turn()
+            if pacing is not None:
+                try:
+                    pacing.caller_stopped()
+                except Exception:                             # noqa: BLE001
+                    pass   # a measurement must never cost the turn
         except RuntimeError:
             pass          # session already draining; nothing to commit
         except Exception as e:                                # noqa: BLE001

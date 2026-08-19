@@ -974,3 +974,134 @@ class TestTheStationPlayerShipsOff(_TempStores):
 
         self.assertEqual(settings_store.FIELDS["vm_player_duck"][1], 10)
         self.assertEqual(settings_store.FIELDS["tune_in_volume"][1], 10)
+
+
+class TestTheOnAirLetterRidesTheRoomName(_TempStores):
+    """The phone-in flag lives inside the signed room name, behind the tier
+    letter — `callin-gl-…` — so a caller can no more put themselves on air
+    than raise their own tier. Parsing must fail CLOSED both ways: an
+    unrecognised name is an open-tier private call, never an on-air one."""
+
+    def test_the_tier_still_reads_through_the_flag(self):
+        self.assertEqual(
+            settings_store.tier_from_room("callin-gl-0123456789ab"), "guest")
+        self.assertEqual(
+            settings_store.tier_from_room("callin-al-0123456789ab"), "admin")
+        # And the plain rooms are untouched.
+        self.assertEqual(
+            settings_store.tier_from_room("callin-g-0123456789ab"), "guest")
+
+    def test_on_air_reads_only_the_shape_the_mint_writes(self):
+        self.assertTrue(
+            settings_store.on_air_from_room("callin-ol-0123456789ab"))
+        self.assertTrue(
+            settings_store.on_air_from_room("callin-gl-0123456789ab"))
+        for not_on_air in ("callin-g-0123456789ab",     # plain call
+                           "vm-g-0123456789ab",         # the machine
+                           "probe-0123456789ab",        # pipeline check
+                           "callin-xl-0123456789ab",    # x is not a tier
+                           "callin-lg-0123456789ab",    # flag before tier
+                           "", "garbage"):
+            self.assertFalse(settings_store.on_air_from_room(not_on_air),
+                             not_on_air)
+        # The x-tier room also fails the TIER parse closed, to open.
+        self.assertEqual(
+            settings_store.tier_from_room("callin-xl-0123456789ab"), "open")
+
+    def test_the_door_ships_shut_and_the_window_has_a_number(self):
+        # A stranger's voice on the broadcast is the operator's decision;
+        # every deployment that never touches the row must stay private.
+        self.assertEqual(settings_store.FIELDS["allow_on_air"][1], "off")
+        self.assertIn("allow_on_air", settings_store.TIERED_PERMISSIONS)
+        self.assertEqual(settings_store.FIELDS["on_air_max_seconds"][1], 240)
+        cfg = settings_store.permissions_for(
+            {"allow_on_air": "guest"}, "guest")
+        self.assertTrue(cfg["allow_on_air"])
+        self.assertFalse(settings_store.permissions_for(
+            {"allow_on_air": "guest"}, "open")["allow_on_air"])
+
+
+class TestTheOnAirDelayIsTheOperatorsDial(unittest.TestCase):
+    """`on_air_delay_secs` is the take-back window the hold cap guarantees —
+    the operator's editorial dial, not an engineering constant. It has to
+    actually reach the relay, because a control that saves and drives nothing
+    is worse than no control (the avoid_on_air_overlap lesson).
+    """
+
+    def _relay(self, cfg):
+        from onair.relay import CallRelay
+
+        return CallRelay(None, cfg, "callin-g-abcdef123456")
+
+    def test_the_default_matches_what_shipped(self):
+        # 0.97.78 shipped the cap as a constant 6; the setting must not move
+        # any deployment that never touches the row.
+        self.assertEqual(settings_store.FIELDS["on_air_delay_secs"][1], 6)
+        self.assertEqual(self._relay({}).max_held_secs, 6.0)
+
+    def test_the_dial_reaches_the_hold(self):
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 12}).max_held_secs, 12.0)
+
+    def test_the_floor_holds_because_zero_must_not_mean_no_window(self):
+        # A second off-switch for a safety control is the quiet_secs trap:
+        # the pull must always have SOME window, so 0 clamps to the floor
+        # the panel's help promises rather than meaning "push immediately".
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 0}).max_held_secs, 6.0,
+            "0 is falsy and falls through to the default, like blank")
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 1}).max_held_secs, 2.0)
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": 900}).max_held_secs, 30.0)
+        self.assertEqual(
+            self._relay({"on_air_delay_secs": "nonsense"}).max_held_secs, 6.0)
+
+
+class TestTheOnAirQuickKillsShipOpen(_TempStores):
+    """The dashboard's two Live-on-air kills default ON: opening the tier
+    row lights both doors at once, and a store written before the kills
+    existed behaves identically after the upgrade."""
+
+    def test_both_doors_default_on(self):
+        self.assertIs(settings_store.FIELDS["on_air_calls_enabled"][1], True)
+        self.assertIs(
+            settings_store.FIELDS["on_air_voicemail_enabled"][1], True)
+        cfg = settings_store.load()
+        self.assertTrue(cfg.get("on_air_calls_enabled"))
+        self.assertTrue(cfg.get("on_air_voicemail_enabled"))
+
+
+class TestTheCountAndHeartShipOn(unittest.TestCase):
+    """The card's listener count and track heart are ON by default — the
+    operator's explicit ask (2026-08-18): they are one line of text and one
+    small button on furniture the card already has, not a new surface like
+    the player, which ships off. Both must degrade to nothing on their own
+    (no count when the station won't say, no heart without a track line)."""
+
+    def test_both_ship_on(self):
+        import settings as settings_store
+
+        self.assertTrue(settings_store.FIELDS["show_listener_count"][1])
+        self.assertTrue(settings_store.FIELDS["show_track_like"][1])
+
+    def test_the_player_still_ships_off(self):
+        # The heart's door reads EITHER switch, so this pair is what keeps a
+        # fresh deployment's card working while the player stays a choice.
+        import settings as settings_store
+
+        self.assertFalse(settings_store.FIELDS["swipe_player"][1])
+
+
+class TestTheOnAirCallerSoundSetting(_TempStores):
+    """Clean replaced the phone costume as the default ON PURPOSE — the
+    operator's verdict after hearing themselves aired (2026-08-18, "I've
+    never heard my voice sound so bad on a phone call"). The costume stays a
+    stored choice, and blank falls through to clean like every setting."""
+
+    def test_clean_is_the_default_and_the_costume_is_a_choice(self):
+        self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")
+        settings_store.save({"on_air_caller_sound": "phone"})
+        self.assertEqual(settings_store.load()["on_air_caller_sound"], "phone")
+        settings_store.save({"on_air_caller_sound": ""})
+        self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")

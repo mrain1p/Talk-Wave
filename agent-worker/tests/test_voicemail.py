@@ -643,7 +643,10 @@ class TestTheBeepIsACueNotAGate(unittest.TestCase):
         # nothing to hold", empty message). The close is safe now only because
         # the bar is present and a TAP latches the mic open, leaving a message
         # exactly like an open mic. See the pickup branch and the CSS below.
-        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:700]
+        # 1000, up from 700: the speaker probe's re-run (and its why) sits
+        # between the permission and the PTT close since 0.98, and the pin is
+        # about ORDER, not adjacency.
+        after_mic = js.split("setMicrophoneEnabled(true);", 1)[1][:1000]
         self.assertIn("pttOn() && !pttOpen", after_mic)
         self.assertNotIn("!vmCall && pttOn()", after_mic)
         # The voicemail pickup keeps the bar when PTT is on (only an open-mic
@@ -780,6 +783,55 @@ class TestMasteringMakesAClipTheAirCanCarry(unittest.TestCase):
         self._master("in.wav")
         self.assertAlmostEqual(m.wav_seconds(self.tmp / "out.wav"),
                                1.0, delta=0.4)
+
+    def test_the_clean_style_keeps_the_voice_the_costume_threw_away(self):
+        # The operator's verdict on hearing themselves aired (2026-08-18):
+        # "I've never heard my voice sound so bad on a phone call." The
+        # costume decimates to 16k and cuts at 3400; clean must do neither —
+        # the clip keeps its own rate and a 5 kHz component survives, which
+        # is exactly the content the phone chain is proven (above) to drop.
+        import wave
+
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "in.wav", [500.0, 5000.0], 1.0, rate=44100)
+        stats = m.master(self.tmp / "in.wav", self.tmp / "clean.wav", 30.0,
+                         style="clean")
+        with wave.open(str(self.tmp / "clean.wav"), "rb") as w:
+            self.assertEqual(w.getframerate(), 44100,
+                             "clean resampled a clip it promised to leave be")
+            out = list(struct.unpack("<%dh" % (w.getnframes()),
+                                     w.readframes(w.getnframes())))
+        # Both tones went in at equal strength; clean keeps them comparable.
+        # (The phone chain provably drops the high one — the band-pass test
+        # above is that proof — so this ratio IS the difference between the
+        # two styles.)
+        self.assertGreater(
+            _tone_power(out, 5000.0, rate=44100),
+            _tone_power(out, 500.0, rate=44100) * 0.1,
+            "the 5 kHz component did not survive the clean chain")
+        self.assertLessEqual(stats["peakDb"], -0.5)
+
+    def test_clean_levels_a_quiet_clip_like_a_hot_one(self):
+        # Same systematic promise the phone chain makes: input level must not
+        # change the outcome, only the noise floor.
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "quiet.wav", [500.0], 1.0, gain=0.05)
+        _tone_wav(self.tmp / "hot.wav", [500.0], 1.0, gain=0.9)
+        quiet = m.master(self.tmp / "quiet.wav", self.tmp / "q.wav", 30.0,
+                         style="clean")
+        hot = m.master(self.tmp / "hot.wav", self.tmp / "h.wav", 30.0,
+                       style="clean")
+        self.assertLess(abs(quiet["rmsDb"] - hot["rmsDb"]), 1.5)
+
+    def test_clean_still_refuses_silence(self):
+        from voicemail import master as m
+
+        _tone_wav(self.tmp / "in.wav", [500.0], 0.0, lead_silence=3.0)
+        with self.assertRaises(ValueError):
+            m.master(self.tmp / "in.wav", self.tmp / "out.wav", 30.0,
+                     style="clean")
 
 
 class TestADraftIsHeldBrieflyAndLeavesNoOrphans(unittest.TestCase):
@@ -1418,3 +1470,65 @@ class TestTheStudioGreetingIsRenderedOnceNotPerVisit(unittest.TestCase):
                           f"ensure_clip no longer uses {piece} — either the "
                           "cache or the lock is gone, and either way a guest "
                           "can now spend unbounded TTS money")
+
+
+class TestResamplingDoesNotAlias(unittest.TestCase):
+    """A 12 kHz tone in a 48 kHz recording must DIE on the way to 16 kHz,
+    not fold into the voice band as grit. Unfiltered linear decimation
+    reflects it to 4 kHz inside the speech range, and the drive then
+    amplifies exactly that — heard as "my voice sounds pretty bad" on the
+    first live relay test (2026-08-17), on the studio and the call alike."""
+
+    def _tone48(self, path, freq, secs=0.6):
+        import math
+        import struct
+        import wave
+
+        rate = 48000
+        n = int(rate * secs)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(struct.pack(
+                "<%dh" % n,
+                *[int(20000 * math.sin(2 * math.pi * freq * i / rate))
+                  for i in range(n)]))
+
+    def test_a_12k_tone_dies_where_a_1k_tone_survives(self):
+        import math
+        import tempfile
+        from pathlib import Path
+
+        from voicemail import master as m
+
+        with tempfile.TemporaryDirectory() as td:
+            hi, lo = Path(td) / "hi.wav", Path(td) / "lo.wav"
+            self._tone48(hi, 12000)
+            self._tone48(lo, 1000)
+            rms = lambda xs: math.sqrt(sum(v * v for v in xs) / len(xs))  # noqa: E731
+            hi_rms = rms(m.read_wav_any(hi, 30))
+            lo_rms = rms(m.read_wav_any(lo, 30))
+            # ~-19 dB from two low-pass passes; the unfiltered fold-down sat
+            # near a THIRD of the in-band level, which is why it was audible.
+            self.assertLess(hi_rms, lo_rms * 0.15,
+                            "ultrasonics must be filtered out, not folded "
+                            "into the voice band")
+
+
+class TestTheStudioWearsTheSameSoundDial(unittest.TestCase):
+    """One dial for every caller voice that reaches the air (the operator's
+    parity ask, 2026-08-18): the studio's draft mastering reads
+    on_air_caller_sound exactly like the live tee does, so the review card
+    previews the sound that would actually go out. Pinned at the source
+    because the draft behaviour tests exercise vm_review.create directly and
+    never reach the handler's mastering line."""
+
+    def test_the_draft_master_reads_the_dial(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "api" / "voicemail.py").read_text(
+            encoding="utf-8")
+        call = src.split("vm_master.master(", 1)[1][:220]
+        self.assertIn('cfg.get("on_air_caller_sound")', call,
+                      "the studio stopped reading the caller-sound dial")

@@ -92,6 +92,20 @@ async def build_system_prompt(
             or persona.get("station") or "").strip()
     ) or "the SUB/WAVE radio station"
     dj_card = clip(persona.get("soul", ""), CARD_BUDGET)
+    # The station's own answer to "what language does this DJ work in", mirrored
+    # rather than guessed — free text there, empty meaning English. Stated as
+    # its own line because the alternative is the model inferring it from the
+    # briefing, and the briefing is full of whatever the station happens to be
+    # playing. See station.persona_from for the call that went out in the wrong
+    # language.
+    dj_language = demojibake(str(persona.get("language") or "").strip())
+    # Only when the station named one. Empty means English there, and asserting
+    # "you speak English" at every DJ on every call would be a sentence bought
+    # on every turn to say what the prompt is already written in.
+    language_block = (
+        f"\nYou work in {dj_language} — that is the language you open in and "
+        "come back to. Match a caller who brings another one.\n"
+    ) if dj_language else ""
     show_name = demojibake(show.get("name", ""))
     show_card = clip(show.get("topic", ""), CARD_BUDGET)
 
@@ -160,7 +174,7 @@ async def build_system_prompt(
 
 # Who you are
 {dj_card}
-{show_block}{style_block}
+{language_block}{show_block}{style_block}
 # What's happening on the station right now
 {facts}
 

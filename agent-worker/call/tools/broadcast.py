@@ -231,6 +231,22 @@ def build_on_air_tools(
                     f"{result.get('error') or 'the station refused it'}. "
                     "Tell the caller plainly — do not claim it worked."
                 )
+            if result.get("aired") is False:
+                # Station 1.8's stand-down (their #1416): the skill ran, looked
+                # at what it fetched, and had nothing worth saying — a 200 with
+                # `aired: false` and the reason, NOT an error. Before this
+                # branch, that answer counted as success: the DJ told the
+                # caller a segment was coming and the guard held the floor for
+                # a minute of nothing. Strict `is False` on purpose — stations
+                # older than 1.8 send no `aired` field at all, and absent must
+                # keep meaning "it ran" or every segment on them goes silent.
+                why = str(result.get("reason") or "").strip()
+                return (
+                    f"The {name} segment looked at what it had and chose not "
+                    f"to air anything{' — ' + why if why else ''}. "
+                    "Nothing is coming. Tell the caller that plainly, in your "
+                    "own voice — do not promise it will play later."
+                )
             actions.note("skill", name)
             # Segments run far longer than an announcement — a fixed 25s hold
             # reopened the gate mid-delivery and the DJ talked over its own

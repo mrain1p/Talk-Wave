@@ -38,11 +38,17 @@ CALL_OPENING_PRIME = (
 
 
 # How long a brand-new caller may be held before the greeting, when the on-air
-# DJ is mid-link. Much shorter than OnAirGuard.MAX_HOLD (45s): that budget is
-# for a hold MID-conversation, where the caller knows the DJ stepped away and
-# the widget says so. At pickup they have no such context — silence right
-# after the ring reads as a failed call, not as a wait.
-GREET_HOLD_SECS = 12.0
+# DJ is mid-link. Shorter than OnAirGuard.MAX_HOLD (45s): that budget is for a
+# hold MID-conversation. It was 12 — chosen when pickup had no hold UI, where
+# silence right after the ring read as a failed call. Two things made 12 wrong:
+# the widget now says "you're on hold, the DJ is on the station mic" from the
+# moment the gate closes, so the wait explains itself; and the hold runs on
+# CALLER time — a caller joining mid-link has the stream buffer (~22s on the
+# operator's station) plus the link's tail still to hear, so 12s guaranteed the
+# greeting landed on top of it. Room callin-o-643dc6d2993e (2026-08-18): hold
+# opened at pickup, ran 34s, greeting went out 28s before the caller's copy of
+# the link finished.
+GREET_HOLD_SECS = 30.0
 
 
 async def greet(session: AgentSession, cfg: dict, record=None, air=None) -> None:

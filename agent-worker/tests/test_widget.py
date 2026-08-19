@@ -344,9 +344,22 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         supers = {g: sup for g, sup, *_ in settings_store.GROUPS}
         self.assertEqual(supers["voicemail"], "voicemail")
         self.assertEqual(supers["chat"], "texts")
-        for g in ("call", "turns", "closing", "onair", "tunein",
+        for g in ("call", "turns", "closing", "tunein",
                   "callback", "sounds", "effects"):
             self.assertEqual(supers[g], "calls", f"{g} left the Calls page")
+        # 0.97.81 gave the on-air route its own page (operator's ask): the
+        # two quick kills got their first settings rows, and ducking moved
+        # in beside them — it is about the one broadcast voice, not the
+        # call. The tier row and its dials deliberately STAY under Caller
+        # permissions; the panel greys them while both doors are shut, and
+        # that greying only reads if the doors have a page of their own.
+        for g in ("airdoors", "onair"):
+            self.assertEqual(supers[g], "air", f"{g} left the On air page")
+        for f in ("on_air_calls_enabled", "on_air_voicemail_enabled",
+                  "vm_air_backend"):
+            self.assertEqual(
+                settings_store.SCHEMA[f]["group"], "airdoors",
+                f"{f} left the Doors-to-air section")
         # Transcripts moved to the booth page at 0.10.64 (operator's call):
         # the records cover calls, chats and voicemails alike.
         for g in ("context", "style", "record"):
@@ -963,12 +976,20 @@ class TestTheCallerCanChooseWhichWayOut(unittest.TestCase):
         # cannot re-route an individual stream, and it lists no audiooutput
         # devices — so a button drawn off function existence alone sat dead
         # on the operator's phone (2026-08-17). The offer rides a probe of
-        # what the device list actually contains.
+        # what the device list actually contains — and a route needs TWO
+        # ends: a lone unnamed "default" output satisfied the first probe
+        # and put the dead button back on the operator's PWA (2026-08-18),
+        # where the press found no earpiece to name and "did nothing to
+        # toggle". The probe runs again once the mic permission lands,
+        # because that is when device labels become readable at all.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         block = call_js.split("function offerSpeakerButton()")[1][:220]
         self.assertIn("canRoute === true", block)
-        probe = call_js.split("async function probeRouting()")[1][:600]
+        probe = call_js.split("async function probeRouting()")[1][:700]
         self.assertIn("audiooutput", probe)
+        self.assertIn(".length >= 2", probe)
+        after_mic = call_js.split("setMicrophoneEnabled(true)")[1][:500]
+        self.assertIn("probeRouting()", after_mic)
 
     def test_a_refused_route_does_not_relabel_the_button(self):
         # The label follows the AUDIO: flipping it on a refused route is the
@@ -1326,6 +1347,74 @@ class TestSoundPacks(unittest.TestCase):
         self.assertIn(["vintage", "Vintage"], [list(c) for c in choices])
 
 
+class TestTheCardOnlyOffersDoorsTheTierOpens(_TempStores):
+    """The mint has always refused a door above the caller's tier; the card
+    offered it anyway and the refusal was a dead end — the operator, signed
+    out on their own phone, armed ON AIR and got "This line can't put callers
+    on the air" with no path to the code, several times in one evening
+    (2026-08-18, rooms callin-o-*). /live now carries per-caller verdicts
+    (onAirCalls.mine, voicemailMine, chatMine) computed per request, so the
+    widget keeps an unreachable door off the card; the sign-in chip is the
+    climb."""
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        from pathlib import Path
+        self._old_auth = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+
+    def tearDown(self):
+        import admin_auth
+        admin_auth.AUTH_PATH = self._old_auth
+        super().tearDown()
+
+    def _live_for(self, key="", payload=None):
+        from api.live import _for_this_caller
+
+        headers = {"X-Call-Key": key} if key else {}
+        req = types.SimpleNamespace(headers=headers, remote="9.9.9.9")
+        return _for_this_caller(req, payload if payload is not None else {
+            "canAsk": {}, "askTiers": {},
+            "onAirCalls": {"offered": True, "calls": True,
+                           "voicemail": True, "tier": "guest"},
+        })
+
+    def test_a_stranger_is_not_offered_a_guest_only_air_door(self):
+        import admin_auth
+
+        admin_auth.set_guest_password("guest99")
+        # The guest lane has to exist for the code to climb into — same
+        # reason the climb test opens it (the 0.10.80 admin-only default).
+        settings_store.save({"front_access": "guest",
+                             "allow_on_air": "guest",
+                             "allow_voicemail": "open"})
+        stranger = self._live_for()
+        self.assertFalse(stranger["onAirCalls"]["mine"])
+        self.assertTrue(stranger["voicemailMine"])
+        # The same caller with the code IS offered it — the climb works.
+        self.assertTrue(self._live_for("guest99")["onAirCalls"]["mine"])
+
+    def test_the_verdicts_ride_even_with_the_help_switched_off(self):
+        # _for_this_caller returns early when the ask list is off (canAsk
+        # None). The verdicts must be computed BEFORE that return, or a
+        # deployment with the help button off silently loses the door gating
+        # — the exact shape of setting that ships unreachable.
+        settings_store.save({"allow_on_air": "admin"})
+        out = self._live_for(payload={"canAsk": None,
+                                      "onAirCalls": {"calls": True}})
+        self.assertFalse(out["onAirCalls"]["mine"])
+
+    def test_the_shared_payload_is_not_scribbled_on(self):
+        # /live's payload is cached across every caller for thirty seconds;
+        # the verdict is one caller's. Writing it into the nested dict would
+        # hand caller A's answer to caller B.
+        settings_store.save({"allow_on_air": "admin"})
+        payload = {"canAsk": None, "onAirCalls": {"calls": True}}
+        self._live_for(payload=payload)
+        self.assertNotIn("mine", payload["onAirCalls"])
+
+
 class TestSigningInClimbsTheTier(_TempStores):
     """A caller on an open line can hold a guest code or the admin password to
     unlock the commands the operator gated above `anyone`. The server resolves
@@ -1626,8 +1715,11 @@ class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
         # The card flips to .oncall + Hang up the instant Call/Voicemail is
         # pressed (no ringing phase), so a 429/401 refusal MUST undo that or the
         # card sits on Hang up over an engaged-tone message (tester-caught).
+        # 2200, not 1400: the 403 branch grew its way-to-the-code fix
+        # (openSignin + the comment saying why) and pushed the idle reset
+        # deeper into the block it has always been in.
         js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        refusal = js.split("res.status === 429 || res.status === 401", 1)[1][:1400]
+        refusal = js.split("res.status === 429 || res.status === 401", 1)[1][:2200]
         self.assertIn("classList.remove('oncall')", refusal)
         self.assertIn("setCardMode('idle')", refusal)
         self.assertIn("hangBtn.hidden = true", refusal)
@@ -1871,7 +1963,9 @@ class TestPushToTalkIsPerSurfaceAndOnByDefault(unittest.TestCase):
         # early is a decision, and the post-connect close stomping it is how
         # a lit bar ended up muted on a real call.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
-        start = call_js.split("await room.connect(url, token);")[1][:1200]
+        # 1500, up from 1200: the speaker probe's re-run sits between the
+        # permission and the PTT close since 0.98; the pin is about order.
+        start = call_js.split("await room.connect(url, token);")[1][:1500]
         self.assertIn("setMicrophoneEnabled(true)", start)
         self.assertIn("setMicOpen(false)", start)
         self.assertIn("!pttOpen", start)
@@ -2735,19 +2829,24 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn('"swipePlayer"', self.live_py)
         self.assertIn("d.swipePlayer", self.js)
 
-    def test_the_listener_actions_ride_the_players_own_door(self):
+    def test_the_listener_actions_ride_an_offering_features_door(self):
         # /player/like and /player/request WRITE to the station. They must
-        # not exist while the player is switched off, and they answer to the
-        # same guest door as the phone. The station side is public listener
-        # API with its own per-IP limits — this door only ever narrows it.
+        # not exist while nothing offers them, and they answer to the same
+        # guest door as the phone. The station side is public listener API
+        # with its own per-IP limits — this door only ever narrows it. The
+        # heart is offered by TWO surfaces since the card grew its own
+        # (show_track_like), so the like endpoints name both switches; the
+        # request box stays the player's own.
         src = (AGENT_WORKER / "api" / "player.py").read_text(encoding="utf-8")
-        door = src.split("def _door")[1][:900]
-        self.assertIn('get("swipe_player")', door)
+        door = src.split("def _door")[1][:1200]
+        self.assertIn('("swipe_player",)', door)   # the default offering
         self.assertIn("_guest_ok", door)
-        for handler in ("handle_player_like_status", "handle_player_like",
-                        "handle_player_request"):
-            body = src.split(f"async def {handler}")[1][:220]
-            self.assertIn("_door(request)", body)
+        for handler in ("handle_player_like_status", "handle_player_like"):
+            body = src.split(f"async def {handler}")[1][:260]
+            self.assertIn('_door(request, ("swipe_player", "show_track_like"))',
+                          body)
+        body = src.split("async def handle_player_request")[1][:220]
+        self.assertIn("_door(request)", body)
 
     def test_the_queue_travels_only_while_the_player_is_on(self):
         # A /state read per /live rebuild is not free on a rate-limited
@@ -2830,3 +2929,53 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
                       "the player is no longer an overlay sheet — if it "
                       "rejoins the card's flow, it inherits somebody's "
                       "visibility again")
+
+
+class TestTheCardOffersTheCountAndTheHeart(unittest.TestCase):
+    """The phone card's own listener count and track heart (2026-08-18, the
+    operator's ask — both on by default). The count rides the ON AIR line and
+    the heart rides the track's own row, because the card's height is a
+    promise; neither may add a row."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(
+            encoding="utf-8")
+        cls.html = (REPO / "web-widget" / "index.html").read_text(
+            encoding="utf-8")
+
+    def test_both_travel_and_are_read(self):
+        self.assertIn('"listeners"', self.live_py)
+        self.assertIn('"cardLike"', self.live_py)
+        self.assertIn("d.listeners", self.js)
+        self.assertIn("d.cardLike", self.js)
+
+    def test_both_ride_their_switches(self):
+        gate = self.live_py.split('"listeners"')[1][:220]
+        self.assertIn('cfg.get("show_listener_count", True)', gate)
+        gate = self.live_py.split('"cardLike"')[1][:160]
+        self.assertIn('cfg.get("show_track_like", True)', gate)
+
+    def test_a_known_count_paints_even_at_zero_but_unknown_paints_nothing(self):
+        # The one-listener floor ("0 listening talks a caller out of ringing")
+        # was reversed by the operator on 2026-08-18: the count is a bare
+        # number behind a broadcast mark now, zero included — a quiet-hour
+        # zero next to a glyph reads as a meter, not a verdict. What still
+        # must never paint is an ABSENT count: null means the station would
+        # not say, or the row is off, and 📡 null is gibberish.
+        self.assertIn("d.listeners >= 0", self.js)
+        self.assertIn("typeof d.listeners === 'number'", self.js)
+
+    def test_the_heart_shares_the_tracks_row(self):
+        # A new row would change the card's height — the one thing the card
+        # promises never to do (TestTheCardIsOneHeightAndStaysThere).
+        row = self.html.split('class="trackrow"')[1][:220]
+        self.assertIn('id="npTrack"', row)
+        self.assertIn('id="npHeart"', row)
+
+    def test_the_heart_is_add_only(self):
+        # Matching the station's public like: there is no un-like for
+        # listeners, so a pressed heart never sends a second request.
+        block = self.js.split("$('npHeart').addEventListener")[1][:600]
+        self.assertIn("if (cardLiked) return", block)

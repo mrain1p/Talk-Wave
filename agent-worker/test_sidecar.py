@@ -16,6 +16,8 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheOnAirDelayIsTheOperatorsDial,
+    TestTheOnAirCallerSoundSetting,
     TestAConfigValueCannotNameAFileOnTheDisk,
     TestANeighbouringServiceIsNotOnLocalhost,
     TestBootLaysTheDataSkeleton,
@@ -36,6 +38,9 @@ from tests.test_settings import (  # noqa: F401
     TestAnUpgradeClosesNoDoorAndHandsOutNoPower,
     TestACommentedEnvValueIsNamedAtBoot,
     TestTheStationPlayerShipsOff,
+    TestTheCountAndHeartShipOn,
+    TestTheOnAirLetterRidesTheRoomName,
+    TestTheOnAirQuickKillsShipOpen,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,
@@ -61,9 +66,12 @@ from tests.test_http import (  # noqa: F401
     TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
     TestTheSettingsGearIsForTheOperator,
+    TestTheOnAirDoorIsGatedAtTheMint,
+    TestTheMintGivesTheWorkerAHeadStart,
 )
 from tests.test_widget import (  # noqa: F401
     TestTheCallerIsNotRescuedMidAnnouncement,
+    TestTheCardOnlyOffersDoorsTheTierOpens,
     TestTheStationPlayerKnowsItsPlace,
     TestAHostThemeIsADefaultNotADecree,
     TestAssetVersioning,
@@ -113,6 +121,7 @@ from tests.test_widget import (  # noqa: F401
     TestHiddenActuallyHides,
     TestTheStylesheetParsesToTheEnd,
     TestTheUrlRowsOnlyExistInUrlMode,
+    TestTheCardOffersTheCountAndTheHeart,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestTheLadderLivesInOnePlace,
@@ -135,8 +144,13 @@ from tests.test_call_record import (  # noqa: F401
     TestTheCallRecordHearsBothSides,
     TestTheCallRecordSaysWhoRang,
     TestTheRecordAndItsProblemsShareOneClock,
+    TestThePickupTimelineIsWrittenDown,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestTheStationClientOutlivesTheShutdownWork,
+    TestRingingRidesTheMintsHeadStart,
+    TestTheBriefingStopsBeingWrongWhenTheStationMovesOn,
+    TestNothingInACallOverwritesSomethingElse,
     TestASlowModelGetsRoomRatherThanFailing,
     TestTheRecordNamesWhichLegFailed,
     TestTheRecordSaysWhenTheCallerWasKeptWaiting,
@@ -185,6 +199,7 @@ from tests.test_tools_surface import (  # noqa: F401
     TestTheDJDescribesRecordsItHasInformationAbout,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
     TestOneRequestCannotTakeTwoQueueSlots,
@@ -211,6 +226,7 @@ from tests.test_takeover import (  # noqa: F401
     TestTheStationEndpointsAreTheOnesUpstreamServes,
 )
 from tests.test_brain import (  # noqa: F401
+    TestTheDJIsToldItsOwnLanguage,
     TestTheDJKnowsTheStationsShows,
     TestACallerCanBeToldNothingIsKept,
     TestBrainSplit,
@@ -230,6 +246,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestTheStationsLanguageIsNotTheDJsLanguage,
     TestTheDJSpeaksAsItselfNotAboutItself,
     TestADoubtedActionIsCheckedNotExplainedAway,
     TestActionBulletsRideTheirOwnSwitch,
@@ -261,6 +278,7 @@ from tests.test_takeover import (  # noqa: F401
     TestLockingTheStationToAGenre,
 )
 from tests.test_station import (  # noqa: F401
+    TestTheDJsLanguageSurvivesTheRead,
     TestTheNeverPlayWritesAndTheGenreLock,
 )
 from tests.test_tools_logic import (  # noqa: F401
@@ -286,9 +304,11 @@ from tests.test_station import (  # noqa: F401
     TestTheHoldMatchesHowLongTheStationWillTalk,
     TestTheLiveShowRecordSurvivesTheScheduleLookup,
     TestTheStationLogSaysWhatWasSaid,
+    TestTheMintsHeadStartIsFreshOrNothing,
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestADevBootCannotStealTheLiveRegistration,
     TestAFailedProbeQuotesTheProvider,
     TestAProbeNamesOnlyWhatItSaw,
     TestTheAirFileRemembersWhatHappened,
@@ -322,6 +342,7 @@ from tests.test_voice import (  # noqa: F401
 from tests.test_voicemail import (  # noqa: F401
     TestAMessageIsNeverLost,
     TestAVoicemailIsACallEntryToo,
+    TestTheStudioWearsTheSameSoundDial,
     TestEachPersonaCanHaveItsOwnLine,
     TestTheMachineHasATierDoor,
     TestTheStationAnswersWhenNobodyIsOnAir,
@@ -339,6 +360,7 @@ from tests.test_voicemail import (  # noqa: F401
     TestADraftIsHeldBrieflyAndLeavesNoOrphans,
     TestTheSoundbiteAirsWithReceipts,
     TestTheStudioGreetingIsRenderedOnceNotPerVisit,
+    TestResamplingDoesNotAlias,
 )
 from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,
@@ -371,6 +393,31 @@ from tests.test_house_rules import (  # noqa: F401
     TestTheRoutingTableIsInOnePlace,
     TestTheSuiteIsNotQuietlyNotRunning,
     TestTheWrittenInstructionsStillDescribeTheCode,
+)
+from tests.test_onair import (  # noqa: F401
+    TestOnAirChunksAreTokenedAndShortLived,
+    TestTheRelayHoldsOneTurnBack,
+    TestTheHoldIsAPromiseNotAnAccident,
+    TestTheRelayObeysTheOperatorMidCall,
+    TestTheRelayFallsBackOutLoud,
+    TestTheBracketsOnlyAirWhenACallerDoes,
+    TestTheLiveCallDoorTellsTheWorkersTruth,
+    TestTheLiveSegmentLandsInsteadOfStopping,
+    TestTapeModeAirsTheCallAtHangup,
+)
+from tests.test_tee import (  # noqa: F401
+    TestTheAirGetsTheConversationInOrder,
+    TestTheCallerTapRidesTheTurnBoundaries,
+    TestTheDJTeeCutsOnSegments,
+    TestATurnThatDoesNotAirSaysWhy,
+    TestTheCallerClipWearsTheConfiguredSound,
+)
+from tests.test_heard import (  # noqa: F401
+    TestTheWaitIsMeasuredFromWhenTheCallerStopped,
+    TestTheBargeInIsMeasuredAndAlwaysReported,
+    TestWhatTheCallerActuallyHeardIsKept,
+    TestThePercentileDoesNotInventNumbers,
+    TestAClearedSynthesisIsNotSomebodyTalkingOver,
 )
 
 

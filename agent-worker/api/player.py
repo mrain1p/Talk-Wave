@@ -30,13 +30,20 @@ from log_setup import describe
 log = logging.getLogger("callin.token")
 
 
-def _door(request: web.Request) -> web.Response | None:
-    """The player's own door: the feature must be ON, and the caller must be
-    through the same gate as the phone — an open line answers anyone, a
-    code-gated line wants the code the widget already sends."""
-    if not settings_store.load().get("swipe_player"):
+def _door(request: web.Request,
+          switches: tuple[str, ...] = ("swipe_player",)) -> web.Response | None:
+    """The listener surfaces' door: at least one offering feature must be ON,
+    and the caller must be through the same gate as the phone — an open line
+    answers anyone, a code-gated line wants the code the widget already sends.
+
+    `switches` names which settings offer the endpoint. The request box is
+    the player's own; the heart is ALSO on the call card (show_track_like),
+    so the like endpoints stay open for a card whose operator never switched
+    the player on."""
+    cfg = settings_store.load()
+    if not any(cfg.get(s) for s in switches):
         return _cors(request, web.json_response(
-            {"error": "the player is not enabled on this line"}, status=404))
+            {"error": "this line does not offer that"}, status=404))
     if not _guest_ok(request):
         return _cors(request, web.json_response(
             {"error": request.get("auth_error") or "a caller code is needed"},
@@ -68,14 +75,14 @@ async def _relay(request: web.Request, method: str, path: str,
 
 
 async def handle_player_like_status(request: web.Request) -> web.Response:
-    refuse = _door(request)
+    refuse = _door(request, ("swipe_player", "show_track_like"))
     if refuse:
         return refuse
     return await _relay(request, "GET", "/like")
 
 
 async def handle_player_like(request: web.Request) -> web.Response:
-    refuse = _door(request)
+    refuse = _door(request, ("swipe_player", "show_track_like"))
     if refuse:
         return refuse
     try:

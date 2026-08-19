@@ -20,7 +20,24 @@
     try { live = await fetch('/live').then((r) => r.json()); }
     catch (e) { live = live || {}; }
     setSounds(live && live.sounds);
+    paintOnairWiring();
     return live;
+  }
+
+  // The wiring warning beside the on-air rows: go-live saved ON while the
+  // mixer is unreachable means nothing can actually air and every phone-in
+  // quietly falls back private — the door-truth failure, seen the day the
+  // wiring doc first said "join both networks". Painted from SAVED state on
+  // every /live refresh (the save path refreshes, so flipping the row on
+  // without the wiring shows this immediately). The quick kill is excluded
+  // on purpose: a door the operator closed is a choice, not a fault.
+  function paintOnairWiring() {
+    const box = $('onairWiring');
+    if (!box) return;
+    const oa = (live && live.onAirCalls) || null;
+    const unwired = !!(oa && oa.tier && oa.tier !== 'off'
+                       && oa.enabled !== false && !oa.calls);
+    box.style.display = unwired ? 'block' : 'none';
   }
 
 
@@ -108,10 +125,10 @@
         members.forEach((g) => {
           const sec = byId[g.id];
           sec.classList.add('cardblock');
-          // Blocks stay open — 1a's whole point is every element's controls
-          // against the pinned card, and hover-highlight cannot reach into
-          // a shut drawer. The toggle guard below puts a closed one back.
-          sec.open = true;
+          // Closed to start, foldable like every other section (operator's
+          // ask, 2026-08-18 — 1a forced them all open and the page arrived
+          // as one long wall). Clicking an element on the preview card
+          // still reaches inside: the spot handler opens the block it owns.
           $('cardCol').appendChild(sec);
         });
         return;
@@ -336,15 +353,6 @@
     $('cardTabEmbed').onclick = () => setCardTab('embed');
   }
 
-  // The card page's blocks are always open (see layoutPanel); this puts a
-  // closed one straight back, whichever path shut it — the summary click,
-  // or the search teardown folding what it had opened.
-  document.addEventListener('toggle', (e) => {
-    const sec = e.target;
-    if (sec && sec.classList && sec.classList.contains('cardblock')
-        && !sec.open) sec.open = true;
-  }, true);
-
   // "N on page · M in embed" — the tab strip's live tally of the card's
   // toggleable elements, following the CHECKBOXES rather than what was
   // saved, so it always agrees with the preview beside it. The link-out
@@ -441,6 +449,9 @@
     const sec = row && row.closest('details.sec');
     if (!sec) return;
     if (cardTabOf(sec) !== cardTab) setCardTab(cardTabOf(sec));
+    // Blocks start closed now — a flash inside a shut drawer is invisible,
+    // so the click that named the element also opens its block.
+    sec.open = true;
     sec.classList.remove('flash');
     void sec.offsetWidth;   // restart the animation when re-clicked
     sec.classList.add('flash');
@@ -783,9 +794,21 @@
     missingProviderNote(note, 'llm');
 
     const stt = $('stt_provider').value || resolved.stt_provider;
+    // The Whisper ladder wears its trade-offs in the dropdown itself: the
+    // bare ids read as if "base" were the best one, and the operator chose
+    // it believing exactly that. Cloud model ids fall through unlabelled.
     fill('stt_model', (options.sttModels || {})[stt] || [], {
-      blankLabel: blankFor('stt_model', 'a model') });
+      blankLabel: blankFor('stt_model', 'a model'),
+      labels: {
+        'tiny.en': 'tiny.en — fastest, hears the least; half the CPU of base',
+        'base.en': 'base.en — light (default)',
+        'small.en': 'small.en — hears phone audio clearly better; ~3x base per turn',
+        'medium.en': 'medium.en — hears the most; ~8x base — test before trusting it',
+      } });
     $('stt_model').value = overrides.stt_model || '';
+    // The ladder describes the BUILT-IN models; behind a cloud pick it
+    // would explain four options that are not in the dropdown.
+    if ($('whisperLadder')) $('whisperLadder').hidden = stt !== 'local';
     const sttNote = $('sttSourceNote');
     if (sttNote) { sttNote.textContent = ''; missingProviderNote(sttNote, 'stt'); }
   }
@@ -907,6 +930,17 @@
     // of seconds here described something that almost never happens.
     setTag('tagOnair', resolved.avoid_on_air_overlap
       ? 'waits for quiet air' : 'talks over the broadcast');
+    // Live reads, like the dashboard cluster these doors share — and the
+    // tier row outranks both doors: with Go live off, two open doors lead
+    // to a route nobody may take, and "on" would be the tag lying.
+    const doorOn = (id) => ($(id) ? $(id).checked : !!resolved[id]);
+    setTag('tagAirdoors', permTier('allow_on_air') === 'off'
+      ? 'off — Go live is off under Caller permissions'
+      : doorOn('on_air_calls_enabled')
+        ? (doorOn('on_air_voicemail_enabled')
+            ? 'on · calls + voicemails' : 'on · calls only')
+        : doorOn('on_air_voicemail_enabled')
+          ? 'on · voicemails only' : 'off — both doors shut');
     setTag('tagTunein', resolved.tune_in_on_call
       ? 'on · ' + resolved.tune_in_volume + '%' : 'off — requests may be refused');
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
@@ -997,10 +1031,20 @@
     mb('modeLiveBtn', liveOn);
     mb('modeVmBtn', vmOn2);
     mb('modeChatBtn', chatOn);
+    // The Live-on-air cluster's two quick kills, painted like the Lines
+    // rows above them — same helper, same vocabulary.
+    const oacOn = $('on_air_calls_enabled')
+      ? $('on_air_calls_enabled').checked : !!resolved.on_air_calls_enabled;
+    const oavOn = $('on_air_voicemail_enabled')
+      ? $('on_air_voicemail_enabled').checked
+      : !!resolved.on_air_voicemail_enabled;
+    mb('modeOnAirCallsBtn', oacOn);
+    mb('modeOnAirVmBtn', oavOn);
     // The two doors hang off the line itself: while it is paused nothing
     // answers whichever way they point — the server refuses the mint — so
     // they grey out and stop taking presses until the line reopens.
-    ['modeLiveBtn', 'modeVmBtn', 'modeChatBtn'].forEach((id) => {
+    ['modeLiveBtn', 'modeVmBtn', 'modeChatBtn',
+     'modeOnAirCallsBtn', 'modeOnAirVmBtn'].forEach((id) => {
       if ($(id)) $(id).disabled = paused;
     });
 
@@ -1031,6 +1075,13 @@
     // caller-supplied reaches the innerHTML.
     const chip = (t) => '<span class="permchip">' + t + '</span>';
     const said = (t) => '<span>' + t + '</span>';
+    // The dump card exists exactly while the on-air door is open — unsaved
+    // picks included, like every read on this page. The panel does not
+    // poll, so the card is standing furniture for an armed feature; the
+    // press itself asks whether a phone-in is actually live.
+    if ($('onAirLine')) {
+      $('onAirLine').hidden = permTier('allow_on_air') === 'off';
+    }
     const liveNote = cnOf('modeLiveBtn');
     if (liveNote) {
       if (liveOn) {
@@ -1252,11 +1303,12 @@
     // The duck with a close and no open. A stored 0 beats the default and
     // nothing anywhere said so — the operator spent an evening on ducking
     // that "felt off in general" with the lead silently disabled.
-    // page 'calls', not 'safety': the `onair` section lives under Calls (see
-    // GROUPS), so this pinned the wrong chip in the picker and sent the
-    // operator to a page the section it names is not on.
+    // The page must follow the `onair` section wherever GROUPS files it —
+    // 'calls' once pinned the wrong chip in the picker, and since 0.97.81
+    // the section lives on the On air page. A test walks every item here
+    // against the schema now, which is how this move was caught.
     if (on('avoid_on_air_overlap') && num('on_air_handover_secs') === 0) {
-      items.push({ page: 'calls', group: 'onair',
+      items.push({ page: 'air', group: 'onair',
                    label: 'Set the hand-over lead',
                    note: 'overlap protection is on but the lead is 0 — the DJ '
                      + 'is cut off the instant the station speaks, with no '
@@ -1772,7 +1824,10 @@
       }
     } finally {
       if (btn) btn.disabled = false;
-      paintDash();
+      // paintTags rather than paintDash: the Doors-to-air section tag reads
+      // the same two switches these buttons flip, and paintTags ends by
+      // calling paintDash anyway.
+      paintTags();
       applyVisibility();
       markClean();
     }
@@ -1787,6 +1842,33 @@
     wire('modeLiveBtn', 'live_calls_enabled');
     wire('modeVmBtn', 'voicemail_enabled');
     wire('modeChatBtn', 'chat_enabled');
+    wire('modeOnAirCallsBtn', 'on_air_calls_enabled');
+    wire('modeOnAirVmBtn', 'on_air_voicemail_enabled');
+    // The broadcast-delay dump: posts immediately like every dash control,
+    // and the card's own note line carries the server's answer — dumped, or
+    // no phone-in live. Never through Save; a dump is not a form draft.
+    const dump = $('dumpBtn');
+    if (dump) dump.onclick = async () => {
+      const note = $('pullNote');
+      const resting = 'pulls whoever is live — the turn in hand never airs';
+      dump.disabled = true;
+      try {
+        const r = await afetch('/on-air/dump', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        note.textContent = !r.ok
+          ? (d.error || 'refused')
+          : d.ok ? 'pulled — the held turn will not air'
+                 : (d.note || 'no phone-in is on the air right now');
+      } catch (e) {
+        note.textContent = 'unreachable — try again';
+      } finally {
+        dump.disabled = false;
+        // The answer has its moment, then the card goes back to saying what
+        // it does — a stale "unreachable" sat on the operator's dashboard
+        // for a whole session (their screenshot, 2026-08-17).
+        setTimeout(() => { note.textContent = resting; }, 6000);
+      }
+    };
   }
   bindModeButtons();
 
@@ -2081,6 +2163,19 @@
     // The mirror rule: with the machine off, the card never offers it, so
     // the options that put its button up are equally moot.
     const MOOT_WITHOUT_VM = ['show_voicemail_button', 'embed_voicemail_button'];
+    // With both doors to air shut, the Go-live tier row and its two dials
+    // still stand under Caller permissions — a permission for a route that
+    // cannot happen (operator's ask, 0.97.81). Greyed, not hidden, the same
+    // shape as the two lists above: the operator can still read what comes
+    // back when a door reopens.
+    const oacOn = $('on_air_calls_enabled')
+      ? $('on_air_calls_enabled').checked : !!resolved.on_air_calls_enabled;
+    const oavOn = $('on_air_voicemail_enabled')
+      ? $('on_air_voicemail_enabled').checked
+      : !!resolved.on_air_voicemail_enabled;
+    const airShut = !oacOn && !oavOn;
+    const MOOT_WITHOUT_AIR = ['allow_on_air', 'on_air_max_seconds',
+                              'on_air_delay_secs'];
 
     // The line status outranks everything in the card section: paused (or
     // both modes off) the card shows its closed face whatever is set here,
@@ -2131,6 +2226,13 @@
           ? 'Voicemail is off (its own page, or the dashboard’s Lines) '
             + '— the card never offers the machine, whichever way this '
             + 'points.' : '';
+      }
+      if (MOOT_WITHOUT_AIR.indexOf(f) !== -1) {
+        anchor.classList.toggle('moot', airShut);
+        anchor.title = airShut
+          ? 'Both doors to air are shut (the On air page, or the dashboard’s '
+            + 'Live-on-air cluster) — nobody reaches the broadcast whatever '
+            + 'this grants.' : '';
       }
 
       let visible = true;
@@ -3208,6 +3310,13 @@
         // The Voicemail card reads the machine's who and where live too.
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'voicemail') {
           paintDash();
+        }
+        // The On air page's rows feed the dashboard cluster and their own
+        // section tag; paintTags ends by calling paintDash. The Caller
+        // permissions greying follows these switches too, but the
+        // applyVisibility call above already repaints that.
+        if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'airdoors') {
+          paintTags();
         }
         // The slot cards and the shelf's used-for chips read the sound
         // fields live — a URL being typed, or the set changing name.

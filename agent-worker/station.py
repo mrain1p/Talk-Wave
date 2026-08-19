@@ -236,6 +236,29 @@ class StationClient:
                     persona_id = p.get("id")
                     break
 
+        # The station sets an on-air language per persona (free text — "Turkish",
+        # "Türkçe"; empty means English). This dict is CONSTRUCTED rather than
+        # passed through, so every field not named here is dropped — and
+        # `language` was, which meant the prompt never carried it and the DJ had
+        # nothing to tell it what language it works in.
+        #
+        # It inferred one instead, from whatever was in the briefing. Heard on
+        # 2026-08-18: Brock, an English persona with no CJK anywhere in his own
+        # description, opened a call in Mandarin and stayed there — the station
+        # was rotating Mandarin-titled tracks, one show on the schedule is named
+        # in Chinese, and the previous presenter (who does work in Mandarin) had
+        # her on-air line quoted verbatim into his context. The caller spoke
+        # English throughout.
+        #
+        # Preferring /dj and falling back to the roster, because /dj is the live
+        # answer but times out often enough to matter (see the note above).
+        language = str(dj.get("language") or "").strip()
+        if not language and persona_id:
+            for p in personas:
+                if p.get("id") == persona_id:
+                    language = str(p.get("language") or "").strip()
+                    break
+
         resolved = {
             "id": persona_id or "default",
             "name": name or "the DJ",
@@ -244,6 +267,7 @@ class StationClient:
             # Carried on the persona so the prompt's station-name line has a
             # fallback when /dj timed out — see brain/assemble.py.
             "station": dj.get("station", ""),
+            "language": language,
         }
 
         if name:
@@ -292,9 +316,11 @@ class StationClient:
         Used to avoid the same persona talking on air and on the call at the
         same time. The words matter as much as the clock: the log records when
         an utterance started, never when it ended, so the guard sizes the end
-        from the words (call/air.speaking_secs). The station stamps `t` as the
-        clip is handed to the playout, so "since" runs from roughly when it
-        became audible.
+        from the words (call/air.speaking_secs). When `t` is stamped depends
+        on the station's generation: pre-1.8 stamps at handoff to the playout
+        (a couple of seconds before it is audible), 1.8+ stamps at air time
+        (its #1390). The guard's HANDOFF_LAG_SECS pad covers the older shape
+        and is deliberately kept for both — see call/air.py.
         """
         from datetime import datetime, timezone
 

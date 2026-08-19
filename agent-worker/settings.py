@@ -182,6 +182,25 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # the call, the show and the operator's memory of the call, and nothing
     # goes out on air to say it happened. Admin.
     "allow_never_play":   (None, "admin"),
+    # A caller's own conversation relayed to the station's air, one finished
+    # turn at a time — the phone-in. Off by default everywhere: a stranger's
+    # voice on the broadcast is a decision the operator makes, never a
+    # default. The window cap bounds how long one caller may hold the voice
+    # channel, because the station's own segments queue behind a live call.
+    "allow_on_air":       (None, "off"),
+    "on_air_max_seconds": (None, 240),
+    "on_air_delay_secs":  (None, 6),
+    # "clean" — full bandwidth at the clip's own rate, rumble out, levelled.
+    # The phone-band costume is the option, not the default: the first
+    # operator to hear themselves aired called it the worst their voice has
+    # ever sounded on a phone call (2026-08-18), and the default changed with
+    # their say-so. Deployments that never touched this get the new sound.
+    "on_air_caller_sound": (None, "clean"),
+    # "live" airs each finished turn seconds behind the room (the lag-by-one
+    # relay); "after" tapes the whole conversation and plays it once the call
+    # ends — the operator's ask (2026-08-18), and the mode where PULL OFF AIR
+    # can kill the entire call before a word of it airs.
+    "on_air_call_mode": (None, "live"),
 
     # Broadcast hygiene, applied to every line on its way to the speaker —
     # independent of provider, model, or whether the prompt was obeyed.
@@ -245,6 +264,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # voicemail on is a voicemail-only line; off with voicemail off is a
     # closed line that says so.
     "live_calls_enabled":    (None, True),
+    # The Live-on-air cluster's two quick kills, one per door. They narrow
+    # allow_on_air (the tier row stays the master): the dashboard flips
+    # these without touching who may use the feature. On by default so
+    # opening the tier row lights both doors at once.
+    "on_air_calls_enabled":    (None, True),
+    "on_air_voicemail_enabled": (None, True),
     # The master switch, then when the machine answers. voicemail_when used
     # to carry both jobs with its 'never' option, and the operator read the
     # section as having no on/off at all.
@@ -501,6 +526,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # a public https tune_in_url the player would open onto silence behind
     # TLS.
     "swipe_player":       (None, False),
+    # The card's own listener count and track heart. ON by default, unlike
+    # the player: they are one line of text and one small button on furniture
+    # the card already has, not a new surface — and both degrade to nothing
+    # when the station won't say (no count) or the track line is empty (no
+    # heart).
+    "show_listener_count": (None, True),
+    "show_track_like":    (None, True),
     # Which face the page opens on. The player as the front page makes the
     # widget the station's app with a phone behind it; off keeps the phone
     # first. Audio still waits for the browser's one allowed tap either way.
@@ -696,6 +728,7 @@ TIER_OFF = "off"
 TIERED_PERMISSIONS = (
     "allow_voicemail",
     "allow_chat",
+    "allow_on_air",
     "allow_requests",
     "allow_library_search",
     "allow_sound_search",
@@ -772,18 +805,35 @@ def permission_reaches(setting: Any, tier: str) -> bool:
 def tier_from_room(room_name: str) -> str:
     """The caller's tier, read back out of the room the token was signed for.
 
-    `callin-<o|g|a>-<12 hex>`. Anything else — a probe room, a room minted by
-    a version of the token server that predates this, a name from somewhere
-    else entirely — comes back as the LEAST trusted tier. Failing closed is
-    the only safe direction: the alternative is an unrecognised name handing a
-    stranger the operator's own permissions.
+    `callin-<o|g|a>-<12 hex>`, with an optional `l` behind the tier letter
+    (`callin-gl-…`) marking an on-air call — see on_air_from_room. Anything
+    else — a probe room, a room minted by a version of the token server that
+    predates this, a name from somewhere else entirely — comes back as the
+    LEAST trusted tier. Failing closed is the only safe direction: the
+    alternative is an unrecognised name handing a stranger the operator's own
+    permissions.
     """
     parts = str(room_name or "").split("-")
     if len(parts) >= 3 and parts[0] == "callin":
         for tier in TIERS:
-            if parts[1] == tier[0]:
+            if parts[1] in (tier[0], tier[0] + "l"):
                 return tier
     return "open"
+
+
+def on_air_from_room(room_name: str) -> bool:
+    """Whether this call was minted as a live-on-air call.
+
+    Rides the room NAME for the same two reasons the tier does: the name is
+    inside the signed grant, so a caller cannot put themselves on air without
+    a token nobody minted them, and the worker knows it the instant the job
+    starts. The flag is one letter behind the tier so tier_from_room's exact
+    matching still fails closed on anything unrecognised.
+    """
+    parts = str(room_name or "").split("-")
+    return (len(parts) >= 3 and parts[0] == "callin"
+            and len(parts[1]) == 2 and parts[1][1] == "l"
+            and parts[1][0] in {t[0] for t in TIERS})
 
 
 def permissions_for(cfg: dict, tier: str) -> dict:
@@ -855,6 +905,16 @@ SUPERGROUPS = [
     ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
     ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
     ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
+    # The on-air feature's own page (operator's ask, 2026-08-18). The two
+    # quick kills were dashboard-only controls with no settings row anywhere,
+    # the ducking pair sat under Calls, and the soundbite's airing backend
+    # under Voicemail — so "may a caller reach the broadcast" was answered
+    # across three pages. The tier row and its two dials deliberately STAY
+    # under Caller permissions with every other permission; the panel greys
+    # them while both doors here are shut. The id is "air", not "onair" —
+    # that string is already the ducking section's group id, and one word
+    # holding two addresses is the Transmission lesson again.
+    ("air",       "On air",               "The broadcast door — what goes out live, and on whose say-so."),
     ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
     ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
 ]
@@ -915,10 +975,6 @@ GROUPS = [
     # closing settings were. A fair question deserves a section.
     ("turns",    "calls",  "Turn-taking",        "When the DJ decides you've finished."),
     ("closing",  "calls",  "Closing the call",   "How a call ends, in character."),
-    # Was inside Caller permissions, where it read as a fourth station-wide
-    # permission. It is not a permission at all: it decides what happens when
-    # the call DJ and the on-air DJ are the same voice.
-    ("onair",    "calls",  "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
     ("tunein",   "calls",  "Tune the caller into the station",
      "Whether the caller counts as a listener, and whether they hear the broadcast."),
     ("callback", "calls",  "Back-to-air commentary", "One line after the call — nothing more."),
@@ -932,6 +988,14 @@ GROUPS = [
     # called Voicemail under a page called Voicemail, which read as a stutter.
     ("voicemail", "voicemail", "The machine",     "When the booth can't pick up, the machine does."),
     ("chat",      "texts",  "Text line",          "Typed chat with whoever is on air — same brain, no microphone."),
+
+    # The On air page: the phone-in's reach for the broadcast, gathered from
+    # the three pages it was scattered across. Ducking has moved twice now —
+    # out of Caller permissions (it read as a fourth station-wide permission,
+    # and it is not a permission at all), then out of Calls: it is about the
+    # one broadcast voice, not the call, so it lives beside the doors.
+    ("airdoors", "air",    "Doors to air",        "The phone-in's two doors — close one without touching the other."),
+    ("onair",    "air",    "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
 
     # The Players page reorganized to the operator's design handoff ("Players
     # Settings Reorganization", direction 1a): one block per card ELEMENT, in
@@ -997,21 +1061,12 @@ SCHEMA: dict[str, dict] = {
 
     # --- ears ---
     "stt_provider": dict(group="ears", kind="select", label="Provider",
-        help="Two real choices: the BUILT-IN Whisper, which is the default and "
-             "needs nothing — it is in this container already, no key, no "
-             "network — or a CLOUD ear, which buys word-by-word captions and "
-             "better accuracy on names, most noticeable from a phone in a noisy "
-             "room. Which cloud you pick is only a question of which key you "
-             "have: OpenAI and Google reuse the key you already entered under "
-             "Brains, so they cost you nothing new. Deepgram is a separate "
-             "company with its own account and its own key, in the box below "
-             "— it is listed because it is the most accurate of the three on "
-             "phone audio, not because anything here needs it."),
+        help="Built-in needs nothing and pays in CPU; a cloud ear needs a "
+             "key and hears better — the notes above spell out the trade."),
     "stt_model": dict(group="ears", kind="select", label="Model",
-        help="For the built-in Whisper: base.en is the default and right for "
-             "phone-quality audio; tiny.en is faster on weak CPUs, small.en "
-             "and medium.en hear names better but cost real CPU time per "
-             "turn — test a call before trusting medium.en on a NAS."),
+        help="Smallest to largest — base.en is the default because it is "
+             "light, not because it hears best. The ladder under the field "
+             "spells out each model's trade."),
 
     # --- voice ---
     "tts_mode": dict(group="voice", kind="select", label="Backend",
@@ -1141,6 +1196,60 @@ SCHEMA: dict[str, dict] = {
              "rather than failing. Same 15–720 minute window as a takeover and it "
              "ends by itself. Quieter than a takeover, which is the risk: a pinned "
              "show announces itself on air, a narrowed playlist doesn't."),
+    "allow_on_air": dict(group="perms", kind="select", tiered=True, admin=True,
+        label="Go live on the station",
+        help="The phone-in: the caller's own conversation with the DJ airs on the "
+             "station while it happens, one finished turn at a time, about one "
+             "exchange behind the room. The widget grows a Live-on-air toggle when "
+             "a caller may choose it. Needs the mixer's telnet door (the same "
+             "network stanza as the studio's caller-voice) — without it the call "
+             "quietly stays private and the transcript says why. The turn still "
+             "in hand is a working broadcast delay: it can be dumped before it "
+             "airs."),
+    "on_air_max_seconds": dict(group="perms", kind="number", admin=True,
+        label="On-air window (s)",
+        needs=("allow_on_air", TIERS),
+        help="How long one caller may hold the broadcast before the relay signs "
+             "them off air and the call carries on privately. The station's own "
+             "segments queue behind a live call, so shorter is kinder to the "
+             "programme. Blank = 240."),
+    "on_air_delay_secs": dict(group="perms", kind="number", admin=True,
+        label="On-air delay (s)",
+        needs=("allow_on_air", TIERS),
+        help="Your take-back window: how long a finished turn is held before "
+             "it airs, and roughly how far the broadcast runs behind the call. "
+             "PULL OFF AIR can kill any turn inside this window. A flowing "
+             "conversation airs faster than this on its own; the number is the "
+             "ceiling, not a pause added to every turn. 2–30 seconds; blank "
+             "= 6. It can't be 0 — a turn has to finish before the mixer can "
+             "fetch it, so truly live isn't possible on this transport, and 0 "
+             "would also mean no pull window. And whatever you set, a caller "
+             "with the station playing in earshot hears their own turns come "
+             "back a stream-buffer later (~22s on most setups) — a longer "
+             "delay moves that further out, it doesn't cause it."),
+    "on_air_caller_sound": dict(group="perms", kind="select", admin=True,
+        label="Caller sound on air",
+        needs=("allow_on_air", TIERS),
+        help="How a caller's voice is dressed before it airs. Clean keeps "
+             "their real voice — full bandwidth, just levelled and de-rumbled "
+             "— and is the default because the phone costume reads as bad "
+             "audio on a modern stream, not as a phone. Phone is the "
+             "300–3400 Hz radio-caller costume for stations that want that "
+             "look on purpose. One dial for every caller voice that reaches "
+             "the air: live phone-ins and the soundbite studio's recordings "
+             "alike, and the studio's review card previews the sound that "
+             "would actually go out."),
+    "on_air_call_mode": dict(group="perms", kind="select", admin=True,
+        label="When the call airs",
+        needs=("allow_on_air", TIERS),
+        help="Live airs each finished turn a few seconds behind the room — "
+             "radio's classic broadcast delay, with PULL OFF AIR able to kill "
+             "any turn inside the on-air delay window. After the call tapes "
+             "the whole conversation and plays it the moment they hang up: "
+             "the DJ introduces it, the exchange runs in order, and PULL OFF "
+             "AIR any time during the call kills the entire tape before a "
+             "word of it airs. The on-air window still caps how much airs "
+             "either way."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good",
         help="Puts the track playing now on the station's never-play list: out of the "
@@ -1525,6 +1634,18 @@ SCHEMA: dict[str, dict] = {
              "in, so behind TLS that must be the station's public https "
              "stream. This page and the installed app only, never an embed. "
              "Starting a call or a recording stops the music."),
+    "show_listener_count": dict(group="phone", kind="check",
+        label="Listener count on the card",
+        help="The card's ON AIR line adds how many are tuned in — the same "
+             "count the station's own player shows. Only appears when the "
+             "station reports at least one listener, so a quiet hour never "
+             "paints a zero at a caller deciding whether to ring."),
+    "show_track_like": dict(group="phone", kind="check",
+        label="Heart button on the card",
+        help="A small heart beside the record on air — the same public like "
+             "any listener page sends, through the same per-listener limits "
+             "the station already enforces. Works with or without the "
+             "swipe-up player."),
     "start_on_player": dict(group="phone", kind="check",
         label="Start on the player",
         needs=("swipe_player", True),
@@ -1692,6 +1813,17 @@ SCHEMA: dict[str, dict] = {
              "Voicemail below — the two switches together are the line's "
              "mode: phone, phone with a machine, voicemail-only, or "
              "closed."),
+    "on_air_calls_enabled": dict(group="airdoors", kind="check",
+        label="Calls may go on air",
+        help="The phone-in door: off, the ON AIR route stops offering live "
+             "calls without touching who may use the route or the voicemail "
+             "door, and a phone-in already on the air stops at its next clip. "
+             "The dashboard's Live-on-air cluster flips this same switch."),
+    "on_air_voicemail_enabled": dict(group="airdoors", kind="check",
+        label="Voicemails may go on air",
+        help="The message door's same kill: off, the ON AIR route stops "
+             "offering the studio and every message is a private one for "
+             "you."),
     "voicemail_greeting_mode": dict(group="voicemail", kind="select",
         label="Greeting comes from",
         help="Staged clips answer instantly. 'Fresh each call' writes a new "
@@ -1716,21 +1848,20 @@ SCHEMA: dict[str, dict] = {
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
     "voicemail_flow": dict(group="voicemail", kind="select",
-        label="The line is",
-        help="The answering machine takes a message as text — no audio is "
-             "ever kept. The soundbite studio records the caller, shows them "
-             "the transcript and what sending will do, and puts the approved "
-             "take on air with the DJ around it; the audio is deleted the "
-             "moment it airs. Both flows answer to the same door: the "
-             "Voicemail permission under Permissions decides which callers "
-             "may leave a message."),
+        label="Without the switch, the line is",
+        help="Only matters while the ON AIR | OFF AIR switch is NOT on the "
+             "card (the Go-live row off, or its voicemail door killed on "
+             "the dashboard). With the switch up, the caller chooses: OFF "
+             "AIR is the machine (a private message as text, no audio "
+             "kept), ON AIR is the soundbite studio (record, review, aired "
+             "with the DJ around it, audio deleted the moment it airs)."),
     # vm_mixer_telnet and vm_air_base_url deliberately have no schema entry —
     # the station_mcp_url ruling (0.10.80, operator's) applied again on
     # 2026-08-17, the operator's own words: "if it's derived couldn't we just
     # remove it". Both derive correctly on any ordinary deployment
     # (broadcast:1234; http://HOST_IP:8100 — the probe-proven URL), and the
     # rare exception overrides them in settings.json or the environment.
-    "vm_air_backend": dict(group="voicemail", kind="select",
+    "vm_air_backend": dict(group="airdoors", kind="select",
         label="A soundbite airs as",
         help="'The DJ reads it' works on any deployment — plain station "
              "admin API. 'The caller's own voice' plays the recording on the "
@@ -1972,6 +2103,14 @@ STATIC_CHOICES = {
     "voicemail_flow": [
         ("machine", "Answering machine — a message as text, no audio kept"),
         ("studio", "Soundbite studio — record, review, send to air"),
+    ],
+    "on_air_caller_sound": [
+        ("clean", "Clean — their real voice, levelled (default)"),
+        ("phone", "Phone — the 300–3400 Hz radio-caller costume"),
+    ],
+    "on_air_call_mode": [
+        ("live", "Live — each turn airs seconds behind the room (default)"),
+        ("after", "After the call — the whole conversation airs at hangup"),
     ],
     "vm_air_backend": [
         ("dj-reads", "The DJ reads it — works everywhere"),
@@ -2265,7 +2404,11 @@ def tts_base_urls() -> dict:
 STT_MODEL_CHOICES = {
     # In-process faster-whisper. No container, no key, no network — and CPU
     # only, which matters because the GPU is fully committed to VibeVoice.
-    "local": ["base.en", "tiny.en", "small.en", "medium.en"],
+    # Smallest to largest, and the ORDER is part of the documentation: the
+    # list used to lead with base.en (the default), which read as "the best
+    # one" — the operator picked it believing exactly that (2026-08-17).
+    # The panel labels each with its trade; keep the two in step.
+    "local": ["tiny.en", "base.en", "small.en", "medium.en"],
     "deepgram": ["nova-3", "nova-2", "nova-2-phonecall"],
     # Uses the same OpenAI key as the LLM/TTS — the practical choice when
     # there's no Deepgram account, since Google STT needs a GCP service
