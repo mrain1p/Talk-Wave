@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheMapTheOperatorNavigatesBy,
     TestTheOnAirDelayIsTheOperatorsDial,
     TestTheOnAirCallerSoundSetting,
     TestTheQuietStationSetting,
@@ -71,6 +72,8 @@ from tests.test_http import (  # noqa: F401
     TestTheMintGivesTheWorkerAHeadStart,
 )
 from tests.test_widget import (  # noqa: F401
+    TestNothingIsReachableOnlyByRecognisingIt,
+    TestThePanelSaysWhereThingsAre,
     TestTheCallerIsNotRescuedMidAnnouncement,
     TestTheCardOnlyOffersDoorsTheTierOpens,
     TestTheStationPlayerKnowsItsPlace,

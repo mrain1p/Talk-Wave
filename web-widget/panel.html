@@ -103,6 +103,30 @@
       </div>
     </header>
 
+    <!-- THE INDEX (0.98.20). Every setting in the panel, in one table, with
+         the page and section that hold it and its value right now — the one
+         complete answer to "I know this exists, where is it". The finder
+         answers the question you can already phrase; this answers the one
+         you cannot, which is what 188 settings behind 34 folded sections
+         across nine pages otherwise leaves you no way to ask.
+
+         Built from the schema by paintAllSettings, so it can never list a
+         setting that no longer exists or miss one that was just added. A
+         table is a surface: border, radius, header band, row hover. -->
+    <div class="allwrap" id="allWrap">
+      <p class="hint wide" id="allNote">Every setting the panel has, and where
+        it lives. Click a row to open it where it stands. Use the finder above
+        to narrow the panel itself.</p>
+      <div class="alltablewrap">
+        <table class="alltable">
+          <thead>
+            <tr><th>Setting</th><th>Where</th><th>Now</th></tr>
+          </thead>
+          <tbody id="allBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- The first-run password card retired at 0.10.77 (operator's call):
          the dashboard's NOTIFICATIONS column carries the ask now, with a
          jump to the Access section that holds the one implementation. -->
@@ -138,17 +162,35 @@
          hiding under the band. -->
     <div class="settingsbar" id="settingsBar">
       <p class="hint wide" id="searchMiss" hidden>Nothing matches — the search
-        reads every label, help line and section name, on every page. Try the
-        thing's own noun (“beep”, “password”, “skip”), or clear it and pick a
-        page below.</p>
-      <!-- The page picker: one chip per page, built from the schema. It was a
-           jump bar over one six-screen scroll; the chips now TURN to a page
-           rather than scrolling to a band, and the current page's chip wears
-           the you-are-here mark. -->
+        reads every label, help line, button and section name, on every page,
+        plus each setting's own synonyms. Try the thing's own noun (“beep”,
+        “password”, “skip”), or clear it and pick a page below.</p>
+      <!-- How wide the hit is, and WHERE. A results view hides the page
+           bands, so without this line a search says "The machine" and stops
+           — the operator learns the answer and nothing about the layout.
+           Painted by bindSettingsSearch in panel.js. -->
+      <p class="searchcount" id="searchCount" hidden></p>
+      <!-- NARROW SCREENS ONLY. Banding the picker made all eleven pages
+           visible on a phone (two of eleven before), but five wrapped rows
+           is 208px of an 812px viewport held sticky forever. So on a phone
+           the map folds behind one row that names where you are, and opens
+           to the whole thing; on a desktop this button does not exist and
+           the bands are always out. -->
+      <button type="button" class="navtoggle" id="navToggle"
+              aria-expanded="false" aria-controls="panelNav">
+        <span class="ntk">Pages</span>
+        <span class="ntv" id="navToggleWhere">Dashboard</span>
+        <span class="ntc" aria-hidden="true">▾</span>
+      </button>
+      <!-- The page picker: one chip per page, built from the schema and laid
+           out in the bands NAV_BANDS names. It was a jump bar over one
+           six-screen scroll; the chips now TURN to a page rather than
+           scrolling to a band, and the current page's chip wears the
+           you-are-here mark. -->
       <nav class="panelnav" id="panelNav" aria-label="Settings pages"></nav>
     </div>
 
-    <!-- The dashboard. The kill switch lives here — out of Usage controls and
+    <!-- The dashboard. The kill switch lives here — out of the call caps and
          into the one place it can be reached without opening anything, because
          three sections and one disclosure down is the wrong depth for the
          control you want when something is going wrong right now.
@@ -767,8 +809,9 @@
     </details>
 
     <details data-group="usage" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Usage controls</span><em class="secblurb"></em><span class="tag" id="tagUsage"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Call limits</span><em class="secblurb"></em><span class="tag" id="tagUsage"></span></summary>
       <div class="body">
+        <p class="doorstate" id="doorStateCalls" hidden></p>
         <p class="hint wide" style="margin-top:0">Every call costs model time and
           airtime, and one open tab could dial in a loop. Set any to
           <strong>0</strong> to turn it off. Callers see a friendly “lines are
@@ -1036,7 +1079,7 @@
     </details>
 
     <details data-group="tunein" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Tune the caller into the station</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Station audio in the call</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="tune_in_on_call" /> Tune the caller in during the call</label>
         <label class="check"><input type="checkbox" id="tune_in_audible" /> Pipe the broadcast into the call</label>
@@ -1224,8 +1267,9 @@
          and reports each result, because a persona whose voice the backend
          does not have fails and the operator has to know which one. -->
     <details data-group="voicemail" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">The machine</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Voicemail machine</span><em class="secblurb"></em><span class="tag" id="tagVoicemail"></span></summary>
       <div class="body">
+        <p class="doorstate" id="doorStateVm" hidden></p>
         <div class="row">
           <label for="voicemail_when">Answer with voicemail</label>
           <select id="voicemail_when"></select>
@@ -1291,6 +1335,7 @@
     <details data-group="chat" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Text line</span><em class="secblurb"></em><span class="tag" id="tagChat"></span></summary>
       <div class="body">
+        <p class="doorstate" id="doorStateChat" hidden></p>
         <div class="row narrow">
           <label for="chat_idle_minutes">Close after quiet (min)</label>
           <input type="number" id="chat_idle_minutes" min="5" max="240" step="5" />
@@ -1379,14 +1424,14 @@
          The wrapper is static markup, but the sections inside it are
          ordinary details.sec: layoutPanel() moves the card supergroup's
          sections INTO #cardCol (schema order, as everywhere else) and parks
-         this wrapper where the supergroup band sits. Which tab a section
+         this wrapper where the supergroup band sits. Which BAND a section
          belongs to is CARD_TABS in panel.js — the schema still owns the
-         order, the tabs only decide which sections are on screen. -->
+         order, the bands only caption the runs. The three tab buttons that
+         used to live here retired at 0.98.20: they hid two thirds of the
+         page and bought a fourth level of depth on the one page that could
+         least afford it (paintCardBands writes the captions instead). -->
     <div class="cardwrap" id="cardWrap">
-      <div class="cardtabs" role="tablist" aria-label="Players settings tabs">
-        <button type="button" class="cardtab on" id="cardTabCard">The card</button>
-        <button type="button" class="cardtab" id="cardTabBehaviour">Behaviour</button>
-        <button type="button" class="cardtab" id="cardTabEmbed">Embed</button>
+      <div class="cardhead">
         <!-- "N on page · M in embed" — follows the checkboxes live, before
              any save, so it counts what the preview is showing. -->
         <span class="cardcounts" id="cardCounts"></span>
@@ -1658,7 +1703,7 @@
     </details>
 
     <details data-group="surface" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">Surface</span><em class="secblurb"></em><span class="tag" id="tagSurface"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Card colours</span><em class="secblurb"></em><span class="tag" id="tagSurface"></span></summary>
       <div class="body">
         <div class="row" data-spot="card">
           <label for="widget_theme">Colours</label>
@@ -1714,7 +1759,7 @@
          card's line box (see the focus handling in panel.js) — which is why
          these sit together instead of in a 14-field list at the page's end. -->
     <details data-group="linebox" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">The line box</span><em class="secblurb"></em><span class="tag" id="tagLinebox"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Call status wording</span><em class="secblurb"></em><span class="tag" id="tagLinebox"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">Blank keeps the built-in.
           <code>{station}</code> <code>{dj}</code> <code>{show}</code>
@@ -1764,7 +1809,7 @@
     <!-- EMBED tab. Opening it flips the preview to Embed mode (panel.js), so
          the frame options are seen on the surface they shape. -->
     <details data-group="embed" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">The frame</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Embed frame</span><em class="secblurb"></em><span class="tag">iframe snippet</span></summary>
       <div class="body">
         <label class="check"><input type="checkbox" id="embed_card_outline" /> Draw the card outline</label>
         <div class="row">

@@ -1528,8 +1528,14 @@ class TestTheFinderIsNotAUsernameField(unittest.TestCase):
 
     def test_an_unfocused_fill_is_discarded(self):
         js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        # The guard has to live in the finder's own handler, not merely
+        # somewhere in a 5000-line file — but "within N characters of the
+        # binder" is a measurement of how long the function happens to be,
+        # and 0.98.20 broke this test by growing it, with the guard still
+        # sitting right there in oninput. Read to the END of the IIFE instead.
         start = js.index("bindSettingsSearch")
-        self.assertIn("document.activeElement !== box", js[start:start + 4500],
+        end = js.index("})();", start)
+        self.assertIn("document.activeElement !== box", js[start:end],
                       "the finder must discard a fill that arrives without "
                       "focus — autofill does not listen to attributes alone")
 
@@ -3024,3 +3030,122 @@ class TestTheCardOffersTheCountAndTheHeart(unittest.TestCase):
         # listeners, so a pressed heart never sends a second request.
         block = self.js.split("$('npHeart').addEventListener")[1][:600]
         self.assertIn("if (cardLiked) return", block)
+
+
+class TestNothingIsReachableOnlyByRecognisingIt(unittest.TestCase):
+    """The 0.98.20 review's sharpest finding: `live_calls_enabled`,
+    `voicemail_enabled` and `chat_enabled` are declared settings with real
+    labels, and they rendered in no section, matched no search and appeared
+    in no list built from the markup — their only control is a dashboard
+    card, so the only way to reach one was to recognise it. Each door's page
+    now says whether the door is open and names the switch that opens it.
+
+    The card stays the control. What is pinned here is that the LINE cannot
+    drift from the field it reads."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        cls.html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+
+    def _doors(self):
+        import re
+
+        block = self.js.split("const DOOR_STATES = [")[1].split("];")[0]
+        return re.findall(r"\['([a-z0-9_]+)', '([a-z0-9_]+)'", block, re.I)
+
+    def test_each_door_line_names_a_real_setting(self):
+        doors = self._doors()
+        self.assertEqual(len(doors), 3, "expected one line per door")
+        for element, field in doors:
+            self.assertIn(field, settings_store.SCHEMA,
+                          f"the {element} line reads a setting that does not exist")
+            self.assertIn(f'id="{element}"', self.html,
+                          f"{element} has no paragraph in panel.html to paint")
+
+    def test_the_line_says_the_switch_by_its_own_label(self):
+        # Naming it is the point: "Enable voicemail" and "Take text chats"
+        # appear nowhere else on screen, so without this the finder still
+        # could not match the words the schema calls these settings.
+        self.assertIn("SCHEMA.fields[field] || {}).label", self.js)
+
+    def test_a_paused_line_outranks_an_open_door(self):
+        # The kill switch outranks every door. A page whose door is on while
+        # the line is paused must not claim anything is answering.
+        block = self.js.split("function paintDoorStates")[1][:1800]
+        self.assertIn("'held'", block)
+        self.assertIn("paused", block)
+
+
+class TestThePanelSaysWhereThingsAre(unittest.TestCase):
+    """Before 0.98.20 the panel could tell you a setting existed and never
+    where it lived. Search hid the page bands on purpose, so a result read
+    "The machine" and stopped; nothing below page level had an address, so
+    `#turns` — the section's own id and the obvious guess — silently landed
+    on the dashboard; and there was no index of any kind. Each of the three
+    is one function, and each fails invisibly if it is removed."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        cls.html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_a_section_id_is_a_valid_address(self):
+        block = self.js.split("function currentPage")[1][:700]
+        self.assertIn("SCHEMA.groups || []).find", block,
+                      "a section id must resolve to the page holding it")
+        self.assertIn("function sectionFromHash", self.js)
+        self.assertIn("function revealSection", self.js)
+
+    def test_every_result_carries_its_page(self):
+        self.assertIn("const breadcrumb", self.js)
+        self.assertIn("crumb.className = 'crumb'", self.js)
+        # And only while searching: on its own page the crumb would repeat
+        # the band standing directly above it.
+        self.assertIn(".panelpage .crumb { display: none; }", self.css)
+        self.assertIn(".panelpage.finding .crumb", self.css)
+
+    def test_the_finder_reads_more_than_the_rows(self):
+        # "password" hid the Access section, because the filter read four row
+        # classes and the Change-password control is a button in a testrow.
+        self.assertIn("function secHay", self.js)
+        self.assertIn("function ownText", self.js)
+        # Two strengths of section hit: naming the section opens it, finding
+        # the word in its prose only brings it onto the results page.
+        self.assertIn("hay.name", self.js)
+        self.assertIn("hay.prose", self.js)
+        # Word boundaries: "rate" used to return eight sections through
+        # moderate, separate and accurate.
+        self.assertIn("function hitsWord", self.js)
+        # And the schema's synonyms, which is what makes "avatar" land.
+        self.assertIn("(m.alias || '')", self.js)
+
+    def test_a_result_whose_switch_is_off_says_so(self):
+        self.assertIn("function markPrerequisite", self.js)
+        self.assertIn("needsOff", self.js)
+        self.assertIn("attr(data-needs-off)", self.css)
+        # The governing row is pulled into the results beside its dependants
+        # — a needle for the dependant never matches the switch.
+        self.assertIn("const gov = need && rowOfField(need[0]);", self.js)
+
+    def test_one_reader_decides_whether_a_prerequisite_is_met(self):
+        # applyVisibility owned the only copy until the finder needed the
+        # same answer. Two copies of this drift the first time a new `needs`
+        # shape is added.
+        self.assertIn("function needsMet", self.js)
+        self.assertEqual(self.js.count("function needsMet"), 1)
+
+    def test_the_index_is_built_from_the_schema(self):
+        self.assertIn('id="allBody"', self.html)
+        self.assertIn("function paintAllSettings", self.js)
+        # From SCHEMA.groups, so it can neither miss a new setting nor list
+        # one that has gone.
+        block = self.js.split("function paintAllSettings")[1][:1500]
+        self.assertIn("SCHEMA.groups.forEach", block)
+        self.assertIn("PAGE_TITLES[g.super]", block)
+
+    def test_a_one_section_page_is_the_section(self):
+        self.assertIn("function soloPage", self.js)
+        self.assertIn("secs.length !== 1", self.js)
+        self.assertIn("details.sec.solo > summary", self.css)

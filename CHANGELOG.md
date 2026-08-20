@@ -3,6 +3,41 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.20
+
+The settings panel had 188 settings behind 34 folded sections across nine pages, and at rest it showed you none of them. This is the pass that makes them findable: the finder becomes an index, every section gets an address, and the pages get a shape.
+
+### The finder stopped hiding the answer
+
+- **Searching "password" hid the section that owns the password.** The filter read four row classes and nothing else, and the Change password control is a button in a testrow — so no row matched, the summary did not carry the word either, and the Access section was set to `display: none` while the operator watched. Three sections made entirely of prose and buttons could never appear in a result at all. The whole section is searched now: its prose, its buttons, its testrows and its name.
+- **A result never said which page it was on.** Search hides the page bands on purpose, so typing "voicemail" returned nine sections labelled "The machine", "Doors to air", "The line box" — twenty settings spread over eight pages — with nothing to say where any of them lived, and clearing the box taught you nothing. Every result now carries its page ahead of the section name, and a line above the results says how wide the hit is and names the pages it reaches.
+- **The words an operator actually types now land.** "color" found nothing while "colour" found two; "avatar" found nothing though the field is called `avatar_style`; "mute", "logo", "spam", "timeout" and "language" all found nothing at all. 58 settings and 27 sections carry search-only synonyms now, and the finder reads field ids as well as labels.
+- **And the words it should not match stopped matching.** "rate" lit up eight sections through *moderate*, *separate* and *accurate*. A needle has to start a word now, so "volu" still finds volume and "rate" no longer finds accurate.
+- **A result whose switch is off says so, and brings the switch with it.** 41 of the 188 settings sit behind a prerequisite, and search re-showed them with no marker while filtering the switch that governs them OUT — so you could find "Length (words)", set it, save, and watch nothing happen, because Back-to-air commentary was off and never appeared beside it. The row is dimmed and marked with the switch's name, and the switch is pulled into the results next to it.
+
+### Everything in the panel has an address
+
+- **`/settings#turns` used to land on the dashboard.** Only page ids were valid in the URL, so a section — the obvious thing to link to, and the id the section already has — silently fell through with nothing open and nothing said. A section id now turns to its page, opens the fold and scrolls to it, on arrival as well as on a later click, and every jump inside the panel leaves that address behind for a bookmark or for somebody else.
+- **The cross-references written into help text are links.** Fourteen of them said things like "under Caller permissions" and "on the On air page" — each one a hand-written apology for a jump the operator then made on foot. They go there now, including the one inside the Doors-to-air state chip.
+- **A new All settings page lists every setting once,** with the page and section holding it and its value right now, and a click opens it where it stands. The finder answers the question you can already phrase; this is for the one you cannot.
+
+### The eleven pages have a shape
+
+- **On a phone the page picker showed two of eleven pages.** Eleven equal chips in one non-wrapping scroller needed 1017px in a 343px window, and the other nine sat behind a gesture with no scrollbar — on the only map of the panel there is. The picker now runs in five bands (Start, Set up, The conversation, The card, Check), which also says what kind of page each one is before you open it. On a phone the whole map folds behind one row naming where you are, so the sticky header costs 46px instead of 208.
+- **Five sections took their nouns back.** A folded section shows its name and nothing else, so a name that only decodes once you know your way around is the wrong way round. "The machine" is Voicemail machine, "The line box" is Call status wording, "Surface" is Card colours, "The frame" is Embed frame, and "Tune the caller into the station" is Station audio in the call. The blurbs underneath keep the voice.
+- **The Transmission page is The booth.** The 2026-08-13 note said the word meant two things on one panel — this page and the dashboard's switch cluster — and that if it ever read ambiguously the cluster was the one to rename. On review the cluster is the honest one: it really is three switches that open and close the line. This page holds what the DJ knows, how it speaks and what it writes down, which is what `docs/settings.md` has called the booth all along.
+- **Voicemail and Texts stopped being pages you open to find one fold.** Each held exactly one section, with nothing for that fold to be folded away from. A one-section page is the section now: open on arrival, no chevron, the summary kept for its blurb and its state chip.
+- **The Players page lost its tabs and kept its groups.** Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players, Behaviour, On the caller's phone, row — where every other setting in the panel is three. The same three groups are ruled captions down one column.
+
+### Two placements that broke the panel's own rule
+
+- **Call limits moved to Calls, and stopped being called Usage controls.** The same idea was filed in three different places depending on the door: six chat caps on the Texts page, voicemail's one ceiling on Voicemail, and the five call caps two pages away under Permissions & safety. By the rule this panel is cut on — the door owns the answer — the call caps were the odd ones out. Permissions & safety is left as Access, Caller permissions and Speech hygiene.
+- **The three door switches were settings you could only reach by recognising them.** "Take live calls", "Enable voicemail" and "Take text chats" are declared with labels, and they rendered in no section, matched no search and appeared in no list built from the markup — their only control is a dashboard card. The card stays the control; each door's page now opens with a line saying whether the door is open, what that means, and the name of the switch on the dashboard that changes it. A paused line reads as held on all three, in amber, because the kill switch outranks every door.
+
+### Also
+
+- **The Access section's own explanation was never on screen.** Two hidden fields share that row — the door and whether a code elevates — and the second silently overwrote the first's help, so the longest explanation on the page had been invisible. First writer wins now.
+
 ## 0.98.19
 
 One fix on the card, and it is one the operator hit while listening: the volume you set stays where you set it.

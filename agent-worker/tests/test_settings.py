@@ -1133,3 +1133,77 @@ class TestTheQuietStationSetting(_TempStores):
         self.assertEqual(hush.scope(settings_store.load()), "off")
         settings_store.save({"on_air_caller_sound": ""})
         self.assertEqual(settings_store.load()["on_air_caller_sound"], "clean")
+
+
+class TestTheMapTheOperatorNavigatesBy(_TempStores):
+    """0.98.20 rebuilt the panel's information architecture after a review
+    measured it: 188 settings behind 34 folded sections across nine pages,
+    with nothing on screen saying what existed. Three of the things it added
+    are only correct if they stay in step with the schema, and each one fails
+    SILENTLY when it does not — a picker band nobody named drops a page into
+    an unlabelled row, and a cross-reference to a section id that no longer
+    exists is a link that goes nowhere with no error anywhere."""
+
+    def test_every_cross_reference_points_at_a_real_section(self):
+        # `[Caller permissions](#perms)` in a help string is expanded into a
+        # link by writeLinked() in panel.js. A typo in the id renders a link
+        # that quietly does nothing: the click is swallowed only when the
+        # section exists, so a bad one falls through to a hash the router
+        # resolves to the dashboard.
+        import re
+
+        known = {g for g, *_ in settings_store.GROUPS}
+        bad = []
+        for name, meta in settings_store.SCHEMA.items():
+            for target in re.findall(r"\]\(#([a-z0-9_]+)\)", meta.get("help", "")):
+                if target not in known:
+                    bad.append(f"{name} -> #{target}")
+        for _gid, _sup, _title, blurb in settings_store.GROUPS:
+            for target in re.findall(r"\]\(#([a-z0-9_]+)\)", blurb):
+                if target not in known:
+                    bad.append(f"blurb -> #{target}")
+        self.assertEqual(bad, [], f"cross-references to sections that do not exist: {bad}")
+
+    def test_every_page_stands_in_a_band_that_exists(self):
+        # The picker draws one row per band. A super-group carrying a band id
+        # nobody declared does not disappear — buildNav sweeps it into a last
+        # unlabelled row on purpose — but the page loses the one line that
+        # says what kind of page it is, which is the whole point of banding.
+        bands = {b for b, _ in settings_store.NAV_BANDS}
+        strays = sorted(s for s, _t, _b, band in settings_store.SUPERGROUPS
+                        if band not in bands)
+        self.assertFalse(strays, f"super-groups in an undeclared band: {strays}")
+        extras = sorted(i for i, _t, band in settings_store.NAV_EXTRA_PAGES
+                        if band not in bands)
+        self.assertFalse(extras, f"extra pages in an undeclared band: {extras}")
+
+    def test_no_band_id_is_also_a_page_id(self):
+        # The Transmission lesson, one level up: one word holding two
+        # addresses on one panel. The band "The card" was minted as `card`
+        # first, which is already the Players super-group's id.
+        bands = {b for b, _ in settings_store.NAV_BANDS}
+        pages = {s for s, *_ in settings_store.SUPERGROUPS}
+        pages |= {i for i, _t, _b in settings_store.NAV_EXTRA_PAGES}
+        self.assertFalse(bands & pages,
+                         f"ids used as both a band and a page: {sorted(bands & pages)}")
+
+    def test_the_finder_is_given_the_words_the_labels_do_not_use(self):
+        # `alias=` and GROUP_ALIASES are search-only synonyms, and they exist
+        # because the review measured the misses: "color" found nothing while
+        # "colour" found two, "avatar" found nothing though the field is
+        # avatar_style, and "mute", "logo", "spam" and "language" all found
+        # nothing at all. They are only useful if the payload carries them.
+        payload = settings_store.schema_payload()
+        self.assertEqual(payload["fields"]["avatar_style"]["alias"], "avatar")
+        self.assertIn("color", payload["fields"]["widget_theme"]["alias"])
+        self.assertIn("password", payload["fields"]["front_access"]["alias"])
+        groups = {g["id"]: g["alias"] for g in payload["groups"]}
+        self.assertIn("password", groups["security"])
+        # Every alias belongs to a field that exists, and is lower case: the
+        # finder lower-cases the needle, so an alias in caps can never match.
+        for name, meta in settings_store.SCHEMA.items():
+            alias = meta.get("alias", "")
+            self.assertEqual(alias, alias.lower(), f"{name}'s alias is not lower case")
+        for gid in settings_store.GROUP_ALIASES:
+            self.assertIn(gid, {g for g, *_ in settings_store.GROUPS},
+                          f"GROUP_ALIASES names a section that does not exist: {gid}")

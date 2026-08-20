@@ -10,25 +10,42 @@ Everything lives in the panel behind the gear, and changes apply to the **next c
 
 > **Precedence is `data/settings.json` → environment → defaults.** Clearing a field in the panel means *fall through to the layer below*, not *set it to empty*.
 
-| Page | What you set there |
-|---|---|
-| **Dashboard** | Nothing — it reads live state and acts. [Its own page](dashboard.md) |
-| **Configuration** | The station, and the three engines: Brains, Voice, Ears |
-| **Permissions & safety** | Who may call, what they may trigger, and the spend caps |
-| **The booth** | What the DJ knows, how it behaves, and whether transcripts are kept |
-| **Calls** | Greeting, turn-taking, closing, the station under the call, sounds, effects |
-| **Voicemail** | The answering machine and the soundbite studio |
-| **Texts** | The typed line's clocks, ceilings and opening behaviour |
-| **On air** | The two doors to the broadcast, and ducking |
-| **Players** | Everything the card shows, per surface — page and embed |
-| **Reference** | What callers can ask, and the station's tool surface |
-| **Diagnostics** | Pipeline check, speed test, recent calls, server logs |
+The eleven pages sit in **five bands** in the picker, because they are not eleven peers — a band says what kind of page each one is before you open it.
+
+| Band | Page | What you set there |
+|---|---|---|
+| **Start** | **Dashboard** | Nothing — it reads live state and acts. [Its own page](dashboard.md) |
+| **Set up** | **Configuration** | The station, and the three engines: Brains, Voice, Ears |
+| **Set up** | **Permissions & safety** | Who may call, and what they may trigger |
+| **Set up** | **Reference** | What callers can ask, and the station's tool surface |
+| **The conversation** | **The booth** | What the DJ knows, how it behaves, and whether transcripts are kept |
+| **The conversation** | **Calls** | The call caps, greeting, turn-taking, closing, the station under the call, sounds, effects |
+| **The conversation** | **Voicemail** | The answering machine and the soundbite studio |
+| **The conversation** | **Texts** | The typed line's clocks, ceilings and opening behaviour |
+| **The conversation** | **On air** | The two doors to the broadcast, and ducking |
+| **The card** | **Players** | Everything the card shows, per surface — page and embed |
+| **Check** | **Diagnostics** | Pipeline check, speed test, recent calls, server logs |
 
 ## How the panel is laid out
 
 The panel reads as **pages under one URL**: the search box lives in the masthead itself, the page picker sits under the coral rule as a sticky band, and exactly one page shows below it.
 
-**The address carries the page** — `/settings#calls`, `#voicemail`, `#texts` — so a page survives a refresh and the browser's back button works. The search reads every page: typing shows the matching rows from everywhere, and clearing it returns to the page you were on.
+**The address carries the page or the section** — `/settings#calls` turns to a page, `/settings#turns` turns to Calls *and opens Turn-taking*. Both survive a refresh, both work with the back button, and both can be handed to somebody. Cross-references in help text ("under Caller permissions") are links to the section they name.
+
+### The finder is the index
+
+Typing in the masthead box searches **every page at once** and shows, above the results, how wide the hit is and which pages it reaches — *"12 settings on 4 pages — Permissions & safety · Calls · On air · Players"*. Each result carries its page name ahead of the section name, so a search teaches the layout instead of only answering the question.
+
+- It reads labels, help lines, dropdown options, **section prose and buttons** (so "password" finds Access, whose control is a button), and each setting's own **synonyms** — "color", "avatar", "mute", "rate limit", "timeout", "spam" all land where you would expect.
+- Matches start at a word boundary, so "rate" no longer finds *moderate* and *separate*.
+- A result whose **prerequisite is off** is dimmed and marked *needs "<the switch>"*, and the switch is pulled into the results beside it — otherwise you can set a value, save, and watch nothing happen.
+- A section reached through its prose shows with its settings still filtered: the answer is the section, not everything in it.
+
+Clearing the box returns to the page you were on.
+
+### One-section pages open themselves
+
+Voicemail and Texts hold exactly one section each. Rather than making you turn to a page and then open the only thing on it, the page **is** the section: it arrives open, with no chevron. The summary stays for its blurb and its state chip.
 
 ### The dashboard is the landing page
 
@@ -43,15 +60,17 @@ Beside Transmission, **Notifications** names what still stands between this depl
 
 ### The Players page has furniture of its own
 
-Three tabs, beside a **pinned live preview**:
+Three **bands** down one column, beside a **pinned live preview**:
 
-| Tab | What is in it |
+| Band | What is in it |
 |---|---|
 | **The card** | one element block per part of the card, in card order |
 | **Behaviour** | nothing visual |
 | **Embed** | the frame, and the copyable snippet |
 
-The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under The frame.
+They were tabs until 0.98.20. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
+
+The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under Embed frame.
 
 - **Hovering a setting** outlines the element it controls on the card.
 - **Clicking an element** on the card flashes the block that owns it.
@@ -120,14 +139,6 @@ Rows that need the station admin credentials carry a **Station admin** badge, co
 
 Tier defaults and the full risk picture: [security](security.md).
 
-### Usage controls
-
-Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend.
-
-### Call length
-
-The hard ceiling on one call — one more spend limit, beside the others.
-
 ### Speech hygiene
 
 Stage-direction stripping, and the expletive filter.
@@ -162,6 +173,12 @@ Whether both sides of a conversation — calls, texts and voicemails alike — a
 
 ## Calls
 
+### Call limits
+
+Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend, and the door's own state read back from the dashboard.
+
+Called **Usage controls** and filed under Permissions & safety until 0.98.20. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
+
 ### Greeting
 
 Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name.
@@ -172,9 +189,9 @@ When the DJ decides you have finished speaking, and whether a caller may talk ov
 
 ### Closing the call
 
-The greeting's mirror: the sign-off steer, the idle check-ins, and how early the DJ may hang up — how a call ends, in character.
+The greeting's mirror: the hard ceiling on one call, the sign-off steer, the idle check-ins, and how early the DJ may hang up — how a call ends, in character.
 
-### Tune the caller into the station
+### Station audio in the call
 
 Whether the caller counts as a listener (which is what makes requests work), whether the broadcast is piped audibly into the call, the **stream URL**, and how loud it sits behind the DJ.
 
@@ -200,7 +217,7 @@ A **Per-DJ effects** list gives any persona its own colour, saved as picked, wit
 
 ## Voicemail
 
-### The machine
+### Voicemail machine
 
 An **Enable voicemail** master switch, then:
 
@@ -287,7 +304,7 @@ The small controls on the card's top edge, **each answered for this page and for
 
 The DJ block, per surface: the DJ photo with its **shape** right under it (round for a portrait, square to match a host page's artwork), the show name, the DJ tagline, and the now-playing line.
 
-### The line box
+### Call status wording
 
 Every call-state string in one place, in call order — Ringing, Answering, Connecting, Connected — waiting, On the line, Recording, Line closed, Message only, Call ended.
 
@@ -307,7 +324,7 @@ Everything about the three doors in one block:
 - whether the **"Text the booth"** and **"Leave a message"** buttons are offered per surface, so the machine and the text line sit beside Call. A busy call also offers the text line as a fallback, even where its permanent button is off
 - the Hang up, Send and message-button wording
 
-### Surface
+### Card colours
 
 Colours — including **the station's own**, read from its `/themes` and following the on-air show — and a **skin**.
 
@@ -315,7 +332,7 @@ Colours — including **the station's own**, read from its `/themes` and followi
 
 ### On the caller's phone
 
-The Behaviour tab — nothing visual:
+The Behaviour band — nothing visual:
 
 - whether calls start on the **loudspeaker**
 - the card's **listener count** — "On air now · 2 listening", shown from one listener up, so a quiet hour never paints a zero
@@ -327,9 +344,9 @@ The Behaviour tab — nothing visual:
 
 The thumbs up/down, **per door**: ask after a call, after a text chat, and after a voicemail are three separate switches.
 
-### The frame
+### Embed frame
 
-The Embed tab — opening it flips the preview to the embed.
+The Embed band — the preview offers the embed view beside it.
 
 - **Allowed origins** — the comma-separated https origins that may embed the card and place calls on your API keys. `CALLIN_ALLOWED_ORIGINS` is the env baseline; empty means this page only; `*` is dev-only; a save applies on the next request with no restart.
 - **Flush by default** — the embedded card draws no outline or sheet of its own and sits in whatever area the host gives it, with a tick to draw the main page's card outline back on.
