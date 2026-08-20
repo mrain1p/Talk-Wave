@@ -208,14 +208,17 @@
   // can be handed to someone), and the hashchange listener below does the
   // turning.
   //
-  // BANDED at 0.98.20. Eleven chips in one non-wrapping scroller measured
-  // 1017px against a 375px phone's 343px of room, so nine of the eleven
-  // pages sat off-screen behind a gesture nothing advertised — and this
-  // strip is the only map of the panel there is. The bands come from
-  // NAV_BANDS in settings.py, and the three pages the schema does not own
-  // from NAV_EXTRA_PAGES beside it, so the picker's whole layout is readable
-  // in one file. Any page whose band is missing falls into a last unlabelled
-  // row rather than disappearing.
+  // ONE FLAT ROW. It was banded into five labelled rows during the 0.98.21
+  // work and the operator turned it down before any of it shipped: grouping
+  // eleven pages by kind read as more furniture than map, and the labels
+  // took more room than they earned. The measurement that prompted the bands
+  // still stands — a 375px phone shows two of the twelve chips, because the
+  // strip wants 1107px in 343px of room — so if that is worth fixing later,
+  // fix it without regrouping the pages.
+  //
+  // The pages the schema does not own come from NAV_EXTRA_PAGES rather than
+  // being written in here, so the picker's whole order stays readable in one
+  // file — the same rule the section order already follows.
   function buildNav(supers) {
     const nav = $('panelNav');
     if (!nav) return;
@@ -223,92 +226,33 @@
     PAGE_IDS = [];
     PAGE_TITLES = {};
 
-    // Every page, in order, with the band it stands in. The three the schema
-    // does not own are declared alongside the rest (NAV_EXTRA_PAGES) rather
-    // than written in here, so the picker's layout stays readable in one
-    // file — the same rule the section order already follows.
     const extras = SCHEMA.navExtraPages
-      || [{ id: 'dash', title: 'Dashboard', band: 'start' },
-          { id: 'diag', title: 'Diagnostics', band: 'check' }];
-    const pages = [];
-    extras.forEach((p) => {
-      if (PAGE_IDS.indexOf(p.id) === -1) PAGE_IDS.push(p.id);
-      PAGE_TITLES[p.id] = p.title;
-      pages.push({ id: p.id, title: p.title, band: p.band, extra: true });
-    });
+      || [{ id: 'dash', title: 'Dashboard', where: 'lead' },
+          { id: 'diag', title: 'Diagnostics', where: 'tail' }];
+    const link = (id, title) => {
+      if (PAGE_IDS.indexOf(id) === -1) PAGE_IDS.push(id);
+      PAGE_TITLES[id] = title;
+      const a = document.createElement('a');
+      a.href = '#' + id;
+      a.dataset.page = id;
+      a.textContent = title;
+      nav.appendChild(a);
+    };
+
+    extras.filter((p) => p.where !== 'tail')
+      .forEach((p) => link(p.id, p.title));
     supers.forEach((sup) => {
       if (!SCHEMA.groups.some((g) => g.super === sup.id)) return;
-      PAGE_IDS.push(sup.id);
-      PAGE_TITLES[sup.id] = sup.title;
-      pages.push({ id: sup.id, title: sup.title, band: sup.band });
+      link(sup.id, sup.title);
     });
-
-    const bandFor = (p) => p.band || '';
-    const bands = (SCHEMA.navBands || []).slice();
-    // A page banded into nothing still has to be reachable — louder to show
-    // it in a nameless row than to drop it off the only map.
-    if (pages.some((p) => !bands.some((b) => b.id === bandFor(p)))) {
-      bands.push({ id: '', title: '' });
-    }
-
-    bands.forEach((band) => {
-      const mine = pages.filter((p) =>
-        bandFor(p) === band.id
-        || (!band.id && !bands.some((b) => b.id && b.id === bandFor(p))));
-      if (!mine.length) return;
-      mine.sort((a, b) => (a.extra ? 0 : 1) - (b.extra ? 0 : 1));
-      const row = document.createElement('div');
-      row.className = 'navband';
-      row.dataset.band = band.id;
-      const label = document.createElement('span');
-      label.className = 'navlabel';
-      label.textContent = band.title;
-      row.appendChild(label);
-      const chips = document.createElement('span');
-      chips.className = 'navchips';
-      mine.forEach((p) => {
-        const a = document.createElement('a');
-        a.href = '#' + p.id;
-        a.dataset.page = p.id;
-        a.textContent = p.title;
-        chips.appendChild(a);
-      });
-      row.appendChild(chips);
-      nav.appendChild(row);
-    });
+    extras.filter((p) => p.where === 'tail')
+      .forEach((p) => link(p.id, p.title));
 
     // Collapse all retired at 0.10.80 (operator's call, the same review that
     // added it at 0.10.64): pages made every page short enough that folding
     // is the section chevrons' job, and an action chip among page chips read
     // as a page.
-    bindNavToggle();
     sizeStickyBar();
-  }
-
-  // The phone's fold. Everything about it is width-gated in CSS — this only
-  // writes the class and the state — so a desktop never enters this branch
-  // and the picker there is simply always out.
-  function bindNavToggle() {
-    const btn = $('navToggle');
-    const bar = $('settingsBar');
-    if (!btn || !bar || bindNavToggle.armed) return;
-    bindNavToggle.armed = true;
-    btn.onclick = () => {
-      const open = !bar.classList.contains('navopen');
-      bar.classList.toggle('navopen', open);
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      sizeStickyBar();
-    };
-    // Picking a page is the end of the errand: leaving the map open would
-    // push the page just asked for off the bottom of the screen.
-    const nav = $('panelNav');
-    if (nav) {
-      nav.addEventListener('click', (e) => {
-        if (!e.target.closest('a')) return;
-        bar.classList.remove('navopen');
-        btn.setAttribute('aria-expanded', 'false');
-      });
-    }
   }
 
   // The band's real height feeds the sections' scroll-margin, so an in-page
@@ -342,7 +286,7 @@
   function currentPage() {
     const id = (location.hash || '').replace(/^#/, '');
     if (PAGE_IDS.indexOf(id) !== -1) return id;
-    // A SECTION id resolves to the page holding it (0.98.20). Before this,
+    // A SECTION id resolves to the page holding it (0.98.21). Before this,
     // #turns — the section's own id, and the obvious guess — fell through to
     // the dashboard with nothing open and nothing said. So nothing below page
     // level had an address: no bookmark, no link to hand somebody, and no way
@@ -418,11 +362,6 @@
       const chip = nav.querySelector('a[data-page="' + page + '"]');
       if (chip) chip.classList.add('here');
     }
-    // The fold's own label says where you are, because while it is shut it
-    // is the only thing on screen that can.
-    if ($('navToggleWhere')) {
-      $('navToggleWhere').textContent = PAGE_TITLES[page] || page;
-    }
     if ($('mastSub')) {
       // The PAGE, and nothing else. The host name led this line and told the
       // operator something they typed into the address bar a second ago —
@@ -439,7 +378,7 @@
   // jump-to-top.
   function showSection(sec) {
     if (!sec) return;
-    // The address left behind is the SECTION, not its page (0.98.20), so
+    // The address left behind is the SECTION, not its page (0.98.21), so
     // every jump inside the panel — a tile, a notification, a search result,
     // a cross-reference — ends somewhere that can be bookmarked and handed
     // to somebody else. The page still turns: currentPage() resolves a
@@ -474,7 +413,7 @@
 
   // ---------------------------------------------- the Players page bands
   // Three groups over one page. They were TABS (the operator's design
-  // handoff, direction 1a) until 0.98.20: THE CARD is the element blocks in
+  // handoff, direction 1a) until 0.98.21: THE CARD is the element blocks in
   // card order, BEHAVIOUR is what a call does with nothing visual about it,
   // EMBED is the frame and the snippet.
   //
@@ -2425,7 +2364,7 @@
   // Only show configuration that applies to the current selection. A local-model
   // URL box is noise when you're on a hosted provider, and vice versa.
   // Is a field's prerequisite satisfied right now? Extracted from
-  // applyVisibility at 0.98.20 so the finder can ask the same question — it
+  // applyVisibility at 0.98.21 so the finder can ask the same question — it
   // marks a result whose switch is off rather than offering a setting that
   // cannot do anything, which is how an operator sets a value, saves, and
   // watches nothing happen.
@@ -3587,7 +3526,7 @@
   // The finder IS the panel's index. 188 settings live in 34 folded sections
   // across nine pages, and at rest the panel shows none of them — so this box
   // is not a filter over what is already on screen, it is the only complete
-  // map of the place that exists. 0.98.20 made it behave like one, after a
+  // map of the place that exists. 0.98.21 made it behave like one, after a
   // review measured what it actually did:
   //
   //   * "password" HID the Access section. The filter read four row classes

@@ -1136,7 +1136,7 @@ class TestTheQuietStationSetting(_TempStores):
 
 
 class TestTheMapTheOperatorNavigatesBy(_TempStores):
-    """0.98.20 rebuilt the panel's information architecture after a review
+    """0.98.21 rebuilt the panel's information architecture after a review
     measured it: 188 settings behind 34 folded sections across nine pages,
     with nothing on screen saying what existed. Three of the things it added
     are only correct if they stay in step with the schema, and each one fails
@@ -1164,28 +1164,24 @@ class TestTheMapTheOperatorNavigatesBy(_TempStores):
                     bad.append(f"blurb -> #{target}")
         self.assertEqual(bad, [], f"cross-references to sections that do not exist: {bad}")
 
-    def test_every_page_stands_in_a_band_that_exists(self):
-        # The picker draws one row per band. A super-group carrying a band id
-        # nobody declared does not disappear — buildNav sweeps it into a last
-        # unlabelled row on purpose — but the page loses the one line that
-        # says what kind of page it is, which is the whole point of banding.
-        bands = {b for b, _ in settings_store.NAV_BANDS}
-        strays = sorted(s for s, _t, _b, band in settings_store.SUPERGROUPS
-                        if band not in bands)
-        self.assertFalse(strays, f"super-groups in an undeclared band: {strays}")
-        extras = sorted(i for i, _t, band in settings_store.NAV_EXTRA_PAGES
-                        if band not in bands)
-        self.assertFalse(extras, f"extra pages in an undeclared band: {extras}")
-
-    def test_no_band_id_is_also_a_page_id(self):
-        # The Transmission lesson, one level up: one word holding two
-        # addresses on one panel. The band "The card" was minted as `card`
-        # first, which is already the Players super-group's id.
-        bands = {b for b, _ in settings_store.NAV_BANDS}
+    def test_the_picker_knows_about_every_page(self):
+        # Three pages are built by panel.js rather than by the schema —
+        # Dashboard, All settings, Diagnostics — and they are declared here so
+        # the picker's whole order lives in one file. An id that collides with
+        # a super-group would take that super-group's chip; an unknown `where`
+        # silently drops the page off the only map of the panel there is.
+        extras = settings_store.NAV_EXTRA_PAGES
         pages = {s for s, *_ in settings_store.SUPERGROUPS}
-        pages |= {i for i, _t, _b in settings_store.NAV_EXTRA_PAGES}
-        self.assertFalse(bands & pages,
-                         f"ids used as both a band and a page: {sorted(bands & pages)}")
+        clashes = sorted({i for i, _t, _w in extras} & pages)
+        self.assertFalse(clashes,
+                         f"ids used as both an extra page and a super-group: {clashes}")
+        for ident, _title, where in extras:
+            self.assertIn(where, ("lead", "tail"),
+                          f"{ident} stands at neither end of the strip")
+        # panel.js hard-codes these two as its fallback if the payload is old,
+        # and pageOfSection/currentPage reserve them; a rename here without one
+        # there would be a page that exists twice or not at all.
+        self.assertLessEqual({"dash", "diag"}, {i for i, _t, _w in extras})
 
     def test_the_finder_is_given_the_words_the_labels_do_not_use(self):
         # `alias=` and GROUP_ALIASES are search-only synonyms, and they exist

@@ -2607,34 +2607,25 @@
      equal share of the row, hairlines above and below like a nav strip, and
      a micro-label saying what it is. Chips (999px pills, content-sized) read
      as filters; a picker reads as a menu. Operator-requested. */
-  /* BANDED at 0.98.20. The strip used to be one "Pages" label followed by
-     eleven equal chips, which said nothing about how the pages relate and,
-     on a 375px phone, showed two of them — 1017px of chips in 343px of room,
-     the other nine behind a scroll gesture with no scrollbar. The bands are
-     the four kinds of page plus the landing page, and each carries its own
-     label, so the ::before that captioned the whole strip is gone.
-
-     A band is an INLINE group that wraps as a unit: one or two rows on a
-     desktop, one row per band on a phone. Fixing five rows would have made
-     the sticky header a sixth of the viewport. */
   .panelnav {
-    display: flex; flex-wrap: wrap; gap: 5px 16px; align-items: center;
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch;
     width: 100%; margin: 0 0 14px; padding: 7px 0;
     border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   }
-  .navband { display: flex; align-items: center; gap: 4px; min-width: 0; }
-  .navlabel {
-    white-space: nowrap; padding-right: 4px;
+  .panelnav::before {
+    content: "Pages"; align-self: center; white-space: nowrap;
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
     text-transform: uppercase; font-weight: 700; color: var(--sage-dim);
+    padding: 0 10px 0 2px;
   }
-  .navlabel:empty { display: none; }
-  .navchips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
   /* Each entry wears the quiet button skin at rest — bare text read as a
-     header row, not as eight places to go. They size to their own words now
-     that a band, not the full width, is what a row of them adds up to. */
+     header row, not as eight places to go. flex-grow snaps every row of
+     them to the full width. Operator-requested, twice.
+
+     Grouped into labelled bands during the 0.98.21 work and reverted on the
+     operator's call: five captioned rows read as more furniture than map. */
   .panelnav a {
-    flex: 0 0 auto; text-align: center;
+    flex: 1 1 auto; text-align: center;
     text-decoration: none; color: var(--dim);
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700;
@@ -4634,7 +4625,7 @@
   .cardwrap.searching .cardband,
   .cardwrap.searching .cardaside { display: none; }
 
-  /* The band captions that replaced the tab strip (0.98.20). Same voice as a
+  /* The band captions that replaced the tab strip (0.98.21). Same voice as a
      super-group band — mono caps with a rule running out to the edge — one
      step quieter, because these divide one page rather than the panel. */
   .cardband {
@@ -5359,16 +5350,14 @@
     border-bottom: 1px solid var(--edge);
     margin: 0 -2px; padding: 4px 2px 0;
   }
-  /* Wrapping, not scrolling. The one-row rule was written when the strip was
-     a flat list and a wrap turned it into a block that ate the viewport; a
-     banded strip wraps into four or five SHORT rows that each say what they
-     are, which is worth the height — and the alternative measured two
-     visible pages out of eleven on a phone. */
+  /* One row always: chips slide horizontally on a narrow panel instead of
+     wrapping into a block that eats the viewport the band now rides in. */
   body.panelpage .panelnav {
     border-top: 1px solid var(--hairline); border-bottom: 0; margin-bottom: 0;
-    flex-wrap: wrap; overflow-x: visible;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
   }
-  body.panelpage .panelnav a { flex: 0 0 auto; white-space: nowrap; }
+  body.panelpage .panelnav::-webkit-scrollbar { display: none; }
+  body.panelpage .panelnav a { flex: 1 0 auto; white-space: nowrap; }
   /* The current page's chip: coral ink and a light coral fill — one mark,
      because there is exactly one page open at a time. */
   body.panelpage .panelnav a.here {
@@ -5547,52 +5536,6 @@
   cursor: pointer;
 }
 .panelpage .seclink:hover { text-decoration-color: var(--coral); color: var(--coral); }
-
-/* ------------------------------------------------- the picker on a phone
-   Banding the page picker put all eleven pages on screen at 375px, where
-   the flat scroller showed two — but five wrapped rows is 208px of an 812px
-   viewport, held sticky forever. So below 760px the map folds behind one
-   row that names where you are. Above it the button does not exist and the
-   bands are always out. */
-.panelpage .navtoggle { display: none; }
-
-@media (max-width: 759px) {
-  .panelpage .navtoggle {
-    display: flex; align-items: center; gap: 9px; width: 100%;
-    margin: 6px 0; padding: 8px 10px;
-    border: 1px solid var(--edge); border-radius: 8px;
-    background: transparent; color: var(--text); cursor: pointer;
-    font-family: var(--font-mono); text-align: left;
-  }
-  .panelpage .navtoggle .ntk {
-    font-size: 9px; font-weight: 700; letter-spacing: .16em;
-    text-transform: uppercase; color: var(--sage-dim);
-  }
-  .panelpage .navtoggle .ntv {
-    flex: 1; min-width: 0; font-size: 10.5px; font-weight: 700;
-    letter-spacing: .1em; text-transform: uppercase; color: var(--coral);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .panelpage .navtoggle .ntc {
-    font-size: 10px; color: var(--sage-dim);
-    transition: transform .12s ease;
-  }
-  .panelpage .settingsbar.navopen .navtoggle .ntc { transform: rotate(180deg); }
-  /* Shut is the resting state. The bands come back whole when it opens —
-     the point of the fold is the sticky height, not the map. */
-  .panelpage .settingsbar:not(.navopen) .panelnav { display: none; }
-  .panelpage .settingsbar.navopen .panelnav {
-    border-top: 1px solid var(--hairline); padding-top: 7px;
-  }
-  /* One band per line on a phone: the label leads its own row so the four
-     kinds of page read down the list rather than running together. */
-  .panelpage .navband { width: 100%; align-items: flex-start; }
-  .panelpage .navchips { flex: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .panelpage .navtoggle .ntc { transition: none; }
-}
 
 /* ------------------------------------------------------ one-section pages
    Voicemail and Texts hold exactly one section each, so the page was two

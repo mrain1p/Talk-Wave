@@ -904,49 +904,37 @@ def mcp_tools_payload() -> list[dict]:
 # answers all three doors — filing them under Calls would be a lie the moment
 # a text chat used them, and a field cannot appear on two pages (one id, and
 # byKind fills the first match it finds).
-# The picker's rows. Eleven pages presented as eleven equal chips in one
-# non-wrapping scroller, which on a 375px phone showed TWO of them: the strip
-# needed 1017px in a 343px window, so nine destinations sat off-screen behind
-# a gesture nothing advertised, and the strip was the only map of the place
-# there is. They were never eleven peers anyway — they fall into four kinds
-# plus the landing page, and saying so out loud costs one row each.
-#
-# The runs are CONTIGUOUS in the existing page order on purpose: banding is
-# supposed to explain the order, not reshuffle it.
-NAV_BANDS = [
-    ("start", "Start"),
-    ("setup", "Set up"),
-    ("talk",  "The conversation"),
-    # Not "card": that id already belongs to the Players super-group, and a
-    # word holding two addresses on one panel is the Transmission lesson.
-    ("player", "The card"),
-    ("check", "Check"),
-]
-
 # The pages the schema does not own — panel.js builds all three — listed here
-# so the picker's whole layout is readable in one place. Within a band these
-# come before the super-groups.
+# so the picker's whole order is readable in one place. `lead` stands before
+# the super-groups in the strip, `tail` after them.
 #
-# "All settings" is the index the panel never had (0.98.20): every setting in
+# "All settings" is the index the panel never had (0.98.21): every setting in
 # one scrollable table with the page and section that hold it. The finder
 # answers "where is the thing I can name"; this answers "I know it exists,
 # what is it called", which is the other half and the one a folded panel of
 # 188 settings across nine pages cannot otherwise answer at all.
+#
+# The picker was BANDED during the 0.98.21 work and is flat again on the
+# operator's call, before any of it shipped. Five labelled rows grouping the
+# eleven pages by kind read as more furniture than map. The measurement that
+# prompted it still stands — a 375px phone shows two of eleven chips, because
+# the strip needs 1017px in 343px of room — so if the phone case is worth
+# solving later, solve it without regrouping the pages.
 NAV_EXTRA_PAGES = [
-    ("dash", "Dashboard",    "start"),
-    ("all",  "All settings", "start"),
-    ("diag", "Diagnostics",  "check"),
+    ("dash", "Dashboard",    "lead"),
+    ("all",  "All settings", "lead"),
+    ("diag", "Diagnostics",  "tail"),
 ]
 
-# (id, title, blurb, nav band).
+# (id, title, blurb).
 SUPERGROUPS = [
-    ("config",    "Configuration",        "The station, the keys, and what listens, thinks and speaks.", "setup"),
-    ("safety",    "Permissions & safety", "What a caller may set in motion, and the limits around it.", "setup"),
+    ("config",    "Configuration",        "The station, the keys, and what listens, thinks and speaks."),
+    ("safety",    "Permissions & safety", "What a caller may set in motion, and the limits around it."),
     # Beside the permissions it reads back, rather than after Players. Its
     # blurb has always said it is driven by them, and the picker bands it
     # under Set up — two orders that disagree is one order nobody trusts.
-    ("ref",       "Reference",            "What a caller may ask for, and what the station publishes.", "setup"),
-    # "The booth" at 0.98.20, closing the ambiguity the 2026-08-13 note left
+    ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
+    # "The booth" at 0.98.21, closing the ambiguity the 2026-08-13 note left
     # open. That note said the word meant two things on one panel — this page
     # and the dashboard's switch cluster — and that if it ever read
     # ambiguously the CLUSTER was the one to rename. On review the cluster is
@@ -957,10 +945,10 @@ SUPERGROUPS = [
     # disagreement between the code and its own documentation. The id stays
     # "dj": it is a hash address (/settings#dj), and changing it would break
     # bookmarks for a title change.
-    ("dj",        "The booth",            "What the booth knows, how it speaks, and what it writes down.", "talk"),
-    ("calls",     "Calls",                "The live line — how a call opens, sounds and ends.", "talk"),
-    ("voicemail", "Voicemail",            "The machine — what it says, and where messages go.", "talk"),
-    ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone.", "talk"),
+    ("dj",        "The booth",            "What the booth knows, how it speaks, and what it writes down."),
+    ("calls",     "Calls",                "The live line — how a call opens, sounds and ends."),
+    ("voicemail", "Voicemail",            "The machine — what it says, and where messages go."),
+    ("texts",     "Texts",                "Typed chat with the booth — same brain, no microphone."),
     # The on-air feature's own page (operator's ask, 2026-08-18). The two
     # quick kills were dashboard-only controls with no settings row anywhere,
     # the ducking pair sat under Calls, and the soundbite's airing backend
@@ -972,8 +960,8 @@ SUPERGROUPS = [
     # delivered, not what a caller may do. The id is "air", not "onair" —
     # that string is already the ducking section's group id, and one word
     # holding two addresses is the Transmission lesson again.
-    ("air",       "On air",               "The broadcast door — what goes out live, and on whose say-so.", "talk"),
-    ("card",      "Players",              "What a caller sees — here, and on somebody else's page.", "player"),
+    ("air",       "On air",               "The broadcast door — what goes out live, and on whose say-so."),
+    ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
 ]
 
 # (id, supergroup, title, blurb). Order within a supergroup is the order here.
@@ -1027,7 +1015,7 @@ GROUPS = [
     # speaking.
     #
     # "Call limits" was "Usage controls" under Permissions & safety until
-    # 0.98.20. The same concept was filed in three different places depending
+    # 0.98.21. The same concept was filed in three different places depending
     # on which door it belonged to: six chat caps on the Texts page,
     # voicemail's one ceiling on Voicemail, and the five call caps two pages
     # away under safety. By this file's own rule — cut by door where a door
@@ -1055,7 +1043,7 @@ GROUPS = [
     # Each door the booth doesn't answer live gets its own page, named for
     # the door — the operator's cut. The section was called "The machine" to
     # avoid a Voicemail section under a Voicemail page reading as a stutter;
-    # at 0.98.20 it takes its noun back. A folded section shows its NAME and
+    # at 0.98.21 it takes its noun back. A folded section shows its NAME and
     # nothing else, and a name that only decodes once you know where things
     # are is the wrong way round — the reader who needs the map most is the
     # one who cannot read it. The page is no longer a wrapper to stutter
@@ -1084,7 +1072,7 @@ GROUPS = [
     ("whosonair", "card",  "Who's on air",        "Photo, show, tagline, and the record playing."),
     # Every fixed call-state string, overridable — so a station whose whole
     # page speaks in its own voice doesn't get "Ringing…" in ours. Named for
-    # what it holds rather than for the part of the card it paints (0.98.20):
+    # what it holds rather than for the part of the card it paints (0.98.21):
     # nobody looking for the word "Ringing…" was going to guess "The line box".
     ("linebox",   "card",  "Call status wording", "What the card says in every state of a call."),
     ("talkbar",   "card",  "The talk bar",        "The caller's microphone control."),
@@ -1101,7 +1089,7 @@ GROUPS = [
 # Words an operator types into the finder that appear nowhere in a section's
 # name or blurb. The panel searches these alongside the visible text, so a
 # section can be found by what it IS as well as by what it is called — the
-# whole point of the 0.98.20 finder pass, where "password" hid the section
+# whole point of the 0.98.21 finder pass, where "password" hid the section
 # holding the password button and "color" found nothing at all.
 #
 # Per-FIELD synonyms live on the field, as `alias=` in SCHEMA. These are only
@@ -2344,14 +2332,12 @@ def schema_payload() -> dict:
     """Groups and fields for the settings UI, in display order."""
     return {
         "supergroups": [
-            {"id": s, "title": t, "blurb": b, "band": band}
-            for s, t, b, band in SUPERGROUPS
+            {"id": s, "title": t, "blurb": b} for s, t, b in SUPERGROUPS
         ],
-        # The picker's rows, in order, and the pages the schema does not own
-        # standing among them.
-        "navBands": [{"id": b, "title": t} for b, t in NAV_BANDS],
-        "navExtraPages": [{"id": i, "title": t, "band": b}
-                          for i, t, b in NAV_EXTRA_PAGES],
+        # The pages the schema does not own, and which end of the strip they
+        # stand at.
+        "navExtraPages": [{"id": i, "title": t, "where": w}
+                          for i, t, w in NAV_EXTRA_PAGES],
         "groups": [
             {"id": g, "super": sup, "title": t, "blurb": b,
              # Search-only synonyms. Never rendered — the finder reads them

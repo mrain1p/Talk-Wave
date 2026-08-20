@@ -3,7 +3,7 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.98.20
+## 0.98.21
 
 The settings panel had 188 settings behind 34 folded sections across nine pages, and at rest it showed you none of them. This is the pass that makes them findable: the finder becomes an index, every section gets an address, and the pages get a shape.
 
@@ -23,7 +23,7 @@ The settings panel had 188 settings behind 34 folded sections across nine pages,
 
 ### The eleven pages have a shape
 
-- **On a phone the page picker showed two of eleven pages.** Eleven equal chips in one non-wrapping scroller needed 1017px in a 343px window, and the other nine sat behind a gesture with no scrollbar — on the only map of the panel there is. The picker now runs in five bands (Start, Set up, The conversation, The card, Check), which also says what kind of page each one is before you open it. On a phone the whole map folds behind one row naming where you are, so the sticky header costs 46px instead of 208.
+- **The page picker stays one flat row.** It was banded into five labelled rows during this work and taken back out on the operator's call: grouping the eleven pages by kind read as more furniture than map. The measurement that prompted it stands and is worth someone's attention later — on a 375px phone the strip wants 1017px in 343px of room, so two of the eleven pages are visible and the other nine sit behind a scroll gesture with no scrollbar. Whatever fixes that should not regroup the pages. The picker did gain one chip: **All settings**, next to Dashboard.
 - **Five sections took their nouns back.** A folded section shows its name and nothing else, so a name that only decodes once you know your way around is the wrong way round. "The machine" is Voicemail machine, "The line box" is Call status wording, "Surface" is Card colours, "The frame" is Embed frame, and "Tune the caller into the station" is Station audio in the call. The blurbs underneath keep the voice.
 - **The Transmission page is The booth.** The 2026-08-13 note said the word meant two things on one panel — this page and the dashboard's switch cluster — and that if it ever read ambiguously the cluster was the one to rename. On review the cluster is the honest one: it really is three switches that open and close the line. This page holds what the DJ knows, how it speaks and what it writes down, which is what `docs/settings.md` has called the booth all along.
 - **Voicemail and Texts stopped being pages you open to find one fold.** Each held exactly one section, with nothing for that fold to be folded away from. A one-section page is the section now: open on arrival, no chevron, the summary kept for its blurb and its state chip.

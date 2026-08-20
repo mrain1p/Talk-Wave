@@ -1531,7 +1531,7 @@ class TestTheFinderIsNotAUsernameField(unittest.TestCase):
         # The guard has to live in the finder's own handler, not merely
         # somewhere in a 5000-line file — but "within N characters of the
         # binder" is a measurement of how long the function happens to be,
-        # and 0.98.20 broke this test by growing it, with the guard still
+        # and 0.98.21 broke this test by growing it, with the guard still
         # sitting right there in oninput. Read to the END of the IIFE instead.
         start = js.index("bindSettingsSearch")
         end = js.index("})();", start)
@@ -3033,7 +3033,7 @@ class TestTheCardOffersTheCountAndTheHeart(unittest.TestCase):
 
 
 class TestNothingIsReachableOnlyByRecognisingIt(unittest.TestCase):
-    """The 0.98.20 review's sharpest finding: `live_calls_enabled`,
+    """The 0.98.21 review's sharpest finding: `live_calls_enabled`,
     `voicemail_enabled` and `chat_enabled` are declared settings with real
     labels, and they rendered in no section, matched no search and appeared
     in no list built from the markup — their only control is a dashboard
@@ -3078,7 +3078,7 @@ class TestNothingIsReachableOnlyByRecognisingIt(unittest.TestCase):
 
 
 class TestThePanelSaysWhereThingsAre(unittest.TestCase):
-    """Before 0.98.20 the panel could tell you a setting existed and never
+    """Before 0.98.21 the panel could tell you a setting existed and never
     where it lived. Search hid the page bands on purpose, so a result read
     "The machine" and stopped; nothing below page level had an address, so
     `#turns` — the section's own id and the obvious guess — silently landed

@@ -10,21 +10,20 @@ Everything lives in the panel behind the gear, and changes apply to the **next c
 
 > **Precedence is `data/settings.json` → environment → defaults.** Clearing a field in the panel means *fall through to the layer below*, not *set it to empty*.
 
-The eleven pages sit in **five bands** in the picker, because they are not eleven peers — a band says what kind of page each one is before you open it.
-
-| Band | Page | What you set there |
-|---|---|---|
-| **Start** | **Dashboard** | Nothing — it reads live state and acts. [Its own page](dashboard.md) |
-| **Set up** | **Configuration** | The station, and the three engines: Brains, Voice, Ears |
-| **Set up** | **Permissions & safety** | Who may call, and what they may trigger |
-| **Set up** | **Reference** | What callers can ask, and the station's tool surface |
-| **The conversation** | **The booth** | What the DJ knows, how it behaves, and whether transcripts are kept |
-| **The conversation** | **Calls** | The call caps, greeting, turn-taking, closing, the station under the call, sounds, effects |
-| **The conversation** | **Voicemail** | The answering machine and the soundbite studio |
-| **The conversation** | **Texts** | The typed line's clocks, ceilings and opening behaviour |
-| **The conversation** | **On air** | The two doors to the broadcast, and ducking |
-| **The card** | **Players** | Everything the card shows, per surface — page and embed |
-| **Check** | **Diagnostics** | Pipeline check, speed test, recent calls, server logs |
+| Page | What you set there |
+|---|---|
+| **Dashboard** | Nothing — it reads live state and acts. [Its own page](dashboard.md) |
+| **All settings** | Every setting in one table, with the page and section holding it |
+| **Configuration** | The station, and the three engines: Brains, Voice, Ears |
+| **Permissions & safety** | Who may call, and what they may trigger |
+| **Reference** | What callers can ask, and the station's tool surface |
+| **The booth** | What the DJ knows, how it behaves, and whether transcripts are kept |
+| **Calls** | The call caps, greeting, turn-taking, closing, the station under the call, sounds, effects |
+| **Voicemail** | The answering machine and the soundbite studio |
+| **Texts** | The typed line's clocks, ceilings and opening behaviour |
+| **On air** | The two doors to the broadcast, and ducking |
+| **Players** | Everything the card shows, per surface — page and embed |
+| **Diagnostics** | Pipeline check, speed test, recent calls, server logs |
 
 ## How the panel is laid out
 
@@ -68,7 +67,7 @@ Three **bands** down one column, beside a **pinned live preview**:
 | **Behaviour** | nothing visual |
 | **Embed** | the frame, and the copyable snippet |
 
-They were tabs until 0.98.20. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
+They were tabs until 0.98.21. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
 
 The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under Embed frame.
 
@@ -177,7 +176,7 @@ Whether both sides of a conversation — calls, texts and voicemails alike — a
 
 Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend, and the door's own state read back from the dashboard.
 
-Called **Usage controls** and filed under Permissions & safety until 0.98.20. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
+Called **Usage controls** and filed under Permissions & safety until 0.98.21. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
 
 ### Greeting
 
