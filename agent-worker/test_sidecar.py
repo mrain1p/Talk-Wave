@@ -112,6 +112,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
     TestThePaletteTravelsForTheCycle,
+    TestTheListenersVolumeIsTheirOwn,
     TestAVoicemailOnlyLineHasOneDoor,
     TestTheEmbedIsJustTheCard,
     TestTheKillSwitchOutranksEveryDoor,

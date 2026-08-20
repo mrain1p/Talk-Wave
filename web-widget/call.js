@@ -602,6 +602,11 @@
   let chatOpen = false;                       // the text line, not a call
   let signinMode = false;                     // the gate opened to climb a tier
   let lastCanAsk = null;                       // rebuild the menu only on a tier change
+  // The operator's default volume is a DEFAULT, not a rule the poll enforces.
+  // Both halves are needed to keep it one: the last value /live carried, so a
+  // change the operator makes still reaches an open card, and whether this
+  // listener has moved a fader themselves, after which nothing else touches it.
+  let lastCfgVolume = null, volTouched = false;
   let djEl = null, rafId = null, streamEl = null;
   // The station player's own element and its health — separate from the
   // call's tune-in bed (streamEl) on purpose: the two are never up at once,
@@ -1815,10 +1820,23 @@
       // The sound engine lives in shared.js and is fed rather than read from,
       // so the panel can preview a sound without borrowing the call's state.
       setSounds(d.sounds);
-      if (typeof d.sounds?.volume === 'number' && !room) {
-        setVolume(d.sounds.volume);
-        $('volSlider').value = getVolume();
-        applyVolume();
+      // Seeded on the first read and on an operator change, never on every
+      // poll. This ran unconditionally, and /live is polled every 20 seconds
+      // while the card is idle: a listener who turned the music down in the
+      // player had it snap back to the configured default — usually 100% —
+      // within the poll, over and over (operator-reported 2026-08-20). A call
+      // was the only thing that stopped it, because `room` was the only guard.
+      // Now the listener's own hand is the last word for the session.
+      const cfgVolume = typeof d.sounds?.volume === 'number' ? d.sounds.volume : null;
+      if (cfgVolume != null && cfgVolume !== lastCfgVolume) {
+        lastCfgVolume = cfgVolume;
+        // A preview is the operator dragging that very setting, so it lands
+        // there whatever the fader in the preview frame has been doing.
+        if (!room && (!volTouched || previewMode)) {
+          setVolume(cfgVolume);
+          $('volSlider').value = getVolume();
+          applyVolume();
+        }
       }
 
       // The station player follows every poll: the ribbon and chip appear or
@@ -2890,7 +2908,9 @@
       pv.style.setProperty('--vol', getVolume() + '%');
     }
   }
-  $('volSlider').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
+  $('volSlider').oninput = (e) => {
+    volTouched = true; setVolume(+e.target.value); applyVolume();
+  };
   applyVolume();      // paint the fill at whatever volume we start on
 
   // Bumped on every startCall AND every endCall, so an async step that
@@ -5115,7 +5135,9 @@
 
   // The player's own volume, and the card's, are ONE volume — two handles
   // on the same fader, kept in step by applyVolume.
-  $('plVol').oninput = (e) => { setVolume(+e.target.value); applyVolume(); };
+  $('plVol').oninput = (e) => {
+    volTouched = true; setVolume(+e.target.value); applyVolume();
+  };
 
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();

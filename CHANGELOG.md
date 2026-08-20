@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.19
+
+One fix on the card, and it is one the operator hit while listening: the volume you set stays where you set it.
+
+### The music stops turning itself back up
+
+- **A volume the listener lowered was back at full within twenty seconds.** The card re-reads `/live` every twenty seconds while it is idle, and every one of those reads re-applied the operator's *default* volume over whatever the listener had chosen — so turning the station player down was undone on the next poll, and the one after that, for as long as anyone listened. Being on a call was the only thing that stopped it, which is why this only ever showed up while listening to music. Measured in a browser before the fix: a card set to 30% was back at 100% six seconds later; after it, 30% through two polls and forty seconds.
+- **The default stays a default.** It still seeds the card when the page opens, and it still follows an operator who changes it in the panel while a card is open. What it no longer does is overrule the person listening: once either fader has been moved — the card's or the player's, they are two handles on the same volume — nothing else touches it for the rest of that visit.
+
 ## 0.98.18
 
 One piece of work on the on-air path, and nothing a caller or an operator will hear differently.
