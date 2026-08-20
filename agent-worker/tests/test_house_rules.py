@@ -758,6 +758,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "test classes that had silently never run — and splitting the "
             "rules about structure across files would defeat the point of "
             "having one place that states them.",
+        "agent-worker/tests/test_discovery.py":
+            "one subject: the ways into the library that are not a name "
+            "search. Crossed the ceiling at 0.98.17, when browsing learned to "
+            "speak the station's own vocabulary — and the vocabulary tests "
+            "belong beside the browse tests, because every one of these bugs "
+            "was the tool and the station disagreeing about a word.",
         "agent-worker/tests/test_album_tools.py":
             "one subject: putting a RUN of tracks in and taking one back "
             "out — the album, the mix, and the clear-out that mirrors "

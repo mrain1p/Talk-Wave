@@ -292,16 +292,24 @@ class TestTheStationsOwnWordsForAMiss(unittest.TestCase):
         self.assertIn("combination", out)
         self.assertIn("HAS music under it", out)
 
-    def test_a_genre_the_station_does_not_have_still_reads_back_the_list(self):
+    def test_a_genre_the_station_does_not_have_names_the_nearest_it_does(self):
         station = _Station(browse={"rows": [], "moodVocab": []},
-                           genres=["Hip-Hop", "Jazz"])
+                           genres=["Hip-Hop", "Jazz", "Polka"])
         tools = _build(ALL_ON, station)
-        out = asyncio.run(tools["subwave_browse_library"](genre="polka"))
+        out = asyncio.run(tools["subwave_browse_library"](genre="polkaa"))
         # Nothing to retry, so nothing was retried — one browse, one genre read.
         self.assertEqual([kind for kind, _ in station.asked],
                          ["browse", "genres"])
-        self.assertIn("Hip-Hop", out)
+        self.assertIn("Polka", out)
         self.assertIn("do NOT tell them", out)
+
+    def test_a_word_this_library_has_never_heard_says_what_it_does_have(self):
+        station = _Station(browse={"rows": [], "moodVocab": []},
+                           genres=["Hip-Hop", "Jazz"])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="zzzznope"))
+        self.assertIn("Hip-Hop", out)
+        self.assertIn("DOES have", out)
 
 
 class TestTheStationSpellsItsOwnGenres(unittest.TestCase):
@@ -423,3 +431,197 @@ class TestTheStationsFavouritesAndItsMemory(unittest.TestCase):
         out = asyncio.run(tools["subwave_already_played"]())
         self.assertNotIn("anon", out)
         self.assertIn("request", out)
+
+
+class TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent(unittest.TestCase):
+    """`energy` and `vocal` are exact-match on the station's side, and they
+    fail in opposite directions.
+
+    Measured on the live library 2026-08-20:
+
+        energy='Low'          ->       0 of 150,229
+        vocal='Instrumental'  -> 381,023 — the WHOLE library
+
+    The second is the one this exists for. The station reads
+    `q.vocal === 'instrumental' || q.vocal === 'vocal' ? q.vocal : null`, so a
+    capitalised value becomes null — no filter — and the DJ offers sung tracks
+    to a caller who asked for instrumentals with nothing anywhere disagreeing.
+    An empty answer can be retried; a full one cannot be noticed.
+
+    Note `mid`: the station's own admin page labels the chip "MID · 113054"
+    while the API wants `medium`, so a model repeating what the caller read off
+    the screen gets zero.
+    """
+
+    def _sent(self, station):
+        return [kw for kind, kw in station.asked if kind == "browse"][0]
+
+    def test_a_capitalised_vocal_never_reaches_the_station(self):
+        for said in ("Instrumental", "INSTRUMENTAL", "instrumentals",
+                     "no vocals"):
+            station = _Station(browse={"rows": [{"id": "x", "title": "T"}],
+                                       "total": 1})
+            tools = _build(ALL_ON, station)
+            asyncio.run(tools["subwave_browse_library"](vocal=said))
+            self.assertEqual(self._sent(station)["vocal"], "instrumental", said)
+
+    def test_the_uis_own_word_for_the_middle_is_translated(self):
+        # The chip says MID; the API wants medium.
+        for said in ("mid", "MID", "Mid", "med", "Medium"):
+            station = _Station(browse={"rows": [{"id": "x", "title": "T"}],
+                                       "total": 1})
+            tools = _build(ALL_ON, station)
+            asyncio.run(tools["subwave_browse_library"](energy=said))
+            self.assertEqual(self._sent(station)["energy"], "medium", said)
+
+    def test_a_word_outside_the_vocabulary_stops_rather_than_widens(self):
+        # Dropping the filter would be the same silent widening: the caller
+        # asked for calm and would be handed whatever the library had.
+        for field, said, expect in (("energy", "quiet", "low, medium or high"),
+                                    ("vocal", "opera", "instrumental")):
+            station = _Station(browse={"rows": [{"id": "x", "title": "T"}]})
+            tools = _build(ALL_ON, station)
+            out = asyncio.run(tools["subwave_browse_library"](**{field: said}))
+            self.assertEqual(station.asked, [], f"{field}={said} was sent")
+            self.assertIn(expect, out)
+            self.assertIn("NOT dropped", out)
+
+    def test_nothing_asked_for_is_still_nothing_sent(self):
+        station = _Station(browse={"rows": [{"id": "x", "title": "T"}],
+                                   "total": 1})
+        tools = _build(ALL_ON, station)
+        asyncio.run(tools["subwave_browse_library"](genre="Jazz"))
+        sent = self._sent(station)
+        self.assertEqual(sent["energy"], "")
+        self.assertEqual(sent["vocal"], "")
+
+
+class TestACompoundGenreIsAViableOption(unittest.TestCase):
+    """The operator's point, 2026-08-20: "if i dont have jazz and i have jazz
+    instramental than that might be a viable option".
+
+    Their station files 894 genres, 33 of which contain "jazz" — one of them
+    literally **Instrumental Jazz**, holding 740 tracks. The call that started
+    this asked for instrumental jazz before 2000: through `genre=Jazz` plus
+    `vocal=instrumental` that is 2 tracks; through `genre='Instrumental Jazz'`
+    it is 439.
+
+    Two rules here, and the second is the operator's other one — never submit
+    blindly. A single reading may be taken, but the receipt has to say which
+    shelf the records came off.
+    """
+
+    class _ByGenre(_Station):
+        def __init__(self, holdings: dict, **kw) -> None:
+            super().__init__(**kw)
+            self._holdings = holdings
+
+        async def browse_library(self, **kw):
+            self.asked.append(("browse", kw))
+            rows = self._holdings.get(kw.get("genre") or "", [])
+            return {"rows": list(rows), "total": len(rows), "moodVocab": []}
+
+    JAZZY = ["Jazz", "Vocal Jazz", "Cool Jazz", "Instrumental Jazz",
+             "Acid Jazz", "Rock"]
+
+    def test_the_only_reading_is_taken_and_named_on_the_receipt(self):
+        # The operator's sentence, as a fixture: no "Jazz" of its own, but
+        # "Instrumental Jazz" is right there.
+        station = self._ByGenre(
+            {"Instrumental Jazz": [{"id": "b1", "title": "Bye-Bye, Blackbird",
+                                    "artist": "Ben Webster"}]},
+            genres=["Rock", "Instrumental Jazz"])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="jazz"))
+
+        self.assertIn("Bye-Bye, Blackbird", out)
+        # Never silently: the caller said one word and is shown another.
+        self.assertIn('filed under "Instrumental Jazz"', out)
+        self.assertIn('no "jazz" of its own', out)
+        self.assertIn("before you offer them", out)
+
+    def test_several_readings_are_offered_rather_than_guessed(self):
+        station = self._ByGenre({}, genres=self.JAZZY)
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="jazz"))
+
+        for shelf in ("Vocal Jazz", "Cool Jazz", "Instrumental Jazz"):
+            self.assertIn(shelf, out)
+        self.assertIn("do NOT", out)
+        # It picked none of them for itself.
+        tried = [kw.get("genre") for kind, kw in station.asked
+                 if kind == "browse"]
+        self.assertEqual(tried, ["jazz", "Jazz"])
+
+    def test_a_thin_answer_names_the_fatter_shelf_beside_it(self):
+        # The exact shape of the 2026-08-19 call: two tracks for jazz +
+        # instrumental, while Instrumental Jazz sat there with hundreds.
+        station = self._ByGenre(
+            {"Jazz": [{"id": "j1", "title": "Penthouse Serenade"},
+                      {"id": "j2", "title": "Tonis Secrets"}]},
+            genres=self.JAZZY)
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](
+            genre="Jazz", vocal="instrumental", year_to=1999))
+
+        self.assertIn("Penthouse Serenade", out)
+        self.assertIn("Instrumental Jazz", out)
+        self.assertIn("Thin", out)
+
+    def test_a_healthy_answer_is_left_alone(self):
+        rows = [{"id": f"r{i}", "title": f"T{i}"} for i in range(6)]
+        station = self._ByGenre({"Jazz": rows}, genres=self.JAZZY)
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="Jazz"))
+
+        self.assertNotIn("Thin", out)
+        # No genre list was even read — a good browse costs one request.
+        self.assertEqual([kind for kind, _ in station.asked], ["browse"])
+
+    def test_the_shelf_carrying_the_callers_own_word_is_offered_first(self):
+        # Frequency order alone put Vocal Jazz, Cool Jazz, Contemporary Jazz,
+        # Jazz-Funk and Jazz Fusion ahead of Instrumental Jazz — so a caller
+        # who asked for INSTRUMENTAL jazz was shown five shelves and not the
+        # one with their own word on it. Measured on the live library.
+        station = self._ByGenre(
+            {"Jazz": [{"id": "j1", "title": "Penthouse Serenade"}]},
+            genres=["Jazz", "Vocal Jazz", "Cool Jazz", "Instrumental Jazz"])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](
+            genre="Jazz", vocal="instrumental"))
+
+        offered = out.rsplit("also files", 1)[1]
+        self.assertLess(offered.index("Instrumental Jazz"),
+                        offered.index("Vocal Jazz"))
+
+    def test_promoting_a_shelf_does_not_reorder_the_rest(self):
+        from call.tools.discovery import _related_genres
+
+        known = ["Vocal Jazz", "Cool Jazz", "Instrumental Jazz", "Acid Jazz"]
+        self.assertEqual(
+            _related_genres("jazz", known, prefer=["instrumental"]),
+            ["Instrumental Jazz", "Vocal Jazz", "Cool Jazz", "Acid Jazz"])
+        # With nothing to prefer, the station's own order is untouched.
+        self.assertEqual(_related_genres("jazz", known), known)
+
+    def test_related_matches_whole_words_not_fragments(self):
+        from call.tools.discovery import _related_genres
+
+        known = ["Rock", "Rockabilly", "Punk Rock", "Classic Rock", "Jazz"]
+        self.assertEqual(_related_genres("rock", known),
+                         ["Punk Rock", "Classic Rock"])
+        self.assertNotIn("Rockabilly", _related_genres("rock", known))
+
+    def test_the_whole_genre_list_is_searched_but_never_recited(self):
+        from call.tools.discovery import _ALL_GENRES, _OFFER
+
+        # 40 was hiding 854 of the operator's 894 genres — including
+        # Instrumental Jazz, Bebop and Shoegaze.
+        self.assertGreater(_ALL_GENRES, 894)
+        # And the model never sees hundreds of words it cannot read out.
+        self.assertLessEqual(_OFFER, 8)
+        station = self._ByGenre({}, genres=["Rock"])
+        tools = _build(ALL_ON, station)
+        asyncio.run(tools["subwave_browse_library"](genre="nope"))
+        limit = [kw for kind, kw in station.asked if kind == "genres"][0]
+        self.assertEqual(limit, _ALL_GENRES)

@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.17
+
+Browsing the library speaks the station's own vocabulary — including the one filter that failed by returning everything.
+
+### The filter that quietly returned the whole library
+
+- **Asking for instrumentals could hand back every track on the station.** The station reads the vocal filter as an exact match on two words and treats anything else as *no filter at all*, so `Instrumental` with a capital I did not fail — it returned all 381,023 tracks instead of the 36 that are actually instrumental, and the DJ offered sung records to a caller who had asked for the opposite. Nothing anywhere disagreed with it. Every fixed-vocabulary value is now resolved to the station's own word before the request is sent, and a word that cannot be resolved stops the browse and says so rather than quietly widening it.
+- **The station's own admin page disagrees with its API about one of them.** The energy chip is labelled MID; the API only answers to `medium`. A DJ repeating what a caller read off the screen got nothing back. Both spellings work now, along with `Low` and `HIGH` and the rest of the case variants that used to return zero.
+
+### A genre the library files under a longer name is now a real answer
+
+- **"Have you got any jazz?" can be answered with the jazz this station actually files.** Where a word is not a genre on its own but is part of ones that are — Instrumental Jazz, Cool Jazz, Acid Jazz — those are offered by name instead of a flat "nothing found". If there is exactly one way to read it, the browse takes it and the receipt says which shelf the records came off, so the DJ can tell the caller before offering them. More than one, and they are named for the caller to choose.
+- **A thin answer now names the fuller shelf beside it.** The call that started this asked for instrumental jazz from before 2000 and got two tracks; the library had 439 under Instrumental Jazz and nothing said so. A result that thin now carries the neighbouring genres, with any that match the caller's own words first.
+- **The genre list was being read 40 words deep into a library that files 894.** Bebop, Shoegaze, Instrumental Jazz and 851 others were invisible to the spelling check, and the list handed back claimed to be "the genres this library files under". The whole list is searched now and only a handful is ever quoted back.
+- **A misspelled genre gets the nearest real one.** Ask for something a letter off and the answer names what the library does have, rather than reporting an empty shelf.
+
 ## 0.98.16
 
 Five things a caller asked for and did not get, every one of them because a tool was in the way rather than the model — and the text line stops recording every conversation as having gone fine.
