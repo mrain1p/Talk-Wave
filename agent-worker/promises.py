@@ -83,6 +83,36 @@ CLAIMS_DONE = re.compile(
     rf"\b{_ACT}\b[^.!?\n]{{0,60}}\b{_DONE}\b",
     re.IGNORECASE)
 
+# What the RECORD says when one of these fires, for the operator reading a bad
+# conversation back. Here for the same reason the patterns are — the phone
+# wrote these into `problems` from the start and the text line, which declared
+# the list and drained it into the record, never appended to it once. Every
+# chat ever recorded therefore shipped `problems: []`, and the panel's "needs
+# attention" count could not see a text conversation at all. Observed
+# 2026-08-20 on a chat that promised a request it never sent, invented a
+# library limitation and skipped the caller's own record: clean sheet.
+PROBLEMS = {
+    "promise": (
+        "The DJ told the caller it was about to do something and ran no tool. It was given "
+        "one more turn to actually make the call; if the next line still promises without a "
+        "receipt, the model is narrating actions instead of taking them — check the LLM "
+        "setting against one with proven tool routing."
+    ),
+    "refused": (
+        "A tool came back REFUSED and the DJ told the caller it had happened anyway, or was "
+        "on its way. This is the failure the caller cannot catch — they hang up believing a "
+        "record is coming that nobody queued. It was given one more turn to own it. Repeats "
+        "here mean the honesty rules in the prompt are not reaching this model."
+    ),
+    "claim": (
+        "The DJ told the caller something had ALREADY been done and ran no tool, so it had "
+        "not been. It was given one more turn to make the claim true. This is the shape that "
+        "does not announce itself on the call — the caller is told it worked and hangs up "
+        "believing it — so if it repeats, treat the model's tool routing as unfit rather "
+        "than as a rough edge."
+    ),
+}
+
 
 def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
              refused: bool = False) -> str:

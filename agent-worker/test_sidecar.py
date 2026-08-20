@@ -112,6 +112,7 @@ from tests.test_widget import (  # noqa: F401
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
     TestThePaletteTravelsForTheCycle,
+    TestTheListenersVolumeIsTheirOwn,
     TestAVoicemailOnlyLineHasOneDoor,
     TestTheEmbedIsJustTheCard,
     TestTheKillSwitchOutranksEveryDoor,
@@ -208,6 +209,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestTakingAHeartBackOff,
 )
 from tests.test_album_tools import (  # noqa: F401
+    TestAMixCanBeUndoneByTheNameItWasGiven,
     TestTheBulkToolsRideTheirSwitch,
     TestQueueingAWholeAlbum,
     TestTheShelfIsAReadNotAnAction,
@@ -229,6 +231,8 @@ from tests.test_music_tools import (  # noqa: F401
     TestWhatsNewInTheLibrary,
 )
 from tests.test_takeover import (  # noqa: F401
+    TestAMissSaysWhatItDidFind,
+    TestAShowIsReachableHoweverItIsSpelled,
     TestADJsNameResolvesToTheirShow,
     TestTheDJDoesNotBlameTheWeatherForItsOwnMiss,
     TestCancellingATakeover,
@@ -251,6 +255,7 @@ from tests.test_brain import (  # noqa: F401
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
 from tests.test_chat import (  # noqa: F401
+    TestTheTextLineWritesDownWhatWentWrong,
     TestToolResultsGoBackAsText,
     TestAProviderFailureIsVisibleToTheOperator,
     TestTheLlmTestRunsTheShapeThatBreaks,
@@ -276,10 +281,14 @@ from tests.test_prompt_budget import (  # noqa: F401
     TestTheToolBlockSplitChangedNoPromptByte,
 )
 from tests.test_discovery import (  # noqa: F401
+    TestACompoundGenreIsAViableOption,
+    TestATitleIsNotATrackId,
+    TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent,
     TestBrowsingSpeaksTheStationsOwnVocabulary,
     TestDiscoveryToolsRideTheirSwitches,
     TestFindingMusicByHowItSounds,
     TestNeverPlayTracksNeverReachACaller,
+    TestTheStationSpellsItsOwnGenres,
     TestTheStationsFavouritesAndItsMemory,
     TestTheStationsOwnWordsForAMiss,
 )

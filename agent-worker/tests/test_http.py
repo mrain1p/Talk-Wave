@@ -571,6 +571,37 @@ class TestCallFeedbackRejectsGarbageRoomsCheaply(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(body.get("ok"))
 
+    def test_a_text_chat_can_be_rated_at_all(self):
+        """A chat has no minted room, and the gate only knew minted shapes.
+
+        The widget holds a bare `uuid4().hex` and posts THAT; the record files
+        itself under `chat-<its last 12>`. Neither spelling matched, so every
+        thumbs pressed on a text chat was refused 400 — while the widget said
+        "Thanks." and `rate()`, which matches on the same 12-character tail it
+        uses for calls, would have found the file. Observed 2026-08-20: the
+        operator downvoted two chats and both went in the bin.
+        """
+        seen = []
+        for room in ("3cd9c30dc09546e9a1813b27446d0f3b",   # what the widget posts
+                     "chat-3b27446d0f3b"):                 # what the record calls it
+            status, body = self._feedback(
+                room, rating="down",
+                rate=lambda r, v: seen.append((r, v)) or True)
+            self.assertEqual(status, 200, room)
+            self.assertTrue(body.get("ok"), room)
+        self.assertEqual([v for _r, v in seen], ["down", "down"])
+
+    def test_a_chat_id_of_the_wrong_length_is_still_refused(self):
+        def _boom(*a):
+            raise AssertionError("rate() must not be called for a bad room")
+
+        for bad in ("3cd9c30dc09546e9a1813b27446d0f",     # 30, not 32
+                    "3cd9c30dc09546e9a1813b27446d0f3b0",  # 33
+                    "chat-3b27446d0f3z",                  # not hex
+                    "chat-3b27446d0f"):                   # 10, not 12
+            status, _ = self._feedback(bad, rate=_boom)
+            self.assertEqual(status, 400, bad)
+
 
 class TestJoinTokensExpire(unittest.TestCase):
     def test_a_minted_token_is_short_lived(self):

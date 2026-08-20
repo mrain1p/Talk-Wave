@@ -1264,3 +1264,102 @@ class TestTheLlmTestRunsTheShapeThatBreaks(_TempStores):
         # And it counts: a provider that dies on round two is not a pass with
         # a footnote.
         self.assertIn("d.followUp !== 'failed'", panel)
+
+
+class TestTheTextLineWritesDownWhatWentWrong(unittest.TestCase):
+    """`self.problems` was declared, drained into the record, and never once
+    appended to.
+
+    Every chat this deployment has ever recorded therefore shipped
+    `problems: []` — the panel's "needs attention" count could not see a text
+    conversation at all, and the operator reading a bad one back was told
+    nothing had gone wrong in it. Observed 2026-08-20 on a chat that promised
+    a request it never sent, invented a library limitation and skipped the
+    caller's own record: clean sheet.
+
+    The second half is what the caller SEES. The nudge asks for a tool and no
+    more words; when the model types anyway the two attempts were glued
+    together mid-sentence — "...to go in behind it?Ah, wait—my mistake, I see
+    what you mean" — because the loop appended the retry straight onto the
+    first line.
+    """
+
+    def _loop(self, contents):
+        """Drive _tool_loop through a model that only ever types."""
+        from livekit.agents import llm as lk_llm
+
+        from chat.session import ChatSession
+
+        @lk_llm.function_tool(name="test_probe")
+        async def probe(word: str = "") -> str:
+            """Test tool."""
+            return "sent"
+
+        class _Stream:
+            def __init__(self, chunks):
+                self._chunks = list(chunks)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self._chunks:
+                    raise StopAsyncIteration
+                return self._chunks.pop(0)
+
+            async def aclose(self):
+                pass
+
+        class _Model:
+            def __init__(self):
+                self.rounds = 0
+
+            def chat(self, chat_ctx=None, tools=None):
+                self.rounds += 1
+                said = (contents[self.rounds - 1]
+                        if self.rounds <= len(contents) else "")
+                delta = types.SimpleNamespace(content=said, tool_calls=[])
+                return _Stream([types.SimpleNamespace(delta=delta)])
+
+            async def aclose(self):
+                pass
+
+        chat = ChatSession("p1", "open")
+        ctx = lk_llm.ChatContext.empty()
+        ctx.add_message(role="user", content="whats in the queue?")
+        events = []
+        out = asyncio.run(chat._tool_loop(_Model(), ctx, [probe], events.append))
+        return chat, out, events
+
+    def test_an_unbacked_promise_is_written_into_the_record(self):
+        chat, _out, _events = self._loop(
+            ["Hold on, let me dig through the racks for you.", " Nothing yet."])
+        self.assertEqual(len(chat.problems), 1)
+        self.assertIn("ran no tool", chat.problems[0])
+        # Word for word what the phone writes, so one panel filter reads both.
+        from promises import PROBLEMS
+
+        self.assertEqual(chat.problems[0], PROBLEMS["promise"])
+
+    def test_ordinary_conversation_still_writes_nothing_down(self):
+        chat, _out, _events = self._loop(
+            ["It's a fine morning for it, isn't it?"])
+        self.assertEqual(chat.problems, [])
+
+    def test_a_nudged_retry_is_not_glued_onto_the_line_before_it(self):
+        chat, out, events = self._loop(
+            ["Are you looking for something else to go in behind it?",
+             "Ah, wait—my mistake, I see what you mean."])
+        self.assertNotIn("behind it?Ah", out)
+        self.assertIn("behind it?\n\nAh", out)
+        # The live card and the written record break in the same place, or
+        # the caller reads one thing and the operator reads another.
+        streamed = "".join(e.get("text", "") for e in events
+                           if e.get("type") == "delta")
+        self.assertEqual(streamed, out)
+
+    def test_a_retry_that_says_nothing_leaves_no_stray_gap(self):
+        chat, out, _events = self._loop(
+            ["Hold on, let me dig through the racks.", ""])
+        self.assertFalse(out.endswith("\n\n"), out)
+        self.assertNotIn("\n\n", out)

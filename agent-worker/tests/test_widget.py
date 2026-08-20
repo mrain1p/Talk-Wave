@@ -2070,6 +2070,51 @@ class TestTheWidgetActuallyParses(unittest.TestCase):
                 )
 
 
+class TestTheListenersVolumeIsTheirOwn(unittest.TestCase):
+    """The operator's default volume is a DEFAULT, not a rule the poll enforces.
+
+    It was applied on every paintLive, and /live is polled every 20 seconds
+    while the card is idle — so a listener who turned the music down in the
+    station player watched it snap back to the configured level (100% out of
+    the box) within the poll, again and again, for as long as they listened.
+    A call was the only thing that stopped it, `room` being the only guard,
+    which is why it only ever showed up while listening to music.
+
+    Two things keep it a default: the seed runs only when the configured
+    value CHANGES, so an operator's edit still reaches an open card, and
+    never once this listener has moved a fader of their own.
+    """
+
+    def _seed(self, js):
+        i = js.index("setSounds(d.sounds);")
+        return js[i:js.index("paintListenChip();", i)]
+
+    def test_the_poll_does_not_re_apply_the_default_every_time(self):
+        seed = self._seed(widget_js()["call.js"])
+        self.assertIn("cfgVolume !== lastCfgVolume", seed,
+                      "the operator's default is re-applied on every poll — "
+                      "a listener's own volume cannot survive 20 seconds")
+        self.assertIn("volTouched", seed,
+                      "nothing checks whether the listener set this volume "
+                      "themselves")
+
+    def test_both_faders_are_the_listeners_hand(self):
+        js = widget_js()["call.js"]
+        for fader in ("volSlider", "plVol"):
+            with self.subTest(fader=fader):
+                handler = js[js.index("$('%s').oninput" % fader):]
+                handler = handler[:handler.index("};")]
+                self.assertIn("volTouched = true", handler,
+                              "%s moves the volume without claiming it, so "
+                              "the next poll takes it back" % fader)
+
+    def test_the_operators_own_preview_still_lands(self):
+        seed = self._seed(widget_js()["call.js"])
+        self.assertIn("previewMode", seed,
+                      "the panel's preview of this very setting must apply "
+                      "whatever the preview frame's fader has been doing")
+
+
 class TestThePaletteTravelsForTheCycle(unittest.TestCase):
     """The theme control cycles light / dark / station colours / match the
     page, and the station stop only exists when /live carries the palette.

@@ -3,6 +3,64 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.19
+
+One fix on the card, and it is one the operator hit while listening: the volume you set stays where you set it.
+
+### The music stops turning itself back up
+
+- **A volume the listener lowered was back at full within twenty seconds.** The card re-reads `/live` every twenty seconds while it is idle, and every one of those reads re-applied the operator's *default* volume over whatever the listener had chosen — so turning the station player down was undone on the next poll, and the one after that, for as long as anyone listened. Being on a call was the only thing that stopped it, which is why this only ever showed up while listening to music. Measured in a browser before the fix: a card set to 30% was back at 100% six seconds later; after it, 30% through two polls and forty seconds.
+- **The default stays a default.** It still seeds the card when the page opens, and it still follows an operator who changes it in the panel while a card is open. What it no longer does is overrule the person listening: once either fader has been moved — the card's or the player's, they are two handles on the same volume — nothing else touches it for the rest of that visit.
+
+## 0.98.18
+
+One piece of work on the on-air path, and nothing a caller or an operator will hear differently.
+
+### The on-air clip writer stops rebuilding audio it was already handed
+
+- **Every clip that airs was taken apart sample by sample and put back together identically.** The caller's audio and the DJ's both arrive as 16-bit PCM and both leave as 16-bit PCM, and the writer in between unpacked each frame into a list of individual numbers and packed the whole clip back to arrive at the bytes it had started with — around 18MB of throwaway work on a thirty-second turn, on both sides of every on-air call. The audio now passes straight through, and only stereo, which genuinely has to be mixed down to one voice, is touched at all. Measured inside the deployed worker: a thirty-second clip takes 1.3ms rather than 9.8ms.
+- **The file that airs is byte-for-byte the file that aired before.** Checked across 225 combinations of sample rate, channel count, clip length and the sixty-second ceiling, plus the awkward edges — a clip landing exactly on the ceiling, a stereo frame with a trailing half-frame, an empty turn. This is headroom on a path that was never anyone's complaint, not a fix for something reported.
+
+## 0.98.17
+
+Browsing the library speaks the station's own vocabulary — including the one filter that failed by returning everything.
+
+### The filter that quietly returned the whole library
+
+- **Asking for instrumentals could hand back every track on the station.** The station reads the vocal filter as an exact match on two words and treats anything else as *no filter at all*, so `Instrumental` with a capital I did not fail — it returned all 381,023 tracks instead of the 36 that are actually instrumental, and the DJ offered sung records to a caller who had asked for the opposite. Nothing anywhere disagreed with it. Every fixed-vocabulary value is now resolved to the station's own word before the request is sent, and a word that cannot be resolved stops the browse and says so rather than quietly widening it.
+- **The station's own admin page disagrees with its API about one of them.** The energy chip is labelled MID; the API only answers to `medium`. A DJ repeating what a caller read off the screen got nothing back. Both spellings work now, along with `Low` and `HIGH` and the rest of the case variants that used to return zero.
+
+### A genre the library files under a longer name is now a real answer
+
+- **"Have you got any jazz?" can be answered with the jazz this station actually files.** Where a word is not a genre on its own but is part of ones that are — Instrumental Jazz, Cool Jazz, Acid Jazz — those are offered by name instead of a flat "nothing found". If there is exactly one way to read it, the browse takes it and the receipt says which shelf the records came off, so the DJ can tell the caller before offering them. More than one, and they are named for the caller to choose.
+- **A thin answer now names the fuller shelf beside it.** The call that started this asked for instrumental jazz from before 2000 and got two tracks; the library had 439 under Instrumental Jazz and nothing said so. A result that thin now carries the neighbouring genres, with any that match the caller's own words first.
+- **The genre list was being read 40 words deep into a library that files 894.** Bebop, Shoegaze, Instrumental Jazz and 851 others were invisible to the spelling check, and the list handed back claimed to be "the genres this library files under". The whole list is searched now and only a handful is ever quoted back.
+- **A misspelled genre gets the nearest real one.** Ask for something a letter off and the answer names what the library does have, rather than reporting an empty shelf.
+
+## 0.98.16
+
+Five things a caller asked for and did not get, every one of them because a tool was in the way rather than the model — and the text line stops recording every conversation as having gone fine.
+
+### The DJ stops inventing reasons it can't do something
+
+- **A genre typed in lower case matched nothing, and the DJ made up why.** The station matches a genre exactly, so `jazz` returned zero of 54,841 tracks while `Jazz` returned all of them. Asked for instrumental jazz from before 2000, the DJ was handed the real spelling, ignored it, and told the caller "the library isn't letting me filter by year" — then defended the invention when the caller pushed back. Both tracks it should have found were there. The browse now retries in the station's own spelling itself, and when even that comes back empty it says which filter is the empty one instead of that the library has none.
+- **Asking for more like a named track reported the station as ignorant of it.** "More like this" was called with a title where a track id belongs, so the station looked up a title, found nothing, and the only explanation the tool had was "may not have been analysed yet" — which the DJ relayed as the archives being stubborn, about a record that had been on air minutes earlier. A title is now refused before the station is asked, with the one instruction that fixes it: search for it first, then pass the id off the row.
+
+### A mix can be cancelled by the name it was given
+
+- **The label on a queued mix was write-only.** The DJ queues five tracks as "90s alt rock mix", says exactly that to the caller, and the label goes no further — the station never hears it and no queue row carries it. So when the caller said "cancel the 90s alt rock mix i queued" there was no field that could take the name back; it went into the artist box, matched nothing, and the DJ reported that it may never have gone in. It had: all five aired over the next ten minutes. The clear-out now resolves a label to the tracks that went in under it, understands the label wherever the DJ puts it, and — when the batch has already played — says so rather than calling the caller mistaken.
+
+### A near miss on a name stops being a flat no
+
+- **Naming a DJ who presents more than one show was answered as if that DJ did not exist.** Wade presents four shows, so nothing could resolve, and the caller asking for Wade was told no show matched — followed by the entire roster. The miss now names the person, lists their shows, and says which of the two problems it actually has.
+- **A name spelled slightly wrong got the same flat refusal as a name nobody has.** Ask for Walt and the answer is that nobody is spelled Walt, the closest is Wade, and Wade runs Up Stream — offered for the caller to confirm, never pinned on a guess. Shows are also reachable however the caller spells them now: "upstream" finds *Up Stream · Deep Cuts*, and the strapline after the dot is no longer part of the name a caller has to say.
+
+### The text line writes down what went wrong
+
+- **Every chat ever recorded shipped a clean sheet.** The list of problems was declared, drained into the record and never once appended to, so the panel's "needs attention" count could not see a text conversation at all — including one that promised a request it never sent and skipped the caller's own record. It now records what the phone has always recorded, in the same words, so one filter reads both.
+- **A thumbs-down on a text chat was thrown away.** The rating endpoint only knew the shapes of minted call rooms, and a chat has none — so every vote pressed on a chat was refused while the card said "Thanks." Two of the operator's own downvotes went in the bin before anyone noticed.
+- **A nudged retry no longer runs into the line before it.** When the DJ is pulled up for promising something it hasn't done, its second attempt used to be glued onto the first mid-sentence — "…to go in behind it?Ah, wait—my mistake". The break now lands in the live card and the written record in the same place.
+
 ## 0.98.15
 
 Five actions that change the station stop reporting themselves as a bare tick, and the README says what a caller can actually ask for.

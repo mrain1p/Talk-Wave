@@ -556,6 +556,13 @@ class Handler(BaseHTTPRequestHandler):
                 # URL resolved and audio comes out when asked.
                 "stream": {"url": "/stream", "alternates": [],
                            "tuneIn": False, "volume": 10},
+                # The sound engine's block, shaped like the real /live's. The
+                # volume matters beyond the tones: the card seeds its fader
+                # from it, and a fixture without one cannot show whether a
+                # poll leaves a listener's own volume alone.
+                "sounds": {"cutRing": True, "pack": "classic",
+                           "volume": int(settings_store.load()
+                                         .get("call_volume") or 100)},
                 # Like callsPaused above: from the stub's own settings, so
                 # ticking the box in the panel offers the player on the card.
                 "swipePlayer": bool(settings_store.load().get("swipe_player")),

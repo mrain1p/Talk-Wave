@@ -103,7 +103,7 @@ Every action here is a real tool the DJ can reach — on a call, on the text lin
 | 💿 **Album queued** | "Have you got Rumours? Play the whole thing." · "Put on Kind of Blue, start to finish." |
 | 🎶 **Mix queued** | "Queue up a mix of 90s rock." · "Make me a mix for a rainy Sunday." · "Line up some Motown for the next half hour." |
 | 🚫 **Queued track pulled** | "Actually, scrap that last one." · "Take Go Your Own Way back off, would you?" |
-| 🧹 **Queued tracks cleared** | "Take all the Bowie back out." · "Clear everything I asked for." |
+| 🧹 **Queued tracks cleared** | "Take all the Bowie back out." · "Clear everything I asked for." · "Cancel that 90s rock mix you just queued." |
 
 **The record on air**
 

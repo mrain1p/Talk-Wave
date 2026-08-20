@@ -35,6 +35,9 @@ from station import StationClient
 from ..actions import CallActions
 from .registry import library_search_needs_mcp
 from .rows import _drop_blocked, _fmt_track
+from .vocabulary import (_ALL_GENRES, _ENERGY, _OFFER, _THIN, _VOCAL,
+                         _close_genres, _one_of, _related_genres,
+                         _same_genre)
 
 log = logging.getLogger("callin.agent")
 
@@ -42,13 +45,6 @@ log = logging.getLogger("callin.agent")
 # short enough to read down a phone line, and every row is prompt weight paid
 # for on every later turn of the call.
 _PAGE = 8
-
-# bpm and key used to be added here, for neighbour rows only — they were the
-# two numbers that justify "this mixes well after that". The station merges its
-# analysis columns into EVERY listing row (search, recent and browse as well as
-# neighbours), so they moved into `_fmt_track` at 0.10.132 and this helper had
-# nothing left to add.
-
 
 def build_discovery_tools(cfg: dict, station: StationClient,
                           actions: CallActions) -> list:
@@ -146,6 +142,25 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             means on a call."""
             track_id = (id or "").strip()
             reference = ""
+            # A TITLE is not an id, and the station cannot tell you so: it
+            # looks the string up, finds nothing, and the miss is indistin-
+            # guishable from a real track with no neighbours on file. The DJ
+            # then reads back the only explanation it was given — "may not
+            # have been analysed yet" — and turns it into a story about the
+            # station being stubborn. Observed 2026-08-20 with
+            # id='Jupiter by Aoife O’Donovan': a track that was ON AIR minutes
+            # earlier, reported to the caller as unknown to the archives.
+            # Station ids never contain whitespace, so this costs nothing and
+            # sends the model to the one tool that turns a title into an id.
+            if track_id and any(c.isspace() for c in track_id):
+                return (
+                    f"\"{track_id}\" is a title, not a track id — nothing was "
+                    "looked up. Ids come from a result row and have no spaces "
+                    "in them. Search for it with subwave_search_library, take "
+                    "the id off the row you want, and call this again with "
+                    "that. Do NOT tell the caller the station doesn't know the "
+                    "track: you haven't asked it yet."
+                )
             if not track_id:
                 now = await station.now_playing()
                 track = now.get("track") or now.get("current") or now
@@ -195,16 +210,74 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             "what jazz have you got", "calm stuff". energy is high, medium or
             low. vocal is 'vocal' or 'instrumental'. moods must come from the
             station's own list — if you pass one it doesn't use, you'll be
-            told the real words and can ask again."""
-            d = await station.browse_library(
-                moods=moods, energy=energy, genre=genre,
-                year_from=year_from or None, year_to=year_to or None,
-                vocal=vocal, limit=_PAGE)
+            told the real words and can ask again. Genre is free text and this
+            library files hundreds of them, compounds included: if the caller
+            says "instrumental jazz", TRY IT AS THE GENRE rather than
+            splitting it into genre plus vocal — you'll be told what the
+            station actually files either way."""
+            # Resolved to the station's own words before anything is sent —
+            # see _one_of. A value that cannot be resolved stops here.
+            use_energy, complaint = _one_of(
+                energy, _ENERGY, "energy", "low, medium or high")
+            if complaint:
+                return complaint
+            use_vocal, complaint = _one_of(
+                vocal, _VOCAL, "vocal", "'vocal' or 'instrumental'")
+            if complaint:
+                return complaint
+
+            async def look(genre_word: str) -> dict:
+                return await station.browse_library(
+                    moods=moods, energy=use_energy, genre=genre_word,
+                    year_from=year_from or None, year_to=year_to or None,
+                    vocal=use_vocal, limit=_PAGE) or {}
+
+            d = await look(genre)
             if not d:
                 return ("Couldn't read the library just now. Say so plainly; "
                         "don't describe records you haven't seen.")
             rows = d.get("rows") or []
             vocab = [str(m) for m in (d.get("moodVocab") or [])]
+            # The station matches a genre EXACTLY, so `jazz` is not `Jazz` and
+            # returns zero of 54,841. The hint below has always handed the real
+            # spelling back and asked for a second try — and the model does not
+            # take it: observed 2026-08-19, asked for instrumental jazz before
+            # 2000, told the caller "the library isn't letting me filter by
+            # year" and then defended the invention when pushed. The two tracks
+            # it should have found were there all along. Reading the list is
+            # already the cost of a miss; spending the one extra call to try the
+            # station's own spelling turns the dead end into the answer instead
+            # of into a story about the machine.
+            #
+            # `library_genres` reads the whole list and truncates client-side,
+            # so asking for all of them costs exactly what asking for 40 cost
+            # — and 40 was hiding 854 of this library's 894 genres, including
+            # Instrumental Jazz, Bebop and Shoegaze. Matching happens against
+            # everything; only a handful is ever shown to the model.
+            known: list[str] = []
+            fixed = ""
+            related: list[str] = []
+            swapped = ""
+            if genre and (not rows or len(rows) < _THIN):
+                known = await station.library_genres(limit=_ALL_GENRES)
+                fixed = _same_genre(genre, known)
+                # What else the caller said, so a shelf carrying their own
+                # word is offered before a commoner one that isn't.
+                related = _related_genres(
+                    fixed or genre, known,
+                    prefer=[use_vocal] + (moods or "").split(","))
+            if not rows and fixed:
+                again = await look(fixed)
+                if again.get("rows"):
+                    d, rows = again, again.get("rows") or []
+            if not rows and len(related) == 1:
+                # One way to read it and one only — take it, and say so on the
+                # receipt. More than one is a choice that belongs to the
+                # caller, not to us.
+                again = await look(related[0])
+                if again.get("rows"):
+                    d, rows = again, again.get("rows") or []
+                    swapped = related[0]
             if not rows:
                 # The mood vocabulary is fixed and small, and a caller's word
                 # for a feeling is usually not one of the seventeen: asking for
@@ -218,20 +291,51 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                             + ". If one of them is close to what the caller "
                             "means, try again with it — do NOT tell them the "
                             "library has nothing.")
-                elif genre:
-                    # The same trap the mood vocabulary was fixed for, one
-                    # field along: a genre is free text on the station's side,
-                    # so "Hip Hop" and "Hip-Hop" are different words and only
-                    # one of them is in this library. Reading the real list
-                    # back turns a dead end into a second try, and it is only
-                    # read on the miss — no cost on a browse that worked.
-                    known = await station.library_genres(limit=40)
-                    if known:
-                        hint = (" The genres this library actually files under "
-                                "are: " + ", ".join(known)
-                                + ". If one is what the caller meant, try again "
-                                "with it spelled that way — do NOT tell them the "
-                                "library has none.")
+                elif genre and related:
+                    # The word IS in this library's vocabulary, just not on
+                    # its own or not with these other filters. Naming what it
+                    # IS filed under is the whole difference between a useful
+                    # answer and "we haven't got any jazz".
+                    shown = ", ".join(f"\"{g}\"" for g in related[:_OFFER])
+                    seat = (f"\"{fixed}\" exists but nothing under it matches "
+                            "the rest of this, and " if fixed else "")
+                    hint = (f" {seat}this library also files {shown}"
+                            + (f" and {len(related) - _OFFER} more like it"
+                               if len(related) > _OFFER else "")
+                            + ". Those are real music here. Offer one or two "
+                            "by name and browse whichever they pick — do NOT "
+                            "tell the caller there is none of it.")
+                elif genre and fixed:
+                    # The spelling was the problem and it has already been
+                    # retried above — so the genre IS here and this exact
+                    # COMBINATION is what's empty. Saying which is the whole
+                    # difference between a useful answer and "we haven't got
+                    # any jazz".
+                    hint = (f" The station files that genre as \"{fixed}\" and "
+                            "it HAS music under it — what's empty is this "
+                            "combination, with the other filters on top. Say "
+                            "that, not that the library has none, and offer to "
+                            "drop the tightest filter (the year range, or "
+                            "instrumental-only) rather than the genre.")
+                elif genre and known:
+                    # Not a spelling and not a compound — so either the word
+                    # is close to one this library uses, or it genuinely has
+                    # none. Hundreds of genres are filed, so the full list is
+                    # useless to a model reading it down a phone line: the
+                    # nearest few, or the commonest few, and never all 894.
+                    near = _close_genres(genre, known)
+                    if near:
+                        hint = (" Nothing is filed under that exact word. The "
+                                "closest this library has are: "
+                                + ", ".join(f"\"{g}\"" for g in near)
+                                + ". Offer one if it is what they meant — do "
+                                "NOT tell them the library has none.")
+                    else:
+                        hint = (" Nothing here is filed under that word at "
+                                "all. The commonest genres in this library "
+                                "are: " + ", ".join(known[:_OFFER])
+                                + ". Say what this station DOES have rather "
+                                "than what it doesn't.")
                 if not hint:
                     hint = (" Try loosening it — one filter at a time — or put "
                             "the caller's own words in as a request instead.")
@@ -250,9 +354,27 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             if withheld:
                 head += (f" ({withheld} more matched but are never-play — do "
                          "not offer them)")
+            tail = "\nQueue the one they pick with subwave_queue_track."
+            if swapped:
+                # Never silently: the caller asked for one word and is being
+                # shown another, and a DJ that does not say so is describing
+                # records under a name nobody chose.
+                tail = (f"\nThese are filed under \"{swapped}\", not "
+                        f"\"{genre}\" — this library has no \"{genre}\" of its "
+                        "own. Tell the caller which shelf you pulled them off "
+                        "before you offer them." + tail)
+            elif related:
+                # A thin answer beside a fat neighbour is the shape that
+                # started this: two tracks for Jazz+instrumental while
+                # "Instrumental Jazz" sat there with 740. Only ever added when
+                # the result was thin enough to be worth widening.
+                tail = ("\nThin, and this library also files "
+                        + ", ".join(f"\"{g}\"" for g in related[:_OFFER])
+                        + " — worth a look if the caller wants more."
+                        + tail)
             return (head + ":\n"
                     + "\n".join(_fmt_track(t, with_id=True) for t in rows)
-                    + "\nQueue the one they pick with subwave_queue_track.")
+                    + tail)
 
         tools.append(browse_library)
 

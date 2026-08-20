@@ -96,6 +96,17 @@ class CallActions:
         # caption card somewhere other than a LiveKit data channel — the
         # chat's WebSocket sets it; a call leaves it alone.
         self.taken: list[tuple[str, str]] = []
+        # Label -> the track ids that went in under it, for the batches this
+        # call queued. `subwave_queue_mix` takes a label ("90s alt rock mix"),
+        # says it back on the receipt, and used to drop it there: the station
+        # never hears it and no queue row carries it, so the name the caller
+        # was GIVEN was the one name that could not be used to take the batch
+        # out again. Observed 2026-08-19 — "cancel the 90s alt rock mix i
+        # queued" was answered "nothing matching that is waiting", and all
+        # five tracks aired over the following ten minutes. Kept here because
+        # it is per-call state that both tool modules already share, and it
+        # dies with the call the way the ledger above does.
+        self.batches: list[tuple[str, list[str]]] = []
         # WHEN each of those landed. `taken` alone cannot answer "did
         # anything happen AFTER the caller asked", which is the whole
         # question call/asks.py exists to record.
@@ -197,6 +208,33 @@ class CallActions:
         self.taken_at.append(time.time())
         self._deliver({"kind": kind, "icon": icon,
                        "label": label, "detail": detail})
+
+    def note_batch(self, label: str, ids: list[str]) -> None:
+        """Remember which tracks went in under a caller-facing label.
+
+        Only called when something actually queued, so a label the caller was
+        never told about never becomes a name they can ask us to undo."""
+        label = str(label or "").strip()
+        keep = [str(i).strip() for i in (ids or []) if str(i).strip()]
+        if label and keep:
+            self.batches.append((label, keep))
+
+    def batch_ids(self, wanted: str) -> list[str]:
+        """The ids queued under a label this call used, or [].
+
+        Matched loosely on purpose. The label is something the DJ wrote and
+        the caller then paraphrased back — "the 90s alt rock mix", "that 90s
+        mix", "the alt rock one" — and the model retypes it a third time.
+        Newest first, so re-using a label within one call undoes the most
+        recent batch rather than the oldest."""
+        want = " ".join(str(wanted or "").lower().split())
+        if not want:
+            return []
+        for label, ids in reversed(self.batches):
+            have = " ".join(label.lower().split())
+            if want == have or want in have or have in want:
+                return list(ids)
+        return []
 
     def _deliver(self, card: dict) -> None:
         """One card to whoever is listening — the hook, then the room."""
