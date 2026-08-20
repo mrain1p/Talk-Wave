@@ -58,7 +58,19 @@ _caller_last: dict[str, float] = {}      # caller key -> last mint
 # never a real call, so it is rejected before the 10s / 20-scan retry loop
 # rather than tying a request open on a random string (0.10.57 review). The
 # tier segment may carry the on-air letter behind it (`callin-gl-…`).
-_ROOM_SHAPE = re.compile(r"^(callin|vm|probe)-([a-z]l?-)?[0-9a-f]{12}$")
+#
+# A TEXT CHAT is none of those shapes. It has no minted room at all: the
+# widget holds a bare `uuid4().hex` in localStorage and posts THAT as the
+# room, while the record files itself under `chat-<its last 12>`. So every
+# thumbs pressed on a chat was rejected 400 here — the widget thanked the
+# caller, `rate()` would have matched the file on the same 12-character tail
+# it uses for calls, and the vote went in the bin. Observed 2026-08-20: the
+# operator downvoted two chats, both 400'd, and every stored chat record
+# carried no rating at all. Both spellings are allowed because the two sides
+# disagree about which one a chat's "room" is, and both resolve to the same
+# record.
+_ROOM_SHAPE = re.compile(
+    r"^(?:(?:callin|vm|probe|chat)-(?:[a-z]l?-)?[0-9a-f]{12}|[0-9a-f]{32})$")
 # And a ceiling on how many feedback waiters may be parked at once, so a flood
 # of well-formed-but-nonexistent rooms can't hold a pile of requests open.
 _feedback_waiters = asyncio.Semaphore(16)

@@ -43,6 +43,30 @@ log = logging.getLogger("callin.agent")
 # for on every later turn of the call.
 _PAGE = 8
 
+
+def _fold(word: str) -> str:
+    """Case and punctuation off, so "Hip-Hop", "hip hop" and "HipHop" are one
+    word. Only ever used to decide whether the caller MEANT a genre the
+    station holds — never to display, and never to send."""
+    return "".join(c for c in str(word or "").lower() if c.isalnum())
+
+
+def _same_genre(wanted: str, known: list[str]) -> str:
+    """The station's own spelling of the genre the model asked for, or "".
+
+    The station's genre filter is exact — `jazz` returns nothing while `Jazz`
+    returns 54,841 tracks — and the model types the caller's lowercase words.
+    Returns the station's spelling only when it is DIFFERENT from what was
+    asked, so the caller-facing retry above never repeats a query that has
+    already come back empty."""
+    folded = _fold(wanted)
+    if not folded:
+        return ""
+    for real in known or []:
+        if _fold(real) == folded and str(real) != str(wanted):
+            return str(real)
+    return ""
+
 # bpm and key used to be added here, for neighbour rows only — they were the
 # two numbers that justify "this mixes well after that". The station merges its
 # analysis columns into EVERY listing row (search, recent and browse as well as
@@ -146,6 +170,25 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             means on a call."""
             track_id = (id or "").strip()
             reference = ""
+            # A TITLE is not an id, and the station cannot tell you so: it
+            # looks the string up, finds nothing, and the miss is indistin-
+            # guishable from a real track with no neighbours on file. The DJ
+            # then reads back the only explanation it was given — "may not
+            # have been analysed yet" — and turns it into a story about the
+            # station being stubborn. Observed 2026-08-20 with
+            # id='Jupiter by Aoife O’Donovan': a track that was ON AIR minutes
+            # earlier, reported to the caller as unknown to the archives.
+            # Station ids never contain whitespace, so this costs nothing and
+            # sends the model to the one tool that turns a title into an id.
+            if track_id and any(c.isspace() for c in track_id):
+                return (
+                    f"\"{track_id}\" is a title, not a track id — nothing was "
+                    "looked up. Ids come from a result row and have no spaces "
+                    "in them. Search for it with subwave_search_library, take "
+                    "the id off the row you want, and call this again with "
+                    "that. Do NOT tell the caller the station doesn't know the "
+                    "track: you haven't asked it yet."
+                )
             if not track_id:
                 now = await station.now_playing()
                 track = now.get("track") or now.get("current") or now
@@ -205,6 +248,29 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                         "don't describe records you haven't seen.")
             rows = d.get("rows") or []
             vocab = [str(m) for m in (d.get("moodVocab") or [])]
+            # The station matches a genre EXACTLY, so `jazz` is not `Jazz` and
+            # returns zero of 54,841. The hint below has always handed the real
+            # spelling back and asked for a second try — and the model does not
+            # take it: observed 2026-08-19, asked for instrumental jazz before
+            # 2000, told the caller "the library isn't letting me filter by
+            # year" and then defended the invention when pushed. The two tracks
+            # it should have found were there all along. Reading the list is
+            # already the cost of a miss; spending the one extra call to try the
+            # station's own spelling turns the dead end into the answer instead
+            # of into a story about the machine.
+            known: list[str] = []
+            fixed = ""
+            if not rows and genre:
+                known = await station.library_genres(limit=40)
+                fixed = _same_genre(genre, known)
+                if fixed:
+                    again = await station.browse_library(
+                        moods=moods, energy=energy, genre=fixed,
+                        year_from=year_from or None, year_to=year_to or None,
+                        vocal=vocal, limit=_PAGE)
+                    if again and (again.get("rows") or []):
+                        d = again
+                        rows = again.get("rows") or []
             if not rows:
                 # The mood vocabulary is fixed and small, and a caller's word
                 # for a feeling is usually not one of the seventeen: asking for
@@ -218,6 +284,18 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                             + ". If one of them is close to what the caller "
                             "means, try again with it — do NOT tell them the "
                             "library has nothing.")
+                elif genre and fixed:
+                    # The spelling was the problem and it has already been
+                    # retried above — so the genre IS here and this exact
+                    # COMBINATION is what's empty. Saying which is the whole
+                    # difference between a useful answer and "we haven't got
+                    # any jazz".
+                    hint = (f" The station files that genre as \"{fixed}\" and "
+                            "it HAS music under it — what's empty is this "
+                            "combination, with the other filters on top. Say "
+                            "that, not that the library has none, and offer to "
+                            "drop the tightest filter (the year range, or "
+                            "instrumental-only) rather than the genre.")
                 elif genre:
                     # The same trap the mood vocabulary was fixed for, one
                     # field along: a genre is free text on the station's side,
@@ -225,7 +303,6 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     # one of them is in this library. Reading the real list
                     # back turns a dead end into a second try, and it is only
                     # read on the miss — no cost on a browse that worked.
-                    known = await station.library_genres(limit=40)
                     if known:
                         hint = (" The genres this library actually files under "
                                 "are: " + ", ".join(known)

@@ -531,3 +531,105 @@ class TestLiftingALockIsNotLiftingSomeoneElsesTakeover(unittest.TestCase):
         out = asyncio.run(tools["subwave_clear_genre_lock"]())
         self.assertFalse(station.cleared)
         self.assertIn("Nothing is pinned", out)
+
+
+class TestAMissSaysWhatItDidFind(unittest.TestCase):
+    """A miss used to be one sentence and one sentence only: the whole
+    roster, twice over, and "ask the caller which one they mean".
+
+    Two calls made the case for something better. 2026-08-19: "i want to hear
+    wade, change shows" — Wade presents four shows on the operator's station,
+    so the matcher (rightly) refused to guess and the DJ was told no show
+    matched, about a DJ who is on the roster four times over. And the
+    operator's own words on the second, 2026-08-20: it should be "self-aware
+    enough where its not matching letter and case and then saying NO" — a
+    caller who says Walt should hear that Wade runs Up Stream, not a refusal.
+
+    Nothing here PINS on a near miss. The tool suggests; the caller confirms.
+    """
+
+    SHOWS = [
+        {"id": "s1", "name": "The Alibi Room", "personaId": "p_a262b2"},
+        {"id": "s2", "name": "Up Stream · Deep Cuts", "personaId": "p_10cfa2"},
+        {"id": "s3", "name": "Late Feels", "personaId": "p_10cfa2"},
+        {"id": "s4", "name": "Friday Drive", "personaId": "p_10cfa2"},
+    ]
+    PEOPLE = [
+        {"id": "p_a262b2", "name": "Duke Sterling"},
+        {"id": "p_10cfa2", "name": "Wade"},
+        {"id": "p_ghost", "name": "The Archivist"},
+    ]
+
+    def _miss(self, wanted):
+        from call.tools.broadcast import _show_miss
+
+        return _show_miss(self.SHOWS, wanted, self.PEOPLE)
+
+    def test_a_dj_with_several_shows_is_named_not_denied(self):
+        out = self._miss("wade")
+        self.assertIn("Wade", out)
+        self.assertIn("3 shows", out)
+        for show in ("Up Stream · Deep Cuts", "Late Feels", "Friday Drive"):
+            self.assertIn(show, out)
+        # The exact thing the DJ said on the call this came from.
+        self.assertIn("not because Wade is missing", out)
+        self.assertIn("Do NOT tell them there's no such DJ", out)
+
+    def test_a_near_miss_on_a_name_offers_who_was_meant(self):
+        out = self._miss("walt")
+        self.assertIn("Wade", out)
+        self.assertIn("closest", out.lower())
+        # Suggested, never pinned: the caller has to confirm first.
+        self.assertIn("ask if that's the one", out.lower())
+        self.assertIn("do not pin anything until", out.lower())
+
+    def test_a_near_miss_on_a_show_name_offers_the_show(self):
+        out = self._miss("alibi room")
+        self.assertIn("The Alibi Room", out)
+        self.assertIn("closest", out.lower())
+
+    def test_a_dj_with_no_show_is_told_apart_from_a_dj_who_is_missing(self):
+        out = self._miss("the archivist")
+        self.assertIn("The Archivist", out)
+        self.assertIn("no show in the schedule", out)
+
+    def test_a_name_close_to_nothing_still_gets_the_roster(self):
+        out = self._miss("xyzzy")
+        self.assertIn("The Alibi Room", out)
+        self.assertIn("Duke Sterling", out)
+        self.assertIn("absent from BOTH lists", out)
+
+    def test_the_tool_returns_the_miss_rather_than_pinning_something(self):
+        station = _Station()
+        out = asyncio.run(_tools(station)["subwave_takeover_show"](show="walt"))
+        self.assertIsNone(station.pinned)
+        self.assertIn("Wade", out)
+
+
+class TestAShowIsReachableHoweverItIsSpelled(unittest.TestCase):
+    """The matcher lowercased and compared, and nothing else.
+
+    "Up Stream · Deep Cuts" was reachable by "up stream" and NOT by
+    "upstream" — a closed-up space got the same flat refusal as a show that
+    does not exist. Every show on the operator's station carries a "·"
+    strapline the caller never says, too.
+    """
+
+    SHOWS = [
+        {"id": "s1", "name": "Up Stream · Deep Cuts", "personaId": "p1"},
+        {"id": "s2", "name": "THE OVERLOOK · After Dark", "personaId": "p2"},
+        {"id": "s3", "name": "DONOVAN'S PUB · Irish Folk & Trad",
+         "personaId": "p3"},
+    ]
+
+    def test_the_strapline_is_not_part_of_the_name_a_caller_says(self):
+        for said in ("Up Stream", "up stream", "upstream", "UPSTREAM",
+                     "Up Stream · Deep Cuts"):
+            self.assertEqual(_match_show(self.SHOWS, said)["id"], "s1", said)
+
+    def test_punctuation_a_caller_never_says_is_not_required(self):
+        for said in ("donovans pub", "Donovan's Pub", "DONOVANS PUB"):
+            self.assertEqual(_match_show(self.SHOWS, said)["id"], "s3", said)
+
+    def test_the_overlook_still_answers_to_its_own_head(self):
+        self.assertEqual(_match_show(self.SHOWS, "overlook")["id"], "s2")

@@ -3,6 +3,30 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.16
+
+Five things a caller asked for and did not get, every one of them because a tool was in the way rather than the model — and the text line stops recording every conversation as having gone fine.
+
+### The DJ stops inventing reasons it can't do something
+
+- **A genre typed in lower case matched nothing, and the DJ made up why.** The station matches a genre exactly, so `jazz` returned zero of 54,841 tracks while `Jazz` returned all of them. Asked for instrumental jazz from before 2000, the DJ was handed the real spelling, ignored it, and told the caller "the library isn't letting me filter by year" — then defended the invention when the caller pushed back. Both tracks it should have found were there. The browse now retries in the station's own spelling itself, and when even that comes back empty it says which filter is the empty one instead of that the library has none.
+- **Asking for more like a named track reported the station as ignorant of it.** "More like this" was called with a title where a track id belongs, so the station looked up a title, found nothing, and the only explanation the tool had was "may not have been analysed yet" — which the DJ relayed as the archives being stubborn, about a record that had been on air minutes earlier. A title is now refused before the station is asked, with the one instruction that fixes it: search for it first, then pass the id off the row.
+
+### A mix can be cancelled by the name it was given
+
+- **The label on a queued mix was write-only.** The DJ queues five tracks as "90s alt rock mix", says exactly that to the caller, and the label goes no further — the station never hears it and no queue row carries it. So when the caller said "cancel the 90s alt rock mix i queued" there was no field that could take the name back; it went into the artist box, matched nothing, and the DJ reported that it may never have gone in. It had: all five aired over the next ten minutes. The clear-out now resolves a label to the tracks that went in under it, understands the label wherever the DJ puts it, and — when the batch has already played — says so rather than calling the caller mistaken.
+
+### A near miss on a name stops being a flat no
+
+- **Naming a DJ who presents more than one show was answered as if that DJ did not exist.** Wade presents four shows, so nothing could resolve, and the caller asking for Wade was told no show matched — followed by the entire roster. The miss now names the person, lists their shows, and says which of the two problems it actually has.
+- **A name spelled slightly wrong got the same flat refusal as a name nobody has.** Ask for Walt and the answer is that nobody is spelled Walt, the closest is Wade, and Wade runs Up Stream — offered for the caller to confirm, never pinned on a guess. Shows are also reachable however the caller spells them now: "upstream" finds *Up Stream · Deep Cuts*, and the strapline after the dot is no longer part of the name a caller has to say.
+
+### The text line writes down what went wrong
+
+- **Every chat ever recorded shipped a clean sheet.** The list of problems was declared, drained into the record and never once appended to, so the panel's "needs attention" count could not see a text conversation at all — including one that promised a request it never sent and skipped the caller's own record. It now records what the phone has always recorded, in the same words, so one filter reads both.
+- **A thumbs-down on a text chat was thrown away.** The rating endpoint only knew the shapes of minted call rooms, and a chat has none — so every vote pressed on a chat was refused while the card said "Thanks." Two of the operator's own downvotes went in the bin before anyone noticed.
+- **A nudged retry no longer runs into the line before it.** When the DJ is pulled up for promising something it hasn't done, its second attempt used to be glued onto the first mid-sentence — "…to go in behind it?Ah, wait—my mistake". The break now lands in the live card and the written record in the same place.
+
 ## 0.98.15
 
 Five actions that change the station stop reporting themselves as a bare tick, and the README says what a caller can actually ask for.

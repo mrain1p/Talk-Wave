@@ -570,3 +570,122 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
         tool = BY_NAME["subwave_clear_from_queue"]
         self.assertEqual(tool.gate, "allow_cancel_queue")
         self.assertTrue(tool.needs_station_admin)
+
+
+class TestAMixCanBeUndoneByTheNameItWasGiven(unittest.TestCase):
+    """`subwave_queue_mix` takes a label, says it back on the receipt, and
+    used to drop it there.
+
+    Read off the record, 2026-08-19. The DJ queued five tracks as "90s alt
+    rock mix" and told the caller so. The caller said "ok how about you just
+    cancel the 90s alt rock mix i queued". The only field that could hold a
+    name was `artist`, so that is where the label went — and no queue row has
+    ever carried a mix label, so the tool answered "nothing matching that
+    description waiting in the queue... it may have played already". It had
+    not: all five aired over the next ten minutes, and the operator watched
+    them go.
+
+    The label the caller was GIVEN has to be a label they can hand back.
+    """
+
+    QUEUE = [
+        {"subsonic_id": "m1", "title": "All Mixed Up", "artist": "311"},
+        {"subsonic_id": "m2", "title": "Brodels", "artist": "311"},
+        {"subsonic_id": "m3", "title": "DLMD", "artist": "311"},
+        {"subsonic_id": "z9", "title": "Someone Else's", "artist": "Fink"},
+    ]
+
+    def _tool(self, upcoming, actions):
+        return TestClearingARunFromTheQueue._tool(
+            TestClearingARunFromTheQueue(), upcoming, actions)
+
+    def _queued(self, actions):
+        """As if queue_mix had just run — the ledger it now leaves behind."""
+        actions.note_batch("90s alt rock mix", ["m1", "m2", "m3"])
+
+    def test_the_label_clears_the_batch(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        self._queued(actions)
+        st, names = self._tool(self.QUEUE, actions)
+        out = asyncio.run(names["subwave_clear_from_queue"](
+            label="90s alt rock mix"))
+
+        self.assertEqual(st.cancelled, ["m1", "m2", "m3"])
+        self.assertIn("3 track(s)", out)
+        # Another caller's record is not in this batch and is not touched.
+        self.assertNotIn("z9", st.cancelled)
+
+    def test_the_label_put_in_the_artist_field_still_finds_it(self):
+        # What the model actually did, before `label` existed to reach for.
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        self._queued(actions)
+        st, names = self._tool(self.QUEUE, actions)
+        asyncio.run(names["subwave_clear_from_queue"](
+            artist="90s alt rock mix"))
+        self.assertEqual(st.cancelled, ["m1", "m2", "m3"])
+
+    def test_the_caller_paraphrasing_the_label_is_enough(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        self._queued(actions)
+        st, names = self._tool(self.QUEUE, actions)
+        asyncio.run(names["subwave_clear_from_queue"](label="the 90s alt rock mix"))
+        self.assertEqual(st.cancelled, ["m1", "m2", "m3"])
+
+    def test_a_batch_that_has_already_aired_is_not_called_a_stranger(self):
+        # The tracks went in on THIS call and the queue has moved past them.
+        # "It never went in" is the sentence that starts an argument with a
+        # caller who watched it go in.
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        self._queued(actions)
+        st, names = self._tool([{"subsonic_id": "z9", "title": "Someone Else's",
+                                 "artist": "Fink"}], actions)
+        out = asyncio.run(names["subwave_clear_from_queue"](
+            label="90s alt rock mix"))
+
+        self.assertEqual(st.cancelled, [])
+        self.assertIn("did go into the queue on this call", out)
+        self.assertNotIn("never went in", out)
+        self.assertEqual(actions.count, 0)      # nothing pulled, nothing spent
+
+    def test_a_label_nobody_queued_is_still_an_ordinary_miss(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        st, names = self._tool(self.QUEUE, actions)
+        out = asyncio.run(names["subwave_clear_from_queue"](
+            label="jazz hour mix"))
+        self.assertEqual(st.cancelled, [])
+        self.assertIn("Nothing waiting", out)
+
+    def test_nothing_named_at_all_is_still_refused(self):
+        from call.actions import CallActions
+
+        st, names = self._tool(self.QUEUE, CallActions(5))
+        out = asyncio.run(names["subwave_clear_from_queue"]())
+        self.assertEqual(st.state_reads, 0)
+        self.assertIn("Say WHAT to clear", out)
+
+    def test_the_ledger_only_remembers_what_actually_queued(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        actions.note_batch("empty mix", [])
+        actions.note_batch("", ["m1"])
+        self.assertEqual(actions.batches, [])
+        self.assertEqual(actions.batch_ids("empty mix"), [])
+
+    def test_the_newest_batch_under_a_reused_label_is_the_one_undone(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        actions.note_batch("mellow mix", ["old1", "old2"])
+        actions.note_batch("mellow mix", ["m1", "m2"])
+        self.assertEqual(actions.batch_ids("mellow mix"), ["m1", "m2"])

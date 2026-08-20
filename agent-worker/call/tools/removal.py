@@ -101,24 +101,50 @@ def build_removal_tools(cfg: dict, station: StationClient,
 
     @lk_llm.function_tool(name="subwave_clear_from_queue")
     async def clear_from_queue(artist: str = "", album: str = "",
-                               titles: str = "") -> str:
+                               titles: str = "", label: str = "") -> str:
         """Take SEVERAL waiting tracks out of the queue as ONE action —
-        "remove all the Eminem", "clear that album out", "pull those three".
-        Give an artist (everything of theirs waiting goes), an album name,
-        or titles one per line. The track on air and the one cued up next
-        cannot be pulled — the result names any it was too late for, and
-        skipping is the only tool for those. For a single track use
-        subwave_cancel_queued_track. The queue is shared: clear only what
-        THIS caller asked to clear, never another caller's requests."""
+        "remove all the Eminem", "clear that album out", "pull those three",
+        "cancel that mix you just queued". Give an artist (everything of
+        theirs waiting goes), an album name, titles one per line, or the
+        `label` of a mix YOU queued earlier in this call. The track on air
+        and the one cued up next cannot be pulled — the result names any it
+        was too late for, and skipping is the only tool for those. For a
+        single track use subwave_cancel_queued_track. The queue is shared:
+        clear only what THIS caller asked to clear, never another caller's
+        requests."""
         if actions.at_limit():
             return actions.refusal()
         want_artist = _squash(artist)
         want_album = _squash(album)
         want_titles = {_squash(t) for t in (titles or "").splitlines()
                        if _squash(t)}
-        if not (want_artist or want_album or want_titles):
-            return ("Say WHAT to clear — an artist, an album, or titles one "
-                    "per line. Nothing was pulled.")
+        # A mix's label is not on any queue row — it only ever existed on the
+        # receipt this call handed the caller — so it is resolved back to the
+        # ids that went in under it before anything is matched.
+        want_ids = set(actions.batch_ids(label))
+        named_batch = str(label or "").strip() if want_ids else ""
+        if not want_ids:
+            # And the model does not reach for the new parameter first: on the
+            # call that prompted this it put the label in `artist`, which is
+            # the only field it had. That reading is now correct rather than
+            # a dead end — try each free-text field as a label before giving
+            # up, and only then fall through to matching it as an artist or an
+            # album name. Costs nothing: this is a dict lookup on a list that
+            # is at most a handful of entries long.
+            for guess in (artist, album, titles):
+                found = actions.batch_ids(guess)
+                if found:
+                    want_ids = set(found)
+                    named_batch = str(guess or "").strip()
+                    break
+        # Asked on what was SAID, not on what resolved: a label that matches
+        # no batch is a request this tool understood and could not fill, and
+        # it earns the honest miss below rather than "you didn't say what".
+        if not (want_artist or want_album or want_titles
+                or str(label or "").strip()):
+            return ("Say WHAT to clear — an artist, an album, titles one per "
+                    "line, or the label of a mix you queued on this call. "
+                    "Nothing was pulled.")
 
         state = await station.state()
         upcoming = [t for t in (state.get("upcoming") or [])
@@ -131,18 +157,32 @@ def build_removal_tools(cfg: dict, station: StationClient,
             t_artist = _squash(t.get("artist"))
             t_album = _squash(t.get("album"))
             t_title = _squash(t.get("title"))
-            hit = ((want_artist and want_artist in t_artist)
+            tid = str(t.get("subsonic_id") or t.get("id") or "")
+            hit = ((tid and tid in want_ids)
+                   or (want_artist and want_artist in t_artist)
                    or (want_album and t_album
                        and (want_album in t_album or t_album in want_album))
                    or (t_title and any(w in t_title or t_title in w
                                        for w in want_titles)))
             if not hit:
                 continue
-            tid = str(t.get("subsonic_id") or t.get("id") or "")
             if tid:
                 matches.append((tid, _txt(t.get("title")) or "?"))
         if not matches:
-            asked = artist or album or "those titles"
+            # A named batch that matches nothing is a DIFFERENT answer from a
+            # name nobody recognises: those tracks did go in, on this call,
+            # and the queue has since moved past them. Saying "it never went
+            # in" about music the caller watched being queued is how the DJ
+            # ends up arguing with someone who is right.
+            if named_batch:
+                return (
+                    f"\"{named_batch}\" did go into the queue on this call, but "
+                    "none of it is still waiting — it has already played or is "
+                    "playing now. Nothing was pulled. Say that plainly: the "
+                    "tracks were queued, they're just past pulling. Only a skip "
+                    "ends what's on air, and that cuts it off for everyone."
+                )
+            asked = artist or album or label or "those titles"
             return (f"Nothing waiting in the queue matches \"{asked}\" — it "
                     "may have played already, or it never went in. Tell the "
                     "caller what you actually see; don't claim a clear-out.")
@@ -179,9 +219,9 @@ def build_removal_tools(cfg: dict, station: StationClient,
             return (f"Nothing came out of the queue: {why}. Tell the caller "
                     "plainly — do NOT claim a clear-out happened.")
 
+        what = named_batch or artist or album
         actions.note("clear", f"{len(pulled)} tracks"
-                     + (f" — {_txt(artist or album, 60)}"
-                        if (artist or album) else ""))
+                     + (f" — {_txt(what, 60)}" if what else ""))
         names = ", ".join(f"\"{n}\"" for n in pulled[:5])
         head = (f"Pulled {len(pulled)} track(s) out of the queue: {names}"
                 + ("…" if len(pulled) > 5 else "") + ". They will not play.")

@@ -758,6 +758,19 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "test classes that had silently never run — and splitting the "
             "rules about structure across files would defeat the point of "
             "having one place that states them.",
+        "agent-worker/tests/test_album_tools.py":
+            "one subject: putting a RUN of tracks in and taking one back "
+            "out — the album, the mix, and the clear-out that mirrors "
+            "them. Crossed the ceiling at 0.98.16, when a mix became "
+            "undoable by the label it was queued under; the tests for the "
+            "undo belong beside the tests for the queueing, because the "
+            "bug was that the two had nothing in common.",
+        "agent-worker/tests/test_takeover.py":
+            "one subject: putting a show on air, the one caller action "
+            "that outlives the call — and, since 0.98.16, what the tool "
+            "says when it cannot tell which show was meant. The miss is "
+            "the same subject as the match: both decide what a whole "
+            "station hears for an hour.",
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).
@@ -823,6 +836,22 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
+        # 602 at 0.98.16: two lines over, from the fix that gave the text
+        # line a `problems` list it actually writes to and a paragraph break
+        # between a nudged retry and the line before it. The seam is the one
+        # the file has carried since ChatShelf arrived — ONE CONVERSATION
+        # (the tool loop, the nudge, the record it writes) against THE
+        # COLLECTION (opening, resuming, idling out, sweeping) — and they
+        # meet at get_or_open and nowhere else. Deliberately not cut in the
+        # change that grew it: the tool loop is exactly what just changed,
+        # and a regression there should not have two candidate causes. The
+        # same deferral call/air.py records.
+        "agent-worker/chat/session.py": (602, "the one-conversation half "
+                                              "(ChatSession: the tool loop, "
+                                              "the nudge, the record) split "
+                                              "from the collection half "
+                                              "(ChatShelf: open, resume, "
+                                              "idle out, sweep)"),
         # Back over the ceiling at 630 with the tape-mode class (0.98.5); its
         # earlier entry (676) was rightly deleted when a split took it under.
         # The seam is the same one it has always had: the chunk-store half

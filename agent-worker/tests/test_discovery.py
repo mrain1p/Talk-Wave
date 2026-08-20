@@ -283,7 +283,113 @@ class TestTheStationsOwnWordsForAMiss(unittest.TestCase):
         tools = _build(ALL_ON, station)
         out = asyncio.run(tools["subwave_browse_library"](genre="Hip Hop"))
         self.assertIn("Hip-Hop", out)
+        # The spelling was the whole problem, so the tool retried it itself
+        # rather than only naming it — and when even the station's own
+        # spelling comes back empty, what is empty is the COMBINATION.
+        self.assertIn(("browse", {"moods": "", "energy": "", "genre": "Hip-Hop",
+                                  "year_from": None, "year_to": None,
+                                  "vocal": "", "limit": 8}), station.asked)
+        self.assertIn("combination", out)
+        self.assertIn("HAS music under it", out)
+
+    def test_a_genre_the_station_does_not_have_still_reads_back_the_list(self):
+        station = _Station(browse={"rows": [], "moodVocab": []},
+                           genres=["Hip-Hop", "Jazz"])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="polka"))
+        # Nothing to retry, so nothing was retried — one browse, one genre read.
+        self.assertEqual([kind for kind, _ in station.asked],
+                         ["browse", "genres"])
+        self.assertIn("Hip-Hop", out)
         self.assertIn("do NOT tell them", out)
+
+
+class TestTheStationSpellsItsOwnGenres(unittest.TestCase):
+    """A genre is matched EXACTLY on the station's side, and the model types
+    the caller's lowercase words.
+
+    2026-08-19, read off the record: the caller asked for instrumental jazz
+    from before 2000. The DJ browsed `genre='jazz'` — zero of 54,841 — was
+    handed the real spelling and the standing instruction to try again with
+    it, and instead told the caller "the library isn't letting me filter by
+    year". When pushed it doubled down: "I don't write the code, I just
+    suffer through it." Both of the tracks it should have found were there.
+    Reading the list back was never enough; the retry has to happen here.
+    """
+
+    class _ByGenre(_Station):
+        """A library that answers only to the spelling it files under."""
+
+        def __init__(self, spelled: str, rows: list, **kw) -> None:
+            super().__init__(**kw)
+            self._spelled = spelled
+            self._rows = rows
+
+        async def browse_library(self, **kw):
+            self.asked.append(("browse", kw))
+            if kw.get("genre") == self._spelled:
+                return {"rows": list(self._rows), "total": len(self._rows)}
+            return {"rows": [], "moodVocab": []}
+
+    def test_a_lowercase_genre_is_retried_in_the_stations_own_spelling(self):
+        station = self._ByGenre(
+            "Jazz",
+            [{"id": "j1", "title": "Penthouse Serenade", "artist": "Jimmy Smith",
+              "year": 1957}],
+            genres=["Rock", "Jazz", "Hip Hop"])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](
+            genre="jazz", vocal="instrumental", year_to=1999))
+
+        # The caller gets the record, not a story about the machine.
+        self.assertIn("Penthouse Serenade", out)
+        self.assertIn("j1", out)
+        asked = [kw.get("genre") for kind, kw in station.asked if kind == "browse"]
+        self.assertEqual(asked, ["jazz", "Jazz"])
+        # And the retry keeps every other filter the caller asked for — a
+        # correction that quietly widened the search would be its own lie.
+        second = [kw for kind, kw in station.asked if kind == "browse"][1]
+        self.assertEqual(second["vocal"], "instrumental")
+        self.assertEqual(second["year_to"], 1999)
+
+    def test_the_spelling_the_station_uses_is_never_retried_against_itself(self):
+        station = self._ByGenre("Jazz", [], genres=["Rock", "Jazz"])
+        tools = _build(ALL_ON, station)
+        asyncio.run(tools["subwave_browse_library"](genre="Jazz"))
+        self.assertEqual(
+            [kw.get("genre") for kind, kw in station.asked if kind == "browse"],
+            ["Jazz"])
+
+
+class TestATitleIsNotATrackId(unittest.TestCase):
+    """`more_like_this` forwarded whatever string it was given.
+
+    2026-08-20: the DJ called it with id='Jupiter by Aoife O’Donovan' — a
+    track that had been ON AIR minutes earlier. The station looked up a title
+    as an id, found nothing, and the tool reported the one explanation it had:
+    "may not have been analysed yet". The DJ relayed that as the station's
+    archives being stubborn, and never once searched for the track. A miss
+    the tool caused must not read as a fact about the library.
+    """
+
+    def test_a_title_is_refused_before_the_station_is_asked(self):
+        station = _Station(neighbours=[])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_more_like_this"](
+            id="Jupiter by Aoife O’Donovan"))
+
+        self.assertEqual(station.asked, [])          # never went out
+        self.assertIn("not a track id", out)
+        self.assertIn("subwave_search_library", out)
+        self.assertNotIn("analysed", out)
+
+    def test_a_real_id_still_goes_straight_through(self):
+        station = _Station(neighbours=[{"id": "n1", "title": "Neighbour"}])
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_more_like_this"](
+            id="IZQMJtdwlhQb7eLtw5olRe"))
+        self.assertIn(("like", "IZQMJtdwlhQb7eLtw5olRe"), station.asked)
+        self.assertIn("Neighbour", out)
 
 
 class TestTheStationsFavouritesAndItsMemory(unittest.TestCase):

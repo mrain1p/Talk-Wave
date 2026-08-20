@@ -34,7 +34,7 @@ import uuid
 
 import settings as settings_store
 from chat import openers
-from promises import unbacked
+from promises import PROBLEMS, unbacked
 from spoken_rules import reads_as_a_refusal
 from station import StationClient
 
@@ -345,6 +345,10 @@ class ChatSession:
         # it. Same shape as the voice guard's own gap: the structured answer
         # was already in hand.
         refused_any = False
+        # A paragraph break owed to the reader before the next round's words —
+        # see the nudge below. Emitted as a delta so the live card and the
+        # written record break in the same place.
+        pending_break = False
         for _ in range(MAX_TOOL_ROUNDS):
             text_out, calls = "", []
             stream = model.chat(chat_ctx=ctx, tools=tools)
@@ -353,6 +357,10 @@ class ChatSession:
                 if not delta:
                     continue
                 if delta.content:
+                    if pending_break and not text_out:
+                        pending_break = False
+                        reply += "\n\n"
+                        on_event({"type": "delta", "text": "\n\n"})
                     text_out += delta.content
                     on_event({"type": "delta", "text": delta.content})
                 if delta.tool_calls:
@@ -381,8 +389,21 @@ class ChatSession:
                 ) if (nudge_left and tools) else ""
                 if kind:
                     nudge_left = False
+                    # The operator reads these back, and until 0.98.16 could
+                    # not: this list was declared, drained into the record and
+                    # never once appended to, so every chat filed a clean
+                    # sheet no matter what happened in it.
+                    self.problems.append(PROBLEMS[kind])
                     ctx.add_message(role="assistant", content=text_out)
                     ctx.add_message(role="user", content=_NUDGE[kind])
+                    # The nudge asks for a tool and no more words. When the
+                    # model types anyway — which is most of the time — the
+                    # second attempt used to be glued straight onto the first
+                    # with nothing between them, mid-sentence: "...go in behind
+                    # it?Ah, wait—my mistake". Held rather than emitted now, so
+                    # a round that DOES comply and stays quiet doesn't leave a
+                    # stray gap behind it.
+                    pending_break = bool(text_out.strip())
                     continue
                 break
             # Tool results go back as TEXT, not as function_call /

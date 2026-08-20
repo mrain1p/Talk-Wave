@@ -36,7 +36,7 @@ import logging
 
 from livekit.agents import AgentSession
 
-from promises import unbacked
+from promises import PROBLEMS, unbacked
 from spoken_rules import reads_as_a_refusal
 
 log = logging.getLogger("callin.agent")
@@ -81,27 +81,10 @@ _NUDGE = {
     ),
 }
 
-_PROBLEM = {
-    "promise": (
-        "The DJ told the caller it was about to do something and ran no tool. It was given "
-        "one more turn to actually make the call; if the next line still promises without a "
-        "receipt, the model is narrating actions instead of taking them — check the LLM "
-        "setting against one with proven tool routing."
-    ),
-    "refused": (
-        "A tool came back REFUSED and the DJ told the caller it had happened anyway, or was "
-        "on its way. This is the failure the caller cannot catch — they hang up believing a "
-        "record is coming that nobody queued. It was given one more turn to own it. Repeats "
-        "here mean the honesty rules in the prompt are not reaching this model."
-    ),
-    "claim": (
-        "The DJ told the caller something had ALREADY been done and ran no tool, so it had "
-        "not been. It was given one more turn to make the claim true. This is the shape that "
-        "does not announce itself on the call — the caller is told it worked and hangs up "
-        "believing it — so if it repeats, treat the model's tool routing as unfit rather "
-        "than as a rough edge."
-    ),
-}
+# Moved to promises.py at 0.98.16 and imported, for the reason the patterns
+# themselves were: the text line needs the identical wording in its own
+# record and a second copy is a second thing to drift.
+_PROBLEM = PROBLEMS
 
 
 def attach_promise_guard(session: AgentSession, record=None, actions=None,

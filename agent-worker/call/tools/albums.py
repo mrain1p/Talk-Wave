@@ -497,6 +497,9 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
             return (f"None of those went into the queue: {why}. Tell the "
                     "caller plainly — do NOT claim the mix is lined up.")
         actions.note("mix", label or f"{len(queued)} picks")
+        # The label is about to be said to the caller, so it has to remain
+        # something they can ask us to undo — see CallActions.batches.
+        actions.note_batch(label, [str(r.get("id") or "") for r, _p in queued])
         titles = ", ".join(f"\"{_txt(r.get('title'))}\"" for r, _p in queued[:3])
         head = (f"Queued {len(queued)} track(s)"
                 + (f" as \"{label}\"" if label.strip() else "")

@@ -14,6 +14,7 @@ from station import StationClient
 
 from ..actions import CallActions
 from ..air import OnAirGuard, speaking_secs
+from .shows import _match_show, _show_miss
 
 log = logging.getLogger("callin.agent")
 
@@ -23,61 +24,6 @@ log = logging.getLogger("callin.agent")
 # other, and the caller who asked about a genre would have undone the
 # operator's takeover.
 GENRE_LOCK_SHOW_ID = "genre_lock"
-
-
-def _match_show(shows: list[dict], wanted: str,
-                personas: list[dict] | None = None) -> dict | None:
-    """Find the show a caller named, without making the model look it up first.
-
-    The station's takeover endpoint wants a showId. A caller says "put the
-    late show on". Making the model fetch the schedule, hold the ids and pass
-    the right one back is a turn of latency and a chance to hallucinate an id
-    that 404s — so resolve it here, the same way the library wrapper resolves
-    awkward phrasing rather than reporting a miss.
-
-    Exact id, then exact name, then a unique substring. Ambiguity is NOT
-    resolved by picking the first: two shows containing "night" and a caller
-    who gets the other one is a station-wide change nobody asked for.
-
-    **A DJ's NAME resolves to their show**, which is how callers actually ask
-    — "change the DJ to Duke". The conduct has promised exactly that since
-    0.10.93 ("a DJ's name resolves to their show") and this function could not
-    do it: it read `name` and nothing else, so a real persona came back as no
-    match. Observed 2026-08-13 — a caller asked for Duke Sterling three times,
-    was told each time that no such DJ was on the roster, and only got there
-    by naming his show (The Alibi Room) himself. Personas are matched AFTER
-    shows so a show called after its host still wins on its own name.
-    """
-    want = str(wanted or "").strip().lower()
-    if not want:
-        return None
-    for show in shows:
-        if str(show.get("id") or "").lower() == want:
-            return show
-    named = [s for s in shows if str(s.get("name") or "").strip().lower() == want]
-    if len(named) == 1:
-        return named[0]
-    partial = [s for s in shows if want in str(s.get("name") or "").lower()]
-    if len(partial) == 1:
-        return partial[0]
-
-    # No show by that name — try the people. Exact first, then a unique
-    # substring, so "duke" finds Duke Sterling but an ambiguous fragment
-    # still refuses rather than picking one.
-    by_person: list[dict] = []
-    for persona in (personas or []):
-        pname = str(persona.get("name") or "").strip().lower()
-        if not pname:
-            continue
-        if pname != want and want not in pname:
-            continue
-        pid = str(persona.get("id") or "")
-        by_person += [s for s in shows
-                      if str(s.get("personaId") or "") == pid and pid]
-    # Dedupe on id: two personas whose names both contain the fragment can
-    # point at the same show, and that is still one unambiguous answer.
-    unique = {str(s.get("id")): s for s in by_person}
-    return next(iter(unique.values())) if len(unique) == 1 else None
 
 
 def build_on_air_tools(
@@ -353,23 +299,12 @@ def build_on_air_tools(
             personas = await station.personas()
             picked = _match_show(shows, show, personas)
             if not picked:
-                names = ", ".join(
-                    str(s.get("name") or "").strip() for s in shows
-                    if str(s.get("name") or "").strip())
-                djs = ", ".join(
-                    str(p.get("name") or "").strip() for p in personas
-                    if str(p.get("name") or "").strip())
-                # Both lists, because the caller may have named either — and
-                # a DJ told only the show names invents a roster from them,
-                # which is how a real persona got denied three times.
-                return (
-                    f"No show matches \"{show}\" — or more than one does. The "
-                    f"station's shows are: {names}."
-                    + (f" Its DJs are: {djs}." if djs else "")
-                    + " Ask the caller which one they mean and try again with "
-                    "that name. Do NOT tell them a name is missing from the "
-                    "roster unless it is absent from BOTH lists above."
-                )
+                # Both rosters still reach the model on a real miss — a DJ
+                # told only the show names invents a roster from them, which
+                # is how a real persona got denied three times. But a miss
+                # that is a near miss, or a DJ with several shows, says so
+                # instead: see _show_miss.
+                return _show_miss(shows, show, personas)
             # Whose show it is. The station knows; the DJ was guessing, and
             # guessed wrong on air — see the note on the receipt below.
             who = ""
