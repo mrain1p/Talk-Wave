@@ -442,7 +442,7 @@ def build_on_air_tools(
                     f"{result.get('error') or 'the station refused it'}. "
                     "Tell the caller plainly — do not claim it worked."
                 )
-            actions.note("takeover", "cancelled — back to the schedule")
+            actions.note("takeover lifted", "back to the weekly schedule")
             return (
                 "Done — the takeover is off and the weekly schedule is back. Like "
                 "the pin itself, it lands at the end of the current record rather "
@@ -550,7 +550,7 @@ def build_on_air_tools(
                     f"{result.get('error') or 'the station refused it'}. "
                     "Tell the caller plainly — do not claim it worked."
                 )
-            actions.note("genre lock", "lifted")
+            actions.note("genre lock lifted", "the station can play anything again")
             return (
                 "Done — the genre lock is off and the station can play anything "
                 "again. It lands at the end of the current record rather than "

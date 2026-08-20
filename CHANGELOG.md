@@ -3,6 +3,19 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.15
+
+Five actions that change the station stop reporting themselves as a bare tick, and the README says what a caller can actually ask for.
+
+### Every action names itself on the card
+
+- **Banning a record, lifting that ban, locking the station to a genre, lifting that lock, and calling off a show takeover were all showing the caller "Action completed" and nothing more.** Each has its own card now — banned from the station, back in rotation, station locked to a genre, genre lock lifted, takeover cancelled — so the most permanent things a call can do are no longer the vaguest lines in its transcript. Cancelling a takeover was the worst of them: it wore the card for *setting* one, which told the caller the opposite of what had just happened.
+- **The check that was supposed to catch this could not see the actions it was missing.** It reads every action name out of the tool wrappers and insists each has a card, but it matched only single-word names — so "genre lock" and "never-play", the two with a space and a hyphen, were invisible to it while every labelled action passed. It reads all of them now.
+
+### The README shows what a caller can do
+
+- **A new section lists every action a caller can set in motion and what to say to get it**, grouped by how far each one reaches — into the queue, the record on air, out to every listener, and the ones still running after they hang up. Alongside it, the reads that change nothing: what's on air, what just played, what's in the booth, what's on later, and what the library actually holds.
+
 ## 0.98.14
 
 A crashed call gives the station its voice back in about three minutes instead of ten.

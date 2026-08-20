@@ -53,6 +53,23 @@ class CallActions:
         # for the same reason: the caller cannot hear it land (it takes over at
         # the next track boundary), so the DJ saying it worked is all they have.
         "takeover": ("🔀", "Show takeover set"),
+        # Its own kind for the same reason "cancel" is not "request": undoing a
+        # takeover was noted AS a takeover, so calling one off put up a card
+        # reading SHOW TAKEOVER SET — the opposite of what happened, on the one
+        # action the caller cannot hear land.
+        "takeover lifted": ("📅", "Takeover cancelled"),
+        # The two POWERS, and the two that went longest with no label of their
+        # own: both shipped noting a kind that was never in this table, so a
+        # station-wide lock and a permanent ban each showed the caller a bare
+        # "Action completed". The guard that should have caught it scraped
+        # kinds with \w+, which matches neither the space in "genre lock" nor
+        # the hyphen in "never-play" — see test_tools_surface.
+        "genre lock": ("🔒", "Station locked to a genre"),
+        "genre lock lifted": ("🔓", "Genre lock lifted"),
+        # No expiry at all, which is what makes the receipt matter: nothing
+        # later un-does this on its own the way a window lapsing does.
+        "never-play": ("❌", "Banned from the station"),
+        "never-play lifted": ("↩️", "Back in rotation"),
         # Bulk out, mirroring the bulk in: one card for a whole clear-out.
         "clear": ("🧹", "Queued tracks cleared"),
         # Not an action at all — the card that says NO MORE will happen.

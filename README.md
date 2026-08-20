@@ -51,7 +51,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 - **Or quiet the station instead** — flip it the other way: the station's own idents, links and segments stand down while a call is live and return within seconds of it ending. Music never stops, and the operator's hand on the station's own Voice switch always wins. See [Live on air](docs/on-air.md#quieting-the-stations-own-dj).
 - **Live on air** — a caller can go out on the broadcast itself: the conversation airs one finished turn at a time, a turn behind the room, with a pull-off-air button in your hand the whole way. See [Live on air](docs/on-air.md).
 - Personas, voices and themes discovered live. Point it at another SUB/WAVE and it re-homes itself.
-- Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did.
+- Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did. [The whole list](#what-a-caller-can-make-happen).
 
 **Speech, both directions**
 - **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or your own box with no key at all: Ollama, any OpenAI-compatible server (llama.cpp, vLLM, LM Studio), or the station's locca. [What to run](docs/models.md) says which actually carry a call.
@@ -76,6 +76,69 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 - A dashboard that acts (toggles post instantly, no save) and reads (on air, station health, activity charts).
 - Settings apply to the **next caller** — no restarts, ever.
 - Diagnostics run the real code paths: green means a call will work, not "the URL responded".
+
+## What a caller can make happen
+
+Every action here is a real tool the DJ can reach — on a call, on the text line, or out of a voicemail — and every one is a switch you can turn off. Anything that changes the station leaves its own card in the caller's transcript, so what happened is never only the DJ's word for it.
+
+**Just asking** — reads the station, changes nothing, leaves no card
+
+| Ask about | Say something like |
+|---|---|
+| **What's on air** | "What's this one?" · "Who's playing?" · "How many are listening tonight?" |
+| **The words** | "What's she actually singing there?" · "Have you got the lyrics for this?" |
+| **What just played** | "What was on before this?" · "Did my song ever play?" · "What did you play around eleven?" |
+| **What's coming up** | "What's in the queue?" · "Where's my song in the running order?" |
+| **What's in the booth** | "Who's on tonight?" · "What have you been talking about?" · "What show is this?" |
+| **What's on later** | "What's on after you?" · "When's After Dark on?" |
+| **What's in the library** | "Have you got any Fleetwood Mac?" · "What jazz have you got from the sixties?" · "What's new in?" |
+| **By feel, not by name** | "Something dreamy and cinematic?" · "Got anything that sounds more like this one?" |
+| **What the audience loves** | "What do people round here play most?" · "You pick — what's good?" |
+
+**Into the queue**
+
+| Receipt | Say something like |
+|---|---|
+| 🎵 **Song request scheduled** | "Any chance of some Fleetwood Mac?" · "Something for late-night driving." · "Got anything from the late seventies?" |
+| 💿 **Album queued** | "Have you got Rumours? Play the whole thing." · "Put on Kind of Blue, start to finish." |
+| 🎶 **Mix queued** | "Queue up a mix of 90s rock." · "Make me a mix for a rainy Sunday." · "Line up some Motown for the next half hour." |
+| 🚫 **Queued track pulled** | "Actually, scrap that last one." · "Take Go Your Own Way back off, would you?" |
+| 🧹 **Queued tracks cleared** | "Take all the Bowie back out." · "Clear everything I asked for." |
+
+**The record on air**
+
+| Receipt | Say something like |
+|---|---|
+| ❤️ **Liked the track on air** | "I love this one — give it a like." · "Heart that for me." |
+| 🤍 **Removed the like** | "Actually, take the like off this." · "Undo that heart." |
+| ⏭ **Current track cut short** | "Can you skip this one?" · "Not for me — next, please." |
+
+**Out to every listener**
+
+| Receipt | Say something like |
+|---|---|
+| 📢 **Message sent to air** | "Can you say hi to my brother on air?" · "Tell everyone it's Danny's last night shift." |
+| 🎙 **Station segment running** *(segments / skills)* | "What's the weather doing?" · "Any news tonight?" · "Give my mate a dedication." |
+| 📻 **Station beat on air** | "Do the station ident." · "Read the time out for us." |
+
+**Still running after they hang up**
+
+| Receipt | Say something like |
+|---|---|
+| 🔀 **Show takeover set** | "Any chance of putting the late show on?" · "Can we have After Dark for an hour?" |
+| 📅 **Takeover cancelled** | "Actually, put it back to normal." · "Cancel that — back to the schedule." |
+| 🔒 **Station locked to a genre** | "Keep it to jazz for the next couple of hours." · "Nothing but soul for a while." |
+| 🔓 **Genre lock lifted** | "You can drop the jazz thing now." · "Let it off the leash again." |
+| ❌ **Banned from the station** | "Never play this one again." · "Bin that off the station permanently." |
+| ↩️ **Back in rotation** | "Actually, let that one back in." · "Take it off the never-play list." |
+
+**Not an action**
+
+| Receipt | Say something like |
+|---|---|
+| ⛔ **Call limit reached** | The cap says so itself, once, before the DJ gets a word in — so a refusal can never be dressed up as the station's fault |
+
+Which of these a caller can reach at all is the [permission matrix](docs/settings.md#caller-permissions)'s business: each action goes to the least trusted tier that should have it, or to nobody.
 
 ## Before you start
 

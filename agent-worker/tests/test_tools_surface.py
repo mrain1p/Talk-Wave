@@ -470,10 +470,16 @@ class TestActionsAllHaveAReceipt(unittest.TestCase):
 
         from call.actions import CallActions
 
+        # NOT \w+. This scraped with \w+ for four releases, which matches
+        # neither the space in "genre lock" nor the hyphen in "never-play" —
+        # so the three kinds that actually had no label were the exact three
+        # the guard could not see, and both powers shipped rendering as a bare
+        # "Action completed". A guard with a hole shaped like the bug is worse
+        # than no guard, because it reads as coverage.
         recorded = set()
         for path in AGENT_WORKER.joinpath("call/tools").glob("*.py"):
             recorded.update(
-                re.findall(r"actions\.note\(\s*[\"'](\w+)[\"']", path.read_text())
+                re.findall(r"actions\.note\(\s*[\"']([^\"']+)[\"']", path.read_text())
             )
         self.assertTrue(recorded, "found no actions.note() calls to check")
         self.assertEqual(
