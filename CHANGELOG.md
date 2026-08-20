@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.18
+
+One piece of work on the on-air path, and nothing a caller or an operator will hear differently.
+
+### The on-air clip writer stops rebuilding audio it was already handed
+
+- **Every clip that airs was taken apart sample by sample and put back together identically.** The caller's audio and the DJ's both arrive as 16-bit PCM and both leave as 16-bit PCM, and the writer in between unpacked each frame into a list of individual numbers and packed the whole clip back to arrive at the bytes it had started with — around 18MB of throwaway work on a thirty-second turn, on both sides of every on-air call. The audio now passes straight through, and only stereo, which genuinely has to be mixed down to one voice, is touched at all. Measured inside the deployed worker: a thirty-second clip takes 1.3ms rather than 9.8ms.
+- **The file that airs is byte-for-byte the file that aired before.** Checked across 225 combinations of sample rate, channel count, clip length and the sixty-second ceiling, plus the awkward edges — a clip landing exactly on the ceiling, a stereo frame with a trailing half-frame, an empty turn. This is headroom on a path that was never anyone's complaint, not a fix for something reported.
+
 ## 0.98.17
 
 Browsing the library speaks the station's own vocabulary — including the one filter that failed by returning everything.
