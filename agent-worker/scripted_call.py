@@ -74,11 +74,19 @@ so a conduct-only injection has not been the whole prompt since 0.10.104:
     { printf "NEW_TOOL_RULES = r'''\\n"; cat brain/tool_rules.py; printf "'''\\n\\n";
       printf "NEW_CONDUCT = r'''\\n";    cat brain/conduct.py;    printf "'''\\n\\n";
       printf "NEW_DOOR = r'''\\n";       cat call/door.py;        printf "'''\\n\\n";
+      printf "NEW_STUCK = r'''\\n";      cat call/stuck.py;       printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
 
-NEW_DOOR is the same trick one step further: a module the image does not have
-AT ALL, installed into sys.modules before the imports run. That is how a guard
-written this afternoon gets measured against the deployed brain tonight.
+NEW_DOOR and NEW_STUCK are the same trick one step further: a module the image
+does not have AT ALL, installed into sys.modules before the imports run. That
+is how a guard written this afternoon gets measured against the deployed brain
+tonight.
+
+Both have a lever — DOOR=off, STUCK=off — because a guard and the prose it
+replaces have to move independently or neither can be priced. That is the
+whole lesson of the `say_the_true_thing` retraction: an arm that drops prose
+while the guard covering it is also absent measures two changes and reports
+one.
 
 What it cannot test: STT, TTS, the on-air overlap hold, and the idle ladder's
 TIMING. Those need a real call with a real microphone. The ladder's WORDING it
@@ -141,7 +149,8 @@ def _install_injected(path: str, source: str) -> None:
 # `spoken_rules`, and installing it first would bind it to the image's copies —
 # which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
 # new rule returning a kind the old nudge table had never heard of.
-for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_RULES", "spoken_rules"),
+for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_STUCK", "call.stuck"),
+                    ("NEW_RULES", "spoken_rules"),
                     ("NEW_PROMISES", "promises"),
                     ("NEW_PROMISE_GUARD", "call.promise_guard")):
     _source = globals().get(_var)
@@ -160,6 +169,7 @@ try:
 except ImportError:                                            # noqa: BLE001
     spoken_rules = None
 from call import door as call_door
+from call import stuck as call_stuck
 from call import promise_guard
 from chat.session import _tool_report
 from livekit.agents import llm as lk_llm
@@ -174,10 +184,21 @@ from call.tools import (
     build_call_control_tools,
     build_curation_tools,
     build_discovery_tools,
-    apply_finder_dispatch,
     build_library_tools,
     build_on_air_tools,
 )
+
+try:
+    # Newer than some deployed images (0.98.22), and this file is piped into
+    # WHATEVER is running. Absent, the single-lookup mode does not exist on
+    # that image — which is the correct answer for a run against it, not a
+    # crash. Same tolerance `spoken_rules` gets above, and it cost one arm of
+    # a sweep to learn it applies here too.
+    from call.tools import apply_finder_dispatch
+except ImportError:                                            # noqa: BLE001
+    def apply_finder_dispatch(cfg, tools):
+        """The mode does not exist on this image; the six finders stand."""
+        return tools
 
 # ---------------------------------------------------------------- fake station
 
@@ -1431,6 +1452,12 @@ DJ_LINE = "@dj "
 # nobody can say is doing anything, and the first two attempts to measure this
 # one both scored something other than the guard.
 DOOR_ON = os.environ.get("DOOR", "on").strip().lower() != "off"
+# Same lever for the repeat/contradiction guard, and it exists for the same
+# reason DOOR does: `truth_believe_the_caller` is 1,087 characters of prose
+# about a rule call/stuck.py now partly mechanises, and pricing the prose
+# means holding the guard fixed while the prose moves. Defaults ON, because
+# that is what the product ships.
+STUCK_ON = os.environ.get("STUCK", "on").strip().lower() != "off"
 
 
 async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
@@ -1447,6 +1474,8 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     # Per scenario: a call's memory of whether its own last line held the door
     # open. Nothing carries between scenarios, any more than a tool call does.
     door = call_door.Door()
+    # Per scenario, like the door: what this caller has already had to ask.
+    stuck = call_stuck.Stuck()
     # Where each caller turn's DJ lines begin, so a scenario can be graded
     # from turn N onward. The door correction cannot unsay the line that
     # tripped it — only stop the next one — so grading its first turn would
@@ -1508,6 +1537,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # whether an action landed SINCE the caller last spoke, not whether the
         # call has ever done anything — see ACTIONS.
         turn_acted_at = _ledger()
+        note = stuck.hint_for(text) if STUCK_ON else ""
+        if note:
+            log.append("  (the caller has asked this before — steering this turn)")
+            ctx.add_message(role="system", content=note)
         hint = door.hint_for(text) if DOOR_ON else ""
         if hint:
             log.append("  (last line held the door open — steering this turn)")

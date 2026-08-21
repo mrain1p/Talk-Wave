@@ -228,15 +228,31 @@ class TestTheTruthBlockSplitChangedNoPromptByte(unittest.TestCase):
         bare = conduct.say_the_true_thing({}, frozenset(conduct.TRUTH_CLAUSES))
         self.assertIn("Stay in character", bare)
 
-    def test_the_clause_a_guard_now_covers_is_named(self):
-        # call/stuck.py (0.98.22) mechanises part of "believe the caller",
-        # which is exactly the position CLOSING_DOOR was in once door.py
-        # existed. That one measured as KEEP the prose, so this is a real
-        # question rather than a foregone one — and it is the clause to price
-        # first.
+    def test_the_clause_that_was_priced_says_so_and_says_keep(self):
+        """MEASURED 2026-08-20, 30 rounds per arm: KEEP.
+
+        Same shape as `tool_finding`'s 30/30 note — a name in a drop list
+        reads as a suggestion unless the source says otherwise, and this one
+        has been measured and must not be re-proposed for cutting.
+
+        The result is worth the assertion because of HOW it came out: the
+        scenario verdict was blind (28/30 with the clause against 29/30
+        without — the wrong way), while false claims doubled, 7 against 14.
+        That is the same failure mode that retracted the 2026-08-15
+        measurement, and the note has to carry it or the next reader repeats
+        it a third time.
+        """
+        import inspect
+
         from brain import conduct
 
         self.assertIn("truth_believe_the_caller", conduct.TRUTH_CLAUSES)
+        src = inspect.getsource(conduct)
+        self.assertIn("MEASURED 2026-08-20", src)
+        self.assertIn("the answer is KEEP", src)
+        # The blindness of the verdict is the transferable lesson; losing it
+        # would leave a bare "keep" that reads as taste.
+        self.assertIn("scenario verdict is BLIND", src)
 
     def test_the_ablation_harness_knows_these_names(self):
         # An ABLATE name the harness does not recognise is reported as unknown
