@@ -265,3 +265,79 @@ class TestTheTruthBlockSplitChangedNoPromptByte(unittest.TestCase):
         self.assertTrue(re.search(r"TRUTH_CLAUSES", src),
                         "scripted_call does not add TRUTH_CLAUSES to the known "
                         "ABLATE names, so an arm naming one measures nothing")
+
+
+class TestTheClosingSplitTracksItsOwnText(unittest.TestCase):
+    """CLOSING became droppable in parts, and the parts are INDEXES into it.
+
+    That is the point: the split is derived from the string rather than copied
+    out of it, so the two cannot drift into disagreeing about what a clause
+    says. The cost is that re-paragraphing CLOSING silently regroups the
+    clauses — which would put an ablation arm on a different rule from the one
+    it names, and nothing else would notice. Hence this class.
+
+    Whole-block measurement, 2026-08-21, SCENARIO_SET=closing, 3 rounds, guard
+    ON in both arms: a thank-you IS the goodbye turn went 2/2 to 0/3 ablated,
+    while "a landed request is not the end" went 1/3 to 2/3 — better without.
+    A block where one rule collapses and another improves is a block that
+    needs splitting before it can be judged.
+    """
+
+    def test_an_empty_drop_returns_the_section_verbatim(self):
+        from brain import conduct
+
+        self.assertEqual(conduct.closing(), conduct.CLOSING)
+        self.assertEqual(conduct.closing(frozenset()), conduct.CLOSING)
+
+    def test_the_paragraph_count_is_what_the_groups_assume(self):
+        """The guard that makes the index trick safe."""
+        from brain import conduct
+
+        paras = conduct.CLOSING.split("\n\n")
+        highest = max(i for idx in conduct._CLOSING_GROUPS.values() for i in idx)
+        self.assertEqual(
+            len(paras), highest + 1,
+            "CLOSING has been re-paragraphed, so _CLOSING_GROUPS now names "
+            "different text than it did when the clauses were measured. "
+            "Re-read the groups against the section before trusting an arm.")
+
+    def test_every_paragraph_belongs_to_exactly_one_clause(self):
+        # A paragraph in no group can never be dropped, which would make it
+        # invisible to every arm; one in two groups would be dropped twice.
+        from brain import conduct
+
+        seen = [i for idx in conduct._CLOSING_GROUPS.values() for i in idx]
+        self.assertEqual(sorted(seen), sorted(set(seen)), "a paragraph is in two clauses")
+        paras = conduct.CLOSING.split("\n\n")
+        # 0 is the heading, which always stays.
+        self.assertEqual(sorted(seen), list(range(1, len(paras))))
+
+    def test_every_clause_removes_something(self):
+        from brain import conduct
+
+        for name in conduct.CLOSING_CLAUSES:
+            with self.subTest(clause=name):
+                self.assertLess(len(conduct.closing(frozenset({name}))),
+                                len(conduct.CLOSING))
+
+    def test_the_heading_survives_every_clause_being_dropped(self):
+        from brain import conduct
+
+        bare = conduct.closing(frozenset(conduct.CLOSING_CLAUSES))
+        self.assertIn("Closing a call", bare)
+
+    def test_the_assembled_conduct_is_unchanged_on_both_mouths(self):
+        from brain import conduct, conduct_chat
+
+        for cfg in ({"allow_takeover": True}, {}, {"allow_requests": True}):
+            for mod in (conduct, conduct_chat):
+                with self.subTest(cfg=cfg, mod=mod.__name__):
+                    self.assertEqual(mod.rules(cfg), mod.rules(cfg, drop=set()))
+
+    def test_the_harness_knows_these_names(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        self.assertIn("CLOSING_CLAUSES", src,
+                      "an ABLATE name the harness does not know is ignored, "
+                      "which measures the control prompt twice")

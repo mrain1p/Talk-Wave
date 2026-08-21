@@ -323,6 +323,88 @@ TRUTH_CLAUSES: tuple[str, ...] = (
 )
 
 
+#: The four rules inside CLOSING, individually droppable. Third block to get
+#: this treatment, after tool_rules (0.10.152) and say_the_true_thing
+#: (0.98.23), and for the same reason: at 4,091 characters it is too big to
+#: price whole, and the whole-block arm proved it.
+#:
+#: MEASURED 2026-08-21, SCENARIO_SET=closing, 3 rounds, guard ON in both arms.
+#: Ablating CLOSING entire came back MIXED, which is why it is being split
+#: rather than kept or cut:
+#:
+#:                                          with CLOSING   ablated
+#:     a thank-you IS the goodbye turn           2/2         0/3
+#:     a question answered is not a wind-down    3/3         2/3
+#:     a landed request is not the end           1/3         2/3
+#:     a caller who says that's everything       1/2         2/3
+#:
+#: So one rule collapses without it and two score BETTER without it. That is
+#: not a section earning its keep, it is two rules pulling opposite ways
+#: inside one block — and it matches what this file already records at
+#: 2026-08-14: the DJ said "anything else?" 3/3 WHILE these four paragraphs
+#: forbade it, because the block's own worked example taught the phrase.
+#:
+#: PER-CLAUSE ARMS RAN, 4 rounds each, and none of them found a cut:
+#:
+#:     "a landed request is not the end"   control 1/4
+#:                                         drop closing_momentum  3/4 *
+#:                                         drop CLOSING_DOOR      0/4
+#:     "a thank-you IS the goodbye turn"   control 3/4
+#:                                         drop closing_goodbye   4/4
+#:
+#: * and the asterisk is the finding. Dropping closing_momentum scores BETTER
+#: and behaves WORSE: in the round it lost, the DJ reached for end_call on a
+#: caller who had just said "yeah, that's the one", and only the 60s floor
+#: stopped it hanging up on them. A milder fault traded for a severe one, and
+#: the tally cannot see the difference. Read the transcript, not the tally.
+#:
+#: Dropping CLOSING_DOOR made the door problem WORSE, which corroborates its
+#: own 2026-08-14 measurement from the other direction — worth recording
+#: because the hypothesis going in was the opposite: its NO examples are
+#: quotable ("Anything else on your mind, or are you all set?") and the DJ
+#: does copy them almost verbatim ("You hanging out for anything else, or are
+#: you all set for now?"). It supplies the phrase AND holds back something
+#: worse. Removing it is not the fix.
+#:
+#: So: NOTHING HERE IS A CUT CANDIDATE, and that is the answer. What the
+#: numbers do say is that closing is the least effective part of the prompt —
+#: control is 1/4 on the scenario this section is most about, with four
+#: paragraphs forbidding the move and a guard already running. A rule the
+#: prompt cannot enforce after three rewrites wants a MECHANISM, the way the
+#: door's repetition got one. That is a piece of work, not an edit.
+CLOSING_CLAUSES: tuple[str, ...] = (
+    "closing_momentum",    # a full stop is not a dead stop
+    "closing_goodbye",     # sign off and end_call; closing is yours to do
+    "closing_not_early",   # read it both ways — do not close on a thought
+    "closing_overruled",   # told it is too soon; never end on silence
+)
+
+# Paragraph indexes into CLOSING, which stays the ONLY source of the text: the
+# split is derived from the string rather than copied out of it, so the two
+# cannot drift into disagreeing. Re-paragraph CLOSING and
+# TestTheClosingSplitTracksItsOwnText fails rather than silently regrouping.
+_CLOSING_GROUPS: dict[str, tuple[int, ...]] = {
+    "closing_momentum": (1, 2, 3),
+    "closing_goodbye": (4, 5),
+    "closing_not_early": (6, 7),
+    "closing_overruled": (8, 9),
+}
+
+
+def closing(drop: frozenset = frozenset()) -> str:
+    """CLOSING with named clauses left out; the heading always stays.
+
+    An empty drop returns the section verbatim, which is guaranteed by
+    construction — joining every paragraph back is the string it came from.
+    """
+    paras = CLOSING.split("\n\n")
+    keep = {0}
+    for name, idx in _CLOSING_GROUPS.items():
+        if name not in drop:
+            keep.update(idx)
+    return "\n\n".join(para for i, para in enumerate(paras) if i in keep)
+
+
 def say_the_true_thing(cfg: dict, drop: frozenset = frozenset()) -> str:
     """Four rules about not inventing, joined.
 
@@ -444,7 +526,10 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
         # example would mangle the rule that example teaches, and that rule has
         # no mechanism behind it.
         ("CLOSING_DOOR", CLOSING_DOOR),
-        ("CLOSING", CLOSING),
+        # `drop` reaches inside by CLOSING_CLAUSES name — see the measurement
+        # above the split: ablating this block whole came back MIXED, one rule
+        # collapsing and two scoring better without it.
+        ("CLOSING", closing(frozenset(drop or ()))),
         # `drop` reaches INSIDE this one. It is the largest section by a factor
         # of four and the only one that could not be measured, because dropping
         # it whole removes the tool surface's description and answers a question

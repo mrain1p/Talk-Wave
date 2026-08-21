@@ -1948,6 +1948,11 @@ async def main() -> None:
         # block is 16% of the conduct and the one ablation ever run on it was
         # retracted, so it is priced a clause at a time or not at all.
         known |= set(getattr(_conduct_mod, "TRUTH_CLAUSES", ()))
+        # And CLOSING's, for the same reason again: ablating that block whole
+        # came back MIXED on 2026-08-21 — one rule collapsed, two scored
+        # better without it — which is a block with two rules pulling opposite
+        # ways, not a block with a verdict.
+        known |= set(getattr(_conduct_mod, "CLOSING_CLAUSES", ()))
         unknown = sorted(drop - known)
         if unknown:
             print(f"[ABLATE names no such section: {unknown} — known: "

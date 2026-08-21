@@ -228,6 +228,7 @@ from tests.test_house_rules import (  # noqa: F401
     TestEveryScenarioIsWellFormedBeforeItCostsAnything,
 )
 from tests.test_prompt_budget import (  # noqa: F401
+    TestTheClosingSplitTracksItsOwnText,
     TestTheTruthBlockSplitChangedNoPromptByte,
 )
 from tests.test_finding import (  # noqa: F401
