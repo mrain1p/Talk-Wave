@@ -921,13 +921,13 @@ def mcp_tools_payload() -> list[dict]:
 # so the picker's whole order is readable in one place. `lead` stands before
 # the super-groups in the strip, `tail` after them.
 #
-# "All settings" is the index the panel never had (0.98.21): every setting in
+# "All settings" is the index the panel never had (0.98.22): every setting in
 # one scrollable table with the page and section that hold it. The finder
 # answers "where is the thing I can name"; this answers "I know it exists,
 # what is it called", which is the other half and the one a folded panel of
 # 188 settings across nine pages cannot otherwise answer at all.
 #
-# The picker was BANDED during the 0.98.21 work and is flat again on the
+# The picker was BANDED during the 0.98.22 work and is flat again on the
 # operator's call, before any of it shipped. Five labelled rows grouping the
 # eleven pages by kind read as more furniture than map. The measurement that
 # prompted it still stands — a 375px phone shows two of eleven chips, because
@@ -947,7 +947,7 @@ SUPERGROUPS = [
     # blurb has always said it is driven by them, and the picker bands it
     # under Set up — two orders that disagree is one order nobody trusts.
     ("ref",       "Reference",            "What a caller may ask for, and what the station publishes."),
-    # "The booth" at 0.98.21, closing the ambiguity the 2026-08-13 note left
+    # "The booth" at 0.98.22, closing the ambiguity the 2026-08-13 note left
     # open. That note said the word meant two things on one panel — this page
     # and the dashboard's switch cluster — and that if it ever read
     # ambiguously the CLUSTER was the one to rename. On review the cluster is
@@ -1028,7 +1028,7 @@ GROUPS = [
     # speaking.
     #
     # "Call limits" was "Usage controls" under Permissions & safety until
-    # 0.98.21. The same concept was filed in three different places depending
+    # 0.98.22. The same concept was filed in three different places depending
     # on which door it belonged to: six chat caps on the Texts page,
     # voicemail's one ceiling on Voicemail, and the five call caps two pages
     # away under safety. By this file's own rule — cut by door where a door
@@ -1056,7 +1056,7 @@ GROUPS = [
     # Each door the booth doesn't answer live gets its own page, named for
     # the door — the operator's cut. The section was called "The machine" to
     # avoid a Voicemail section under a Voicemail page reading as a stutter;
-    # at 0.98.21 it takes its noun back. A folded section shows its NAME and
+    # at 0.98.22 it takes its noun back. A folded section shows its NAME and
     # nothing else, and a name that only decodes once you know where things
     # are is the wrong way round — the reader who needs the map most is the
     # one who cannot read it. The page is no longer a wrapper to stutter
@@ -1085,7 +1085,7 @@ GROUPS = [
     ("whosonair", "card",  "Who's on air",        "Photo, show, tagline, and the record playing."),
     # Every fixed call-state string, overridable — so a station whose whole
     # page speaks in its own voice doesn't get "Ringing…" in ours. Named for
-    # what it holds rather than for the part of the card it paints (0.98.21):
+    # what it holds rather than for the part of the card it paints (0.98.22):
     # nobody looking for the word "Ringing…" was going to guess "The line box".
     ("linebox",   "card",  "Call status wording", "What the card says in every state of a call."),
     ("talkbar",   "card",  "The talk bar",        "The caller's microphone control."),
@@ -1102,7 +1102,7 @@ GROUPS = [
 # Words an operator types into the finder that appear nowhere in a section's
 # name or blurb. The panel searches these alongside the visible text, so a
 # section can be found by what it IS as well as by what it is called — the
-# whole point of the 0.98.21 finder pass, where "password" hid the section
+# whole point of the 0.98.22 finder pass, where "password" hid the section
 # holding the password button and "color" found nothing at all.
 #
 # Per-FIELD synonyms live on the field, as `alias=` in SCHEMA. These are only
@@ -1701,7 +1701,8 @@ SCHEMA: dict[str, dict] = {
              "lines carry their name (ASH) instead of the generic DJ — which "
              "reads better on a station whose listeners know the roster, and "
              "follows the name as the show changes. The caller's own lines "
-             "stay YOU either way."),
+             "stay YOU either way. This is the card's LIVE transcript; what "
+             "is written to disk is [Transcripts](#record)."),
     "call_button_mode": dict(group="buttons", kind="select", label="Call button",
         help="“Call the DJ” is the honest label when the card shows whoever "
              "happens to be on air. The DJ's name reads better on a station "
@@ -1783,7 +1784,8 @@ SCHEMA: dict[str, dict] = {
              "call. 10 by default; 0 keeps the machine quiet. Much above "
              "20 and, on speakers, it bleeds into the recording. Music "
              "that was playing before returns to full volume when the "
-             "machine hangs up."),
+             "machine hangs up. The machine itself is under "
+             "[Voicemail machine](#voicemail)."),
     "min_call_seconds": dict(group="closing", kind="number",
         label="Earliest hang-up (s)", alias="duration length",
         help="The floor under the DJ ending a call itself. 60 by default: a model "
@@ -1906,7 +1908,7 @@ SCHEMA: dict[str, dict] = {
 
     # --- transcripts ---
     # --- voicemail ---
-    # Filed with its own door, not with the call caps (0.98.23). It rode to
+    # Filed with its own door, not with the call caps (0.98.24). It rode to
     # the Calls page when Usage controls became Call limits and moved there,
     # and nothing on screen looked wrong because the control is a dashboard
     # card — but the schema is what the finder and the All settings index
@@ -2140,7 +2142,7 @@ SCHEMA: dict[str, dict] = {
         placeholder="default: the sound set above",
         help="Engaged tone: the line is busy, the limit is reached, or the call "
              "couldn't connect."),
-    # STAYS in Call sounds, against the 0.98.23 review's own recommendation.
+    # STAYS in Call sounds, against the 0.98.24 review's own recommendation.
     # It is not a call sound — it is the machine's — and it is the only one
     # of the six that ignores "Play call sounds", which is what gave it away.
     # But the six moments are ONE board: six cards, one shared picker, one

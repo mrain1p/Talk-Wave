@@ -1466,6 +1466,28 @@
                    label: 'Set the guest code',
                    note: 'the door demands a code nobody has — every call is refused' });
     }
+    // A caller listening to the station loses it for the whole call. The
+    // player cannot survive a live microphone (the stream feeds straight
+    // back in and gets transcribed as the caller's own words), so it is
+    // silenced at pickup — and tune-in is what is supposed to take over.
+    // With tune-in off, or audible-off, nothing does. Only worth saying
+    // while the card actually OFFERS the player: without it nobody was
+    // listening through the card in the first place.
+    const swipeOn = $('swipe_player')
+      ? $('swipe_player').checked : !!resolved.swipe_player;
+    const tuneOn = $('tune_in_on_call')
+      ? $('tune_in_on_call').checked : !!resolved.tune_in_on_call;
+    const tuneHeard = $('tune_in_audible')
+      ? $('tune_in_audible').checked : resolved.tune_in_audible !== false;
+    if (swipeOn && !(tuneOn && tuneHeard)) {
+      items.push({ page: 'calls', group: 'tunein',
+                   label: 'Calls go silent for a listener',
+                   note: 'the card offers the station player, but a call '
+                     + 'stops the music and nothing replaces it — turn on '
+                     + 'Tune the caller in, and pipe the broadcast into the '
+                     + 'call, or they hear nothing until they hang up' });
+    }
+
     const llm = ($('llm_provider') && $('llm_provider').value)
       || resolved.llm_provider;
     // Blank since 0.10.80: a fresh install ships no provider pre-picked, so
@@ -3872,6 +3894,12 @@
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'voicemail') {
           paintDash();
         }
+        // The silent-call warning is a question about three switches on two
+        // different pages, so it has to follow all three as they are pressed
+        // — an operator diagnosing exactly this is toggling them, and a
+        // warning that only tells the truth after a save is worse than none.
+        if (f === 'swipe_player' || f === 'tune_in_on_call'
+            || f === 'tune_in_audible') paintDash();
         // The On air page's rows feed the dashboard cluster and their own
         // section tag; paintTags ends by calling paintDash. The Caller
         // permissions greying follows these switches too, but the

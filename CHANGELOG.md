@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.29
+
+The three loose ends from the settings work, closed.
+
+- **A call can leave a listener in silence, and the panel now says so.** Starting a call silences the station player on purpose — on speakers the stream comes back through the microphone and is transcribed as the caller's own words — and the code justifies that with "the call's own tune-in takes over at pickup anyway". It never checked whether tune-in was on. With it off, a caller who was listening to the station gets nothing for the whole call and no explanation. This is an operator's problem rather than a caller's, so it lands in the panel's notifications column: it appears only while the card actually offers the station player, names both switches that fix it, jumps to the section, and follows all three switches live as they are pressed rather than waiting for a save.
+- **Two cross-references became real links.** *Player under the machine* now points at [Voicemail machine], and *Name the DJ in the transcript* distinguishes the card's live transcript from what is written to disk and points at [Transcripts]. Both had search synonyms from 0.98.24, which made them findable but not reachable — the review promised links.
+- **Thirteen in-code version references were off by one.** The settings archaeology written during 0.98.22 and 0.98.24 cited the numbers those passes were on while they were being written, and another stream took those numbers first. Comments and prose only, corrected to the versions the work actually shipped as.
+
 ## 0.98.27
 
 The music comes back after a call, and the house rules stop describing a panel that no longer exists.

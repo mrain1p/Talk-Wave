@@ -67,7 +67,7 @@ Three **bands** down one column, beside a **pinned live preview**:
 | **Behaviour** | nothing visual |
 | **Embed** | the frame, and the copyable snippet |
 
-They were tabs until 0.98.21. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
+They were tabs until 0.98.22. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
 
 The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under Embed frame.
 
@@ -128,7 +128,7 @@ A reference card, not settings: the three tiers (Admin always, Guest gate, Open)
 - The admin password for this panel, and the optional guest code for the phone.
 - `CALLIN_ADMIN_KEY` is the recovery override.
 - A guest-code expiry (hours, default 24) for shared machines. The card also offers a lock button to forget the code immediately.
-- **Pause all calls**, the kill switch — filed here from 0.98.23, because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
+- **Pause all calls**, the kill switch — filed here from 0.98.24, because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
 
 ### Caller permissions
 
@@ -181,7 +181,7 @@ Whether both sides of a conversation — calls, texts and voicemails alike — a
 
 Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend, and the door's own state read back from the dashboard.
 
-Called **Usage controls** and filed under Permissions & safety until 0.98.21. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
+Called **Usage controls** and filed under Permissions & safety until 0.98.22. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
 
 ### Greeting
 
@@ -247,7 +247,7 @@ The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ### Text line
 
-A **Take text chats** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.23:
+A **Take text chats** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.24:
 
 **Chat limits** — how many chats may be open at once, new chats per hour and per day, a **per-caller reopen wait** (the text line's Redial-wait, and scriptable where a call is not), the per-chat message ceiling and the per-minute message cap.
 
