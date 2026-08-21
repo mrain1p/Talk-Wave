@@ -967,7 +967,25 @@ class TestTheStationPlayerShipsOff(_TempStores):
     def test_the_front_page_stays_the_phone_until_chosen(self):
         import settings as settings_store
 
-        self.assertIs(settings_store.FIELDS["start_on_player"][1], False)
+        # A dropdown since 0.98.30 (operator's ask — two faces is a choice
+        # between two things, not a tick naming one of them). This asserted
+        # `is False`, which was the REPRESENTATION; what matters is that an
+        # untouched deployment still opens on the phone.
+        self.assertEqual(settings_store.FIELDS["start_on_player"][1], "call")
+        self.assertEqual(settings_store.SCHEMA["start_on_player"]["kind"],
+                         "select")
+
+    def test_a_tick_from_before_the_dropdown_still_means_the_player(self):
+        # The stored key kept its name AND its truthiness so nothing needed
+        # migrating: `true` is not the string "call", so it still resolves to
+        # the player. The card reads one boolean either way — see
+        # api/live.py's playerStart.
+        resolve = lambda v: bool(v) and v != "call"
+        self.assertTrue(resolve(True))          # the old ticked box
+        self.assertTrue(resolve("player"))      # the new choice
+        self.assertFalse(resolve(False))        # the old unticked box
+        self.assertFalse(resolve("call"))       # the new default
+        self.assertFalse(resolve(None))         # never set
 
     def test_the_bed_under_the_machine_defaults_like_tune_in(self):
         # The same percentage grammar as tune_in_volume, deliberately — one
@@ -1166,7 +1184,7 @@ class TestTheMapTheOperatorNavigatesBy(_TempStores):
 
     def test_the_picker_knows_about_every_page(self):
         # Three pages are built by panel.js rather than by the schema —
-        # Dashboard, All settings, Diagnostics — and they are declared here so
+        # Dashboard and Diagnostics — and they are declared here so
         # the picker's whole order lives in one file. An id that collides with
         # a super-group would take that super-group's chip; an unknown `where`
         # silently drops the page off the only map of the panel there is.

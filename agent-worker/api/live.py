@@ -449,7 +449,7 @@ async def handle_live(request: web.Request) -> web.Response:
                     "cardLike": bool(cfg.get("show_track_like", True)),
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
-                    "playerStart": bool(cfg.get("start_on_player")),
+                    "playerStart": settings_store.opens_on_player(cfg),
                     # How loud the player stays under the studio. 0 is real
                     # (silent but running), so no `or` shorthand here.
                     "playerDuck": max(0, min(100, int(

@@ -561,7 +561,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Which face the page opens on. The player as the front page makes the
     # widget the station's app with a phone behind it; off keeps the phone
     # first. Audio still waits for the browser's one allowed tap either way.
-    "start_on_player":    (None, False),
+    # Was a boolean until the operator asked for a dropdown; "call" is the
+    # old False and "player" the old True, so a stored `true` still means the
+    # player and nothing needs migrating.
+    "start_on_player":    (None, "call"),
     # The player under the answering machine: instead of dying when the
     # studio takes the line, the music ducks to this percentage — the same
     # move tune-in makes under a call, at the same default. 0 keeps it
@@ -862,6 +865,18 @@ def on_air_from_room(room_name: str) -> bool:
             and parts[1][0] in {t[0] for t in TIERS})
 
 
+def opens_on_player(cfg: dict) -> bool:
+    """Does the card open onto the station player rather than the phone?
+
+    `start_on_player` was a tick and is a dropdown ("call" | "player"). The
+    key kept its name and its truthiness, so a stored `true` from before the
+    change is neither None nor "call" and still means the player — which is
+    why there is no migration. One reader, so the card and any future caller
+    cannot disagree about what an old settings.json meant.
+    """
+    return cfg.get("start_on_player") not in (None, False, "", "call")
+
+
 def permissions_for(cfg: dict, tier: str) -> dict:
     """A copy of the settings with every tiered permission collapsed to a
     plain bool for one caller.
@@ -917,15 +932,15 @@ def mcp_tools_payload() -> list[dict]:
 # answers all three doors — filing them under Calls would be a lie the moment
 # a text chat used them, and a field cannot appear on two pages (one id, and
 # byKind fills the first match it finds).
-# The pages the schema does not own — panel.js builds all three — listed here
-# so the picker's whole order is readable in one place. `lead` stands before
-# the super-groups in the strip, `tail` after them.
+# The pages the schema does not own — panel.js builds both — listed here so
+# the picker's whole order is readable in one place. `lead` stands before the
+# super-groups in the strip, `tail` after them.
 #
-# "All settings" is the index the panel never had (0.98.22): every setting in
-# one scrollable table with the page and section that hold it. The finder
-# answers "where is the thing I can name"; this answers "I know it exists,
-# what is it called", which is the other half and the one a folded panel of
-# 188 settings across nine pages cannot otherwise answer at all.
+# An "All settings" index page stood here for one release and came out on the
+# operator's call: every setting in one table with the page and section
+# holding it. The finder already answers "where is the thing I can name", and
+# a second, longer way to ask the same question was one more chip on the only
+# map the panel has.
 #
 # The picker was BANDED during the 0.98.22 work and is flat again on the
 # operator's call, before any of it shipped. Five labelled rows grouping the
@@ -934,9 +949,8 @@ def mcp_tools_payload() -> list[dict]:
 # the strip needs 1017px in 343px of room — so if the phone case is worth
 # solving later, solve it without regrouping the pages.
 NAV_EXTRA_PAGES = [
-    ("dash", "Dashboard",    "lead"),
-    ("all",  "All settings", "lead"),
-    ("diag", "Diagnostics",  "tail"),
+    ("dash", "Dashboard",   "lead"),
+    ("diag", "Diagnostics", "tail"),
 ]
 
 # (id, title, blurb).
@@ -1769,13 +1783,13 @@ SCHEMA: dict[str, dict] = {
              "any listener page sends, through the same per-listener limits "
              "the station already enforces. Works with or without the "
              "swipe-up player."),
-    "start_on_player": dict(group="phone", kind="check",
-        label="Start on the player",
+    "start_on_player": dict(group="phone", kind="select",
+        label="Opens on",
         needs=("swipe_player", True),
-        help="The page opens onto the player, and pulling it up reveals the "
-             "phone — the widget becomes the station's app with a call "
-             "button behind it. Browsers still wait for one tap before any "
-             "audio starts; that is their rule, not a fault."),
+        help="Which of the two faces a caller lands on; the other is always "
+             "one swipe away. Browsers still wait for one tap before any "
+             "audio starts, whichever you pick — that is their rule, not a "
+             "fault."),
     "vm_player_duck": dict(group="phone", kind="number",
         label="Player under the machine (%)", alias="loudness duck voicemail",
         help="While the machine rings, greets and records, the station "
@@ -1911,8 +1925,8 @@ SCHEMA: dict[str, dict] = {
     # Filed with its own door, not with the call caps (0.98.24). It rode to
     # the Calls page when Usage controls became Call limits and moved there,
     # and nothing on screen looked wrong because the control is a dashboard
-    # card — but the schema is what the finder and the All settings index
-    # read, so the index answered "where is Take text chats" with
+    # card — but the schema is what the finder reads, so it answered
+    # "where is Take text chats" with
     # "Calls > Call limits", which is the one answer it exists to get right.
     "chat_enabled": dict(group="chat", kind="check",
         label="Take text chats",
@@ -2182,6 +2196,10 @@ STATIC_CHOICES = {
         ("canned", "Canned — the line below, instantly"),
         ("fresh", "Written each time — in persona at open"),
         ("off", "Off — wait for the caller to type first"),
+    ],
+    "start_on_player": [
+        ("call", "The phone — the call card, with the player a swipe up (default)"),
+        ("player", "The player — music first, the call button a swipe down"),
     ],
     "chat_reveal": [
         ("typing", "As it's typed — the words appear as the DJ writes them (default)"),

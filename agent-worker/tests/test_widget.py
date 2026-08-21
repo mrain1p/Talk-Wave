@@ -3144,15 +3144,6 @@ class TestThePanelSaysWhereThingsAre(unittest.TestCase):
         self.assertIn("function needsMet", self.js)
         self.assertEqual(self.js.count("function needsMet"), 1)
 
-    def test_the_index_is_built_from_the_schema(self):
-        self.assertIn('id="allBody"', self.html)
-        self.assertIn("function paintAllSettings", self.js)
-        # From SCHEMA.groups, so it can neither miss a new setting nor list
-        # one that has gone.
-        block = self.js.split("function paintAllSettings")[1][:1500]
-        self.assertIn("SCHEMA.groups.forEach", block)
-        self.assertIn("PAGE_TITLES[g.super]", block)
-
     def test_a_one_section_page_is_the_section(self):
         self.assertIn("function soloPage", self.js)
         self.assertIn("secs.length !== 1", self.js)
