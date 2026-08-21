@@ -208,7 +208,7 @@
   // can be handed to someone), and the hashchange listener below does the
   // turning.
   //
-  // ONE FLAT ROW. It was banded into five labelled rows during the 0.98.21
+  // ONE FLAT ROW. It was banded into five labelled rows during the 0.98.22
   // work and the operator turned it down before any of it shipped: grouping
   // eleven pages by kind read as more furniture than map, and the labels
   // took more room than they earned. The measurement that prompted the bands
@@ -286,7 +286,7 @@
   function currentPage() {
     const id = (location.hash || '').replace(/^#/, '');
     if (PAGE_IDS.indexOf(id) !== -1) return id;
-    // A SECTION id resolves to the page holding it (0.98.21). Before this,
+    // A SECTION id resolves to the page holding it (0.98.22). Before this,
     // #turns — the section's own id, and the obvious guess — fell through to
     // the dashboard with nothing open and nothing said. So nothing below page
     // level had an address: no bookmark, no link to hand somebody, and no way
@@ -378,7 +378,7 @@
   // jump-to-top.
   function showSection(sec) {
     if (!sec) return;
-    // The address left behind is the SECTION, not its page (0.98.21), so
+    // The address left behind is the SECTION, not its page (0.98.22), so
     // every jump inside the panel — a tile, a notification, a search result,
     // a cross-reference — ends somewhere that can be bookmarked and handed
     // to somebody else. The page still turns: currentPage() resolves a
@@ -413,7 +413,7 @@
 
   // ---------------------------------------------- the Players page bands
   // Three groups over one page. They were TABS (the operator's design
-  // handoff, direction 1a) until 0.98.21: THE CARD is the element blocks in
+  // handoff, direction 1a) until 0.98.22: THE CARD is the element blocks in
   // card order, BEHAVIOUR is what a call does with nothing visual about it,
   // EMBED is the frame and the snippet.
   //
@@ -2364,7 +2364,7 @@
   // Only show configuration that applies to the current selection. A local-model
   // URL box is noise when you're on a hosted provider, and vice versa.
   // Is a field's prerequisite satisfied right now? Extracted from
-  // applyVisibility at 0.98.21 so the finder can ask the same question — it
+  // applyVisibility at 0.98.22 so the finder can ask the same question — it
   // marks a result whose switch is off rather than offering a setting that
   // cannot do anything, which is how an operator sets a value, saves, and
   // watches nothing happen.
@@ -3526,7 +3526,7 @@
   // The finder IS the panel's index. 188 settings live in 34 folded sections
   // across nine pages, and at rest the panel shows none of them — so this box
   // is not a filter over what is already on screen, it is the only complete
-  // map of the place that exists. 0.98.21 made it behave like one, after a
+  // map of the place that exists. 0.98.22 made it behave like one, after a
   // review measured what it actually did:
   //
   //   * "password" HID the Access section. The filter read four row classes

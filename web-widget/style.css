@@ -2622,7 +2622,7 @@
      header row, not as eight places to go. flex-grow snaps every row of
      them to the full width. Operator-requested, twice.
 
-     Grouped into labelled bands during the 0.98.21 work and reverted on the
+     Grouped into labelled bands during the 0.98.22 work and reverted on the
      operator's call: five captioned rows read as more furniture than map. */
   .panelnav a {
     flex: 1 1 auto; text-align: center;
@@ -4625,7 +4625,7 @@
   .cardwrap.searching .cardband,
   .cardwrap.searching .cardaside { display: none; }
 
-  /* The band captions that replaced the tab strip (0.98.21). Same voice as a
+  /* The band captions that replaced the tab strip (0.98.22). Same voice as a
      super-group band — mono caps with a rule running out to the edge — one
      step quieter, because these divide one page rather than the panel. */
   .cardband {

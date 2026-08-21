@@ -1136,7 +1136,7 @@ class TestTheQuietStationSetting(_TempStores):
 
 
 class TestTheMapTheOperatorNavigatesBy(_TempStores):
-    """0.98.21 rebuilt the panel's information architecture after a review
+    """0.98.22 rebuilt the panel's information architecture after a review
     measured it: 188 settings behind 34 folded sections across nine pages,
     with nothing on screen saying what existed. Three of the things it added
     are only correct if they stay in step with the schema, and each one fails

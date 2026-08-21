@@ -3,7 +3,7 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
-## 0.98.21
+## 0.98.22
 
 The settings panel had 188 settings behind 34 folded sections across nine pages, and at rest it showed you none of them. This is the pass that makes them findable: the finder becomes an index, every section gets an address, and the pages get a shape.
 
@@ -36,6 +36,7 @@ The settings panel had 188 settings behind 34 folded sections across nine pages,
 
 ### Also
 
+- **The Anthropic SDK is pinned.** `anthropic` 1.0.0 was released mid-afternoon and CI went red an hour after being green, on every branch: 1.x moved its HTTP client to `httpx2` and the LiveKit Anthropic plugin still hands it `httpx`, so every test that builds an Anthropic model raised a `TypeError` from inside the library. It was the one dependency in `requirements.txt` without an exact pin. Now pinned to 0.125.0 — the version the last green build used — with the release that lets it come off named in the file.
 - **The Access section's own explanation was never on screen.** Two hidden fields share that row — the door and whether a code elevates — and the second silently overwrote the first's help, so the longest explanation on the page had been invisible. First writer wins now.
 
 ## 0.98.19
