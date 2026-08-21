@@ -43,7 +43,7 @@ Clearing the box returns to the page you were on.
 
 ### One-section pages open themselves
 
-Voicemail and Texts hold exactly one section each. Rather than making you turn to a page and then open the only thing on it, the page **is** the section: it arrives open, with no chevron. The summary stays for its blurb and its state chip.
+Voicemail, Texts and Open Lines hold exactly one section each. Rather than making you turn to a page and then open the only thing on it, the page **is** the section: it arrives open, with no chevron. The summary stays for its blurb and its state chip.
 
 ### The dashboard is the landing page
 
@@ -287,6 +287,31 @@ Overlap protection: the call DJ and the on-air DJ are one voice.
 | **Older** | The hold anchors on the handoff-stamped push and is sized from the words, with **Handoff-to-air lag** (default 2s, ignored for 1.8 evidence) riding the tail |
 
 **Quiet the station during calls** flips the collision the other way: instead of the call waiting for the station's voice, the station's own auto-talk — idents, time checks, links, segments, banter — stands down while a phone-in is live and returns within seconds of it ending. Off by default (it writes the station's own Voice switch, so it is yours to opt into); the other positions are **during on-air calls** and **during every call**. Needs the station admin credentials and a SUB/WAVE from July 2026 or newer — switched on without either, a banner under the row says exactly what is missing. Music, jingles and listener requests keep working throughout, and your own hand on the station's Voice switch always wins. The full truth table — what stands down, what a mid-call show changeover costs, and why a crash cannot leave the station mute — is on [the on-air page](on-air.md#quieting-the-stations-own-dj).
+
+---
+
+## Open Lines
+
+### Open Lines
+
+The booth reaching out instead of in: the DJ puts a subject to the audience on the broadcast, then knows what it asked when somebody arrives on any of the three doors. Full behaviour on [the Open Lines page](open-lines.md).
+
+**Off by default, and manual by default.** The master switch alone airs nothing — a line opens when you press **Open a line now**, or on the cadence you set below. Every other row here is hidden until the switch is on.
+
+| Setting | What it decides |
+|---|---|
+| **Where the topic comes from** | *The DJ decides* invents one from tonight's show — who is on air, the show card, the episode, what has played and been said. *Your list* reads the box below, in order, then round again |
+| **Your topics, one per line** | Only while the source is your list. Write the SUBJECT, not the words: the DJ says it in its own voice |
+| **Where to reach you, said on air** | Read out with the invitation, exactly as typed — so write it the way it should sound. Blank names no address at all, which is right when the audience is already looking at the card |
+| **How long a line stays open** | Then the DJ closes it on air, in character. Default 60 minutes |
+| **Remind every** / **Most reminders per topic** | The DJ raises the subject again mid-window. The cap is the one that protects the broadcast: a long window with a short interval is how a station asks the same question nine times. 0 on either = no reminders |
+| **Only with at least this many listeners** | Checked when a line opens and before each reminder, never in the middle — a topic that vanished because somebody closed a tab would strand whoever was already typing. 0 = open regardless |
+| **Only these DJs** | Persona names, comma-separated. Blank = whoever is on air |
+| **Open one automatically every** | 0 = manual only, and that is the default: nothing reaches your listeners that you did not press a button for |
+
+The card under the buttons shows what is up right now — who opened it, how long is left, how many reminders are spent, and **the words that actually aired**, which is what a listener heard and what the DJ is being reminded of. Both buttons post immediately and never go through Save.
+
+A refusal is not an error: **Open a line now** answers with the gate that stopped it (switched off, wrong DJ, nobody listening, empty list) rather than a failure box.
 
 ---
 
