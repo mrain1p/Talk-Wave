@@ -489,6 +489,7 @@ from tests.test_open_lines import (  # noqa: F401
     TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp,
     TestOpenLinesReachesThePanel,
     TestSectionTagsCanShowTheirState,
+    TestTheRecordLandsWhereTheOtherStateDoes,
     TestTheRecordSurvivesBothContainers,
 )
 

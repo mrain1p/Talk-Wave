@@ -22,9 +22,17 @@ from pathlib import Path
 
 log = logging.getLogger("talkwave.openlines")
 
+# parent.parent.PARENT — this module is a directory deeper than settings.py,
+# and the walk has to reach the same place. `parent.parent` from here lands on
+# agent-worker/ (which is /app in the image), where there is no data dir at
+# all: the deployed stack mounts it at /data, one level up. The feature could
+# not write its record on a real deployment and the whole of it was dead,
+# while every local test passed because they all override STATE_PATH.
+# TestTheRecordLandsWhereTheOtherStateDoes pins it against settings.py now,
+# which is the only comparison that could have caught this.
 STATE_PATH = Path(
     os.environ.get("OPEN_LINE_PATH",
-                   Path(__file__).parent.parent / "data" / "open-line.json"))
+                   Path(__file__).parent.parent.parent / "data" / "open-line.json"))
 
 
 def _now() -> datetime:

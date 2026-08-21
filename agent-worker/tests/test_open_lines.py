@@ -406,6 +406,43 @@ class TestSectionTagsCanShowTheirState(unittest.TestCase):
         self.assertIn("opacity: 1", body)
 
 
+class TestTheRecordLandsWhereTheOtherStateDoes(unittest.TestCase):
+    """The record must sit in the SAME directory as settings.json.
+
+    It did not. `openlines/state.py` is a directory deeper than `settings.py`,
+    so the identical `Path(__file__).parent.parent / "data"` walk landed on
+    `agent-worker/data` instead of the repo's `data/` — in the image, `/app/data`
+    instead of `/data`, which does not exist. Every write raised PermissionError
+    and the whole feature was dead on a real deployment while all 38 local tests
+    passed, because every one of them overrides STATE_PATH.
+
+    Found by deploying to the operator's NAS on 2026-08-21. Nothing that stubs
+    the path can catch it; only comparing against another module's answer can.
+    """
+
+    def test_it_defaults_into_the_repos_own_data_directory(self):
+        import importlib
+        import os
+
+        from openlines import state as state_mod
+        from tests.support import REPO
+
+        # The suite points every writable path at a temp dir, so read the
+        # DEFAULT by clearing the override and reloading. Restored after.
+        old = os.environ.pop("OPEN_LINE_PATH", None)
+        try:
+            default = importlib.reload(state_mod).STATE_PATH
+        finally:
+            if old is not None:
+                os.environ["OPEN_LINE_PATH"] = old
+            importlib.reload(state_mod)
+        self.assertEqual(
+            default.parent, REPO / "data",
+            "the record must default into the repo's data/, the directory the "
+            "deployed stack mounts — one level too shallow lands on "
+            "agent-worker/data, which does not exist in the image")
+
+
 class TestTheRecordSurvivesBothContainers(_OnDisk):
     def test_it_is_written_where_the_worker_can_read_it(self):
         # The worker (calls) and the web container (panel, chat, voicemail,
