@@ -45,6 +45,40 @@ _ARRIVAL = {
 }
 
 
+def greeting_clause(cfg: dict, persona: dict | None = None,
+                    show_name: str = "") -> str:
+    """What to add to the PICKUP instruction while a line is open. "" if none.
+
+    The block below reaches the DJ's conduct, which governs every turn except
+    the one that matters most here: the greeting is generated from its own
+    instruction in call/greeting.py, before the caller has said anything, and
+    it never saw any of this. So a listener who heard the topic on air, rang
+    in, and got "what would you like to hear?" — reported 2026-08-21, with a
+    line demonstrably live at the time.
+
+    Deliberately phrased as a REPLACEMENT for the greeting's own open question
+    rather than an addition. Both at once is two questions in a breath, and the
+    conduct block two inches away says to ask one, lightly.
+    """
+    if not cfg.get("open_lines_enabled"):
+        return ""
+    persona = persona or {}
+    record = state.current(str(persona.get("id") or ""), show_name)
+    if not record:
+        return ""
+    premise = str(record.get("premise") or "").strip()
+    if not premise:
+        return ""
+    return (
+        " You have a subject up on air right now and they may well be ringing "
+        f"about it: {premise}. So INSTEAD of your usual opening question, ask "
+        "whether they have come about that or about something else — one "
+        "question, lightly, in your own voice, not both. Do not re-read the "
+        "subject as an announcement and do not give out any address: they are "
+        "already through to you."
+    )
+
+
 def block(cfg: dict, persona: dict | None = None, show_name: str = "",
           mode: str = "call") -> str:
     """The Open Lines block, or `""`.

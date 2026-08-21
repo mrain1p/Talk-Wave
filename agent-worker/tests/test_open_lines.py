@@ -218,6 +218,85 @@ class TestWhatTheDJIsToldAboutTheTopic(_OnDisk):
         self.assertIn("typing", self.build_prompt(mode="chat"))
 
 
+class TestThePickupAsksAboutTheTopic(_OnDisk):
+    """The greeting is the one turn the conduct block never reached.
+
+    call/greeting.py generates the pickup from its OWN instruction, before the
+    caller has said anything — the system prompt's Open Lines block governs
+    every turn after it. So a listener who heard the subject on air, rang in,
+    and was asked "what would you like to hear?" (operator, 2026-08-21, with a
+    line demonstrably live for that DJ and show at the time).
+    """
+
+    def clause(self, persona=None, show=""):
+        from openlines import prompt as open_lines
+
+        return open_lines.greeting_clause(
+            settings_store.permissions_for(settings_store.load(), "admin"),
+            persona if persona is not None else PERSONA, show)
+
+    def test_nothing_is_added_when_the_feature_is_off(self):
+        settings_store.save({"open_lines_enabled": False})
+        state.write(_record(show=""))
+        self.assertEqual(self.clause(), "")
+
+    def test_nothing_is_added_when_no_line_is_up(self):
+        settings_store.save({"open_lines_enabled": True})
+        state.write(None)
+        self.assertEqual(self.clause(), "")
+
+    def test_nothing_is_added_for_another_djs_line(self):
+        settings_store.save({"open_lines_enabled": True})
+        state.write(_record(persona_id="someone-else", show=""))
+        self.assertEqual(self.clause(), "")
+
+    def test_nothing_is_added_once_the_show_has_changed(self):
+        # Same rule the block follows: a subject opened in one programme must
+        # not greet a caller in the next.
+        settings_store.save({"open_lines_enabled": True})
+        state.write(_record(show="Late Shift"))
+        self.assertEqual(self.clause(show="Breakfast"), "")
+        self.assertNotEqual(self.clause(show="Late Shift"), "")
+
+    def test_an_expired_line_adds_nothing(self):
+        settings_store.save({"open_lines_enabled": True})
+        old = datetime.now(timezone.utc) - timedelta(minutes=1)
+        state.write(_record(expires_at=_iso(old), show=""))
+        self.assertEqual(self.clause(), "")
+
+    def test_it_replaces_the_usual_question_rather_than_adding_one(self):
+        # Two questions in one breath is exactly what the conduct block two
+        # inches away tells the DJ not to do.
+        settings_store.save({"open_lines_enabled": True})
+        state.write(_record(show=""))
+        said = self.clause()
+        self.assertIn("INSTEAD of your usual opening question", said)
+        self.assertIn("not both", said)
+        self.assertIn("whether the remaster ruined it", said)
+
+    def test_the_pickup_does_not_re_announce_or_give_an_address(self):
+        # They already came through. Reading the invitation back at somebody
+        # who acted on it is the tell of an automated line.
+        settings_store.save({"open_lines_enabled": True})
+        state.write(_record(show=""))
+        said = self.clause().lower()
+        self.assertIn("do not re-read the subject", said)
+        self.assertIn("do not give out any address", said)
+
+    def test_the_greeting_instruction_actually_carries_it(self):
+        # The clause is worth nothing if greet() never appends it, which is the
+        # bug this whole class exists for.
+        import inspect
+
+        from call import greeting
+
+        src = inspect.getsource(greeting.greet)
+        self.assertIn("greeting_clause", src)
+        # And it must ride the operator's OWN greeting too, not only the
+        # default — cfg["greeting"] overrides the default entirely.
+        self.assertIn("greeting +=", src)
+
+
 class TestAnOpenLineBelongsToOneDJAndOneShow(_OnDisk):
     def test_a_show_change_closes_it(self):
         # Same rule the rest of the briefing gets free by re-reading live

@@ -176,6 +176,7 @@ class CallSession:
         self._tee: tee_mod.TeeHandle | None = None
 
         self.persona: dict = {}
+        self.show_name: str = ""      # for the greeting's open-line check
         # The segments THIS DJ may run, narrowed in prepare(). Empty until then,
         # and empty is honest: with no station read there is nothing to offer.
         self.skills: list[str] = []
@@ -383,6 +384,9 @@ class CallSession:
             str(self.cfg.get("tts_voice") or "").strip()
             or await self.station_cfg.voice_for(self.persona["id"])
         )
+        # No I/O: active_show works off payloads the snapshot already has.
+        self.show_name = str((await self.station.active_show(
+            snap.get("now_playing"), snap.get("schedule")) or {}).get("name") or "")
         self.instructions = await brain.build_system_prompt(
             self.station, self.persona, snapshot=snap, cfg=self.cfg,
             # The clock mirror (djSpeakClock, SUB/WAVE 1.8) rides the same
@@ -678,7 +682,8 @@ class CallSession:
         if self.record:
             self.record.leg("greeting")
         await greeting.greet(self.session, self.cfg, record=self.record,
-                              air=self.air)
+                             air=self.air, persona=self.persona,
+                             show_name=self.show_name)
 
     # -- hanging up -------------------------------------------------------
     async def _hush_sweep(self) -> None:

@@ -51,7 +51,8 @@ CALL_OPENING_PRIME = (
 GREET_HOLD_SECS = 30.0
 
 
-async def greet(session: AgentSession, cfg: dict, record=None, air=None) -> None:
+async def greet(session: AgentSession, cfg: dict, record=None, air=None,
+                persona: dict | None = None, show_name: str = "") -> None:
     """Pick up. Both styles stay in persona and carry the show; the toggle is
     only whether the DJ opens with an invitation or lets the caller lead.
 
@@ -95,6 +96,13 @@ async def greet(session: AgentSession, cfg: dict, record=None, air=None) -> None
             "and never a list of what you can do."
         )
     greeting = str(cfg.get("greeting") or "").strip() or default_greeting
+    # An open line changes the one question the pickup asks. Appended rather
+    # than woven in, so it works the same whether the operator is using the
+    # default greeting or one of their own — and adds nothing at all when no
+    # line is up, which is what keeps every existing call byte-identical.
+    from openlines import prompt as open_lines
+
+    greeting += open_lines.greeting_clause(cfg, persona, show_name)
     try:
         # The greeting is generated before the caller has said anything, and
         # the DJ usually reaches for a tool while writing it ("what's playing

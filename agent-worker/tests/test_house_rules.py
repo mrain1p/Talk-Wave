@@ -868,8 +868,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # per-call-state side of this seam rather than across it. 807: the
         # finder mode swap, one call at the END of the tool build because it
         # reads the assembled list — the LIVE CALL side of the seam, and the
-        # last line of the function it belongs to.
-        "agent-worker/call/session.py": (807, "the ringing half (prepare, "
+        # last line of the function it belongs to. 812: the show name, held
+        # for the greeting's open-line check. Five lines, and all five are on
+        # the RINGING side — resolved in prepare beside the persona and the
+        # voice, handed to greet with it. It could not live in greeting.py:
+        # the pickup has no station and no snapshot, and an open line belongs
+        # to one DJ AND one show, so it has to make the same check the prompt
+        # block does.
+        "agent-worker/call/session.py": (812, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
