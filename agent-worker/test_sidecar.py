@@ -478,6 +478,18 @@ from tests.test_heard import (  # noqa: F401
     TestThePercentileDoesNotInventNumbers,
     TestAClearedSynthesisIsNotSomebodyTalkingOver,
 )
+from tests.test_open_lines import (  # noqa: F401
+    TestOpenLinesIsAdditive,
+    TestWhatTheDJIsToldAboutTheTopic,
+    TestAnOpenLineBelongsToOneDJAndOneShow,
+    TestRemindersCannotRunAway,
+    TestThePoolGoesInTheOrderItWasWritten,
+    TestOpenLinesRefusesOutLoud,
+    TestTheStationIsNeverReconfigured,
+    TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp,
+    TestOpenLinesReachesThePanel,
+    TestTheRecordSurvivesBothContainers,
+)
 
 
 if __name__ == "__main__":

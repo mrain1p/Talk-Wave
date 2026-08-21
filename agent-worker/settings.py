@@ -288,6 +288,52 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # opening the tier row lights both doors at once.
     "on_air_calls_enabled":    (None, True),
     "on_air_voicemail_enabled": (None, True),
+
+    # --- Open Lines ---------------------------------------------------
+    # The DJ puts a topic up on the broadcast and invites the audience in.
+    # Off by default and deliberately so: every announcement is an
+    # audience-reaching write to the broadcast (`/dj/say` is tagged
+    # `mutates-air` upstream), and a feature that starts talking to a
+    # station's listeners the moment it is installed is not a default
+    # anybody chose. Off, the assembled prompt is byte-identical to a build
+    # without this feature — TestOpenLinesIsAdditive holds that.
+    "open_lines_enabled":         (None, False),
+    # Where the premise comes from. "dj" invents one from the same station
+    # context a SUB/WAVE skill invents from — persona, show card, programme
+    # intro, what has been played and said. "pool" reads the operator's own
+    # list below, in order, so a station can put up exactly the topics it
+    # wants and nothing else.
+    "open_lines_source":          (None, "dj"),
+    # One premise per line. Only consulted when the source is "pool"; blank
+    # with the source on "pool" means nothing opens, and the panel says so
+    # rather than silently falling back to invention — an operator who typed
+    # a list wants their list.
+    "open_lines_pool":            (None, ""),
+    # Where to reach the booth, said on air. Blank = the DJ opens the topic
+    # and names no address, which is right when the audience is already
+    # looking at the card. Talk Wave supplies this at compose time, so what
+    # the DJ reads out is always where Talk Wave actually answers.
+    "open_lines_address":         (None, ""),
+    # How long a line stays open before the DJ closes it, in character.
+    "open_lines_minutes":         (None, 60),
+    # The gap between reminders, and the hard ceiling on how many air in one
+    # window. The ceiling is the setting that matters: a long duration with a
+    # short interval is how a station ends up mentioning the same topic nine
+    # times. 0 on either = no reminders at all.
+    "open_lines_reminder_minutes": (None, 20),
+    "open_lines_reminder_max":    (None, 2),
+    # Nobody listening, nothing opens. Checked when a line opens and before
+    # every reminder, never mid-window: a line that vanished because one
+    # listener closed a tab would strand whoever is already typing. 0 =
+    # ignore the listener count entirely.
+    "open_lines_min_listeners":   (None, 1),
+    # Which DJs may open a line, by persona name, comma-separated. Blank =
+    # any DJ on air. Not every persona should be soliciting arguments.
+    "open_lines_personas":        (None, ""),
+    # Open a fresh line automatically this often. 0 = manual only, which is
+    # the default: the button in the panel opens one for the duration above,
+    # and nothing airs that the operator did not press.
+    "open_lines_every_minutes":   (None, 0),
     # The master switch, then when the machine answers. voicemail_when used
     # to carry both jobs with its 'never' option, and the operator read the
     # section as having no on/off at all.
@@ -988,6 +1034,16 @@ SUPERGROUPS = [
     # that string is already the ducking section's group id, and one word
     # holding two addresses is the Transmission lesson again.
     ("air",       "On air",               "The broadcast door — what goes out live, and on whose say-so."),
+    # Its own page rather than a section under On air (operator's call). On
+    # air answers "may a caller reach the broadcast"; this answers "what is
+    # the station asking them", which is a different question with its own
+    # settings, its own state and its own two buttons. Filing it under one
+    # of the three doors would also have been wrong in the other direction:
+    # a subject put up on air is answerable on all three.
+    # Page id and section group id are both "openlines", which Voicemail
+    # already does — the pair that must not collide is a group id against
+    # ANOTHER group's page, the way "onair" would have.
+    ("openlines", "Open Lines",           "The subject the station is putting to its listeners."),
     ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
 ]
 
@@ -1085,6 +1141,12 @@ GROUPS = [
     # one broadcast voice, not the call, so it lives beside the doors.
     ("airdoors", "air",    "Doors to air",        "The phone-in's two doors — close one without touching the other."),
     ("onair",    "air",    "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
+    # Open Lines sits on the On air page because that is what it is: the
+    # booth reaching OUT to the broadcast, rather than a door reaching in.
+    # It spans all three doors — a topic put up on air is answerable on the
+    # phone, on the text line and on the machine — so filing it under any one
+    # of them would have been the wrong cut.
+    ("openlines", "openlines", "Open Lines",     "The DJ puts a topic up, and invites the audience in."),
 
     # The Players page reorganized to the operator's design handoff ("Players
     # Settings Reorganization", direction 1a): one block per card ELEMENT, in
@@ -1963,6 +2025,69 @@ SCHEMA: dict[str, dict] = {
              "Voicemail below — the two switches together are the line's "
              "mode: phone, phone with a machine, voicemail-only, or "
              "closed."),
+    # --- open lines ---
+    "open_lines_enabled": dict(group="openlines", kind="check",
+        label="Open Lines", alias="topic call-in talk discussion phone-in",
+        help="The DJ puts a topic up on the broadcast and invites the audience "
+             "to weigh in — then knows what it asked when somebody arrives. "
+             "Off, nothing airs and the DJ is exactly as it is today."),
+    "open_lines_source": dict(group="openlines", kind="select",
+        label="Where the topic comes from", alias="premise",
+        needs=("open_lines_enabled", True),
+        help="The DJ invents one from the same material a station segment "
+             "invents from — who is on air, the show, tonight's episode, what "
+             "has just played. Or it reads your own list, which is the choice "
+             "to make if you want to know in advance what the station will ask."),
+    "open_lines_pool": dict(group="openlines", kind="text",
+        label="Your topics, one per line", alias="premise pool rotation list",
+        placeholder="Which remaster ruined the record?",
+        needs=("open_lines_source", "pool"),
+        help="Used in order, then round again. Write the SUBJECT, not the "
+             "words — the DJ says it in its own voice, so a line here should "
+             "read like a note to a presenter rather than a script."),
+    "open_lines_address": dict(group="openlines", kind="text",
+        label="Where to reach you, said on air", alias="url phone number line",
+        placeholder="leave blank to name no address",
+        needs=("open_lines_enabled", True),
+        help="Read out with the invitation. Leave it blank when your audience "
+             "is already looking at the card — a spoken address is for people "
+             "hearing the stream somewhere else. Whatever you put here is what "
+             "the DJ says, so write it the way it should sound."),
+    "open_lines_minutes": dict(group="openlines", kind="number",
+        label="How long a line stays open (min)", alias="duration window",
+        needs=("open_lines_enabled", True),
+        help="Then the DJ closes it on air, in character. A topic nobody took "
+             "up still made the station sound like one that takes part."),
+    "open_lines_reminder_minutes": dict(group="openlines", kind="number",
+        label="Remind every (min)", alias="repeat nudge",
+        needs=("open_lines_enabled", True),
+        help="The DJ raises the open topic again during the window. 0 = "
+             "announce once and say no more until it closes."),
+    "open_lines_reminder_max": dict(group="openlines", kind="number",
+        label="Most reminders per topic", alias="cap limit repeat",
+        needs=("open_lines_enabled", True),
+        help="The ceiling that actually protects the broadcast: a long window "
+             "with a short interval is how a station ends up asking the same "
+             "question nine times. 0 = no reminders."),
+    "open_lines_min_listeners": dict(group="openlines", kind="number",
+        label="Only with at least this many listeners", alias="audience empty",
+        needs=("open_lines_enabled", True),
+        help="Checked when a line opens and before each reminder, never in "
+             "the middle — a topic that vanished because somebody closed a tab "
+             "would strand whoever was already typing. 0 = open regardless."),
+    "open_lines_personas": dict(group="openlines", kind="text",
+        label="Only these DJs", alias="persona allowlist who",
+        placeholder="blank = whoever is on air",
+        needs=("open_lines_enabled", True),
+        help="Persona names, comma-separated. Not every DJ on a station should "
+             "be soliciting arguments, and the one on at 3am may not be the one "
+             "you want doing it."),
+    "open_lines_every_minutes": dict(group="openlines", kind="number",
+        label="Open one automatically every (min)", alias="schedule auto cron",
+        needs=("open_lines_enabled", True),
+        help="0 = manual only, and that is the default: nothing reaches your "
+             "listeners that you did not press the button for. Set it once you "
+             "have heard a few go out and trust what the DJ comes up with."),
     "on_air_calls_enabled": dict(group="airdoors", kind="check",
         label="Calls may go on air",
         help="The phone-in door: off, the ON AIR route stops offering live "
@@ -2192,6 +2317,10 @@ RANDOM_PERSONA = "__random__"
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
+    "open_lines_source": [
+        ("dj", "The DJ decides — invents a topic from tonight's show"),
+        ("pool", "Your list — the premises below, in order"),
+    ],
     "chat_greeting_mode": [
         ("canned", "Canned — the line below, instantly"),
         ("fresh", "Written each time — in persona at open"),

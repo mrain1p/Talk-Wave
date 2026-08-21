@@ -804,6 +804,7 @@
   // schema arrives, before the slow provider lists have loaded, so every
   // read of this has to survive it being empty.
   let options = {}, overrides = {}, resolved = {}, secrets = {};
+  let openLineLive = false;
   // What a field falls back to when cleared — see settings.beneath().
   let beneath = {};
   // Whether the panel has ever been filled. Its own flag rather than a
@@ -1140,6 +1141,15 @@
     // of seconds here described something that almost never happens.
     setTag('tagOnair', resolved.avoid_on_air_overlap
       ? 'waits for quiet air' : 'talks over the broadcast');
+    // Open Lines' tag answers "is a subject up right now", which is not the
+    // same question as "is the feature on" — an operator glancing at a folded
+    // section wants to know whether the station is currently asking listeners
+    // something. The live half is filled in by paintOpenLines() from the
+    // server's own verdict; this is the switched-off case, which needs no read.
+    if (!openLineLive) {
+      setTag('tagOpenlines', resolved.open_lines_enabled
+        ? 'on — nothing up right now' : 'off');
+    }
     // Live reads, like the dashboard cluster these doors share — and the
     // tier row outranks both doors: with Go live off, two open doors lead
     // to a route nobody may take, and "on" would be the tag lying.
@@ -2834,6 +2844,93 @@
     setGuest(code);
   };
   $('clearGuestBtn').onclick = () => setGuest('');
+
+  // --- Open Lines -------------------------------------------------------
+  // Both presses post immediately and never raise the save overlay: opening a
+  // line puts words on the broadcast, which is an act rather than a form the
+  // operator might still be editing. Same rule the dashboard controls follow.
+  function paintOpenLines(d) {
+    const out = $('openLineNow');
+    if (!out || !d) return;
+    openLineLive = !!d.live;
+    if (!d.enabled) {
+      setTag('tagOpenlines', 'off');
+      out.className = 'result';
+      out.textContent = '';
+      return;
+    }
+    if (d.live) {
+      const mins = Math.max(0, Math.round((d.secondsLeft || 0) / 60));
+      setTag('tagOpenlines', 'open — ' + mins + ' min left');
+      // The words that AIRED, not the subject we sent: that is what a
+      // listener heard, and it is what the DJ is being reminded of.
+      showResult(out, true,
+        'Up now, opened by ' + (d.persona || 'the DJ') + ' — ' + mins
+        + ' min left, ' + (d.remindersSent || 0) + ' of '
+        + (d.reminderMax || 0) + ' reminders used.\n\n'
+        + (d.spoken || d.premise || ''));
+    } else {
+      setTag('tagOpenlines', 'on — nothing up right now');
+      out.className = 'result';
+      out.textContent = '';
+    }
+  }
+
+  async function readOpenLines() {
+    try {
+      const r = await afetch('/open-lines');
+      if (!r.ok) return;
+      paintOpenLines(await r.json().catch(() => null));
+    } catch (e) { /* the card simply stays as it was */ }
+  }
+
+  // Painted when the section opens rather than on every panel load: the read
+  // is a disk read on the server and nothing on a folded section is visible.
+  // The tag is the exception — it must be right while folded, which is why the
+  // switched-off case is painted from `resolved` in the tag painter instead.
+  const olSec = document.querySelector('details.sec[data-group="openlines"]');
+  if (olSec) olSec.addEventListener('toggle', () => {
+    if (olSec.open) readOpenLines();
+  });
+
+  if ($('openLineBtn')) {
+    $('openLineBtn').onclick = async () => {
+      const out = $('openLineNow');
+      const btn = $('openLineBtn');
+      btn.disabled = true;
+      showResult(out, true, 'Writing a subject and handing it to the booth…');
+      try {
+        const r = await afetch('/open-lines/open', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        // A refusal is not a failure: every one of them names a setting the
+        // operator can change, so it reads as an explanation, not an error.
+        if (!d.ok) { showResult(out, false, d.why || 'could not open a line'); }
+        else { paintOpenLines(d.status); }
+        if (d.status) openLineLive = !!d.status.live;
+      } catch (e) {
+        showResult(out, false, 'could not reach the server');
+      } finally { btn.disabled = false; }
+    };
+  }
+
+  if ($('closeLineBtn')) {
+    $('closeLineBtn').onclick = async () => {
+      const out = $('openLineNow');
+      const btn = $('closeLineBtn');
+      btn.disabled = true;
+      try {
+        const r = await afetch('/open-lines/close', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        paintOpenLines(d.status);
+        // The sign-off airs on the director's next tick, not on this press —
+        // say so, or the operator waits at a silent station wondering.
+        if (d.ok) showResult(out, true, 'Closed. The DJ signs off on air shortly.');
+      } catch (e) {
+        showResult(out, false, 'could not reach the server');
+      } finally { btn.disabled = false; }
+    };
+  }
+
 
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');

@@ -154,6 +154,16 @@ async def build_system_prompt(
         if style_bits else ""
     )
 
+    # Open Lines: the subject the DJ put to the audience, if one stands right
+    # now. Additive by contract — `block` returns "" whenever the feature is
+    # off, no line is open, or the line belongs to a different DJ or show, and
+    # the prompt is then byte-identical to a build without this feature.
+    # TestOpenLinesIsAdditive holds that, because it is the promise this
+    # feature was allowed to exist on.
+    from openlines import prompt as open_lines
+
+    open_block = open_lines.block(cfg, persona, show_name, mode=mode)
+
     # Two media, one brain: the facts and identity are shared; the opening
     # line and the conduct are the medium's. `mode="chat"` is the typed line
     # (brain/conduct_chat) — same facts, different physics.
@@ -177,5 +187,5 @@ async def build_system_prompt(
 {language_block}{show_block}{style_block}
 # What's happening on the station right now
 {facts}
-
+{open_block}
 {the_rules}"""

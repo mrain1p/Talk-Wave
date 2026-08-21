@@ -87,6 +87,13 @@ class TestExposedSurface(unittest.TestCase):
         # Writes nothing — but it answers questions about the stored config
         # to whoever asks, which is the operator's business alone.
         "POST /live/preview": "admin",
+        # Open Lines. Admin on all three, including the status read: it
+        # carries the words the DJ is about to be reminded of, and opening
+        # or closing puts speech on the broadcast. Nothing here is a door
+        # a caller comes through.
+        "GET /open-lines": "admin",
+        "POST /open-lines/open": "admin",
+        "POST /open-lines/close": "admin",
         "GET /settings": "admin",
         "POST /settings": "admin",
         "GET /settings/options": "admin",

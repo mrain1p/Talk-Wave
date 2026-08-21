@@ -88,6 +88,12 @@ from api.sounds import (
 )
 from api.chat import handle_chat_ws
 from api.onair import handle_on_air_clip, handle_on_air_dump, hush_janitor
+from openlines.director import run as open_lines_director
+from api.openlines import (
+    handle_open_lines_close,
+    handle_open_lines_open,
+    handle_open_lines_status,
+)
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
 from api.widget import WIDGET_DIR, _assets, handle_index
 from api.wire import handle_options
@@ -115,6 +121,11 @@ def build_app() -> web.Application:
     app.router.add_get("/calls", handle_calls)
     # The ACTIVITY strip's listener curve — the one series /calls can't carry.
     app.router.add_get("/stats/listeners", handle_stats_listeners)
+    # Open Lines: the operator's card. Admin-gated in the handlers, like
+    # every other route that can put words on the broadcast.
+    app.router.add_get("/open-lines", handle_open_lines_status)
+    app.router.add_post("/open-lines/open", handle_open_lines_open)
+    app.router.add_post("/open-lines/close", handle_open_lines_close)
     # Operator housekeeping: the transcripts are a caller's words, so removing
     # them must not depend on enough new calls arriving to age them out.
     app.router.add_delete("/calls", handle_clear_calls)
@@ -212,6 +223,7 @@ def build_app() -> web.Application:
     app.cleanup_ctx.append(keep_station_warm)
     app.cleanup_ctx.append(sample_listeners)
     app.cleanup_ctx.append(hush_janitor)
+    app.cleanup_ctx.append(open_lines_director)
     return app
 
 

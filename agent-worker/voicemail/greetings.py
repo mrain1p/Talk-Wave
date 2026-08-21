@@ -93,12 +93,36 @@ def greeting_text_for(persona_id: str, cfg: dict, station_name: str,
     own = read_overrides().get(str(persona_id))
     if own:
         try:
-            return " ".join(own.format_map(_Blank(
+            base = " ".join(own.format_map(_Blank(
                 station=station_name or "the station",
                 dj=dj_name, show=show_name)).split())
         except (ValueError, IndexError):
-            return own
-    return greeting_text(cfg, station_name, dj_name, show_name)
+            base = own
+    else:
+        base = greeting_text(cfg, station_name, dj_name, show_name)
+    return base + _open_lines_clause(persona_id, cfg, show_name)
+
+
+def _open_lines_clause(persona_id: str, cfg: dict, show_name: str) -> str:
+    """The machine names tonight's subject while a line stands.
+
+    Appended to the TEXT, which means it flows through `render_key` and the
+    staged clip is re-rendered once per open line rather than per caller —
+    the cache keeps working, it just keys on a greeting that now mentions the
+    topic. When the line closes the text reverts and the clip that was already
+    there is reused. Empty in every other case, so a station that never turns
+    Open Lines on renders exactly the clips it always did.
+    """
+    try:
+        from openlines import prompt as open_lines
+
+        return open_lines.voicemail_clause(
+            cfg, {"id": persona_id}, show_name)
+    except Exception:                                          # noqa: BLE001
+        # A greeting is the one thing that must never fail to exist: the
+        # machine picking up in silence is how a caller learns the station is
+        # broken. Any trouble here simply costs the extra sentence.
+        return ""
 
 
 def greeting_text(cfg: dict, station_name: str, dj_name: str,

@@ -3288,7 +3288,11 @@
      of .rows so each could share a line with its buttons, and the inputs
      fell back to the browser's own chrome — which read as a different,
      broken control two inches from a styled one. Operator-reported. */
-  .row select, .row input[type=text], .row input[type=number], .row input[type=password],
+  /* `.row textarea` wears the same skin as every other field rather than a
+     shape of its own: Open Lines' topic list is a field in a row like any
+     other, and a box that sized itself differently would be the only one
+     on the page. Square comes free from the panelpage sweep below. */
+  .row select, .row textarea, .row input[type=text], .row input[type=number], .row input[type=password],
   .testrow input[type=text], .testrow input[type=password] {
     flex: 0 1 260px; max-width: 260px;
     min-width: 0; font: inherit; font-size: 12.5px;

@@ -1013,6 +1013,66 @@
       </div>
     </details>
 
+    <details data-group="openlines" class="sec">
+      <summary><span class="chev">&#9654;</span><span class="secname">Open Lines</span><em class="secblurb"></em><span class="tag" id="tagOpenlines"></span></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">The DJ puts a subject to the
+          audience on the broadcast, then knows what it asked when somebody
+          arrives on any of the three doors &mdash; it opens by finding out
+          whether they came for the topic or for something else, and a request
+          is never pushed aside for it. Nothing airs until you press
+          <strong>Open a line now</strong>, unless you set a cadence below.</p>
+        <label class="check"><input type="checkbox" id="open_lines_enabled" /> Open Lines</label>
+        <div class="row">
+          <label for="open_lines_source">Where the topic comes from</label>
+          <select id="open_lines_source"></select>
+        </div>
+        <div class="row">
+          <label for="open_lines_pool">Your topics, one per line</label>
+          <textarea id="open_lines_pool" rows="4"></textarea>
+        </div>
+        <div class="row">
+          <label for="open_lines_address">Where to reach you, said on air</label>
+          <input type="text" id="open_lines_address" />
+        </div>
+        <div class="row">
+          <label for="open_lines_personas">Only these DJs</label>
+          <input type="text" id="open_lines_personas" />
+        </div>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="open_lines_minutes">How long a line stays open (min)</label>
+            <input type="number" id="open_lines_minutes" min="1" max="480" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="open_lines_reminder_minutes">Remind every (min)</label>
+            <input type="number" id="open_lines_reminder_minutes" min="0" max="240" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="open_lines_reminder_max">Most reminders per topic</label>
+            <input type="number" id="open_lines_reminder_max" min="0" max="10" step="1" />
+          </div>
+          <div class="row narrow">
+            <label for="open_lines_min_listeners">Only with at least this many listeners</label>
+            <input type="number" id="open_lines_min_listeners" min="0" max="500" step="1" />
+          </div>
+          <div class="row narrow">
+            <label for="open_lines_every_minutes">Open one automatically every (min)</label>
+            <input type="number" id="open_lines_every_minutes" min="0" max="1440" step="15" />
+          </div>
+        </div>
+        <!-- The section footer: what is up right now, then the two presses.
+             Both post immediately and never touch the save overlay - opening
+             a line is an act, not a form draft, and the same rule the
+             dashboard controls follow. -->
+        <div class="testrow">
+          <button id="openLineBtn">Open a line now</button>
+          <button id="closeLineBtn" class="btnquiet">Close it</button>
+        </div>
+        <div class="result" id="openLineNow"></div>
+      </div>
+    </details>
+
     <details data-group="airdoors" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Doors to air</span><em class="secblurb"></em><span class="tag" id="tagAirdoors"></span></summary>
       <div class="body">

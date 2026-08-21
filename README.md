@@ -50,6 +50,7 @@ Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on a
 - **On-air ducking** — while the broadcast DJ is talking, the call waits its turn. Nothing overlaps, nothing is lost.
 - **Or quiet the station instead** — flip it the other way: the station's own idents, links and segments stand down while a call is live and return within seconds of it ending. Music never stops, and the operator's hand on the station's own Voice switch always wins. See [Live on air](docs/on-air.md#quieting-the-stations-own-dj).
 - **Live on air** — a caller can go out on the broadcast itself: the conversation airs one finished turn at a time, a turn behind the room, with a pull-off-air button in your hand the whole way. See [Live on air](docs/on-air.md).
+- **Open Lines** — the booth reaching out instead of in: the DJ puts a subject to the audience on air, invites them to weigh in, and then knows what it asked when somebody arrives on any of the three doors. It opens by finding out whether they came for the topic or for something else, and a request is never pushed aside for it. Off by default, and nothing airs until you press the button. See [Open Lines](docs/open-lines.md).
 - Personas, voices and themes discovered live. Point it at another SUB/WAVE and it re-homes itself.
 - Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did. [The whole list](#what-a-caller-can-make-happen).
 
