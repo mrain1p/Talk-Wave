@@ -637,7 +637,12 @@ class TestTheStationIsNeverReconfigured(_OnDisk):
 
     def test_no_address_is_invented_when_none_is_set(self):
         # A DJ told to invite calls and given nowhere to send them makes one up.
-        self.assertIn("Do not give out any address", air.open_direction("s", {}))
+        direction = air.open_direction("s", {})
+        self.assertIn("Do not invent an address", direction)
+        # And it must not then ask for the one thing it just forbade: the
+        # model line has no address in it, so neither does what it keeps.
+        self.assertNotIn("where to reach you", direction)
+        self.assertIn("Keep both", direction)
         aimed = air.open_direction("s", {"open_lines_address": "the usual place"})
         self.assertIn("the usual place", aimed)
 

@@ -56,10 +56,12 @@ def _address_clause(cfg: dict) -> str:
         # invite calls and given nowhere to send them invents somewhere.
         return ("Do not give out any address, number or web address — the "
                 "audience already knows where to find the station.")
-    return (f"You MUST tell them where to reach you, and the address is exactly "
-            f"\"{address}\". Say it clearly, once, the way a presenter reads a "
-            f"station address out loud. Do not abbreviate it, do not turn it "
-            f"into a phone number, and do not substitute anything else.")
+    return (f"Send them to {address} — that is a WEB address, and it is where "
+            f"the audience actually reaches you. Say it exactly as written, "
+            f"once. Do not abbreviate it, do not turn it into a phone number, "
+            f"and do not replace it with \"give us a call\" or \"get in touch\" "
+            f"on its own: an invitation with nowhere to go is not an "
+            f"invitation.")
 
 
 def open_direction(premise: str, cfg: dict) -> str:
@@ -71,20 +73,33 @@ def open_direction(premise: str, cfg: dict) -> str:
     invitation to actually get in touch, and no address ever appeared. A
     listener has to be told two things plainly: the lines are OPEN, and where.
     """
+    # The address goes FIRST and again LAST. Buried as item three in a list it
+    # was simply dropped: the station's own LLM rewrites this in persona, and
+    # what it drops is whatever sits in the middle. Measured on air — "the
+    # phone lines are OPEN right now… just give us a call" with no address in
+    # it anywhere, from a direction that said the address was mandatory.
+    address = str(cfg.get("open_lines_address") or "").strip() or own_address()
+    where = f" Come and find me at {address}." if address else ""
+    model = f"The lines are open — I want to hear about {premise}.{where}"
+    keep = (
+        f" You may change every word EXCEPT the address, which must come out "
+        f"exactly as “{address}” and must not be turned into a phone "
+        f"number or replaced with “give us a call” on its own."
+        if address else
+        " Do not invent an address, a number or a web address — a DJ given "
+        "nowhere to send people makes somewhere up."
+    )
     return (
-        "[Producer, off air. Open the lines — this is an invitation, not a "
-        "rhetorical question.\n"
-        f"The subject is: {premise}\n"
-        "Three things have to come across, in your own voice and the way you "
-        "would really say them:\n"
-        "1. The lines are OPEN and you are taking contributions right now — "
-        "say it plainly enough that a listener knows it is a real invitation "
-        "to get in touch, not you musing out loud.\n"
-        "2. What you are asking them.\n"
-        f"3. {_address_clause(cfg)}\n"
-        "Keep it short — this is a link between records, not a monologue — but "
-        "do not drop any of the three. Do not read this instruction out, and "
-        "do not announce the show or recap what has been playing.]"
+        "[Producer, off air. Here is the line to put out:\n"
+        f"  “{model}”\n"
+        "Say that on air in your own voice — your phrasing, your rhythm, as "
+        "long or as short as you would really make it." + keep
+        + (" Keep all of it: that the lines are open, what you are asking, and "
+           "where to reach you.\n" if address else
+           " Keep both: that the lines are open, and what you are asking.\n")
+        +
+        "Do not read this instruction out, and do not announce the show or "
+        "recap what has been playing.]"
     )
 
 
