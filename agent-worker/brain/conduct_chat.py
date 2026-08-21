@@ -134,7 +134,12 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
         ("tool_rules", _tools(cfg, frozenset(drop or ()))),
         ("TYPED_TOOLS_NOTE", TYPED_TOOLS_NOTE),
         ("REPORT_THE_OUTCOME", REPORT_THE_OUTCOME),
-        ("say_the_true_thing", say_the_true_thing(cfg)),
+        # `drop` reaches INSIDE this one too, by TRUTH_CLAUSES name — the
+        # same knob tool_rules got at 0.10.152, and for the same reason: at
+        # 16% of the conduct it is too big to price whole, and dropping it
+        # whole would take the fourth-wall rule (persona) out with three
+        # honesty rules that are not.
+        ("say_the_true_thing", say_the_true_thing(cfg, frozenset(drop or ()))),
         ("LANGUAGE_AND_MIMICRY", LANGUAGE_AND_MIMICRY),
     ]
     return out

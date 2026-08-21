@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheMapTheOperatorNavigatesBy,
     TestTheOnAirDelayIsTheOperatorsDial,
     TestTheOnAirCallerSoundSetting,
     TestTheQuietStationSetting,
@@ -71,6 +72,10 @@ from tests.test_http import (  # noqa: F401
     TestTheMintGivesTheWorkerAHeadStart,
 )
 from tests.test_widget import (  # noqa: F401
+    TestThePanelKeepsItsOwnRules,
+    TestTheMusicComesBackAfterACall,
+    TestNothingIsReachableOnlyByRecognisingIt,
+    TestThePanelSaysWhereThingsAre,
     TestTheCallerIsNotRescuedMidAnnouncement,
     TestTheCardOnlyOffersDoorsTheTierOpens,
     TestTheStationPlayerKnowsItsPlace,
@@ -219,6 +224,27 @@ from tests.test_album_tools import (  # noqa: F401
     TestAPunctuatedFiledNameStillQueues,
     TestClearingARunFromTheQueue,
 )
+from tests.test_house_rules import (  # noqa: F401
+    TestEveryScenarioIsWellFormedBeforeItCostsAnything,
+)
+from tests.test_prompt_budget import (  # noqa: F401
+    TestTheClosingSplitTracksItsOwnText,
+    TestTheTruthBlockSplitChangedNoPromptByte,
+)
+from tests.test_finding import (  # noqa: F401
+    TestItCannotReachPastTheSettings,
+    TestItIsAModeNotAnExtraTool,
+    TestNoCapabilityIsLost,
+    TestNoDiscretionIsLost,
+    TestTheDJIsToldWhichShelfItCameOff,
+    TestTheTableIsNowAFunction,
+)
+from tests.test_stuck import (  # noqa: F401
+    TestBeingToldYouAreWrong,
+    TestItCostsNothingWhenTheCallerWasHeard,
+    TestTheRealChatIsCaught,
+    TestTheSameAskIsRecognised,
+)
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
     TestALateMatchStillReachesTheCaller,
@@ -281,6 +307,7 @@ from tests.test_prompt_budget import (  # noqa: F401
     TestTheToolBlockSplitChangedNoPromptByte,
 )
 from tests.test_discovery import (  # noqa: F401
+    TestAFailedReadNeverBecomesAFactAboutTheMusic,
     TestACompoundGenreIsAViableOption,
     TestATitleIsNotATrackId,
     TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent,

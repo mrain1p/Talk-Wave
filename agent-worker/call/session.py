@@ -47,7 +47,8 @@ from onair.relay import CallRelay
 
 from . import (asks as asks_mod, background, clocks, comeback, door,
                floor as floor_mod, greeting, handoff, heard as heard_mod,
-               lifecycle, postmortem, promise_guard, tee as tee_mod)
+               lifecycle, postmortem, promise_guard, stuck as stuck_mod,
+               tee as tee_mod)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -57,6 +58,7 @@ from .tools import (
     build_call_control_tools,
     build_curation_tools,
     build_discovery_tools,
+    apply_finder_dispatch,
     build_library_tools,
     build_on_air_tools,
     mcp_allowlist,
@@ -187,6 +189,12 @@ class CallSession:
         # One call's memory of whether the last line showed the caller the
         # door — see call/door.py. Cheap enough to always build.
         self.door = door.Door()
+        # One call's memory of what the caller has already had to ask, and
+        # whether they have told the DJ it has this wrong — see call/stuck.py.
+        # Same cost argument as the door: a few strings and a set intersection
+        # per turn, and nothing at all on a call where the caller was heard
+        # the first time.
+        self.stuck = stuck_mod.Stuck()
         # Who is allowed to start a turn — see call/floor.py. Attached to
         # the air guard the way air_log is, because the come-back task is
         # created inside the guard's watch loop.
@@ -488,6 +496,10 @@ class CallSession:
             self.ctx, lambda: self.session, self.started_at,
             float(self.cfg.get("min_call_seconds") or 0),
         )
+        # LAST, and reading the list rather than the station: the one finder
+        # routes to the wrappers above, so it can only ever reach what the
+        # settings already allowed. Empty unless the operator switched it on.
+        local = apply_finder_dispatch(self.cfg, local)
         return local
 
     async def start(self) -> None:
@@ -586,7 +598,8 @@ class CallSession:
         )
 
         await self.session.start(
-            agent=CallAgent(self.instructions, self.air, self.door),
+            agent=CallAgent(self.instructions, self.air, self.door,
+                            self.stuck),
             room=self.ctx.room,
             # RoomOptions replaces the deprecated RoomInputOptions/
             # RoomOutputOptions pair. close_on_disconnect keeps its meaning:

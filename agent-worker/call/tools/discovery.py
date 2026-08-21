@@ -415,7 +415,14 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             answer "did you play X earlier?", "what was that one before?", or
             to avoid queueing something the station has just had on. This
             reaches back further than the recent history you were briefed
-            with."""
+            with.
+
+            DO NOT call this for the record on air NOW (your briefing, or
+            subwave_now_playing), for what is coming up
+            (subwave_station_state), or for what is new in the library
+            (subwave_recent_tracks). Already-aired, on-air, coming-up and
+            newly-added are four different questions and only this one is
+            about the past."""
             rows = await station.play_history(limit=12)
             if not rows:
                 return (

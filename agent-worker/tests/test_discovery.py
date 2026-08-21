@@ -625,3 +625,56 @@ class TestACompoundGenreIsAViableOption(unittest.TestCase):
         asyncio.run(tools["subwave_browse_library"](genre="nope"))
         limit = [kw for kind, kw in station.asked if kind == "genres"][0]
         self.assertEqual(limit, _ALL_GENRES)
+
+
+class TestAFailedReadNeverBecomesAFactAboutTheMusic(unittest.TestCase):
+    """The bug class behind the 2026-08-20 call, pinned across the reads.
+
+    `current_lyrics` collapsed a 404 into "an instrumental, or the station has
+    none indexed" — a sentence describing the RECORD — and a caller was told a
+    vocal track had no words, eleven times, on a station whose lyrics endpoint
+    does not exist at all.
+
+    The audit that followed found the rest of these already careful:
+    `search_library` learned it on 2026-08-19 (`None` for a failed read, `[]`
+    for a real miss, after a caller was told their artist wasn't in a library
+    holding a hundred of their tracks and said "bullshit"), and the discovery
+    wrappers each name the unreadable case in their own words. This class
+    exists so that stays true — the failure is cheap to reintroduce, because
+    "no rows" and "couldn't read" are the same empty list right up until
+    somebody writes the sentence.
+    """
+
+    def _tools(self, station):
+        return _build(ALL_ON, station)
+
+    def test_an_unreadable_library_is_not_an_empty_library(self):
+        # browse_library's station read returns {} when it fails.
+        tool = self._tools(_Station(browse={}))["subwave_browse_library"]
+        out = asyncio.run(tool(genre="Jazz")).lower()
+        self.assertIn("couldn't read", out)
+        # It must not tell the caller the shelf is bare.
+        for claim in ("nothing", "no tracks", "haven't got"):
+            self.assertNotIn(claim, out)
+
+    def test_an_unreadable_play_log_does_not_settle_whether_it_aired(self):
+        tool = self._tools(_Station(history=[]))["subwave_already_played"]
+        out = asyncio.run(tool()).lower()
+        self.assertIn("isn't readable", out)
+        # The whole point: it may not rule the record IN or OUT.
+        self.assertIn("don't claim a record did or didn't air", out)
+
+    def test_an_unreadable_favourites_list_is_not_an_unloved_station(self):
+        tool = self._tools(_Station(liked=[]))["subwave_station_favourites"]
+        out = asyncio.run(tool()).lower()
+        self.assertIn("isn't readable", out)
+        self.assertIn("rather than inventing one", out)
+
+    def test_a_station_that_cannot_sound_search_is_not_a_library_without_the_vibe(self):
+        # Already the careful case, and the one the others were measured
+        # against: the station is asked whether the capability exists at all
+        # before anything is said about the music.
+        station = _Station(sound=[], sound_available=False)
+        out = asyncio.run(self._tools(station)["subwave_search_by_sound"]("dreamy"))
+        self.assertIn("fact about the STATION", out)
+        self.assertIn("Do not say there's nothing like that", out)

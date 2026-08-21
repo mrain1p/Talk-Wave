@@ -3,6 +3,126 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.29
+
+The three loose ends from the settings work, closed.
+
+- **A call can leave a listener in silence, and the panel now says so.** Starting a call silences the station player on purpose — on speakers the stream comes back through the microphone and is transcribed as the caller's own words — and the code justifies that with "the call's own tune-in takes over at pickup anyway". It never checked whether tune-in was on. With it off, a caller who was listening to the station gets nothing for the whole call and no explanation. This is an operator's problem rather than a caller's, so it lands in the panel's notifications column: it appears only while the card actually offers the station player, names both switches that fix it, jumps to the section, and follows all three switches live as they are pressed rather than waiting for a save.
+- **Two cross-references became real links.** *Player under the machine* now points at [Voicemail machine], and *Name the DJ in the transcript* distinguishes the card's live transcript from what is written to disk and points at [Transcripts]. Both had search synonyms from 0.98.24, which made them findable but not reachable — the review promised links.
+- **Thirteen in-code version references were off by one.** The settings archaeology written during 0.98.22 and 0.98.24 cited the numbers those passes were on while they were being written, and another stream took those numbers first. Comments and prose only, corrected to the versions the work actually shipped as.
+
+## 0.98.28
+
+The closing rules were split so they could be judged a clause at a time, and then judged. Nothing a caller hears changes.
+
+- **Ablating the closing section whole came back contradictory, so it is four named clauses now.** One rule collapsed without it while two scored *better* — which is not a section earning its keep or failing to, it is two rules pulling in opposite directions inside one block. The split is derived from the section's own text rather than copied out of it, so the two cannot drift apart, and it is byte-for-byte the same prompt when nothing is dropped.
+- **Per-clause runs found nothing worth cutting, and one result that matters more than the score.** Dropping the momentum clause scored *better* on the tally and behaved *worse* in the room: in the round it lost, the DJ reached for the hang-up on a caller who had just said "yeah, that's the one", and only the sixty-second floor stopped it. A mild fault traded for a severe one, and a pass rate cannot see the difference.
+- **Dropping the door prose made the door problem worse,** 1 in 4 to 0 in 4, which confirms an earlier measurement from the opposite direction. The hypothesis going in was that its own worked examples were teaching the DJ the forbidden phrase — the DJ does copy them almost word for word — but removing them costs more than it saves.
+- **What the numbers do say is that closing is the weakest part of the prompt.** With four paragraphs forbidding the move and a guard already running, the DJ still ends a landed request by asking whether the caller wants anything else in three rounds of four. A rule that three rewrites have failed to enforce wants a mechanism rather than a fourth rewrite; that is named as work, not attempted here.
+
+## 0.98.27
+
+The music comes back after a call, and the house rules stop describing a panel that no longer exists.
+
+### The player came back stopped, every time
+
+- **A call silenced the station player and the way back never restarted it.** The mechanism was right and the audio was wrong: a call DESTROYED the element (`closePlayer(false)` — sheet and audio together) and the resume built a brand new `Audio()`. A brand new element carries none of the play permission the caller's first tap earned, and a call ends inside a promise callback — LiveKit's disconnect, or the DJ hanging up — which is outside the gesture window whatever the caller pressed. So iOS refused the new element's `play()` and the refusal was swallowed into a lit PLAY button.
+- **The element is parked now, not destroyed:** paused, kept, and handed back when the line clears, so it keeps the permission it already had. The `src` is reassigned on the way back, because a paused live stream resumes from its buffer and would run behind the broadcast for the rest of the session — reassigning rejoins at the live edge, and an element that has played once keeps its permission across the change. Pressing STOP during a call still means STOP: the park is discarded and nothing comes back.
+
+### The house rules were describing the old panel
+
+- **The radius rule was stale, not violated.** It read "three steps, no strays: 8px controls, 10px surfaces, 12px section bodies" — the scale from *before* the newspaper redesign, which deliberately zeroed every panel radius and which the skill never caught up with. Anyone following the rule would have rounded a panel of squares. The panel block has seven `border-radius: 0` and one 10px; the 8/10/12 scale is still correct on the call card, which is a different surface with a different guide.
+- **`.grid2` is a one-column grid** despite the name — it exists for row rhythm, not columns. The 0.98.24 review wrote up a section for breaking a two-column layout that has never existed; the skill now says so, so nobody repeats it.
+- **The type scale is the sizes actually in use.** Eleven distinct sizes live in the panel block, five within 2px of each other, so "no new font sizes without reason" was holding nothing up. Those eleven are the scale now and a twelfth fails a test — not forbidden, but a decision made in the open rather than an accident.
+- **Seven of the rules are tests now.** The skill carries about forty and the suite checked four, which is why one checkbox in 34 sections wore the wrong skin for months. The ones now enforced are the ones whose violation is invisible in review: square corners, the type scale, checkbox skin, a subhead never repeating the label under it, safe-area insets on any rule that zeroes a phone edge, every field carrying help, and every text field offering its default.
+
+## 0.98.26
+
+The test set that grades the DJ's decisions had no scenario for the commonest question a caller asks, which is why nothing caught the call that started this.
+
+- **Every routing scenario was about finding a record to PLAY.** "What song is this?" had no row in the prompt and no row in the set, so a caller asking it seven times in one conversation — and being told a vocal track was an instrumental every time — could not have been caught by anything. Four scenarios now cover it, graded against the real station.
+- **The reads rule added in 0.98.22 is measured, and it is doing the work:** 3 in 3 with it, 0 in 3 without. Ablated, the DJ answers "what song is this?" by reaching for the lyrics tool *every single time*, which is the original failure reproduced on demand. A control scenario rules out the lazy explanation: a genuine question about a song's words still reaches the lyrics tool in both arms.
+- **One of the new scenarios was graded wrongly and the transcript caught it.** It marked the DJ down for checking the lyrics tool after a caller said the song had words — while the transcript showed it doing exactly the right thing, conceding the point and taking the caller's word. Reaching for a tool the caller just named is a reasonable check, not a routing error; the scenario now grades what is *said* afterwards, which is what actually matters.
+- **A malformed scenario can no longer cost money to discover.** Every set is checked before a run: a mistyped expectation key used to grade nothing at all and report a clean sweep, which is the most expensive kind of wrong there is. The check also fails if the new reads scenarios ever disappear, because a missing test is exactly what nobody notices.
+
+## 0.98.25
+
+### The Sign-in button was under the iPhone's clock
+
+- **`index.html` asks for the whole screen, and in a browser nothing paid it back.** The viewport is `viewport-fit=cover`, so the page owns the edges an iPhone normally keeps clear — but the safe-area padding that compensates existed only inside `@media (display-mode: standalone)`, which is to say only once the widget is installed to the home screen. In ordinary Safari there was none.
+- **And on a phone the card is full bleed,** which is the look it should have: under 500px the body's padding is zeroed and the card fills the screen. Its own padding was `0 20px 20px` — no top padding at all — so the eyebrow row, with the Sign-in, theme and help buttons in it, sat at y=0. On a notched iPhone that is behind the time and battery indicators. Reported on a real phone as a login button that could not be pressed.
+- **Fixed where it actually applies:** the full-bleed card now pads with `max(12px, env(safe-area-inset-top))` and matching insets on the other three sides, and the body rules a phone media query used to override with flat values carry the insets too. `max()` rather than `calc()`, so a phone with no notch keeps exactly the edges it always had and only real furniture pushes them in.
+
+## 0.98.24
+
+A polish round over the settings panel: four settings filed on the wrong page, one section that had never had a pass, and the one engine you could configure but not try.
+
+### Four settings were filed where nothing would look for them
+
+- **Three rode to the Calls page when Call limits moved there.** "Take text chats" and "Enable voicemail" are the master switches for the text line and the answering machine, and both were filed under *Calls › Call limits*; "Pause all calls" was there too, though its own help says it silences the machine and the text line as well. Nothing looked wrong, because all three render as dashboard cards — but the schema is what the finder and the All settings index read, so the index answered "where is Take text chats" with *Calls › Call limits*, which is the one question it exists to get right. Each now sits with the door it governs, and the kill switch with Access.
+- **The voicemail beep stays with the sound board, and now says why.** It was flagged as the odd one out in Call sounds — the only sound there that is not a call sound, and the only one of the six that ignores *Play call sounds*. Moving it would have left a five-card board and a stray row, so it stays and the machine links to it instead. Ignoring the master switch is deliberate: the beep tells the caller to start talking.
+
+### The text line got the pass every other section has had
+
+- **Fifteen rows under no headings.** The longest section in the panel ran as one unbroken ladder while every comparable section is banded. It is four named blocks now — Chat limits, When a chat ends, Opening the line, How the reply arrives.
+- **The only checkbox in the panel wearing the dropdown-row skin**, and **the only subhead repeating the label directly under it**, were both in this section. Both fixed.
+
+### Ears can be tested, at last
+
+- **Brains had two buttons, Voice had two, Ears had none** — and the Speed test does not cover it: for any cloud ear it records a flat 400ms estimate and never calls the provider. A wrong or expired Deepgram key gave a green panel, a green speed test, and a caller being misheard on air as the first symptom.
+- **Test hearing** speaks one known line with the configured voice and hears it back with the configured ear, reporting the transcript, the share of words that survived, and the time against the length of the clip. The sample is synthesized rather than recorded from the operator's microphone, so there is no permission prompt and every run is the same sentence. A failure says which engine failed, because a voice that cannot speak fails a hearing test without the ear being touched.
+- **No "Reload model list" beside it,** unlike the other two: the STT models are a curated table, not a catalogue anyone discovers, so the button would have claimed work it does not do.
+
+### Less is more
+
+- **Seventeen fields carried help over 400 characters** — 41% of all the help in the panel sat in 32 of its 188 fields. Out came mechanism (telnet ports, HOST_IP, override key names), deployment steps that belong in the docs, and reasoning that does not change what an operator would set. What stayed is the fact that changes the decision, and every warning. Nothing is over 400 now.
+- **Eleven fields had no help at all** — every one of the card's fixed wording strings. Each has one line now saying when the caller sees it.
+- **Eight number labels named no unit,** and three text fields carried no default in their placeholder. Both fixed. And "Without the switch, the line is" is a label no longer.
+
+## 0.98.23
+
+The largest honesty section in the prompt becomes measurable, and a measurement that was withdrawn a week later stops being quoted as if it had settled anything.
+
+- **A note in the source said this section had been proven worthless. It had not.** The measurement behind that note was retracted by the session that ran it — the grader could not see the failure it was grading for, and with the section present the DJ still told a caller a refused request was on its way, in both rounds it was tried. The finding at the time was "not inert, insufficient", and the instruction was not to cut it. Corrected in place, quoting the retraction, so the next reader cannot repeat it.
+- **It is four rules, not one, and one of them is the persona rule.** Cutting the block whole would have taken the DJ's stay-in-character instruction out along with three honesty rules that have nothing to do with it. It is split into four individually droppable clauses instead, byte-for-byte identical when nothing is dropped.
+- **Nothing is cut here.** The split exists so the question can be answered with a number rather than an argument, which is what happened two releases later.
+
+## 0.98.22
+
+The settings panel had 188 settings behind 34 folded sections across nine pages, and at rest it showed you none of them. This is the pass that makes them findable: the finder becomes an index, every section gets an address, and the pages get a shape.
+
+### The finder stopped hiding the answer
+
+- **Searching "password" hid the section that owns the password.** The filter read four row classes and nothing else, and the Change password control is a button in a testrow — so no row matched, the summary did not carry the word either, and the Access section was set to `display: none` while the operator watched. Three sections made entirely of prose and buttons could never appear in a result at all. The whole section is searched now: its prose, its buttons, its testrows and its name.
+- **A result never said which page it was on.** Search hides the page bands on purpose, so typing "voicemail" returned nine sections labelled "The machine", "Doors to air", "The line box" — twenty settings spread over eight pages — with nothing to say where any of them lived, and clearing the box taught you nothing. Every result now carries its page ahead of the section name, and a line above the results says how wide the hit is and names the pages it reaches.
+- **The words an operator actually types now land.** "color" found nothing while "colour" found two; "avatar" found nothing though the field is called `avatar_style`; "mute", "logo", "spam", "timeout" and "language" all found nothing at all. 58 settings and 27 sections carry search-only synonyms now, and the finder reads field ids as well as labels.
+- **And the words it should not match stopped matching.** "rate" lit up eight sections through *moderate*, *separate* and *accurate*. A needle has to start a word now, so "volu" still finds volume and "rate" no longer finds accurate.
+- **A result whose switch is off says so, and brings the switch with it.** 41 of the 188 settings sit behind a prerequisite, and search re-showed them with no marker while filtering the switch that governs them OUT — so you could find "Length (words)", set it, save, and watch nothing happen, because Back-to-air commentary was off and never appeared beside it. The row is dimmed and marked with the switch's name, and the switch is pulled into the results next to it.
+
+### Everything in the panel has an address
+
+- **`/settings#turns` used to land on the dashboard.** Only page ids were valid in the URL, so a section — the obvious thing to link to, and the id the section already has — silently fell through with nothing open and nothing said. A section id now turns to its page, opens the fold and scrolls to it, on arrival as well as on a later click, and every jump inside the panel leaves that address behind for a bookmark or for somebody else.
+- **The cross-references written into help text are links.** Fourteen of them said things like "under Caller permissions" and "on the On air page" — each one a hand-written apology for a jump the operator then made on foot. They go there now, including the one inside the Doors-to-air state chip.
+- **A new All settings page lists every setting once,** with the page and section holding it and its value right now, and a click opens it where it stands. The finder answers the question you can already phrase; this is for the one you cannot.
+
+### The eleven pages have a shape
+
+- **The page picker stays one flat row.** It was banded into five labelled rows during this work and taken back out on the operator's call: grouping the eleven pages by kind read as more furniture than map. The measurement that prompted it stands and is worth someone's attention later — on a 375px phone the strip wants 1017px in 343px of room, so two of the eleven pages are visible and the other nine sit behind a scroll gesture with no scrollbar. Whatever fixes that should not regroup the pages. The picker did gain one chip: **All settings**, next to Dashboard.
+- **Five sections took their nouns back.** A folded section shows its name and nothing else, so a name that only decodes once you know your way around is the wrong way round. "The machine" is Voicemail machine, "The line box" is Call status wording, "Surface" is Card colours, "The frame" is Embed frame, and "Tune the caller into the station" is Station audio in the call. The blurbs underneath keep the voice.
+- **The Transmission page is The booth.** The 2026-08-13 note said the word meant two things on one panel — this page and the dashboard's switch cluster — and that if it ever read ambiguously the cluster was the one to rename. On review the cluster is the honest one: it really is three switches that open and close the line. This page holds what the DJ knows, how it speaks and what it writes down, which is what `docs/settings.md` has called the booth all along.
+- **Voicemail and Texts stopped being pages you open to find one fold.** Each held exactly one section, with nothing for that fold to be folded away from. A one-section page is the section now: open on arrival, no chevron, the summary kept for its blurb and its state chip.
+- **The Players page lost its tabs and kept its groups.** Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players, Behaviour, On the caller's phone, row — where every other setting in the panel is three. The same three groups are ruled captions down one column.
+
+### Two placements that broke the panel's own rule
+
+- **Call limits moved to Calls, and stopped being called Usage controls.** The same idea was filed in three different places depending on the door: six chat caps on the Texts page, voicemail's one ceiling on Voicemail, and the five call caps two pages away under Permissions & safety. By the rule this panel is cut on — the door owns the answer — the call caps were the odd ones out. Permissions & safety is left as Access, Caller permissions and Speech hygiene.
+- **The three door switches were settings you could only reach by recognising them.** "Take live calls", "Enable voicemail" and "Take text chats" are declared with labels, and they rendered in no section, matched no search and appeared in no list built from the markup — their only control is a dashboard card. The card stays the control; each door's page now opens with a line saying whether the door is open, what that means, and the name of the switch on the dashboard that changes it. A paused line reads as held on all three, in amber, because the kill switch outranks every door.
+
+### Also
+
+- **The Anthropic SDK is pinned.** `anthropic` 1.0.0 was released mid-afternoon and CI went red an hour after being green, on every branch: 1.x moved its HTTP client to `httpx2` and the LiveKit Anthropic plugin still hands it `httpx`, so every test that builds an Anthropic model raised a `TypeError` from inside the library. It was the one dependency in `requirements.txt` without an exact pin. Now pinned to 0.125.0 — the version the last green build used — with the release that lets it come off named in the file.
+- **The Access section's own explanation was never on screen.** Two hidden fields share that row — the door and whether a code elevates — and the second silently overwrote the first's help, so the longest explanation on the page had been invisible. First writer wins now.
+
 ## 0.98.19
 
 One fix on the card, and it is one the operator hit while listening: the volume you set stays where you set it.

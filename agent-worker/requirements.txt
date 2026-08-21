@@ -18,3 +18,18 @@ faster-whisper==1.2.1
 httpx==0.28.1
 aiohttp==3.14.3
 python-dotenv==1.2.2
+
+# Pinned because it was NOT, and a major landed under us. anthropic 1.0.0 was
+# released on 2026-08-20 between two CI runs an hour apart: the first resolved
+# 0.125.0 and passed, the second resolved 1.0.0 and failed every test that
+# builds an Anthropic LLM with
+#
+#   TypeError: Invalid `http_client` argument; Expected an instance of
+#   `httpx2.AsyncClient` but got <class 'httpx.AsyncClient'>
+#
+# 1.x moved to httpx2; livekit-plugins-anthropic 1.6.7 still constructs the
+# client with httpx. Nothing in this repo can bridge that, so the pin holds
+# the last version the plugin works with. It comes off when a
+# livekit-plugins-anthropic built against anthropic 1.x exists — not before,
+# and not by loosening it to a range.
+anthropic==0.125.0

@@ -13,22 +13,38 @@ Everything lives in the panel behind the gear, and changes apply to the **next c
 | Page | What you set there |
 |---|---|
 | **Dashboard** | Nothing — it reads live state and acts. [Its own page](dashboard.md) |
+| **All settings** | Every setting in one table, with the page and section holding it |
 | **Configuration** | The station, and the three engines: Brains, Voice, Ears |
-| **Permissions & safety** | Who may call, what they may trigger, and the spend caps |
+| **Permissions & safety** | Who may call, and what they may trigger |
+| **Reference** | What callers can ask, and the station's tool surface |
 | **The booth** | What the DJ knows, how it behaves, and whether transcripts are kept |
-| **Calls** | Greeting, turn-taking, closing, the station under the call, sounds, effects |
+| **Calls** | The call caps, greeting, turn-taking, closing, the station under the call, sounds, effects |
 | **Voicemail** | The answering machine and the soundbite studio |
 | **Texts** | The typed line's clocks, ceilings and opening behaviour |
 | **On air** | The two doors to the broadcast, and ducking |
 | **Players** | Everything the card shows, per surface — page and embed |
-| **Reference** | What callers can ask, and the station's tool surface |
 | **Diagnostics** | Pipeline check, speed test, recent calls, server logs |
 
 ## How the panel is laid out
 
 The panel reads as **pages under one URL**: the search box lives in the masthead itself, the page picker sits under the coral rule as a sticky band, and exactly one page shows below it.
 
-**The address carries the page** — `/settings#calls`, `#voicemail`, `#texts` — so a page survives a refresh and the browser's back button works. The search reads every page: typing shows the matching rows from everywhere, and clearing it returns to the page you were on.
+**The address carries the page or the section** — `/settings#calls` turns to a page, `/settings#turns` turns to Calls *and opens Turn-taking*. Both survive a refresh, both work with the back button, and both can be handed to somebody. Cross-references in help text ("under Caller permissions") are links to the section they name.
+
+### The finder is the index
+
+Typing in the masthead box searches **every page at once** and shows, above the results, how wide the hit is and which pages it reaches — *"12 settings on 4 pages — Permissions & safety · Calls · On air · Players"*. Each result carries its page name ahead of the section name, so a search teaches the layout instead of only answering the question.
+
+- It reads labels, help lines, dropdown options, **section prose and buttons** (so "password" finds Access, whose control is a button), and each setting's own **synonyms** — "color", "avatar", "mute", "rate limit", "timeout", "spam" all land where you would expect.
+- Matches start at a word boundary, so "rate" no longer finds *moderate* and *separate*.
+- A result whose **prerequisite is off** is dimmed and marked *needs "<the switch>"*, and the switch is pulled into the results beside it — otherwise you can set a value, save, and watch nothing happen.
+- A section reached through its prose shows with its settings still filtered: the answer is the section, not everything in it.
+
+Clearing the box returns to the page you were on.
+
+### One-section pages open themselves
+
+Voicemail and Texts hold exactly one section each. Rather than making you turn to a page and then open the only thing on it, the page **is** the section: it arrives open, with no chevron. The summary stays for its blurb and its state chip.
 
 ### The dashboard is the landing page
 
@@ -43,15 +59,17 @@ Beside Transmission, **Notifications** names what still stands between this depl
 
 ### The Players page has furniture of its own
 
-Three tabs, beside a **pinned live preview**:
+Three **bands** down one column, beside a **pinned live preview**:
 
-| Tab | What is in it |
+| Band | What is in it |
 |---|---|
 | **The card** | one element block per part of the card, in card order |
 | **Behaviour** | nothing visual |
 | **Embed** | the frame, and the copyable snippet |
 
-The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under The frame.
+They were tabs until 0.98.22. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
+
+The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under Embed frame.
 
 - **Hovering a setting** outlines the element it controls on the card.
 - **Clicking an element** on the card flashes the block that owns it.
@@ -92,6 +110,10 @@ The caller's microphone is captured with **echo cancellation, noise suppression 
 
 > The baked-in Whisper needs no key or network and is the right place to start. A **cloud STT** (Deepgram, OpenAI, Google) transcribes more accurately, and is worth switching to if callers are misheard — most likely from a phone in a noisy place.
 
+**Test hearing** speaks one known line with the configured voice and hears it back with the configured ear, reporting what it heard, what share of the words survived, and how long it took against the length of the clip. The sample is synthesized rather than recorded from your microphone, so there is no permission prompt and every run is the same sentence.
+
+> **This is the only check that reaches a cloud ear.** The Speed test measures the built-in Whisper for real, but for Deepgram, OpenAI or Google it records a flat 400ms estimate and never calls them — so before this, a wrong or expired key gave a green panel and a green speed test, and the first symptom was a caller being misheard on air.
+
 ---
 
 ## Permissions & safety
@@ -106,6 +128,7 @@ A reference card, not settings: the three tiers (Admin always, Guest gate, Open)
 - The admin password for this panel, and the optional guest code for the phone.
 - `CALLIN_ADMIN_KEY` is the recovery override.
 - A guest-code expiry (hours, default 24) for shared machines. The card also offers a lock button to forget the code immediately.
+- **Pause all calls**, the kill switch — filed here from 0.98.24, because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
 
 ### Caller permissions
 
@@ -119,14 +142,6 @@ What a caller may trigger, and **which caller** — each row set to the least tr
 Rows that need the station admin credentials carry a **Station admin** badge, coral until the credentials are stored — including **un-like the track**, the operator's own curation heart, admin only.
 
 Tier defaults and the full risk picture: [security](security.md).
-
-### Usage controls
-
-Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend.
-
-### Call length
-
-The hard ceiling on one call — one more spend limit, beside the others.
 
 ### Speech hygiene
 
@@ -162,6 +177,12 @@ Whether both sides of a conversation — calls, texts and voicemails alike — a
 
 ## Calls
 
+### Call limits
+
+Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend, and the door's own state read back from the dashboard.
+
+Called **Usage controls** and filed under Permissions & safety until 0.98.22. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
+
 ### Greeting
 
 Which DJ picks up, the greeting style or a written opening line, and whether the caller is asked their name.
@@ -172,9 +193,9 @@ When the DJ decides you have finished speaking, and whether a caller may talk ov
 
 ### Closing the call
 
-The greeting's mirror: the sign-off steer, the idle check-ins, and how early the DJ may hang up — how a call ends, in character.
+The greeting's mirror: the hard ceiling on one call, the sign-off steer, the idle check-ins, and how early the DJ may hang up — how a call ends, in character.
 
-### Tune the caller into the station
+### Station audio in the call
 
 Whether the caller counts as a listener (which is what makes requests work), whether the broadcast is piped audibly into the call, the **stream URL**, and how loud it sits behind the DJ.
 
@@ -200,9 +221,9 @@ A **Per-DJ effects** list gives any persona its own colour, saved as picked, wit
 
 ## Voicemail
 
-### The machine
+### Voicemail machine
 
-An **Enable voicemail** master switch, then:
+An **Enable voicemail** master switch — the control is the dashboard's Voicemail line, and this page says whether it is open — then:
 
 - per-persona greeting lines — editable, playable, deletable — staged one at a time with live progress
 - a per-tier caller permission
@@ -216,6 +237,8 @@ Greetings are **staged** — rendered once per persona in their own voice, re-re
 
 > **Every message lands in the panel's list whatever the delivery mode.** Nothing is recorded as audio; the transcript is the message.
 
+The machine's **beep** is set with the other five sounds under [Call sounds](#call-sounds), because the six moments are one board. It is the only one of the six the server plays rather than the card, and deliberately the only one not governed by *Play call sounds* — it tells the caller to start talking.
+
 The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ---
@@ -224,14 +247,11 @@ The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ### Text line
 
-A **Take text chats** master switch (on the dashboard beside Live calls and Voicemail), then the clocks and ceilings for typed conversation with whoever is on air:
+A **Take text chats** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.24:
 
-- how long quiet before a chat closes
-- the per-chat message ceiling, and the longest a chat may live
-- how many chats may be open at once, and new chats per hour and per day
-- a **per-caller reopen wait** — the text line's Redial-wait, and scriptable where a call is not
-- the per-minute message cap
-- a **reply timeout**, so a stalled model can't leave a caller watching the typing dots forever
+**Chat limits** — how many chats may be open at once, new chats per hour and per day, a **per-caller reopen wait** (the text line's Redial-wait, and scriptable where a call is not), the per-chat message ceiling and the per-minute message cap.
+
+**When a chat ends** — the longest a chat may live, how long quiet before it closes, a **reply timeout** so a stalled model can't leave a caller watching the typing dots forever, and the nudge for a quiet caller.
 
 **Opening the line** — whether the booth **greets first** when a fresh chat connects: a canned line (instant, with `{station}`/`{dj}`/`{show}` filled), one **written in persona** each time, or off. *A text line that answers with silence reads as broken.*
 
@@ -287,7 +307,7 @@ The small controls on the card's top edge, **each answered for this page and for
 
 The DJ block, per surface: the DJ photo with its **shape** right under it (round for a portrait, square to match a host page's artwork), the show name, the DJ tagline, and the now-playing line.
 
-### The line box
+### Call status wording
 
 Every call-state string in one place, in call order — Ringing, Answering, Connecting, Connected — waiting, On the line, Recording, Line closed, Message only, Call ended.
 
@@ -307,7 +327,7 @@ Everything about the three doors in one block:
 - whether the **"Text the booth"** and **"Leave a message"** buttons are offered per surface, so the machine and the text line sit beside Call. A busy call also offers the text line as a fallback, even where its permanent button is off
 - the Hang up, Send and message-button wording
 
-### Surface
+### Card colours
 
 Colours — including **the station's own**, read from its `/themes` and following the on-air show — and a **skin**.
 
@@ -315,7 +335,7 @@ Colours — including **the station's own**, read from its `/themes` and followi
 
 ### On the caller's phone
 
-The Behaviour tab — nothing visual:
+The Behaviour band — nothing visual:
 
 - whether calls start on the **loudspeaker**
 - the card's **listener count** — "On air now · 2 listening", shown from one listener up, so a quiet hour never paints a zero
@@ -327,9 +347,9 @@ The Behaviour tab — nothing visual:
 
 The thumbs up/down, **per door**: ask after a call, after a text chat, and after a voicemail are three separate switches.
 
-### The frame
+### Embed frame
 
-The Embed tab — opening it flips the preview to the embed.
+The Embed band — the preview offers the embed view beside it.
 
 - **Allowed origins** — the comma-separated https origins that may embed the card and place calls on your API keys. `CALLIN_ALLOWED_ORIGINS` is the env baseline; empty means this page only; `*` is dev-only; a save applies on the next request with no restart.
 - **Flush by default** — the embedded card draws no outline or sheet of its own and sits in whatever area the host gives it, with a tick to draw the main page's card outline back on.
@@ -353,7 +373,7 @@ Each row shows which tier gets it, and the actions that are never available are 
 
 ### Station tools
 
-**Station tools** is the station's whole surface — 36 tools in all: 7 handed straight through from the station's MCP server, 26 served by wrappers of ours (retries, guards, the action ledger), and 3 that are never on a call line at any setting — each row saying whether a caller can reach it.
+**Station tools** is the station's whole surface — 37 tools in all: 7 handed straight through from the station's MCP server, 27 served by wrappers of ours (retries, guards, the action ledger), and 3 that are never on a call line at any setting — each row saying whether a caller can reach it.
 
 Below the list, **How the DJ finds a record** sets out the five ways in and which kind of ask takes each, and a short note names what the station can do that the call line still doesn't use.
 

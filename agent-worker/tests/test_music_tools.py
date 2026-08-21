@@ -186,9 +186,14 @@ class TestTheSearchRefusalAgreesWithThePrompt(unittest.TestCase):
 
 class TestCurrentLyricsAreARead(unittest.TestCase):
     """The lyrics tool is a read like now-playing: always built, no switch,
-    and honest when the station has nothing. A station older than the lyrics
-    feature answers 404, which must reach the DJ as 'no lyrics on file' —
-    never as an error it apologises to the caller for."""
+    and honest when the station has nothing.
+
+    'Honest' got sharper in 0.98.22. The old wording ("an instrumental, or the
+    station has none indexed") was handed to the DJ on every FAILED read, and
+    on a station with no lyrics feature that is every track: one chat on
+    2026-08-20 called a vocal record an instrumental eleven times and argued
+    with the caller about it. A read that failed teaches nothing; a station
+    that answered with no lines has told us about its INDEX, not the music."""
 
     def _tool(self, payload):
         from call.actions import CallActions
@@ -205,10 +210,33 @@ class TestCurrentLyricsAreARead(unittest.TestCase):
         tool = self._tool({})
         self.assertEqual(tool.info.name, "subwave_current_lyrics")
 
-    def test_no_payload_reads_as_no_lyrics_not_an_error(self):
-        out = asyncio.run(self._tool({})())
-        self.assertIn("No lyrics", out)
+    def test_an_empty_answer_is_about_the_index_not_the_music(self):
+        # The station answered and holds none. That is compatible with an
+        # instrumental AND with a vocal track nobody indexed, and only one of
+        # those is safe to assert to a caller who is listening to it.
+        out = asyncio.run(self._tool({"lines": []})())
+        self.assertIn("no lyrics", out.lower())
         self.assertIn("do not guess", out)
+        self.assertIn("do not call it one", out)
+
+    def test_a_failed_read_claims_nothing_about_the_track(self):
+        # The whole 2026-08-20 failure in one assertion: a 404 must not come
+        # back as a sentence describing the record.
+        out = asyncio.run(self._tool({"unavailable": "404 Not Found"})())
+        self.assertIn("NOT AVAILABLE", out)
+        # It may only FORBID the claim, never make it. The old wording made it
+        # ("— an instrumental, or the station has none indexed"), which is the
+        # sentence the DJ read back to the caller eleven times.
+        self.assertIn("do not say it is an instrumental", out.lower())
+        self.assertNotIn("none indexed", out.lower())
+        # And it must hand the caller the benefit of the doubt, because they
+        # are the one who can hear it.
+        self.assertIn("take their word", out)
+        # A failed read must not claim the ABSENCE of lyrics either — that is
+        # the same invention wearing a humbler face.
+        for claim in ("no lyrics on file for the current track",
+                      "the station holds no lyrics"):
+            self.assertNotIn(claim, out.lower())
 
     def test_lines_come_back_and_a_full_sheet_is_capped(self):
         # Prompt budget: the sheet is paid for on every later turn, so a long

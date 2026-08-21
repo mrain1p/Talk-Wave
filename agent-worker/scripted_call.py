@@ -74,11 +74,19 @@ so a conduct-only injection has not been the whole prompt since 0.10.104:
     { printf "NEW_TOOL_RULES = r'''\\n"; cat brain/tool_rules.py; printf "'''\\n\\n";
       printf "NEW_CONDUCT = r'''\\n";    cat brain/conduct.py;    printf "'''\\n\\n";
       printf "NEW_DOOR = r'''\\n";       cat call/door.py;        printf "'''\\n\\n";
+      printf "NEW_STUCK = r'''\\n";      cat call/stuck.py;       printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
 
-NEW_DOOR is the same trick one step further: a module the image does not have
-AT ALL, installed into sys.modules before the imports run. That is how a guard
-written this afternoon gets measured against the deployed brain tonight.
+NEW_DOOR and NEW_STUCK are the same trick one step further: a module the image
+does not have AT ALL, installed into sys.modules before the imports run. That
+is how a guard written this afternoon gets measured against the deployed brain
+tonight.
+
+Both have a lever — DOOR=off, STUCK=off — because a guard and the prose it
+replaces have to move independently or neither can be priced. That is the
+whole lesson of the `say_the_true_thing` retraction: an arm that drops prose
+while the guard covering it is also absent measures two changes and reports
+one.
 
 What it cannot test: STT, TTS, the on-air overlap hold, and the idle ladder's
 TIMING. Those need a real call with a real microphone. The ladder's WORDING it
@@ -141,7 +149,8 @@ def _install_injected(path: str, source: str) -> None:
 # `spoken_rules`, and installing it first would bind it to the image's copies —
 # which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
 # new rule returning a kind the old nudge table had never heard of.
-for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_RULES", "spoken_rules"),
+for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_STUCK", "call.stuck"),
+                    ("NEW_RULES", "spoken_rules"),
                     ("NEW_PROMISES", "promises"),
                     ("NEW_PROMISE_GUARD", "call.promise_guard")):
     _source = globals().get(_var)
@@ -160,6 +169,7 @@ try:
 except ImportError:                                            # noqa: BLE001
     spoken_rules = None
 from call import door as call_door
+from call import stuck as call_stuck
 from call import promise_guard
 from chat.session import _tool_report
 from livekit.agents import llm as lk_llm
@@ -177,6 +187,18 @@ from call.tools import (
     build_library_tools,
     build_on_air_tools,
 )
+
+try:
+    # Newer than some deployed images (0.98.22), and this file is piped into
+    # WHATEVER is running. Absent, the single-lookup mode does not exist on
+    # that image — which is the correct answer for a run against it, not a
+    # crash. Same tolerance `spoken_rules` gets above, and it cost one arm of
+    # a sweep to learn it applies here too.
+    from call.tools import apply_finder_dispatch
+except ImportError:                                            # noqa: BLE001
+    def apply_finder_dispatch(cfg, tools):
+        """The mode does not exist on this image; the six finders stand."""
+        return tools
 
 # ---------------------------------------------------------------- fake station
 
@@ -828,6 +850,70 @@ TRIAGE = [
     ], {"want": ["subwave_station_state", "subwave_request_status",
                  "subwave_now_playing", "subwave_already_played"],
         "avoid": []}),
+
+    # ---- READS. The gap this set had until 0.98.25 ----------------------
+    #
+    # Every scenario above is about finding a record to PLAY. The commonest
+    # question a caller actually asks — what IS this — had no row anywhere,
+    # in the prompt or here, and on 2026-08-20 it cost a caller 157 seconds:
+    # seven asks, eleven calls to subwave_current_lyrics, none to
+    # subwave_now_playing, and a vocal track ("GALA" by XG) described as an
+    # instrumental every time. The set could not have caught it.
+    #
+    # These need MCP=1 to be conclusive: now_playing is MCP-served, and the
+    # grader correctly reports INCONCLUSIVE rather than FAIL when the tool it
+    # wants was never on the surface.
+    #
+    # Note what is deliberately NOT graded: there is no `want` on the first
+    # two. The reads rule tells the DJ its briefing is LIVE and it may simply
+    # answer — so demanding a tool call would fail the DJ for doing the
+    # cheapest correct thing. What is graded is the wrong turning.
+    ("what's on air is not a lyrics question", [
+        "what song is this?",
+    ], {"avoid": ["subwave_current_lyrics"],
+        "must_not_say": ["instrumental"]}),
+
+    # The half that hurt most. The caller can hear the record; the DJ has a
+    # receipt. Real lines from the record, in the DJ's own words: "I promise
+    # you, my ears aren't playing tricks on me" and "I just double-checked the
+    # feed directly, and it's confirmed".
+    # NO `avoid` here, and that is a correction rather than an omission. It
+    # was written with avoid=[subwave_current_lyrics] and marked the DJ down
+    # 0/3 in BOTH arms — while the transcript showed it doing exactly the
+    # right thing: now_playing on turn one, then, when the caller pushed back,
+    # "I shouldn't have been so quick to trust the display when you're the one
+    # hearing it", a lyrics read to CHECK, and "I'll have to take your word for
+    # it" when the read came back unavailable.
+    #
+    # Reaching for the lyrics tool when the caller has just said the word
+    # "lyrics" is a reasonable check, not a routing error. What matters is
+    # what the DJ says AFTER it, which is what must_not_say grades. Third time
+    # in one session a scenario verdict pointed the wrong way; the transcript
+    # is the authority, not the tally.
+    ("a caller who says it has lyrics is believed", [
+        "what song is this?",
+        "it does have lyrics, I can hear the singing",
+    ], {"must_not_say": ["instrumental", "ears aren't playing tricks",
+                         "double-checked", "it's confirmed",
+                         "i promise you"]}),
+
+    # The positive control. Without it the scenario above would pass a DJ that
+    # had simply learned never to touch the lyrics tool, which is the other
+    # way to be wrong.
+    ("the words of a song DO go to the lyrics tool", [
+        "what are the words in this one? I can never make them out",
+    ], {"want": ["subwave_current_lyrics"],
+        "avoid": ["subwave_now_playing"]}),
+
+    # This station has no /lyrics/current at all -- measured 2026-08-20, 404
+    # on every spelling -- so the tool answers "not available" on every run.
+    # That is a fact about the STATION and the DJ must not turn it into one
+    # about the record. Graded against the real station, which is why it is
+    # here rather than in a unit test.
+    ("no lyrics on file is not the same as no lyrics", [
+        "does this one have any lyrics?",
+    ], {"must_not_say": ["it's an instrumental", "an instrumental",
+                         "no words", "purely instrumental"]}),
 ]
 
 # -------------------------------------------------------------- conversations
@@ -1430,6 +1516,12 @@ DJ_LINE = "@dj "
 # nobody can say is doing anything, and the first two attempts to measure this
 # one both scored something other than the guard.
 DOOR_ON = os.environ.get("DOOR", "on").strip().lower() != "off"
+# Same lever for the repeat/contradiction guard, and it exists for the same
+# reason DOOR does: `truth_believe_the_caller` is 1,087 characters of prose
+# about a rule call/stuck.py now partly mechanises, and pricing the prose
+# means holding the guard fixed while the prose moves. Defaults ON, because
+# that is what the product ships.
+STUCK_ON = os.environ.get("STUCK", "on").strip().lower() != "off"
 
 
 async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
@@ -1446,6 +1538,8 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     # Per scenario: a call's memory of whether its own last line held the door
     # open. Nothing carries between scenarios, any more than a tool call does.
     door = call_door.Door()
+    # Per scenario, like the door: what this caller has already had to ask.
+    stuck = call_stuck.Stuck()
     # Where each caller turn's DJ lines begin, so a scenario can be graded
     # from turn N onward. The door correction cannot unsay the line that
     # tripped it — only stop the next one — so grading its first turn would
@@ -1507,6 +1601,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # whether an action landed SINCE the caller last spoke, not whether the
         # call has ever done anything — see ACTIONS.
         turn_acted_at = _ledger()
+        note = stuck.hint_for(text) if STUCK_ON else ""
+        if note:
+            log.append("  (the caller has asked this before — steering this turn)")
+            ctx.add_message(role="system", content=note)
         hint = door.hint_for(text) if DOOR_ON else ""
         if hint:
             log.append("  (last line held the door open — steering this turn)")
@@ -1846,6 +1944,15 @@ async def main() -> None:
             known |= set(getattr(_tr_mod, "SECTIONS", ()))
         except Exception:                                      # noqa: BLE001
             pass
+        # And the clauses inside say_the_true_thing, for the same reason: the
+        # block is 16% of the conduct and the one ablation ever run on it was
+        # retracted, so it is priced a clause at a time or not at all.
+        known |= set(getattr(_conduct_mod, "TRUTH_CLAUSES", ()))
+        # And CLOSING's, for the same reason again: ablating that block whole
+        # came back MIXED on 2026-08-21 — one rule collapsed, two scored
+        # better without it — which is a block with two rules pulling opposite
+        # ways, not a block with a verdict.
+        known |= set(getattr(_conduct_mod, "CLOSING_CLAUSES", ()))
         unknown = sorted(drop - known)
         if unknown:
             print(f"[ABLATE names no such section: {unknown} — known: "
@@ -1900,6 +2007,11 @@ async def main() -> None:
     # TestTheDrillBuildsEveryToolTheCallDoes now fails if this drifts again.
     tools += build_curation_tools(cfg, station, actions)
     tools += build_on_air_tools(cfg, station, actions, guard, guarded=False)
+    # Last, and reading the list — the same order the call and the chat build
+    # it in, because it routes to what is already there. Empty unless the arm
+    # under test switched single_lookup_tool on, which is the whole point of
+    # it being here: the A/B is one sweep flag, not two harnesses.
+    tools = apply_finder_dispatch(cfg, tools)
     mcp_server = None
     if chat:
         if os.environ.get("MCP") == "1":

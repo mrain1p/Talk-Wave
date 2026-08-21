@@ -746,6 +746,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "Crossed the ceiling when 0.10.89 pinned the voice lifecycle's "
             "phased entries; same subject-placement rule as the modules "
             "around it.",
+        "agent-worker/tests/test_conduct.py":
+            "one subject: what the prompt is allowed to promise. It gains a "
+            "test whenever a tool or a conduct rule is added, because that is "
+            "precisely when the prompt can start naming something the line "
+            "does not carry — the failure that taught the DJ to MIME an "
+            "action. Crossed the ceiling at 0.98.22 with the reads row and "
+            "the finder mode; same subject-placement rule as the two modules "
+            "below, and trimming the comments to sit under a number is the "
+            "thing this class's own docstring warns against.",
         "agent-worker/tests/test_tools_logic.py":
             "one subject: what a tool does once reached — provider "
             "construction, adapters, and what the DJ may claim afterwards. "
@@ -804,7 +813,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # primes the gate from the push file in the guard's constructor —
         # the primed state must exist before anyone else looks, so it cannot
         # live anywhere but the guard half. The split is still owed.
-        "agent-worker/call/air.py": (707, "the CallAgent half (the reply "
+        # 718: the stuck hint (0.98.22) joined the door hint on the reply
+        # path — eleven lines, all of them in CallAgent.on_user_turn_completed,
+        # which is the AGENT half this seam already names. The growth lands
+        # entirely on one side of the cut, so it makes the split easier rather
+        # than harder. Still owed.
+        "agent-worker/call/air.py": (718, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
@@ -838,7 +852,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the heartbeat, the sweep/tail marker pair) plus 0.98.14's shutdown
         # beat — each is pinned to a phase by the concurrent-shutdown
         # ordering, so none can move out.
-        "agent-worker/call/session.py": (794, "the ringing half (prepare, "
+        # 802: the Stuck object is built beside the Door (0.98.22) and
+        # handed to CallAgent with it — eight lines, both of them on the
+        # per-call-state side of this seam rather than across it. 807: the
+        # finder mode swap, one call at the END of the tool build because it
+        # reads the assembled list — the LIVE CALL side of the seam, and the
+        # last line of the function it belongs to.
+        "agent-worker/call/session.py": (807, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -852,7 +872,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # change that grew it: the tool loop is exactly what just changed,
         # and a regression there should not have two candidate causes. The
         # same deferral call/air.py records.
-        "agent-worker/chat/session.py": (602, "the one-conversation half "
+        # 622: the stuck hint (0.98.22). The typed line has no SDK hook to
+        # hang a per-turn note on, so it goes in beside the caller's message
+        # in ask() — the one-conversation half, which is the side of this
+        # seam that was already going to carry it. 625: the finder mode swap,
+        # three lines beside the tool build it belongs to, same half.
+        "agent-worker/chat/session.py": (625, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1276,3 +1301,95 @@ class TestTheHarnessCanBeInjectedIntoAnOlderImage(unittest.TestCase):
         src = self.HARNESS.read_text(encoding="utf-8")
         self.assertIn("FAULTS_FIRED", src)
         self.assertIn("the fault this scenario", src)
+
+
+class TestEveryScenarioIsWellFormedBeforeItCostsAnything(unittest.TestCase):
+    """A malformed scenario is only discovered by spending an arm.
+
+    `scripted_call.py` is piped into the deployed worker and billed per round,
+    so a typo in an expectation key does not fail loudly — it silently grades
+    nothing and reports a PASS, which is the most expensive kind of wrong this
+    repo has. `must_not_say` typed as `must_not_stay` would have read as a
+    clean sweep.
+
+    Read off the AST rather than imported: importing the harness pulls in
+    livekit and a station client, and the suite must never touch the network.
+    Same technique as TestTheHarnessCanBeInjectedIntoAnOlderImage above.
+    """
+
+    SETS = {"SCENARIOS", "EXTRA", "COVERAGE", "TRIAGE", "CONVERSATIONS",
+            "CLOSING_SET", "REFUSALS", "BANTER", "MIMICRY"}
+
+    #: Every key the grader actually reads. A key outside this set is dead
+    #: weight that looks like a rule — see `_grade` in scripted_call.py.
+    KEYS = {"want", "avoid", "must_say", "must_not_say", "faults",
+            "grade_from_turn", "believed"}
+
+    def _sets(self):
+        import ast
+
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        out = {}
+        for node in ast.parse(src).body:
+            if (isinstance(node, ast.Assign)
+                    and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id in self.SETS):
+                out[node.targets[0].id] = node.value
+        return out
+
+    def test_every_named_set_exists(self):
+        missing = sorted(self.SETS - set(self._sets()))
+        self.assertEqual(missing, [], f"named in SCENARIO_SET but absent: {missing}")
+
+    def test_every_scenario_has_a_name_and_caller_turns(self):
+        import ast
+
+        for name, node in self._sets().items():
+            self.assertIsInstance(node, ast.List, f"{name} is not a list")
+            for i, el in enumerate(node.elts):
+                with self.subTest(set=name, index=i):
+                    self.assertIsInstance(el, ast.Tuple)
+                    self.assertIn(len(el.elts), (2, 3))
+                    self.assertIsInstance(el.elts[0], ast.Constant)
+                    self.assertIsInstance(el.elts[0].value, str)
+                    self.assertIsInstance(el.elts[1], ast.List)
+                    self.assertTrue(el.elts[1].elts,
+                                    "a scenario with no caller turns runs nothing")
+
+    def test_no_expectation_key_is_a_typo(self):
+        """The one that would cost money: a key the grader never reads."""
+        import ast
+
+        for name, node in self._sets().items():
+            for el in node.elts:
+                if len(el.elts) < 3 or not isinstance(el.elts[2], ast.Dict):
+                    continue
+                label = el.elts[0].value
+                for k in el.elts[2].keys:
+                    with self.subTest(set=name, scenario=label, key=k.value):
+                        self.assertIn(
+                            k.value, self.KEYS,
+                            f"{k.value!r} is not a key the grader reads, so "
+                            "this scenario grades less than it looks like it "
+                            "does and would report a clean pass",
+                        )
+
+    def test_the_reads_have_a_scenario_at_all(self):
+        """The gap that cost a caller 157 seconds on 2026-08-20.
+
+        Every triage scenario was about finding a record to PLAY. The
+        commonest question a caller asks — what IS this — had no row, so the
+        set could not have caught eleven calls to the lyrics tool and none to
+        now_playing. Kept as a test because the absence of a scenario is
+        exactly the thing nobody notices.
+        """
+        import ast
+
+        triage = self._sets()["TRIAGE"]
+        names = [el.elts[0].value for el in triage.elts
+                 if isinstance(el.elts[0], ast.Constant)]
+        lyrics = [n for n in names if "lyric" in n.lower()]
+        self.assertGreaterEqual(
+            len(lyrics), 3,
+            "the reads scenarios are gone: nothing grades 'what song is this' "
+            f"any more. Names present: {names}")

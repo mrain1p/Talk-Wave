@@ -8,6 +8,7 @@ modules implement the wrappers, grouped by what they touch:
     albums      a whole album, or a run of picks, as one action
     removal     taking queued tracks back out: one, or a batch
     discovery   the other ways into the library: sound, neighbours, filters
+    finding     one way in to all of those, when the operator switches it on
     curation    a record's standing rather than its turn: likes, never-play
     broadcast   anything that makes the on-air DJ produce sound
     control     the call itself
@@ -21,6 +22,7 @@ from .broadcast import build_on_air_tools
 from .control import build_call_control_tools
 from .curation import build_curation_tools
 from .discovery import build_discovery_tools
+from .finding import apply_finder_dispatch, build_finder_tools
 from .music import build_library_tools
 from .registry import (
     catalogue,
@@ -33,6 +35,8 @@ __all__ = [
     "build_call_control_tools",
     "build_curation_tools",
     "build_discovery_tools",
+    "apply_finder_dispatch",
+    "build_finder_tools",
     "build_library_tools",
     "build_on_air_tools",
     "catalogue",

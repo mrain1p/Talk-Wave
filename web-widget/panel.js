@@ -145,9 +145,11 @@
           // still reaches inside: the spot handler opens the block it owns.
           $('cardCol').appendChild(sec);
         });
+        paintCardBands();
         return;
       }
       members.forEach((g) => anchor.parentNode.insertBefore(byId[g.id], anchor));
+      soloPage(members.map((g) => byId[g.id]));
     });
 
     // Anything the schema doesn't place still gets shown, at the end.
@@ -169,6 +171,33 @@
 
     buildNav(supers);
     paintPage();
+    // An address naming a section has to be honoured on ARRIVAL too, not
+    // only on a later hashchange — a link somebody was handed opens the
+    // panel with the hash already set, and nothing fires.
+    revealSection(sectionFromHash());
+  }
+
+  // A page holding exactly ONE section is a page you click twice to reach one
+  // thing: turn to the page, then open the fold — and the fold is the only
+  // thing on it, so there is nothing for it to be folded away FROM. Voicemail
+  // and Texts were both like this. The page simply IS the section now: it
+  // arrives open, with no chevron to press. Same rule the sections already
+  // follow ("a section whose only field moved elsewhere retires"), one level
+  // up.
+  //
+  // The summary stays: it carries the blurb and the state chip, which are
+  // worth reading. It just stops being a control.
+  function soloPage(secs) {
+    if (secs.length !== 1) return;
+    const only = secs[0];
+    only.classList.add('solo');
+    only.open = true;
+    if (only.dataset.soloBound) return;
+    only.dataset.soloBound = '1';
+    // Belt and braces for anything that toggles it programmatically — the
+    // search restores folds by writing `open`, and a solo section closing
+    // would leave its page blank.
+    only.addEventListener('toggle', () => { if (!only.open) only.open = true; });
   }
 
   // The page picker. One chip per page — Dashboard, one per super-group, and
@@ -178,28 +207,47 @@
   // browser's own (back works, a page survives a refresh, /settings#calls
   // can be handed to someone), and the hashchange listener below does the
   // turning.
+  //
+  // ONE FLAT ROW. It was banded into five labelled rows during the 0.98.22
+  // work and the operator turned it down before any of it shipped: grouping
+  // eleven pages by kind read as more furniture than map, and the labels
+  // took more room than they earned. The measurement that prompted the bands
+  // still stands — a 375px phone shows two of the twelve chips, because the
+  // strip wants 1107px in 343px of room — so if that is worth fixing later,
+  // fix it without regrouping the pages.
+  //
+  // The pages the schema does not own come from NAV_EXTRA_PAGES rather than
+  // being written in here, so the picker's whole order stays readable in one
+  // file — the same rule the section order already follows.
   function buildNav(supers) {
     const nav = $('panelNav');
     if (!nav) return;
     nav.innerHTML = '';
-    PAGE_IDS = ['dash'];
-    PAGE_TITLES = { dash: 'Dashboard', diag: 'Diagnostics' };
+    PAGE_IDS = [];
+    PAGE_TITLES = {};
+
+    const extras = SCHEMA.navExtraPages
+      || [{ id: 'dash', title: 'Dashboard', where: 'lead' },
+          { id: 'diag', title: 'Diagnostics', where: 'tail' }];
     const link = (id, title) => {
+      if (PAGE_IDS.indexOf(id) === -1) PAGE_IDS.push(id);
+      PAGE_TITLES[id] = title;
       const a = document.createElement('a');
       a.href = '#' + id;
       a.dataset.page = id;
       a.textContent = title;
       nav.appendChild(a);
     };
-    link('dash', 'Dashboard');
+
+    extras.filter((p) => p.where !== 'tail')
+      .forEach((p) => link(p.id, p.title));
     supers.forEach((sup) => {
       if (!SCHEMA.groups.some((g) => g.super === sup.id)) return;
-      PAGE_IDS.push(sup.id);
-      PAGE_TITLES[sup.id] = sup.title;
       link(sup.id, sup.title);
     });
-    PAGE_IDS.push('diag');
-    link('diag', 'Diagnostics');
+    extras.filter((p) => p.where === 'tail')
+      .forEach((p) => link(p.id, p.title));
+
     // Collapse all retired at 0.10.80 (operator's call, the same review that
     // added it at 0.10.64): pages made every page short enough that folding
     // is the section chevrons' job, and an action chip among page chips read
@@ -237,7 +285,24 @@
 
   function currentPage() {
     const id = (location.hash || '').replace(/^#/, '');
-    return PAGE_IDS.indexOf(id) !== -1 ? id : 'dash';
+    if (PAGE_IDS.indexOf(id) !== -1) return id;
+    // A SECTION id resolves to the page holding it (0.98.22). Before this,
+    // #turns — the section's own id, and the obvious guess — fell through to
+    // the dashboard with nothing open and nothing said. So nothing below page
+    // level had an address: no bookmark, no link to hand somebody, and no way
+    // for help text to point at anything finer than a whole page.
+    const g = (SCHEMA.groups || []).find((x) => x.id === id);
+    if (g && PAGE_IDS.indexOf(g.super) !== -1) return g.super;
+    return 'dash';
+  }
+
+  // The section a hash names, or null when it names a page (or nothing).
+  // One reader, so the hash listener, the boot path and the link expander
+  // cannot disagree about what an address means.
+  function sectionFromHash() {
+    const id = (location.hash || '').replace(/^#/, '');
+    if (!id || PAGE_IDS.indexOf(id) !== -1) return null;
+    return document.querySelector('details.sec[data-group="' + id + '"]');
   }
 
   function pageOfSection(sec) {
@@ -258,6 +323,12 @@
     const on = (el, yes) => { if (el) el.classList.toggle('offpage', !yes); };
     document.querySelectorAll('.dashband, .dash, .activity').forEach((el) =>
       on(el, page === 'dash' && !searching));
+    const index = $('allWrap');
+    if (index) {
+      const showing = page === 'all' && !searching;
+      on(index, showing);
+      if (showing) paintAllSettings();
+    }
     // Search results carry their section's own name, so the bands stay out
     // of a results view rather than headlining pages with no matches.
     document.querySelectorAll('.supergroup').forEach((hdr) => {
@@ -278,10 +349,9 @@
     const wrap = $('cardWrap');
     if (wrap) {
       on(wrap, searching || page === 'card');
+      // Searching turns the wrapper into a plain results column — no
+      // preview, no band captions, the same way it parks the dashboard.
       wrap.classList.toggle('searching', searching);
-      wrap.querySelectorAll('details.sec').forEach((sec) => {
-        sec.classList.toggle('offtab', !searching && cardTabOf(sec) !== cardTab);
-      });
     }
     // Save/Reset belong under the pages that hold form fields.
     on(document.querySelector('#panel .actions'),
@@ -308,33 +378,56 @@
   // jump-to-top.
   function showSection(sec) {
     if (!sec) return;
-    const id = pageOfSection(sec);
-    if (id && PAGE_IDS.indexOf(id) !== -1 && currentPage() !== id) {
-      history.pushState(null, '', '#' + id);
+    // The address left behind is the SECTION, not its page (0.98.22), so
+    // every jump inside the panel — a tile, a notification, a search result,
+    // a cross-reference — ends somewhere that can be bookmarked and handed
+    // to somebody else. The page still turns: currentPage() resolves a
+    // section id to the page holding it.
+    const addr = sec.dataset.group;
+    if (addr && ('#' + addr) !== location.hash) {
+      history.pushState(null, '', '#' + addr);
       paintPage();
     }
-    // A Players section may stand on another tab — reaching it means
-    // turning to that tab too, or the scroll lands on nothing.
-    if (sec.classList.contains('cardblock') && cardTabOf(sec) !== cardTab) {
-      setCardTab(cardTabOf(sec));
-    }
+    revealSection(sec);
+  }
+
+  // Turn the tab, open the fold, scroll to it. Split out of showSection
+  // because arriving BY ADDRESS has to do the same three things without
+  // rewriting the hash it just arrived on.
+  function revealSection(sec) {
+    if (!sec) return;
     sec.open = true;
     sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   addEventListener('hashchange', () => {
     paintPage();
+    const sec = sectionFromHash();
+    // An address naming a section opens it where it stands. Scrolling to the
+    // top first would be a visible jump away from the thing just asked for.
+    if (sec) { revealSection(sec); return; }
     // Turning to a page starts at its top — the scroll position of the page
     // you left means nothing on the one you arrived at.
     window.scrollTo({ top: 0 });
   });
 
-  // ------------------------------------------------- the Players page tabs
-  // Three tabs over one page (the operator's design handoff, direction 1a):
-  // THE CARD is the element blocks in card order, BEHAVIOUR is what a call
-  // does with nothing visual about it, EMBED is the frame and the snippet.
-  // The schema owns section ORDER; this map only says which tab a section
-  // stands on — a card group missing here lands on THE CARD, which is where
+  // ---------------------------------------------- the Players page bands
+  // Three groups over one page. They were TABS (the operator's design
+  // handoff, direction 1a) until 0.98.22: THE CARD is the element blocks in
+  // card order, BEHAVIOUR is what a call does with nothing visual about it,
+  // EMBED is the frame and the snippet.
+  //
+  // The grouping was right and stays. The TAB was not. Three tabs holding
+  // six, two and one section hid two thirds of the page behind a control
+  // nothing else in the panel uses, and bought a fourth level of depth on
+  // the one page that could least afford it — "Start calls on loudspeaker"
+  // sat at Players → Behaviour → On the caller's phone → row, while every
+  // other setting in the panel is three levels down. As ruled captions in
+  // one column the grouping still reads, the whole page is scrollable, and
+  // the depth matches everywhere else.
+  //
+  // The schema owns section ORDER; this map only says which band a section
+  // belongs to — a card group missing here lands on THE CARD, which is where
   // a new element block would belong anyway.
   const CARD_TABS = {
     topcorner: 'card', whosonair: 'card', linebox: 'card', talkbar: 'card',
@@ -342,29 +435,34 @@
     phone: 'behaviour', feedback: 'behaviour',
     embed: 'embed',
   };
-  let cardTab = 'card';
+  const CARD_BAND_TITLES = {
+    card: 'The card',
+    behaviour: 'Behaviour',
+    embed: 'Embed',
+  };
 
   function cardTabOf(sec) {
     return CARD_TABS[sec.dataset.group] || 'card';
   }
 
-  function setCardTab(which) {
-    cardTab = which;
-    [['cardTabCard', 'card'], ['cardTabBehaviour', 'behaviour'],
-     ['cardTabEmbed', 'embed']].forEach(([id, tab]) => {
-      const b = $(id);
-      if (b) b.classList.toggle('on', tab === which);
+  // A caption above the first section of each band, inside the settings
+  // column. Written from the sections themselves, so a band with nothing in
+  // it never grows a heading.
+  function paintCardBands() {
+    const col = $('cardCol');
+    if (!col) return;
+    col.querySelectorAll(':scope > .cardband').forEach((b) => b.remove());
+    let seen = '';
+    [...col.querySelectorAll(':scope > details.sec')].forEach((sec) => {
+      const band = cardTabOf(sec);
+      if (band === seen) return;
+      seen = band;
+      const cap = document.createElement('p');
+      cap.className = 'cardband';
+      cap.dataset.band = band;
+      cap.textContent = CARD_BAND_TITLES[band] || band;
+      col.insertBefore(cap, sec);
     });
-    paintPage();
-    // Opening the Embed tab is a request to SEE the embed — flip the
-    // preview, the same move picking a shape already makes.
-    if (which === 'embed' && previewSurface !== 'embed') setPreviewSurface('embed');
-  }
-
-  if ($('cardTabCard')) {
-    $('cardTabCard').onclick = () => setCardTab('card');
-    $('cardTabBehaviour').onclick = () => setCardTab('behaviour');
-    $('cardTabEmbed').onclick = () => setCardTab('embed');
   }
 
   // "N on page · M in embed" — the tab strip's live tally of the card's
@@ -462,7 +560,6 @@
       && document.querySelector('#cardCol [data-spot="' + spot + '"]');
     const sec = row && row.closest('details.sec');
     if (!sec) return;
-    if (cardTabOf(sec) !== cardTab) setCardTab(cardTabOf(sec));
     // Blocks start closed now — a flash inside a shut drawer is invisible,
     // so the click that named the element also opens its block.
     sec.open = true;
@@ -865,6 +962,55 @@
     }
   }
 
+  // A cross-reference in help text, as a real link. The panel carried
+  // fourteen of these written as prose — "under Caller permissions" four
+  // times, "on the On air page" twice — and every one of them was a
+  // hand-written apology for a jump the operator then had to make on foot,
+  // because nothing below page level had an address to point at. Now that
+  // currentPage() resolves a section id, `[Caller permissions](#perms)` in
+  // a help string is a link that opens the section.
+  function sectionLink(label, id) {
+    const a = document.createElement('a');
+    a.className = 'seclink';
+    a.href = '#' + id;
+    a.textContent = label;
+    a.onclick = (e) => {
+      const sec = document.querySelector('details.sec[data-group="' + id + '"]');
+      // No section by that id: leave the plain hash navigation to it
+      // rather than swallowing the click and going nowhere.
+      if (!sec) return;
+      // preventDefault does double duty — it stops the hash write AND the
+      // activation of whatever this link sits inside, which is a <summary>
+      // for a state chip and a <label> for a checkbox's help.
+      e.preventDefault();
+      e.stopPropagation();
+      showSection(sec);
+    };
+    return a;
+  }
+
+  // Write text that may carry cross-references into an element. Builds
+  // nodes rather than assigning innerHTML: the strings come from the
+  // schema, but a renderer that only ever creates text nodes and anchors
+  // cannot be talked into anything else later.
+  function writeLinked(el, text) {
+    const src = String(text == null ? '' : text);
+    if (src.indexOf('](#') === -1) { el.textContent = src; return; }
+    el.textContent = '';
+    const re = /\[([^\]]+)\]\(#([a-z0-9_]+)\)/g;
+    let last = 0, m;
+    while ((m = re.exec(src)) !== null) {
+      if (m.index > last) {
+        el.appendChild(document.createTextNode(src.slice(last, m.index)));
+      }
+      el.appendChild(sectionLink(m[1], m[2]));
+      last = m.index + m[0].length;
+    }
+    if (last < src.length) {
+      el.appendChild(document.createTextNode(src.slice(last)));
+    }
+  }
+
   // Section headers summarise their own state, so the panel is readable folded.
   // Every write goes through tag(): a summary is decoration, and a missing
   // element must not be able to abort paint() half way and leave the panel
@@ -872,7 +1018,10 @@
   function setTag(id, text) {
     const el = $(id);
     if (!el) return;
-    el.textContent = text == null ? '' : String(text);
+    // A tag may name the section that explains it — "off — Go live is off
+    // under [Caller permissions](#perms)" — and that reference is the one
+    // an operator reads at the exact moment they want to go there.
+    writeLinked(el, text);
     // The first word is the state, and colour carries it: green for a thing
     // that is ON, dimmed for one that is off — "on · 10%" in the same grey
     // as "off" made the header row a list of words instead of a glance.
@@ -880,6 +1029,59 @@
     el.dataset.state = ['on', 'open', 'always', 'live', 'ok'].includes(head)
       ? 'on'
       : ['off', 'never', 'closed', 'none'].includes(head) ? 'off' : '';
+  }
+
+  // Whether the door this page is about is even open. The three door
+  // switches live on the dashboard as control cards — the right place for
+  // them, and not being moved — but their PAGES said nothing about it, and
+  // the fields, though declared with labels ("Enable voicemail", "Take live
+  // calls", "Take text chats"), rendered in no section, matched no search
+  // and appeared in no list built from the markup. So a setting you could
+  // read about in the schema was reachable only by recognising a card on
+  // another page.
+  //
+  // A line, not a control. Two switches for one thing is how a panel starts
+  // disagreeing with itself; this reads the same checkbox the card writes.
+  // [element, field, subject, verb, what being on means, what off means]
+  const DOOR_STATES = [
+    ['doorStateCalls', 'live_calls_enabled', 'Live calls', 'are',
+     'the booth picks up', 'nothing answers live'],
+    ['doorStateVm', 'voicemail_enabled', 'Voicemail', 'is',
+     'the machine takes messages', 'the machine never answers'],
+    ['doorStateChat', 'chat_enabled', 'The text line', 'is',
+     'callers can type to the booth', 'nobody can type to the booth'],
+  ];
+
+  function paintDoorStates() {
+    const paused = $('calls_paused')
+      ? $('calls_paused').checked : !!resolved.calls_paused;
+    DOOR_STATES.forEach(([id, field, subject, verb, onWhy, offWhy]) => {
+      const el = $(id);
+      const box = $(field);
+      if (!el) return;
+      const on = box ? box.checked : !!resolved[field];
+      // The switch's own LABEL, named out loud. This is the only place in the
+      // panel it appears: the control is a dashboard card that says "Live
+      // calls", so "Enable voicemail" and "Take text chats" — real settings,
+      // with real labels — were words the finder could never match and the
+      // operator could never look up.
+      const label = (SCHEMA.fields[field] || {}).label || field;
+      const where = ' The switch is \u201c' + label
+        + '\u201d, on the [dashboard](#dash).';
+      el.hidden = false;
+      el.dataset.state = paused ? 'held' : on ? 'on' : 'off';
+      // The kill switch outranks every door, so a page whose door is on
+      // while the line is paused must not claim anything is answering.
+      writeLinked(el, paused
+        ? subject + ' ' + verb + ' held — the line is paused, so nothing '
+          + 'answers whatever this page says. Reopen the line on the '
+          + '[dashboard](#dash).'
+        : on
+        ? subject + ' ' + verb + ' on — ' + onWhy + '. Everything below '
+          + 'shapes what happens when it does.' + where
+        : subject + ' ' + verb + ' off — ' + offWhy + ', so nothing below is '
+          + 'reaching a caller yet.' + where);
+    });
   }
 
   // How many keys a section holds, and how many of them are set. Each section
@@ -949,7 +1151,7 @@
     // to a route nobody may take, and "on" would be the tag lying.
     const doorOn = (id) => ($(id) ? $(id).checked : !!resolved[id]);
     setTag('tagAirdoors', permTier('allow_on_air') === 'off'
-      ? 'off — Go live is off under Caller permissions'
+      ? 'off — Go live is off under [Caller permissions](#perms)'
       : doorOn('on_air_calls_enabled')
         ? (doorOn('on_air_voicemail_enabled')
             ? 'on · calls + voicemails' : 'on · calls only')
@@ -1005,6 +1207,9 @@
   // state for who can call, the resolved config for the three legs of a call.
   function paintDash() {
     const paused = $('calls_paused') ? $('calls_paused').checked : !!resolved.calls_paused;
+    // The door pages read the same switches this cluster writes, so they
+    // repaint together and cannot disagree about whether a door is open.
+    paintDoorStates();
     const btn = $('pauseBtn'), note = $('pausedNote'), sub = $('pausedSub');
     if (btn) {
       btn.classList.toggle('paused', paused);
@@ -1261,6 +1466,28 @@
                    label: 'Set the guest code',
                    note: 'the door demands a code nobody has — every call is refused' });
     }
+    // A caller listening to the station loses it for the whole call. The
+    // player cannot survive a live microphone (the stream feeds straight
+    // back in and gets transcribed as the caller's own words), so it is
+    // silenced at pickup — and tune-in is what is supposed to take over.
+    // With tune-in off, or audible-off, nothing does. Only worth saying
+    // while the card actually OFFERS the player: without it nobody was
+    // listening through the card in the first place.
+    const swipeOn = $('swipe_player')
+      ? $('swipe_player').checked : !!resolved.swipe_player;
+    const tuneOn = $('tune_in_on_call')
+      ? $('tune_in_on_call').checked : !!resolved.tune_in_on_call;
+    const tuneHeard = $('tune_in_audible')
+      ? $('tune_in_audible').checked : resolved.tune_in_audible !== false;
+    if (swipeOn && !(tuneOn && tuneHeard)) {
+      items.push({ page: 'calls', group: 'tunein',
+                   label: 'Calls go silent for a listener',
+                   note: 'the card offers the station player, but a call '
+                     + 'stops the music and nothing replaces it — turn on '
+                     + 'Tune the caller in, and pipe the broadcast into the '
+                     + 'call, or they hear nothing until they hang up' });
+    }
+
     const llm = ($('llm_provider') && $('llm_provider').value)
       || resolved.llm_provider;
     // Blank since 0.10.80: a fresh install ships no provider pre-picked, so
@@ -1354,7 +1581,7 @@
     // The line is shut. It is on the switch, but the switch is a different
     // part of the page from the one you read when you wonder why it is quiet.
     if (on('calls_paused')) {
-      items.push({ page: 'safety', group: 'usage',
+      items.push({ page: 'calls', group: 'usage',
                    label: 'The line is paused',
                    note: 'every caller is being turned away — unpause it on '
                      + 'the dashboard when you are ready' });
@@ -2158,6 +2385,28 @@
 
   // Only show configuration that applies to the current selection. A local-model
   // URL box is noise when you're on a hosted provider, and vice versa.
+  // Is a field's prerequisite satisfied right now? Extracted from
+  // applyVisibility at 0.98.22 so the finder can ask the same question — it
+  // marks a result whose switch is off rather than offering a setting that
+  // cannot do anything, which is how an operator sets a value, saves, and
+  // watches nothing happen.
+  function needsMet(need) {
+    if (!need) return true;
+    const [dep, want] = need;
+    const depEl = $(dep);
+    const current = depEl
+      ? (depEl.type === 'checkbox' ? depEl.checked : (depEl.value || resolved[dep]))
+      : resolved[dep];
+    if (want === true) return !!current;
+    // `false` means "only while the other field is EMPTY". Used where one
+    // setting replaces another: writing an Opening line overrides Greeting
+    // style entirely, and showing both with no sign of which wins is the
+    // shape 0.9.61 took out of front_access.
+    if (want === false) return !current;
+    if (Array.isArray(want)) return want.indexOf(current) !== -1;
+    return current === want;
+  }
+
   function applyVisibility() {
     // A voicemail-only line has no live Call button, so the options that
     // shape one are moot. Dashed rather than hidden — the operator can
@@ -2249,22 +2498,7 @@
             + 'this grants.' : '';
       }
 
-      let visible = true;
-      if (meta.needs) {
-        const [dep, want] = meta.needs;
-        const depEl = $(dep);
-        const current = depEl
-          ? (depEl.type === 'checkbox' ? depEl.checked : (depEl.value || resolved[dep]))
-          : resolved[dep];
-        if (want === true) visible = !!current;
-        // `false` means "only while the other field is EMPTY". Used where one
-        // setting replaces another: writing an Opening line overrides Greeting
-        // style entirely, and showing both with no sign of which wins is the
-        // shape 0.9.61 took out of front_access.
-        else if (want === false) visible = !current;
-        else if (Array.isArray(want)) visible = want.indexOf(current) !== -1;
-        else visible = current === want;
-      }
+      const visible = needsMet(meta.needs);
 
       anchor.style.display = visible ? '' : 'none';
       // Only a hint that is a SIBLING needs hiding alongside its field — a
@@ -3224,61 +3458,396 @@
     panelPaintGlyph();
   })();
 
+  // ------------------------------------------------------------- the index
+  // Every setting, once, with the page and section holding it and what it
+  // says right now. Rebuilt each time the page is shown rather than cached:
+  // the values move, and a stale index is worse than none.
+  function settingValue(name) {
+    const el = $(name);
+    const meta = SCHEMA.fields[name] || {};
+    if (!el) return '—';
+    if (el.type === 'checkbox') return el.checked ? 'on' : 'off';
+    const raw = el.value == null ? '' : String(el.value);
+    if (!raw) return meta.placeholder ? 'default' : '—';
+    // A select says the words it shows, not the value it stores — "guest"
+    // means nothing next to "Guest code — the caller typed the code".
+    if (el.tagName === 'SELECT' && el.selectedIndex >= 0) {
+      const words = (el.options[el.selectedIndex].textContent || '').trim();
+      return words.split(' — ')[0] || raw;
+    }
+    return raw.length > 42 ? raw.slice(0, 41) + '…' : raw;
+  }
+
+  function paintAllSettings() {
+    const body = $('allBody');
+    if (!body || !SCHEMA.groups || !SCHEMA.groups.length) return;
+    body.innerHTML = '';
+    const groupById = {};
+    SCHEMA.groups.forEach((g) => { groupById[g.id] = g; });
+    let n = 0;
+    // Schema order throughout — the same order the pages themselves are in,
+    // so scrolling the index is walking the panel.
+    SCHEMA.groups.forEach((g) => {
+      Object.keys(SCHEMA.fields).forEach((name) => {
+        const meta = SCHEMA.fields[name];
+        if (meta.group !== g.id) return;
+        // A field the markup does not carry is unreachable, and listing it
+        // here as a place to go would be a lie. TestPanelMarkup is what
+        // stops that ever being true; this is just honest if it is.
+        if (!$(name)) return;
+        n++;
+        const tr = document.createElement('tr');
+        // NOT data-group: that attribute means "a settings section" to every
+        // other query in the panel, and a table of 188 rows wearing it is a
+        // trap for the next broad selector somebody writes.
+        tr.dataset.sec = g.id;
+
+        const what = document.createElement('td');
+        what.className = 'awhat';
+        what.textContent = meta.label || name;
+        tr.appendChild(what);
+
+        const where = document.createElement('td');
+        where.className = 'awhere';
+        const page = document.createElement('span');
+        page.className = 'apage';
+        page.textContent = PAGE_TITLES[g.super] || g.super;
+        where.appendChild(page);
+        where.appendChild(document.createTextNode(g.title || g.id));
+        tr.appendChild(where);
+
+        const now = document.createElement('td');
+        now.className = 'anow';
+        now.textContent = settingValue(name);
+        tr.appendChild(now);
+
+        tr.tabIndex = 0;
+        const go = () => {
+          const sec = document.querySelector(
+            'details.sec[data-group="' + g.id + '"]');
+          showSection(sec);
+        };
+        tr.onclick = go;
+        tr.onkeydown = (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+        };
+        body.appendChild(tr);
+      });
+    });
+    const note = $('allNote');
+    if (note) {
+      note.textContent = n + ' settings across '
+        + SCHEMA.groups.length + ' sections and '
+        + (SCHEMA.supergroups || []).length + ' pages. Click a row to open it '
+        + 'where it stands; use the finder above to narrow the panel itself.';
+    }
+  }
+
   // ----------------------------------------------------- settings search
-  // Type, and only the rows whose label or help mention it remain; the
-  // sections holding them open, everything else steps aside. Empty restores
-  // the panel exactly as it stood, including which sections were open.
+  //
+  // The finder IS the panel's index. 188 settings live in 34 folded sections
+  // across nine pages, and at rest the panel shows none of them — so this box
+  // is not a filter over what is already on screen, it is the only complete
+  // map of the place that exists. 0.98.22 made it behave like one, after a
+  // review measured what it actually did:
+  //
+  //   * "password" HID the Access section. The filter read four row classes
+  //     and nothing else, and Change password is a button in a testrow — so
+  //     no row matched, the summary did not carry the word either, and the
+  //     one section owning the answer was display:none. Three sections made
+  //     entirely of prose and buttons could never appear at all.
+  //   * A result never said which PAGE it was on. paintPage hides every
+  //     super-group band while searching, on purpose, so "voicemail" returned
+  //     nine sections spread over six pages labelled "The machine", "Doors to
+  //     air", "The line box" — and clearing the box taught you nothing.
+  //   * "color" found nothing and "colour" found two; "avatar" found nothing
+  //     though the field is called avatar_style; "mute", "logo", "spam" and
+  //     "language" all found nothing. Meanwhile "rate" lit up eight sections
+  //     through moderate, separate and accurate.
+  //   * Rows hidden by an unmet `needs` came back with no marker, and the
+  //     switch governing them was filtered OUT — so you could find "Length
+  //     (words)", set it, save, and watch nothing happen, because the
+  //     Back-to-air commentary switch it hangs off was elsewhere and off.
+
+  // A needle matches at a WORD BOUNDARY. Substring-anywhere is why "rate"
+  // returned eight sections; prefix-only would break typing, since "volu"
+  // has to keep finding volume. This is the middle: any word may START with
+  // the needle, no word may merely contain it.
+  function hitsWord(hay, needle) {
+    if (!hay || !needle) return false;
+    let i = hay.indexOf(needle);
+    while (i !== -1) {
+      if (i === 0 || !/[a-z0-9]/.test(hay[i - 1])) return true;
+      i = hay.indexOf(needle, i + 1);
+    }
+    return false;
+  }
+
+  // Which schema fields live in a row. A .prow and a .permrow hold two, so
+  // this is a list, and the map is dropped whenever the schema repaints.
+  let ROW_FIELDS = null;
+  function rowFields(row) {
+    if (!ROW_FIELDS) {
+      ROW_FIELDS = new WeakMap();
+      Object.keys(SCHEMA.fields || {}).forEach((f) => {
+        const el = $(f);
+        if (!el) return;
+        const r = el.closest('.row') || el.closest('.check') || el.closest('.prow');
+        if (!r) return;
+        ROW_FIELDS.set(r, (ROW_FIELDS.get(r) || []).concat([f]));
+      });
+    }
+    return ROW_FIELDS.get(row) || [];
+  }
+
+  // Everything worth matching a row against: what it says on screen, plus
+  // what the schema knows that the screen does not — the field's own id, its
+  // id with the underscores opened out, and its `alias=` synonyms. This is
+  // what makes "avatar" find "DJ photo shape" and "rate limit" find the caps.
+  let HAY = new WeakMap();
+  let ROW_HAY = new WeakMap();
+  function rowHay(row) {
+    let s = ROW_HAY.get(row);
+    if (s != null) return s;
+    s = row.textContent + ' ';
+    // A permission row keeps its help as a SIBLING — the grid cannot hold a
+    // hint inside the row — so the row's own text is only half of it.
+    const sib = row.nextElementSibling;
+    if (sib && sib.classList.contains('hint') && sib.dataset.fromSchema) {
+      s += sib.textContent + ' ';
+    }
+    rowFields(row).forEach((f) => {
+      const m = SCHEMA.fields[f] || {};
+      s += f + ' ' + f.replace(/_/g, ' ') + ' ' + (m.alias || '') + ' '
+        + (m.help || '') + ' ' + (m.placeholder || '') + ' ';
+    });
+    s = s.toLowerCase();
+    ROW_HAY.set(row, s);
+    return s;
+  }
+
+  // A section's own text, rows excluded: the summary, the prose, the testrow
+  // buttons, the slot cards. Rows are matched one at a time, so anything
+  // reached through here is a hit on the section rather than on a setting.
+  function ownText(el) {
+    let s = '';
+    el.childNodes.forEach((n) => {
+      if (n.nodeType === 3) { s += n.nodeValue + ' '; return; }
+      if (n.nodeType !== 1) return;
+      if (n.matches && n.matches('.row, label.check, .prow, .permrow')) return;
+      s += ownText(n);
+    });
+    return s;
+  }
+
+  // What the section is CALLED — its name, its blurb, its state chip, and
+  // the synonyms the schema gives it. A hit here means the operator named
+  // the section, so the whole thing opens: typing "sounds" has to find Call
+  // sounds, and no single row inside it says the word.
+  //
+  // Read part by part rather than off the whole summary, because the search
+  // writes a PAGE NAME into that summary while it runs. Taken wholesale,
+  // one repaint mid-search would leave every crumbed section matching its
+  // own page's name.
+  function secHay(sec) {
+    let rec = HAY.get(sec);
+    if (rec) return rec;
+    const g = (SCHEMA.groups || []).find((x) => x.id === sec.dataset.group) || {};
+    const part = (sel) => {
+      const el = sec.querySelector(':scope > summary > ' + sel);
+      return el ? el.textContent + ' ' : '';
+    };
+    rec = {
+      name: (part('.secname') + part('.secblurb') + part('.tag')
+        + (g.title || '') + ' ' + (g.blurb || '') + ' '
+        + (g.alias || '')).toLowerCase(),
+      // Everything else the section says on its own account. A hit here is
+      // weaker: it brings the section onto the results page without
+      // unfolding its settings, which is the Access case — "password" lives
+      // on a testrow button and in prose, and the section owning the answer
+      // was the one the old filter hid.
+      prose: ownText(sec).toLowerCase(),
+    };
+    HAY.set(sec, rec);
+    return rec;
+  }
+
+  // Both caches key off live DOM text, so they are dropped whenever the
+  // panel repaints its help or reloads the schema.
+  function forgetHaystacks() {
+    HAY = new WeakMap();
+    ROW_HAY = new WeakMap();
+    ROW_FIELDS = null;
+  }
+
+  function rowOfField(name) {
+    const el = $(name);
+    if (!el) return null;
+    return el.closest('.row') || el.closest('.check') || el.closest('.prow');
+  }
+
+  // A result whose prerequisite is off is a setting that cannot do anything
+  // yet. Name the switch and dim the row — the alternative is what shipped:
+  // the operator edits it, saves, and the panel reports success while the
+  // value sits behind a closed door.
+  function markPrerequisite(row) {
+    let off = null;
+    rowFields(row).forEach((f) => {
+      const m = SCHEMA.fields[f];
+      if (!m || !m.needs || off) return;
+      if (needsMet(m.needs)) return;
+      const dep = m.needs[0];
+      off = (SCHEMA.fields[dep] || {}).label || dep;
+    });
+    row.classList.toggle('offrow', !!off);
+    if (off) row.dataset.needsOff = off;
+    else delete row.dataset.needsOff;
+  }
+
   (function bindSettingsSearch() {
     const box = $('settingsSearch');
     if (!box) return;
     let timer = null;
-    const apply = () => {
-      const needle = (box.value || '').trim().toLowerCase();
-      // Search is a RESULTS VIEW over every page: while a needle is typed,
-      // paintPage lifts the page filter (and parks the dashboard), and the
-      // row filtering below decides what shows. Clearing the box hands the
-      // panel back to whichever page the operator was on.
-      paintPage();
-      let anywhere = false;
-      document.querySelectorAll('details.sec').forEach((sec) => {
-        const rows = sec.querySelectorAll('.row, label.check, .prow, .permrow');
-        if (!needle) {
-          rows.forEach((r) => { r.style.removeProperty('display'); });
-          sec.style.removeProperty('display');
-          if (sec.dataset.searchOpened) {
-            sec.open = false;
-            delete sec.dataset.searchOpened;
-          }
-          return;
-        }
-        // A hit on the section's own name or blurb shows the WHOLE section
-        // — typing "sounds" used to find nothing, because no single row
-        // says the word its section is named after.
-        const head = sec.querySelector('summary');
-        const secHit = head
-          && head.textContent.toLowerCase().includes(needle);
-        let any = !!secHit;
-        rows.forEach((r) => {
-          const hit = secHit || r.textContent.toLowerCase().includes(needle);
-          r.style.display = hit ? '' : 'none';
-          any = any || hit;
-        });
-        sec.style.display = any ? '' : 'none';
-        anywhere = anywhere || any;
-        if (any && !sec.open) {
-          sec.open = true;
-          sec.dataset.searchOpened = '1';
+
+    const restore = (sections) => {
+      sections.forEach((sec) => {
+        sec.querySelectorAll('.row, label.check, .prow, .permrow')
+          .forEach((r) => {
+            r.style.removeProperty('display');
+            r.classList.remove('offrow');
+            delete r.dataset.needsOff;
+          });
+        sec.style.removeProperty('display');
+        const crumb = sec.querySelector(':scope > summary > .crumb');
+        if (crumb) crumb.remove();
+        if (sec.dataset.searchOpened) {
+          sec.open = false;
+          delete sec.dataset.searchOpened;
         }
       });
-      // Say so when nothing matched — a page of collapsed nothing read as
-      // the panel being broken, not as a miss.
-      if ($('searchMiss')) $('searchMiss').hidden = !needle || anywhere;
       // Clearing hands the rows back with removeProperty, which also wipes
       // what applyVisibility had hidden — so the link-out address, the
       // custom call label and every other `needs` row sat visible for a
       // switch that was off until the next field edit. Re-apply the rules.
-      if (!needle) applyVisibility();
+      applyVisibility();
     };
+
+    // The page name, written into the summary of every section a result
+    // stands in. This is the whole answer to "and where is that" — the bands
+    // are hidden in a results view, so without it a result names a section
+    // and stops.
+    const breadcrumb = (sec) => {
+      const head = sec.querySelector(':scope > summary');
+      if (!head) return;
+      const page = PAGE_TITLES[pageOfSection(sec)] || '';
+      let crumb = head.querySelector(':scope > .crumb');
+      if (!crumb) {
+        crumb = document.createElement('span');
+        crumb.className = 'crumb';
+        head.insertBefore(crumb, head.querySelector('.secname'));
+      }
+      crumb.textContent = page;
+    };
+
+    const apply = () => {
+      const needle = (box.value || '').trim().toLowerCase();
+      const sections = [...document.querySelectorAll('details.sec')];
+      // Search is a RESULTS VIEW over every page: while a needle is typed,
+      // paintPage lifts the page filter (and parks the dashboard), and the
+      // filtering below decides what shows. Clearing the box hands the panel
+      // back to whichever page the operator was on.
+      document.body.classList.toggle('finding', !!needle);
+      paintPage();
+      if (!needle) {
+        restore(sections);
+        if ($('searchMiss')) $('searchMiss').hidden = true;
+        if ($('searchCount')) $('searchCount').hidden = true;
+        return;
+      }
+
+      const rowsOf = (sec) =>
+        [...sec.querySelectorAll('.row, label.check, .prow, .permrow')];
+      const whole = new Set();
+      const shown = new Set();
+      const prose = new Set();
+      sections.forEach((sec) => {
+        const hay = secHay(sec);
+        if (hitsWord(hay.name, needle)) whole.add(sec);
+        else if (hitsWord(hay.prose, needle)) prose.add(sec);
+        rowsOf(sec).forEach((r) => {
+          if (hitsWord(rowHay(r), needle)) shown.add(r);
+        });
+      });
+      // A prose hit brings the section onto the results page WITHOUT
+      // unfolding its settings. The word was found on a button, in a
+      // paragraph or in the section's own explanation — that is an answer
+      // about the section, not about every row in it. Access answers
+      // "password" with the Change-password button standing in a section
+      // whose rows stay filtered; Caller permissions, whose prose mentions
+      // the admin password in passing, no longer answers with twenty-one
+      // permission rows.
+
+      // Pull in the switch that governs anything found. A dependant without
+      // its prerequisite is the trap described at the top of this block, and
+      // the prerequisite is precisely the row a needle for the dependant
+      // filters out — "Length (words)" never says "Mention the call on air".
+      [...shown].forEach((r) => {
+        rowFields(r).forEach((f) => {
+          const need = (SCHEMA.fields[f] || {}).needs;
+          const gov = need && rowOfField(need[0]);
+          if (gov) shown.add(gov);
+        });
+      });
+
+      let count = 0, found = 0;
+      const pages = [];
+      sections.forEach((sec) => {
+        const all = whole.has(sec);
+        let any = all || prose.has(sec);
+        rowsOf(sec).forEach((r) => {
+          const on = all || shown.has(r);
+          r.style.display = on ? '' : 'none';
+          if (on) {
+            count += rowFields(r).length || 1;
+            markPrerequisite(r);
+          } else {
+            r.classList.remove('offrow');
+            delete r.dataset.needsOff;
+          }
+          any = any || on;
+        });
+        sec.style.display = any ? '' : 'none';
+        if (!any) return;
+        found++;
+        const page = pageOfSection(sec);
+        if (page && pages.indexOf(page) === -1) pages.push(page);
+        breadcrumb(sec);
+        if (!sec.open) {
+          sec.open = true;
+          sec.dataset.searchOpened = '1';
+        }
+      });
+
+      // Say so when nothing matched — a page of collapsed nothing read as
+      // the panel being broken, not as a miss. `found` rather than `count`:
+      // a section reached through its prose shows with its rows still
+      // filtered, so a real answer can carry no settings at all.
+      if ($('searchMiss')) $('searchMiss').hidden = !!found;
+      // And say how WIDE the hit is. One setting on one page and eighteen
+      // across five are different answers, and naming the pages is the map
+      // the panel otherwise never draws — the bands are hidden here.
+      const tally = $('searchCount');
+      if (tally) {
+        tally.hidden = !found;
+        tally.textContent = !found ? ''
+          : (count ? count + (count === 1 ? ' setting' : ' settings')
+                   : found + (found === 1 ? ' section' : ' sections'))
+            + ' on ' + pages.length
+            + (pages.length === 1 ? ' page — ' : ' pages — ')
+            + pages.map((p) => PAGE_TITLES[p] || p).join(' · ');
+      }
+    };
+
     box.oninput = () => {
       // A value that arrives while the box does not hold focus was not
       // typed: it is a password manager deciding this is the "username"
@@ -3325,6 +3894,12 @@
         if (SCHEMA.fields[f] && SCHEMA.fields[f].group === 'voicemail') {
           paintDash();
         }
+        // The silent-call warning is a question about three switches on two
+        // different pages, so it has to follow all three as they are pressed
+        // — an operator diagnosing exactly this is toggling them, and a
+        // warning that only tells the truth after a save is worse than none.
+        if (f === 'swipe_player' || f === 'tune_in_on_call'
+            || f === 'tune_in_audible') paintDash();
         // The On air page's rows feed the dashboard cluster and their own
         // section tag; paintTags ends by calling paintDash. The Caller
         // permissions greying follows these switches too, but the
@@ -3677,13 +4252,26 @@
         hint = document.createElement((plabel || check) ? 'span' : 'p');
         hint.className = (plabel || check) ? 'hint inlabel'
           : inline ? 'hint inrow' : 'hint wide';
-        hint.dataset.fromSchema = '1';
         if (plabel) plabel.appendChild(hint);
         else if (inline || check) anchor.appendChild(hint);
         else anchor.insertAdjacentElement('afterend', hint);
+      } else if (hint.dataset.fromSchema !== f) {
+        // The hint is already SPOKEN FOR by another field sharing this row,
+        // and first writer wins. The Access row holds two hidden fields —
+        // the door and whether a code elevates — so the second one silently
+        // overwrote the first, and the longest explanation on the page (what
+        // Call-in access actually does) was never on screen at all. Same
+        // family as the duplicate-id trap: one anchor, two claimants.
+        return;
       }
-      hint.textContent = meta.help;
+      // Stamped with the OWNER, not a flag: `fromSchema` is read as a
+      // boolean everywhere else, and a field name is just as truthy.
+      hint.dataset.fromSchema = f;
+      writeLinked(hint, meta.help);
     });
+    // The help just rewritten is part of what the finder matches, so the
+    // haystacks built from it are now stale.
+    forgetHaystacks();
   }
 
   async function saveSettings(patch) {
@@ -3822,6 +4410,56 @@
         '\nrealtime factor ' + rtf + verdict +
         (d.sampleRateNote ? '\n' + d.sampleRateNote : ''), d));
       if (d.pcmBase64) playPcm(d.pcmBase64, d.sampleRate);
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
+
+  // The only thing that checks an ear at all. /test/speed measures local
+  // Whisper for real but records a flat 400ms estimate for any cloud
+  // provider without calling it, so before this a wrong Deepgram key gave a
+  // green panel and a green speed test, and the first symptom was a caller
+  // being misheard on air.
+  //
+  // The sample is SYNTHESIZED rather than recorded from the operator's
+  // microphone (their call): no permission prompt, nothing that depends on
+  // the room, and the same sentence every run so two results compare.
+  $('testSttBtn').onclick = async () => {
+    const btn = $('testSttBtn'), out = $('sttResult');
+    btn.disabled = true;
+    out.className = 'result on';
+    out.textContent = 'Speaking a line, then listening back…';
+    try {
+      const d = await afetch('/test/stt', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft()),
+      }).then((r) => r.json());
+      if (!d.ok) {
+        // Say WHICH engine failed. A voice that cannot speak fails this
+        // test without the ear being touched, and sending the operator to
+        // debug the wrong section is worse than no test.
+        showResult(out, false, d.stage === 'voice'
+          ? d.error
+          : 'The ear failed: ' + d.error
+            + '\n' + (d.provider || '?') + ' · ' + (d.model || '?'));
+        return;
+      }
+      const acc = d.accuracy;
+      const verdict = acc >= 90 ? '\n✓ Heard it.'
+        : acc >= 70 ? '\n⚠ Mostly heard it — names and numbers are where a '
+                      + 'call goes wrong.'
+        : '\n✗ Badly misheard. Check the model, or try a cloud ear.';
+      // Realtime factor matters for the same reason it does on the voice
+      // test: an ear slower than the audio cannot keep up with a call.
+      const slow = d.rtf != null && d.rtf >= 1.0;
+      showResult(out, acc >= 70 && !slow,
+        d.provider + ' · ' + d.model
+        + '\nsaid:  ' + d.said
+        + '\nheard: ' + (d.heard || '(nothing)')
+        + '\n' + acc + '% of the words, ' + d.ms + 'ms for '
+        + d.audioSeconds + 's of audio'
+        + (d.rtf != null ? ' (' + d.rtf + 'x realtime'
+           + (slow ? ' — slower than the call' : '') + ')' : '')
+        + verdict + (d.note ? '\n' + d.note : ''));
     } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
     finally { btn.disabled = false; }
   };

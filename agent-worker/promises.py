@@ -104,6 +104,19 @@ PROBLEMS = {
         "record is coming that nobody queued. It was given one more turn to own it. Repeats "
         "here mean the honesty rules in the prompt are not reaching this model."
     ),
+    # Not a promise-guard kind — nothing here classifies it, and `unbacked`
+    # never returns it. It lives in this dict because this is the vocabulary
+    # the record and the panel's "needs attention" count already read, and a
+    # conversation where the caller had to ask four times is exactly what that
+    # count is for. Written by call/stuck.py.
+    "stuck": (
+        "The caller had to ask the same thing again. Every answer before it failed, and "
+        "until 0.98.22 nothing anywhere noticed — so the DJ had no signal to change route "
+        "and kept restating. Read the transcript for what it kept saying: if a tool was "
+        "coming back empty, the fault is the tool's message, not the model's manners. The "
+        "2026-08-20 chat that prompted this asked seven times and was told the wrong thing "
+        "every time, because a 404 was being reported as a fact about the record."
+    ),
     "claim": (
         "The DJ told the caller something had ALREADY been done and ran no tool, so it had "
         "not been. It was given one more turn to make the claim true. This is the shape that "

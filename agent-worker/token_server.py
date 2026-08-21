@@ -32,6 +32,7 @@ from api.diagnostics import (
     handle_test_admin,
     handle_test_env,
     handle_test_llm,
+    handle_test_stt,
     handle_test_station,
     handle_test_tts,
 )
@@ -194,6 +195,8 @@ def build_app() -> web.Application:
     app.router.add_options("/test/tts", handle_options)
     app.router.add_post("/test/llm", handle_test_llm)
     app.router.add_options("/test/llm", handle_options)
+    app.router.add_post("/test/stt", handle_test_stt)
+    app.router.add_options("/test/stt", handle_options)
     app.router.add_get("/test/station", handle_test_station)
     app.router.add_post("/test/admin", handle_test_admin)
     app.router.add_options("/test/admin", handle_options)

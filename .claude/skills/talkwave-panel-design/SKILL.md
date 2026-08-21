@@ -35,6 +35,10 @@ tuple, and its supergroup assignment is the second element of that tuple.
 | `.permrow` (permgrid) | tiered permission | sibling `hint wide` (grid rules — do NOT inline) |
 | `.testrow` | a run of buttons, or field+buttons on one line | n/a — `.testrow` inputs wear the `.row` field skin |
 
+`.grid2` is a **one-column** grid despite the name — it exists for the row rhythm, not for
+columns. Worth knowing before you write a finding about a two-column layout that is not
+there (0.98.24 did exactly that).
+
 **Never** add a static `<p class="hint wide">` under a single field — field help belongs in the
 schema (`help=`), which injects it in the right place per shape. Static paragraphs are only for
 whole-section prose (a prerequisite, a warning, what a run of buttons does), and ONE per
@@ -81,11 +85,34 @@ section — merged, not stacked (the sounds section's three-paragraph pile-up wa
 
 ## Radius & surface scale
 
-Three steps, no strays: **8px** controls (buttons, inputs, selects, summary hover),
-**10px** contained surfaces (tiles, control cards, banners, results, tables, snippets),
-**12px** section bodies. Tables are surfaces: border, radius, `overflow:hidden`, a
-`--panel` header band, row hover — a bare `<table>` in a section was reported as
-slapped together.
+**The panel is SQUARE.** The newspaper redesign (`talkwave-panel-spec.md` §2) zeroed
+`border-radius` on every panel container, button, chip, input and summary hover, and that
+is what ships: the panel block of `style.css` has seven `border-radius: 0` declarations
+and one 10px. Add a rounded corner to the panel and it will be the only one on the page.
+
+> This section used to read "three steps, no strays: 8px controls, 10px contained
+> surfaces, 12px section bodies" — the scale from BEFORE the redesign, left here after it.
+> Anyone following it would have rounded a panel of squares. Checked and corrected
+> 2026-08-21; `TestThePanelIsSquare` now holds it.
+
+The 8/10/12 scale is still live on the **call card**, which is a different surface with a
+different guide (`HOST-STYLE-GUIDE.md`) and its own `--skin-radius` tokens. Do not carry
+panel rules onto the card or card rules onto the panel.
+
+Tables are still surfaces: border, `overflow:hidden`, a `--panel` header band, row hover —
+a bare `<table>` in a section was reported as slapped together. Square, like everything
+else here.
+
+## Type scale
+
+Eleven distinct pixel sizes live in the panel block, five of them inside 2px of each
+other, so "no new font sizes without reason" has not been holding anything up. The sizes
+in use are the scale now, and `TestThePanelKeepsItsTypeScale` fails on a twelfth:
+
+`9px` `9.5px` `10.5px` `11px` `11.5px` `12px` `12.5px` `13px` `15px` `17px` `19px`
+
+Reach for one that is already there. If a new size is genuinely right, add it to the test
+in the same commit and say why — the point is that it is a decision, not an accident.
 
 ## The dashboard
 

@@ -34,6 +34,7 @@ import uuid
 
 import settings as settings_store
 from chat import openers
+from call.stuck import Stuck
 from promises import PROBLEMS, unbacked
 from spoken_rules import reads_as_a_refusal
 from station import StationClient
@@ -161,6 +162,10 @@ class ChatSession:
         # counts a conversation as failed by — so a broken provider shows up
         # in Needs attention instead of only in a log nobody keeps.
         self.problems: list[str] = []
+        # What the caller has already had to ask, and whether they have told
+        # the DJ it has this wrong — see call/stuck.py. Per conversation, like
+        # everything else here.
+        self.stuck = Stuck()
         self.persona_name = ""
         # The id as well as the name: a voice call records both, and a
         # record that knows only "Ash" cannot be grouped by persona the
@@ -246,8 +251,8 @@ class ChatSession:
         from call.actions import CallActions
         from call.air import OnAirGuard
         from call.providers import build_llm
-        from call.tools import (build_discovery_tools, build_library_tools,
-                                build_on_air_tools)
+        from call.tools import (apply_finder_dispatch, build_discovery_tools,
+                                build_library_tools, build_on_air_tools)
 
         # Keys entered in the settings page live in their own store; push
         # them into the environment before building the model — the same
@@ -287,6 +292,9 @@ class ChatSession:
             tools = build_library_tools(cfg, station, actions) + \
                 build_discovery_tools(cfg, station, actions) + \
                 build_on_air_tools(cfg, station, actions, guard, guarded=False)
+            # Built last and off the list itself, so it can only ever route to
+            # what the settings already allowed — see call/tools/finding.py.
+            tools = apply_finder_dispatch(cfg, tools)
 
             ctx = lk_llm.ChatContext.empty()
             ctx.add_message(role="system", content=prompt)
@@ -294,6 +302,21 @@ class ChatSession:
                 ctx.add_message(role="user" if who == "caller" else "assistant",
                                 content=said)
             ctx.add_message(role="user", content=text)
+            # Asked-again and told-you-are-wrong. The phone gets this through
+            # CallAgent.on_user_turn_completed; the typed line has no SDK hook
+            # to hang it on, so it goes in here — after the caller's own line,
+            # as a system message, which is where the door hint sits on the
+            # other surface. A note from us must never ride inside the
+            # caller's message: that text reaches the written record, and it
+            # would be a record of something they never said.
+            #
+            # This is the surface the 2026-08-20 failure happened on: seven
+            # asks, one wrong answer, no mechanism anywhere that noticed. See
+            # call/stuck.py.
+            note = self.stuck.hint_for(text)
+            if note:
+                ctx.add_message(role="system", content=note)
+                self.problems.append(PROBLEMS["stuck"])
 
             self.remember("caller", text)
             self.messages += 1

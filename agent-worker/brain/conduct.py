@@ -271,7 +271,150 @@ not a manual — and get back to the caller."""
 # a takeover), "that's just the signal bouncing around the valley" (when a
 # caller heard the on-air DJ and the call DJ at once), and "that request is
 # locked into the rotation" (when asked to cancel one). A caller can tell.
-def say_the_true_thing(cfg: dict) -> str:
+# The four rules inside `say_the_true_thing`, individually droppable so the
+# block can be priced a clause at a time. Same shape and same reason as
+# `tool_rules.SECTIONS`: at 4,049 characters this is 16% of the conduct, and
+# the only ablation ever run on it (refusals set, 14/15 with, 14/14 without)
+# was RETRACTED by the session that ran it — the harness could not see the
+# failure it was grading for, and with the section present the DJ still told a
+# caller a refused request was "locked in to follow", 2 rounds of 2. The
+# handover's words: "the section is not inert — it is insufficient", and "do
+# not cut it on this evidence".
+#
+# So the block is unmeasured, not measured-and-worthless, and dropping it
+# whole would answer the wrong question anyway — it carries the FOURTH WALL
+# rule, which is persona, alongside three honesty rules that are not.
+#
+# `truth_believe_the_caller` was priced first, because `call/stuck.py`
+# (0.98.22) mechanises part of it — the position CLOSING_DOOR was in once
+# door.py existed. **MEASURED 2026-08-20, and the answer is KEEP.**
+#
+#     SCENARIO_SET=conversations SCENARIO=doubts, guard ON in both arms,
+#     gemini-3.1-flash-lite, 30 rounds per arm (6 + 12 + 12):
+#
+#                                with the clause      ablated
+#       scenario verdict              28/30            29/30
+#       claims-it-landed                  7               14
+#
+# The scenario verdict is BLIND — it moved the wrong way, and on its own it
+# would have licensed the cut. The line-level fault detector is what sees it:
+# false claims double without the clause, consistently across all three pairs
+# (2:2, 3:8, 2:4). One of the ablated rounds, verbatim: "the monitor's acting a
+# bit finicky tonight. You'll just have to trust me, it's coming up" — said
+# after subwave_station_state had refused. That is invented hardware covering
+# an unverified claim, which is the exact sentence this clause forbids.
+#
+# This is the SAME failure mode that retracted the 2026-08-15 measurement — a
+# grader watching one thing while the DJ does another — caught by reading the
+# faults instead of the verdict. Price honesty prose on the fault counts.
+#
+# Not settled, and it does not need to be: one scenario, one model, 60 rounds.
+# The direction is consistent and it is on the metric the section exists to
+# move, which is enough to stop proposing the cut.
+#
+# The other three clauses are still unmeasured. Given this result, expect them
+# to matter too — and `truth_fourth_wall` is persona, so it is the one to leave
+# alone regardless of what a fault count says.
+TRUTH_CLAUSES: tuple[str, ...] = (
+    "truth_fourth_wall",         # stay in character; don't dodge with a story
+    "truth_believe_the_caller",  # they can hear the broadcast; you cannot
+    "truth_relay_the_refusal",   # pass on the reason the tool gave
+    "truth_own_the_miss",        # your mistake is not the transmitter's
+)
+
+
+#: The four rules inside CLOSING, individually droppable. Third block to get
+#: this treatment, after tool_rules (0.10.152) and say_the_true_thing
+#: (0.98.23), and for the same reason: at 4,091 characters it is too big to
+#: price whole, and the whole-block arm proved it.
+#:
+#: MEASURED 2026-08-21, SCENARIO_SET=closing, 3 rounds, guard ON in both arms.
+#: Ablating CLOSING entire came back MIXED, which is why it is being split
+#: rather than kept or cut:
+#:
+#:                                          with CLOSING   ablated
+#:     a thank-you IS the goodbye turn           2/2         0/3
+#:     a question answered is not a wind-down    3/3         2/3
+#:     a landed request is not the end           1/3         2/3
+#:     a caller who says that's everything       1/2         2/3
+#:
+#: So one rule collapses without it and two score BETTER without it. That is
+#: not a section earning its keep, it is two rules pulling opposite ways
+#: inside one block — and it matches what this file already records at
+#: 2026-08-14: the DJ said "anything else?" 3/3 WHILE these four paragraphs
+#: forbade it, because the block's own worked example taught the phrase.
+#:
+#: PER-CLAUSE ARMS RAN, 4 rounds each, and none of them found a cut:
+#:
+#:     "a landed request is not the end"   control 1/4
+#:                                         drop closing_momentum  3/4 *
+#:                                         drop CLOSING_DOOR      0/4
+#:     "a thank-you IS the goodbye turn"   control 3/4
+#:                                         drop closing_goodbye   4/4
+#:
+#: * and the asterisk is the finding. Dropping closing_momentum scores BETTER
+#: and behaves WORSE: in the round it lost, the DJ reached for end_call on a
+#: caller who had just said "yeah, that's the one", and only the 60s floor
+#: stopped it hanging up on them. A milder fault traded for a severe one, and
+#: the tally cannot see the difference. Read the transcript, not the tally.
+#:
+#: Dropping CLOSING_DOOR made the door problem WORSE, which corroborates its
+#: own 2026-08-14 measurement from the other direction — worth recording
+#: because the hypothesis going in was the opposite: its NO examples are
+#: quotable ("Anything else on your mind, or are you all set?") and the DJ
+#: does copy them almost verbatim ("You hanging out for anything else, or are
+#: you all set for now?"). It supplies the phrase AND holds back something
+#: worse. Removing it is not the fix.
+#:
+#: So: NOTHING HERE IS A CUT CANDIDATE, and that is the answer. What the
+#: numbers do say is that closing is the least effective part of the prompt —
+#: control is 1/4 on the scenario this section is most about, with four
+#: paragraphs forbidding the move and a guard already running. A rule the
+#: prompt cannot enforce after three rewrites wants a MECHANISM, the way the
+#: door's repetition got one. That is a piece of work, not an edit.
+CLOSING_CLAUSES: tuple[str, ...] = (
+    "closing_momentum",    # a full stop is not a dead stop
+    "closing_goodbye",     # sign off and end_call; closing is yours to do
+    "closing_not_early",   # read it both ways — do not close on a thought
+    "closing_overruled",   # told it is too soon; never end on silence
+)
+
+# Paragraph indexes into CLOSING, which stays the ONLY source of the text: the
+# split is derived from the string rather than copied out of it, so the two
+# cannot drift into disagreeing. Re-paragraph CLOSING and
+# TestTheClosingSplitTracksItsOwnText fails rather than silently regrouping.
+_CLOSING_GROUPS: dict[str, tuple[int, ...]] = {
+    "closing_momentum": (1, 2, 3),
+    "closing_goodbye": (4, 5),
+    "closing_not_early": (6, 7),
+    "closing_overruled": (8, 9),
+}
+
+
+def closing(drop: frozenset = frozenset()) -> str:
+    """CLOSING with named clauses left out; the heading always stays.
+
+    An empty drop returns the section verbatim, which is guaranteed by
+    construction — joining every paragraph back is the string it came from.
+    """
+    paras = CLOSING.split("\n\n")
+    keep = {0}
+    for name, idx in _CLOSING_GROUPS.items():
+        if name not in drop:
+            keep.update(idx)
+    return "\n\n".join(para for i, para in enumerate(paras) if i in keep)
+
+
+def say_the_true_thing(cfg: dict, drop: frozenset = frozenset()) -> str:
+    """Four rules about not inventing, joined.
+
+    `drop` names TRUTH_CLAUSES to leave out. Nothing in the product passes one
+    — with it empty this returns exactly what it always returned, which
+    TestTheTruthBlockSplitChangedNoPromptByte holds to the byte.
+    """
+    def on(name: str) -> bool:
+        return name not in drop
+
     # The takeover bullet flips with the switch: claiming "you CAN do" a
     # takeover the tool list doesn't carry is what taught the DJ to fake one
     # with a song request (see takeover_bullet).
@@ -287,8 +430,13 @@ def say_the_true_thing(cfg: dict) -> str:
   and never act out a substitute: a song request sent in its place and
   described as the show being on its way is the same invention, with a
   receipt.""")
-    return f"""\
-# Stay in character — but don't dodge a real action
+    # The heading always stays; the four rules under it are what `drop`
+    # reaches. Joined with a blank line between clauses, and the heading is
+    # glued to the first clause with a single newline, which is how the
+    # original read — see the byte-identity test.
+    head = "# Stay in character — but don't dodge a real action"
+    if on("truth_fourth_wall"):
+        head += "\n" + f"""\
 Never break the fourth wall or explain the machinery: you are the DJ, on the
 radio, and you stay there, unless the persona is written to be self-aware. If a
 caller notices something odd about the broadcast — they hear you on air and on
@@ -301,8 +449,10 @@ actually do, or to make a "can't" sound like a "won't":
 - Don't dress a real limit as a rule you made up. If you genuinely can't do a
   thing, the in-character version is still honest about the OUTCOME — and for a
   specific track the fix is to CONFIRM before you send it (see the request
-  rules), so a changed mind costs nothing and there is nothing to pull back.
-
+  rules), so a changed mind costs nothing and there is nothing to pull back."""
+    parts = [head]
+    if on("truth_believe_the_caller"):
+        parts.append("""\
 **When a caller says it didn't happen, BELIEVE THEM and go and look.** They can
 see and hear the broadcast; you only have your receipts. "I don't hear it", "I
 didn't see a confirmation", "did you actually do it?" is not doubt to be
@@ -317,8 +467,9 @@ that makes the rest believable.
     YES: "Hold on — you're right, that never went out. Sending it now."
 That is a real conversation, 2026-08-12: a dedication was promised, claimed as
 done twice, explained away with distance and a dog lifting his head, and only
-actually sent when the caller pointed out there was no confirmation.
-
+actually sent when the caller pointed out there was no confirmation.""")
+    if on("truth_relay_the_refusal"):
+        parts.append("""\
 **When a tool refuses, pass on the REASON IT GAVE — don't narrate one.** A
 refusal usually says exactly what is wrong and often how long it lasts. That
 sentence is the truth; anything you build on top of it is fiction, and it sends
@@ -331,8 +482,9 @@ Same evening, same caller: the station had said one specific thing, and none of
 what reached the caller was it. If the refusal is a WAIT, say how long if you
 were told; if it names a limit, name the limit. And if a different tool can do
 the job the refused one couldn't, use it instead of narrating the refusal —
-that is what "and I'll try again" should mean.
-
+that is what "and I'll try again" should mean.""")
+    if on("truth_own_the_miss"):
+        parts.append("""\
 **And when you got it WRONG, that is yours — not the transmitter's.** A caller who
 asks "why didn't you get that the first time?" is owed one honest half-line and
 nothing else. Blaming the transmission for your own miss is the same invention
@@ -345,7 +497,8 @@ charming:
 Real, 2026-08-13: three denials of a DJ who was on the roster all along, and
 then the towers got the blame. Nor do you narrate your own machinery at them —
 "not seeing a tool that fits that one" is booth talk that belongs in the log,
-not on the air. Say what you can and can't do in the world's words."""
+not on the air. Say what you can and can't do in the world's words.""")
+    return "\n\n".join(parts)
 
 
 def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
@@ -373,7 +526,10 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
         # example would mangle the rule that example teaches, and that rule has
         # no mechanism behind it.
         ("CLOSING_DOOR", CLOSING_DOOR),
-        ("CLOSING", CLOSING),
+        # `drop` reaches inside by CLOSING_CLAUSES name — see the measurement
+        # above the split: ablating this block whole came back MIXED, one rule
+        # collapsing and two scoring better without it.
+        ("CLOSING", closing(frozenset(drop or ()))),
         # `drop` reaches INSIDE this one. It is the largest section by a factor
         # of four and the only one that could not be measured, because dropping
         # it whole removes the tool surface's description and answers a question
@@ -381,7 +537,12 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
         # one here drops that part and leaves the rest. Byte-identical when
         # nothing is named — TestTheToolBlockSplitChangedNoPromptByte.
         ("tool_rules", _tools(cfg, frozenset(drop or ()))),
-        ("say_the_true_thing", say_the_true_thing(cfg)),
+        # `drop` reaches INSIDE this one too, by TRUTH_CLAUSES name — the
+        # same knob tool_rules got at 0.10.152, and for the same reason: at
+        # 16% of the conduct it is too big to price whole, and dropping it
+        # whole would take the fourth-wall rule (persona) out with three
+        # honesty rules that are not.
+        ("say_the_true_thing", say_the_true_thing(cfg, frozenset(drop or ()))),
         ("LANGUAGE_AND_MIMICRY", LANGUAGE_AND_MIMICRY),
     ]
 

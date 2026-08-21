@@ -159,3 +159,185 @@ class TestTheToolBlockSplitChangedNoPromptByte(unittest.TestCase):
 
         self.assertIn("tool_finding", tool_rules.SECTIONS)
         self.assertIn("MEASURED 30/30", inspect.getsource(tool_rules))
+
+
+class TestTheTruthBlockSplitChangedNoPromptByte(unittest.TestCase):
+    """`say_the_true_thing` became droppable in parts, and that had to cost
+    nothing.
+
+    At 4,049 characters it is 16% of the conduct and the second-largest block
+    after `tool_rules`. The one ablation ever run on it — refusals set, 14/15
+    with against 14/14 without — was RETRACTED by the session that ran it: one
+    scenario in five never fired its fault, and with the section present the DJ
+    still told a caller a refused request was "locked in to follow", two rounds
+    of two. "The section is not inert — it is insufficient."
+
+    So it is unmeasured, and dropping it whole would answer the wrong question
+    anyway: it carries the FOURTH WALL rule, which is persona, beside three
+    honesty rules that are not. Priced a clause at a time or not at all — and
+    the whole value of that depends on the split being invisible when nobody
+    passes a drop.
+    """
+
+    def _configs(self):
+        return (("takeover on", {"allow_takeover": True}),
+                ("takeover off", {}),
+                ("requests only", {"allow_requests": True}),
+                ("all on", {"allow_takeover": True, "allow_requests": True,
+                            "allow_library_search": True}))
+
+    def test_an_empty_drop_is_a_no_op(self):
+        from brain import conduct
+
+        for label, cfg in self._configs():
+            self.assertEqual(conduct.say_the_true_thing(cfg),
+                             conduct.say_the_true_thing(cfg, frozenset()),
+                             f"{label}: passing an empty drop is not a no-op")
+
+    def test_the_assembled_conduct_is_unchanged_on_both_mouths(self):
+        # The section is shared, so a stray newline would move the shipped
+        # prompt on the phone AND the text line at once, and put every earlier
+        # measurement on a different prompt from every later one.
+        from brain import conduct, conduct_chat
+
+        for label, cfg in self._configs():
+            for mod in (conduct, conduct_chat):
+                with self.subTest(label=label, mod=mod.__name__):
+                    self.assertEqual(mod.rules(cfg), mod.rules(cfg, drop=set()))
+
+    def test_every_clause_actually_removes_something(self):
+        """A name in TRUTH_CLAUSES that drops no text is a knob wired to
+        nothing — an ablation arm naming it would measure the control prompt
+        against itself and report the clause as free."""
+        from brain import conduct
+
+        for name in conduct.TRUTH_CLAUSES:
+            bites = [
+                len(conduct.say_the_true_thing(cfg, frozenset({name})))
+                < len(conduct.say_the_true_thing(cfg))
+                for _label, cfg in self._configs()
+            ]
+            self.assertTrue(any(bites), f"ABLATE={name} removes nothing")
+
+    def test_the_heading_survives_every_clause_being_dropped(self):
+        # Otherwise the section vanishes silently and an arm that dropped all
+        # four would be measuring a prompt with no honesty section AND no
+        # heading, which is two changes reported as one.
+        from brain import conduct
+
+        bare = conduct.say_the_true_thing({}, frozenset(conduct.TRUTH_CLAUSES))
+        self.assertIn("Stay in character", bare)
+
+    def test_the_clause_that_was_priced_says_so_and_says_keep(self):
+        """MEASURED 2026-08-20, 30 rounds per arm: KEEP.
+
+        Same shape as `tool_finding`'s 30/30 note — a name in a drop list
+        reads as a suggestion unless the source says otherwise, and this one
+        has been measured and must not be re-proposed for cutting.
+
+        The result is worth the assertion because of HOW it came out: the
+        scenario verdict was blind (28/30 with the clause against 29/30
+        without — the wrong way), while false claims doubled, 7 against 14.
+        That is the same failure mode that retracted the 2026-08-15
+        measurement, and the note has to carry it or the next reader repeats
+        it a third time.
+        """
+        import inspect
+
+        from brain import conduct
+
+        self.assertIn("truth_believe_the_caller", conduct.TRUTH_CLAUSES)
+        src = inspect.getsource(conduct)
+        self.assertIn("MEASURED 2026-08-20", src)
+        self.assertIn("the answer is KEEP", src)
+        # The blindness of the verdict is the transferable lesson; losing it
+        # would leave a bare "keep" that reads as taste.
+        self.assertIn("scenario verdict is BLIND", src)
+
+    def test_the_ablation_harness_knows_these_names(self):
+        # An ABLATE name the harness does not recognise is reported as unknown
+        # and silently ignored, which measures the control prompt twice.
+        import re
+
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        self.assertTrue(re.search(r"TRUTH_CLAUSES", src),
+                        "scripted_call does not add TRUTH_CLAUSES to the known "
+                        "ABLATE names, so an arm naming one measures nothing")
+
+
+class TestTheClosingSplitTracksItsOwnText(unittest.TestCase):
+    """CLOSING became droppable in parts, and the parts are INDEXES into it.
+
+    That is the point: the split is derived from the string rather than copied
+    out of it, so the two cannot drift into disagreeing about what a clause
+    says. The cost is that re-paragraphing CLOSING silently regroups the
+    clauses — which would put an ablation arm on a different rule from the one
+    it names, and nothing else would notice. Hence this class.
+
+    Whole-block measurement, 2026-08-21, SCENARIO_SET=closing, 3 rounds, guard
+    ON in both arms: a thank-you IS the goodbye turn went 2/2 to 0/3 ablated,
+    while "a landed request is not the end" went 1/3 to 2/3 — better without.
+    A block where one rule collapses and another improves is a block that
+    needs splitting before it can be judged.
+    """
+
+    def test_an_empty_drop_returns_the_section_verbatim(self):
+        from brain import conduct
+
+        self.assertEqual(conduct.closing(), conduct.CLOSING)
+        self.assertEqual(conduct.closing(frozenset()), conduct.CLOSING)
+
+    def test_the_paragraph_count_is_what_the_groups_assume(self):
+        """The guard that makes the index trick safe."""
+        from brain import conduct
+
+        paras = conduct.CLOSING.split("\n\n")
+        highest = max(i for idx in conduct._CLOSING_GROUPS.values() for i in idx)
+        self.assertEqual(
+            len(paras), highest + 1,
+            "CLOSING has been re-paragraphed, so _CLOSING_GROUPS now names "
+            "different text than it did when the clauses were measured. "
+            "Re-read the groups against the section before trusting an arm.")
+
+    def test_every_paragraph_belongs_to_exactly_one_clause(self):
+        # A paragraph in no group can never be dropped, which would make it
+        # invisible to every arm; one in two groups would be dropped twice.
+        from brain import conduct
+
+        seen = [i for idx in conduct._CLOSING_GROUPS.values() for i in idx]
+        self.assertEqual(sorted(seen), sorted(set(seen)), "a paragraph is in two clauses")
+        paras = conduct.CLOSING.split("\n\n")
+        # 0 is the heading, which always stays.
+        self.assertEqual(sorted(seen), list(range(1, len(paras))))
+
+    def test_every_clause_removes_something(self):
+        from brain import conduct
+
+        for name in conduct.CLOSING_CLAUSES:
+            with self.subTest(clause=name):
+                self.assertLess(len(conduct.closing(frozenset({name}))),
+                                len(conduct.CLOSING))
+
+    def test_the_heading_survives_every_clause_being_dropped(self):
+        from brain import conduct
+
+        bare = conduct.closing(frozenset(conduct.CLOSING_CLAUSES))
+        self.assertIn("Closing a call", bare)
+
+    def test_the_assembled_conduct_is_unchanged_on_both_mouths(self):
+        from brain import conduct, conduct_chat
+
+        for cfg in ({"allow_takeover": True}, {}, {"allow_requests": True}):
+            for mod in (conduct, conduct_chat):
+                with self.subTest(cfg=cfg, mod=mod.__name__):
+                    self.assertEqual(mod.rules(cfg), mod.rules(cfg, drop=set()))
+
+    def test_the_harness_knows_these_names(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        self.assertIn("CLOSING_CLAUSES", src,
+                      "an ABLATE name the harness does not know is ignored, "
+                      "which measures the control prompt twice")

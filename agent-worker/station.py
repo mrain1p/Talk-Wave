@@ -582,10 +582,24 @@ class StationClient:
 
         Feature-detected on purpose: /lyrics/current ships with the station's
         current-track lyrics work (its #1316), and a station without it
-        answers 404 — which lands here as an empty dict and reaches the DJ as
-        "no lyrics on file", not as an error. `lines` is [] for instrumentals
-        and unindexed tracks; `songId` is null when the on-air item is not a
-        library track. No auth: the same read every listener player gets.
+        answers 404. `lines` is [] for instrumentals and unindexed tracks;
+        `songId` is null when the on-air item is not a library track. No auth:
+        the same read every listener player gets.
+
+        **A failed read and an empty answer are different facts, and this used
+        to return the same `{}` for both.** The tool above turned that `{}`
+        into "an instrumental, or the station has none indexed", so a station
+        with no lyrics feature at all — this operator's, measured 2026-08-20,
+        404 on /lyrics/current and on every other spelling of it — had every
+        one of its tracks described to callers as an instrumental. One chat
+        that afternoon did it eleven times, defended it when the caller said
+        the song plainly had words, and the caller was right: it was "GALA" by
+        XG. The DJ was not inventing. It was relaying a receipt that said
+        something the station had never claimed.
+
+        So the failure branch is now MARKED. `unavailable` means we do not
+        know anything about this track's lyrics; an absent `unavailable` with
+        empty `lines` means the station answered and holds none.
         """
         try:
             r = await self._client.get("/lyrics/current")
@@ -594,7 +608,7 @@ class StationClient:
             return d if isinstance(d, dict) else {}
         except Exception as e:
             log.info("lyrics unavailable (%s)", describe(e))
-            return {}
+            return {"unavailable": describe(e)}
 
     @staticmethod
     def _refusal_words(response) -> str:

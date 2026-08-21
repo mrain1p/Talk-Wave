@@ -671,14 +671,25 @@ class CallAgent(Agent):
     not transfer.
     """
 
-    def __init__(self, instructions: str, guard: OnAirGuard, door=None) -> None:
+    def __init__(self, instructions: str, guard: OnAirGuard, door=None,
+                 stuck=None) -> None:
         super().__init__(instructions=instructions)
         self._guard = guard
         self._door = door
+        self._stuck = stuck
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        said = getattr(new_message, "text_content", "") or ""
+        # Asked-again and told-you-are-wrong, on the same insertion point and
+        # for the same reason as the door hint: a caller who has repeated
+        # themselves needs the NEXT line to be different, and nothing that
+        # fires after the line has committed can do that. See call/stuck.py.
+        if self._stuck is not None:
+            note = self._stuck.hint_for(said)
+            if note:
+                turn_ctx.add_message(role="system", content=note)
+                log.info("the caller has asked this before — steering this turn")
         if self._door is not None:
-            said = getattr(new_message, "text_content", "") or ""
             hint = self._door.hint_for(said)
             if hint:
                 # A system message at the tail, which is how the plugins deliver

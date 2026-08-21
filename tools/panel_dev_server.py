@@ -133,6 +133,21 @@ TTS_TEST = {
     "ok": True, "voice": "-Cliff1", "firstAudioMs": 420, "realtimeFactor": 0.31,
 }
 
+# The hearing test (0.98.23). `heard` deliberately drops "Brighton" and
+# mangles the name: 83% is the AMBER band, which is the one worth seeing by
+# default because it is the band a real cloud ear lands in on phone audio.
+# Set heard == said for the green branch, or ok=False with stage="voice" to
+# see the failure that is not the ear's fault.
+STT_TEST = {
+    "ok": True, "provider": "deepgram", "model": "nova-2-phonecall",
+    "note": "",
+    "said": ("Evening, this is Sarah calling from Brighton, "
+             "could you play track nine for me"),
+    "heard": ("Evening, this is Sara calling from Brighten, "
+              "could you play track nine for me"),
+    "accuracy": 83, "ms": 610, "audioSeconds": 4.2, "rtf": 0.15,
+}
+
 # Flip `ok` to see the other branch: a station that took the registration but
 # cannot route back to the receiver, which from the panel looks identical to
 # working until something asks.
@@ -505,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(dict(LLM_TEST))
         if path == "/test/tts":
             return self._json(dict(TTS_TEST))
+        if path == "/test/stt":
+            return self._json(dict(STT_TEST))
         # Registration only ever proved the station accepted a row; this is the
         # station pushing back at us, which is the half that fails in the wild.
         if path == "/hooks/test":
