@@ -581,7 +581,8 @@
     // save, load and diff exactly like one, and the picker below only writes
     // into them. `order`'s input is type=hidden, which is still a text field
     // as far as every read and write here is concerned.
-    TEXT_FIELDS = byKind('text').concat(byKind('emoji'), byKind('order'));
+    TEXT_FIELDS = byKind('text').concat(byKind('emoji'), byKind('order'),
+                                        byKind('picks'));
     NUM_FIELDS = byKind('number');
     CHECK_FIELDS = byKind('check');
     SELECT_FIELDS = byKind('select');
@@ -1448,6 +1449,9 @@
         : needKey ? 'no key for ' + llm : (resolved.llm_model || ''),
       (!llm || !ttsMode || needKey) ? 'bad' : 'ok');
     paintNeeds();
+    // Open Lines' dashboard row. Its own read, because what is UP right now
+    // is server state rather than a setting — `resolved` cannot answer it.
+    readOpenLines();
   }
 
   // ------------------------------------------------- needs attention
@@ -2845,6 +2849,211 @@
   };
   $('clearGuestBtn').onclick = () => setGuest('');
 
+
+  // --- Open Lines: the shelf, the DJ picker, and the dashboard row ---------
+  // The shelf and the picker are NOT schema fields — they are a store, like
+  // the staged greetings, so every row saves immediately with its own result
+  // rather than waiting on Save. The one exception is the persona allowlist,
+  // which IS a field: its value lives in a hidden input and these ticks write
+  // into it, the same shape the door-order control uses.
+  let olRoster = [];
+  let olShelf = [];
+
+  function olWho() {
+    const el = $('open_lines_personas');
+    return String((el && el.value) || '')
+      .split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  function paintOpenLinesWho() {
+    const list = $('openLinesWho');
+    if (!list) return;
+    const chosen = new Set(olWho());
+    list.innerHTML = '';
+    if (!olRoster.length) {
+      const li = document.createElement('li');
+      li.className = 'vmrow';
+      li.innerHTML = '<span class="sname">No personas — is the station reachable?</span>';
+      list.appendChild(li);
+      return;
+    }
+    for (const p of olRoster) {
+      const li = document.createElement('li');
+      li.className = 'vmrow';
+      const lab = document.createElement('label');
+      lab.className = 'check';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = chosen.has(p.id);
+      box.onchange = () => {
+        const next = new Set(olWho());
+        if (box.checked) next.add(p.id); else next.delete(p.id);
+        const el = $('open_lines_personas');
+        el.value = [...next].join(',');
+        // A trusted-looking change so the panel's own diff and save overlay
+        // treat this exactly like typing in the field it stands for.
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      lab.appendChild(box);
+      lab.appendChild(document.createTextNode(' ' + (p.name || p.id)));
+      li.appendChild(lab);
+      list.appendChild(li);
+    }
+  }
+
+  function olAimLabel(item) {
+    const who = (item.personas || [])
+      .map((id) => (olRoster.find((p) => p.id === id) || {}).name || id);
+    return who.length ? who.join(', ') : 'any DJ';
+  }
+
+  function paintOpenLinesShelf() {
+    const list = $('openLinesShelf');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!olShelf.length) {
+      const li = document.createElement('li');
+      li.className = 'vmrow';
+      li.innerHTML = '<span class="sname">Nothing on the shelf yet.</span>';
+      list.appendChild(li);
+      return;
+    }
+    for (const item of olShelf) {
+      const li = document.createElement('li');
+      li.className = 'vmrow';
+
+      const name = document.createElement('span');
+      name.className = 'sname';
+      name.textContent = item.text;
+      name.title = item.text;
+      li.appendChild(name);
+
+      const state = document.createElement('span');
+      state.className = 'vmstate';
+      state.textContent = olAimLabel(item)
+        + (item.used ? ' · used ' + item.used : '');
+      li.appendChild(state);
+
+      // Aim it. A multi-select is the only native control that says "these
+      // ones and not those" without inventing a widget; the panel has no
+      // other, and this list is not a settings row.
+      const pick = document.createElement('select');
+      pick.multiple = true;
+      pick.size = Math.min(4, Math.max(2, olRoster.length));
+      for (const p of olRoster) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name || p.id;
+        opt.selected = (item.personas || []).includes(p.id);
+        pick.appendChild(opt);
+      }
+      pick.onchange = async () => {
+        const personas = [...pick.selectedOptions].map((o) => o.value);
+        await olSave('/open-lines/premises/' + encodeURIComponent(item.id),
+                     { personas });
+      };
+      li.appendChild(pick);
+
+      const del = document.createElement('button');
+      del.className = 'btnquiet';
+      del.textContent = 'Remove';
+      del.onclick = async () => {
+        del.disabled = true;
+        await olSave('/open-lines/premises/' + encodeURIComponent(item.id),
+                     null, 'DELETE');
+      };
+      li.appendChild(del);
+      list.appendChild(li);
+    }
+  }
+
+  async function olSave(path, body, method) {
+    const out = $('openLineNow');
+    try {
+      const opts = { method: method || 'POST' };
+      if (body) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(body);
+      }
+      const r = await afetch(path, opts);
+      const d = await r.json().catch(() => ({}));
+      if (d.items) { olShelf = d.items; paintOpenLinesShelf(); }
+      if (!d.ok && d.why) showResult(out, false, d.why);
+      return d;
+    } catch (e) {
+      showResult(out, false, 'could not reach the server');
+      return {};
+    }
+  }
+
+  async function readOpenLinesShelf() {
+    try {
+      const r = await afetch('/open-lines/premises');
+      if (!r.ok) return;
+      const d = await r.json().catch(() => ({}));
+      olRoster = d.personas || [];
+      olShelf = d.items || [];
+      paintOpenLinesShelf();
+      paintOpenLinesWho();
+    } catch (e) { /* the lists simply stay as they were */ }
+  }
+
+  if ($('openLineAddBtn')) {
+    $('openLineAddBtn').onclick = async () => {
+      const box = $('openLineNewText');
+      const text = String(box.value || '').trim();
+      if (!text) { box.focus(); return; }
+      const btn = $('openLineAddBtn');
+      btn.disabled = true;
+      const d = await olSave('/open-lines/premises', { text, personas: [] });
+      if (d.ok) box.value = '';
+      btn.disabled = false;
+      box.focus();
+    };
+    $('openLineNewText').onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); $('openLineAddBtn').click(); }
+    };
+  }
+
+  // The dashboard row. Painted from the same /open-lines read the section
+  // uses, so the two can never disagree about what is up.
+  function paintOpenLinesDash(d) {
+    const wrap = $('openLinesLine');
+    if (!wrap || !d) return;
+    wrap.hidden = !d.enabled;
+    if (!d.enabled) return;
+    const live = !!d.live;
+    const idleDj = $('openLineIdleDj');
+    const idleShelf = $('openLineIdleShelf');
+    const liveRow = $('openLineLiveRow');
+    if (idleDj) idleDj.hidden = live;
+    if (idleShelf) idleShelf.hidden = live;
+    if (liveRow) liveRow.hidden = !live;
+
+    const shelfNote = $('dashShelfNote');
+    const shelfBtn = $('dashOpenShelfBtn');
+    const n = d.shelfCount || 0;
+    if (shelfNote) {
+      shelfNote.textContent = n
+        ? 'your own subjects — ' + n + ' on the shelf'
+        : 'nothing on the shelf yet';
+    }
+    // Greyed rather than hidden: the row teaches that the choice exists.
+    if (shelfBtn) shelfBtn.disabled = !n;
+
+    if (live) {
+      const mins = Math.max(0, Math.round((d.secondsLeft || 0) / 60));
+      const head = $('dashOpenLineHead');
+      const note = $('dashOpenLineNote');
+      if (head) head.textContent = (d.persona || 'The DJ') + ' — ' + mins + ' min left';
+      if (note) {
+        note.textContent = (d.premise || d.spoken || '')
+          + (d.cutByShow ? ' · ends with the show' : '');
+      }
+    }
+  }
+
   // --- Open Lines -------------------------------------------------------
   // Both presses post immediately and never raise the save overlay: opening a
   // line puts words on the broadcast, which is an act rather than a form the
@@ -2876,11 +3085,49 @@
     }
   }
 
+  async function dashOpen(source, btn) {
+    btn.disabled = true;
+    const note = $('dashShelfNote');
+    const said = note ? note.textContent : '';
+    if (note && source === 'shelf') note.textContent = 'handing it to the booth…';
+    try {
+      const r = await afetch('/open-lines/open', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.status) { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
+      // A refusal has nowhere to go on the dashboard, so it goes where the
+      // press was: the row's own note line, until the next paint.
+      if (!d.ok && note) note.textContent = d.why || 'could not open a line';
+      else if (note && source === 'shelf') note.textContent = said;
+    } catch (e) {
+      if (note) note.textContent = 'could not reach the server';
+    } finally { btn.disabled = false; }
+  }
+
+  if ($('dashOpenDjBtn')) {
+    $('dashOpenDjBtn').onclick = () => dashOpen('dj', $('dashOpenDjBtn'));
+    $('dashOpenShelfBtn').onclick = () => dashOpen('shelf', $('dashOpenShelfBtn'));
+    $('dashCloseLineBtn').onclick = async () => {
+      const btn = $('dashCloseLineBtn');
+      btn.disabled = true;
+      try {
+        const r = await afetch('/open-lines/close', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (d.status) { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
+      } catch (e) { /* the row repaints on the next read */ }
+      finally { btn.disabled = false; }
+    };
+  }
+
   async function readOpenLines() {
     try {
       const r = await afetch('/open-lines');
       if (!r.ok) return;
-      paintOpenLines(await r.json().catch(() => null));
+        const d = await r.json().catch(() => null);
+      paintOpenLines(d);
+      paintOpenLinesDash(d);
     } catch (e) { /* the card simply stays as it was */ }
   }
 
@@ -2890,7 +3137,7 @@
   // switched-off case is painted from `resolved` in the tag painter instead.
   const olSec = document.querySelector('details.sec[data-group="openlines"]');
   if (olSec) olSec.addEventListener('toggle', () => {
-    if (olSec.open) readOpenLines();
+    if (olSec.open) { readOpenLines(); readOpenLinesShelf(); }
   });
 
   if ($('openLineBtn')) {
@@ -2905,7 +3152,7 @@
         // A refusal is not a failure: every one of them names a setting the
         // operator can change, so it reads as an explanation, not an error.
         if (!d.ok) { showResult(out, false, d.why || 'could not open a line'); }
-        else { paintOpenLines(d.status); }
+        else { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
         if (d.status) openLineLive = !!d.status.live;
       } catch (e) {
         showResult(out, false, 'could not reach the server');
@@ -2922,6 +3169,7 @@
         const r = await afetch('/open-lines/close', { method: 'POST' });
         const d = await r.json().catch(() => ({}));
         paintOpenLines(d.status);
+        paintOpenLinesDash(d.status);
         // The sign-off airs on the director's next tick, not on this press —
         // say so, or the operator waits at a silent station wondering.
         if (d.ok) showResult(out, true, 'Closed. The DJ signs off on air shortly.');

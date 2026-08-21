@@ -300,14 +300,16 @@ The booth reaching out instead of in: the DJ puts a subject to the audience on t
 
 | Setting | What it decides |
 |---|---|
-| **Where the topic comes from** | *The DJ decides* invents one from tonight's show — who is on air, the show card, the episode, what has played and been said. *Your list* reads the box below, in order, then round again |
-| **Your topics, one per line** | Only while the source is your list. Write the SUBJECT, not the words: the DJ says it in its own voice |
+| **Where the topic comes from** | *The DJ decides* invents one from tonight's show — who is on air, the show card, the episode, what has played and been said. *Off the shelf* takes the next one from your own list below |
+| **Your shelf of subjects** | Add with **+ Add**; aim each one at particular DJs with the picker on its row, or leave it open to all of them. The least recently used goes up next, so a subject you just typed is the next one out. Write the SUBJECT, not the words: the DJ says it in its own voice |
 | **Where to reach you, said on air** | Read out with the invitation, exactly as typed — so write it the way it should sound. Blank names no address at all, which is right when the audience is already looking at the card |
-| **How long a line stays open** | Then the DJ closes it on air, in character. Default 60 minutes |
+| **How long a line stays open** | Then the DJ closes it on air, in character. Default 60 minutes — but **never past the end of the DJ's own programme**, because the show changing ends the line anyway and a countdown promising more was promising time the DJ did not have. In the last few minutes of a show it is not shortened at all: cutting a line that fine would air its invitation and its sign-off back to back |
 | **Remind every** / **Most reminders per topic** | The DJ raises the subject again mid-window. The cap is the one that protects the broadcast: a long window with a short interval is how a station asks the same question nine times. 0 on either = no reminders |
 | **Only with at least this many listeners** | Checked when a line opens and before each reminder, never in the middle — a topic that vanished because somebody closed a tab would strand whoever was already typing. 0 = open regardless |
-| **Only these DJs** | Persona names, comma-separated. Blank = whoever is on air |
+| **Only these DJs** | Tick the ones that may open a line; none ticked means whoever is on air. Separate from the per-subject aim above — this says who may open a line at all, that says which subjects suit whom |
 | **Open one automatically every** | 0 = manual only, and that is the default: nothing reaches your listeners that you did not press a button for |
+
+There is a copy of the two presses on the **dashboard**, under Transmission: *Make one up* and *Off the shelf* while nothing is up, *Close it* while a line stands. Two buttons rather than one because which kind of subject to put up is a decision per topic, and it should not need a trip to this page. The shelf press greys when the shelf is empty rather than vanishing, so the choice still teaches that it exists.
 
 The card under the buttons shows what is up right now — who opened it, how long is left, how many reminders are spent, and **the words that actually aired**, which is what a listener heard and what the DJ is being reminded of. Both buttons post immediately and never go through Save.
 

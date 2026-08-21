@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from openlines import air, state
 from openlines import premise as premise_mod
+from openlines import schedule as schedule_mod
 
 log = logging.getLogger("talkwave.openlines")
 
@@ -91,15 +92,28 @@ def _arrivals_since(opened_at: str) -> int:
 
 
 async def _live_context(station):
-    """Who is on air and what show — the pair an open line belongs to."""
+    """Who is on air, what show, and the week's grid.
+
+    The schedule comes back too because an open line must not outlast the
+    programme that opened it — see openlines.schedule.
+    """
     persona = await station.resolve_live_persona()
     now_playing = await station.now_playing()
-    show = await station.active_show(now_playing, None)
-    return persona, now_playing, str((show or {}).get("name") or "")
+    try:
+        week = await station.schedule()
+    except Exception:                                          # noqa: BLE001
+        week = {}
+    show = await station.active_show(now_playing, week or None)
+    return persona, now_playing, show or {}, week or {}
 
 
-async def open_now(reason: str = "operator", cfg: dict | None = None) -> dict:
+async def open_now(reason: str = "operator", cfg: dict | None = None,
+                   source: str | None = None) -> dict:
     """Put a subject up and open the line.
+
+    `source` overrides the configured one for this press only — the dashboard
+    offers "made up" and "off the shelf" as two buttons rather than making an
+    operator visit the settings page to change their mind about one topic.
 
     Returns a small verdict the panel renders as-is. Every refusal names the
     gate that stopped it: "nothing happened" is the one answer an operator
@@ -116,7 +130,8 @@ async def open_now(reason: str = "operator", cfg: dict | None = None) -> dict:
     secrets_store.apply_to_env()
     station = StationClient()
     try:
-        persona, now_playing, show_name = await _live_context(station)
+        persona, now_playing, show, week = await _live_context(station)
+        show_name = str(show.get("name") or "")
         if not persona_allowed(cfg, persona):
             who = persona.get("name") or "This DJ"
             return {"ok": False, "why": f"{who} is not on the Open Lines list."}
@@ -126,18 +141,29 @@ async def open_now(reason: str = "operator", cfg: dict | None = None) -> dict:
             return {"ok": False,
                     "why": f"Only {count} listening — the floor is {floor}."}
 
-        source = str(cfg.get("open_lines_source") or "dj")
-        if source == "pool":
-            last = int(state.read_raw().get("pool_index", -1))
-            text, index = premise_mod.from_pool(cfg, last)
+        source = str(source or cfg.get("open_lines_source") or "dj")
+        picked = {}
+        if source == "shelf":
+            picked = premise_mod.take_from_shelf(str(persona.get("id") or ""))
+            text = str(picked.get("text") or "")
             if not text:
-                return {"ok": False, "why": "Your topic list is empty."}
+                who = persona.get("name") or "this DJ"
+                return {"ok": False,
+                        "why": f"Nothing on the shelf for {who} — add a "
+                               "subject, or let the DJ make one up."}
         else:
-            text, index = await premise_mod.invent(cfg, station, persona), -1
+            text = await premise_mod.invent(cfg, station, persona)
             if not text:
                 return {"ok": False,
                         "why": "The DJ could not come up with one — check the "
                                "model is reachable."}
+
+        # An open line must not outlast the programme that opened it: the show
+        # changing already ends it, and a countdown that said otherwise was
+        # promising time the DJ was never going to have.
+        wanted = int(cfg.get("open_lines_minutes") or 60)
+        minutes, cut_by_show = schedule_mod.bounded_minutes(
+            week, str(show.get("id") or ""), wanted)
 
         spoken = await air.say(station, air.open_direction(text, cfg))
         if not spoken:
@@ -147,15 +173,21 @@ async def open_now(reason: str = "operator", cfg: dict | None = None) -> dict:
 
         record = state.build(
             premise=text, spoken=spoken, persona=persona, show_name=show_name,
-            minutes=int(cfg.get("open_lines_minutes") or 60), source=source,
+            minutes=minutes, source=source,
             reminder_minutes=int(cfg.get("open_lines_reminder_minutes") or 0),
             reminder_max=int(cfg.get("open_lines_reminder_max") or 0))
-        record["pool_index"] = index
         record["opened_by"] = reason
+        record["show_id"] = str(show.get("id") or "")
+        record["cut_by_show"] = cut_by_show
+        if picked:
+            record["premise_id"] = str(picked.get("id") or "")
         state.write(record)
-        log.info("open lines: %s opened a line — %s", persona.get("name"), text)
+        log.info("open lines: %s opened a line (%d min%s) — %s",
+                 persona.get("name"), minutes,
+                 ", cut to the show" if cut_by_show else "", text)
         return {"ok": True, "premise": text, "spoken": spoken,
-                "expires_at": record["expires_at"]}
+                "expires_at": record["expires_at"], "minutes": minutes,
+                "cutByShow": cut_by_show, "source": source}
     finally:
         await station.aclose()
 
@@ -191,7 +223,7 @@ async def _remind(cfg: dict, record: dict) -> None:
     secrets_store.apply_to_env()
     station = StationClient()
     try:
-        _persona, now_playing, _show = await _live_context(station)
+        _persona, now_playing, _show, _week = await _live_context(station)
         ok, _count = listeners_ok(cfg, now_playing)
         if ok:
             await air.say(station, air.remind_direction(

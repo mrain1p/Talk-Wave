@@ -17,7 +17,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import settings as settings_store
-from openlines import air, director, premise, prompt, state
+from openlines import air, director, premise, premises, prompt, state
+from openlines import schedule as schedule_mod
 
 from tests.support import _TempStores
 
@@ -196,19 +197,150 @@ class TestRemindersCannotRunAway(_OnDisk):
         self.assertIsNone(rec["next_reminder_at"])
 
 
-class TestThePoolGoesInTheOrderItWasWritten(_OnDisk):
-    def test_it_walks_the_list_then_starts_again(self):
-        cfg = {"open_lines_pool": "first one\nsecond one\nthird one"}
-        self.assertEqual(premise.from_pool(cfg, -1), ("first one", 0))
-        self.assertEqual(premise.from_pool(cfg, 0), ("second one", 1))
-        self.assertEqual(premise.from_pool(cfg, 2), ("first one", 0))
+class TestTheShelfIsPerDJAndLeastRecentlyUsed(_OnDisk):
+    """The shelf replaced a flat list of lines in a settings box.
 
-    def test_blank_lines_are_not_topics(self):
-        cfg = {"open_lines_pool": "\n\nonly one\n   \n"}
-        self.assertEqual(premise.from_pool(cfg, -1), ("only one", 0))
+    A single pool made the DJ allowlist do a job it could not do: it said who
+    may open a line at all, not which subjects suit whom. An argument that
+    lands in one persona's mouth is wrong in another's, so the aim belongs on
+    the premise.
+    """
 
-    def test_an_empty_list_offers_nothing(self):
-        self.assertEqual(premise.from_pool({"open_lines_pool": ""}, -1), ("", -1))
+    def setUp(self):
+        super().setUp()
+        self._pdir = tempfile.TemporaryDirectory()
+        self._old_premises = premises.PREMISES_PATH
+        premises.PREMISES_PATH = Path(self._pdir.name) / "shelf.json"
+
+    def tearDown(self):
+        premises.PREMISES_PATH = self._old_premises
+        self._pdir.cleanup()
+        super().tearDown()
+
+    def test_an_unaimed_subject_is_available_to_everyone(self):
+        premises.add("open to all")
+        self.assertEqual(len(premises.for_persona("p1")), 1)
+        self.assertEqual(len(premises.for_persona("p99")), 1)
+
+    def test_an_aimed_subject_reaches_only_its_djs(self):
+        premises.add("for Dalia and Wade", ["p1", "p2"])
+        self.assertEqual(len(premises.for_persona("p1")), 1)
+        self.assertEqual(len(premises.for_persona("p2")), 1)
+        self.assertEqual(premises.for_persona("p3"), [])
+
+    def test_the_least_recently_used_goes_up_next(self):
+        premises.add("first")
+        premises.add("second")
+        # Never-used sorts before any date, so a freshly added subject is next
+        # out — what an operator who just typed it expects.
+        self.assertEqual(premises.take_next("p1")["text"], "first")
+        self.assertEqual(premises.take_next("p1")["text"], "second")
+        self.assertEqual(premises.take_next("p1")["text"], "first")
+
+    def test_using_one_is_counted(self):
+        premises.add("counted")
+        premises.take_next("p1")
+        self.assertEqual(premises.read()[0]["used"], 1)
+        self.assertTrue(premises.read()[0]["last_used"])
+
+    def test_a_dj_with_nothing_aimed_at_them_gets_nothing(self):
+        premises.add("not for you", ["someone-else"])
+        self.assertEqual(premises.take_next("p1"), {})
+
+    def test_removing_one_does_not_disturb_the_rest(self):
+        a = premises.add("keep me")
+        b = premises.add("remove me")
+        self.assertTrue(premises.remove(b["id"]))
+        self.assertEqual([i["id"] for i in premises.read()], [a["id"]])
+        self.assertFalse(premises.remove("nonexistent"))
+
+    def test_the_aim_can_be_changed_after_the_fact(self):
+        item = premises.add("aim me later")
+        premises.update(item["id"], personas=["p7"])
+        self.assertEqual(premises.read()[0]["personas"], ["p7"])
+        self.assertEqual(premises.for_persona("p1"), [])
+
+    def test_an_unreadable_shelf_is_an_empty_one(self):
+        premises.PREMISES_PATH.write_text("{not json", encoding="utf-8")
+        self.assertEqual(premises.read(), [])
+        self.assertEqual(premises.take_next("p1"), {})
+
+
+class TestALineDoesNotOutlastItsProgramme(unittest.TestCase):
+    """The station publishes its week as an hour grid, not as start/end times.
+
+    Sunday-first, which is not a guess — SUB/WAVE's own schedule schema says
+    `0 (Sunday) .. 6 (Saturday), matching JS Date.getDay()`.
+
+    `state.is_live` already ends a line when the show changes, so a 60-minute
+    line opened 20 minutes before a changeover was always going to stop early.
+    Bounding the recorded expiry only makes the countdown honest.
+    """
+
+    # Sunday 10:00 and 11:00 belong to show A, 12:00 to show B.
+    WEEK = {
+        "timezone": "UTC",
+        "schedule": {"0": (["x"] * 10) + ["A", "A", "B"] + (["x"] * 11)},
+    }
+
+    def at(self, hour, minute=0):
+        # 2026-08-23 is a Sunday.
+        return datetime(2026, 8, 23, hour, minute, tzinfo=timezone.utc)
+
+    def test_it_ends_when_the_next_show_starts(self):
+        end = schedule_mod.item_end(self.WEEK, "A", self.at(10, 30))
+        self.assertEqual(end, self.at(12))
+
+    def test_a_long_line_is_cut_to_the_programme(self):
+        minutes, cut = schedule_mod.bounded_minutes(
+            self.WEEK, "A", 120, self.at(11, 30))
+        self.assertEqual(minutes, 30)
+        self.assertTrue(cut)
+
+    def test_a_short_line_is_left_alone(self):
+        minutes, cut = schedule_mod.bounded_minutes(
+            self.WEEK, "A", 15, self.at(11, 30))
+        self.assertEqual(minutes, 15)
+        self.assertFalse(cut)
+
+    def test_a_schedule_that_cannot_answer_never_shortens_anything(self):
+        # No grid, an overridden schedule, or a show that is not where the
+        # clock says it is. None of these may stop a line opening.
+        for label, week in (
+            ("no grid", {"timezone": "UTC"}),
+            ("overridden", {**self.WEEK, "override": {"showId": "Z"}}),
+        ):
+            with self.subTest(case=label):
+                self.assertIsNone(schedule_mod.item_end(week, "A", self.at(10, 30)))
+                self.assertEqual(
+                    schedule_mod.bounded_minutes(week, "A", 90, self.at(10, 30)),
+                    (90, False))
+        # On air outside its own slot: do not bound on a guess.
+        self.assertIsNone(schedule_mod.item_end(self.WEEK, "A", self.at(9)))
+
+    def test_the_tail_of_a_show_is_not_bounded_at_all(self):
+        # Cutting a line to the last minutes of a programme would air its
+        # invitation and its sign-off back to back, which is worse than not
+        # bounding: the show change ends it anyway, through is_live.
+        for minute in (59, 56):
+            with self.subTest(minute=minute):
+                minutes, cut = schedule_mod.bounded_minutes(
+                    self.WEEK, "A", 45, self.at(11, minute))
+                self.assertEqual(minutes, 45)
+                self.assertFalse(cut)
+        # Just past the floor it does bound.
+        minutes, cut = schedule_mod.bounded_minutes(
+            self.WEEK, "A", 45, self.at(11, 54))
+        self.assertEqual(minutes, 6)
+        self.assertTrue(cut)
+
+    def test_sunday_is_day_zero(self):
+        # Monday-first indexing would read row "1" and find nothing. Pinned
+        # because getting it wrong fails silently: no bound, never an error.
+        monday = datetime(2026, 8, 24, 10, 30, tzinfo=timezone.utc)
+        self.assertIsNone(schedule_mod.item_end(self.WEEK, "A", monday))
+        self.assertEqual(schedule_mod.item_end(self.WEEK, "A", self.at(10, 30)),
+                         self.at(12))
 
 
 class TestOpenLinesRefusesOutLoud(_OnDisk):

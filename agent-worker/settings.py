@@ -304,11 +304,6 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # list below, in order, so a station can put up exactly the topics it
     # wants and nothing else.
     "open_lines_source":          (None, "dj"),
-    # One premise per line. Only consulted when the source is "pool"; blank
-    # with the source on "pool" means nothing opens, and the panel says so
-    # rather than silently falling back to invention — an operator who typed
-    # a list wants their list.
-    "open_lines_pool":            (None, ""),
     # Where to reach the booth, said on air. Blank = the DJ opens the topic
     # and names no address, which is right when the audience is already
     # looking at the card. Talk Wave supplies this at compose time, so what
@@ -327,8 +322,9 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # listener closed a tab would strand whoever is already typing. 0 =
     # ignore the listener count entirely.
     "open_lines_min_listeners":   (None, 1),
-    # Which DJs may open a line, by persona name, comma-separated. Blank =
-    # any DJ on air. Not every persona should be soliciting arguments.
+    # Which DJs may open a line. Persona IDs, comma-separated, written by the
+    # picker in the panel; blank = any DJ on air. Matched against id OR name so
+    # a list typed by hand before the picker existed keeps working.
     "open_lines_personas":        (None, ""),
     # Open a fresh line automatically this often. 0 = manual only, which is
     # the default: the button in the panel opens one for the duration above,
@@ -2036,15 +2032,9 @@ SCHEMA: dict[str, dict] = {
         needs=("open_lines_enabled", True),
         help="The DJ invents one from the same material a station segment "
              "invents from — who is on air, the show, tonight's episode, what "
-             "has just played. Or it reads your own list, which is the choice "
-             "to make if you want to know in advance what the station will ask."),
-    "open_lines_pool": dict(group="openlines", kind="text",
-        label="Your topics, one per line", alias="premise pool rotation list",
-        placeholder="Which remaster ruined the record?",
-        needs=("open_lines_source", "pool"),
-        help="Used in order, then round again. Write the SUBJECT, not the "
-             "words — the DJ says it in its own voice, so a line here should "
-             "read like a note to a presenter rather than a script."),
+             "has just played. Or it takes the next one off your own shelf "
+             "below, which is the choice to make if you want to know in "
+             "advance what the station will ask."),
     "open_lines_address": dict(group="openlines", kind="text",
         label="Where to reach you, said on air", alias="url phone number line",
         placeholder="leave blank to name no address",
@@ -2075,13 +2065,17 @@ SCHEMA: dict[str, dict] = {
         help="Checked when a line opens and before each reminder, never in "
              "the middle — a topic that vanished because somebody closed a tab "
              "would strand whoever was already typing. 0 = open regardless."),
-    "open_lines_personas": dict(group="openlines", kind="text",
+    # kind="picks": a text-valued field whose control is drawn, like "order"
+    # and "emoji". It saves, loads and diffs as a text field (panel.js folds it
+    # into TEXT_FIELDS); the ticks beside it write the comma-separated ids. Not
+    # kind="text", because a hidden input cannot show a placeholder and the
+    # every-text-field-offers-its-default rule is right to insist on one.
+    "open_lines_personas": dict(group="openlines", kind="picks",
         label="Only these DJs", alias="persona allowlist who",
-        placeholder="blank = whoever is on air",
         needs=("open_lines_enabled", True),
-        help="Persona names, comma-separated. Not every DJ on a station should "
-             "be soliciting arguments, and the one on at 3am may not be the one "
-             "you want doing it."),
+        help="Tick the ones that may open a line; none ticked means whoever is "
+             "on air. Not every DJ on a station should be soliciting arguments, "
+             "and the one on at 3am may not be the one you want doing it."),
     "open_lines_every_minutes": dict(group="openlines", kind="number",
         label="Open one automatically every (min)", alias="schedule auto cron",
         needs=("open_lines_enabled", True),
@@ -2319,7 +2313,7 @@ RANDOM_PERSONA = "__random__"
 STATIC_CHOICES = {
     "open_lines_source": [
         ("dj", "The DJ decides — invents a topic from tonight's show"),
-        ("pool", "Your list — the premises below, in order"),
+        ("shelf", "Off the shelf — the subjects you wrote below"),
     ],
     "chat_greeting_mode": [
         ("canned", "Canned — the line below, instantly"),

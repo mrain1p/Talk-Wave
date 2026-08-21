@@ -13,7 +13,8 @@ from aiohttp import web
 import settings as settings_store
 from api.auth import _write_allowed
 from api.wire import _cors
-from openlines import director, state
+from openlines import director, premises, state
+from station import StationClient
 
 log = logging.getLogger("callin.openlines")
 
@@ -54,6 +55,10 @@ def status_payload() -> dict:
         "openedBy": str(record.get("opened_by") or ""),
         "closedReason": str(record.get("closed_reason") or ""),
         "signOff": str(record.get("sign_off_spoken") or ""),
+        "cutByShow": bool(record.get("cut_by_show")),
+        # So the dashboard can grey "off the shelf" rather than offering a
+        # press that can only ever answer "nothing on the shelf".
+        "shelfCount": len(premises.read()),
     }
     return payload
 
@@ -62,6 +67,65 @@ async def handle_open_lines_status(request: web.Request) -> web.Response:
     if not _write_allowed(request):
         return _refuse(request)
     return _cors(request, web.json_response(status_payload()))
+
+
+async def handle_open_lines_premises(request: web.Request) -> web.Response:
+    """The shelf, plus the roster to aim entries at.
+
+    The roster rides along so the panel can draw the per-premise DJ picker
+    from one read — it is the same list the persona allowlist ticks, and two
+    fetches for one screen is two ways for it to disagree with itself.
+    """
+    if not _write_allowed(request):
+        return _refuse(request)
+
+    import secrets_store
+
+    secrets_store.apply_to_env()
+    station = StationClient()
+    try:
+        roster = await station.personas()
+    except Exception as e:                                     # noqa: BLE001
+        roster = []
+        log.info("premise shelf could not read the roster: %s", e)
+    finally:
+        await station.aclose()
+    return _cors(request, web.json_response({
+        "items": premises.read(),
+        "personas": [{"id": str(p.get("id") or ""),
+                      "name": str(p.get("name") or "")}
+                     for p in roster if p.get("id")],
+    }))
+
+
+async def handle_open_lines_premise_add(request: web.Request) -> web.Response:
+    if not _write_allowed(request):
+        return _refuse(request)
+    body = await request.json() if request.can_read_body else {}
+    item = premises.add(str(body.get("text") or ""),
+                        list(body.get("personas") or []))
+    if not item:
+        return _cors(request, web.json_response(
+            {"ok": False, "why": "A subject needs some words."}))
+    return _cors(request, web.json_response({"ok": True, "item": item,
+                                             "items": premises.read()}))
+
+
+async def handle_open_lines_premise_edit(request: web.Request) -> web.Response:
+    """Edit or delete one entry. DELETE removes; POST updates text and/or aim."""
+    if not _write_allowed(request):
+        return _refuse(request)
+    pid = request.match_info.get("premise_id", "")
+    if request.method == "DELETE":
+        return _cors(request, web.json_response(
+            {"ok": premises.remove(pid), "items": premises.read()}))
+    body = await request.json() if request.can_read_body else {}
+    item = premises.update(
+        pid,
+        text=body.get("text") if "text" in body else None,
+        personas=list(body["personas"]) if "personas" in body else None)
+    return _cors(request, web.json_response(
+        {"ok": bool(item), "item": item, "items": premises.read()}))
 
 
 async def handle_open_lines_open(request: web.Request) -> web.Response:
@@ -74,7 +138,11 @@ async def handle_open_lines_open(request: web.Request) -> web.Response:
     """
     if not _write_allowed(request):
         return _refuse(request)
-    result = await director.open_now(reason="operator")
+    body = await request.json() if request.can_read_body else {}
+    # "dj" or "shelf", for THIS press only. Absent = whatever the settings
+    # page says, which is what the section's own button sends.
+    source = str(body.get("source") or "").strip() or None
+    result = await director.open_now(reason="operator", source=source)
     return _cors(request, web.json_response(
         {**result, "status": status_payload()}))
 

@@ -45,19 +45,19 @@ def _clean(text: str) -> str:
     return line.strip().strip('"').strip("'")[:PREMISE_BUDGET].strip()
 
 
-def from_pool(cfg: dict, last_index: int) -> tuple[str, int]:
-    """The next premise in the operator's list, and the index it came from.
+def take_from_shelf(persona_id: str) -> dict:
+    """The next subject off the operator's shelf for THIS DJ, marked used.
 
-    In order, then round again — not shuffled. An operator who wrote a list in
-    an order meant it, and a random pick makes "why has it not used the third
-    one yet" a question nobody can answer.
+    Assignment is per premise, not per list: an argument that suits one persona
+    is wrong in another's mouth, and a single shared pool made the DJ allowlist
+    do a job it could not do. Unassigned entries are available to everyone.
     """
-    lines = [ln.strip() for ln in str(cfg.get("open_lines_pool") or "").splitlines()]
-    lines = [ln for ln in lines if ln]
-    if not lines:
-        return "", -1
-    index = (int(last_index) + 1) % len(lines)
-    return _clean(lines[index]), index
+    from openlines import premises
+
+    item = premises.take_next(persona_id)
+    if not item:
+        return {}
+    return {**item, "text": _clean(item.get("text"))}
 
 
 async def invent(cfg: dict, station, persona: dict) -> str:

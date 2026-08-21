@@ -92,6 +92,9 @@ from openlines.director import run as open_lines_director
 from api.openlines import (
     handle_open_lines_close,
     handle_open_lines_open,
+    handle_open_lines_premise_add,
+    handle_open_lines_premise_edit,
+    handle_open_lines_premises,
     handle_open_lines_status,
 )
 from api.tokens import handle_call_ended, handle_call_feedback, handle_token
@@ -126,6 +129,12 @@ def build_app() -> web.Application:
     app.router.add_get("/open-lines", handle_open_lines_status)
     app.router.add_post("/open-lines/open", handle_open_lines_open)
     app.router.add_post("/open-lines/close", handle_open_lines_close)
+    # The operator's shelf of subjects. The edit route carries both the
+    # update and the delete: one entry, one address.
+    app.router.add_get("/open-lines/premises", handle_open_lines_premises)
+    app.router.add_post("/open-lines/premises", handle_open_lines_premise_add)
+    app.router.add_post("/open-lines/premises/{premise_id}", handle_open_lines_premise_edit)
+    app.router.add_delete("/open-lines/premises/{premise_id}", handle_open_lines_premise_edit)
     # Operator housekeeping: the transcripts are a caller's words, so removing
     # them must not depend on enough new calls arriving to age them out.
     app.router.add_delete("/calls", handle_clear_calls)

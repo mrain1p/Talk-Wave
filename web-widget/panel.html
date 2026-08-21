@@ -301,6 +301,40 @@
               </div>
             </div>
           </div>
+          <!-- Open Lines, in the same grammar as the pull: the row states what
+               is up, the buttons act. Two presses when nothing is up, because
+               "made up" and "off the shelf" is a decision an operator makes per
+               topic and should not have to visit the settings page to change.
+               One press when a line is standing, because the only thing left to
+               decide is whether it goes on. Hidden entirely while the feature is
+               off — a dashboard row for something switched off is furniture. -->
+          <div id="openLinesLine" hidden>
+            <p class="lineslabel">Open Lines <em>the subject the station is putting to its listeners</em></p>
+            <!-- One button per card, because .pullbtn is grid-placed and a
+                 second in the same card lands in the same cell. Two cards while
+                 nothing is up (the choice is per topic), one while a line stands. -->
+            <div class="linerow onairpull" id="openLineIdleDj">
+              <div class="ctrlcard pullcard">
+                <span class="ck">Make one up</span>
+                <span class="cn">the DJ finds a subject in tonight&rsquo;s show</span>
+                <button type="button" id="dashOpenDjBtn" class="pullbtn">PUT IT UP</button>
+              </div>
+            </div>
+            <div class="linerow onairpull" id="openLineIdleShelf">
+              <div class="ctrlcard pullcard">
+                <span class="ck">Off the shelf</span>
+                <span class="cn" id="dashShelfNote">your own subjects</span>
+                <button type="button" id="dashOpenShelfBtn" class="pullbtn">PUT IT UP</button>
+              </div>
+            </div>
+            <div class="linerow onairpull" id="openLineLiveRow" hidden>
+              <div class="ctrlcard pullcard">
+                <span class="ck" id="dashOpenLineHead">Up now</span>
+                <span class="cn" id="dashOpenLineNote"></span>
+                <button type="button" id="dashCloseLineBtn" class="pullbtn">CLOSE IT</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1021,23 +1055,26 @@
           arrives on any of the three doors &mdash; it opens by finding out
           whether they came for the topic or for something else, and a request
           is never pushed aside for it. Nothing airs until you press
-          <strong>Open a line now</strong>, unless you set a cadence below.</p>
+          <strong>Open a line now</strong>, unless you set a cadence below.
+          On the shelf, write the SUBJECT rather than the words &mdash; the DJ
+          says it in its own voice &mdash; and aim each one at particular DJs or
+          leave it open to all of them. The least recently used goes up next.</p>
         <label class="check"><input type="checkbox" id="open_lines_enabled" /> Open Lines</label>
         <div class="row">
           <label for="open_lines_source">Where the topic comes from</label>
           <select id="open_lines_source"></select>
         </div>
         <div class="row">
-          <label for="open_lines_pool">Your topics, one per line</label>
-          <textarea id="open_lines_pool" rows="4"></textarea>
-        </div>
-        <div class="row">
           <label for="open_lines_address">Where to reach you, said on air</label>
           <input type="text" id="open_lines_address" />
         </div>
-        <div class="row">
+        <div class="row" id="openLinesWhoRow">
           <label for="open_lines_personas">Only these DJs</label>
-          <input type="text" id="open_lines_personas" />
+          <!-- The value lives in the hidden input, exactly as the door-order
+               control does: a text field as far as every read, write and diff
+               in panel.js is concerned. The ticks below write into it. -->
+          <input type="hidden" id="open_lines_personas" />
+          <ul class="soundlist" id="openLinesWho"></ul>
         </div>
         <div class="grid2">
           <div class="row narrow">
@@ -1061,6 +1098,15 @@
             <input type="number" id="open_lines_every_minutes" min="0" max="1440" step="15" />
           </div>
         </div>
+        <h4 class="subhead">Your shelf of subjects</h4>
+        <ul class="soundlist" id="openLinesShelf"></ul>
+        <div class="testrow">
+          <input type="text" id="openLineNewText"
+                 placeholder="a subject to put to the audience"
+                 aria-label="A new subject" />
+          <button id="openLineAddBtn" class="btnquiet">+ Add</button>
+        </div>
+
         <!-- The section footer: what is up right now, then the two presses.
              Both post immediately and never touch the save overlay - opening
              a line is an act, not a form draft, and the same rule the
