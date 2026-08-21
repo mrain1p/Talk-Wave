@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.25
+
+### The Sign-in button was under the iPhone's clock
+
+- **`index.html` asks for the whole screen, and in a browser nothing paid it back.** The viewport is `viewport-fit=cover`, so the page owns the edges an iPhone normally keeps clear — but the safe-area padding that compensates existed only inside `@media (display-mode: standalone)`, which is to say only once the widget is installed to the home screen. In ordinary Safari there was none.
+- **And on a phone the card is full bleed,** which is the look it should have: under 500px the body's padding is zeroed and the card fills the screen. Its own padding was `0 20px 20px` — no top padding at all — so the eyebrow row, with the Sign-in, theme and help buttons in it, sat at y=0. On a notched iPhone that is behind the time and battery indicators. Reported on a real phone as a login button that could not be pressed.
+- **Fixed where it actually applies:** the full-bleed card now pads with `max(12px, env(safe-area-inset-top))` and matching insets on the other three sides, and the body rules a phone media query used to override with flat values carry the insets too. `max()` rather than `calc()`, so a phone with no notch keeps exactly the edges it always had and only real furniture pushes them in.
+
 ## 0.98.24
 
 A polish round over the settings panel: four settings filed on the wrong page, one section that had never had a pass, and the one engine you could configure but not try.

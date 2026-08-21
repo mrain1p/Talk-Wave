@@ -214,8 +214,25 @@
     letter-spacing: .16em; text-transform: var(--skin-label-case);
   }
   * { box-sizing: border-box; }
+  /* The insets belong HERE, not only in the installed-app block below.
+     index.html sets `viewport-fit=cover` unconditionally, so the page owns
+     the edges in an ordinary browser too — but until 0.98.25 the padding
+     that pays that back existed only under `display-mode: standalone`. On an
+     iPhone in Safari that left the card's top row, and the Sign-in button in
+     it, under the time and battery indicators, where it cannot be tapped
+     (operator-reported, on a real phone). Landscape is worse: the notch inset
+     is ~44px against 16px of padding.
+
+     max(), not calc(): where there is no inset these stay exactly the 24/16
+     they have always been, and they only grow to clear real furniture. The
+     standalone block still adds its own room on top, because with no browser
+     chrome the widget owns the whole window. */
   body {
-    margin: 0; min-height: 100vh; padding: 24px 16px;
+    margin: 0; min-height: 100vh;
+    padding: max(24px, env(safe-area-inset-top))
+             max(16px, env(safe-area-inset-right))
+             max(24px, env(safe-area-inset-bottom))
+             max(16px, env(safe-area-inset-left));
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
   /* dvh, where the browser has it: in a standalone PWA 100vh is the LARGEST
@@ -4088,7 +4105,17 @@
      for fingers. Embeds get this too — they are the same widget, and a narrow
      host column has the same problem a phone does. */
   @media (max-width: 900px) {
-    body { justify-content: flex-start; padding: 14px 12px 24px; }
+    /* THE rule that actually applies on a phone, so the insets have to be
+       here too — a base rule that a media query overrides with flat values
+       protects nothing on the only devices that have a notch. Same max():
+       14/12/24 where there is no furniture, bigger where there is. */
+    body {
+      justify-content: flex-start;
+      padding: max(14px, env(safe-area-inset-top))
+               max(12px, env(safe-area-inset-right))
+               max(24px, env(safe-area-inset-bottom))
+               max(12px, env(safe-area-inset-left));
+    }
     .card { width: 100%; }
   }
   /* The panel gives up its fixed width earlier than the card does — it is
@@ -4449,9 +4476,23 @@
       padding: 0; min-height: 100dvh;
       align-items: stretch; justify-content: flex-start;
     }
+    /* Full bleed, and therefore the card owns the phone's furniture. The
+       top padding was 0 against 20px sides, which put the eyebrow — and the
+       Sign-in button in it — at y=0. With index.html's `viewport-fit=cover`
+       that is UNDER the status bar on a notched iPhone: reported on a real
+       phone as a login button that could not be tapped. The body-level
+       insets never reached here, because this rule zeroes the body's padding
+       to get the bleed in the first place.
+
+       max(), so a phone with no furniture keeps a normal-looking edge rather
+       than a bigger one. */
     body:not(.panelpage):not(.compact) .card {
       width: 100%; min-height: 100dvh; border: 0; border-radius: 0;
-      display: flex; flex-direction: column; padding: 0 20px 20px;
+      display: flex; flex-direction: column;
+      padding: max(12px, env(safe-area-inset-top))
+               max(20px, env(safe-area-inset-right))
+               max(20px, env(safe-area-inset-bottom))
+               max(20px, env(safe-area-inset-left));
     }
     /* Identity as a centred PORTRAIT — the call-screen look. The text line
        keeps a tight left-aligned header so the conversation gets the room. */
