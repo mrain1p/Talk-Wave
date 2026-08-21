@@ -123,6 +123,25 @@ The settings panel had 188 settings behind 34 folded sections across nine pages,
 - **The Anthropic SDK is pinned.** `anthropic` 1.0.0 was released mid-afternoon and CI went red an hour after being green, on every branch: 1.x moved its HTTP client to `httpx2` and the LiveKit Anthropic plugin still hands it `httpx`, so every test that builds an Anthropic model raised a `TypeError` from inside the library. It was the one dependency in `requirements.txt` without an exact pin. Now pinned to 0.125.0 — the version the last green build used — with the release that lets it come off named in the file.
 - **The Access section's own explanation was never on screen.** Two hidden fields share that row — the door and whether a code elevates — and the second silently overwrote the first's help, so the longest explanation on the page had been invisible. First writer wins now.
 
+## 0.98.21
+
+The page picker goes back to one flat row.
+
+- **Grouping the eleven pages into five labelled rows read as more furniture than map,** so it is reverted whole: the bands, the labels, and the phone fold that only existed because five wrapped rows cost 208px of sticky header. The strip is one row again with its "Pages" label and chips filling the width, exactly as it was.
+- **The All settings chip stays,** second in the flat row — it arrived on the same change but was never part of the complaint.
+- **The measurement that prompted the banding is unchanged and still open:** a 375px phone shows two of the twelve chips, because the strip wants 1107px in 343px of room. Recorded in three places so the next person does not rediscover it and reach for the same answer.
+
+## 0.98.20
+
+The settings panel tells you where things are. 188 settings behind 34 folded sections across nine pages, and at rest the panel showed none of them — the grouping was sound, what was missing was a map, and the one escape hatch was working against it.
+
+- **Search hid the section holding the answer.** Typing "password" made the Access section disappear: the filter read four row classes, Change password is a button in a testrow, so no row matched and the section went invisible. Three sections built from prose and buttons could never appear at all.
+- **Results gave no idea where they were.** "voicemail" returned nine sections across six pages with nothing saying which page any of them was on, so a result read "The machine" and stopped there.
+- **Half the obvious words found nothing.** "color" nil against "colour" two; "avatar" nil though the field is the avatar style; "mute", "logo", "spam" and "language" nil each. Search synonyms per section and per field fix the vocabulary gap.
+- **A setting could be found and still not be settable** — "Length (words)" surfaced with its own switch filtered out, so you could set it, save, and nothing would happen.
+- **Nothing below page level had an address.** A section's own id, typed into the URL, landed silently on the dashboard.
+- **All settings is a new page:** every setting in one scrollable table with the page and section that hold it, which is the question 188 settings across nine pages cannot otherwise answer.
+
 ## 0.98.19
 
 One fix on the card, and it is one the operator hit while listening: the volume you set stays where you set it.
