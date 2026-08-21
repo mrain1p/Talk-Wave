@@ -2936,14 +2936,22 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn("d.stream && d.stream.url", gate)
 
     def test_a_live_microphone_stops_the_music(self):
-        # closePlayer(false) is the sheet AND the audio dying together;
-        # closePlayer(true) would leave the stream feeding the open mic. The
-        # studio's version lives at the DIAL, not the door — at the door
-        # nothing records yet and the operator wants the station playing
-        # right up until the line rings; no path reaches the microphone
-        # (vmStartRec requires vmDialed) without passing through vmDial.
+        # The music must be silent before the mic opens, or the stream comes
+        # back in through it and is transcribed as the caller's own words.
+        #
+        # This asserted `closePlayer(false)` until 0.98.26 — the sheet and the
+        # audio dying together. That was the IMPLEMENTATION, and it was the
+        # bug: destroying the element meant the way back had to build a new
+        # one, which has none of the play permission the caller's first tap
+        # earned, so the music never came back (operator-reported). parkPlayer
+        # pauses and KEEPS it, which silences the mic path just as well, and
+        # closePlayer(true) then takes the sheet without touching the audio.
+        # What is pinned is the silence, not how it is reached.
         call = self.js.split("async function startCall")[1][:2400]
-        self.assertIn("closePlayer(false)", call)
+        self.assertIn("parkPlayer()", call)
+        self.assertIn("closePlayer(true)", call)
+        park = self.js.split("function parkPlayer")[1][:300]
+        self.assertIn(".pause()", park)
         # The studio DUCKS instead (operator's ask — the tune-in move): the
         # bed drops to the operator's percentage at the dial and never
         # reaches the mic at full level — and a QUIET card gets the station
@@ -3149,3 +3157,165 @@ class TestThePanelSaysWhereThingsAre(unittest.TestCase):
         self.assertIn("function soloPage", self.js)
         self.assertIn("secs.length !== 1", self.js)
         self.assertIn("details.sec.solo > summary", self.css)
+
+
+class TestTheMusicComesBackAfterACall(unittest.TestCase):
+    """The player was silenced for a call and came back STOPPED, every time
+    (operator-reported). The mechanism was right and the audio was wrong: a
+    call destroyed the element and the way back built a brand new Audio(),
+    and a brand new element has none of the play permission the caller's
+    first tap earned. A call ends inside a promise callback — LiveKit's
+    disconnect, or the DJ hanging up — which is outside the gesture window
+    whatever the caller pressed, so the fresh element's play() was refused
+    and onBlocked turned the refusal into a lit PLAY button.
+
+    The element is PARKED now: paused, kept, and handed back. What is pinned
+    here is that it is never thrown away on the call path, because throwing
+    it away is what broke this."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+
+    def test_a_call_parks_the_player_rather_than_destroying_it(self):
+        start = self.js.index("if (playerEl) playerResume = true;")
+        window = self.js[start:start + 260]
+        self.assertIn("parkPlayer()", window,
+                      "a call must park the player, not destroy it")
+        # closePlayer(false) is the destroying one. On this path it must keep
+        # the audio, because parkPlayer has already silenced it.
+        self.assertIn("closePlayer(true)", window)
+        self.assertNotIn("closePlayer(false)", window)
+
+    def test_parking_pauses_and_keeps_the_element(self):
+        block = self.js.split("function parkPlayer")[1][:400]
+        self.assertIn("playerParked = playerEl", block)
+        self.assertIn(".pause()", block)
+        # src='' is what makes an element unrecoverable. It must not happen
+        # here — that is the whole fix.
+        self.assertNotIn("src = ''", block)
+
+    def test_the_way_back_reuses_the_parked_element(self):
+        block = self.js.split("function resumePlayer")[1][:1200]
+        self.assertIn("const el = playerParked", block)
+        self.assertIn("el.play()", block)
+        # The src IS reassigned, or a paused live stream resumes behind the
+        # broadcast and stays behind for the session.
+        self.assertIn("el.src = s.url", block)
+        # And a refusal still has somewhere to go rather than dying silent.
+        self.assertIn("startPlayerAudio()", block)
+
+    def test_stop_discards_the_park(self):
+        # Pressing STOP during a call is the caller saying they do not want
+        # it back; without this the call's end would restart music they had
+        # just turned off.
+        block = self.js.split("function stopPlayerAudio")[1][:300]
+        self.assertIn("playerResume = false", block)
+        self.assertIn("unparkPlayer()", block)
+
+
+class TestThePanelKeepsItsOwnRules(unittest.TestCase):
+    """The panel-design skill has ~40 rules; the suite checked four of them.
+    These are the ones whose violation is INVISIBLE in review — you cannot
+    see a stray radius or a twelfth font size by reading one section, only by
+    reading every section at once.
+
+    Each of these caught something real when it was written:
+      * the skill's radius rule still described the panel from before the
+        newspaper redesign, so following it would have rounded a panel of
+        squares;
+      * eleven font sizes were in use, five of them within 2px;
+      * one checkbox in 34 sections wore the dropdown-row skin;
+      * a rule that zeroes an edge on a phone has to put the safe-area inset
+        back, or the card's top row lands under the status bar — which it did,
+        on a real iPhone.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        # The panel's own block. Everything before it is the CALL CARD, which
+        # is a different surface with a different guide and its own tokens —
+        # the 8/10/12 scale is still correct there.
+        cls.panel_css = css[css.index("PANEL NEWSPAPER REDESIGN"):]
+        cls.css = css
+        cls.html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+
+    def test_the_panel_is_square(self):
+        import re
+
+        # Squares since the newspaper redesign (talkwave-panel-spec.md §2).
+        # 10px survives on the one contained surface that still reads as a
+        # card; anything else is a rounded corner on a page of right angles.
+        allowed = {"0", "0 !important", "10px", "inherit"}
+        strays = sorted({m.group(1).strip() for m
+                         in re.finditer(r"border-radius:\s*([^;]+)", self.panel_css)}
+                        - allowed)
+        self.assertFalse(
+            strays,
+            "rounded corners in a square panel: %s — the 8/10/12 scale belongs "
+            "to the call card, not here" % strays)
+
+    def test_the_panel_keeps_its_type_scale(self):
+        import re
+
+        # The sizes actually in use, which are the scale. A twelfth is not
+        # forbidden — it has to be a DECISION, added here in the same commit.
+        scale = {"9px", "9.5px", "10.5px", "11px", "11.5px", "12px",
+                 "12.5px", "13px", "15px", "17px", "19px"}
+        used = {m.group(1) for m
+                in re.finditer(r"font-size:\s*([0-9.]+px)", self.panel_css)}
+        self.assertFalse(
+            sorted(used - scale),
+            "font sizes outside the panel's scale: %s — reach for one already "
+            "there, or add it here and say why" % sorted(used - scale))
+
+    def test_a_checkbox_wears_the_checkbox_skin(self):
+        import re
+
+        # `<div class="row"><label for=x>…</label><input type=checkbox>` is a
+        # checkbox dressed as a dropdown row. One of these survived 34
+        # sections until 0.98.24.
+        bad = re.findall(
+            r'<div class="row(?! narrow)[^"]*">\s*<label for="([a-z0-9_]+)">'
+            r'[^<]*</label>\s*<input type="checkbox"', self.html)
+        self.assertFalse(
+            bad, "checkboxes wearing the dropdown-row skin: %s — use "
+                 "<label class=\"check\"> " % bad)
+
+    def test_a_subhead_never_repeats_the_label_under_it(self):
+        import re
+
+        # A heading that says the same six words as the first row beneath it
+        # is one of the two spent twice.
+        bad = []
+        for m in re.finditer(
+                r'<h4 class="subhead">([^<]+)</h4>\s*<div class="row[^"]*">'
+                r'\s*<label for="[a-z0-9_]+">([^<]+)</label>', self.html):
+            if m.group(1).strip().lower() == m.group(2).strip().lower():
+                bad.append(m.group(1).strip())
+        self.assertFalse(bad, "subheads repeating their first label: %s" % bad)
+
+    def test_an_edge_that_is_zeroed_puts_the_inset_back(self):
+        # index.html is viewport-fit=cover, so the page owns the edges an
+        # iPhone keeps clear. Any rule that takes the padding off the phone
+        # layout has to hand the safe area back, or the card's top row lands
+        # under the clock — reported on a real phone, 0.98.25.
+        block = self.css.split("body:not(.panelpage):not(.compact) .card {")[1][:400]
+        self.assertIn("env(safe-area-inset-top)", block,
+                      "the full-bleed phone card must clear the notch")
+        self.assertIn("env(safe-area-inset-bottom)", block,
+                      "…and the home indicator")
+
+    def test_every_field_carries_help(self):
+        # The eleven wording fields shipped with none until 0.98.24. Help is
+        # the only place a field says when the caller sees it.
+        bare = sorted(n for n, m in settings_store.SCHEMA.items()
+                      if not m.get("help"))
+        self.assertFalse(bare, "settings with no help text: %s" % bare)
+
+    def test_every_text_field_offers_its_default(self):
+        # An empty box should still answer "what happens if I leave this".
+        bare = sorted(n for n, m in settings_store.SCHEMA.items()
+                      if m["kind"] == "text" and not m.get("placeholder"))
+        self.assertFalse(bare, "text settings with no placeholder: %s" % bare)

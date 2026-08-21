@@ -2963,11 +2963,14 @@
     // The station player cannot survive a live microphone: on speakers the
     // stream comes straight back in through the caller's mic and gets
     // transcribed as if they had said it — and the call's own tune-in takes
-    // over at pickup anyway, at the volume that job calls for. false = the
-    // audio dies with the sheet; the flag brings it back when the line
-    // clears (see resumePlayer).
+    // over at pickup anyway, at the volume that job calls for.
+    //
+    // PARKED rather than destroyed, so the element keeps the permission its
+    // first tap earned and can actually play again when the line clears —
+    // see resumePlayer for why a fresh Audio() could not.
     if (playerEl) playerResume = true;
-    closePlayer(false);
+    parkPlayer();
+    closePlayer(true);
 
     // AFTER any chat teardown (endChat resets the mode to idle) — this is the
     // mode the call runs in. The card switches to the call's own controls,
@@ -4634,6 +4637,10 @@
 
   function stopPlayerAudio() {
     playerStopped = true;
+    // Pressing STOP is the caller saying they do not want it back, even if a
+    // call parked it a moment ago.
+    playerResume = false;
+    unparkPlayer();
     if (playerEl) {
       const el = playerEl;
       playerEl = null;
@@ -4648,11 +4655,80 @@
   // green again to say so. Set by startCall at the moment it silences the
   // player. The STUDIO doesn't stop the music at all — it ducks it
   // (playerDucked, declared with the player's own state up top).
+  //
+  // THE ELEMENT IS PARKED, NOT DESTROYED (operator-reported: the player came
+  // back stopped every time). A media element that a user gesture has played
+  // stays allowed to play; a BRAND NEW one does not, and this used to throw
+  // the old element away and build a fresh Audio() on the way back. The call
+  // ends in a promise callback — LiveKit's disconnect, or the DJ hanging up
+  // — which is outside the gesture window whatever the caller pressed, so
+  // iOS refused the new element's play() with NotAllowedError and onBlocked
+  // swallowed it into a lit PLAY button. Parking keeps the activation.
+  //
+  // The src IS reassigned on the way back, because a paused live stream
+  // resumes from its buffer and would run behind the broadcast for the rest
+  // of the session. Reassigning rejoins at the live edge, and an element
+  // that has already played once keeps its permission across the change.
   let playerResume = false;
+  let playerParked = null;
+
+  // Silence the player for a call without losing the right to restart it.
+  function parkPlayer() {
+    if (!playerEl) return;
+    playerParked = playerEl;
+    playerEl = null;
+    try { playerParked.pause(); } catch (e) {}
+    dropMediaSession();
+    paintPlayerButtons();
+  }
+
   function resumePlayer() {
     if (!playerResume) return;
     playerResume = false;
-    if (!playerEl && playerOffered()) startPlayerAudio();
+    if (playerEl || !playerOffered()) { unparkPlayer(); return; }
+    const el = playerParked;
+    playerParked = null;
+    if (!el) { startPlayerAudio(); return; }
+    const s = ((shown || live || {}).stream) || {};
+    if (!s.url) { try { el.pause(); el.src = ''; } catch (e) {} return; }
+    playerDead = false;
+    playerStopped = false;
+    playerEl = el;
+    try {
+      // Same mount it was on. The fallback chain is not re-walked: this one
+      // was playing a moment ago, and a stream that has just died is the
+      // rarer case than the browser refusing a new element.
+      el.src = s.url;
+      el.volume = playerLevel();
+      el.muted = playerLevel() <= 0;
+      el.play().then(() => {
+        if (playerEl !== el) return;
+        playerDead = false;
+        paintPlayerButtons();
+        feedMediaSession();
+      }).catch(() => {
+        // Refused even parked, or the mount went away while the call ran.
+        // Fall back to the full chain, which ends with PLAY lit if the
+        // browser will not have it either way.
+        if (playerEl !== el) return;
+        playerEl = null;
+        try { el.pause(); el.src = ''; } catch (e) {}
+        startPlayerAudio();
+      });
+    } catch (e) {
+      playerEl = null;
+      startPlayerAudio();
+    }
+    paintPlayerButtons();
+  }
+
+  // A parked element nobody is coming back for — the caller pressed STOP
+  // during the call, or the player stopped being offered.
+  function unparkPlayer() {
+    if (!playerParked) return;
+    const el = playerParked;
+    playerParked = null;
+    try { el.pause(); el.src = ''; } catch (e) {}
   }
 
   function openPlayer() {

@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.27
+
+The music comes back after a call, and the house rules stop describing a panel that no longer exists.
+
+### The player came back stopped, every time
+
+- **A call silenced the station player and the way back never restarted it.** The mechanism was right and the audio was wrong: a call DESTROYED the element (`closePlayer(false)` — sheet and audio together) and the resume built a brand new `Audio()`. A brand new element carries none of the play permission the caller's first tap earned, and a call ends inside a promise callback — LiveKit's disconnect, or the DJ hanging up — which is outside the gesture window whatever the caller pressed. So iOS refused the new element's `play()` and the refusal was swallowed into a lit PLAY button.
+- **The element is parked now, not destroyed:** paused, kept, and handed back when the line clears, so it keeps the permission it already had. The `src` is reassigned on the way back, because a paused live stream resumes from its buffer and would run behind the broadcast for the rest of the session — reassigning rejoins at the live edge, and an element that has played once keeps its permission across the change. Pressing STOP during a call still means STOP: the park is discarded and nothing comes back.
+
+### The house rules were describing the old panel
+
+- **The radius rule was stale, not violated.** It read "three steps, no strays: 8px controls, 10px surfaces, 12px section bodies" — the scale from *before* the newspaper redesign, which deliberately zeroed every panel radius and which the skill never caught up with. Anyone following the rule would have rounded a panel of squares. The panel block has seven `border-radius: 0` and one 10px; the 8/10/12 scale is still correct on the call card, which is a different surface with a different guide.
+- **`.grid2` is a one-column grid** despite the name — it exists for row rhythm, not columns. The 0.98.24 review wrote up a section for breaking a two-column layout that has never existed; the skill now says so, so nobody repeats it.
+- **The type scale is the sizes actually in use.** Eleven distinct sizes live in the panel block, five within 2px of each other, so "no new font sizes without reason" was holding nothing up. Those eleven are the scale now and a twelfth fails a test — not forbidden, but a decision made in the open rather than an accident.
+- **Seven of the rules are tests now.** The skill carries about forty and the suite checked four, which is why one checkbox in 34 sections wore the wrong skin for months. The ones now enforced are the ones whose violation is invisible in review: square corners, the type scale, checkbox skin, a subhead never repeating the label under it, safe-area insets on any rule that zeroes a phone edge, every field carrying help, and every text field offering its default.
+
 ## 0.98.25
 
 ### The Sign-in button was under the iPhone's clock
