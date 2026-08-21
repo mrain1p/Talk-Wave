@@ -374,10 +374,17 @@ def _tools(cfg: dict, drop: frozenset = frozenset()) -> str:
     its tools uses them badly. Dropping the per-tool prose while KEEPING the
     triage table is the question actually worth asking, because the model also
     receives 3,981 characters of tool descriptions on the same turn and the one
-    thing this repo has measured about redundant prompt text is that the later,
-    more specific instruction wins (`say_the_true_thing`, 4,107 characters,
-    ablated to no measurable effect because fifteen tool results already said
-    it).
+    thing this repo has believed about redundant prompt text is that the later,
+    more specific instruction wins — but treat that carefully, because the one
+    measurement behind it was RETRACTED. `say_the_true_thing` (4,107 characters)
+    ablated 14/15 against 14/14 on the refusals set, and the session that ran it
+    then found the harness could not see the failure it was grading for: one
+    scenario in five never fired its fault, and with the section PRESENT the DJ
+    still told a caller a refused request was "locked in to follow", two rounds
+    of two. Its words were "the section is not inert — it is insufficient" and
+    "do not cut it on this evidence". It is split into TRUTH_CLAUSES now so it
+    can be priced a clause at a time; until that runs it is unmeasured, which is
+    a different thing from worthless.
 
     Nothing in the product passes `drop`. With it empty this returns exactly
     what it always returned, which `TestTheToolBlockSplitChangedNoPromptByte`

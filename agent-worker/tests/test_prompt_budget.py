@@ -159,3 +159,93 @@ class TestTheToolBlockSplitChangedNoPromptByte(unittest.TestCase):
 
         self.assertIn("tool_finding", tool_rules.SECTIONS)
         self.assertIn("MEASURED 30/30", inspect.getsource(tool_rules))
+
+
+class TestTheTruthBlockSplitChangedNoPromptByte(unittest.TestCase):
+    """`say_the_true_thing` became droppable in parts, and that had to cost
+    nothing.
+
+    At 4,049 characters it is 16% of the conduct and the second-largest block
+    after `tool_rules`. The one ablation ever run on it — refusals set, 14/15
+    with against 14/14 without — was RETRACTED by the session that ran it: one
+    scenario in five never fired its fault, and with the section present the DJ
+    still told a caller a refused request was "locked in to follow", two rounds
+    of two. "The section is not inert — it is insufficient."
+
+    So it is unmeasured, and dropping it whole would answer the wrong question
+    anyway: it carries the FOURTH WALL rule, which is persona, beside three
+    honesty rules that are not. Priced a clause at a time or not at all — and
+    the whole value of that depends on the split being invisible when nobody
+    passes a drop.
+    """
+
+    def _configs(self):
+        return (("takeover on", {"allow_takeover": True}),
+                ("takeover off", {}),
+                ("requests only", {"allow_requests": True}),
+                ("all on", {"allow_takeover": True, "allow_requests": True,
+                            "allow_library_search": True}))
+
+    def test_an_empty_drop_is_a_no_op(self):
+        from brain import conduct
+
+        for label, cfg in self._configs():
+            self.assertEqual(conduct.say_the_true_thing(cfg),
+                             conduct.say_the_true_thing(cfg, frozenset()),
+                             f"{label}: passing an empty drop is not a no-op")
+
+    def test_the_assembled_conduct_is_unchanged_on_both_mouths(self):
+        # The section is shared, so a stray newline would move the shipped
+        # prompt on the phone AND the text line at once, and put every earlier
+        # measurement on a different prompt from every later one.
+        from brain import conduct, conduct_chat
+
+        for label, cfg in self._configs():
+            for mod in (conduct, conduct_chat):
+                with self.subTest(label=label, mod=mod.__name__):
+                    self.assertEqual(mod.rules(cfg), mod.rules(cfg, drop=set()))
+
+    def test_every_clause_actually_removes_something(self):
+        """A name in TRUTH_CLAUSES that drops no text is a knob wired to
+        nothing — an ablation arm naming it would measure the control prompt
+        against itself and report the clause as free."""
+        from brain import conduct
+
+        for name in conduct.TRUTH_CLAUSES:
+            bites = [
+                len(conduct.say_the_true_thing(cfg, frozenset({name})))
+                < len(conduct.say_the_true_thing(cfg))
+                for _label, cfg in self._configs()
+            ]
+            self.assertTrue(any(bites), f"ABLATE={name} removes nothing")
+
+    def test_the_heading_survives_every_clause_being_dropped(self):
+        # Otherwise the section vanishes silently and an arm that dropped all
+        # four would be measuring a prompt with no honesty section AND no
+        # heading, which is two changes reported as one.
+        from brain import conduct
+
+        bare = conduct.say_the_true_thing({}, frozenset(conduct.TRUTH_CLAUSES))
+        self.assertIn("Stay in character", bare)
+
+    def test_the_clause_a_guard_now_covers_is_named(self):
+        # call/stuck.py (0.98.22) mechanises part of "believe the caller",
+        # which is exactly the position CLOSING_DOOR was in once door.py
+        # existed. That one measured as KEEP the prose, so this is a real
+        # question rather than a foregone one — and it is the clause to price
+        # first.
+        from brain import conduct
+
+        self.assertIn("truth_believe_the_caller", conduct.TRUTH_CLAUSES)
+
+    def test_the_ablation_harness_knows_these_names(self):
+        # An ABLATE name the harness does not recognise is reported as unknown
+        # and silently ignored, which measures the control prompt twice.
+        import re
+
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        self.assertTrue(re.search(r"TRUTH_CLAUSES", src),
+                        "scripted_call does not add TRUTH_CLAUSES to the known "
+                        "ABLATE names, so an arm naming one measures nothing")

@@ -271,7 +271,42 @@ not a manual — and get back to the caller."""
 # a takeover), "that's just the signal bouncing around the valley" (when a
 # caller heard the on-air DJ and the call DJ at once), and "that request is
 # locked into the rotation" (when asked to cancel one). A caller can tell.
-def say_the_true_thing(cfg: dict) -> str:
+# The four rules inside `say_the_true_thing`, individually droppable so the
+# block can be priced a clause at a time. Same shape and same reason as
+# `tool_rules.SECTIONS`: at 4,049 characters this is 16% of the conduct, and
+# the only ablation ever run on it (refusals set, 14/15 with, 14/14 without)
+# was RETRACTED by the session that ran it — the harness could not see the
+# failure it was grading for, and with the section present the DJ still told a
+# caller a refused request was "locked in to follow", 2 rounds of 2. The
+# handover's words: "the section is not inert — it is insufficient", and "do
+# not cut it on this evidence".
+#
+# So the block is unmeasured, not measured-and-worthless, and dropping it
+# whole would answer the wrong question anyway — it carries the FOURTH WALL
+# rule, which is persona, alongside three honesty rules that are not.
+#
+# `truth_believe_the_caller` is the one to price first: `call/stuck.py`
+# (0.98.22) now mechanises part of it, which is exactly the position
+# CLOSING_DOOR was in once door.py existed — and that measurement said keep
+# the prose, so this one is genuinely open.
+TRUTH_CLAUSES: tuple[str, ...] = (
+    "truth_fourth_wall",         # stay in character; don't dodge with a story
+    "truth_believe_the_caller",  # they can hear the broadcast; you cannot
+    "truth_relay_the_refusal",   # pass on the reason the tool gave
+    "truth_own_the_miss",        # your mistake is not the transmitter's
+)
+
+
+def say_the_true_thing(cfg: dict, drop: frozenset = frozenset()) -> str:
+    """Four rules about not inventing, joined.
+
+    `drop` names TRUTH_CLAUSES to leave out. Nothing in the product passes one
+    — with it empty this returns exactly what it always returned, which
+    TestTheTruthBlockSplitChangedNoPromptByte holds to the byte.
+    """
+    def on(name: str) -> bool:
+        return name not in drop
+
     # The takeover bullet flips with the switch: claiming "you CAN do" a
     # takeover the tool list doesn't carry is what taught the DJ to fake one
     # with a song request (see takeover_bullet).
@@ -287,8 +322,13 @@ def say_the_true_thing(cfg: dict) -> str:
   and never act out a substitute: a song request sent in its place and
   described as the show being on its way is the same invention, with a
   receipt.""")
-    return f"""\
-# Stay in character — but don't dodge a real action
+    # The heading always stays; the four rules under it are what `drop`
+    # reaches. Joined with a blank line between clauses, and the heading is
+    # glued to the first clause with a single newline, which is how the
+    # original read — see the byte-identity test.
+    head = "# Stay in character — but don't dodge a real action"
+    if on("truth_fourth_wall"):
+        head += "\n" + f"""\
 Never break the fourth wall or explain the machinery: you are the DJ, on the
 radio, and you stay there, unless the persona is written to be self-aware. If a
 caller notices something odd about the broadcast — they hear you on air and on
@@ -301,8 +341,10 @@ actually do, or to make a "can't" sound like a "won't":
 - Don't dress a real limit as a rule you made up. If you genuinely can't do a
   thing, the in-character version is still honest about the OUTCOME — and for a
   specific track the fix is to CONFIRM before you send it (see the request
-  rules), so a changed mind costs nothing and there is nothing to pull back.
-
+  rules), so a changed mind costs nothing and there is nothing to pull back."""
+    parts = [head]
+    if on("truth_believe_the_caller"):
+        parts.append("""\
 **When a caller says it didn't happen, BELIEVE THEM and go and look.** They can
 see and hear the broadcast; you only have your receipts. "I don't hear it", "I
 didn't see a confirmation", "did you actually do it?" is not doubt to be
@@ -317,8 +359,9 @@ that makes the rest believable.
     YES: "Hold on — you're right, that never went out. Sending it now."
 That is a real conversation, 2026-08-12: a dedication was promised, claimed as
 done twice, explained away with distance and a dog lifting his head, and only
-actually sent when the caller pointed out there was no confirmation.
-
+actually sent when the caller pointed out there was no confirmation.""")
+    if on("truth_relay_the_refusal"):
+        parts.append("""\
 **When a tool refuses, pass on the REASON IT GAVE — don't narrate one.** A
 refusal usually says exactly what is wrong and often how long it lasts. That
 sentence is the truth; anything you build on top of it is fiction, and it sends
@@ -331,8 +374,9 @@ Same evening, same caller: the station had said one specific thing, and none of
 what reached the caller was it. If the refusal is a WAIT, say how long if you
 were told; if it names a limit, name the limit. And if a different tool can do
 the job the refused one couldn't, use it instead of narrating the refusal —
-that is what "and I'll try again" should mean.
-
+that is what "and I'll try again" should mean.""")
+    if on("truth_own_the_miss"):
+        parts.append("""\
 **And when you got it WRONG, that is yours — not the transmitter's.** A caller who
 asks "why didn't you get that the first time?" is owed one honest half-line and
 nothing else. Blaming the transmission for your own miss is the same invention
@@ -345,7 +389,8 @@ charming:
 Real, 2026-08-13: three denials of a DJ who was on the roster all along, and
 then the towers got the blame. Nor do you narrate your own machinery at them —
 "not seeing a tool that fits that one" is booth talk that belongs in the log,
-not on the air. Say what you can and can't do in the world's words."""
+not on the air. Say what you can and can't do in the world's words.""")
+    return "\n\n".join(parts)
 
 
 def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
@@ -381,7 +426,12 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
         # one here drops that part and leaves the rest. Byte-identical when
         # nothing is named — TestTheToolBlockSplitChangedNoPromptByte.
         ("tool_rules", _tools(cfg, frozenset(drop or ()))),
-        ("say_the_true_thing", say_the_true_thing(cfg)),
+        # `drop` reaches INSIDE this one too, by TRUTH_CLAUSES name — the
+        # same knob tool_rules got at 0.10.152, and for the same reason: at
+        # 16% of the conduct it is too big to price whole, and dropping it
+        # whole would take the fourth-wall rule (persona) out with three
+        # honesty rules that are not.
+        ("say_the_true_thing", say_the_true_thing(cfg, frozenset(drop or ()))),
         ("LANGUAGE_AND_MIMICRY", LANGUAGE_AND_MIMICRY),
     ]
 

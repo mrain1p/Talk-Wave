@@ -1847,6 +1847,10 @@ async def main() -> None:
             known |= set(getattr(_tr_mod, "SECTIONS", ()))
         except Exception:                                      # noqa: BLE001
             pass
+        # And the clauses inside say_the_true_thing, for the same reason: the
+        # block is 16% of the conduct and the one ablation ever run on it was
+        # retracted, so it is priced a clause at a time or not at all.
+        known |= set(getattr(_conduct_mod, "TRUTH_CLAUSES", ()))
         unknown = sorted(drop - known)
         if unknown:
             print(f"[ABLATE names no such section: {unknown} — known: "

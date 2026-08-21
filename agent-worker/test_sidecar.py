@@ -222,6 +222,9 @@ from tests.test_album_tools import (  # noqa: F401
     TestAPunctuatedFiledNameStillQueues,
     TestClearingARunFromTheQueue,
 )
+from tests.test_prompt_budget import (  # noqa: F401
+    TestTheTruthBlockSplitChangedNoPromptByte,
+)
 from tests.test_finding import (  # noqa: F401
     TestItCannotReachPastTheSettings,
     TestItIsAModeNotAnExtraTool,
