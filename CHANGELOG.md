@@ -11,6 +11,15 @@ The three loose ends from the settings work, closed.
 - **Two cross-references became real links.** *Player under the machine* now points at [Voicemail machine], and *Name the DJ in the transcript* distinguishes the card's live transcript from what is written to disk and points at [Transcripts]. Both had search synonyms from 0.98.24, which made them findable but not reachable — the review promised links.
 - **Thirteen in-code version references were off by one.** The settings archaeology written during 0.98.22 and 0.98.24 cited the numbers those passes were on while they were being written, and another stream took those numbers first. Comments and prose only, corrected to the versions the work actually shipped as.
 
+## 0.98.28
+
+The closing rules were split so they could be judged a clause at a time, and then judged. Nothing a caller hears changes.
+
+- **Ablating the closing section whole came back contradictory, so it is four named clauses now.** One rule collapsed without it while two scored *better* — which is not a section earning its keep or failing to, it is two rules pulling in opposite directions inside one block. The split is derived from the section's own text rather than copied out of it, so the two cannot drift apart, and it is byte-for-byte the same prompt when nothing is dropped.
+- **Per-clause runs found nothing worth cutting, and one result that matters more than the score.** Dropping the momentum clause scored *better* on the tally and behaved *worse* in the room: in the round it lost, the DJ reached for the hang-up on a caller who had just said "yeah, that's the one", and only the sixty-second floor stopped it. A mild fault traded for a severe one, and a pass rate cannot see the difference.
+- **Dropping the door prose made the door problem worse,** 1 in 4 to 0 in 4, which confirms an earlier measurement from the opposite direction. The hypothesis going in was that its own worked examples were teaching the DJ the forbidden phrase — the DJ does copy them almost word for word — but removing them costs more than it saves.
+- **What the numbers do say is that closing is the weakest part of the prompt.** With four paragraphs forbidding the move and a guard already running, the DJ still ends a landed request by asking whether the caller wants anything else in three rounds of four. A rule that three rewrites have failed to enforce wants a mechanism rather than a fourth rewrite; that is named as work, not attempted here.
+
 ## 0.98.27
 
 The music comes back after a call, and the house rules stop describing a panel that no longer exists.
@@ -26,6 +35,15 @@ The music comes back after a call, and the house rules stop describing a panel t
 - **`.grid2` is a one-column grid** despite the name — it exists for row rhythm, not columns. The 0.98.24 review wrote up a section for breaking a two-column layout that has never existed; the skill now says so, so nobody repeats it.
 - **The type scale is the sizes actually in use.** Eleven distinct sizes live in the panel block, five within 2px of each other, so "no new font sizes without reason" was holding nothing up. Those eleven are the scale now and a twelfth fails a test — not forbidden, but a decision made in the open rather than an accident.
 - **Seven of the rules are tests now.** The skill carries about forty and the suite checked four, which is why one checkbox in 34 sections wore the wrong skin for months. The ones now enforced are the ones whose violation is invisible in review: square corners, the type scale, checkbox skin, a subhead never repeating the label under it, safe-area insets on any rule that zeroes a phone edge, every field carrying help, and every text field offering its default.
+
+## 0.98.26
+
+The test set that grades the DJ's decisions had no scenario for the commonest question a caller asks, which is why nothing caught the call that started this.
+
+- **Every routing scenario was about finding a record to PLAY.** "What song is this?" had no row in the prompt and no row in the set, so a caller asking it seven times in one conversation — and being told a vocal track was an instrumental every time — could not have been caught by anything. Four scenarios now cover it, graded against the real station.
+- **The reads rule added in 0.98.22 is measured, and it is doing the work:** 3 in 3 with it, 0 in 3 without. Ablated, the DJ answers "what song is this?" by reaching for the lyrics tool *every single time*, which is the original failure reproduced on demand. A control scenario rules out the lazy explanation: a genuine question about a song's words still reaches the lyrics tool in both arms.
+- **One of the new scenarios was graded wrongly and the transcript caught it.** It marked the DJ down for checking the lyrics tool after a caller said the song had words — while the transcript showed it doing exactly the right thing, conceding the point and taking the caller's word. Reaching for a tool the caller just named is a reasonable check, not a routing error; the scenario now grades what is *said* afterwards, which is what actually matters.
+- **A malformed scenario can no longer cost money to discover.** Every set is checked before a run: a mistyped expectation key used to grade nothing at all and report a clean sweep, which is the most expensive kind of wrong there is. The check also fails if the new reads scenarios ever disappear, because a missing test is exactly what nobody notices.
 
 ## 0.98.25
 
@@ -60,6 +78,14 @@ A polish round over the settings panel: four settings filed on the wrong page, o
 - **Seventeen fields carried help over 400 characters** — 41% of all the help in the panel sat in 32 of its 188 fields. Out came mechanism (telnet ports, HOST_IP, override key names), deployment steps that belong in the docs, and reasoning that does not change what an operator would set. What stayed is the fact that changes the decision, and every warning. Nothing is over 400 now.
 - **Eleven fields had no help at all** — every one of the card's fixed wording strings. Each has one line now saying when the caller sees it.
 - **Eight number labels named no unit,** and three text fields carried no default in their placeholder. Both fixed. And "Without the switch, the line is" is a label no longer.
+
+## 0.98.23
+
+The largest honesty section in the prompt becomes measurable, and a measurement that was withdrawn a week later stops being quoted as if it had settled anything.
+
+- **A note in the source said this section had been proven worthless. It had not.** The measurement behind that note was retracted by the session that ran it — the grader could not see the failure it was grading for, and with the section present the DJ still told a caller a refused request was on its way, in both rounds it was tried. The finding at the time was "not inert, insufficient", and the instruction was not to cut it. Corrected in place, quoting the retraction, so the next reader cannot repeat it.
+- **It is four rules, not one, and one of them is the persona rule.** Cutting the block whole would have taken the DJ's stay-in-character instruction out along with three honesty rules that have nothing to do with it. It is split into four individually droppable clauses instead, byte-for-byte identical when nothing is dropped.
+- **Nothing is cut here.** The split exists so the question can be answered with a number rather than an argument, which is what happened two releases later.
 
 ## 0.98.22
 
