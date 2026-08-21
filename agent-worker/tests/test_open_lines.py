@@ -415,6 +415,55 @@ class TestALineDoesNotOutlastItsProgramme(unittest.TestCase):
                          self.at(12))
 
 
+class TestAnUnconfirmedLineIsStillAnOpenLine(_OnDisk):
+    """Found by air-testing on the operator's own station, 2026-08-21.
+
+    `station.dj_say` answers a slow-but-sent request with
+    `{"ok": True, "unconfirmed": True}` and no `spoken` — correct, because the
+    station almost certainly said something. `air.say` collapsed that into ""
+    and every caller read "" as "nothing aired", so a slow station meant
+    listeners heard the DJ open a subject while Talk Wave wrote no record at
+    all: the DJ had no idea it had asked, and the operator was told the booth
+    refused. Worse than either honest answer.
+
+    Three outcomes now, not two.
+    """
+
+    def _station(self, result):
+        class _S:
+            async def dj_say(self, *a, **k):
+                return result
+
+        return _S()
+
+    def test_a_refusal_is_nothing_aired(self):
+        spoken, aired = asyncio.run(
+            air.say(self._station({"ok": False, "error": "401"}), "d"))
+        self.assertEqual((spoken, aired), ("", False))
+
+    def test_the_good_case_returns_the_words(self):
+        spoken, aired = asyncio.run(
+            air.say(self._station({"ok": True, "spoken": "I said this"}), "d"))
+        self.assertEqual((spoken, aired), ("I said this", True))
+
+    def test_unconfirmed_aired_with_the_words_lost(self):
+        # The case that was wrong: it went out, we just cannot quote it.
+        spoken, aired = asyncio.run(
+            air.say(self._station({"ok": True, "unconfirmed": True}), "d"))
+        self.assertEqual(spoken, "")
+        self.assertTrue(aired, "an unconfirmed line went out; it is not a miss")
+
+    def test_the_prompt_still_works_without_the_words(self):
+        # The DJ knows the subject even when its own phrasing is lost, so it
+        # can still lead with it — it just must not be handed an empty quote
+        # and told those were its words.
+        settings_store.save({"open_lines_enabled": True})
+        state.write(_record(spoken="", show=""))
+        text = self.build_prompt()
+        self.assertIn("whether the remaster ruined it", text)
+        self.assertNotIn("Your own words on air", text)
+
+
 class TestOpenLinesRefusesOutLoud(_OnDisk):
     """Every refusal names the gate that stopped it. "Nothing happened" is the
     one answer an operator cannot act on."""
@@ -464,8 +513,10 @@ class TestTheStationIsNeverReconfigured(_OnDisk):
                 sent.update(text=text, mode=mode, kind=kind)
                 return {"ok": True, "spoken": "the words that aired"}
 
-        spoken = asyncio.run(air.say(_Booth(), air.open_direction("a subject", {})))
+        spoken, aired = asyncio.run(
+            air.say(_Booth(), air.open_direction("a subject", {})))
         self.assertEqual(spoken, "the words that aired")
+        self.assertTrue(aired)
         # styled = the station writes it in the live persona's own voice. raw
         # would put our phrasing on air in the DJ's mouth.
         self.assertEqual(sent["mode"], "styled")
@@ -483,7 +534,7 @@ class TestTheStationIsNeverReconfigured(_OnDisk):
             async def dj_say(self, text, mode="raw", kind=""):
                 return {"ok": False, "error": "401"}
 
-        self.assertEqual(asyncio.run(air.say(_Refuses(), "x")), "")
+        self.assertEqual(asyncio.run(air.say(_Refuses(), "x")), ("", False))
 
     def test_no_address_is_invented_when_none_is_set(self):
         # A DJ told to invite calls and given nowhere to send them makes one up.

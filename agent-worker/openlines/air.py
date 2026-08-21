@@ -110,25 +110,35 @@ def close_direction(premise: str, took_part: int) -> str:
     )
 
 
-async def say(station, direction: str) -> str:
-    """Hand a direction to the booth; return the words that aired.
+async def say(station, direction: str) -> tuple[str, bool]:
+    """Hand a direction to the booth. Returns (the words that aired, aired).
 
-    Empty string means nothing went out — every caller treats that as "the
-    line did not open", because a premise nobody heard is not an open line.
+    THREE outcomes, not two, and conflating the last two is a bug this feature
+    had until it was air-tested on a real station:
+
+    - refused, or the request never landed -> ("", False). Nothing went out.
+    - aired, and the station echoed the words -> (words, True). The good case.
+    - aired, but no words came back -> ("", True). `station.dj_say` answers a
+      slow-but-sent request with `{"ok": True, "unconfirmed": True}` and no
+      `spoken`, which is right: the station almost certainly said something.
+
+    That last case used to return "" and every caller read it as "nothing
+    aired", so a slow station meant listeners heard the DJ open a subject while
+    Talk Wave recorded no line at all — the DJ then had no idea it had asked,
+    and the operator was told the booth refused. Worse than either honest
+    answer. Callers now decide for themselves what an unconfirmed line means.
     """
     try:
         result = await station.dj_say(direction, mode="styled", kind=SAY_KIND)
     except Exception as e:                                     # noqa: BLE001
         log.warning("open lines: the booth would not take the line: %s", e)
-        return ""
+        return "", False
     if not (result or {}).get("ok"):
         log.warning("open lines: the booth refused the line: %s",
                     str((result or {}).get("error"))[:120])
-        return ""
+        return "", False
     spoken = str((result or {}).get("spoken") or "").strip()
     if not spoken:
-        # The station aired something it did not echo back. Rare, and it leaves
-        # us unable to tell the DJ what it said — so treat it as a miss rather
-        # than pin a premise nobody can be reminded of accurately.
-        log.warning("open lines: the booth aired a line but returned no text")
-    return spoken
+        log.warning("open lines: the booth aired a line but returned no text "
+                    "— the words are lost, the line is not")
+    return spoken, True

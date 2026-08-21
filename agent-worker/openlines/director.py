@@ -165,8 +165,8 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
         minutes, cut_by_show = schedule_mod.bounded_minutes(
             week, str(show.get("id") or ""), wanted)
 
-        spoken = await air.say(station, air.open_direction(text, cfg))
-        if not spoken:
+        spoken, aired = await air.say(station, air.open_direction(text, cfg))
+        if not aired:
             return {"ok": False,
                     "why": "The booth would not take the line — check the "
                            "station admin credentials."}
@@ -185,9 +185,14 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
         log.info("open lines: %s opened a line (%d min%s) — %s",
                  persona.get("name"), minutes,
                  ", cut to the show" if cut_by_show else "", text)
-        return {"ok": True, "premise": text, "spoken": spoken,
-                "expires_at": record["expires_at"], "minutes": minutes,
-                "cutByShow": cut_by_show, "source": source}
+        out = {"ok": True, "premise": text, "spoken": spoken,
+               "expires_at": record["expires_at"], "minutes": minutes,
+               "cutByShow": cut_by_show, "source": source}
+        if not spoken:
+            out["why"] = ("It aired, but the station was too slow to send "
+                          "back what it said — the line is open and the DJ "
+                          "knows the subject, not its own wording.")
+        return out
     finally:
         await station.aclose()
 
@@ -203,7 +208,7 @@ async def _sign_off(cfg: dict, record: dict) -> None:
     station = StationClient()
     try:
         took = _arrivals_since(str(record.get("opened_at")))
-        spoken = await air.say(station, air.close_direction(
+        spoken, _aired = await air.say(station, air.close_direction(
             str(record.get("premise") or ""), took))
         record["signed_off"] = True
         record["closed"] = True
@@ -282,10 +287,10 @@ async def _follow_up(cfg: dict, record: dict) -> bool:
             state.write(state.note_seen(state.read_raw(), item.get("id")))
             return False
 
-        spoken = await air.say(
+        spoken, aired = await air.say(
             station, air.followup_direction(premise, line, cfg))
         fresh = state.read_raw()
-        if not spoken:
+        if not aired:
             # The booth refused. Mark it seen anyway: retrying a station that
             # is saying no, once a minute, is how one failure becomes sixty.
             state.write(state.note_seen(fresh, item.get("id")))
