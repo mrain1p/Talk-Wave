@@ -681,6 +681,17 @@
         </div>
         <p class="hint wide" id="sttSourceNote"></p>
 
+        <!-- No "Reload model list" beside it, unlike Brains and Voice: the
+             STT models are a curated table (STT_MODEL_CHOICES), not a
+             catalogue anyone discovers, so the button would claim work it
+             does not do. Parity is worth less than a button that is true. -->
+        <div class="testrow">
+          <button id="testSttBtn">Test hearing</button>
+          <span class="hint" style="margin:0">Speaks one known line and hears
+            it back — the only check that reaches a cloud ear at all.</span>
+        </div>
+        <div class="result" id="sttResult"></div>
+
         <h4 class="subhead">Transcription keys</h4>
         <p class="hint wide" style="margin-top:0">The local engine is in this
           container and needs none. OpenAI and Google speech reuse the keys
@@ -707,20 +718,18 @@
     <details data-group="perms" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Caller permissions</span><em class="secblurb"></em><span class="tag" id="tagPerms"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">Each row is the least trusted
-          caller who gets it, and the columns cascade — granting to
-          <strong>Anyone</strong> grants it to everyone. A column you have no
-          password for cannot be ticked.</p>
-        <p class="hint wide" style="margin-top:0">There are three tiers of
-          caller. <strong>Anyone</strong> is a stranger on an open line.
-          <strong>Guest</strong> is a caller who has entered the guest code,
-          and <strong>Admin</strong> one who has entered the admin password —
-          both set under <em>Access</em>. To let a caller move up a tier on a
-          line anyone can reach, turn on the <strong>“Sign in” button</strong>
-          in Player settings: it puts a corner button on the card that takes
-          either code and unlocks whatever that tier is granted here. So you
-          can give strangers requests and reads, and keep announcements or a
-          show takeover for callers who sign in.</p>
+        <!-- ONE paragraph, not two. Both said the same thing from two
+             directions — the cascade, then the tiers that cascade — and the
+             second spent five lines on an example the reader can now get
+             from the Sign-in button's own help. -->
+        <p class="hint wide" style="margin-top:0">Each row is the least
+          trusted caller who gets it, and the columns cascade: granting to
+          <strong>Anyone</strong> grants it to everyone. <strong>Guest</strong>
+          is a caller who typed the guest code, <strong>Admin</strong> one who
+          typed the admin password — both set under <em>Access</em>, and a
+          column you have no password for cannot be ticked. Turn on the
+          <strong>“Sign in” button</strong> under Players to let a caller
+          climb a tier on a line anyone can reach.</p>
 
         <div class="permgrid" id="permGridCall">
           <div class="phead"><span>On this call</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
@@ -1325,50 +1334,68 @@
       <summary><span class="chev">▶</span><span class="secname">Text line</span><em class="secblurb"></em><span class="tag" id="tagChat"></span></summary>
       <div class="body">
         <p class="doorstate" id="doorStateChat" hidden></p>
-        <div class="row narrow">
-          <label for="chat_idle_minutes">Close after quiet (min)</label>
-          <input type="number" id="chat_idle_minutes" min="5" max="240" step="5" />
+        <!-- The caps, in a NAMED block and the shared .grid2 wrapper — the
+             shape every other section with three or more numbers already
+             uses (Station awareness, Call limits, Turn-taking, Closing).
+             This one had fifteen rows under no heading at all, while the
+             identical idea on the Calls page gets a section called Call
+             limits.
+
+             .grid2 is a single column despite the name: it exists for the
+             row rhythm, not for columns. The fix here is the HEADINGS — an
+             unbroken run of fifteen rows was the actual complaint. -->
+        <h4 class="subhead">Chat limits</h4>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="max_open_chats">Open chats at once</label>
+            <input type="number" id="max_open_chats" min="0" max="200" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="chats_per_hour">New chats per hour</label>
+            <input type="number" id="chats_per_hour" min="0" max="500" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="chats_per_day">New chats per day</label>
+            <input type="number" id="chats_per_day" min="0" max="5000" step="10" />
+          </div>
+          <div class="row narrow">
+            <label for="chat_caller_cooldown_secs">Reopen wait time (s)</label>
+            <input type="number" id="chat_caller_cooldown_secs" min="0" max="600" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="chat_max_messages">Messages per chat</label>
+            <input type="number" id="chat_max_messages" min="0" max="500" step="10" />
+          </div>
+          <div class="row narrow">
+            <label for="chat_msgs_per_minute">Messages per minute</label>
+            <input type="number" id="chat_msgs_per_minute" min="1" max="60" step="1" />
+          </div>
         </div>
-        <div class="row narrow">
-          <label for="chat_max_messages">Messages per chat</label>
-          <input type="number" id="chat_max_messages" min="0" max="500" step="10" />
+
+        <h4 class="subhead">When a chat ends</h4>
+        <div class="grid2">
+          <div class="row narrow">
+            <label for="chat_max_minutes">Longest chat (minutes)</label>
+            <input type="number" id="chat_max_minutes" min="1" max="1440" step="1" />
+          </div>
+          <div class="row narrow">
+            <label for="chat_idle_minutes">Close after quiet (min)</label>
+            <input type="number" id="chat_idle_minutes" min="5" max="240" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="chat_reply_timeout_secs">Reply timeout (s)</label>
+            <input type="number" id="chat_reply_timeout_secs" min="0" max="180" step="5" />
+          </div>
+          <div class="row narrow">
+            <label for="chat_reprompt_secs">…after how many seconds</label>
+            <input type="number" id="chat_reprompt_secs" min="5" max="120" step="5" />
+          </div>
         </div>
-        <div class="row narrow">
-          <label for="chat_max_minutes">Longest chat (minutes)</label>
-          <input type="number" id="chat_max_minutes" min="1" max="1440" step="1" />
-        </div>
-        <div class="row narrow">
-          <label for="max_open_chats">Open chats at once</label>
-          <input type="number" id="max_open_chats" min="0" max="200" step="5" />
-        </div>
-        <div class="row narrow">
-          <label for="chats_per_hour">New chats per hour</label>
-          <input type="number" id="chats_per_hour" min="0" max="500" step="5" />
-        </div>
-        <div class="row narrow">
-          <label for="chats_per_day">New chats per day</label>
-          <input type="number" id="chats_per_day" min="0" max="5000" step="10" />
-        </div>
-        <div class="row narrow">
-          <label for="chat_caller_cooldown_secs">Reopen wait time (s)</label>
-          <input type="number" id="chat_caller_cooldown_secs" min="0" max="600" step="5" />
-        </div>
-        <div class="row narrow">
-          <label for="chat_msgs_per_minute">Messages per minute</label>
-          <input type="number" id="chat_msgs_per_minute" min="1" max="60" step="1" />
-        </div>
-        <div class="row narrow">
-          <label for="chat_reply_timeout_secs">Reply timeout (s)</label>
-          <input type="number" id="chat_reply_timeout_secs" min="0" max="180" step="5" />
-        </div>
-        <div class="row">
-          <label for="chat_reprompt">Nudge a quiet caller</label>
-          <input type="checkbox" id="chat_reprompt" />
-        </div>
-        <div class="row narrow">
-          <label for="chat_reprompt_secs">…after how many seconds</label>
-          <input type="number" id="chat_reprompt_secs" min="5" max="120" step="5" />
-        </div>
+        <!-- A checkbox is a label.check, everywhere. This was the only one in
+             the panel wearing the dropdown-row skin. -->
+        <label class="check"><input type="checkbox" id="chat_reprompt" />
+          Nudge a quiet caller</label>
+
         <h4 class="subhead">Opening the line</h4>
         <div class="row">
           <label for="chat_greeting_mode">Open with a greeting</label>
@@ -1380,7 +1407,7 @@
         </div>
         <h4 class="subhead">How the reply arrives</h4>
         <div class="row">
-          <label for="chat_reveal">How the reply arrives</label>
+          <label for="chat_reveal">Delivery</label>
           <select id="chat_reveal"></select>
         </div>
         <div class="row">

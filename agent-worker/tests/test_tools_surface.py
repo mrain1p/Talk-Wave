@@ -153,6 +153,9 @@ class TestExposedSurface(unittest.TestCase):
         "POST /test/env": "admin",
         "POST /test/llm": "admin",
         "POST /test/tts": "admin",
+        # Speaks a line with the configured voice and hears it back with the
+        # configured ear. Admin like the other two: it spends the STT key.
+        "POST /test/stt": "admin",
         "POST /test/speed": "admin",
     }
 

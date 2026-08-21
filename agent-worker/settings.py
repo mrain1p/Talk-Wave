@@ -1140,6 +1140,7 @@ GROUP_ALIASES = {
 SCHEMA: dict[str, dict] = {
     # --- station ---
     "station_base_url": dict(group="station", kind="text", label="SUB/WAVE station API",
+        placeholder="default: SUBWAVE_BASE_URL from the environment",
         help="Personas, cards, voices and tools are all discovered from here. "
              "Point it at a different SUB/WAVE to re-home the whole sidecar."),
     # station_mcp_url deliberately has no schema entry (0.10.80, operator's
@@ -1171,7 +1172,7 @@ SCHEMA: dict[str, dict] = {
              "With one set, the Model list is read from it (hit “Test keys "
              "+ reload models”) — servers like llama-swap only route model "
              "names they declare."),
-    "llm_temperature": dict(group="brains", kind="number", label="Temperature",
+    "llm_temperature": dict(group="brains", kind="number", label="Temperature (0–2)",
         help="0.8 suits a DJ. Below 0.5 sounds clipped."),
 
     # --- ears ---
@@ -1192,6 +1193,7 @@ SCHEMA: dict[str, dict] = {
              "generate slower than realtime (Test voice measures it). 'cloud' "
              "is fast but won't match the on-air timbre."),
     "tts_base_url": dict(group="voice", kind="text", label="Endpoint",
+        placeholder="default: TTS_BASE_URL from the environment",
         help="Any OpenAI-compatible speech endpoint. Press Test voice after "
              "changing this or the adapter: a mismatched pair produces audio at "
              "the wrong sample rate, which sounds broken and logs nothing."),
@@ -1236,13 +1238,11 @@ SCHEMA: dict[str, dict] = {
              "'X by Y' before reporting a miss."),
     "allow_sound_search": dict(group="perms", kind="select", tiered=True, label="Find music by how it sounds",
         admin=True,
-        help="Two tools: a \"sounds like\" search over a description (\"dreamy "
-             "cinematic strings\"), and \"more like this\" off the track on air. "
-             "Both match the ANALYSED AUDIO rather than titles, so they answer the "
-             "asks a name search can't — and stop the DJ guessing. Needs the "
-             "station's heavy analyzer; without it the DJ is told plainly it can't, "
-             "rather than reporting an empty library. Reads only: nothing is queued "
-             "and nothing counts against Actions per call."),
+        help="Two reads that match the ANALYSED AUDIO rather than titles: a"
+             " 'sounds like' search over a description, and 'more like this' off"
+             " the track on air. They answer what a name search cannot. Needs the"
+             " station's analyzer; without it the DJ says it can't, rather than"
+             " reporting an empty library. Queues nothing and costs no action."),
     "allow_exact_queue": dict(group="perms", kind="select", tiered=True, label="Queue the exact track picked",
         admin=True,
         needs=("allow_library_search", TIERS),
@@ -1252,23 +1252,18 @@ SCHEMA: dict[str, dict] = {
     "allow_album_queue": dict(group="perms", kind="select", tiered=True, label="Queue albums and mixes",
         admin=True,
         needs=("allow_library_search", TIERS),
-        help="Bulk queueing: \"have you got Rumours? play the lot\" queues the "
-             "whole album, and a run of picks (\"a few Eminem tracks\", \"a 90s "
-             "rock mix\") goes in as one batch. Same unlimited queue path as the "
-             "exact pick, so the caps are this line's own: 30 tracks an album, 8 "
-             "a mix, and each batch counts once against Actions per call. The DJ "
-             "only queues an album when the caller clearly wants the lot — it "
-             "never offers one unprompted."),
+        help="Bulk queueing: a whole album, or a run of picks as one batch. The"
+             " caps are this line's own — 30 tracks an album, 8 a mix — and each"
+             " batch counts once against Actions per call. The DJ only queues an"
+             " album when the caller clearly wants the lot; it never offers one"
+             " unprompted."),
     "allow_cancel_queue": dict(group="perms", kind="select", tiered=True, label="Take a track back out of the queue",
         admin=True,
-        help="Lets a caller undo a request before it airs — the station refuses "
-             "once the track is on air or cued up next, and the DJ says so rather "
-             "than pretending. OFF by default because the queue is shared: this can "
-             "pull a record somebody else asked for, which is why the station gives "
-             "listeners no cancel of their own. Also covers clearing a RUN in one "
-             "go (\"remove all the Eminem\") — one action for the whole batch, "
-             "mirroring what queueing an album costs. Counts against Actions per "
-             "call."),
+        help="Lets a caller undo a request before it airs; the station refuses"
+             " once the track is playing or cued next, and the DJ says so. Off by"
+             " default because the queue is shared — this can pull a record"
+             " somebody else asked for. Also clears a whole run in one go,"
+             " counting once against Actions per call."),
     "allow_favorite": dict(group="perms", kind="select", tiered=True, label="Like the track on air",
         help="Adds a like to the record playing now — the same heart a listener taps "
              "in the app, so it needs no station credentials and changes no one's "
@@ -1318,22 +1313,18 @@ SCHEMA: dict[str, dict] = {
              "end of the record playing at the time."),
     "allow_genre_lock": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Lock the station to a genre",
-        help="Holds the station to one genre or a few — \"only jazz for the next two "
-             "hours\" — using the station's own genre-lock control, so it needs a "
-             "SUB/WAVE new enough to have one; older stations answer that they can't "
-             "rather than failing. Same 15–720 minute window as a takeover and it "
-             "ends by itself. Quieter than a takeover, which is the risk: a pinned "
-             "show announces itself on air, a narrowed playlist doesn't."),
+        help="Holds the station to one genre or a few for a set window — 15 to"
+             " 720 minutes, ending by itself. Uses the station's own genre-lock,"
+             " so an older SUB/WAVE answers that it can't rather than failing."
+             " Quieter than a takeover, which is the risk: a pinned show"
+             " announces itself on air, a narrowed playlist does not."),
     "allow_on_air": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Go live on the station",
-        help="The phone-in: the caller's own conversation with the DJ airs on the "
-             "station while it happens, one finished turn at a time, about one "
-             "exchange behind the room. The widget grows a Live-on-air toggle when "
-             "a caller may choose it. Needs the mixer's telnet door (the same "
-             "network stanza as the studio's caller-voice) — without it the call "
-             "quietly stays private and the transcript says why. The turn still "
-             "in hand is a working broadcast delay: it can be dumped before it "
-             "airs."),
+        help="The phone-in: the caller's conversation airs while it happens, one"
+             " finished turn at a time, about an exchange behind the room. The"
+             " card grows a Live-on-air toggle when a caller may choose it. Needs"
+             " the mixer's telnet door — without it the call quietly stays"
+             " private, and the transcript says why."),
     # The window, the delay and the caller's sound live on the On air page
     # with the other airing choices (operator's ask, 2026-08-19, the same
     # move "When the call airs" made the day before): they describe how the
@@ -1349,56 +1340,40 @@ SCHEMA: dict[str, dict] = {
     "on_air_delay_secs": dict(group="airdoors", kind="number", admin=True,
         label="On-air delay (s)",
         needs=("allow_on_air", TIERS),
-        help="Your take-back window: how long a finished turn is held before "
-             "it airs, and roughly how far the broadcast runs behind the call. "
-             "PULL OFF AIR can kill any turn inside this window. A flowing "
-             "conversation airs faster than this on its own; the number is the "
-             "ceiling, not a pause added to every turn. 2–30 seconds; blank "
-             "= 6. It can't be 0 — a turn has to finish before the mixer can "
-             "fetch it, so truly live isn't possible on this transport, and 0 "
-             "would also mean no pull window. And whatever you set, a caller "
-             "with the station playing in earshot hears their own turns come "
-             "back a stream-buffer later (~22s on most setups) — a longer "
-             "delay moves that further out, it doesn't cause it."),
+        help="How long a finished turn is held before it airs: your take-back"
+             " window, and roughly how far the broadcast runs behind the call."
+             " PULL OFF AIR kills any turn still inside it. 2–30 seconds, blank ="
+             " 6 — it cannot be 0, because a turn has to finish before the mixer"
+             " can fetch it. A caller with the station in earshot hears"
+             " themselves a stream-buffer later (~22s) whatever you set."),
     "on_air_caller_sound": dict(group="airdoors", kind="select", admin=True,
         label="Caller sound on air",
         needs=("allow_on_air", TIERS),
-        help="How a caller's voice is dressed before it airs. Clean keeps "
-             "their real voice — full bandwidth, just levelled and de-rumbled "
-             "— and is the default because the phone costume reads as bad "
-             "audio on a modern stream, not as a phone. Phone is the "
-             "300–3400 Hz radio-caller costume for stations that want that "
-             "look on purpose. One dial for every caller voice that reaches "
-             "the air: live phone-ins and the soundbite studio's recordings "
-             "alike, and the studio's review card previews the sound that "
-             "would actually go out."),
+        help="How a caller's voice is dressed before it airs. Clean keeps their"
+             " real voice, levelled and de-rumbled — the default, because the"
+             " phone costume reads as bad audio on a modern stream rather than as"
+             " a phone. Phone is the 300–3400 Hz radio-caller sound, for stations"
+             " that want it on purpose. Applies to live phone-ins and studio"
+             " soundbites alike."),
     # Lives on the On air page beside the other airing choices (operator's
     # ask, 2026-08-18) — it says how the broadcast is delivered, not what a
     # caller may do, so Caller permissions was the wrong shelf for it.
     "on_air_call_mode": dict(group="airdoors", kind="select", admin=True,
         label="When the call airs",
         needs=("allow_on_air", TIERS),
-        help="Live airs each finished turn a few seconds behind the room — "
-             "radio's classic broadcast delay, with PULL OFF AIR able to kill "
-             "any turn inside the on-air delay window. Live once heard opens "
-             "the broadcast at the caller's first words instead of the DJ's "
-             "hello, so a call where the caller is never heard airs nothing "
-             "at all — the start airs about one exchange later, which is the "
-             "price of the guarantee. After the call tapes the whole "
-             "conversation and plays it the moment they hang up: the DJ "
-             "introduces it, the exchange runs in order, PULL OFF AIR any "
-             "time during the call kills the entire tape before a word of it "
-             "airs — and a tape where the caller was never heard stays in "
-             "the drawer. The on-air window still caps how much airs in "
-             "every mode."),
+        help="Live airs each finished turn a few seconds behind the room. Live"
+             " once heard holds the broadcast until the caller's first words, so"
+             " a call where they never speak airs nothing — the start airs an"
+             " exchange later, which is the price of that guarantee. After the"
+             " call tapes the whole conversation and plays it on hang-up,"
+             " killable entire until it does. The on-air window caps all three."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good", alias="block ban blocklist",
-        help="Puts the track playing now on the station's never-play list: out of the "
-             "queue, out of the fallback playlist, never selected again. The only "
-             "PERMANENT thing a caller can do — it outlives the call and nothing goes "
-             "out on air to say it happened. The same switch also lets a caller LIFT "
-             "a ban, including one you set yourself, so that a mistake made here has "
-             "a way back that doesn't depend on you noticing."),
+        help="Puts the track playing now on the station's never-play list: out"
+             " of the queue, out of the fallback playlist, never selected again."
+             " The only PERMANENT thing a caller can do, and nothing airs to say"
+             " it happened. The same switch lets a caller LIFT a ban, including"
+             " one you set."),
 
     # --- call length ---
     "max_call_seconds": dict(group="closing", kind="number", label="Hang up after (s)", alias="timeout duration length",
@@ -1413,16 +1388,12 @@ SCHEMA: dict[str, dict] = {
              "until Sign out."),
     "front_access": dict(group="security", kind="select",
         label="Call-in access", alias="password login sign-in gate code",
-        help="This is the PHONE — who may ring at all. What a caller may DO "
-             "once through is separate and per-tier, feature by feature, "
-             "under [Caller permissions](#perms). ANYONE and GUEST CODE are "
-             "independent: "
-             "tick both and strangers ring straight through while whoever "
-             "types the code becomes their own tier with their own "
-             "permissions; tick Guest code alone and the line is closed to "
-             "strangers; tick neither and the phone is closed to callers. The "
-             "admin password opens the phone and the panel in every "
-             "combination."),
+        help="This is the PHONE — who may ring at all. What a caller may DO once"
+             " through is separate and per-tier under [Caller"
+             " permissions](#perms). The two ticks are independent: both, and"
+             " strangers ring through while a code-holder becomes their own tier;"
+             " Guest code alone closes the line to strangers; neither closes it"
+             " to callers. The admin password opens everything regardless."),
     "guest_tier": dict(group="security", kind="check",
         label="Guest code tier", alias="password code",
         help="Whether a code you have set elevates the caller who types it. "
@@ -1484,7 +1455,7 @@ SCHEMA: dict[str, dict] = {
              "below (instant, no model cost); “Written each time” has the DJ "
              "write one in persona at open; “Off” waits for the caller."),
     "chat_reveal": dict(group="chat", kind="select",
-        label="How the reply arrives",
+        label="Delivery",
         help="“As it's typed” reveals the DJ's words as they're written, which "
              "is what makes the line read as a person at a keyboard. “Typing "
              "cue, then the line” shows the three dots while the booth "
@@ -1646,7 +1617,7 @@ SCHEMA: dict[str, dict] = {
              "nothing to route while an effect is on. Hear it with 'Test "
              "with effect' below."),
     "voice_effect_level": dict(group="effects", kind="number",
-        label="Effect intensity",
+        label="Effect intensity (%)",
         # Every effect, not the first three — the dial vanished for anyone
         # picking a newer colour, which the operator read (fairly) as the
         # volume control disappearing. Operator-reported.
@@ -1661,13 +1632,11 @@ SCHEMA: dict[str, dict] = {
         help="Off if the host page already shows the same photo."),
     "default_to_speaker": dict(group="phone", kind="check",
         label="Start calls on loudspeaker", alias="loudspeaker speakerphone",
-        help="A live microphone puts the phone into its voice-call audio mode, "
-             "which routes to the earpiece — so music playing out loud goes "
-             "quiet and private the moment the DJ answers, which is wrong in a "
-             "car. The caller can flip it either way mid-call with the Speaker "
-             "button. What the browser will actually allow varies: iOS Safari "
-             "publishes no audio-routing API at all, so there the button asks "
-             "and the platform decides."),
+        help="A live microphone puts the phone into voice-call audio, which"
+             " routes to the earpiece — so music playing out loud goes private"
+             " the moment the DJ answers, which is wrong in a car. The caller can"
+             " flip it either way mid-call. iOS Safari publishes no routing API,"
+             " so there the platform decides."),
     "avatar_style": dict(group="whosonair", kind="select", label="DJ photo shape", alias="avatar",
         help="Applies wherever the photo is shown. Round suits a portrait and "
              "is what the card was built around; square matches a host page "
@@ -1686,27 +1655,38 @@ SCHEMA: dict[str, dict] = {
     "embed_now_playing": dict(group="whosonair", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
     "word_ringing": dict(group="linebox", kind="text", label="Ringing",
-        placeholder="default: Ringing…"),
+        placeholder="default: Ringing…",
+        help="While the line rings, before the DJ picks up."),
     "word_answering": dict(group="linebox", kind="text", label="Answering",
-        placeholder="default: Answering…"),
+        placeholder="default: Answering…",
+        help="The moment the DJ picks up, before the first word."),
     "word_online": dict(group="linebox", kind="text", label="On the line",
-        placeholder="default: On the line"),
+        placeholder="default: On the line",
+        help="For the length of the call, once both sides can hear."),
     "word_recording": dict(group="linebox", kind="text", label="Recording",
-        placeholder="default: Recording…"),
+        placeholder="default: Recording…",
+        help="While the machine is recording the caller's message."),
     "word_hangup": dict(group="buttons", kind="text", label="Hang up",
-        placeholder="default: Hang up"),
+        placeholder="default: Hang up",
+        help="On the button that ends a call."),
     "word_vm_button": dict(group="buttons", kind="text", label="Leave a message",
-        placeholder="default: Leave a message"),
+        placeholder="default: Leave a message",
+        help="On the button that opens the machine."),
     "word_ptt": dict(group="talkbar", kind="text", label="Talk bar",
-        placeholder="default: Tap to talk"),
+        placeholder="default: Tap to talk",
+        help="On the bar the caller holds to talk."),
     "word_closed": dict(group="linebox", kind="text", label="Line closed",
-        placeholder="default: Line closed"),
+        placeholder="default: Line closed",
+        help="When no door is open — the card's resting state."),
     "word_message_only": dict(group="linebox", kind="text", label="Voicemail-only line",
-        placeholder="default: Message only"),
+        placeholder="default: Message only",
+        help="When live calls are off but the machine is on."),
     "word_send": dict(group="buttons", kind="text", label="Send (text line)",
-        placeholder="default: Send"),
+        placeholder="default: Send",
+        help="On the text line's send button."),
     "word_connecting": dict(group="linebox", kind="text", label="Connecting",
-        placeholder="default: Connecting…"),
+        placeholder="default: Connecting…",
+        help="While the call is being set up, before it rings."),
     "word_waiting": dict(group="linebox", kind="text", label="Waiting for the DJ",
         placeholder="default: Connected — waiting for the DJ…",
         help="Shown in the transcript area between the line connecting and "
@@ -1716,7 +1696,7 @@ SCHEMA: dict[str, dict] = {
         help="Said when the line drops and when a text chat closes. The "
              "voicemail receipt keeps its own wording."),
     "transcript_dj_name": dict(group="linebox", kind="check",
-        label="Name the DJ in the transcript",
+        label="Name the DJ in the transcript", alias="transcript records",
         help="The transcript labels each line with who said it. On, the DJ's "
              "lines carry their name (ASH) instead of the generic DJ — which "
              "reads better on a station whose listeners know the roster, and "
@@ -1796,7 +1776,7 @@ SCHEMA: dict[str, dict] = {
              "button behind it. Browsers still wait for one tap before any "
              "audio starts; that is their rule, not a fault."),
     "vm_player_duck": dict(group="phone", kind="number",
-        label="Player under the machine (%)", alias="loudness duck",
+        label="Player under the machine (%)", alias="loudness duck voicemail",
         help="While the machine rings, greets and records, the station "
              "plays underneath at this volume — piped in even when the "
              "caller wasn't listening, the same move Tune-in makes on a "
@@ -1813,7 +1793,7 @@ SCHEMA: dict[str, dict] = {
     "idle_prompt_secs": dict(group="closing", kind="number", label="Check in after (s)", alias="timeout nudge",
         help="Seconds without SPOKEN WORDS before the DJ asks if they're still "
              "there. Background noise doesn't count. 0 never checks in."),
-    "idle_max_nudges": dict(group="closing", kind="number", label="Check-ins before hanging up",
+    "idle_max_nudges": dict(group="closing", kind="number", label="Check-ins before hanging up (count)",
         needs=("idle_prompt_secs", True),
         help="After this many unanswered check-ins the DJ signs off and gets back "
              "to the broadcast."),
@@ -1849,16 +1829,12 @@ SCHEMA: dict[str, dict] = {
              "side rather than talking over itself."),
     "quiet_station_on_calls": dict(group="onair", kind="select", admin=True,
         label="Quiet the station during calls", alias="mute duck volume loudness",
-        help="Flips the station's own Voice switch off while a phone-in is live "
-             "and back on within seconds of it ending, so idents, links, time "
-             "checks and segments never talk over a call. Music, jingles and "
-             "listener requests keep working — a request just skips its spoken "
-             "intro, and a show that changes over mid-call starts without its "
-             "greeting. Needs the station admin credentials (the same ones "
-             "that mirror voices) and a SUB/WAVE from July 2026 or newer. "
-             "You'll see Voice toggled off in the station's admin while a "
-             "call is up; flip it back on there mid-call and Talk Wave "
-             "respects your choice and stays out of it."),
+        help="Flips the station's own Voice switch off while a phone-in is live"
+             " and back on within seconds of it ending, so idents, links and"
+             " segments never talk over a call. Music and requests keep playing;"
+             " a request just skips its spoken intro. Needs the station admin"
+             " credentials and a SUB/WAVE from July 2026 or newer. Flip Voice"
+             " back on yourself mid-call and Talk Wave leaves it alone."),
     "on_air_handover_secs": dict(group="onair", kind="number",
         label="Hand over before air (s)", alias="duck",
         needs=("avoid_on_air_overlap", True),
@@ -1877,14 +1853,12 @@ SCHEMA: dict[str, dict] = {
              "line silent until the answer is ready, and so does leaving the "
              "wording below empty."),
     "working_line_text": dict(group="turns", kind="text",
+        placeholder="default: nothing — the DJ works in silence",
         label="…and say this",
-        help="YOUR words, spoken while the DJ works. Separate several with | "
-             "and they are used in turn. Left empty, nothing is said — the "
-             "line cannot be written by the DJ itself (it fires while the "
-             "DJ's turn is still being generated, and a DJ told to speak "
-             "before acting speaks INSTEAD of acting), so the only "
-             "alternative to your wording is a stock phrase every caller "
-             "hears in every persona's voice. Silence beats that."),
+        help="YOUR words, spoken while the DJ works. Separate several with | and"
+             " they are used in turn. Left empty, nothing is said — the DJ cannot"
+             " write this line itself, because a DJ told to speak before acting"
+             " speaks INSTEAD of acting."),
     "ask_caller_name": dict(group="call", kind="check", label="Ask the caller's name",
         help="Off by default — being asked your name to request a song is friction. "
              "A volunteered name is still used to credit them on air."),
@@ -1932,26 +1906,32 @@ SCHEMA: dict[str, dict] = {
 
     # --- transcripts ---
     # --- voicemail ---
-    "chat_enabled": dict(group="usage", kind="check",
+    # Filed with its own door, not with the call caps (0.98.23). It rode to
+    # the Calls page when Usage controls became Call limits and moved there,
+    # and nothing on screen looked wrong because the control is a dashboard
+    # card — but the schema is what the finder and the All settings index
+    # read, so the index answered "where is Take text chats" with
+    # "Calls > Call limits", which is the one answer it exists to get right.
+    "chat_enabled": dict(group="chat", kind="check",
         label="Take text chats",
         help="The text line: typed conversation with whoever is on air, "
              "same brain and same tools as the phone, over a plain "
              "WebSocket — no WebRTC, so it works where calls cannot. "
              "The Line's pause switch closes this door too."),
-    "voicemail_enabled": dict(group="usage", kind="check",
+    # Same move, and this one's help gave the game away: "everything below"
+    # was on a different page from the switch.
+    "voicemail_enabled": dict(group="voicemail", kind="check",
         label="Enable voicemail",
-        help="The machine's master switch — everything below applies only "
-             "while this is on."),
+        help="The machine's master switch — everything else here applies "
+             "only while this is on. Its beep lives with the sound board, "
+             "under [Call sounds](#sounds)."),
     "voicemail_when": dict(group="voicemail", kind="select", label="Answer with voicemail",
         needs=("voicemail_enabled", True),
-        help="'When a live call is impossible' turns a busy or off-air "
-             "line's refusal into a message instead of silence. Pause all "
-             "calls closes the machine too — the kill switch outranks it — "
-             "and the hourly and daily caps and the redial wait still "
-             "refuse, on purpose: a message costs STT, and a robot "
-             "redialling the machine is the robot the caps exist for. "
-             "'Always' makes the line voicemail-only, the cheapest way to "
-             "run it: no LLM turns at all."),
+        help="'When a live call is impossible' turns a busy or off-air refusal"
+             " into a message instead of silence. The caps and the redial wait"
+             " still refuse, on purpose — a message costs transcription. 'Always'"
+             " makes the line voicemail-only, the cheapest way to run it: no LLM"
+             " turns at all."),
     "allow_voicemail": dict(group="perms", kind="select", tiered=True,
         label="Leave a voicemail",
         help="Who may talk to the machine at all. [The machine](#voicemail) "
@@ -1990,19 +1970,17 @@ SCHEMA: dict[str, dict] = {
     "voicemail_greeting": dict(group="voicemail", kind="text", label="Greeting",
         placeholder="derived: “You've reached {station}. {dj} is on the air "
                     "right now — leave a request after the beep.”",
-        help="Spoken in the on-air DJ's own voice, so it is staged ahead of "
-             "time below rather than generated while a caller waits. {station}, "
-             "{dj} and {show} are filled in per persona; with nobody on air the "
-             "machine answers as the station itself, in your default voice. "
-             "Changing this re-renders every clip on the next staging run. "
-             "Blank reads: \u201cYou've reached {station}. {dj} is on the air "
-             "right now \u2014 leave a request after the beep.\u201d"),
+        help="Spoken in the on-air DJ's own voice, so it is staged ahead of time"
+             " below rather than generated while a caller waits. {station}, {dj}"
+             " and {show} are filled in per persona; with nobody on air the"
+             " machine answers as the station itself. Changing this re-renders"
+             " every clip on the next staging run."),
     "voicemail_max_seconds": dict(group="voicemail", kind="number",
         label="Message ceiling (s)", alias="duration length",
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
     "voicemail_flow": dict(group="voicemail", kind="select",
-        label="Without the switch, the line is",
+        label="What a message is, by default",
         help="Only matters while the ON AIR | OFF AIR switch is NOT on the "
              "card (the Go-live row off, or its voicemail door killed on "
              "the dashboard). With the switch up, the caller chooses: OFF "
@@ -2017,15 +1995,12 @@ SCHEMA: dict[str, dict] = {
     # rare exception overrides them in settings.json or the environment.
     "vm_air_backend": dict(group="airdoors", kind="select",
         label="A soundbite airs as",
-        help="'The DJ reads it' works on any deployment — plain station "
-             "admin API. 'The caller's own voice' plays the recording on the "
-             "station's voice channel (music ducked, proper level) and needs "
-             "one deployment step: this container joined to the station's "
-             "docker network, so the mixer's telnet (broadcast:1234) is "
-             "reachable. The clip URL derives from HOST_IP. Falls back to "
-             "the DJ reading, out loud in the receipt, whenever the doors "
-             "are missing. Unusual layouts can override vm_mixer_telnet and "
-             "vm_air_base_url in settings.json or the environment."),
+        help="'The DJ reads it' works on any deployment. 'The caller's own"
+             " voice' plays the recording on the station's voice channel,"
+             " properly levelled, and needs this container joined to the"
+             " station's docker network — without that it falls back to the DJ"
+             " reading, and says so in the receipt. See the On Air setup docs for"
+             " the network stanza."),
     "voicemail_destination": dict(group="voicemail", kind="select", label="Messages go",
         help="'Held for you' is the safe default — messages land below, and "
              "nothing reaches the air without you. The rest act on the station "
@@ -2053,10 +2028,14 @@ SCHEMA: dict[str, dict] = {
     "calls_per_day": dict(group="usage", kind="number", label="Calls per day", alias="rate limit throttle cap",
         help="The hard ceiling on what a day can cost. The hourly limit alone "
              "still allows 24× that."),
-    "calls_paused": dict(group="usage", kind="check", label="Pause all calls",
+    # Filed with Access rather than with the call caps: it is not a cap, and
+    # it is not call-only. Its own help says the machine goes quiet too, so
+    # it outranks every door — and Access is already the section about who
+    # may reach the line at all. "Nobody, right now" belongs there.
+    "calls_paused": dict(group="security", kind="check", label="Pause all calls",
         help="Kill switch. The card still shows who's on air, but nobody can "
-             "start a call — the answering machine stays silent too. Takes "
-             "effect immediately."),
+             "start a call — the answering machine and the text line go "
+             "quiet too. Takes effect immediately."),
     "max_actions_per_call": dict(group="usage", kind="number", label="Actions per call", alias="rate limit cap",
         help="Requests, on-air messages and segments together. At the limit the "
              "DJ says so warmly and keeps talking — never an error."),
@@ -2091,13 +2070,11 @@ SCHEMA: dict[str, dict] = {
     # a chat-only setting (the operator went looking for it under calls).
     "action_cards": dict(group="style", kind="select",
         label="Action receipts",
-        help="The ✅ card a station action leaves in the transcript — a queued "
-             "request, a takeover, a beat — on calls, texts and voicemail "
-             "alike. After the DJ's line, the words land first and the card "
-             "reads as the paperwork; as-it-happens fires the moment the tool "
-             "does; off leaves the DJ's word as the only trace (the action "
-             "still runs, and the record still lists it). The machine has no "
-             "DJ line, so anything but off shows its delivery receipt."),
+        help="The receipt card a station action leaves in the transcript — a"
+             " queued request, a takeover, a beat — on every door. After the DJ's"
+             " line reads as paperwork; as-it-happens fires the moment the tool"
+             " does; off leaves the DJ's word as the only trace, though the"
+             " action still runs and the record still lists it."),
     "style_signoff": dict(group="closing", kind="text", label="Signing off",
         placeholder="default: in character, no fixed formula",
         help="e.g. 'mention what's coming up next before you hang up'."),
@@ -2113,7 +2090,7 @@ SCHEMA: dict[str, dict] = {
     "callback_max_words": dict(group="callback", kind="number", label="Length (words)",
         needs=("callback_enabled", True),
         help="Short is better — a mention, not a recap."),
-    "callback_min_turns": dict(group="callback", kind="number", label="Min caller turns",
+    "callback_min_turns": dict(group="callback", kind="number", label="Fewest caller turns to earn one",
         needs=("callback_enabled", True),
         help="Calls that never got going aren't worth mentioning."),
     "callback_instructions": dict(group="callback", kind="text", label="Extra steer",
@@ -2122,12 +2099,12 @@ SCHEMA: dict[str, dict] = {
         help="e.g. 'never name the caller' or 'tie it to the current track'."),
 
     # --- station awareness ---
-    "context_recent_tracks": dict(group="context", kind="number", label="Recently played songs",
+    "context_recent_tracks": dict(group="context", kind="number", label="Recently played songs (count)",
         help="Each item costs time-to-first-token on EVERY turn, not just at "
              "the start. 0 leaves it out."),
-    "context_upcoming": dict(group="context", kind="number", label="Coming-up songs",
+    "context_upcoming": dict(group="context", kind="number", label="Coming-up songs (count)",
         help="Lets the DJ answer 'what's next' without guessing."),
-    "context_booth_lines": dict(group="context", kind="number", label="On-air chatter",
+    "context_booth_lines": dict(group="context", kind="number", label="On-air chatter (lines)",
         help="Recent lines from the on-air DJ, so the call doesn't repeat them."),
     "context_schedule": dict(group="context", kind="check", label="Know the rest of the line-up",
         help="The names of the station's OTHER shows, so \"what's on after this?\" "
@@ -2163,12 +2140,23 @@ SCHEMA: dict[str, dict] = {
         placeholder="default: the sound set above",
         help="Engaged tone: the line is busy, the limit is reached, or the call "
              "couldn't connect."),
+    # STAYS in Call sounds, against the 0.98.23 review's own recommendation.
+    # It is not a call sound — it is the machine's — and it is the only one
+    # of the six that ignores "Play call sounds", which is what gave it away.
+    # But the six moments are ONE board: six cards, one shared picker, one
+    # shelf, and panel-sounds.py's SOUND_SLOTS assumes all six. Splitting it
+    # out leaves a five-card board and a stray row, and trades a real loss of
+    # coherence for a filing improvement. The group follows the CONTROL —
+    # that is the same rule the door switches were moved to obey — and the
+    # Voicemail machine section carries a link to it instead.
     "sound_vm_beep": dict(group="sounds", kind="text", label="Voicemail beep",
         placeholder="default: the classic tone",
-        help="The answering machine's beep — the one server-played sound; "
-             "the formats note above applies double here. Unplayable falls "
-             "back to the tone; the verdict shows below."),
-    "call_volume": dict(group="sounds", kind="number", label="Default volume", alias="loudness",
+        help="The beep before recording starts, and the one sound the SERVER "
+             "plays rather than the card — so it must be a .wav the server "
+             "can read. Deliberately not governed by Play call sounds: it "
+             "tells the caller to start talking. Unplayable falls back to "
+             "the tone."),
+    "call_volume": dict(group="sounds", kind="number", label="Default volume (%)", alias="loudness",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
     "ring_cut_at_pickup": dict(group="sounds", kind="check",
         needs=("call_sounds", True),

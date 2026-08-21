@@ -110,6 +110,10 @@ The caller's microphone is captured with **echo cancellation, noise suppression 
 
 > The baked-in Whisper needs no key or network and is the right place to start. A **cloud STT** (Deepgram, OpenAI, Google) transcribes more accurately, and is worth switching to if callers are misheard — most likely from a phone in a noisy place.
 
+**Test hearing** speaks one known line with the configured voice and hears it back with the configured ear, reporting what it heard, what share of the words survived, and how long it took against the length of the clip. The sample is synthesized rather than recorded from your microphone, so there is no permission prompt and every run is the same sentence.
+
+> **This is the only check that reaches a cloud ear.** The Speed test measures the built-in Whisper for real, but for Deepgram, OpenAI or Google it records a flat 400ms estimate and never calls them — so before this, a wrong or expired key gave a green panel and a green speed test, and the first symptom was a caller being misheard on air.
+
 ---
 
 ## Permissions & safety
@@ -124,6 +128,7 @@ A reference card, not settings: the three tiers (Admin always, Guest gate, Open)
 - The admin password for this panel, and the optional guest code for the phone.
 - `CALLIN_ADMIN_KEY` is the recovery override.
 - A guest-code expiry (hours, default 24) for shared machines. The card also offers a lock button to forget the code immediately.
+- **Pause all calls**, the kill switch — filed here from 0.98.23, because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
 
 ### Caller permissions
 
@@ -218,7 +223,7 @@ A **Per-DJ effects** list gives any persona its own colour, saved as picked, wit
 
 ### Voicemail machine
 
-An **Enable voicemail** master switch, then:
+An **Enable voicemail** master switch — the control is the dashboard's Voicemail line, and this page says whether it is open — then:
 
 - per-persona greeting lines — editable, playable, deletable — staged one at a time with live progress
 - a per-tier caller permission
@@ -232,6 +237,8 @@ Greetings are **staged** — rendered once per persona in their own voice, re-re
 
 > **Every message lands in the panel's list whatever the delivery mode.** Nothing is recorded as audio; the transcript is the message.
 
+The machine's **beep** is set with the other five sounds under [Call sounds](#call-sounds), because the six moments are one board. It is the only one of the six the server plays rather than the card, and deliberately the only one not governed by *Play call sounds* — it tells the caller to start talking.
+
 The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ---
@@ -240,14 +247,11 @@ The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ### Text line
 
-A **Take text chats** master switch (on the dashboard beside Live calls and Voicemail), then the clocks and ceilings for typed conversation with whoever is on air:
+A **Take text chats** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.23:
 
-- how long quiet before a chat closes
-- the per-chat message ceiling, and the longest a chat may live
-- how many chats may be open at once, and new chats per hour and per day
-- a **per-caller reopen wait** — the text line's Redial-wait, and scriptable where a call is not
-- the per-minute message cap
-- a **reply timeout**, so a stalled model can't leave a caller watching the typing dots forever
+**Chat limits** — how many chats may be open at once, new chats per hour and per day, a **per-caller reopen wait** (the text line's Redial-wait, and scriptable where a call is not), the per-chat message ceiling and the per-minute message cap.
+
+**When a chat ends** — the longest a chat may live, how long quiet before it closes, a **reply timeout** so a stalled model can't leave a caller watching the typing dots forever, and the nudge for a quiet caller.
 
 **Opening the line** — whether the booth **greets first** when a fresh chat connects: a canned line (instant, with `{station}`/`{dj}`/`{show}` filled), one **written in persona** each time, or off. *A text line that answers with silence reads as broken.*
 

@@ -458,6 +458,126 @@ async def _a_calls_worth_of_context(cfg: dict) -> tuple[str, list, str]:
     return prompt, tools, "measured with " + " and ".join(parts)
 
 
+# The sentence the hearing test speaks and then listens back to. Deliberately
+# ordinary radio English with two proper nouns and a number: a provider that
+# is merely reachable gets the words, and one that is actually good at phone
+# audio gets the names too.
+HEARING_LINE = ("Evening, this is Sarah calling from Brighton, "
+                "could you play track nine for me")
+
+
+def _wer(said: str, heard: str) -> float:
+    """Word error rate, 0.0 = perfect. Levenshtein over words, not chars —
+    a transcript that drops one word of twelve is 8% wrong, not 40 characters
+    wrong, and the operator is judging words."""
+    import re as _re
+
+    a = _re.findall(r"[a-z0-9]+", said.lower())
+    b = _re.findall(r"[a-z0-9]+", heard.lower())
+    if not a:
+        return 1.0
+    prev = list(range(len(b) + 1))
+    for i, wa in enumerate(a, 1):
+        cur = [i]
+        for j, wb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1,
+                           prev[j - 1] + (wa != wb)))
+        prev = cur
+    return prev[-1] / len(a)
+
+
+async def handle_test_stt(request: web.Request) -> web.Response:
+    """Speak a known line with the configured voice, then hear it back with
+    the configured ear, and report what came out.
+
+    This is the only thing that checks an STT key at all: /test/speed
+    estimates 400ms for any cloud provider and never calls it.
+    """
+    if not _write_allowed(request):
+        return _cors(request, web.json_response(
+            {"error": request.get("auth_error") or "not allowed",
+             "authRequired": bool(request.get("auth_required"))},
+            status=401,
+        ))
+    secrets_store.apply_to_env()
+
+    body = await request.json() if request.can_read_body else {}
+    cfg = settings_store.permissions_for(settings_store.load(), "admin")
+    cfg.update({k: v for k, v in body.items() if v not in (None, "")})
+
+    import time as _time
+
+    from livekit import rtc as lk_rtc
+
+    from call.providers import build_stt, effective_stt
+
+    provider, model, note = effective_stt(cfg)
+
+    # --- 1. make the audio ------------------------------------------------
+    # Failing here is a VOICE problem, not a hearing one, and the message has
+    # to say so or the operator debugs the wrong section.
+    pcm, rate = bytearray(), 24000
+    try:
+        from tts_adapter import AdapterTTS
+
+        voice = cfg.get("tts_voice") or ""
+        tts = AdapterTTS(base_url=cfg.get("tts_base_url") or "", voice=voice,
+                         model=cfg.get("tts_model") or "",
+                         adapter=resolve_adapter(cfg.get("tts_adapter")),
+                         mode=str(cfg.get("tts_mode", "cloud")))
+        try:
+            stream = tts.synthesize(HEARING_LINE)
+            samples = 0
+            async for ev in stream:
+                samples += ev.frame.samples_per_channel
+                pcm.extend(ev.frame.data.tobytes())
+            await stream.aclose()
+            rate = tts.sample_rate or 24000
+        finally:
+            await tts.aclose()
+        if not samples:
+            raise RuntimeError("the voice produced no audio")
+    except Exception as e:
+        return _cors(request, web.json_response({
+            "ok": False, "stage": "voice",
+            "error": "couldn't make the test audio — this is the VOICE "
+                     "backend, not the ear: %s" % str(e)[:160],
+        }))
+
+    audio_s = (len(pcm) // 2) / rate if rate else 0.0
+
+    # --- 2. hear it back --------------------------------------------------
+    try:
+        stt_obj = build_stt(cfg)
+        if hasattr(stt_obj, "prewarm"):
+            # Synchronous in the SDK; keep the model load off this loop.
+            await asyncio.to_thread(stt_obj.prewarm)
+        clip = lk_rtc.AudioFrame(
+            data=bytes(pcm), sample_rate=rate, num_channels=1,
+            samples_per_channel=len(pcm) // 2,
+        )
+        t0 = _time.perf_counter()
+        ev = await stt_obj.recognize(clip)
+        took_ms = (_time.perf_counter() - t0) * 1000
+        heard = (ev.alternatives[0].text if ev.alternatives else "").strip()
+    except Exception as e:
+        return _cors(request, web.json_response({
+            "ok": False, "stage": "ear", "provider": provider, "model": model,
+            "error": str(e)[:200],
+        }))
+
+    wer = _wer(HEARING_LINE, heard)
+    # Realtime factor against the clip, which is what decides whether the ear
+    # can keep up with a call at all — the same number the voice test reports.
+    rtf = round((took_ms / 1000) / audio_s, 2) if audio_s else None
+    return _cors(request, web.json_response({
+        "ok": bool(heard),
+        "provider": provider, "model": model, "note": note or "",
+        "said": HEARING_LINE, "heard": heard,
+        "accuracy": round((1.0 - min(wer, 1.0)) * 100),
+        "ms": round(took_ms), "audioSeconds": round(audio_s, 1), "rtf": rtf,
+    }))
+
 async def handle_test_llm(request: web.Request) -> web.Response:
     """Two short rounds, with two tools offered.
 

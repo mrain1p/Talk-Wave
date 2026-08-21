@@ -3,6 +3,32 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.24
+
+A polish round over the settings panel: four settings filed on the wrong page, one section that had never had a pass, and the one engine you could configure but not try.
+
+### Four settings were filed where nothing would look for them
+
+- **Three rode to the Calls page when Call limits moved there.** "Take text chats" and "Enable voicemail" are the master switches for the text line and the answering machine, and both were filed under *Calls › Call limits*; "Pause all calls" was there too, though its own help says it silences the machine and the text line as well. Nothing looked wrong, because all three render as dashboard cards — but the schema is what the finder and the All settings index read, so the index answered "where is Take text chats" with *Calls › Call limits*, which is the one question it exists to get right. Each now sits with the door it governs, and the kill switch with Access.
+- **The voicemail beep stays with the sound board, and now says why.** It was flagged as the odd one out in Call sounds — the only sound there that is not a call sound, and the only one of the six that ignores *Play call sounds*. Moving it would have left a five-card board and a stray row, so it stays and the machine links to it instead. Ignoring the master switch is deliberate: the beep tells the caller to start talking.
+
+### The text line got the pass every other section has had
+
+- **Fifteen rows under no headings.** The longest section in the panel ran as one unbroken ladder while every comparable section is banded. It is four named blocks now — Chat limits, When a chat ends, Opening the line, How the reply arrives.
+- **The only checkbox in the panel wearing the dropdown-row skin**, and **the only subhead repeating the label directly under it**, were both in this section. Both fixed.
+
+### Ears can be tested, at last
+
+- **Brains had two buttons, Voice had two, Ears had none** — and the Speed test does not cover it: for any cloud ear it records a flat 400ms estimate and never calls the provider. A wrong or expired Deepgram key gave a green panel, a green speed test, and a caller being misheard on air as the first symptom.
+- **Test hearing** speaks one known line with the configured voice and hears it back with the configured ear, reporting the transcript, the share of words that survived, and the time against the length of the clip. The sample is synthesized rather than recorded from the operator's microphone, so there is no permission prompt and every run is the same sentence. A failure says which engine failed, because a voice that cannot speak fails a hearing test without the ear being touched.
+- **No "Reload model list" beside it,** unlike the other two: the STT models are a curated table, not a catalogue anyone discovers, so the button would have claimed work it does not do.
+
+### Less is more
+
+- **Seventeen fields carried help over 400 characters** — 41% of all the help in the panel sat in 32 of its 188 fields. Out came mechanism (telnet ports, HOST_IP, override key names), deployment steps that belong in the docs, and reasoning that does not change what an operator would set. What stayed is the fact that changes the decision, and every warning. Nothing is over 400 now.
+- **Eleven fields had no help at all** — every one of the card's fixed wording strings. Each has one line now saying when the caller sees it.
+- **Eight number labels named no unit,** and three text fields carried no default in their placeholder. Both fixed. And "Without the switch, the line is" is a label no longer.
+
 ## 0.98.22
 
 The settings panel had 188 settings behind 34 folded sections across nine pages, and at rest it showed you none of them. This is the pass that makes them findable: the finder becomes an index, every section gets an address, and the pages get a shape.

@@ -4386,6 +4386,56 @@
     finally { btn.disabled = false; }
   };
 
+  // The only thing that checks an ear at all. /test/speed measures local
+  // Whisper for real but records a flat 400ms estimate for any cloud
+  // provider without calling it, so before this a wrong Deepgram key gave a
+  // green panel and a green speed test, and the first symptom was a caller
+  // being misheard on air.
+  //
+  // The sample is SYNTHESIZED rather than recorded from the operator's
+  // microphone (their call): no permission prompt, nothing that depends on
+  // the room, and the same sentence every run so two results compare.
+  $('testSttBtn').onclick = async () => {
+    const btn = $('testSttBtn'), out = $('sttResult');
+    btn.disabled = true;
+    out.className = 'result on';
+    out.textContent = 'Speaking a line, then listening back…';
+    try {
+      const d = await afetch('/test/stt', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft()),
+      }).then((r) => r.json());
+      if (!d.ok) {
+        // Say WHICH engine failed. A voice that cannot speak fails this
+        // test without the ear being touched, and sending the operator to
+        // debug the wrong section is worse than no test.
+        showResult(out, false, d.stage === 'voice'
+          ? d.error
+          : 'The ear failed: ' + d.error
+            + '\n' + (d.provider || '?') + ' · ' + (d.model || '?'));
+        return;
+      }
+      const acc = d.accuracy;
+      const verdict = acc >= 90 ? '\n✓ Heard it.'
+        : acc >= 70 ? '\n⚠ Mostly heard it — names and numbers are where a '
+                      + 'call goes wrong.'
+        : '\n✗ Badly misheard. Check the model, or try a cloud ear.';
+      // Realtime factor matters for the same reason it does on the voice
+      // test: an ear slower than the audio cannot keep up with a call.
+      const slow = d.rtf != null && d.rtf >= 1.0;
+      showResult(out, acc >= 70 && !slow,
+        d.provider + ' · ' + d.model
+        + '\nsaid:  ' + d.said
+        + '\nheard: ' + (d.heard || '(nothing)')
+        + '\n' + acc + '% of the words, ' + d.ms + 'ms for '
+        + d.audioSeconds + 's of audio'
+        + (d.rtf != null ? ' (' + d.rtf + 'x realtime'
+           + (slow ? ' — slower than the call' : '') + ')' : '')
+        + verdict + (d.note ? '\n' + d.note : ''));
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
+
   $('testLlmBtn').onclick = async () => {
     const btn = $('testLlmBtn'), out = $('llmResult');
     btn.disabled = true;
