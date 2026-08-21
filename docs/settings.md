@@ -13,7 +13,6 @@ Everything lives in the panel behind the gear, and changes apply to the **next c
 | Page | What you set there |
 |---|---|
 | **Dashboard** | Nothing — it reads live state and acts. [Its own page](dashboard.md) |
-| **All settings** | Every setting in one table, with the page and section holding it |
 | **Configuration** | The station, and the three engines: Brains, Voice, Ears |
 | **Permissions & safety** | Who may call, and what they may trigger |
 | **Reference** | What callers can ask, and the station's tool surface |
@@ -340,7 +339,7 @@ The Behaviour band — nothing visual:
 - whether calls start on the **loudspeaker**
 - the card's **listener count** — "On air now · 2 listening", shown from one listener up, so a quiet hour never paints a zero
 - its **heart button** — the same public like any listener page sends, beside the record on the card. Both on by default
-- the swipe-up station player, and whether the page starts on it
+- the swipe-up station player, and **which face it opens on** — the phone with the player a swipe up, or the player with the call button a swipe down
 - how loud the station plays under the answering machine
 
 ### After the conversation

@@ -323,12 +323,6 @@
     const on = (el, yes) => { if (el) el.classList.toggle('offpage', !yes); };
     document.querySelectorAll('.dashband, .dash, .activity').forEach((el) =>
       on(el, page === 'dash' && !searching));
-    const index = $('allWrap');
-    if (index) {
-      const showing = page === 'all' && !searching;
-      on(index, showing);
-      if (showing) paintAllSettings();
-    }
     // Search results carry their section's own name, so the bands stay out
     // of a results view rather than headlining pages with no matches.
     document.querySelectorAll('.supergroup').forEach((hdr) => {
@@ -3457,91 +3451,6 @@
     }).catch(() => panelPaintGlyph());
     panelPaintGlyph();
   })();
-
-  // ------------------------------------------------------------- the index
-  // Every setting, once, with the page and section holding it and what it
-  // says right now. Rebuilt each time the page is shown rather than cached:
-  // the values move, and a stale index is worse than none.
-  function settingValue(name) {
-    const el = $(name);
-    const meta = SCHEMA.fields[name] || {};
-    if (!el) return '—';
-    if (el.type === 'checkbox') return el.checked ? 'on' : 'off';
-    const raw = el.value == null ? '' : String(el.value);
-    if (!raw) return meta.placeholder ? 'default' : '—';
-    // A select says the words it shows, not the value it stores — "guest"
-    // means nothing next to "Guest code — the caller typed the code".
-    if (el.tagName === 'SELECT' && el.selectedIndex >= 0) {
-      const words = (el.options[el.selectedIndex].textContent || '').trim();
-      return words.split(' — ')[0] || raw;
-    }
-    return raw.length > 42 ? raw.slice(0, 41) + '…' : raw;
-  }
-
-  function paintAllSettings() {
-    const body = $('allBody');
-    if (!body || !SCHEMA.groups || !SCHEMA.groups.length) return;
-    body.innerHTML = '';
-    const groupById = {};
-    SCHEMA.groups.forEach((g) => { groupById[g.id] = g; });
-    let n = 0;
-    // Schema order throughout — the same order the pages themselves are in,
-    // so scrolling the index is walking the panel.
-    SCHEMA.groups.forEach((g) => {
-      Object.keys(SCHEMA.fields).forEach((name) => {
-        const meta = SCHEMA.fields[name];
-        if (meta.group !== g.id) return;
-        // A field the markup does not carry is unreachable, and listing it
-        // here as a place to go would be a lie. TestPanelMarkup is what
-        // stops that ever being true; this is just honest if it is.
-        if (!$(name)) return;
-        n++;
-        const tr = document.createElement('tr');
-        // NOT data-group: that attribute means "a settings section" to every
-        // other query in the panel, and a table of 188 rows wearing it is a
-        // trap for the next broad selector somebody writes.
-        tr.dataset.sec = g.id;
-
-        const what = document.createElement('td');
-        what.className = 'awhat';
-        what.textContent = meta.label || name;
-        tr.appendChild(what);
-
-        const where = document.createElement('td');
-        where.className = 'awhere';
-        const page = document.createElement('span');
-        page.className = 'apage';
-        page.textContent = PAGE_TITLES[g.super] || g.super;
-        where.appendChild(page);
-        where.appendChild(document.createTextNode(g.title || g.id));
-        tr.appendChild(where);
-
-        const now = document.createElement('td');
-        now.className = 'anow';
-        now.textContent = settingValue(name);
-        tr.appendChild(now);
-
-        tr.tabIndex = 0;
-        const go = () => {
-          const sec = document.querySelector(
-            'details.sec[data-group="' + g.id + '"]');
-          showSection(sec);
-        };
-        tr.onclick = go;
-        tr.onkeydown = (e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
-        };
-        body.appendChild(tr);
-      });
-    });
-    const note = $('allNote');
-    if (note) {
-      note.textContent = n + ' settings across '
-        + SCHEMA.groups.length + ' sections and '
-        + (SCHEMA.supergroups || []).length + ' pages. Click a row to open it '
-        + 'where it stands; use the finder above to narrow the panel itself.';
-    }
-  }
 
   // ----------------------------------------------------- settings search
   //

@@ -103,30 +103,6 @@
       </div>
     </header>
 
-    <!-- THE INDEX (0.98.22). Every setting in the panel, in one table, with
-         the page and section that hold it and its value right now — the one
-         complete answer to "I know this exists, where is it". The finder
-         answers the question you can already phrase; this answers the one
-         you cannot, which is what 188 settings behind 34 folded sections
-         across nine pages otherwise leaves you no way to ask.
-
-         Built from the schema by paintAllSettings, so it can never list a
-         setting that no longer exists or miss one that was just added. A
-         table is a surface: border, radius, header band, row hover. -->
-    <div class="allwrap" id="allWrap">
-      <p class="hint wide" id="allNote">Every setting the panel has, and where
-        it lives. Click a row to open it where it stands. Use the finder above
-        to narrow the panel itself.</p>
-      <div class="alltablewrap">
-        <table class="alltable">
-          <thead>
-            <tr><th>Setting</th><th>Where</th><th>Now</th></tr>
-          </thead>
-          <tbody id="allBody"></tbody>
-        </table>
-      </div>
-    </div>
-
     <!-- The first-run password card retired at 0.10.77 (operator's call):
          the dashboard's NOTIFICATIONS column carries the ask now, with a
          jump to the Access section that holds the one implementation. -->
@@ -1742,7 +1718,10 @@
         <label class="check tickright"><input type="checkbox" id="show_listener_count" /> Listener count on the card</label>
         <label class="check tickright"><input type="checkbox" id="show_track_like" /> Heart button on the card</label>
         <label class="check tickright"><input type="checkbox" id="swipe_player" /> Swipe-up station player</label>
-        <label class="check tickright"><input type="checkbox" id="start_on_player" /> Start on the player</label>
+        <div class="row">
+          <label for="start_on_player">Opens on</label>
+          <select id="start_on_player"></select>
+        </div>
         <div class="row narrow">
           <label for="vm_player_duck">Player under the machine (%)</label>
           <input type="number" id="vm_player_duck" min="0" max="100" />
