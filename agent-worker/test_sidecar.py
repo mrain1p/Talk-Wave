@@ -72,6 +72,8 @@ from tests.test_http import (  # noqa: F401
     TestTheMintGivesTheWorkerAHeadStart,
 )
 from tests.test_widget import (  # noqa: F401
+    TestThePanelKeepsItsOwnRules,
+    TestTheMusicComesBackAfterACall,
     TestNothingIsReachableOnlyByRecognisingIt,
     TestThePanelSaysWhereThingsAre,
     TestTheCallerIsNotRescuedMidAnnouncement,
@@ -221,6 +223,9 @@ from tests.test_album_tools import (  # noqa: F401
     TestAFailedReadNeverReadsAsAnEmptyLibrary,
     TestAPunctuatedFiledNameStillQueues,
     TestClearingARunFromTheQueue,
+)
+from tests.test_house_rules import (  # noqa: F401
+    TestEveryScenarioIsWellFormedBeforeItCostsAnything,
 )
 from tests.test_prompt_budget import (  # noqa: F401
     TestTheTruthBlockSplitChangedNoPromptByte,

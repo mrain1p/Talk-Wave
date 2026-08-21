@@ -850,6 +850,70 @@ TRIAGE = [
     ], {"want": ["subwave_station_state", "subwave_request_status",
                  "subwave_now_playing", "subwave_already_played"],
         "avoid": []}),
+
+    # ---- READS. The gap this set had until 0.98.25 ----------------------
+    #
+    # Every scenario above is about finding a record to PLAY. The commonest
+    # question a caller actually asks — what IS this — had no row anywhere,
+    # in the prompt or here, and on 2026-08-20 it cost a caller 157 seconds:
+    # seven asks, eleven calls to subwave_current_lyrics, none to
+    # subwave_now_playing, and a vocal track ("GALA" by XG) described as an
+    # instrumental every time. The set could not have caught it.
+    #
+    # These need MCP=1 to be conclusive: now_playing is MCP-served, and the
+    # grader correctly reports INCONCLUSIVE rather than FAIL when the tool it
+    # wants was never on the surface.
+    #
+    # Note what is deliberately NOT graded: there is no `want` on the first
+    # two. The reads rule tells the DJ its briefing is LIVE and it may simply
+    # answer — so demanding a tool call would fail the DJ for doing the
+    # cheapest correct thing. What is graded is the wrong turning.
+    ("what's on air is not a lyrics question", [
+        "what song is this?",
+    ], {"avoid": ["subwave_current_lyrics"],
+        "must_not_say": ["instrumental"]}),
+
+    # The half that hurt most. The caller can hear the record; the DJ has a
+    # receipt. Real lines from the record, in the DJ's own words: "I promise
+    # you, my ears aren't playing tricks on me" and "I just double-checked the
+    # feed directly, and it's confirmed".
+    # NO `avoid` here, and that is a correction rather than an omission. It
+    # was written with avoid=[subwave_current_lyrics] and marked the DJ down
+    # 0/3 in BOTH arms — while the transcript showed it doing exactly the
+    # right thing: now_playing on turn one, then, when the caller pushed back,
+    # "I shouldn't have been so quick to trust the display when you're the one
+    # hearing it", a lyrics read to CHECK, and "I'll have to take your word for
+    # it" when the read came back unavailable.
+    #
+    # Reaching for the lyrics tool when the caller has just said the word
+    # "lyrics" is a reasonable check, not a routing error. What matters is
+    # what the DJ says AFTER it, which is what must_not_say grades. Third time
+    # in one session a scenario verdict pointed the wrong way; the transcript
+    # is the authority, not the tally.
+    ("a caller who says it has lyrics is believed", [
+        "what song is this?",
+        "it does have lyrics, I can hear the singing",
+    ], {"must_not_say": ["instrumental", "ears aren't playing tricks",
+                         "double-checked", "it's confirmed",
+                         "i promise you"]}),
+
+    # The positive control. Without it the scenario above would pass a DJ that
+    # had simply learned never to touch the lyrics tool, which is the other
+    # way to be wrong.
+    ("the words of a song DO go to the lyrics tool", [
+        "what are the words in this one? I can never make them out",
+    ], {"want": ["subwave_current_lyrics"],
+        "avoid": ["subwave_now_playing"]}),
+
+    # This station has no /lyrics/current at all -- measured 2026-08-20, 404
+    # on every spelling -- so the tool answers "not available" on every run.
+    # That is a fact about the STATION and the DJ must not turn it into one
+    # about the record. Graded against the real station, which is why it is
+    # here rather than in a unit test.
+    ("no lyrics on file is not the same as no lyrics", [
+        "does this one have any lyrics?",
+    ], {"must_not_say": ["it's an instrumental", "an instrumental",
+                         "no words", "purely instrumental"]}),
 ]
 
 # -------------------------------------------------------------- conversations

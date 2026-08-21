@@ -344,12 +344,20 @@ def name_rule(cfg: dict) -> str:
 # `tool_finding` is the triage table and is NOT a cut candidate: measured
 # 30/30 on the deployed model. It is droppable because a section nobody can
 # drop is a section nobody can price, not because dropping it is a good idea.
+# `tool_reads` MEASURED 2026-08-21 — SCENARIO_SET=triage SCENARIO=lyrics
+# MCP=1, 3 rounds per arm, against the real station (whose /lyrics/current
+# 404s, which is the point). "What's on air is not a lyrics question": 3/3
+# with the row, 0/3 without — ablated, the DJ answers "what song is this?"
+# with subwave_current_lyrics EVERY time, which is the 2026-08-20 failure
+# reproduced on demand. The positive control rules out mere avoidance: a real
+# lyrics question still reaches the tool 3/3 in both arms. 1,005 characters,
+# and the set had no scenario for it until 0.98.25 — the same call needed both.
 SECTIONS = (
     "tool_requests",   # how to put a request in, and reading the receipt
     "tool_search",     # the literal name search, and what it is not for
     "tool_finding",    # the triage table — MEASURED 30/30, keep
     "tool_actions",    # the on-air action bullets, each on its own switch
-    "tool_reads",      # check what's playing rather than guessing
+    "tool_reads",      # what's on air — MEASURED 3/3 against 0/3, keep
     "tool_off",        # what this line cannot do tonight
     "tool_floor",      # the safety floor: no miming, and the stranger rule
 )
