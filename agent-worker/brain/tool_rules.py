@@ -101,6 +101,39 @@ def cancel_rule(cfg: dict) -> str:
     )
 
 
+def _dispatch_rule(exact: bool) -> str:
+    """The finding rules when one tool does the choosing.
+
+    Deliberately short. The routing lives in code now, so the prompt's job
+    here is no longer to teach a decision tree — only to say what the tool
+    wants and to keep the two rules that are about JUDGEMENT rather than
+    routing: a miss is not proof, and queue the record you actually found.
+    """
+    parts = ["""- **Finding the record -> subwave_find_music.** One tool for every way of
+  looking. Do not pick a search yourself: tell it what the CALLER SAID and it
+  picks. Fill in only what they gave you — the name they said, the sound they
+  described, the mood or era they asked for, whether they left it to you — and
+  leave the rest empty. It answers with which shelf the records came off, so
+  you can tell them where you looked before you offer them.
+  If you genuinely know better than the fields can say, `prefer` takes the
+  route name and overrides it. That is yours to use; it is not the usual
+  move."""]
+    parts.append("""  **A miss is NOT proof the library hasn't got it.** A name match is literal:
+  one wrong letter finds nothing. Before you tell a caller a record isn't
+  here, look again for the ARTIST on their own, and use what you know — a
+  caller with the title slightly wrong is the normal case.
+    NO:  caller asks for "Firestorm by Kygo"; one look misses; "haven't got
+         that one in the racks tonight". (The library holds Firestone.)
+    YES: "Firestone, that'll be the one — hang on."
+  And never dress a near-miss up as the thing they asked for.""")
+    if exact:
+        parts.append("""  **Once you have found it, queue THAT recording** — subwave_queue_track with
+  the id shown beside it. Don't put a request in for something already in
+  front of you: a request re-matches the words, can come back with a
+  different record, and burns the station's request limit doing it.""")
+    return "\n".join(parts) + "\n"
+
+
 def finding_rule(cfg: dict) -> str:
     """How to actually find a record — which tool, and what a miss means.
 
@@ -113,6 +146,12 @@ def finding_rule(cfg: dict) -> str:
     exact = bool(cfg.get("allow_exact_queue"))
     if not (name_search or sound):
         return ""
+    if cfg.get("single_lookup_tool"):
+        # The whole table below becomes ONE tool's argument list, so teaching
+        # the six-way choice as well would be measuring the wrong thing: the
+        # comparison worth having is table-plus-six against dispatcher-plus-
+        # one, not one against both. See call/tools/finding.py.
+        return _dispatch_rule(exact)
 
     parts = ["""\
 - **Finding the record.** You have more than one way to look, and reaching for
@@ -450,7 +489,29 @@ Use your tools mid-conversation, the way a DJ works while talking:
   air in your voice, and the station's own pacing rules do not apply to one you
   fire by hand.""")
     if on("tool_reads"):
-        parts.append("- **Check what's playing / coming up** rather than guessing.")
+        # This was ONE line — "check what's playing rather than guessing" —
+        # naming no tool at all, while the triage table above covers only
+        # finding a record to PLAY. So the commonest question a caller can ask
+        # had no row anywhere, and on 2026-08-20 the DJ answered "what song is
+        # this" seven times by calling subwave_current_lyrics (whose own
+        # description contains the words "the track playing right now") and
+        # subwave_now_playing not once. Every routing surface pointed the
+        # wrong way; this is the row that was missing.
+        parts.append("""- **What's on right now.** The track in your briefing above is LIVE — it is
+  refreshed for you when the station moves on mid-call, so "what's this?",
+  "who is this?", "what's it called?" you can simply ANSWER, in your own
+  voice, without reaching for anything.
+    * Want to be certain, or been talking a while -> subwave_now_playing.
+      That is the tool for what is ON, and it is the ONLY one that answers
+      what a record IS.
+    * subwave_current_lyrics is for the WORDS — what the song says, what a
+      line means. It is never the answer to what the song IS, and it cannot
+      tell you whether a track is an instrumental: a station with no lyrics
+      indexed and an instrumental look identical from there.
+    * What is coming up, or what just played -> subwave_station_state.
+  **If a caller tells you you have this wrong, they are the one hearing it.**
+  Say what your information shows, take their word for what they can hear,
+  and go and look again rather than repeating yourself.""")
     # Absence is not enough: with the shoutout bullet simply missing, the DJ
     # still told a caller "that shoutout's in the air now" (the drill's
     # refusal sweep, same day as the show-change incident). The things the

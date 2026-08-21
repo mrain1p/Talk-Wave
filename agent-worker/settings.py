@@ -143,6 +143,19 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # who describes what they want gets one blind request and whatever comes
     # back; on, the DJ can offer three real records by name.
     "allow_sound_search": (None, "open"),
+    # An EXPERIMENT, and a mode rather than a capability: on, the six ways of
+    # looking leave the DJ's tool list and one `subwave_find_music` takes
+    # their place holding them, so the model reports what the caller said
+    # instead of choosing a search. Nothing becomes reachable that was not
+    # reachable before, and nothing stops being reachable — see
+    # call/tools/finding.py. Off by default because it is unmeasured.
+    #
+    # Deliberately NO schema entry, and so no panel row: the same ruling as
+    # station_mcp_url. This is a flag for an A/B the operator runs from
+    # data/settings.json, not a control anyone should meet while reading the
+    # panel — and a half-finished experiment offered as a switch is how one
+    # gets left on. It becomes a panel row if and when the numbers say keep it.
+    "single_lookup_tool": (None, False),
     # Taking a queued track back out. Guest tier rather than open: the queue is
     # shared, so this can cancel a record somebody ELSE asked for — which is
     # precisely why the station gives its listeners no cancel of their own. A

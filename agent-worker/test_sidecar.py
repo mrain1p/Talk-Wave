@@ -222,6 +222,20 @@ from tests.test_album_tools import (  # noqa: F401
     TestAPunctuatedFiledNameStillQueues,
     TestClearingARunFromTheQueue,
 )
+from tests.test_finding import (  # noqa: F401
+    TestItCannotReachPastTheSettings,
+    TestItIsAModeNotAnExtraTool,
+    TestNoCapabilityIsLost,
+    TestNoDiscretionIsLost,
+    TestTheDJIsToldWhichShelfItCameOff,
+    TestTheTableIsNowAFunction,
+)
+from tests.test_stuck import (  # noqa: F401
+    TestBeingToldYouAreWrong,
+    TestItCostsNothingWhenTheCallerWasHeard,
+    TestTheRealChatIsCaught,
+    TestTheSameAskIsRecognised,
+)
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
     TestALateMatchStillReachesTheCaller,
@@ -284,6 +298,7 @@ from tests.test_prompt_budget import (  # noqa: F401
     TestTheToolBlockSplitChangedNoPromptByte,
 )
 from tests.test_discovery import (  # noqa: F401
+    TestAFailedReadNeverBecomesAFactAboutTheMusic,
     TestACompoundGenreIsAViableOption,
     TestATitleIsNotATrackId,
     TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent,

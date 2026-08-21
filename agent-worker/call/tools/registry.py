@@ -72,6 +72,17 @@ TOOLS: tuple[Tool, ...] = (
     # REST (its current-track lyrics feature), not over MCP, so our wrapper
     # is the only way to serve it at all — not a guarded duplicate of an MCP
     # tool, which is what LOCAL otherwise means here.
+    # One way in to the six ways of looking, behind its own switch and OFF
+    # until measured — see call/tools/finding.py. Routes to the wrappers that
+    # were already built, so it can never reach a capability the settings
+    # withheld, and it deliberately does NOT cover subwave_request_song: that
+    # is an action, and firing one off an empty lookup is a decision that
+    # belongs to the DJ.
+    Tool("subwave_find_music", "single_lookup_tool", LOCAL,
+         "One lookup tool that picks how to search from what the caller "
+         "said, instead of the DJ choosing between six.",
+         "Experimental. With this ON the six stay reachable too — the point "
+         "is to compare, not to hide them."),
     Tool("subwave_current_lyrics", READ, LOCAL,
          "The words the current track is singing, when the station holds them.",
          "Served by this sidecar over the station's public lyrics read. A "

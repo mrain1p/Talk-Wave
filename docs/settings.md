@@ -369,7 +369,7 @@ Each row shows which tier gets it, and the actions that are never available are 
 
 ### Station tools
 
-**Station tools** is the station's whole surface — 36 tools in all: 7 handed straight through from the station's MCP server, 26 served by wrappers of ours (retries, guards, the action ledger), and 3 that are never on a call line at any setting — each row saying whether a caller can reach it.
+**Station tools** is the station's whole surface — 37 tools in all: 7 handed straight through from the station's MCP server, 27 served by wrappers of ours (retries, guards, the action ledger), and 3 that are never on a call line at any setting — each row saying whether a caller can reach it.
 
 Below the list, **How the DJ finds a record** sets out the five ways in and which kind of ask takes each, and a short note names what the station can do that the call line still doesn't use.
 

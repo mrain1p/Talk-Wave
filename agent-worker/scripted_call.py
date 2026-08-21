@@ -174,6 +174,7 @@ from call.tools import (
     build_call_control_tools,
     build_curation_tools,
     build_discovery_tools,
+    apply_finder_dispatch,
     build_library_tools,
     build_on_air_tools,
 )
@@ -1900,6 +1901,11 @@ async def main() -> None:
     # TestTheDrillBuildsEveryToolTheCallDoes now fails if this drifts again.
     tools += build_curation_tools(cfg, station, actions)
     tools += build_on_air_tools(cfg, station, actions, guard, guarded=False)
+    # Last, and reading the list — the same order the call and the chat build
+    # it in, because it routes to what is already there. Empty unless the arm
+    # under test switched single_lookup_tool on, which is the whole point of
+    # it being here: the A/B is one sweep flag, not two harnesses.
+    tools = apply_finder_dispatch(cfg, tools)
     mcp_server = None
     if chat:
         if os.environ.get("MCP") == "1":

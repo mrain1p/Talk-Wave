@@ -92,18 +92,50 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
     # gate vocabulary has no row for it. Registry: subwave_current_lyrics.
     @lk_llm.function_tool(name="subwave_current_lyrics")
     async def current_lyrics() -> str:
-        """The words of the track playing right now. Use when a caller asks
-        what the song says, what it means, or which line just played. Comes
-        back empty for instrumentals and for stations that keep no lyrics —
-        say so plainly, never invent lines."""
+        """The WORDS of the track on air — what the song says, what a line
+        means, what it is about.
+
+        DO NOT call this to find out what the track IS. "What song is this?",
+        "who is this?", "what's it called?" are answered from your briefing or
+        by subwave_now_playing, never here. This description used to open
+        with "the track playing right now", and on 2026-08-20 that phrase is
+        what a caller's "what song is it" matched: eleven calls to this tool,
+        none to now_playing, and a vocal record described as an instrumental
+        for two minutes.
+
+        It also CANNOT tell you whether a track is an instrumental — a
+        station that indexes no lyrics and a genuine instrumental look
+        identical from here. Never invent lines."""
         d = await station.current_lyrics()
+        # A read that FAILED is not a fact about the record. Until 0.98.22 it
+        # was: any 404, timeout or connection error came back as an empty dict
+        # and was reported to the DJ as "an instrumental, or the station has
+        # none indexed" — a sentence that names a property of the track. On a
+        # station with no lyrics feature (this operator's, 2026-08-20) that is
+        # every track, always, and the DJ has no way to tell it is being lied
+        # to. It told one caller a vocal record was an instrumental eleven
+        # times and held the line when they said otherwise.
+        if d.get("unavailable"):
+            return ("The lyrics read is NOT AVAILABLE on this station — the "
+                    "request failed or the station has no lyrics feature. You "
+                    "have learned NOTHING about the current track: do not say "
+                    "it is an instrumental, do not say it has no lyrics, do "
+                    "not describe what it does or doesn't have. Say plainly "
+                    "that you can't look lyrics up here, and if the caller "
+                    "tells you the song has words, they are the one hearing "
+                    "it — take their word for it.")
         lines = [str(l.get("text") or "").strip()
                  for l in (d.get("lines") or []) if isinstance(l, dict)]
         lines = [l for l in lines if l]
         if not lines:
-            return ("No lyrics on file for the current track — an "
-                    "instrumental, or the station has none indexed. Tell the "
-                    "caller that; do not guess at words.")
+            # The station answered, and holds none. That is a fact about the
+            # INDEX, not about the music: an unindexed vocal track and an
+            # instrumental are indistinguishable from here, and only one of
+            # them is safe to assert to someone who is listening to it.
+            return ("The station holds no lyrics for the current track. That "
+                    "means none are INDEXED — it is not evidence the track is "
+                    "an instrumental, so do not call it one. Say you have no "
+                    "lyrics on file for it, and do not guess at words.")
         # Prompt budget: a full lyric sheet can outweigh the rest of the
         # briefing, and it is paid for on every later turn of the call.
         kept: list[str] = []
@@ -268,9 +300,14 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
         async def recent_tracks() -> str:
             """What's NEW in the library — the most recently added tracks,
             newest first. Use when a caller asks what's new, what just came
-            in, or what's worth a first spin. A read only: if they want one
-            played, put it through as a request (or queue the exact pick if
-            they choose from this list)."""
+            in, or what's worth a first spin.
+
+            DO NOT call this for what is on air (your briefing, or
+            subwave_now_playing) or for what has already aired
+            (subwave_already_played). "Recently added to the shelf" and
+            "recently played on air" are different questions. A read only: if
+            they want one played, put it through as a request (or queue the
+            exact pick if they choose from this list)."""
             items = await station.recent_tracks()
             if not items:
                 return (

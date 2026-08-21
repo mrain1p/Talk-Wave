@@ -168,6 +168,11 @@ class TestExposedSurface(unittest.TestCase):
         # A read like the five above it, but served by our wrapper: the
         # station publishes lyrics over public REST, not MCP. Added 0.10.47.
         "subwave_current_lyrics": "read",
+        # One way in to the six finders, behind its own switch and OFF until
+        # measured (0.98.22). It routes to wrappers already built, so it can
+        # never reach a capability the settings withheld — and it is not a
+        # new capability itself, which is why it is safe to have at all.
+        "subwave_find_music": "single_lookup_tool",
         "subwave_request_song": "allow_requests",
         "subwave_request_status": "allow_requests",
         "subwave_search_library": "allow_library_search",

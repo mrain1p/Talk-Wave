@@ -746,6 +746,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "Crossed the ceiling when 0.10.89 pinned the voice lifecycle's "
             "phased entries; same subject-placement rule as the modules "
             "around it.",
+        "agent-worker/tests/test_conduct.py":
+            "one subject: what the prompt is allowed to promise. It gains a "
+            "test whenever a tool or a conduct rule is added, because that is "
+            "precisely when the prompt can start naming something the line "
+            "does not carry — the failure that taught the DJ to MIME an "
+            "action. Crossed the ceiling at 0.98.22 with the reads row and "
+            "the finder mode; same subject-placement rule as the two modules "
+            "below, and trimming the comments to sit under a number is the "
+            "thing this class's own docstring warns against.",
         "agent-worker/tests/test_tools_logic.py":
             "one subject: what a tool does once reached — provider "
             "construction, adapters, and what the DJ may claim afterwards. "
@@ -804,7 +813,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # primes the gate from the push file in the guard's constructor —
         # the primed state must exist before anyone else looks, so it cannot
         # live anywhere but the guard half. The split is still owed.
-        "agent-worker/call/air.py": (707, "the CallAgent half (the reply "
+        # 718: the stuck hint (0.98.22) joined the door hint on the reply
+        # path — eleven lines, all of them in CallAgent.on_user_turn_completed,
+        # which is the AGENT half this seam already names. The growth lands
+        # entirely on one side of the cut, so it makes the split easier rather
+        # than harder. Still owed.
+        "agent-worker/call/air.py": (718, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
@@ -838,7 +852,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the heartbeat, the sweep/tail marker pair) plus 0.98.14's shutdown
         # beat — each is pinned to a phase by the concurrent-shutdown
         # ordering, so none can move out.
-        "agent-worker/call/session.py": (794, "the ringing half (prepare, "
+        # 802: the Stuck object is built beside the Door (0.98.22) and
+        # handed to CallAgent with it — eight lines, both of them on the
+        # per-call-state side of this seam rather than across it. 807: the
+        # finder mode swap, one call at the END of the tool build because it
+        # reads the assembled list — the LIVE CALL side of the seam, and the
+        # last line of the function it belongs to.
+        "agent-worker/call/session.py": (807, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -852,7 +872,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # change that grew it: the tool loop is exactly what just changed,
         # and a regression there should not have two candidate causes. The
         # same deferral call/air.py records.
-        "agent-worker/chat/session.py": (602, "the one-conversation half "
+        # 622: the stuck hint (0.98.22). The typed line has no SDK hook to
+        # hang a per-turn note on, so it goes in beside the caller's message
+        # in ask() — the one-conversation half, which is the side of this
+        # seam that was already going to carry it. 625: the finder mode swap,
+        # three lines beside the tool build it belongs to, same half.
+        "agent-worker/chat/session.py": (625, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "

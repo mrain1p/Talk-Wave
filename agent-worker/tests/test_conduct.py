@@ -104,9 +104,24 @@ class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
         from brain import conduct
 
         bare = conduct.rules({})
-        self.assertIn("Check what's playing", bare)
+        self.assertIn("What's on right now", bare)
         self.assertIn("never mime the action", bare)
         self.assertIn("stranger", bare)
+
+    def test_the_reads_row_names_the_tool_for_what_is_on_air(self):
+        # Missing on 2026-08-20: `tool_reads` was one line naming no tool, and
+        # the table beside it covers only finding a record to PLAY — so "what
+        # song is this" had no row, and the DJ answered it eleven times with
+        # current_lyrics and never once with now_playing. The last assertion
+        # is the other half: the caller said "it does have lyrics" and was
+        # told "my ears aren't playing tricks on me".
+        from brain import conduct
+
+        bare = conduct.rules({})
+        self.assertIn("subwave_now_playing", bare)
+        self.assertIn("subwave_current_lyrics is for the WORDS", bare)
+        self.assertIn("never the answer to what the song IS", bare)
+        self.assertIn("they are the one hearing it", bare)
 
     def test_whats_off_is_said_out_loud_not_just_omitted(self):
         # Absence wasn't enough: with the shoutout bullet merely missing, the
@@ -337,6 +352,10 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
         # on every call to teach a heart.
         "subwave_like_track": "lowest-harm action, schema is enough",
         "subwave_unlike_track": "lowest-harm action, schema is enough",
+        # A MODE, not a capability: its switch REPLACES the six finders, so
+        # it is never in the same prompt as the table and cannot be checked in
+        # the same pass. Pinned by test_the_finder_mode_names_the_one_tool.
+        "subwave_find_music": "a mode; named only when its switch is on",
     }
     NAMED_ELSEWHERE = set(BULLET) | set(SCHEMA)
 
@@ -388,7 +407,11 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
 
         # Everything on at once: the question is whether the prompt CAN name
         # a tool, not whether this operator switched it on.
-        cfg = {t.gate: "open" for t in TOOLS if t.gate not in ("read", NEVER)}
+        # `single_lookup_tool` excluded: it REPLACES the six finders rather
+        # than adding to them, so turning it on here would ask the prompt to
+        # name seven tools of which six are not offered. Own test below.
+        cfg = {t.gate: "open" for t in TOOLS
+               if t.gate not in ("read", NEVER, "single_lookup_tool")}
         for rules in (conduct.rules, conduct_chat.rules):
             text = rules(cfg)
             missing = [
@@ -402,6 +425,24 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
                 "these tools are handed to the model with nothing in the "
                 "prompt telling it they exist, which is how queue_track went "
                 "unused for months: " + ", ".join(missing))
+
+    def test_the_finder_mode_names_the_one_tool(self):
+        # With the dispatcher on the prompt teaches ONE tool, not both:
+        # teaching the table too would leave neither arm of the A/B an
+        # arrangement anyone would ship.
+        from brain import conduct
+        from call.tools.finding import ROUTES
+
+        on = {"allow_library_search": "open", "allow_sound_search": "open",
+              "single_lookup_tool": True}
+        text = conduct.rules(on)
+        self.assertIn("subwave_find_music", text)
+        for name in ROUTES.values():
+            with self.subTest(name=name):
+                self.assertNotIn(name, text)
+        # And the judgement rules that are NOT about routing survive the swap:
+        # a miss is not proof, whichever way the looking is arranged.
+        self.assertIn("NOT proof", text)
 
     def test_a_blocked_tool_is_never_named_as_available(self):
         # The mirror image, and the worse direction: naming a tool the line
