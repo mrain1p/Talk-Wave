@@ -296,8 +296,55 @@ class TestAQuizTheDJCanActuallyMark(_OnDisk):
         # listener cannot win it by having had the show on.
         from openlines import quiz as quiz_mod
 
-        self.assertIn("NOT general music trivia", quiz_mod.ASK)
+        self.assertIn("not chart positions, not release years", quiz_mod.ASK)
         self.assertIn("ONE clear answer you can mark", quiz_mod.ASK)
+        # The load-bearing sentence: the answer comes from the supplied
+        # facts, not from the DJ trying to remember its own evening.
+        self.assertIn("The answer MUST come from the facts below", quiz_mod.ASK)
+        self.assertIn("if it is not in the list then you did not say it",
+                      quiz_mod.ASK)
+
+    def test_the_facts_include_what_the_dj_really_said(self):
+        # "What did I say earlier?" is a fair question — the station records
+        # its own on-air speech, so we supply the answer rather than trusting
+        # the DJ to remember it.
+        from openlines import quiz as quiz_mod
+
+        snap = {"session": {"messages": [
+            {"kind": "dj-speak", "text": "I have had three coffees since lunch."},
+            {"kind": "callin", "text": "the last caller's private business"},
+            {"kind": "play", "text": "bookkeeping"},
+        ]}}
+        facts = quiz_mod.facts_from(snap, {"topic": "Late shift classics"}, {})
+        self.assertTrue(any("three coffees" in f for f in facts))
+        self.assertTrue(any("Late shift classics" in f for f in facts))
+        # A line about an earlier CALL is not something the audience heard as
+        # part of the show, and it is somebody else's business.
+        self.assertFalse(any("private business" in f for f in facts))
+        self.assertFalse(any("bookkeeping" in f for f in facts))
+
+    def test_an_answer_from_nowhere_is_refused(self):
+        # The bagel gate. Asked what drink it had mentioned, the DJ answered
+        # "a plain bagel" — never said, not a drink, and it would have marked
+        # a correct caller wrong.
+        from openlines import quiz as quiz_mod
+
+        facts = ['played tonight: "Hot Legs" by Rod Stewart',
+                 "you said on air: I have had three coffees since lunch."]
+        self.assertTrue(quiz_mod.answer_is_grounded("Rod Stewart", facts))
+        self.assertTrue(quiz_mod.answer_is_grounded("three coffees", facts))
+        self.assertFalse(quiz_mod.answer_is_grounded("a plain bagel", facts))
+        self.assertFalse(quiz_mod.answer_is_grounded("", facts))
+        self.assertFalse(quiz_mod.answer_is_grounded("anything", []))
+
+    def test_no_facts_means_no_quiz(self):
+        # A station that has just come up has nothing checkable to ask about.
+        from openlines import quiz as quiz_mod
+
+        async def go():
+            return await quiz_mod.invent({}, None, {}, {}, {})
+
+        self.assertEqual(asyncio.run(go()), {})
 
     def test_an_unparseable_quiz_is_no_quiz(self):
         # Half a quiz must never air: no question means no answer to mark.

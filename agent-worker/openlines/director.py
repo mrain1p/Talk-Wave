@@ -170,7 +170,8 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
                 return {"ok": False,
                         "why": "That subject is no longer on the shelf."}
         elif source == "quiz":
-            asked = await quiz_mod.invent(cfg, station, persona)
+            snap = await station.snapshot(with_skills=False)
+            asked = await quiz_mod.invent(cfg, station, persona, snap, show)
             if not asked:
                 return {"ok": False,
                         "why": "The DJ could not set a question it could also "
