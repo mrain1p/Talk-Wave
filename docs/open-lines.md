@@ -10,6 +10,8 @@ The same two presses sit on the **dashboard**, under Transmission: *Make one up*
 
 **Where the subject comes from.** Either the DJ invents one — from the same material a station segment invents from: who is on air, the show card, tonight's episode, what has just played and what it has said — or it takes one **off your shelf**.
 
+A fresh install finds **three starter subjects** already on the shelf — enough to press the button on day one and hear what this actually sounds like. They are examples to replace, not a library to keep; empty the shelf and it stays empty.
+
 **The shelf** is your own list of subjects, each aimed at whichever DJs suit it. Add with **+ Add**, then pick the DJs on that row; leave none picked and it is open to all of them. That aim is the point of the shelf: an argument that lands in one persona's mouth is wrong in another's, and a single shared list made the DJ allowlist do a job it could not do. The **least recently used** one goes up next, so a subject you have just typed is the next one out.
 
 Write the SUBJECT, not the words — the DJ says it in its own voice. A line here should read like a note to a presenter, not a script.

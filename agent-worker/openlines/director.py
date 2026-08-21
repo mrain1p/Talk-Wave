@@ -108,7 +108,8 @@ async def _live_context(station):
 
 
 async def open_now(reason: str = "operator", cfg: dict | None = None,
-                   source: str | None = None) -> dict:
+                   source: str | None = None, premise: str | None = None,
+                   premise_id: str | None = None) -> dict:
     """Put a subject up and open the line.
 
     `source` overrides the configured one for this press only — the dashboard
@@ -132,18 +133,43 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
     try:
         persona, now_playing, show, week = await _live_context(station)
         show_name = str(show.get("name") or "")
-        if not persona_allowed(cfg, persona):
-            who = persona.get("name") or "This DJ"
-            return {"ok": False, "why": f"{who} is not on the Open Lines list."}
-        ok, count = listeners_ok(cfg, now_playing)
-        if not ok:
-            floor = cfg.get("open_lines_min_listeners")
-            return {"ok": False,
-                    "why": f"Only {count} listening — the floor is {floor}."}
+        # A press runs. The DJ allowlist and the listener floor pace the
+        # AUTOMATIC cadence — they are there so the station does not solicit
+        # arguments at 3am through a persona that should not — but an operator
+        # pressing the button has already made both of those decisions, and a
+        # button that answers "no" to the person holding it is a button that
+        # gets pressed twice and then distrusted. Same rule the station applies
+        # to its own segments: an explicit press bypasses shouldFire.
+        by_hand = reason not in {"schedule"}
+        if not by_hand:
+            if not persona_allowed(cfg, persona):
+                who = persona.get("name") or "This DJ"
+                return {"ok": False,
+                        "why": f"{who} is not on the Open Lines list."}
+            ok, count = listeners_ok(cfg, now_playing)
+            if not ok:
+                floor = cfg.get("open_lines_min_listeners")
+                return {"ok": False,
+                        "why": f"Only {count} listening — the floor is {floor}."}
 
         source = str(source or cfg.get("open_lines_source") or "dj")
         picked = {}
-        if source == "shelf":
+        if premise:
+            # Typed at the dashboard, for this press only. Never touches the
+            # shelf: a one-off subject an operator thought of is not a library
+            # entry, and silently filing it would grow a shelf nobody curated.
+            text = premise_mod.clean(premise)
+            source = "typed"
+            if not text:
+                return {"ok": False, "why": "That subject is empty."}
+        elif premise_id:
+            picked = premise_mod.take_by_id(str(premise_id))
+            text = str(picked.get("text") or "")
+            source = "shelf"
+            if not text:
+                return {"ok": False,
+                        "why": "That subject is no longer on the shelf."}
+        elif source == "shelf":
             picked = premise_mod.take_from_shelf(str(persona.get("id") or ""))
             text = str(picked.get("text") or "")
             if not text:

@@ -283,6 +283,12 @@ class TestTheShelfIsPerDJAndLeastRecentlyUsed(_OnDisk):
         self._pdir = tempfile.TemporaryDirectory()
         self._old_premises = premises.PREMISES_PATH
         premises.PREMISES_PATH = Path(self._pdir.name) / "shelf.json"
+        # A fresh install seeds three starters on first read. These tests are
+        # about the shelf's BEHAVIOUR, so they start from an empty one — and
+        # clearing it also proves the seed does not come back (it only fires
+        # when the file is missing, never when it is present and empty).
+        for item in premises.read():
+            premises.remove(item["id"])
 
     def tearDown(self):
         premises.PREMISES_PATH = self._old_premises
@@ -331,6 +337,35 @@ class TestTheShelfIsPerDJAndLeastRecentlyUsed(_OnDisk):
         premises.update(item["id"], personas=["p7"])
         self.assertEqual(premises.read()[0]["personas"], ["p7"])
         self.assertEqual(premises.for_persona("p1"), [])
+
+    def test_a_fresh_install_finds_three_starters(self):
+        # So the button does something on day one. Seeded on READ rather than
+        # shipped as a file, which is what lets an operator empty the shelf
+        # deliberately and have it stay empty.
+        for item in premises.read():
+            premises.remove(item["id"])
+        premises.PREMISES_PATH.unlink(missing_ok=True)
+        seeded = premises.read()
+        self.assertEqual(len(seeded), len(premises.STARTERS))
+        self.assertTrue(all(i.get("starter") for i in seeded))
+        # Aimed at nobody, so they work whichever DJ is on.
+        self.assertTrue(all(i["personas"] == [] for i in seeded))
+
+    def test_an_emptied_shelf_stays_empty(self):
+        for item in premises.read():
+            premises.remove(item["id"])
+        self.assertEqual(premises.read(), [], "the starters must not come back")
+
+    def test_picking_one_by_id_marks_it_used(self):
+        # The dashboard dropdown is a choice, not a rotation.
+        a = premises.add("first")
+        b = premises.add("second")
+        got = premises.take_one(b["id"])
+        self.assertEqual(got["text"], "second")
+        by_id = {i["id"]: i for i in premises.read()}
+        self.assertEqual(by_id[b["id"]]["used"], 1)
+        self.assertEqual(by_id[a["id"]]["used"], 0)
+        self.assertEqual(premises.take_one("gone"), {})
 
     def test_an_unreadable_shelf_is_an_empty_one(self):
         premises.PREMISES_PATH.write_text("{not json", encoding="utf-8")

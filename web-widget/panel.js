@@ -1452,6 +1452,7 @@
     // Open Lines' dashboard row. Its own read, because what is UP right now
     // is server state rather than a setting — `resolved` cannot answer it.
     readOpenLines();
+    readOpenLinesShelf();
   }
 
   // ------------------------------------------------- needs attention
@@ -2866,40 +2867,68 @@
   }
 
   function paintOpenLinesWho() {
-    const list = $('openLinesWho');
-    if (!list) return;
-    const chosen = new Set(olWho());
-    list.innerHTML = '';
-    if (!olRoster.length) {
-      const li = document.createElement('li');
-      li.className = 'vmrow';
-      li.innerHTML = '<span class="sname">No personas — is the station reachable?</span>';
-      list.appendChild(li);
-      return;
+    const wrap = $('openLinesChips');
+    const pick = $('openLinesWhoAdd');
+    if (!wrap || !pick) return;
+    const chosen = olWho();
+    const byId = new Map(olRoster.map((p) => [p.id, p.name || p.id]));
+
+    wrap.innerHTML = '';
+    for (const id of chosen) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.appendChild(document.createTextNode(byId.get(id) || id));
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '×';
+      x.title = 'Remove';
+      x.setAttribute('aria-label', 'Remove ' + (byId.get(id) || id));
+      x.onclick = () => olSetWho(chosen.filter((c) => c !== id));
+      chip.appendChild(x);
+      wrap.appendChild(chip);
     }
-    for (const p of olRoster) {
-      const li = document.createElement('li');
-      li.className = 'vmrow';
-      const lab = document.createElement('label');
-      lab.className = 'check';
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = chosen.has(p.id);
-      box.onchange = () => {
-        const next = new Set(olWho());
-        if (box.checked) next.add(p.id); else next.delete(p.id);
-        const el = $('open_lines_personas');
-        el.value = [...next].join(',');
-        // A trusted-looking change so the panel's own diff and save overlay
-        // treat this exactly like typing in the field it stands for.
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      };
-      lab.appendChild(box);
-      lab.appendChild(document.createTextNode(' ' + (p.name || p.id)));
-      li.appendChild(lab);
-      list.appendChild(li);
+
+    // The dropdown only ever offers what is not already a chip, so it cannot
+    // add a duplicate and cannot say "Dalia" twice.
+    const left = olRoster.filter((p) => !chosen.includes(p.id));
+    pick.innerHTML = '';
+    const head = document.createElement('option');
+    head.value = '';
+    head.textContent = left.length
+      ? 'add a DJ…'
+      : (olRoster.length ? 'all of them are on the list' : 'no personas');
+    pick.appendChild(head);
+    for (const p of left) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name || p.id;
+      pick.appendChild(opt);
     }
+    pick.disabled = !left.length;
+    pick.onchange = () => {
+      if (!pick.value) return;
+      olSetWho(chosen.concat([pick.value]));
+    };
+
+    const all = $('openLinesWhoAll');
+    if (all) {
+      // One button, both directions: with everyone on the list the only thing
+      // left to want is an empty one.
+      const full = olRoster.length && chosen.length >= olRoster.length;
+      all.textContent = full ? 'None' : 'All';
+      all.onclick = () =>
+        olSetWho(full ? [] : olRoster.map((p) => p.id));
+    }
+  }
+
+  function olSetWho(ids) {
+    const el = $('open_lines_personas');
+    el.value = ids.join(',');
+    // A trusted-looking change so the panel's own diff and the save overlay
+    // treat this exactly like typing in the field it stands for.
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    paintOpenLinesWho();
   }
 
   function olAimLabel(item) {
@@ -2996,6 +3025,9 @@
       olShelf = d.items || [];
       paintOpenLinesShelf();
       paintOpenLinesWho();
+      // The dashboard's dropdown is built from this same shelf, and its own
+      // read finishes first — so refill it once the subjects actually exist.
+      olFillPicker();
     } catch (e) { /* the lists simply stay as they were */ }
   }
 
@@ -3016,48 +3048,6 @@
     };
   }
 
-  // The dashboard row. Painted from the same /open-lines read the section
-  // uses, so the two can never disagree about what is up.
-  function paintOpenLinesDash(d) {
-    const wrap = $('openLinesLine');
-    if (!wrap || !d) return;
-    wrap.hidden = !d.enabled;
-    if (!d.enabled) return;
-    const live = !!d.live;
-    const idleDj = $('openLineIdleDj');
-    const idleShelf = $('openLineIdleShelf');
-    const liveRow = $('openLineLiveRow');
-    if (idleDj) idleDj.hidden = live;
-    if (idleShelf) idleShelf.hidden = live;
-    if (liveRow) liveRow.hidden = !live;
-
-    const shelfNote = $('dashShelfNote');
-    const shelfBtn = $('dashOpenShelfBtn');
-    const n = d.shelfCount || 0;
-    if (shelfNote) {
-      shelfNote.textContent = n
-        ? 'your own subjects — ' + n + ' on the shelf'
-        : 'nothing on the shelf yet';
-    }
-    // Greyed rather than hidden: the row teaches that the choice exists.
-    if (shelfBtn) shelfBtn.disabled = !n;
-
-    if (live) {
-      const mins = Math.max(0, Math.round((d.secondsLeft || 0) / 60));
-      const head = $('dashOpenLineHead');
-      const note = $('dashOpenLineNote');
-      if (head) head.textContent = (d.persona || 'The DJ') + ' — ' + mins + ' min left';
-      if (note) {
-        note.textContent = (d.premise || d.spoken || '')
-          + (d.cutByShow ? ' · ends with the show' : '');
-      }
-    }
-  }
-
-  // --- Open Lines -------------------------------------------------------
-  // Both presses post immediately and never raise the save overlay: opening a
-  // line puts words on the broadcast, which is an act rather than a form the
-  // operator might still be editing. Same rule the dashboard controls follow.
   function paintOpenLines(d) {
     const out = $('openLineNow');
     if (!out || !d) return;
@@ -3085,39 +3075,139 @@
     }
   }
 
-  async function dashOpen(source, btn) {
-    btn.disabled = true;
-    const note = $('dashShelfNote');
-    const said = note ? note.textContent : '';
-    if (note && source === 'shelf') note.textContent = 'handing it to the booth…';
-    try {
-      const r = await afetch('/open-lines/open', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (d.status) { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
-      // A refusal has nowhere to go on the dashboard, so it goes where the
-      // press was: the row's own note line, until the next paint.
-      if (!d.ok && note) note.textContent = d.why || 'could not open a line';
-      else if (note && source === 'shelf') note.textContent = said;
-    } catch (e) {
-      if (note) note.textContent = 'could not reach the server';
-    } finally { btn.disabled = false; }
+  // The dashboard box. One frame, one action bar, and the bar's POSITION never
+  // moves — only its label and what it does. The first build swapped two "put
+  // it up" rows for a "close it" row in the same place, and the operator shut a
+  // line 19 seconds after opening it by clicking twice.
+  let olLiveNow = false;
+
+  function paintOpenLinesDash(d) {
+    const wrap = $('openLinesLine');
+    if (!wrap || !d) return;
+    wrap.hidden = !d.enabled;
+    if (!d.enabled) return;
+
+    olLiveNow = !!d.live;
+    const idle = $('olIdle');
+    const live = $('olLive');
+    const go = $('olGo');
+    const tag = $('olState');
+    const foot = $('olFoot');
+    if (idle) idle.hidden = olLiveNow;
+    if (live) live.hidden = !olLiveNow;
+
+    if (olLiveNow) {
+      const mins = Math.max(0, Math.round((d.secondsLeft || 0) / 60));
+      if (tag) { tag.textContent = 'up now'; tag.dataset.live = '1'; }
+      const prem = $('olPremise');
+      const meta = $('olMeta');
+      if (prem) prem.textContent = d.premise || d.spoken || '';
+      if (meta) {
+        const bits = [(d.persona || 'the DJ'), mins + ' min left'];
+        if (d.reminderMax) {
+          bits.push((d.remindersSent || 0) + ' of ' + d.reminderMax + ' reminders');
+        }
+        if (d.cutByShow) bits.push('ends with the show');
+        meta.textContent = bits.join(' · ');
+      }
+      if (go) {
+        go.textContent = 'CLOSE IT →';
+        go.dataset.mode = 'stop';
+        go.disabled = false;
+      }
+      if (foot) foot.textContent = 'the DJ signs off on air, in character';
+    } else {
+      if (tag) { tag.textContent = 'nothing up'; tag.dataset.live = '0'; }
+      olFillPicker();
+      if (go) {
+        go.textContent = 'PUT IT UP →';
+        go.dataset.mode = 'go';
+        go.disabled = false;
+      }
+      if (foot) {
+        foot.textContent = 'it airs now · the DJ says it in its own voice';
+      }
+    }
   }
 
-  if ($('dashOpenDjBtn')) {
-    $('dashOpenDjBtn').onclick = () => dashOpen('dj', $('dashOpenDjBtn'));
-    $('dashOpenShelfBtn').onclick = () => dashOpen('shelf', $('dashOpenShelfBtn'));
-    $('dashCloseLineBtn').onclick = async () => {
-      const btn = $('dashCloseLineBtn');
-      btn.disabled = true;
+  // The shelf, as choices. Read on demand so the dashboard does not need the
+  // settings page to have been opened first.
+  function olFillPicker() {
+    const pick = $('olPick');
+    if (!pick) return;
+    const keep = pick.value;
+    pick.innerHTML = '';
+    const dj = document.createElement('option');
+    dj.value = 'dj';
+    dj.textContent = 'Let the DJ make one up';
+    pick.appendChild(dj);
+    for (const item of olShelf) {
+      const opt = document.createElement('option');
+      opt.value = 'shelf:' + item.id;
+      // Long premises are sentences; the box is not that wide.
+      opt.textContent = item.text.length > 70
+        ? item.text.slice(0, 68) + '…' : item.text;
+      opt.title = item.text;
+      pick.appendChild(opt);
+    }
+    if (keep) pick.value = keep;
+    if (!pick.value) pick.value = 'dj';
+  }
+
+  if ($('olGo')) {
+    $('olGo').onclick = async () => {
+      const go = $('olGo');
+      const foot = $('olFoot');
+      const said = foot ? foot.textContent : '';
+      go.disabled = true;
       try {
-        const r = await afetch('/open-lines/close', { method: 'POST' });
-        const d = await r.json().catch(() => ({}));
-        if (d.status) { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
-      } catch (e) { /* the row repaints on the next read */ }
-      finally { btn.disabled = false; }
+        let r;
+        if (olLiveNow) {
+          r = await afetch('/open-lines/close', { method: 'POST' });
+        } else {
+          const own = String(($('olOwn') || {}).value || '').trim();
+          const pick = String(($('olPick') || {}).value || 'dj');
+          // Typed text wins over the dropdown: somebody who typed a subject
+          // meant that one, whatever the picker happens to be showing.
+          const body = own
+            ? { premise: own }
+            : (pick.startsWith('shelf:')
+                ? { source: 'shelf', premise_id: pick.slice(6) }
+                : { source: 'dj' });
+          r = await afetch('/open-lines/open', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+        }
+        const data = await r.json().catch(() => ({}));
+        if (data.status) {
+          paintOpenLines(data.status);
+          paintOpenLinesDash(data.status);
+        }
+        // The button stays put but the box below it changes height, so the
+        // NEW action lands under the cursor that just clicked. Opening a line
+        // and closing it are opposite acts and a double-click must not do
+        // both: the operator did exactly that on 2026-08-21 and shut a line
+        // 19 seconds after opening it. A beat's cooling-off is what makes the
+        // second click harmless.
+        if (data.ok) {
+          go.disabled = true;
+          setTimeout(() => { go.disabled = false; }, 1500);
+        } else {
+          go.disabled = false;
+        }
+        if (!data.ok && data.why && foot) foot.textContent = data.why;
+        else if (foot && data.ok) {
+          if ($('olOwn')) $('olOwn').value = '';
+          if (!olLiveNow) foot.textContent = said;
+        }
+      } catch (e) {
+        if (foot) foot.textContent = 'could not reach the server';
+        go.disabled = false;
+      }
+    };
+    $('olOwn').onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); $('olGo').click(); }
     };
   }
 

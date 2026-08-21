@@ -45,6 +45,24 @@ def _clean(text: str) -> str:
     return line.strip().strip('"').strip("'")[:PREMISE_BUDGET].strip()
 
 
+def clean(text: str) -> str:
+    """A subject typed by the operator, tidied the same way an invented one
+    is — one line, no wrapping quotes, budgeted."""
+    return _clean(text)
+
+
+def take_by_id(premise_id: str) -> dict:
+    """One named subject off the shelf, marked used. For the dashboard's
+    dropdown, where the operator picked THIS one rather than asking for
+    whatever was least recently used."""
+    from openlines import premises
+
+    item = premises.take_one(str(premise_id))
+    if not item:
+        return {}
+    return {**item, "text": _clean(item.get("text"))}
+
+
 def take_from_shelf(persona_id: str) -> dict:
     """The next subject off the operator's shelf for THIS DJ, marked used.
 

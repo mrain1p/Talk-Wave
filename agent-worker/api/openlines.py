@@ -142,7 +142,12 @@ async def handle_open_lines_open(request: web.Request) -> web.Response:
     # "dj" or "shelf", for THIS press only. Absent = whatever the settings
     # page says, which is what the section's own button sends.
     source = str(body.get("source") or "").strip() or None
-    result = await director.open_now(reason="operator", source=source)
+    # Typed beats picked: somebody who typed a subject meant that one,
+    # whatever the dropdown happened to be showing when they hit the button.
+    result = await director.open_now(
+        reason="operator", source=source,
+        premise=str(body.get("premise") or "").strip() or None,
+        premise_id=str(body.get("premise_id") or "").strip() or None)
     return _cors(request, web.json_response(
         {**result, "status": status_payload()}))
 

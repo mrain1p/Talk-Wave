@@ -35,13 +35,44 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# What a fresh install finds on the shelf. Three, not thirty: enough to press
+# the button on day one and hear what the feature actually sounds like, few
+# enough that they read as examples to replace rather than a library to curate.
+#
+# All three are anchored in something that really exists — a record, a habit, a
+# genuine opinion — because that is what survives somebody engaging seriously.
+# Invented specifics ("that argument with the execs upstairs") crack the moment
+# a listener asks which exec.
+STARTERS = (
+    "a record you skipped for years that finally won you over, and what changed",
+    "whether an album still means anything, or whether everyone just plays songs now",
+    "the song you would put on to make a stranger understand where you grew up",
+)
+
+
+def _seed() -> list[dict]:
+    """Write the starters once, the first time the shelf is asked for.
+
+    Seeded on read rather than shipped as a file so an operator who clears the
+    shelf deliberately gets an EMPTY shelf — the file exists after the first
+    read, so "no file" only ever means "never opened this feature".
+    """
+    items = [
+        {"id": secrets.token_hex(6), "text": text, "personas": [],
+         "used": 0, "last_used": "", "added": _now(), "starter": True}
+        for text in STARTERS
+    ]
+    _write(items)
+    return items
+
+
 def read() -> list[dict]:
     """Every premise on the shelf, in the order the operator put them."""
     try:
         with open(PREMISES_PATH, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        return []
+        return _seed()
     except (OSError, ValueError) as e:
         log.warning("unreadable premise shelf, treating as empty: %s", e)
         return []
@@ -119,6 +150,22 @@ def for_persona(persona_id: str) -> list[dict]:
         if not who or pid in [str(p) for p in who]:
             out.append(item)
     return out
+
+
+def take_one(premise_id: str) -> dict:
+    """Mark ONE named subject used, and return it. `{}` if it has gone.
+
+    Separate from take_next because the dashboard's dropdown is a choice, not
+    a rotation — an operator who picked the third one wants the third one."""
+    items = read()
+    for item in items:
+        if str(item.get("id")) != str(premise_id):
+            continue
+        item["used"] = int(item.get("used") or 0) + 1
+        item["last_used"] = _now()
+        _write(items)
+        return dict(item)
+    return {}
 
 
 def take_next(persona_id: str) -> dict:

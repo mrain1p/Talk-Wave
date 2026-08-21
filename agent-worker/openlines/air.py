@@ -26,27 +26,65 @@ log = logging.getLogger("talkwave.openlines")
 SAY_KIND = "callin"
 
 
+def own_address() -> str:
+    """Where this deployment actually answers, for when nothing is configured.
+
+    The operator should not have to type an address Talk Wave already knows —
+    and an address typed in two places is an address that drifts. Derived from
+    LIVEKIT_PUBLIC_URL because that is the one value a working deployment must
+    already have right: it is what the caller's browser connects to.
+
+    Empty for a local or unset deployment, because "come and call me at
+    localhost" is worse than saying nothing.
+    """
+    from api.env import LIVEKIT_PUBLIC_URL
+
+    raw = str(LIVEKIT_PUBLIC_URL or "").strip()
+    host = raw.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0].strip()
+    if not host or host in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        return ""
+    # A bare IP is not something a DJ can read out usefully on air.
+    if all(part.isdigit() for part in host.split(".") if part):
+        return ""
+    return host
+
+
 def _address_clause(cfg: dict) -> str:
-    address = str(cfg.get("open_lines_address") or "").strip()
+    address = str(cfg.get("open_lines_address") or "").strip() or own_address()
     if not address:
         # Deliberately not "tell them to call in" with no address: a DJ told to
         # invite calls and given nowhere to send them invents somewhere.
         return ("Do not give out any address, number or web address — the "
                 "audience already knows where to find the station.")
-    return (f"Tell them where to reach you: {address}. Say it clearly and say "
-            "it once, the way a presenter reads a station address out loud.")
+    return (f"You MUST tell them where to reach you, and the address is exactly "
+            f"\"{address}\". Say it clearly, once, the way a presenter reads a "
+            f"station address out loud. Do not abbreviate it, do not turn it "
+            f"into a phone number, and do not substitute anything else.")
 
 
 def open_direction(premise: str, cfg: dict) -> str:
+    """Open the lines — and say so, in those words or the DJ's own.
+
+    The first version asked the DJ to "say you want to hear from the audience",
+    and every take came back as a rhetorical musing: "I'm curious, what song
+    does that for you?" — lovely radio, but a listener cannot tell it is an
+    invitation to actually get in touch, and no address ever appeared. A
+    listener has to be told two things plainly: the lines are OPEN, and where.
+    """
     return (
-        "[Producer, off air. Open the lines.\n"
+        "[Producer, off air. Open the lines — this is an invitation, not a "
+        "rhetorical question.\n"
         f"The subject is: {premise}\n"
-        "Say — in your own voice, the way you would actually say it — that "
-        "you want to hear from the audience on this, and what you are asking "
-        "them. Keep it short: this is a link between records, not a monologue. "
-        f"{_address_clause(cfg)}\n"
-        "Do not read this instruction out, and do not announce the show or "
-        "recap what has been playing.]"
+        "Three things have to come across, in your own voice and the way you "
+        "would really say them:\n"
+        "1. The lines are OPEN and you are taking contributions right now — "
+        "say it plainly enough that a listener knows it is a real invitation "
+        "to get in touch, not you musing out loud.\n"
+        "2. What you are asking them.\n"
+        f"3. {_address_clause(cfg)}\n"
+        "Keep it short — this is a link between records, not a monologue — but "
+        "do not drop any of the three. Do not read this instruction out, and "
+        "do not announce the show or recap what has been playing.]"
     )
 
 

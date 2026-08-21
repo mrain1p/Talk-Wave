@@ -2903,6 +2903,67 @@
   .linerow .ctrlcard.pullcard { cursor: default; }
   /* In the card grid's own switch column ("sw"), where the toggles wear
      their knobs — a real button in the place the hand already knows. */
+  /* --- Open Lines: the chip picker and the dashboard box ------------------ */
+  /* Chips + a dropdown, the station's own shape for a multi-value field. The
+     first build was one checkbox row per persona and a sixteen-DJ station made
+     it a screenful of scrolling to answer "which DJs" (operator screenshot). */
+  .chipbox { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips:empty::before {
+    content: "whoever is on air"; color: var(--dimmer); font-size: 12px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 8px; background: var(--chipbg, rgba(127,127,127,.14));
+    border: 1px solid var(--line); border-radius: 3px;
+    font-size: 12px; line-height: 1.2; color: var(--text);
+  }
+  .chip button {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--dimmer); font-size: 13px; line-height: 1;
+  }
+  .chip button:hover { color: var(--coral); }
+  .chippick { display: flex; gap: 8px; align-items: center; }
+  .chippick select { flex: 1 1 auto; min-width: 0; }
+
+  /* The dashboard control, shaped like the station's TAKEOVER box: one titled
+     frame, the choices inside, and ONE action bar whose position never moves.
+     Two swapping rows meant a second click landed on Close. */
+  .olbox {
+    grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;
+    padding: 14px; border: 1px solid var(--line); background: var(--panel);
+  }
+  .olhead { display: flex; align-items: baseline; gap: 10px; }
+  .olname {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--text);
+  }
+  .oltag {
+    font: 500 11px/1 var(--font-mono); letter-spacing: .06em;
+    color: var(--dimmer); margin-left: auto;
+  }
+  .oltag[data-live="1"] { color: var(--sage); }
+  .olbody { display: flex; flex-direction: column; gap: 8px; }
+  /* The flex display above beats the UA's [hidden] rule, so the live/idle
+     swap needs it re-asserted or both halves show at once. */
+  .olbody[hidden] { display: none; }
+  .ollabel { font-size: 11px; color: var(--dimmer); }
+  .olpremise { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text); }
+  .olmeta { margin: 0; font-size: 11px; color: var(--dimmer); }
+  .olgo {
+    width: 100%; padding: 11px 12px; cursor: pointer; border-radius: 0;
+    border: 1px solid var(--coral); background: var(--coral); color: #fff;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .12em;
+  }
+  .olgo:hover { filter: brightness(1.08); }
+  .olgo:disabled { opacity: .5; cursor: default; filter: none; }
+  /* Cancelling is not the same act as putting one up, and must not wear the
+     same paint in the same place. */
+  .olgo[data-mode="stop"] {
+    background: transparent; color: var(--coral);
+  }
+  .olfoot { margin: 0; font-size: 11px; color: var(--dimmer); }
+
   .pullbtn {
     grid-area: sw; justify-self: end; align-self: center;
     padding: 9px 12px; background: transparent; cursor: pointer;

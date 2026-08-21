@@ -301,38 +301,37 @@
               </div>
             </div>
           </div>
-          <!-- Open Lines, in the same grammar as the pull: the row states what
-               is up, the buttons act. Two presses when nothing is up, because
-               "made up" and "off the shelf" is a decision an operator makes per
-               topic and should not have to visit the settings page to change.
-               One press when a line is standing, because the only thing left to
-               decide is whether it goes on. Hidden entirely while the feature is
-               off — a dashboard row for something switched off is furniture. -->
+          <!-- Open Lines. Hidden entirely while the feature is off — a
+               dashboard row for something switched off is furniture. -->
           <div id="openLinesLine" hidden>
             <p class="lineslabel">Open Lines <em>the subject the station is putting to its listeners</em></p>
-            <!-- One button per card, because .pullbtn is grid-placed and a
-                 second in the same card lands in the same cell. Two cards while
-                 nothing is up (the choice is per topic), one while a line stands. -->
-            <div class="linerow onairpull" id="openLineIdleDj">
-              <div class="ctrlcard pullcard">
-                <span class="ck">Make one up</span>
-                <span class="cn">the DJ finds a subject in tonight&rsquo;s show</span>
-                <button type="button" id="dashOpenDjBtn" class="pullbtn">PUT IT UP</button>
+            <!-- Shaped like the station's own TAKEOVER control (operator's
+                 ask, with a screenshot): one titled box, the choices inside it,
+                 and ONE action bar at the bottom whose position never moves.
+                 The first version swapped two "PUT IT UP" rows for a "CLOSE IT"
+                 row in the same place, so a second click landed on Close — the
+                 operator shut a line 19 seconds after opening it without
+                 meaning to, then called in and found no topic. A control that
+                 changes meaning under the cursor is the bug, not the click. -->
+            <div class="olbox">
+              <div class="olhead">
+                <span class="olname">OPEN LINES</span>
+                <span class="oltag" id="olState">nothing up</span>
               </div>
-            </div>
-            <div class="linerow onairpull" id="openLineIdleShelf">
-              <div class="ctrlcard pullcard">
-                <span class="ck">Off the shelf</span>
-                <span class="cn" id="dashShelfNote">your own subjects</span>
-                <button type="button" id="dashOpenShelfBtn" class="pullbtn">PUT IT UP</button>
+              <div class="olbody" id="olIdle">
+                <label class="ollabel" for="olPick">Subject</label>
+                <select id="olPick">
+                  <option value="dj">Let the DJ make one up</option>
+                </select>
+                <input type="text" id="olOwn" placeholder="…or type one of your own" 
+                       aria-label="Type your own subject" />
               </div>
-            </div>
-            <div class="linerow onairpull" id="openLineLiveRow" hidden>
-              <div class="ctrlcard pullcard">
-                <span class="ck" id="dashOpenLineHead">Up now</span>
-                <span class="cn" id="dashOpenLineNote"></span>
-                <button type="button" id="dashCloseLineBtn" class="pullbtn">CLOSE IT</button>
+              <div class="olbody" id="olLive" hidden>
+                <p class="olpremise" id="olPremise"></p>
+                <p class="olmeta" id="olMeta"></p>
               </div>
+              <button type="button" class="olgo" id="olGo">PUT IT UP &rarr;</button>
+              <p class="olfoot" id="olFoot">it airs on the next break · the DJ says it in its own voice</p>
             </div>
           </div>
         </div>
@@ -1075,7 +1074,18 @@
                control does: a text field as far as every read, write and diff
                in panel.js is concerned. The ticks below write into it. -->
           <input type="hidden" id="open_lines_personas" />
-          <ul class="soundlist" id="openLinesWho"></ul>
+          <!-- Chips + a dropdown, the shape the station uses for its own
+               multi-value fields. Sixteen checkbox rows was a screenful of
+               scrolling to answer "which DJs" (operator screenshot). The
+               chips ARE the answer, and the picker only offers what is not
+               already chosen. -->
+          <div class="chipbox" id="openLinesWho">
+            <div class="chips" id="openLinesChips"></div>
+            <div class="chippick">
+              <select id="openLinesWhoAdd" aria-label="Add a DJ"></select>
+              <button type="button" class="btnquiet" id="openLinesWhoAll">All</button>
+            </div>
+          </div>
         </div>
         <div class="grid2">
           <div class="row narrow">
