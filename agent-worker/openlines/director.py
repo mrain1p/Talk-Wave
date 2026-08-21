@@ -198,11 +198,23 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
 
 
 async def _sign_off(cfg: dict, record: dict) -> None:
-    """The closing line, aired exactly once. `signed_off` is the latch —
-    without it a restart would air the sign-off all over again."""
+    """The closing line, aired exactly once.
+
+    The latch is CLAIMED before the station is asked to speak, not set after it
+    finishes — see state.claim_signoff. Setting it afterwards left seconds of
+    TTS between the check and the write, and two overlapping web containers
+    (which is what a redeploy is) both aired the same closing line.
+    """
     from station import StationClient
 
     import secrets_store
+
+    claimed = state.claim_signoff()
+    if not claimed:
+        # Another director already has it. Not an error, and not worth a log
+        # line: a redeploy makes this the normal case for a few seconds.
+        return
+    record = claimed
 
     secrets_store.apply_to_env()
     station = StationClient()
@@ -210,11 +222,11 @@ async def _sign_off(cfg: dict, record: dict) -> None:
         took = _arrivals_since(str(record.get("opened_at")))
         spoken, _aired = await air.say(station, air.close_direction(
             str(record.get("premise") or ""), took))
-        record["signed_off"] = True
-        record["closed"] = True
-        record["sign_off_spoken"] = spoken
-        record.setdefault("closed_reason", "expired")
-        state.write(record)
+        # Re-read: the claim was written a moment ago, and the panel may have
+        # touched the record since. Only the words are ours to add now.
+        fresh = state.read_raw() or record
+        fresh["sign_off_spoken"] = spoken
+        state.write(fresh)
         log.info("open lines: closed (%s arrivals while it stood)", took)
     finally:
         await station.aclose()
@@ -225,6 +237,18 @@ async def _remind(cfg: dict, record: dict) -> None:
 
     import secrets_store
 
+    # Spend the slot BEFORE airing, for the same reason the sign-off claims its
+    # latch first: two overlapping directors that both read the same due
+    # reminder would both air it. The slot is spent either way — banking
+    # skipped reminders through a quiet hour would spend them all at once the
+    # moment somebody tunes in — so moving the write earlier costs nothing and
+    # closes most of the window.
+    fresh = state.read_raw()
+    if not state.is_live(fresh) or not fresh.get("next_reminder_at"):
+        return
+    state.write(state.note_reminder(
+        fresh, int(cfg.get("open_lines_reminder_minutes") or 0)))
+
     secrets_store.apply_to_env()
     station = StationClient()
     try:
@@ -234,10 +258,6 @@ async def _remind(cfg: dict, record: dict) -> None:
             await air.say(station, air.remind_direction(
                 str(record.get("premise") or ""), cfg,
                 str(record.get("spoken") or "")))
-        # The slot is spent either way. Banking skipped reminders through a
-        # quiet hour would spend them all at once the moment somebody tunes in.
-        state.write(state.note_reminder(
-            record, int(cfg.get("open_lines_reminder_minutes") or 0)))
     finally:
         await station.aclose()
 
@@ -271,29 +291,33 @@ async def _follow_up(cfg: dict, record: dict) -> bool:
             return False
 
         item = waiting[0]
+        # Claim the conversation before spending a model call on it, let alone
+        # airing it. Two directors that both saw the same contribution would
+        # otherwise both report it, and the room would hear the DJ discover one
+        # person's answer twice. If the line below turns out to be worth
+        # airing, note_followup upgrades this to a counted follow-up.
+        state.write(state.note_seen(state.read_raw(), item.get("id")))
         premise = str(record.get("premise") or "")
         line = await followup.line_for(cfg, station, persona, premise, item)
         if not line:
             # Considered and nothing to say — most conversations while a line
-            # is open are requests. Marked seen so the model is not asked about
-            # the same hello every sixty seconds for an hour.
-            state.write(state.note_seen(state.read_raw(), item.get("id")))
+            # is open are requests. Already marked seen by the claim above, so
+            # the model is not asked about the same hello every sixty seconds.
             return False
 
         # Checked here as well as at open: reporting back to an empty room is
         # the one moment this feature can spend the DJ on nobody.
         ok, _count = listeners_ok(cfg, now_playing)
         if not ok:
-            state.write(state.note_seen(state.read_raw(), item.get("id")))
             return False
 
         spoken, aired = await air.say(
             station, air.followup_direction(premise, line, cfg))
         fresh = state.read_raw()
         if not aired:
-            # The booth refused. Mark it seen anyway: retrying a station that
-            # is saying no, once a minute, is how one failure becomes sixty.
-            state.write(state.note_seen(fresh, item.get("id")))
+            # The booth refused. It stays marked seen from the claim: retrying
+            # a station that is saying no, once a minute, is how one failure
+            # becomes sixty.
             return False
         state.write(state.note_followup(fresh, item.get("id")))
         log.info("open lines: reported a contribution on air — %s", line)

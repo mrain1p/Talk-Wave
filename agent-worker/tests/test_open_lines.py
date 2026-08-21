@@ -415,6 +415,70 @@ class TestALineDoesNotOutlastItsProgramme(unittest.TestCase):
                          self.at(12))
 
 
+class TestTwoDirectorsCannotAirTheSameThingTwice(_OnDisk):
+    """A redeploy runs two web containers for a few seconds, and each has a
+    director loop reading the same record off the same bind mount.
+
+    Every latch here used to be set AFTER the station finished speaking, so the
+    window between "has this aired?" and "it has now" was the length of a TTS
+    call. Observed on the operator's NAS 2026-08-21: a sign-off aired from one
+    process while another was mid-air with its own, and the second overwrote
+    the first's text with an empty string.
+
+    Claiming first does not make it atomic — that needs a lock file, whose
+    stale-lock failure mode is worse than the race — but it narrows the window
+    from seconds to two filesystem operations.
+    """
+
+    def test_the_signoff_can_only_be_claimed_once(self):
+        state.write(_record(closed=True))
+        first = state.claim_signoff()
+        second = state.claim_signoff()
+        self.assertTrue(first, "the first director must get it")
+        self.assertEqual(second, {}, "the second must be turned away")
+
+    def test_claiming_marks_it_before_anything_airs(self):
+        # The point of the whole change: the latch is on disk BEFORE the
+        # station is asked to speak, not after it answers.
+        state.write(_record(closed=True))
+        state.claim_signoff()
+        self.assertTrue(state.read_raw().get("signed_off"))
+
+    def test_a_record_already_signed_off_is_never_reclaimed(self):
+        state.write(_record(closed=True, signed_off=True))
+        self.assertEqual(state.claim_signoff(), {})
+
+    def test_no_record_claims_nothing(self):
+        state.write(None)
+        self.assertEqual(state.claim_signoff(), {})
+
+    def test_the_reason_survives_a_hand_close(self):
+        # An operator's Close writes closed_reason first; the claim must not
+        # relabel it "expired" underneath them.
+        state.write(_record())
+        state.close(reason="operator")
+        state.claim_signoff()
+        self.assertEqual(state.read_raw().get("closed_reason"), "operator")
+
+    def test_an_expired_line_gets_the_default_reason(self):
+        state.write(_record(closed=True))
+        state.claim_signoff()
+        self.assertEqual(state.read_raw().get("closed_reason"), "expired")
+
+    def test_a_conversation_is_claimed_before_the_model_is_asked(self):
+        # Same shape for follow-ups: two directors that both saw one
+        # contribution would both spend a model call and both report it, and
+        # the room would hear the DJ discover one person's answer twice.
+        rec = state.build("subject", "aired", PERSONA, "", minutes=60,
+                          source="dj", reminder_minutes=0, reminder_max=0)
+        rec = state.note_seen(rec, "c1")
+        state.write(rec)
+        self.assertIn("c1", state.read_raw()["followed_up"])
+        # And a claimed one is no longer a candidate for anybody.
+        self.assertEqual(
+            followup.candidates(rec, rec["opened_at"], rec["followed_up"]), [])
+
+
 class TestAnUnconfirmedLineIsStillAnOpenLine(_OnDisk):
     """Found by air-testing on the operator's own station, 2026-08-21.
 

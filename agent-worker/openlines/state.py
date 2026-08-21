@@ -207,6 +207,33 @@ def note_seen(record: dict, conversation_id: str) -> dict:
     return record
 
 
+def claim_signoff() -> dict:
+    """Take the sign-off before airing it. `{}` means somebody else has it.
+
+    The latch used to be set AFTER the station finished speaking, which left
+    the whole duration of a TTS call — seconds — between "is it signed off?"
+    and "it is now". Two processes reading in that window both aired, and the
+    audience heard the same closing line twice.
+
+    Two processes is not exotic: `docker compose up -d` overlaps the outgoing
+    web container with the incoming one, and both run a director loop.
+
+    Claiming first narrows the window to two filesystem operations. It does not
+    close it — that needs an O_EXCL lock file, which buys a stale-lock failure
+    mode worse than the race it fixes. The trade is deliberate in the other
+    direction too: a crash between claiming and airing loses the sign-off
+    entirely, and a missing closing line is better on air than a doubled one.
+    """
+    record = read_raw()
+    if not record or record.get("signed_off"):
+        return {}
+    record["signed_off"] = True
+    record["closed"] = True
+    record.setdefault("closed_reason", "expired")
+    write(record)
+    return record
+
+
 def close(reason: str = "operator") -> dict:
     """Mark the line closed and keep it on disk, so the director can air a
     sign-off exactly once and the panel can say what happened."""

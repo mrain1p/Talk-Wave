@@ -486,6 +486,7 @@ from tests.test_open_lines import (  # noqa: F401
     TestRemindersCannotRunAway,
     TestTheShelfIsPerDJAndLeastRecentlyUsed,
     TestALineDoesNotOutlastItsProgramme,
+    TestTwoDirectorsCannotAirTheSameThingTwice,
     TestAnUnconfirmedLineIsStillAnOpenLine,
     TestOpenLinesRefusesOutLoud,
     TestTheStationIsNeverReconfigured,
