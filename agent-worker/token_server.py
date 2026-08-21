@@ -87,7 +87,8 @@ from api.sounds import (
     handle_sound_meta,
 )
 from api.chat import handle_chat_ws
-from api.onair import handle_on_air_clip, handle_on_air_dump, hush_janitor
+from api.onair import (audio_janitor, handle_on_air_clip,
+                       handle_on_air_dump, hush_janitor)
 from openlines.director import run as open_lines_director
 from api.openlines import (
     handle_open_lines_close,
@@ -232,6 +233,7 @@ def build_app() -> web.Application:
     app.cleanup_ctx.append(keep_station_warm)
     app.cleanup_ctx.append(sample_listeners)
     app.cleanup_ctx.append(hush_janitor)
+    app.cleanup_ctx.append(audio_janitor)
     app.cleanup_ctx.append(open_lines_director)
     return app
 

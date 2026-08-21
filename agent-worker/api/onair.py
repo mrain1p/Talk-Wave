@@ -29,6 +29,61 @@ from onair import chunks, hush
 log = logging.getLogger("callin.onair")
 
 
+async def audio_janitor(app: web.Application) -> None:
+    """cleanup_ctx: the one thing that sweeps a caller's audio on a clock.
+
+    Both stores delete three ways — on the fetch that claims the clip, on the
+    relay or the send closing, and by TTL. But the TTL sweeps were only ever
+    called from the WRITE paths (`onair.chunks.store`, `voicemail.review`), so
+    they were opportunistic: a crash or a restart that stranded a clip left it
+    on disk until somebody happened to make the NEXT on-air call or record the
+    NEXT soundbite. On a station where nobody does either again that week, a
+    stranger's voice simply stays there — the TTL had an opinion and nothing
+    ever asked it.
+
+    So: the same shape as the hush janitor above, and for the same reason. The
+    first tick is the crash recovery — a stack that died mid-call sweeps the
+    moment it is back on its feet — and every tick after it covers the process
+    that stays up for days between calls.
+
+    Deliberately not tied to either feature's switch. Turning live-on-air off
+    mid-call must not orphan the clip that was already written, which is the
+    lesson the hush janitor learned first.
+    """
+    interval = float(os.environ.get("AUDIO_JANITOR_INTERVAL", "60"))
+    if interval <= 0:                       # the suite: no loops in a test app
+        yield
+        return
+
+    def _sweep_once() -> None:
+        from voicemail import review as vm_review
+
+        for name, fn in (("on-air clips", chunks.sweep),
+                         ("soundbite drafts", vm_review.sweep)):
+            try:
+                gone = fn()
+            except Exception as e:          # noqa: BLE001
+                # A janitor that dies takes every later sweep with it.
+                log.warning("audio janitor: %s sweep failed: %s", name, e)
+                continue
+            # Only when it actually did something: a loop that says "swept 0"
+            # every minute is a log nobody reads.
+            if gone:
+                log.info("audio janitor: removed %d stale %s", gone, name)
+
+    async def loop() -> None:
+        while True:
+            await asyncio.to_thread(_sweep_once)
+            await asyncio.sleep(interval)
+
+    task = asyncio.create_task(loop())
+    app["audio_janitor_task"] = task
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
 async def hush_janitor(app: web.Application) -> None:
     """cleanup_ctx: the ONE restorer of the station's Voice switch.
 
