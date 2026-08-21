@@ -354,6 +354,58 @@ class TestOpenLinesReachesThePanel(unittest.TestCase):
                 self.assertIn(f'"{path}"', routes)
 
 
+class TestSectionTagsCanShowTheirState(unittest.TestCase):
+    """Found while verifying Open Lines' own tag, and it was never about Open
+    Lines: EVERY section tag on the panel rendered the same grey.
+
+    setTag() has always written data-state, but the rules reading it sat
+    unscoped as `.tag[data-state="on"]` — (0,2,0) against
+    `details.sec > summary .tag`'s (0,2,2). The summary rule took both the
+    colour and the opacity, so the state never showed anywhere. Measured with
+    four tags live in the "on" state, all computing rgb(92,87,79).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import re
+
+        from tests.support import REPO
+
+        raw = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        # Comments stripped: this file explains its own traps by quoting the
+        # selectors involved, and a test that counts rules must not count the
+        # prose describing them. (It caught itself doing exactly that.)
+        cls.css = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
+
+    def test_the_state_rules_are_scoped_to_outrank_the_summary(self):
+        for state, colour in (("on", "--sage"), ("off", "--sage-dim")):
+            with self.subTest(state=state):
+                rule = ('details.sec > summary .tag[data-state="%s"]' % state)
+                self.assertIn(rule, self.css,
+                              "unscoped, this rule loses to the summary rule")
+                after = self.css.split(rule, 1)[1].split("}", 1)[0]
+                self.assertIn(colour, after)
+
+    def test_the_dead_unscoped_rules_are_gone(self):
+        # Left in place they read as working code and invite the next person
+        # to "fix" the state by editing a rule that has never applied. Counted
+        # rather than matched on whitespace: the scoped rule contains the
+        # unscoped selector as a substring, so one occurrence is the fix and
+        # two means the dead rule is back.
+        for state in ("on", "off"):
+            with self.subTest(state=state):
+                self.assertEqual(
+                    self.css.count('.tag[data-state="%s"]' % state), 1,
+                    "an unscoped copy is back; it can never apply")
+
+    def test_the_on_state_beats_the_summary_opacity_too(self):
+        # The summary sets opacity .85. Colour alone would have left the "on"
+        # tag dimmed against a background it is meant to stand out from.
+        rule = 'details.sec > summary .tag[data-state="on"]'
+        body = self.css.split(rule, 1)[1].split("}", 1)[0]
+        self.assertIn("opacity: 1", body)
+
+
 class TestTheRecordSurvivesBothContainers(_OnDisk):
     def test_it_is_written_where_the_worker_can_read_it(self):
         # The worker (calls) and the web container (panel, chat, voicemail,

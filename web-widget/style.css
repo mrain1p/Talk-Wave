@@ -3028,9 +3028,9 @@
   .setchip[data-state="on"] { color: var(--sage); }
   .setchip[data-state="off"] { color: var(--coral); }
 
-  /* The section tag carries its state in colour — see setTag(). */
-  .tag[data-state="on"] { color: var(--sage); }
-  .tag[data-state="off"] { color: var(--sage-dim); opacity: .65; }
+  /* The section tag's state colours are scoped and live further down, beside
+     the summary rule they have to outrank — see the note there. Putting them
+     here, unscoped, is what made them dead for as long as they existed. */
 
   .fieldonly {
     position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -3212,6 +3212,17 @@
     color: var(--dimmer); font-weight: 500; opacity: .85;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
   }
+  /* State in colour, and it has to be scoped to win. setTag() has always
+     written data-state, and the rules that read it sat unscoped as
+     `.tag[data-state="on"]` — (0,2,0) against this rule's (0,2,2), so the
+     summary's `--dimmer` and `.85` took BOTH the colour and the opacity and
+     every section tag on the panel rendered identically grey from the day the
+     feature was written. Found 2026-08-21 with four tags live in the "on"
+     state, all computing rgb(92,87,79). Scoped here, next to what they
+     outrank, so the next person moving them sees the trap.
+     TestSectionTagsCanShowTheirState pins it. */
+  details.sec > summary .tag[data-state="on"] { color: var(--sage); opacity: 1; }
+  details.sec > summary .tag[data-state="off"] { color: var(--sage-dim); opacity: .65; }
   /* The section's one-line subtitle, set from the schema by layoutPanel().
      Undoes the summary's uppercase mono treatment — it is a sentence, not a
      label — and gives way first when the row runs out of room. */
