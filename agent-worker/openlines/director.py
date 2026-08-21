@@ -107,6 +107,18 @@ async def _live_context(station):
     return persona, now_playing, show or {}, week or {}
 
 
+async def _resolve_bit(cfg, station, persona, show, bit: str) -> dict:
+    """Turn a recurring BIT into tonight's specific instance.
+
+    One step for every format, deliberately. Logic per format would fix the
+    twelve anybody thought of and forbid the thirteenth an operator writes;
+    this handles any of them, and the only rule is that the booth never
+    receives the NAME of a bit to work out on air.
+    """
+    snap = await station.snapshot(with_skills=False)
+    return await quiz_mod.resolve(cfg, station, persona, snap, show, bit)
+
+
 async def open_now(reason: str = "operator", cfg: dict | None = None,
                    source: str | None = None, premise: str | None = None,
                    premise_id: str | None = None) -> dict:
@@ -154,6 +166,7 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
 
         source = str(source or cfg.get("open_lines_source") or "dj")
         picked = {}
+        asked = {}
         if premise:
             # Typed at the dashboard, for this press only. Never touches the
             # shelf: a one-off subject an operator thought of is not a library
@@ -170,14 +183,13 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
                 return {"ok": False,
                         "why": "That subject is no longer on the shelf."}
         elif source == "quiz":
-            snap = await station.snapshot(with_skills=False)
-            asked = await quiz_mod.invent(cfg, station, persona, snap, show)
+            asked = await _resolve_bit(cfg, station, persona, show, "")
             if not asked:
                 return {"ok": False,
                         "why": "The DJ could not set a question it could also "
                                "mark — try again, or pick a subject instead."}
-            # The premise IS the question: it is what gets announced, and what
-            # the block reminds the DJ it asked.
+            # The premise IS the resolved question: it is what gets announced,
+            # and what the block reminds the DJ it asked.
             text = asked["question"]
         elif source == "shelf":
             picked = premise_mod.take_from_shelf(str(persona.get("id") or ""))
@@ -194,6 +206,20 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
                         "why": "The DJ could not come up with one — check the "
                                "model is reachable."}
 
+        # A shelf entry can be a BIT — a recurring format ("Would You Rather")
+        # rather than a subject — and a bit is resolved into tonight's specific
+        # instance BEFORE anything airs. Handed the NAME of a game the booth
+        # announces that a game exists: "the suits want me to push something
+        # called a Quiz question", which tells a listener there is a bit on
+        # without inviting them into it.
+        if picked.get("format") and text:
+            asked = await _resolve_bit(cfg, station, persona, show, text)
+            if not asked:
+                return {"ok": False,
+                        "why": f"The DJ could not turn \"{text[:40]}\" into "
+                               "tonight's version of it — try again."}
+            text = asked["question"]
+
         # An open line must not outlast the programme that opened it: the show
         # changing already ends it, and a countdown that said otherwise was
         # promising time the DJ was never going to have.
@@ -202,7 +228,7 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
             week, str(show.get("id") or ""), wanted)
 
         spoken, aired = await air.say(
-            station, air.open_direction(text, cfg, quiz=(source == "quiz")))
+            station, air.open_direction(text, cfg, quiz=bool(asked)))
         if not aired:
             return {"ok": False,
                     "why": "The booth would not take the line — check the "
@@ -213,7 +239,10 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
             minutes=minutes, source=source,
             reminder_minutes=int(cfg.get("open_lines_reminder_minutes") or 0),
             reminder_max=int(cfg.get("open_lines_reminder_max") or 0))
-        if source == "quiz":
+        # Only when the bit HAS a right answer. "Ask the DJ" and "Rate My
+        # Take" have nothing to mark, and an empty answer must not put the
+        # block into quiz mode.
+        if asked.get("answer"):
             record["quiz_answer"] = asked["answer"]
         record["opened_by"] = reason
         record["show_id"] = str(show.get("id") or "")

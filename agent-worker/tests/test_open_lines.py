@@ -296,12 +296,21 @@ class TestAQuizTheDJCanActuallyMark(_OnDisk):
         # listener cannot win it by having had the show on.
         from openlines import quiz as quiz_mod
 
-        self.assertIn("not chart positions, not release years", quiz_mod.ASK)
-        self.assertIn("ONE clear answer you can mark", quiz_mod.ASK)
-        # The load-bearing sentence: the answer comes from the supplied
-        # facts, not from the DJ trying to remember its own evening.
-        self.assertIn("The answer MUST come from the facts below", quiz_mod.ASK)
-        self.assertIn("if it is not in the list then you did not say it",
+        # Some bits have no right answer at all — "Ask the DJ", "Rate My
+        # Take" — and demanding one would make the model invent something to
+        # fill the field.
+        self.assertIn("leave the answer empty", quiz_mod.ASK)
+        # In the show's world, whatever that is — and NOT prescribed as
+        # music. Donovan's Pub has a fire, a dog and a county; a detective
+        # show has none of those, and flattening both into "name the band"
+        # would make every persona run the same quiz.
+        self.assertIn("does not have to be about music", quiz_mod.ASK)
+        self.assertIn("the world of THIS show", quiz_mod.ASK)
+        # And the whole point: the booth is never handed the NAME of a bit.
+        self.assertIn("Turn that into the ACTUAL thing you will say on air",
+                      quiz_mod.ASK)
+        # And a claim about tonight is still held to the facts.
+        self.assertIn("if it is not in the list then it did not happen",
                       quiz_mod.ASK)
 
     def test_the_facts_include_what_the_dj_really_said(self):
@@ -337,14 +346,30 @@ class TestAQuizTheDJCanActuallyMark(_OnDisk):
         self.assertFalse(quiz_mod.answer_is_grounded("", facts))
         self.assertFalse(quiz_mod.answer_is_grounded("anything", []))
 
-    def test_no_facts_means_no_quiz(self):
-        # A station that has just come up has nothing checkable to ask about.
+    def test_general_knowledge_in_theme_is_not_ground_checked(self):
+        # Restricting every question to tonight's facts was too tight. A quiz
+        # can be about the show's world; the sin was invented AUTOBIOGRAPHY,
+        # not trivia. So "theme" skips the check and "tonight" does not.
         from openlines import quiz as quiz_mod
 
-        async def go():
-            return await quiz_mod.invent({}, None, {}, {}, {})
+        themed = quiz_mod._parse(
+            '{"kind": "theme", "question": "which county is the pub in?", '
+            '"answer": "County Cork"}')
+        self.assertEqual(themed["kind"], "theme")
+        claimed = quiz_mod._parse(
+            '{"kind": "tonight", "question": "what did I say?", '
+            '"answer": "a plain bagel"}')
+        self.assertEqual(claimed["kind"], "tonight")
 
-        self.assertEqual(asyncio.run(go()), {})
+    def test_a_missing_kind_is_treated_as_a_claim_about_tonight(self):
+        # The careful branch is the default: a model that omits the field must
+        # not get the unchecked one.
+        from openlines import quiz as quiz_mod
+
+        got = quiz_mod._parse('{"question": "q", "answer": "a"}')
+        self.assertEqual(got["kind"], "tonight")
+        odd = quiz_mod._parse('{"kind": "whatever", "question": "q", "answer": "a"}')
+        self.assertEqual(odd["kind"], "tonight")
 
     def test_an_unparseable_quiz_is_no_quiz(self):
         # Half a quiz must never air: no question means no answer to mark.
@@ -564,16 +589,23 @@ class TestTheShelfIsPerDJAndLeastRecentlyUsed(_OnDisk):
         self.assertEqual(premises.read()[0]["personas"], ["p7"])
         self.assertEqual(premises.for_persona("p1"), [])
 
-    def test_a_fresh_install_finds_three_starters(self):
+    def test_a_fresh_install_finds_subjects_and_bits(self):
         # So the button does something on day one. Seeded on READ rather than
         # shipped as a file, which is what lets an operator empty the shelf
         # deliberately and have it stay empty.
         for item in premises.read():
             premises.remove(item["id"])
         premises.PREMISES_PATH.unlink(missing_ok=True)
+        from openlines.quiz import FORMATS
+
         seeded = premises.read()
-        self.assertEqual(len(seeded), len(premises.STARTERS))
+        # Subjects AND bits: a fresh shelf offers both one-off topics and the
+        # recurring formats, which are resolved into tonight's instance
+        # rather than read out as a label.
+        self.assertEqual(len(seeded), len(premises.STARTERS) + len(FORMATS))
         self.assertTrue(all(i.get("starter") for i in seeded))
+        self.assertEqual(sum(1 for i in seeded if i.get("format")),
+                         len(FORMATS))
         # Aimed at nobody, so they work whichever DJ is on.
         self.assertTrue(all(i["personas"] == [] for i in seeded))
 

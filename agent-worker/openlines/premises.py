@@ -35,14 +35,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# What a fresh install finds on the shelf. Three, not thirty: enough to press
-# the button on day one and hear what the feature actually sounds like, few
-# enough that they read as examples to replace rather than a library to curate.
-#
-# All three are anchored in something that really exists — a record, a habit, a
-# genuine opinion — because that is what survives somebody engaging seriously.
-# Invented specifics ("that argument with the execs upstairs") crack the moment
-# a listener asks which exec.
+# What a fresh install finds on the shelf: a few one-off subjects, and the
+# recurring BITS. A bit is a format ("Would You Rather") rather than a subject;
+# it is resolved into tonight's specific instance before anything airs, because
+# handing the booth the name of a game got "the suits want me to push something
+# called a Quiz question" on air, and a listener told there is a game has not
+# been invited into one.
 STARTERS = (
     "a record you skipped for years that finally won you over, and what changed",
     "whether an album still means anything, or whether everyone just plays songs now",
@@ -57,10 +55,14 @@ def _seed() -> list[dict]:
     shelf deliberately gets an EMPTY shelf — the file exists after the first
     read, so "no file" only ever means "never opened this feature".
     """
+    from openlines.quiz import FORMATS
+
     items = [
         {"id": secrets.token_hex(6), "text": text, "personas": [],
-         "used": 0, "last_used": "", "added": _now(), "starter": True}
-        for text in STARTERS
+         "used": 0, "last_used": "", "added": _now(), "starter": True,
+         "format": is_format}
+        for text, is_format in ([(t, False) for t in STARTERS]
+                                + [(f, True) for f in FORMATS])
     ]
     _write(items)
     return items
@@ -95,7 +97,8 @@ def _write(items: list[dict]) -> None:
         log.warning("could not write the premise shelf: %s", e)
 
 
-def add(text: str, personas: list | None = None) -> dict:
+def add(text: str, personas: list | None = None,
+        is_format: bool = False) -> dict:
     text = " ".join(str(text or "").split())[:TEXT_BUDGET].strip()
     if not text:
         return {}
@@ -108,6 +111,9 @@ def add(text: str, personas: list | None = None) -> dict:
         "used": 0,
         "last_used": "",
         "added": _now(),
+        # A BIT rather than a subject: resolved into tonight's specific
+        # instance before it airs, instead of being read out as a label.
+        "format": bool(is_format),
     }
     items = read()
     items.append(item)

@@ -1,6 +1,6 @@
-"""A quiz the DJ can actually mark, about facts that are actually true.
+"""A quiz the DJ can actually mark, about things that are actually true.
 
-Two failures on the operator's station built this, and they are different.
+Three failures on the operator's station built this, and they are different.
 
 **Nothing decided the question.** Given the subject "Quiz question" — a LABEL,
 not a subject — the invitation aired as *"the suits want me to push something
@@ -10,15 +10,27 @@ request, queued a track at them and told them they had whiffed. So: the
 question AND its answer are settled before anything airs, both are pinned to
 the record, and the block hands the DJ the answer.
 
-**And then the answer was false.** Told to ask about its own show, the DJ asked
-what drink somebody at the bar had ordered earlier and answered "a plain
-bagel". It had said neither. A DJ has no reliable memory of its own broadcast —
-invited to remember one, it invents one — and a quiz whose answer is wrong is
-worse than no quiz at all.
+**Then the answer was false.** Told to ask about its own show, the DJ asked
+what drink somebody at the bar had ordered and answered "a plain bagel". It
+had said neither. A DJ has no reliable memory of its own broadcast — invited
+to remember one, it invents one.
 
-So the question is grounded in a list of facts we build ourselves from the
-snapshot, and the answer is CHECKED back against that list before anything
-airs. A quiz we cannot verify is not offered.
+**But restricting it to verifiable facts was too tight.** A quiz can be about
+anything that belongs to the show's world. The sin was never general
+knowledge, it was invented AUTOBIOGRAPHY — the DJ claiming it said or did
+something it did not.
+
+So a question declares which it is:
+
+- "theme" — general knowledge from the show's world. Not checked here, and
+  it does not have to be about music: Donovan's Pub has a fire and a dog and
+  a county, and a detective show has none of those. Prescribing a music
+  thread would flatten every persona into the same show.
+- "tonight" — a claim about this broadcast. The answer is CHECKED against
+  facts assembled here, and a quiz that fails is dropped rather than aired.
+
+Anything that does not say which is treated as "tonight", so a model that
+omits the field gets the careful branch rather than the loose one.
 """
 
 from __future__ import annotations
@@ -34,24 +46,53 @@ ANSWER_BUDGET = 160
 
 ASK = (
     "[Not a caller. This is the station's producer, off air.\n"
-    "Set ONE quiz question for the audience, and give me its answer.\n"
-    "The answer MUST come from the facts below. They are the only things that "
-    "are actually true and checkable:\n"
+    "Tonight's bit is: {bit}\n"
+    "\n"
+    "Turn that into the ACTUAL thing you will say on air — the specific "
+    "question, the specific choice, the specific challenge. Not the name of "
+    "the bit: a listener hearing \"{bit}\" and nothing else has been told "
+    "there is a game, not invited into one.\n"
+    "\n"
+    "Make it yours. Pitch it in the world of THIS show — its subject, its "
+    "place, its era, whatever the thing behind it is. It does not have to be "
+    "about music; it has to be something that could only come from your show.\n"
+    "\n"
+    "If it is the kind of bit with a right answer, give me that answer too, "
+    "and say which sort it is:\n"
+    '  kind "theme" — general knowledge. You must be genuinely sure of it; if '
+    "you are hazy, pick something else.\n"
+    '  kind "tonight" — a claim about THIS broadcast. The answer must come '
+    "from the list below, because you do not reliably remember your own "
+    "evening: if it is not in the list then it did not happen, however "
+    "strongly you feel otherwise.\n"
     "{facts}\n"
-    "Do not ask about anything else — not chart positions, not release years, "
-    "and nothing you would be REMEMBERING rather than reading above. You do "
-    "not reliably remember your own broadcast: what you actually said is in "
-    "that list, and if it is not in the list then you did not say it. A quiz "
-    "whose answer is wrong is worse than no quiz at all.\n"
-    "Good shapes: who recorded a track you played, which track came before "
-    "another, what is playing right now, something you said on air earlier, "
-    "what this show is about.\n"
-    "It must have ONE clear answer you can mark right or wrong, and somebody "
-    "who has had the show on this evening must be able to get it.\n"
+    "\n"
+    "If the bit has no right answer — an opinion, a story, an argument for you "
+    "to judge — leave the answer empty. That is a normal outcome, not a "
+    "failure.\n"
     "Reply as JSON and nothing else, exactly:\n"
-    '{{"question": "...", "answer": "..."}}\n'
-    "The question is one sentence, as you would ask it on air. The answer is "
-    "short — the fact itself and nothing more.]"
+    '{{"kind": "theme" or "tonight", "question": "...", "answer": "..."}}\n'
+    "The question is one sentence, exactly as you would say it on air.]"
+)
+
+# What a fresh shelf offers as BITS rather than one-off subjects: a recurring
+# thing the DJ resolves into tonight's specific instance before it airs.
+# Names only, deliberately. Building logic per format would fix twelve shapes
+# and forbid the thirteenth; one resolve step handles any of them, and an
+# operator can add "Desert Island Discs" without anybody writing code.
+FORMATS = (
+    "Settle the Argument — two callers give their sides, you decide who wins",
+    "Stump the DJ — callers try to ask you something you cannot answer",
+    "Name That Tune — describe a song without naming it, they guess",
+    "Finish the Lyric — you give part of a lyric, they finish it",
+    "Two Truths and a Lie — the caller gives three, you pick the lie",
+    "Would You Rather — two ridiculous choices, they have to pick one",
+    "Hot Take Hotline — they give an opinion, you rule on whether it is a "
+    "real hot take",
+    "Rate My Take — they present an opinion, you rate it out of ten",
+    "Ask the DJ — advice, opinions, recommendations, arguments, anything",
+    "Guess the Year — you give a clue, they name the year",
+    "Local Trivia — the area, its landmarks, its history, its odder corners",
 )
 
 
@@ -158,13 +199,21 @@ def _parse(raw: str) -> dict:
         return {}
     question = _clip(data.get("question"), QUESTION_BUDGET)
     answer = _clip(data.get("answer"), ANSWER_BUDGET)
-    if not question or not answer:
+    # No question, no bit. No ANSWER is fine — "Ask the DJ" and "Rate My
+    # Take" have nothing to mark, and demanding one would only make the
+    # model invent something to fill the field.
+    if not question:
         return {}
-    return {"question": question, "answer": answer}
+    # Anything that is not explicitly general knowledge is treated as a claim
+    # about tonight, and therefore checked. A model that omits the field, or
+    # invents a third kind, gets the careful branch rather than the loose one.
+    kind = str(data.get("kind") or "").strip().lower()
+    return {"question": question, "answer": answer,
+            "kind": "theme" if kind == "theme" else "tonight"}
 
 
-async def invent(cfg: dict, station, persona: dict, snapshot: dict,
-                 show: dict) -> dict:
+async def resolve(cfg: dict, station, persona: dict, snapshot: dict,
+                  show: dict, bit: str = "") -> dict:
     """A question and its answer, grounded in tonight's facts. `{}` if not.
 
     Same brain and the same full prompt a reply uses, for the same reason
@@ -177,16 +226,12 @@ async def invent(cfg: dict, station, persona: dict, snapshot: dict,
     from call.providers import build_llm
 
     facts = facts_from(snapshot or {}, show or {}, persona or {})
-    if len(facts) < 2:
-        # Nothing verifiable to ask about — a station that has just come up,
-        # or a snapshot that came back empty.
-        log.info("no facts to set a quiz from")
-        return {}
 
     prompt = await build_system_prompt(station, persona, cfg=cfg, mode="chat")
     ctx = lk_llm.ChatContext.empty()
     ctx.add_message(role="system", content=prompt)
     ctx.add_message(role="user", content=ASK.format(
+        bit=bit or "a quiz — a question with one right answer",
         facts="\n".join("  - " + f for f in facts)))
 
     model = build_llm(cfg)
@@ -208,17 +253,20 @@ async def invent(cfg: dict, station, persona: dict, snapshot: dict,
         except Exception:                                      # noqa: BLE001
             pass
 
-    quiz = _parse(out)
-    if not quiz:
-        log.info("quiz came back unparseable: %s", out[:160])
+    resolved = _parse(out)
+    if not resolved:
+        log.info("the bit came back unresolvable: %s", out[:160])
         return {}
-    if not answer_is_grounded(quiz["answer"], facts):
-        # The bagel gate. Airing this would put a false answer on the
-        # broadcast and mark a correct caller wrong.
-        log.info("quiz answer is not in tonight's facts, dropping it: %r",
-                 quiz["answer"])
+    # The bagel gate, and only for questions that CLAIM to be about this
+    # broadcast. General knowledge in the show's own subject is fair game and
+    # cannot be checked against tonight's facts by definition — the sin was
+    # never trivia, it was invented autobiography.
+    if (resolved["answer"] and resolved["kind"] == "tonight"
+            and not answer_is_grounded(resolved["answer"], facts)):
+        log.info("the bit claims to be about tonight but its answer is not "
+                 "in the facts, dropping it: %r", resolved["answer"])
         return {}
-    return quiz
+    return resolved
 
 
 def conduct(question: str, answer: str) -> str:
