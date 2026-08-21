@@ -69,6 +69,16 @@ def greeting_clause(cfg: dict, persona: dict | None = None,
     premise = str(record.get("premise") or "").strip()
     if not premise:
         return ""
+    if str(record.get("quiz_answer") or "").strip():
+        return (
+            " You have a QUIZ running on air right now and they may well be "
+            f"ringing to answer it: {premise}. So INSTEAD of your usual "
+            "opening question, ask whether they have come to take the quiz or "
+            "about something else — one question, lightly, in your own voice, "
+            "not both. Do not give them the answer, do not re-read the "
+            "question as an announcement, and do not read out any address."
+        )
+
     return (
         " You have a subject up on air right now and they may well be ringing "
         f"about it: {premise}. So INSTEAD of your usual opening question, ask "
@@ -115,6 +125,24 @@ def block(cfg: dict, persona: dict | None = None, show_name: str = "",
         ]
     if premise and premise.lower() not in aired.lower():
         lines.append(f"\nWhat you are actually asking: {premise}")
+
+    # A quiz is marked, not discussed, and the answer lives only here.
+    answer = str(record.get("quiz_answer") or "").strip()
+    if answer:
+        from openlines import quiz as quiz_mod
+
+        lines.append(quiz_mod.conduct(premise, answer))
+        lines += [
+            "",
+            "Whoever turns up:",
+            f"- Near the start, {ask} whether they have come to take the "
+            "quiz or about something else. One question, lightly.",
+            "- If they have not come for the quiz, drop it completely and "
+            "deal with them exactly as you would on any other day.",
+            "- Do not re-announce the quiz as though they had not heard it, "
+            "and do not read out any address. They are already through.",
+        ]
+        return "\n".join(lines) + "\n"
 
     lines += [
         "",

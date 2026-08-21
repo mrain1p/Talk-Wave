@@ -18,7 +18,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from openlines import air, followup, state
+from openlines import air, followup, quiz as quiz_mod, state
 from openlines import premise as premise_mod
 from openlines import schedule as schedule_mod
 
@@ -169,6 +169,15 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
             if not text:
                 return {"ok": False,
                         "why": "That subject is no longer on the shelf."}
+        elif source == "quiz":
+            asked = await quiz_mod.invent(cfg, station, persona)
+            if not asked:
+                return {"ok": False,
+                        "why": "The DJ could not set a question it could also "
+                               "mark — try again, or pick a subject instead."}
+            # The premise IS the question: it is what gets announced, and what
+            # the block reminds the DJ it asked.
+            text = asked["question"]
         elif source == "shelf":
             picked = premise_mod.take_from_shelf(str(persona.get("id") or ""))
             text = str(picked.get("text") or "")
@@ -191,7 +200,8 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
         minutes, cut_by_show = schedule_mod.bounded_minutes(
             week, str(show.get("id") or ""), wanted)
 
-        spoken, aired = await air.say(station, air.open_direction(text, cfg))
+        spoken, aired = await air.say(
+            station, air.open_direction(text, cfg, quiz=(source == "quiz")))
         if not aired:
             return {"ok": False,
                     "why": "The booth would not take the line — check the "
@@ -202,6 +212,8 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
             minutes=minutes, source=source,
             reminder_minutes=int(cfg.get("open_lines_reminder_minutes") or 0),
             reminder_max=int(cfg.get("open_lines_reminder_max") or 0))
+        if source == "quiz":
+            record["quiz_answer"] = asked["answer"]
         record["opened_by"] = reason
         record["show_id"] = str(show.get("id") or "")
         record["cut_by_show"] = cut_by_show
@@ -247,7 +259,8 @@ async def _sign_off(cfg: dict, record: dict) -> None:
     try:
         took = _arrivals_since(str(record.get("opened_at")))
         spoken, _aired = await air.say(station, air.close_direction(
-            str(record.get("premise") or ""), took))
+            str(record.get("premise") or ""), took,
+            record.get("followup_lines")))
         # Re-read: the claim was written a moment ago, and the panel may have
         # touched the record since. Only the words are ours to add now.
         fresh = state.read_raw() or record
@@ -345,7 +358,7 @@ async def _follow_up(cfg: dict, record: dict) -> bool:
             # a station that is saying no, once a minute, is how one failure
             # becomes sixty.
             return False
-        state.write(state.note_followup(fresh, item.get("id")))
+        state.write(state.note_followup(fresh, item.get("id"), spoken))
         log.info("open lines: reported a contribution on air — %s", line)
         return True
     finally:

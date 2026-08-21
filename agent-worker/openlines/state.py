@@ -177,7 +177,8 @@ def note_reminder(record: dict, reminder_minutes: int) -> dict:
     return record
 
 
-def note_followup(record: dict, conversation_id: str) -> dict:
+def note_followup(record: dict, conversation_id: str,
+                  spoken: str = "") -> dict:
     """Count a follow-up that has just aired, and remember which conversation
     it was about.
 
@@ -190,6 +191,15 @@ def note_followup(record: dict, conversation_id: str) -> dict:
     if conversation_id and str(conversation_id) not in seen:
         seen.append(str(conversation_id))
     record["followed_up"] = seen
+    # The WORDS, not just the count. The sign-off used to be handed a number
+    # and asked to say what it took from what came in — so it invented the
+    # contributions, and a caller could hear their answer described as
+    # something they never said. This is the only record of what the DJ
+    # actually knows about the responses.
+    said = [str(x) for x in (record.get("followup_lines") or [])]
+    if spoken:
+        said.append(str(spoken))
+    record["followup_lines"] = said
     return record
 
 

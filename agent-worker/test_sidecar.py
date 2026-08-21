@@ -482,6 +482,7 @@ from tests.test_heard import (  # noqa: F401
 from tests.test_open_lines import (  # noqa: F401
     TestOpenLinesIsAdditive,
     TestWhatTheDJIsToldAboutTheTopic,
+    TestAQuizTheDJCanActuallyMark,
     TestThePickupAsksAboutTheTopic,
     TestAnOpenLineBelongsToOneDJAndOneShow,
     TestRemindersCannotRunAway,
@@ -492,6 +493,7 @@ from tests.test_open_lines import (  # noqa: F401
     TestOpenLinesRefusesOutLoud,
     TestTheStationIsNeverReconfigured,
     TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp,
+    TestTheSignOffOnlySaysWhatItActuallyHeard,
     TestReportingBackToTheRoom,
     TestOpenLinesReachesThePanel,
     TestTheRecordLandsWhereTheOtherStateDoes,

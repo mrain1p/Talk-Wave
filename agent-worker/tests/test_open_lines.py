@@ -218,6 +218,106 @@ class TestWhatTheDJIsToldAboutTheTopic(_OnDisk):
         self.assertIn("typing", self.build_prompt(mode="chat"))
 
 
+class TestAQuizTheDJCanActuallyMark(_OnDisk):
+    """A quiz cannot be a free-text premise, and the operator's station proved
+    it (2026-08-21, room at 21:31).
+
+    Given the typed subject "Quiz question" — a LABEL — the invitation aired as
+    "the suits want me to push something called a 'Quiz question'", and when a
+    caller took it up the DJ invented a question on the spot with no answer in
+    mind, read their answer as a song request, queued Kenny Rogers, and told
+    them they had "whiffed".
+
+    So the question AND its answer are settled before anything airs, and both
+    are pinned to the record.
+    """
+
+    def _quiz_record(self, **over):
+        rec = _record(premise="what did I say I was drinking earlier?",
+                      quiz_answer="a coffee that went cold hours ago", show="")
+        rec.update(over)
+        return rec
+
+    def test_the_answer_is_handed_over_explicitly(self):
+        # Without it the DJ marks against a question it half-remembers.
+        settings_store.save({"open_lines_enabled": True})
+        state.write(self._quiz_record())
+        text = self.build_prompt()
+        self.assertIn("a coffee that went cold hours ago", text)
+        self.assertIn("The answer, which only you know", text)
+
+    def test_an_answer_is_not_a_request(self):
+        # The exact failure: "Let It Be by the Beatles" was an ANSWER and the
+        # DJ queued Kenny Rogers' "Let It Be Me" instead.
+        settings_store.save({"open_lines_enabled": True})
+        state.write(self._quiz_record())
+        text = self.build_prompt()
+        self.assertIn("An answer is NOT a request", text)
+        self.assertIn("do not queue anything unless they actually ask", text)
+
+    def test_it_may_not_move_the_goalposts(self):
+        settings_store.save({"open_lines_enabled": True})
+        state.write(self._quiz_record())
+        text = self.build_prompt()
+        self.assertIn("Do not invent a different question", text)
+        self.assertIn("do not change the answer to fit what they said", text)
+
+    def test_close_enough_is_marked_right(self):
+        settings_store.save({"open_lines_enabled": True})
+        state.write(self._quiz_record())
+        self.assertIn("Close is close", self.build_prompt())
+
+    def test_the_pickup_asks_about_the_quiz_without_giving_it_away(self):
+        settings_store.save({"open_lines_enabled": True})
+        state.write(self._quiz_record())
+        said = prompt.greeting_clause(
+            settings_store.permissions_for(settings_store.load(), "admin"),
+            PERSONA, "")
+        self.assertIn("come to take the quiz", said)
+        self.assertIn("Do not give them the answer", said)
+        self.assertNotIn("coffee", said)
+
+    def test_a_plain_subject_is_untouched_by_any_of_this(self):
+        settings_store.save({"open_lines_enabled": True})
+        state.write(_record(show=""))          # no quiz_answer
+        text = self.build_prompt()
+        self.assertNotIn("running a quiz", text)
+        self.assertIn("How to handle whoever turns up", text)
+
+    def test_the_invitation_asks_the_question_rather_than_naming_it(self):
+        # "I want to hear about <question>" announces that a question exists.
+        asked = air.open_direction("who am I named after?", {}, quiz=True)
+        self.assertIn("Here is the question: who am I named after?", asked)
+        plain = air.open_direction("the best B-side", {}, quiz=False)
+        self.assertIn("I want to hear about the best B-side", plain)
+
+    def test_the_model_is_told_to_ask_about_its_own_world(self):
+        # General trivia is a question the DJ would be guessing at too, and a
+        # listener cannot win it by having had the show on.
+        from openlines import quiz as quiz_mod
+
+        self.assertIn("NOT general music trivia", quiz_mod.ASK)
+        self.assertIn("ONE clear answer you can mark", quiz_mod.ASK)
+
+    def test_an_unparseable_quiz_is_no_quiz(self):
+        # Half a quiz must never air: no question means no answer to mark.
+        from openlines import quiz as quiz_mod
+
+        for junk in ("", "Sure! Here you go.", "{not json", '{"question": ""}',
+                     '{"answer": "42"}'):
+            with self.subTest(junk=junk):
+                self.assertEqual(quiz_mod._parse(junk), {})
+
+    def test_a_fenced_json_answer_still_parses(self):
+        from openlines import quiz as quiz_mod
+
+        got = quiz_mod._parse(
+            'Sure —\n```json\n{"question": "what am I drinking?", '
+            '"answer": "cold coffee"}\n```')
+        self.assertEqual(got["question"], "what am I drinking?")
+        self.assertEqual(got["answer"], "cold coffee")
+
+
 class TestThePickupAsksAboutTheTopic(_OnDisk):
     """The greeting is the one turn the conduct block never reached.
 
@@ -752,6 +852,57 @@ class TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp(_OnDisk):
         after = greetings.greeting_text_for("p1", cfg, "Yosemite FM", "Dalia")
         self.assertNotEqual(before, during)
         self.assertEqual(before, after)
+
+
+class TestTheSignOffOnlySaysWhatItActuallyHeard(_OnDisk):
+    """It used to invent the contributions.
+
+    Handed only a COUNT and asked to "say what you took from what came in", the
+    DJ had no idea what came in and filled the gap. On the operator's station,
+    2026-08-21, it closed a line about first driving songs with "for everyone
+    else, it's some obscure ballad or a goddamn polka" — nobody had said
+    either, and follow-ups were switched off, so the DJ had heard nothing at
+    all. Great radio, and a caller who rang in could hear their answer
+    described as something they never said.
+    """
+
+    def test_nobody_took_it_up_is_unchanged(self):
+        said = air.close_direction("the subject", 0)
+        self.assertIn("Nobody took it up", said)
+
+    def test_people_came_but_nothing_was_reported_forbids_inventing(self):
+        # The exact hole the polka came out of: arrivals counted, content
+        # never seen, because follow-ups were off.
+        said = air.close_direction("the subject", 3)
+        self.assertIn("you do not know what any of them said", said)
+        self.assertIn("do NOT characterise their answers", said.replace("Do NOT", "do NOT"))
+        self.assertNotIn("say what you took from what came in", said)
+
+    def test_it_summarises_only_what_really_aired(self):
+        lines = ["someone argued the original pressing wins every time",
+                 "one caller said the remaster finally let them hear the bass"]
+        said = air.close_direction("the subject", 2, lines)
+        for line in lines:
+            self.assertIn(line, said)
+        self.assertIn("ALL you know about what came in", said)
+        self.assertIn("do not invent what other people said", said)
+
+    def test_blank_reported_lines_do_not_count_as_content(self):
+        # A follow-up the station aired without echoing back leaves "" behind;
+        # that is not something the DJ heard.
+        said = air.close_direction("the subject", 2, ["", "   "])
+        self.assertIn("you do not know what any of them said", said)
+
+    def test_the_words_are_kept_when_a_followup_airs(self):
+        rec = state.build("subject", "aired", PERSONA, "", minutes=60,
+                          source="dj", reminder_minutes=0, reminder_max=0)
+        rec = state.note_followup(rec, "c1", "they argued the original wins")
+        self.assertEqual(rec["followup_lines"], ["they argued the original wins"])
+        rec = state.note_followup(rec, "c2", "another said the opposite")
+        self.assertEqual(len(rec["followup_lines"]), 2)
+        # A conversation considered and not aired adds no words.
+        rec = state.note_seen(rec, "c3")
+        self.assertEqual(len(rec["followup_lines"]), 2)
 
 
 class TestReportingBackToTheRoom(_OnDisk):

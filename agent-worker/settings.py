@@ -2326,6 +2326,7 @@ STATIC_CHOICES = {
     "open_lines_source": [
         ("dj", "The DJ decides — invents a topic from tonight's show"),
         ("shelf", "Off the shelf — the subjects you wrote below"),
+        ("quiz", "A quiz — the DJ sets a question it can mark"),
     ],
     "chat_greeting_mode": [
         ("canned", "Canned — the line below, instantly"),

@@ -64,7 +64,7 @@ def _address_clause(cfg: dict) -> str:
             f"invitation.")
 
 
-def open_direction(premise: str, cfg: dict) -> str:
+def open_direction(premise: str, cfg: dict, quiz: bool = False) -> str:
     """Open the lines — and say so, in those words or the DJ's own.
 
     The first version asked the DJ to "say you want to hear from the audience",
@@ -80,7 +80,13 @@ def open_direction(premise: str, cfg: dict) -> str:
     # it anywhere, from a direction that said the address was mandatory.
     address = str(cfg.get("open_lines_address") or "").strip() or own_address()
     where = f" Come and find me at {address}." if address else ""
-    model = f"The lines are open — I want to hear about {premise}.{where}"
+    if quiz:
+        # "I want to hear about <question>" would announce that a question
+        # exists rather than asking it.
+        model = (f"Quiz time — the lines are open. Here is the question: "
+                 f"{premise}{where}")
+    else:
+        model = f"The lines are open — I want to hear about {premise}.{where}"
     keep = (
         f" You may change every word EXCEPT the address, which must come out "
         f"exactly as “{address}” and must not be turned into a phone "
@@ -144,15 +150,41 @@ def followup_direction(premise: str, line: str, cfg: dict) -> str:
     )
 
 
-def close_direction(premise: str, took_part: int) -> str:
-    heard = (
-        "Nobody took it up. Close it out the way you would on air when a "
-        "question does not land — lightly, without apologising for it and "
-        "without asking again."
-        if took_part <= 0 else
-        f"{took_part} took it up. Close it out, and say what you took from "
-        "what came in — briefly, no roll call of names."
-    )
+def close_direction(premise: str, took_part: int, reported: list | None = None) -> str:
+    """The closing line. `reported` is what the DJ ACTUALLY told the room about
+    while the line stood — the follow-ups that aired, in order.
+
+    That argument exists because the sign-off used to invent its own content.
+    Told only "3 took it up" and asked to "say what you took from what came
+    in", the DJ had no idea what came in and filled the gap: on the operator's
+    station, 2026-08-21, it closed a line about first driving songs with "for
+    everyone else, it's some obscure ballad or a goddamn polka" — nobody had
+    said either, and the DJ had been handed a COUNT and nothing else.
+
+    Great radio, and a caller who rang in could hear their answer described as
+    something they never said. So: summarise only what was really reported, and
+    with nothing reported, acknowledge that people got in touch without
+    characterising them.
+    """
+    lines = [str(x).strip() for x in (reported or []) if str(x).strip()]
+    if took_part <= 0:
+        heard = ("Nobody took it up. Close it out the way you would on air when "
+                 "a question does not land — lightly, without apologising for "
+                 "it and without asking again.")
+    elif lines:
+        joined = "\n".join("  - " + line for line in lines)
+        heard = ("People got in touch, and this is what you told the room about "
+                 "while it stood — ALL you know about what came in:\n"
+                 f"{joined}\n"
+                 "Close it out on that. Do not add anyone else's answer, and do "
+                 "not invent what other people said.")
+    else:
+        # Somebody came through, and the DJ never heard a word of it.
+        heard = ("People got in touch, but you do not know what any of them "
+                 "said — you were not told. Close it out warmly on the fact "
+                 "that they did, and on what YOU think about the subject. Do "
+                 "NOT characterise their answers, describe them, or invent "
+                 "even one: those are real people and you did not hear them.")
     return (
         "[Producer, off air. The lines are closed on tonight's subject.\n"
         f"The subject was: {premise}\n"
