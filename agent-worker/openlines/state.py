@@ -147,6 +147,10 @@ def build(premise: str, spoken: str, persona: dict, show_name: str,
         "show": show_name,
         "source": source,
         "reminders_sent": 0,
+        # Follow-ups: how many have aired, and which conversations have been
+        # considered (aired or not) so none is reported to the room twice.
+        "followups_sent": 0,
+        "followed_up": [],
         "reminder_max": max(0, int(reminder_max or 0)),
         "next_reminder_at": None,
         "closed": False,
@@ -170,6 +174,36 @@ def note_reminder(record: dict, reminder_minutes: int) -> dict:
         # A reminder in the last stretch is an invitation nobody can take up.
         if expires and nxt < expires:
             record["next_reminder_at"] = _iso(nxt)
+    return record
+
+
+def note_followup(record: dict, conversation_id: str) -> dict:
+    """Count a follow-up that has just aired, and remember which conversation
+    it was about.
+
+    The id list is the latch. Without it a restart between ticks would report
+    the same conversation to the room a second time, and the audience would
+    hear the DJ discover the same contribution twice."""
+    record = dict(record)
+    record["followups_sent"] = int(record.get("followups_sent") or 0) + 1
+    seen = [str(i) for i in (record.get("followed_up") or [])]
+    if conversation_id and str(conversation_id) not in seen:
+        seen.append(str(conversation_id))
+    record["followed_up"] = seen
+    return record
+
+
+def note_seen(record: dict, conversation_id: str) -> dict:
+    """Mark a conversation considered without airing anything.
+
+    Most conversations while a line is open are requests, and a request is
+    not a contribution. Marking them seen is what stops the model being asked
+    about the same hello every sixty seconds for an hour."""
+    record = dict(record)
+    seen = [str(i) for i in (record.get("followed_up") or [])]
+    if conversation_id and str(conversation_id) not in seen:
+        seen.append(str(conversation_id))
+    record["followed_up"] = seen
     return record
 
 

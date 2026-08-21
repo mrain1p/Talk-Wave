@@ -18,7 +18,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from openlines import air, state
+from openlines import air, followup, state
 from openlines import premise as premise_mod
 from openlines import schedule as schedule_mod
 
@@ -237,6 +237,66 @@ async def _remind(cfg: dict, record: dict) -> None:
         await station.aclose()
 
 
+async def _follow_up(cfg: dict, record: dict) -> bool:
+    """Report ONE finished conversation to the room. True if something aired.
+
+    One per tick on purpose. Two contributions arriving between passes should
+    reach the audience a minute apart, as two moments — not stacked into one
+    breath, which is how a DJ starts sounding like it is reading a feed.
+    """
+    from station import StationClient
+
+    if int(record.get("followups_sent") or 0) >= followup.MAX_PER_LINE:
+        return False
+    waiting = followup.candidates(
+        record, record.get("opened_at"), record.get("followed_up"))
+    if not waiting:
+        return False
+
+    import secrets_store
+
+    secrets_store.apply_to_env()
+    station = StationClient()
+    try:
+        persona, now_playing, _show, _week = await _live_context(station)
+        # The DJ that opened it has to be the one reporting back. A changeover
+        # mid-window ends the line anyway, but the tick that notices may be the
+        # one that would otherwise have aired this.
+        if str(persona.get("id") or "") != str(record.get("persona_id") or ""):
+            return False
+
+        item = waiting[0]
+        premise = str(record.get("premise") or "")
+        line = await followup.line_for(cfg, station, persona, premise, item)
+        if not line:
+            # Considered and nothing to say — most conversations while a line
+            # is open are requests. Marked seen so the model is not asked about
+            # the same hello every sixty seconds for an hour.
+            state.write(state.note_seen(state.read_raw(), item.get("id")))
+            return False
+
+        # Checked here as well as at open: reporting back to an empty room is
+        # the one moment this feature can spend the DJ on nobody.
+        ok, _count = listeners_ok(cfg, now_playing)
+        if not ok:
+            state.write(state.note_seen(state.read_raw(), item.get("id")))
+            return False
+
+        spoken = await air.say(
+            station, air.followup_direction(premise, line, cfg))
+        fresh = state.read_raw()
+        if not spoken:
+            # The booth refused. Mark it seen anyway: retrying a station that
+            # is saying no, once a minute, is how one failure becomes sixty.
+            state.write(state.note_seen(fresh, item.get("id")))
+            return False
+        state.write(state.note_followup(fresh, item.get("id")))
+        log.info("open lines: reported a contribution on air — %s", line)
+        return True
+    finally:
+        await station.aclose()
+
+
 async def tick(cfg: dict | None = None) -> None:
     """One pass: close what is over, remind what is due, open what is owed."""
     cfg = cfg or _cfg()
@@ -247,6 +307,14 @@ async def tick(cfg: dict | None = None) -> None:
     if record and not state.is_live(record) and not record.get("signed_off"):
         await _sign_off(cfg, record)
         return
+
+    # Follow-ups before reminders. Something that actually came back is worth
+    # more to the room than asking again, and airing "still no takers" a
+    # moment after a contribution arrived would be a lie.
+    if state.is_live(record) and cfg.get("open_lines_followup"):
+        if await _follow_up(cfg, record):
+            return
+        record = state.read_raw()
 
     if state.is_live(record) and record.get("next_reminder_at"):
         due = _when(record["next_reminder_at"])

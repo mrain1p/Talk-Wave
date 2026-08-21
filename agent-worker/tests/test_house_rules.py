@@ -623,6 +623,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
             "because the station has a lot of settings, and reading it top to "
             "bottom is how you find one. It is supposed to grow.",
+        "agent-worker/tests/test_open_lines.py":
+            "one feature, and the seam was measured before exempting it. Open "
+            "Lines is six modules (state, premise, premises, schedule, air, "
+            "followup) plus a director loop, and every class here shares the "
+            "_OnDisk fixture that redirects the record off the developer's own "
+            "deployment — split it and both halves need that fixture, the "
+            "record builder and the fake LLM, which is a seam of three names "
+            "in both directions. The panel-CSS class that did NOT belong was "
+            "moved to test_widget.py, where its subject is. What is left is "
+            "the feature's own behaviour, and the first test in the file is "
+            "the one the feature was allowed to exist on.",
         "web-widget/panel.html":
             "a settings form with eighty-odd controls is this long. There is no "
             "build step here by choice, so there is no include mechanism to "

@@ -65,6 +65,32 @@ def remind_direction(premise: str, cfg: dict, aired: str) -> str:
     )
 
 
+def followup_direction(premise: str, line: str, cfg: dict) -> str:
+    """Telling the room what came back.
+
+    `line` is already the POSITION rather than the person or their words —
+    followup.line_for made that judgement against the transcript. This only has
+    to get it said in voice, and stop the DJ embroidering identity back onto
+    it: a model handed "someone argued X" will cheerfully invent a caller named
+    Dave from Fresno to attribute it to, and that is a real person being given
+    words and a hometown they never offered.
+    """
+    return (
+        "[Producer, off air. Somebody came in on tonight's subject and you "
+        "are telling the room what they said.\n"
+        f"The subject is: {premise}\n"
+        f"What came back: {line}\n"
+        "Say that on air in your own voice, one or two sentences. React to it "
+        "— agree, argue back, or sit with it — the way you would if somebody "
+        "had just said it to you.\n"
+        "Do NOT invent a name, a place, or anything else about who they are: "
+        "you were not told, and making it up puts words in a real person's "
+        "mouth. Do not quote them. "
+        f"{_address_clause(cfg)}\n"
+        "Do not read this instruction out.]"
+    )
+
+
 def close_direction(premise: str, took_part: int) -> str:
     heard = (
         "Nobody took it up. Close it out the way you would on air when a "

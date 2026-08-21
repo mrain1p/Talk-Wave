@@ -18,6 +18,17 @@ Write the SUBJECT, not the words — the DJ says it in its own voice. A line her
 
 **When somebody arrives.** The DJ opens by finding out which it is — one light question, near the start, in its own voice. If they came for the topic it takes them seriously and pushes back where it disagrees. **If they did not, it drops the subject completely and never raises it again.** Someone who wants a record played is not a failed contribution.
 
+**Reporting back.** With **Report back on air when somebody answers** on, the DJ returns to the broadcast after a conversation about the topic ends and tells the room what came of it. Without this the loop is open at one end: a listener hears a question, somebody answers it in a private conversation, and nobody listening ever learns the question was real or that anyone replied — so nobody else joins in.
+
+What airs is the **position**, not the person and not their words:
+
+- never a name or a handle, and the DJ is told not to invent one — handed *"someone argued X"*, a model will cheerfully attribute it to a caller named Dave from Fresno, which is a real person being given words and a hometown they never offered;
+- never a quotation — the DJ says what was argued, in its own voice;
+- nothing personal that came up on the way past;
+- and if the conversation was not actually about the subject, **nothing airs at all**. Most conversations while a line is open are requests, and a DJ announcing *"someone asked for a Beatles record"* as though it were a contribution is worse than silence.
+
+It fires only once a conversation has **ended** — a record on disk is a finished conversation — so the DJ is never reporting on somebody who is still typing. One per pass, so two arriving close together reach the room a minute apart as two moments rather than stacked into one breath. At most three per topic, which is not a setting: the toggle is the decision, and a cap an operator can raise is a cap that ends up raised.
+
 **It never outlasts the programme.** The station publishes its week as an hour grid, so Talk Wave knows when the DJ currently on air gives way to the next one, and a line is cut to that boundary. This is honesty rather than new behaviour: an open line already died when the show changed, because a premise opened by one DJ must not survive into another's show — it just used to claim otherwise to everyone looking at the countdown. In the last few minutes of a show nothing is shortened at all, since cutting a line that fine would air its invitation and its sign-off back to back.
 
 **How it ends.** After **How long a line stays open** the DJ closes it on air, in character — including when nobody took it up, which is an ordinary thing to happen on radio and sounds like one. **Remind every** raises the subject again mid-window and **Most reminders per topic** is the ceiling that protects the broadcast: a long window with a short interval is how a station ends up asking the same question nine times.

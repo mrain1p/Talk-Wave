@@ -71,7 +71,8 @@ from tests.test_http import (  # noqa: F401
     TestTheOnAirDoorIsGatedAtTheMint,
     TestTheMintGivesTheWorkerAHeadStart,
 )
-from tests.test_widget import (  # noqa: F401
+from tests.test_widget import (
+    TestSectionTagsCanShowTheirState,  # noqa: F401
     TestThePanelKeepsItsOwnRules,
     TestTheMusicComesBackAfterACall,
     TestNothingIsReachableOnlyByRecognisingIt,
@@ -488,8 +489,8 @@ from tests.test_open_lines import (  # noqa: F401
     TestOpenLinesRefusesOutLoud,
     TestTheStationIsNeverReconfigured,
     TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp,
+    TestReportingBackToTheRoom,
     TestOpenLinesReachesThePanel,
-    TestSectionTagsCanShowTheirState,
     TestTheRecordLandsWhereTheOtherStateDoes,
     TestTheRecordSurvivesBothContainers,
 )

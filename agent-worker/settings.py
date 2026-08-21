@@ -317,6 +317,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # times. 0 on either = no reminders at all.
     "open_lines_reminder_minutes": (None, 20),
     "open_lines_reminder_max":    (None, 2),
+    "open_lines_followup":        (None, False),
     # Nobody listening, nothing opens. Checked when a line opens and before
     # every reminder, never mid-window: a line that vanished because one
     # listener closed a tab would strand whoever is already typing. 0 =
@@ -2059,6 +2060,17 @@ SCHEMA: dict[str, dict] = {
         help="The ceiling that actually protects the broadcast: a long window "
              "with a short interval is how a station ends up asking the same "
              "question nine times. 0 = no reminders."),
+    "open_lines_followup": dict(group="openlines", kind="switch",
+        label="Report back on air when somebody answers",
+        alias="follow up feedback response tell",
+        needs=("open_lines_enabled", True),
+        help="When a conversation about the topic ends, the DJ goes back on "
+             "air and says what came of it — the position taken, never a name "
+             "and never a quote. Without this the loop is open at one end: "
+             "listeners never learn the question was real or that anyone "
+             "answered, so nobody else joins in. Off by default, because it "
+             "puts more of the DJ on your broadcast. At most three per topic, "
+             "and a request is not a contribution — those air nothing."),
     "open_lines_min_listeners": dict(group="openlines", kind="number",
         label="Only with at least this many listeners", alias="audience empty",
         needs=("open_lines_enabled", True),

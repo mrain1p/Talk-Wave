@@ -10,6 +10,7 @@ not asserted.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import tempfile
 import unittest
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import settings as settings_store
-from openlines import air, director, premise, premises, prompt, state
+from openlines import air, director, followup, premise, premises, prompt, state
 from openlines import schedule as schedule_mod
 
 from tests.support import _TempStores
@@ -46,6 +47,77 @@ def _record(**over) -> dict:
     }
     base.update(over)
     return base
+
+
+@contextlib.contextmanager
+def _fake_recent(items):
+    """Stand in for the transcripts on disk."""
+    from call import record as record_mod
+
+    real = record_mod.recent
+    record_mod.recent = lambda limit=20: list(items)
+    try:
+        yield
+    finally:
+        record_mod.recent = real
+
+
+class _Delta:
+    def __init__(self, content):
+        self.content = content
+
+
+class _Chunk:
+    def __init__(self, content):
+        self.delta = _Delta(content)
+
+
+class _Stream:
+    def __init__(self, text):
+        self._text = text
+
+    def __aiter__(self):
+        async def gen():
+            yield _Chunk(self._text)
+
+        return gen()
+
+    async def aclose(self):
+        return None
+
+
+class _Model:
+    def __init__(self, text):
+        self._text = text
+
+    def chat(self, chat_ctx=None, **kw):
+        return _Stream(self._text)
+
+    async def aclose(self):
+        return None
+
+
+@contextlib.contextmanager
+def _fake_llm(said):
+    """A model that answers with `said`, and a prompt builder that needs no
+    station. Both are stubbed together because line_for assembles the real
+    prompt before it asks anything, and the suite never touches the network."""
+    import call.providers as providers
+    from brain import assemble
+
+    real_build = providers.build_llm
+    real_prompt = assemble.build_system_prompt
+
+    async def fake_prompt(*a, **k):
+        return "SYSTEM"
+
+    providers.build_llm = lambda cfg: _Model(said)
+    assemble.build_system_prompt = fake_prompt
+    try:
+        yield
+    finally:
+        providers.build_llm = real_build
+        assemble.build_system_prompt = real_prompt
 
 
 class _OnDisk(_TempStores):
@@ -448,6 +520,109 @@ class TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp(_OnDisk):
         self.assertEqual(before, after)
 
 
+class TestReportingBackToTheRoom(_OnDisk):
+    """The loop was open at one end: the DJ asked a question on the broadcast,
+    somebody answered it in a private conversation, and no listener ever heard
+    that it happened — so nobody had reason to think the question was real.
+
+    What airs is the POSITION, never the person and never their words. A
+    contribution is offered to a DJ, not to a microphone.
+    """
+
+    def _conversation(self, cid, when, turns=6):
+        return {"id": cid, "startedAt": _iso(when),
+                "turns": [{"who": "caller" if i % 2 == 0 else "dj",
+                           "text": "line %d" % i} for i in range(turns)]}
+
+    def test_only_conversations_that_started_after_the_line_went_up(self):
+        now = datetime.now(timezone.utc)
+        rec = _record(opened_at=_iso(now - timedelta(minutes=10)))
+        before = self._conversation("old", now - timedelta(minutes=30))
+        after = self._conversation("new", now - timedelta(minutes=2))
+        with _fake_recent([after, before]):
+            ids = [c["id"] for c in followup.candidates(
+                rec, rec["opened_at"], [])]
+        self.assertEqual(ids, ["new"])
+
+    def test_one_already_reported_is_never_reported_twice(self):
+        # The latch. Without it a restart between ticks would have the DJ
+        # discover the same contribution again, out loud.
+        now = datetime.now(timezone.utc)
+        rec = _record(opened_at=_iso(now - timedelta(minutes=10)))
+        item = self._conversation("c1", now - timedelta(minutes=1))
+        with _fake_recent([item]):
+            self.assertEqual(len(followup.candidates(rec, rec["opened_at"], [])), 1)
+            self.assertEqual(
+                followup.candidates(rec, rec["opened_at"], ["c1"]), [])
+
+    def test_a_hello_is_not_a_contribution(self):
+        # Two turns is somebody arriving and leaving. Asking the model about
+        # every one of those is spending a call on a wave.
+        now = datetime.now(timezone.utc)
+        rec = _record(opened_at=_iso(now - timedelta(minutes=10)))
+        short = self._conversation("brief", now - timedelta(minutes=1), turns=2)
+        with _fake_recent([short]):
+            self.assertEqual(followup.candidates(rec, rec["opened_at"], []), [])
+
+    def test_the_cap_is_per_line_and_not_a_setting(self):
+        # Three is enough for a topic to feel alive and few enough that a busy
+        # evening cannot turn the broadcast into a read-out of its own text
+        # line. A cap an operator can raise is a cap that ends up raised.
+        self.assertEqual(followup.MAX_PER_LINE, 3)
+        self.assertNotIn("open_lines_followup_max", settings_store.FIELDS)
+
+    def test_counting_one_records_which_conversation_it_was(self):
+        rec = state.build("subject", "aired", PERSONA, "", minutes=60,
+                          source="dj", reminder_minutes=0, reminder_max=0)
+        self.assertEqual(rec["followups_sent"], 0)
+        rec = state.note_followup(rec, "c1")
+        self.assertEqual(rec["followups_sent"], 1)
+        self.assertEqual(rec["followed_up"], ["c1"])
+        # Seen-but-not-aired marks the id without spending the cap.
+        rec = state.note_seen(rec, "c2")
+        self.assertEqual(rec["followups_sent"], 1)
+        self.assertEqual(rec["followed_up"], ["c1", "c2"])
+
+    def test_nothing_means_nothing_airs(self):
+        # Most conversations while a line is open are requests, and a DJ
+        # reporting "someone asked for a Beatles record" as a contribution is
+        # worse than silence.
+        for said in ("NOTHING", "nothing", "NOTHING.", "  NOTHING  "):
+            with self.subTest(said=said):
+                with _fake_llm(said):
+                    line = asyncio.run(followup.line_for(
+                        {}, None, PERSONA, "the subject",
+                        self._conversation("c", datetime.now(timezone.utc))))
+                self.assertEqual(line, "")
+
+    def test_the_direction_forbids_inventing_who_they_were(self):
+        # A model handed "someone argued X" will cheerfully attribute it to a
+        # caller named Dave from Fresno — words and a hometown a real person
+        # never offered.
+        direction = air.followup_direction(
+            "the subject", "they argued the original is better", {})
+        low = direction.lower()
+        self.assertIn("do not invent a name", low)
+        self.assertIn("do not quote them", low)
+
+    def test_the_model_is_told_to_give_the_position_not_the_words(self):
+        self.assertIn("POSITION they took", followup.FOLLOW_UP)
+        for forbidden in ("No name", "no handle", "no quoting"):
+            self.assertIn(forbidden, followup.FOLLOW_UP)
+
+    def test_the_transcript_handed_over_is_two_speakers_oldest_first(self):
+        text = followup._transcript({"turns": [
+            {"who": "caller", "text": "the original, every time"},
+            {"who": "dj", "text": "go on then"},
+        ]})
+        self.assertEqual(text, "Them: the original, every time\nYou: go on then")
+
+    def test_switched_off_it_never_runs(self):
+        # The toggle is the whole decision: this puts more of the DJ on a
+        # broadcast, so it ships off.
+        self.assertIs(settings_store.FIELDS["open_lines_followup"][1], False)
+
+
 class TestOpenLinesReachesThePanel(unittest.TestCase):
     """Five places, and the panel silently skips a field missing any one."""
 
@@ -484,58 +659,6 @@ class TestOpenLinesReachesThePanel(unittest.TestCase):
         for path in ("/open-lines", "/open-lines/open", "/open-lines/close"):
             with self.subTest(path=path):
                 self.assertIn(f'"{path}"', routes)
-
-
-class TestSectionTagsCanShowTheirState(unittest.TestCase):
-    """Found while verifying Open Lines' own tag, and it was never about Open
-    Lines: EVERY section tag on the panel rendered the same grey.
-
-    setTag() has always written data-state, but the rules reading it sat
-    unscoped as `.tag[data-state="on"]` — (0,2,0) against
-    `details.sec > summary .tag`'s (0,2,2). The summary rule took both the
-    colour and the opacity, so the state never showed anywhere. Measured with
-    four tags live in the "on" state, all computing rgb(92,87,79).
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        import re
-
-        from tests.support import REPO
-
-        raw = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
-        # Comments stripped: this file explains its own traps by quoting the
-        # selectors involved, and a test that counts rules must not count the
-        # prose describing them. (It caught itself doing exactly that.)
-        cls.css = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)
-
-    def test_the_state_rules_are_scoped_to_outrank_the_summary(self):
-        for state, colour in (("on", "--sage"), ("off", "--sage-dim")):
-            with self.subTest(state=state):
-                rule = ('details.sec > summary .tag[data-state="%s"]' % state)
-                self.assertIn(rule, self.css,
-                              "unscoped, this rule loses to the summary rule")
-                after = self.css.split(rule, 1)[1].split("}", 1)[0]
-                self.assertIn(colour, after)
-
-    def test_the_dead_unscoped_rules_are_gone(self):
-        # Left in place they read as working code and invite the next person
-        # to "fix" the state by editing a rule that has never applied. Counted
-        # rather than matched on whitespace: the scoped rule contains the
-        # unscoped selector as a substring, so one occurrence is the fix and
-        # two means the dead rule is back.
-        for state in ("on", "off"):
-            with self.subTest(state=state):
-                self.assertEqual(
-                    self.css.count('.tag[data-state="%s"]' % state), 1,
-                    "an unscoped copy is back; it can never apply")
-
-    def test_the_on_state_beats_the_summary_opacity_too(self):
-        # The summary sets opacity .85. Colour alone would have left the "on"
-        # tag dimmed against a background it is meant to stand out from.
-        rule = 'details.sec > summary .tag[data-state="on"]'
-        body = self.css.split(rule, 1)[1].split("}", 1)[0]
-        self.assertIn("opacity: 1", body)
 
 
 class TestTheRecordLandsWhereTheOtherStateDoes(unittest.TestCase):
