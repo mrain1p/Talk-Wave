@@ -2667,15 +2667,13 @@
     align-items: stretch;
   }
   @media (max-width: 940px) { .dashsplit { grid-template-columns: 1fr; } }
-  /* Open Lines shares the narrow column with Notifications (operator's ask),
-     stacked above it. Both are PINNED to column 2: without that, grid auto-
-     placement gave Open Lines the right cell and pushed Notifications down
-     into the left one, under Transmission. The single-column breakpoint below
-     unsets both, or they would fight the stack on a phone. */
-  #openLinesLine, .dashgroup.needs { grid-column: 2; }
-  @media (max-width: 940px) {
-    #openLinesLine, .dashgroup.needs { grid-column: auto; }
-  }
+  /* The narrow column: Open Lines above Notifications, stacked. They were
+     two grid children pinned to column 2, which is not the same thing — that
+     put them in different ROWS, and row one is as tall as Transmission, so
+     the short Open Lines box left a ~430px hole above Notifications. One
+     wrapper is one grid child, and the stack starts at the top. */
+  .dashside { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
   .needslist { display: grid; gap: 8px; flex: 1; align-content: start; }
   /* Empty state: the one auto row stretches (grid's default align-content)
      so the all-clear sentence sits mid-box rather than hugging the rule. */

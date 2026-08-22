@@ -309,38 +309,45 @@
            fix. Filled by paintNeeds() from the SAME signals the tiles read,
            so the two can never disagree; empty says the line is ready rather
            than vanishing. The same items pin the page picker's chips. -->
+        <!-- One column, not two cells. Open Lines and Notifications used to
+           be separate grid children pinned to column 2, which put them in
+           different ROWS — and row one is as tall as Transmission, so the
+           short Open Lines box left ~430px of hole above Notifications
+           (operator screenshot). Wrapped, they stack from the top and the
+           column is one thing the grid can size. -->
+      <div class="dashside">
           <!-- Open Lines. Hidden entirely while the feature is off — a
-             dashboard row for something switched off is furniture. -->
-        <div id="openLinesLine" hidden>
-            <!-- Shaped like the station's own TAKEOVER control (operator's
-               ask, with a screenshot): one titled box, the choices inside it,
-               and ONE action bar at the bottom whose position never moves.
-               The first version swapped two "PUT IT UP" rows for a "CLOSE IT"
-               row in the same place, so a second click landed on Close — the
-               operator shut a line 19 seconds after opening it without
-               meaning to, then called in and found no topic. A control that
-               changes meaning under the cursor is the bug, not the click. -->
-          <div class="olbox">
-            <div class="olhead">
-              <span class="olname">OPEN LINES SEGMENT</span>
-              <span class="oltag" id="olState">nothing up</span>
+               dashboard row for something switched off is furniture. -->
+          <div id="openLinesLine" hidden>
+              <!-- Shaped like the station's own TAKEOVER control (operator's
+                 ask, with a screenshot): one titled box, the choices inside it,
+                 and ONE action bar at the bottom whose position never moves.
+                 The first version swapped two "PUT IT UP" rows for a "CLOSE IT"
+                 row in the same place, so a second click landed on Close — the
+                 operator shut a line 19 seconds after opening it without
+                 meaning to, then called in and found no topic. A control that
+                 changes meaning under the cursor is the bug, not the click. -->
+            <div class="olbox">
+              <div class="olhead">
+                <span class="olname">OPEN LINES SEGMENT</span>
+                <span class="oltag" id="olState">nothing up</span>
+              </div>
+              <div class="olbody" id="olIdle">
+                <label class="ollabel" for="olPick">Subject</label>
+                <select id="olPick">
+                  <option value="dj">Let the DJ make one up</option>
+                </select>
+                <input type="text" id="olOwn" placeholder="…or type one of your own" 
+                       aria-label="Type your own subject" />
+              </div>
+              <div class="olbody" id="olLive" hidden>
+                <p class="olpremise" id="olPremise"></p>
+                <p class="olmeta" id="olMeta"></p>
+              </div>
+              <button type="button" class="olgo" id="olGo">PUT IT UP &rarr;</button>
+              <p class="olfoot" id="olFoot">it airs on the next break · the DJ says it in its own voice</p>
             </div>
-            <div class="olbody" id="olIdle">
-              <label class="ollabel" for="olPick">Subject</label>
-              <select id="olPick">
-                <option value="dj">Let the DJ make one up</option>
-              </select>
-              <input type="text" id="olOwn" placeholder="…or type one of your own" 
-                     aria-label="Type your own subject" />
-            </div>
-            <div class="olbody" id="olLive" hidden>
-              <p class="olpremise" id="olPremise"></p>
-              <p class="olmeta" id="olMeta"></p>
-            </div>
-            <button type="button" class="olgo" id="olGo">PUT IT UP &rarr;</button>
-            <p class="olfoot" id="olFoot">it airs on the next break · the DJ says it in its own voice</p>
           </div>
-        </div>
       <div class="dashgroup needs">
         <div class="dashcaption">
           <p class="tlabel">Notifications</p>
@@ -353,6 +360,7 @@
                   title="Dismiss everything listed here">Clear</button>
         </div>
         <div class="needslist" id="needsList"></div>
+      </div>
       </div>
       </div>
     </div>
