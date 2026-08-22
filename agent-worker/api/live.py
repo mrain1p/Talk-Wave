@@ -214,6 +214,17 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
         cfg_now.get("allow_voicemail"), tier)
     out["chatMine"] = settings_store.tier_reaches(
         cfg_now.get("allow_chat"), tier)
+    # Whether the player's ribbon carries a segment button for THIS caller.
+    # A boolean and nothing else: /live is cached across every caller and is
+    # public, so the shelf's contents — the operator's own writing — never
+    # travel with it. The server picks the subject when the button is pressed.
+    # Set ABOVE the early return below, or a station with the help button off
+    # would never see the flag at all.
+    out["openLinesTrigger"] = bool(
+        cfg_now.get("open_lines_enabled")
+        and cfg_now.get("open_lines_guest_trigger")
+        and tier in {"guest", "admin"})
+
     if payload.get("canAsk") is None:
         return out                          # the help button is switched off
     out["canAsk"] = {

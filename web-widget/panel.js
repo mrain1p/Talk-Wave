@@ -2851,14 +2851,13 @@
   $('clearGuestBtn').onclick = () => setGuest('');
 
 
-  // --- Open Lines: the shelf, the DJ picker, and the dashboard row ---------
-  // The shelf and the picker are NOT schema fields — they are a store, like
-  // the staged greetings, so every row saves immediately with its own result
-  // rather than waiting on Save. The one exception is the persona allowlist,
-  // which IS a field: its value lives in a hidden input and these ticks write
-  // into it, the same shape the door-order control uses.
+  // --- Open Lines, direction 1a -------------------------------------------
+  // The settings themselves are still ordinary schema fields — the segmented
+  // pairs and the chip grid are costumes over real inputs, so saving, the
+  // finder, the save diff and every `needs` rule keep working untouched.
   let olRoster = [];
   let olShelf = [];
+  let olStatus = {};
 
   function olWho() {
     const el = $('open_lines_personas');
@@ -2866,139 +2865,251 @@
       .split(',').map((s) => s.trim()).filter(Boolean);
   }
 
+  function olSetField(el, value) {
+    // A trusted-looking change, so the panel's diff and the save overlay treat
+    // this exactly like typing in the field it stands for.
+    if (el.type === 'checkbox') el.checked = !!value;
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Two buttons over one field. data-zero marks the number case: "manual only"
+  // is 0 and "on a cadence" is any non-zero, which is the same decision the
+  // setting has always stored.
+  function paintSegs() {
+    for (const seg of document.querySelectorAll('.olseg')) {
+      const el = $(seg.dataset.for);
+      if (!el) continue;
+      const zero = seg.dataset.zero === '1';
+      const on = zero ? Number(el.value || 0) > 0 : el.checked;
+      for (const b of seg.querySelectorAll('button')) {
+        b.setAttribute('aria-pressed', String(!!b.dataset.on === on));
+      }
+      if (zero) {
+        // The interval only means anything on a cadence, and it reads dim
+        // while manual rather than vanishing — the number is still the value.
+        const num = seg.parentElement.querySelector('.olnum');
+        if (num) num.disabled = !on;
+      }
+    }
+  }
+
+  for (const seg of document.querySelectorAll('.olseg')) {
+    for (const b of seg.querySelectorAll('button')) {
+      b.onclick = () => {
+        const el = $(seg.dataset.for);
+        if (!el) return;
+        const want = !!b.dataset.on;
+        if (seg.dataset.zero === '1') {
+          // Turning a cadence on needs a number to be a cadence. 20 is the
+          // interval the rest of this section already defaults to.
+          olSetField(el, want ? (Number(el.value || 0) || 20) : 0);
+        } else {
+          olSetField(el, want);
+        }
+        paintSegs();
+        paintOpenLinesWho();
+      };
+    }
+  }
+  for (const id of ['open_lines_enabled', 'open_lines_every_minutes']) {
+    if ($(id)) $(id).addEventListener('change', paintSegs);
+  }
+
   function paintOpenLinesWho() {
-    const wrap = $('openLinesChips');
-    const pick = $('openLinesWhoAdd');
-    if (!wrap || !pick) return;
-    const chosen = olWho();
-    const byId = new Map(olRoster.map((p) => [p.id, p.name || p.id]));
-
-    wrap.innerHTML = '';
-    for (const id of chosen) {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.appendChild(document.createTextNode(byId.get(id) || id));
-      const x = document.createElement('button');
-      x.type = 'button';
-      x.textContent = '×';
-      x.title = 'Remove';
-      x.setAttribute('aria-label', 'Remove ' + (byId.get(id) || id));
-      x.onclick = () => olSetWho(chosen.filter((c) => c !== id));
-      chip.appendChild(x);
-      wrap.appendChild(chip);
+    const grid = $('olDjGrid');
+    const count = $('olDjCount');
+    if (!grid) return;
+    const chosen = new Set(olWho());
+    grid.innerHTML = '';
+    for (const p of olRoster) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'olbtn';
+      const on = chosen.has(p.id);
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = (on ? '✓ ' : '') + (p.name || p.id);
+      b.onclick = () => {
+        const next = new Set(olWho());
+        if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+        olSetWho([...next]);
+      };
+      grid.appendChild(b);
     }
-
-    // The dropdown only ever offers what is not already a chip, so it cannot
-    // add a duplicate and cannot say "Dalia" twice.
-    const left = olRoster.filter((p) => !chosen.includes(p.id));
-    pick.innerHTML = '';
-    const head = document.createElement('option');
-    head.value = '';
-    head.textContent = left.length
-      ? 'add a DJ…'
-      : (olRoster.length ? 'all of them are on the list' : 'no personas');
-    pick.appendChild(head);
-    for (const p of left) {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name || p.id;
-      pick.appendChild(opt);
-    }
-    pick.disabled = !left.length;
-    pick.onchange = () => {
-      if (!pick.value) return;
-      olSetWho(chosen.concat([pick.value]));
-    };
-
-    const all = $('openLinesWhoAll');
-    if (all) {
-      // One button, both directions: with everyone on the list the only thing
-      // left to want is an empty one.
-      const full = olRoster.length && chosen.length >= olRoster.length;
-      all.textContent = full ? 'None' : 'All';
-      all.onclick = () =>
-        olSetWho(full ? [] : olRoster.map((p) => p.id));
+    if (count) {
+      // Zero ticked is a valid state and says so in words, because "0 of 22"
+      // reads as broken rather than as "anyone".
+      count.textContent = chosen.size
+        ? chosen.size + ' of ' + olRoster.length + ' ticked'
+        : 'whoever is on';
     }
   }
 
   function olSetWho(ids) {
-    const el = $('open_lines_personas');
-    el.value = ids.join(',');
-    // A trusted-looking change so the panel's own diff and the save overlay
-    // treat this exactly like typing in the field it stands for.
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    olSetField($('open_lines_personas'), ids.join(','));
     paintOpenLinesWho();
   }
 
-  function olAimLabel(item) {
-    const who = (item.personas || [])
-      .map((id) => (olRoster.find((p) => p.id === id) || {}).name || id);
-    return who.length ? who.join(', ') : 'any DJ';
+  if ($('olDjAll')) {
+    $('olDjAll').onclick = () => olSetWho(olRoster.map((p) => p.id));
+    $('olDjNone').onclick = () => olSetWho([]);
+  }
+
+  function olWhoName(id) {
+    const p = olRoster.find((x) => x.id === id);
+    return p ? (p.name || p.id) : id;
+  }
+
+  function olWhoSelect(item) {
+    const sel = document.createElement('select');
+    sel.className = 'olwho';
+    const any = document.createElement('option');
+    any.value = '';
+    any.textContent = 'Any DJ';
+    sel.appendChild(any);
+    for (const p of olRoster) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.name || p.id;
+      sel.appendChild(o);
+    }
+    const who = (item.personas || [])[0] || '';
+    sel.value = who;
+    sel.dataset.set = who ? '1' : '';
+    sel.onchange = () => olSave('/open-lines/premises/' + encodeURIComponent(item.id),
+                               { personas: sel.value ? [sel.value] : [] });
+    return sel;
+  }
+
+  function olWhen(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+    let h = d.getHours();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    return day + ' ' + h + ':' + String(d.getMinutes()).padStart(2, '0') + ampm;
+  }
+
+  // Least recently used goes up next — the same rule the server picks by, so
+  // the row the panel marks is the row that will actually air.
+  function olNextUpId() {
+    if (!olShelf.length) return '';
+    const sorted = [...olShelf].sort((a, b) =>
+      String(a.last_used || '').localeCompare(String(b.last_used || ''))
+      || (a.used || 0) - (b.used || 0));
+    return sorted[0].id;
   }
 
   function paintOpenLinesShelf() {
-    const list = $('openLinesShelf');
-    if (!list) return;
-    list.innerHTML = '';
-    if (!olShelf.length) {
-      const li = document.createElement('li');
-      li.className = 'vmrow';
-      li.innerHTML = '<span class="sname">Nothing on the shelf yet.</span>';
-      list.appendChild(li);
-      return;
-    }
+    const wrap = $('olShelfRows');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    const nextUp = olNextUpId();
+
     for (const item of olShelf) {
-      const li = document.createElement('li');
-      li.className = 'vmrow';
+      const row = document.createElement('div');
+      row.className = 'olrowgrid' + (item.id === nextUp ? ' next' : '');
 
-      const name = document.createElement('span');
-      name.className = 'sname';
-      name.textContent = item.text;
-      name.title = item.text;
-      li.appendChild(name);
+      const grip = document.createElement('span');
+      grip.className = 'olgrip';
+      grip.textContent = '⠿';
+      grip.setAttribute('aria-hidden', 'true');
+      row.appendChild(grip);
 
-      const state = document.createElement('span');
-      state.className = 'vmstate';
-      state.textContent = olAimLabel(item)
-        + (item.used ? ' · used ' + item.used : '');
-      li.appendChild(state);
-
-      // Aim it. A multi-select is the only native control that says "these
-      // ones and not those" without inventing a widget; the panel has no
-      // other, and this list is not a settings row.
-      const pick = document.createElement('select');
-      pick.multiple = true;
-      pick.size = Math.min(4, Math.max(2, olRoster.length));
-      for (const p of olRoster) {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name || p.id;
-        opt.selected = (item.personas || []).includes(p.id);
-        pick.appendChild(opt);
+      const subj = document.createElement('div');
+      subj.className = 'olsubj';
+      const line = document.createElement('div');
+      line.style.display = 'flex';
+      line.style.alignItems = 'baseline';
+      line.style.gap = '8px';
+      const text = document.createElement('span');
+      text.className = 'olsubjtext';
+      text.textContent = item.text;          // full text, never truncated
+      line.appendChild(text);
+      if (item.starter) {
+        const chip = document.createElement('span');
+        chip.className = 'olbuiltin';
+        chip.textContent = 'built in';
+        line.appendChild(chip);
       }
-      pick.onchange = async () => {
-        const personas = [...pick.selectedOptions].map((o) => o.value);
-        await olSave('/open-lines/premises/' + encodeURIComponent(item.id),
-                     { personas });
-      };
-      li.appendChild(pick);
+      subj.appendChild(line);
+      if (item.id === nextUp) {
+        const up = document.createElement('span');
+        up.className = 'olnextup';
+        up.textContent = 'next up when a line opens';
+        subj.appendChild(up);
+      }
+      row.appendChild(subj);
 
+      row.appendChild(olWhoSelect(item));
+
+      const used = document.createElement('span');
+      used.className = 'olused' + (item.used ? '' : ' never');
+      used.textContent = item.used ? String(item.used) : '—';
+      row.appendChild(used);
+
+      const last = document.createElement('span');
+      const when = olWhen(item.last_used);
+      last.className = 'ollast' + (when ? '' : ' never');
+      last.textContent = when || 'never';
+      row.appendChild(last);
+
+      const acts = document.createElement('div');
+      acts.className = 'olacts';
+      const air = document.createElement('button');
+      air.type = 'button';
+      air.className = 'olbtn air';
+      air.textContent = 'Air it';
+      air.onclick = () => olOpen({ premise_id: item.id }, air);
       const del = document.createElement('button');
-      del.className = 'btnquiet';
-      del.textContent = 'Remove';
-      del.onclick = async () => {
+      del.type = 'button';
+      del.className = 'olbtn x';
+      del.textContent = '✕';
+      del.setAttribute('aria-label', 'Remove this subject');
+      del.onclick = () => {
         del.disabled = true;
-        await olSave('/open-lines/premises/' + encodeURIComponent(item.id),
-                     null, 'DELETE');
+        olSave('/open-lines/premises/' + encodeURIComponent(item.id), null, 'DELETE');
       };
-      li.appendChild(del);
-      list.appendChild(li);
+      acts.appendChild(air);
+      acts.appendChild(del);
+      row.appendChild(acts);
+
+      // Narrow only: what the two folded columns were saying.
+      const meta = document.createElement('span');
+      meta.className = 'olmeta';
+      meta.textContent = (item.used ? 'used ' + item.used : 'never used')
+        + (when ? ' · ' + when : '');
+      row.appendChild(meta);
+
+      wrap.appendChild(row);
+    }
+
+    const mine = olShelf.filter((i) => !i.starter).length;
+    const built = olShelf.length - mine;
+    const bits = [olShelf.length];
+    if (olShelf.length) bits.push(mine + ' yours, ' + built + ' built in');
+    bits.push('least recently used goes up next');
+    if ($('olShelfCount')) $('olShelfCount').textContent = bits.join(' · ');
+    if ($('olStatShelf')) {
+      $('olStatShelf').textContent = olShelf.length
+        + (olShelf.length === 1 ? ' subject' : ' subjects');
+    }
+
+    const who = $('olAddWho');
+    if (who && who.options.length <= 1) {
+      for (const p of olRoster) {
+        const o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name || p.id;
+        who.appendChild(o);
+      }
     }
   }
 
   async function olSave(path, body, method) {
-    const out = $('openLineNow');
     try {
       const opts = { method: method || 'POST' };
       if (body) {
@@ -3008,10 +3119,8 @@
       const r = await afetch(path, opts);
       const d = await r.json().catch(() => ({}));
       if (d.items) { olShelf = d.items; paintOpenLinesShelf(); }
-      if (!d.ok && d.why) showResult(out, false, d.why);
       return d;
     } catch (e) {
-      showResult(out, false, 'could not reach the server');
       return {};
     }
   }
@@ -3025,54 +3134,118 @@
       olShelf = d.items || [];
       paintOpenLinesShelf();
       paintOpenLinesWho();
-      // The dashboard's dropdown is built from this same shelf, and its own
-      // read finishes first — so refill it once the subjects actually exist.
       olFillPicker();
-    } catch (e) { /* the lists simply stay as they were */ }
+    } catch (e) { /* the lists stay as they were */ }
   }
 
-  if ($('openLineAddBtn')) {
-    $('openLineAddBtn').onclick = async () => {
-      const box = $('openLineNewText');
+  if ($('olAddBtn')) {
+    $('olAddBtn').onclick = async () => {
+      const box = $('olAddText');
       const text = String(box.value || '').trim();
       if (!text) { box.focus(); return; }
-      const btn = $('openLineAddBtn');
-      btn.disabled = true;
-      const d = await olSave('/open-lines/premises', { text, personas: [] });
+      const who = String(($('olAddWho') || {}).value || '');
+      $('olAddBtn').disabled = true;
+      const d = await olSave('/open-lines/premises',
+                             { text, personas: who ? [who] : [] });
       if (d.ok) box.value = '';
-      btn.disabled = false;
-      box.focus();
+      $('olAddBtn').disabled = false;
+      box.focus();                       // keep focus for a second entry
     };
-    $('openLineNewText').onkeydown = (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); $('openLineAddBtn').click(); }
+    $('olAddText').onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); $('olAddBtn').click(); }
+    };
+    $('olAddText').oninput = () => {
+      $('olAddBtn').disabled = !String($('olAddText').value || '').trim();
+    };
+    $('olAddFocus').onclick = () => $('olAddText').focus();
+  }
+
+  // The header bar, and every press that changes what is on air.
+  async function olOpen(body, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const r = await afetch('/open-lines/open', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.status) { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
+      // A refusal names a setting the operator can change, so it lands on
+      // the bar's own state line rather than in a red failure box.
+      if (!d.ok && d.why && $('olStateHdr')) $('olStateHdr').textContent = d.why;
+      readOpenLinesShelf();
+    } catch (e) { /* the bar repaints on the next read */ }
+    if (btn) btn.disabled = false;
+  }
+
+  if ($('olOpenBtn')) {
+    $('olOpenBtn').onclick = () => olOpen({}, $('olOpenBtn'));
+    $('olCloseBtn').onclick = async () => {
+      const btn = $('olCloseBtn');
+      btn.disabled = true;
+      try {
+        const r = await afetch('/open-lines/close', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (d.status) { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
+      } catch (e) { /* repaints on the next read */ }
+      btn.disabled = false;
     };
   }
 
+  // The header bar and the stats strip. The old `openLineNow` result box is
+  // gone with the redesign — the bar carries the state and the shelf's own
+  // "next up" row carries what would go out — so this paints the bar instead.
   function paintOpenLines(d) {
-    const out = $('openLineNow');
-    if (!out || !d) return;
+    if (!d) return;
+    olStatus = d;
     openLineLive = !!d.live;
-    if (!d.enabled) {
-      setTag('tagOpenlines', 'off');
-      out.className = 'result';
-      out.textContent = '';
-      return;
-    }
-    if (d.live) {
+    const dot = $('olDot');
+    const state = $('olStateHdr');
+    const closeBtn = $('olCloseBtn');
+    const openBtn = $('olOpenBtn');
+
+    let words = 'off';
+    if (d.enabled && d.live) {
       const mins = Math.max(0, Math.round((d.secondsLeft || 0) / 60));
-      setTag('tagOpenlines', 'open — ' + mins + ' min left');
-      // The words that AIRED, not the subject we sent: that is what a
-      // listener heard, and it is what the DJ is being reminded of.
-      showResult(out, true,
-        'Up now, opened by ' + (d.persona || 'the DJ') + ' — ' + mins
-        + ' min left, ' + (d.remindersSent || 0) + ' of '
-        + (d.reminderMax || 0) + ' reminders used.\n\n'
-        + (d.spoken || d.premise || ''));
-    } else {
-      setTag('tagOpenlines', 'on — nothing up right now');
-      out.className = 'result';
-      out.textContent = '';
+      const sent = d.remindersSent || 0;
+      // "asked twice" reads as radio; "1 of 2 reminders" reads as a form.
+      const asked = sent === 0 ? '' : sent === 1 ? ' · asked once'
+        : sent === 2 ? ' · asked twice' : ' · asked ' + sent + ' times';
+      words = 'open · ' + mins + ' min left' + asked;
+    } else if (d.enabled) {
+      words = 'on · nothing up right now';
     }
+    setTag('tagOpenlines', d.enabled
+      ? (d.live ? words.replace('open · ', 'open — ') : 'on — nothing up right now')
+      : 'off');
+
+    if (dot) dot.dataset.on = d.enabled ? '1' : '';
+    if (state) {
+      state.textContent = words;
+      state.dataset.on = d.enabled && !d.live ? '1' : '';
+      state.dataset.live = d.live ? '1' : '';
+    }
+    if (closeBtn) closeBtn.hidden = !d.live;
+    if (openBtn) openBtn.textContent = d.live ? 'Open another' : 'Open a line now';
+
+    // Stats. Read-only, and each says "—" rather than a zero it cannot back up.
+    const last = $('olStatLast');
+    if (last) {
+      const when = olWhen(d.openedAt);
+      last.textContent = when
+        ? when + (d.persona ? ' · ' + d.persona : '')
+        : '—';
+    }
+    const answered = $('olStatAnswered');
+    if (answered) {
+      // Only what the record actually knows: how many follow-ups this topic
+      // reported. Anything wider would be a number nothing counts.
+      const n = d.followupsSent || 0;
+      answered.textContent = d.live || d.premise
+        ? n + (n === 1 ? ' answer reported' : ' answers reported')
+        : '—';
+    }
+    paintSegs();
   }
 
   // The dashboard box. One frame, one action bar, and the bar's POSITION never
@@ -3229,46 +3402,6 @@
   if (olSec) olSec.addEventListener('toggle', () => {
     if (olSec.open) { readOpenLines(); readOpenLinesShelf(); }
   });
-
-  if ($('openLineBtn')) {
-    $('openLineBtn').onclick = async () => {
-      const out = $('openLineNow');
-      const btn = $('openLineBtn');
-      btn.disabled = true;
-      showResult(out, true, 'Writing a subject and handing it to the booth…');
-      try {
-        const r = await afetch('/open-lines/open', { method: 'POST' });
-        const d = await r.json().catch(() => ({}));
-        // A refusal is not a failure: every one of them names a setting the
-        // operator can change, so it reads as an explanation, not an error.
-        if (!d.ok) { showResult(out, false, d.why || 'could not open a line'); }
-        else { paintOpenLines(d.status); paintOpenLinesDash(d.status); }
-        if (d.status) openLineLive = !!d.status.live;
-      } catch (e) {
-        showResult(out, false, 'could not reach the server');
-      } finally { btn.disabled = false; }
-    };
-  }
-
-  if ($('closeLineBtn')) {
-    $('closeLineBtn').onclick = async () => {
-      const out = $('openLineNow');
-      const btn = $('closeLineBtn');
-      btn.disabled = true;
-      try {
-        const r = await afetch('/open-lines/close', { method: 'POST' });
-        const d = await r.json().catch(() => ({}));
-        paintOpenLines(d.status);
-        paintOpenLinesDash(d.status);
-        // The sign-off airs on the director's next tick, not on this press —
-        // say so, or the operator waits at a silent station wondering.
-        if (d.ok) showResult(out, true, 'Closed. The DJ signs off on air shortly.');
-      } catch (e) {
-        showResult(out, false, 'could not reach the server');
-      } finally { btn.disabled = false; }
-    };
-  }
-
 
   $('setPwBtn').onclick = async () => {
     const out = $('pwResult');

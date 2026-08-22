@@ -4906,6 +4906,7 @@
     paintHeadMeta();
     refreshHeart(np.title || '');
     paintPlayerButtons();
+    paintSegBtn();
   }
 
   // The header's right side: the local clock, and the station's weather when
@@ -4919,6 +4920,70 @@
       + (t.getHours() < 12 ? ' am' : ' pm');
     const wx = ((shown || live || {}).weather) || '';
     el.textContent = clock + (wx ? ' · ' + wx : '');
+  }
+
+  // --- the segment button on the player's ribbon ---------------------------
+  // Shown only when /live says THIS caller may trigger one: a guest or the
+  // operator, and only with the operator's own switch on. The flag is the
+  // server's answer, never a guess from the tier alone — the setting is half
+  // of it, and only the server has seen that.
+  function paintSegBtn() {
+    const btn = $('plSegBtn');
+    if (!btn) return;
+    const may = !!((shown || live || {}).openLinesTrigger);
+    btn.hidden = !may;
+    if (!may) closeSegPop();
+  }
+
+  function closeSegPop() {
+    const pop = $('plSegPop');
+    const btn = $('plSegBtn');
+    if (pop) pop.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  if ($('plSegBtn')) {
+    $('plSegBtn').onclick = () => {
+      const pop = $('plSegPop');
+      const open = pop.hidden;
+      pop.hidden = !open;
+      $('plSegBtn').setAttribute('aria-expanded', String(open));
+      if (open) $('plSegSource').focus();
+    };
+
+    $('plSegGo').onclick = async () => {
+      const go = $('plSegGo');
+      const say = $('plSegSay');
+      go.disabled = true;
+      say.textContent = 'handing it to the booth…';
+      try {
+        const r = await fetch('/open-lines/open', {
+          method: 'POST',
+          headers: vmKeyHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            source: $('plSegSource').value,
+            minutes: Number($('plSegMins').value) || 0,
+          }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          // The setting went off, or the code expired, between the paint and
+          // the press. Say which rather than showing a bare failure.
+          say.textContent = 'you are not signed in for this any more';
+          paintSegBtn();
+        } else if (!d.ok) {
+          // Every refusal names a gate, and they are all worth reading.
+          say.textContent = d.why || 'could not start one';
+        } else {
+          say.textContent = 'it is on air — ' + (d.premise || 'the DJ has the subject');
+          setTimeout(closeSegPop, 2600);
+        }
+      } catch (e) {
+        say.textContent = 'could not reach the booth';
+      } finally {
+        go.disabled = false;
+      }
+    };
   }
 
   function paintPlayerButtons() {

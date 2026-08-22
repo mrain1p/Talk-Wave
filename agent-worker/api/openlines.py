@@ -1,7 +1,12 @@
-"""The operator's two buttons and one status read for Open Lines.
+"""The operator's buttons and status read for Open Lines.
 
-Admin-gated, all three: opening a line writes to the broadcast, and closing
-one puts a sign-off on air. Neither is something a guest code should reach.
+Admin-gated, with ONE deliberate exception. Opening a line writes to the
+broadcast and closing one puts a sign-off on air, so neither is something a
+guest code should reach by default — but the player's own ribbon carries a
+segment button for signed-in listeners when the operator switches
+`open_lines_guest_trigger` on. It ships off. Everything else here, including
+the shelf and the close, stays admin only: the shelf is the operator's
+writing and /live is cached across every caller, so it is never published.
 """
 
 from __future__ import annotations
@@ -147,16 +152,32 @@ async def handle_open_lines_open(request: web.Request) -> web.Response:
     listening, empty list), and a red failure box for "nobody is listening" is
     a bug report waiting to be filed against a working feature.
     """
+    # Admin always. A GUEST only when the operator has opted in, because
+    # this is the one control on the player page that reaches the broadcast
+    # and a guest code travels further than an admin password. Off by
+    # default, so nothing changes for a deployment that never touches it.
     if not _write_allowed(request):
-        return _refuse(request)
+        from api.auth import caller_tier
+
+        cfg = _cfg()
+        if not (cfg.get("open_lines_guest_trigger")
+                and cfg.get("open_lines_enabled")
+                and caller_tier(request) in {"guest", "admin"}):
+            return _refuse(request)
     body = await request.json() if request.can_read_body else {}
     # "dj" or "shelf", for THIS press only. Absent = whatever the settings
     # page says, which is what the section's own button sends.
     source = str(body.get("source") or "").strip() or None
     # Typed beats picked: somebody who typed a subject meant that one,
     # whatever the dropdown happened to be showing when they hit the button.
+    try:
+        # The player's ribbon picks a length per press. Clamped, because this
+        # arrives from a page a guest can reach.
+        minutes = max(0, min(240, int(body.get("minutes") or 0))) or None
+    except (TypeError, ValueError):
+        minutes = None
     result = await director.open_now(
-        reason="operator", source=source,
+        reason="operator", source=source, minutes=minutes,
         premise=str(body.get("premise") or "").strip() or None,
         premise_id=str(body.get("premise_id") or "").strip() or None)
     return _cors(request, web.json_response(

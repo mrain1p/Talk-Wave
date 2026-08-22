@@ -318,6 +318,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "open_lines_reminder_minutes": (None, 20),
     "open_lines_reminder_max":    (None, 2),
     "open_lines_followup":        (None, False),
+    "open_lines_guest_trigger":   (None, False),
     # Nobody listening, nothing opens. Checked when a line opens and before
     # every reminder, never mid-window: a line that vanished because one
     # listener closed a tab would strand whoever is already typing. 0 =
@@ -2072,6 +2073,15 @@ SCHEMA: dict[str, dict] = {
              "answered, so nobody else joins in. Off by default, because it "
              "puts more of the DJ on your broadcast. At most three per topic, "
              "and a request is not a contribution — those air nothing."),
+    "open_lines_guest_trigger": dict(group="openlines", kind="switch",
+        label="Let signed-in listeners start one",
+        alias="guest player ribbon trigger",
+        needs=("open_lines_enabled", True),
+        help="Puts the segment button in the player's own ribbon for anyone "
+             "holding a guest code, not just you. Off by default and worth "
+             "thinking about: it is the only control on that page that reaches "
+             "the broadcast, and a guest code is shared more freely than an "
+             "admin password. Your own button on the dashboard is unaffected."),
     "open_lines_min_listeners": dict(group="openlines", kind="number",
         label="Only with at least this many listeners", alias="audience empty",
         needs=("open_lines_enabled", True),

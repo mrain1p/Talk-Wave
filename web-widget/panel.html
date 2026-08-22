@@ -1056,84 +1056,154 @@
     <details data-group="openlines" class="sec">
       <summary><span class="chev">&#9654;</span><span class="secname">Open Lines</span><em class="secblurb"></em><span class="tag" id="tagOpenlines"></span></summary>
       <div class="body">
-        <p class="hint wide" style="margin-top:0">The DJ puts a subject to the
-          audience on the broadcast, then knows what it asked when somebody
-          arrives on any of the three doors &mdash; it opens by finding out
-          whether they came for the topic or for something else, and a request
-          is never pushed aside for it. Nothing airs until you press
-          <strong>Open a line now</strong>, unless you set a cadence below.
-          On the shelf, write the SUBJECT rather than the words &mdash; the DJ
-          says it in its own voice &mdash; and aim each one at particular DJs or
-          leave it open to all of them. The least recently used goes up next.</p>
-        <label class="check"><input type="checkbox" id="open_lines_enabled" /> Open Lines</label>
-        <div class="row">
-          <label for="open_lines_source">Where the topic comes from</label>
-          <select id="open_lines_source"></select>
-        </div>
-        <label class="check"><input type="checkbox" id="open_lines_followup" /> Report back on air when somebody answers</label>
-        <div class="row">
-          <label for="open_lines_address">Where to reach you, said on air</label>
-          <input type="text" id="open_lines_address" />
-        </div>
-        <div class="row" id="openLinesWhoRow">
-          <label for="open_lines_personas">Only these DJs</label>
-          <!-- The value lives in the hidden input, exactly as the door-order
-               control does: a text field as far as every read, write and diff
-               in panel.js is concerned. The ticks below write into it. -->
-          <input type="hidden" id="open_lines_personas" />
-          <!-- Chips + a dropdown, the shape the station uses for its own
-               multi-value fields. Sixteen checkbox rows was a screenful of
-               scrolling to answer "which DJs" (operator screenshot). The
-               chips ARE the answer, and the picker only offers what is not
-               already chosen. -->
-          <div class="chipbox" id="openLinesWho">
-            <div class="chips" id="openLinesChips"></div>
-            <div class="chippick">
-              <select id="openLinesWhoAdd" aria-label="Add a DJ"></select>
-              <button type="button" class="btnquiet" id="openLinesWhoAll">All</button>
+        <!-- Direction 1a, "the ledger" (operator's handoff). Every hex in that
+             document is one of our own tokens, so nothing here is a literal
+             colour — which also means the section works in the light theme the
+             mock does not cover.
+
+             The rows keep class="row" on purpose. That is what the panel's
+             prerequisite dimming, the finder and the save diff all anchor on
+             (panel.js: el.closest('.row')), so this is a re-skin of the real
+             settings rows rather than a parallel set of controls.
+
+             The mock's header bar carries the title and the sub as well; ours
+             does not, because the summary directly above already prints both
+             and saying it twice is the thing this panel's own rules forbid. -->
+        <div class="olsec">
+          <div class="olbar">
+            <span class="oldot" id="olDot" aria-hidden="true"></span>
+            <span class="oleyebrow">On air segment</span>
+            <span class="olstate" id="olStateHdr">off</span>
+            <button type="button" class="olbtn olquiet" id="olCloseBtn" hidden>Close it</button>
+            <button type="button" class="olbtn olprimary" id="olOpenBtn">Open a line now</button>
+          </div>
+
+          <div class="olband">
+            <span class="olmicro">The segment</span>
+            <div class="row olrow">
+              <label for="open_lines_enabled">Open Lines</label>
+              <!-- The real checkbox stays, hidden: it is what saves, what the
+                   finder reads and what every `needs` rule watches. The pair of
+                   buttons is a costume over it. -->
+              <input type="checkbox" id="open_lines_enabled" class="fieldonly" tabindex="-1" aria-hidden="true" />
+              <div class="olseg" data-for="open_lines_enabled" data-state="ok">
+                <button type="button" class="olbtn" data-on="1">On</button>
+                <button type="button" class="olbtn" data-on="">Off</button>
+              </div>
+              <span class="olhelp">the DJ puts a subject to the audience and invites them in. Off, nothing airs.</span>
+            </div>
+            <div class="row olrow">
+              <label for="open_lines_every_minutes">How a line opens</label>
+              <div class="olseg" data-for="open_lines_every_minutes" data-state="warn" data-zero="1">
+                <button type="button" class="olbtn" data-on="">Manual only</button>
+                <button type="button" class="olbtn" data-on="1">On a cadence</button>
+              </div>
+              <input type="text" inputmode="numeric" id="open_lines_every_minutes" class="olnum" />
+              <span class="olunit">min</span>
+              <span class="olhelp">manual only is the default: nothing reaches your listeners that you did not press the button for.</span>
+            </div>
+            <div class="row olrow">
+              <label for="open_lines_source">Where the topic comes from</label>
+              <select id="open_lines_source" class="olselect"></select>
+              <span class="olhelp">the DJ invents one from who is on air, the show, what just played — or takes the next off your shelf.</span>
+            </div>
+            <div class="row olrow">
+              <label for="open_lines_followup">Report back on air</label>
+              <label class="olcheck"><input type="checkbox" id="open_lines_followup" />When somebody answers</label>
+              <span class="olhelp">the position taken, never a name and never a quote. At most three per topic.</span>
+            </div>
+          </div>
+
+          <div class="olband">
+            <span class="olmicro">Cadence</span>
+            <div class="row olrow">
+              <label for="open_lines_minutes">A line stays open</label>
+              <input type="text" inputmode="numeric" id="open_lines_minutes" class="olnum" />
+              <span class="olunit">min</span>
+              <span class="olhelp">then the DJ closes it on air, in character</span>
+            </div>
+            <div class="row olrow">
+              <label for="open_lines_reminder_minutes">Remind every</label>
+              <input type="text" inputmode="numeric" id="open_lines_reminder_minutes" class="olnum" />
+              <span class="olunit">min</span>
+              <span class="olhelp">0 = announce once, then say no more</span>
+            </div>
+            <div class="row olrow">
+              <label for="open_lines_reminder_max">At most, per topic</label>
+              <input type="text" inputmode="numeric" id="open_lines_reminder_max" class="olnum" />
+              <span class="olunit">reminders</span>
+              <span class="olhelp">the ceiling that protects the broadcast</span>
+            </div>
+            <div class="olrule"></div>
+            <div class="row olrow">
+              <label for="open_lines_guest_trigger">Let signed-in listeners start one</label>
+              <label class="olcheck"><input type="checkbox" id="open_lines_guest_trigger" />From the player&rsquo;s own ribbon</label>
+              <span class="olhelp">off by default &mdash; it is the only control on that page that reaches the broadcast.</span>
+            </div>
+            <div class="row olrow">
+              <label for="open_lines_min_listeners">Only with at least</label>
+              <input type="text" inputmode="numeric" id="open_lines_min_listeners" class="olnum" />
+              <span class="olunit">listeners</span>
+              <span class="olhelp">checked at open and before each reminder</span>
+            </div>
+          </div>
+
+          <div class="olband">
+            <div class="row olrow">
+              <label for="open_lines_address">Where to reach you</label>
+              <input type="text" id="open_lines_address" class="oltext" />
+              <span class="olhelp">said on air with the invitation — leave blank if the card is already in front of them</span>
+            </div>
+            <div class="row olrow oldjrow">
+              <!-- kind="picks": the value lives in the hidden input and the
+                   chips write it, the same shape the door-order control uses.
+                   The chips ARE the control; there is no picker dialog. -->
+              <input type="hidden" id="open_lines_personas" />
+              <div class="oldjs">
+                <div class="oldjhead">
+                  <span class="oldjtitle">Only these DJs</span>
+                  <span class="oldjcount" id="olDjCount"></span>
+                  <span class="olhelp">tick the ones that may open a line — none ticked means whoever is on. The one on at 3am may not be the one you want soliciting arguments.</span>
+                  <button type="button" class="olbtn olmini" id="olDjAll">All</button>
+                  <button type="button" class="olbtn olmini" id="olDjNone">None</button>
+                </div>
+                <div class="oldjgrid" id="olDjGrid"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="olstats">
+            <span><em>Last aired</em><b id="olStatLast">—</b></span>
+            <span><em>Answered</em><b id="olStatAnswered" class="ok">—</b></span>
+            <span><em>On the shelf</em><b id="olStatShelf">—</b></span>
+          </div>
+
+          <div class="olshelfband">
+            <div class="olshelfhead">
+              <span class="olmicro">Your shelf of subjects</span>
+              <span class="olshelfcount" id="olShelfCount"></span>
+              <span class="olspacer"></span>
+              <button type="button" class="olbtn olghost" id="olAddFocus">+ Add a subject</button>
+            </div>
+            <div class="olcols">
+              <span></span>
+              <span>Subject — write what it is about, not the words</span>
+              <span>Who asks</span>
+              <span class="r">Used</span>
+              <span class="r">Last aired</span>
+              <span></span>
+            </div>
+            <div id="olShelfRows"></div>
+            <div class="olrowgrid oladd">
+              <span class="olgrip" aria-hidden="true">+</span>
+              <input type="text" id="olAddText" class="oladdinput" maxlength="400"
+                     placeholder="a subject to put to the audience" aria-label="A new subject" />
+              <select id="olAddWho" class="olwho" aria-label="Who asks"></select>
+              <span></span><span></span>
+              <div class="olacts"><button type="button" class="olbtn olprimary sm" id="olAddBtn">Add</button></div>
             </div>
           </div>
         </div>
-        <div class="grid2">
-          <div class="row narrow">
-            <label for="open_lines_minutes">How long a line stays open (min)</label>
-            <input type="number" id="open_lines_minutes" min="1" max="480" step="5" />
-          </div>
-          <div class="row narrow">
-            <label for="open_lines_reminder_minutes">Remind every (min)</label>
-            <input type="number" id="open_lines_reminder_minutes" min="0" max="240" step="5" />
-          </div>
-          <div class="row narrow">
-            <label for="open_lines_reminder_max">Most reminders per topic</label>
-            <input type="number" id="open_lines_reminder_max" min="0" max="10" step="1" />
-          </div>
-          <div class="row narrow">
-            <label for="open_lines_min_listeners">Only with at least this many listeners</label>
-            <input type="number" id="open_lines_min_listeners" min="0" max="500" step="1" />
-          </div>
-          <div class="row narrow">
-            <label for="open_lines_every_minutes">Open one automatically every (min)</label>
-            <input type="number" id="open_lines_every_minutes" min="0" max="1440" step="15" />
-          </div>
-        </div>
-        <h4 class="subhead">Your shelf of subjects</h4>
-        <ul class="soundlist" id="openLinesShelf"></ul>
-        <div class="testrow">
-          <input type="text" id="openLineNewText"
-                 placeholder="a subject to put to the audience"
-                 aria-label="A new subject" />
-          <button id="openLineAddBtn" class="btnquiet">+ Add</button>
-        </div>
-
-        <!-- The section footer: what is up right now, then the two presses.
-             Both post immediately and never touch the save overlay - opening
-             a line is an act, not a form draft, and the same rule the
-             dashboard controls follow. -->
-        <div class="testrow">
-          <button id="openLineBtn">Open a line now</button>
-          <button id="closeLineBtn" class="btnquiet">Close it</button>
-        </div>
-        <div class="result" id="openLineNow"></div>
       </div>
     </details>
 

@@ -788,7 +788,21 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         # row of the card, out-shouting the Call button next to it. It is a
         # setting nobody changes. It takes the same 3px trough every other
         # level in this card uses.
-        self.assertNotIn("accent-color: var(--coral)", self.css)
+        # Checked against the RANGE, not the whole file: a checkbox is a
+        # different control with none of this problem, and the Open Lines
+        # design uses accent-color on one deliberately. What must never
+        # happen is a rule reaching the slider with it.
+        import re
+
+        for rule in re.findall(r"([^{}]+)\{([^{}]*)\}", self.css):
+            selector, body = rule[0], rule[1]
+            if "accent-color" not in body:
+                continue
+            low = selector.lower()
+            self.assertNotIn("range", low,
+                             "accent-color on a range: %s" % selector.strip())
+            self.assertNotIn("plvol", low,
+                             "accent-color on the volume slider: %s" % selector.strip())
         self.assertIn("::-webkit-slider-runnable-track", self.css)
         self.assertIn("::-moz-range-progress", self.css)
         # webkit cannot style the filled half of a range, so the fill is a

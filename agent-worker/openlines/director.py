@@ -130,7 +130,8 @@ async def _resolve_bit(cfg, station, persona, show, bit: str) -> dict:
 
 async def open_now(reason: str = "operator", cfg: dict | None = None,
                    source: str | None = None, premise: str | None = None,
-                   premise_id: str | None = None) -> dict:
+                   premise_id: str | None = None,
+                   minutes: int | None = None) -> dict:
     """Put a subject up and open the line.
 
     `source` overrides the configured one for this press only — the dashboard
@@ -232,7 +233,9 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
         # An open line must not outlast the programme that opened it: the show
         # changing already ends it, and a countdown that said otherwise was
         # promising time the DJ was never going to have.
-        wanted = int(cfg.get("open_lines_minutes") or 60)
+        # The player's ribbon picks a duration per press; the panel does not
+        # and falls through to the setting.
+        wanted = int(minutes or cfg.get("open_lines_minutes") or 60)
         minutes, cut_by_show = schedule_mod.bounded_minutes(
             week, str(show.get("id") or ""), wanted)
 

@@ -841,7 +841,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # a closed door from a missing network.
         # 635: the stationQuiet verdict joined the payload beside the door it
         # mirrors (quiet-the-station, 0.98.13) — seven lines of key + comment.
-        "agent-worker/api/live.py": (635, "the shared payload build split "
+        # 646: openLinesTrigger, on the PER-CALLER side of the seam with the
+        # other three door verdicts it sits beside. It has to be computed
+        # here rather than in the shared payload for the same reason they
+        # are: the answer depends on the tier, and the shared payload is
+        # cached across every caller. Eleven lines, eight of them the note
+        # saying why the shelf itself is never published with it.
+        "agent-worker/api/live.py": (646, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The

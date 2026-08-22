@@ -371,7 +371,27 @@
       <!-- The listener count beside the words, same mark as the header's
            (operator's ask, 2026-08-18): whoever opened the deck is one of
            the people this number counts. -->
-      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span></div>
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button></div>
+      <!-- The segment sheet: only ever rendered for a caller /live says may
+           trigger one, which is a guest or the operator AND the setting on.
+           It offers a length and where the subject comes from — never the
+           shelf itself, because this page is public and the shelf is the
+           operator's own writing. The server picks. -->
+      <div class="plsegpop" id="plSegPop" hidden role="dialog" aria-label="Start a segment">
+        <label class="plseglab" for="plSegSource">Subject</label>
+        <select id="plSegSource">
+          <option value="dj">Let the DJ make one up</option>
+          <option value="shelf">Next off the shelf</option>
+        </select>
+        <label class="plseglab" for="plSegMins">For</label>
+        <select id="plSegMins">
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60" selected>1 hour</option>
+        </select>
+        <button type="button" class="plseggo" id="plSegGo">Put it up</button>
+        <p class="plsegsay" id="plSegSay"></p>
+      </div>
       <div class="plscroll">
         <span class="plartwrap"><img class="plglow" id="plGlow" alt="" aria-hidden="true" hidden /><span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span></span>
         <div class="pltrack" id="plTrack"></div>

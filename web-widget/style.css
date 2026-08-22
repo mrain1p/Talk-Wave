@@ -904,6 +904,49 @@
   }
   .plhead .pip { width: 8px; height: 8px; background: var(--coral);
                  border-radius: 0; display: block; }
+  /* The segment button on the player's own ribbon, and its sheet. Shown only
+     when /live says this caller may trigger one — a guest or the operator,
+     and only with open_lines_guest_trigger on. The player is otherwise a
+     read-only surface, so this is the single control on it that reaches the
+     broadcast, and it is dressed quietly for that reason. */
+  .plseg {
+    flex: none; margin-left: 8px; cursor: pointer;
+    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case);
+    padding: 5px 9px; border-radius: 6px;
+    border: 1px solid var(--edge); background: transparent; color: var(--sage);
+  }
+  .plseg:hover { border-color: var(--coral); color: var(--coral); }
+  .plseg[aria-expanded="true"] { border-color: var(--coral); color: var(--coral); }
+  .plsegpop {
+    flex: none; width: 100%; display: grid;
+    grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid var(--hairline);
+    background: var(--granite);
+  }
+  .plsegpop[hidden] { display: none; }
+  .plseglab {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .plsegpop select {
+    font: 12px inherit; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--edge); background: var(--pine);
+    color: var(--alpenglow); min-width: 0; width: 100%;
+  }
+  .plseggo {
+    grid-column: 1 / -1; cursor: pointer; padding: 9px 12px;
+    border: 0; border-radius: 7px; background: var(--coral); color: #fff;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case);
+  }
+  .plseggo:disabled { opacity: .5; cursor: default; }
+  .plsegsay {
+    grid-column: 1 / -1; margin: 0; font-size: 11.5px;
+    line-height: 1.35; color: var(--sage-dim);
+  }
+  .plsegsay:empty { display: none; }
+
   .plheadmeta { margin-left: auto; color: var(--sage-dim);
                 font: 400 11px/1 var(--font-mono); letter-spacing: .08em;
                 text-transform: none; }
@@ -2910,28 +2953,248 @@
   .linerow .ctrlcard.pullcard { cursor: default; }
   /* In the card grid's own switch column ("sw"), where the toggles wear
      their knobs — a real button in the place the hand already knows. */
-  /* --- Open Lines: the chip picker and the dashboard box ------------------ */
-  /* Chips + a dropdown, the station's own shape for a multi-value field. The
-     first build was one checkbox row per persona and a sixteen-DJ station made
-     it a screenful of scrolling to answer "which DJs" (operator screenshot). */
-  .chipbox { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chips:empty::before {
-    content: "whoever is on air"; color: var(--dimmer); font-size: 12px;
+  /* --- Open Lines, direction 1a "the ledger" --------------------------------
+     From the operator's handoff. Every colour in that document is one of this
+     file's own tokens — pine/granite/alpenglow/sage/sage-dim/coral/amber/ok/
+     hairline/edge, exactly — so nothing below is a literal hex. That is not
+     tidiness: the mock is dark-only, and going through the tokens is what
+     makes the section work in the light theme too.
+
+     The rows keep .row, so the panel's prerequisite dimming, its finder and
+     its save diff all still anchor on them. .olrow only changes the shape. */
+  .olsec {
+    background: var(--pine); border: 1px solid var(--edge);
+    border-radius: 10px; overflow: hidden;
   }
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 8px; background: var(--chipbg, rgba(127,127,127,.14));
-    border: 1px solid var(--line); border-radius: 3px;
-    font-size: 12px; line-height: 1.2; color: var(--text);
+  .olsec .olband + .olband,
+  .olsec .olstats, .olsec .olshelfband { border-top: 1px solid var(--line); }
+
+  /* The bar. No title or sub: the summary directly above already prints both,
+     and the mock's copy of them would be the third time on one screen. */
+  .olbar {
+    display: flex; align-items: center; gap: 14px; padding: 13px 18px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
   }
-  .chip button {
-    background: none; border: 0; padding: 0; cursor: pointer;
-    color: var(--dimmer); font-size: 13px; line-height: 1;
+  .oldot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--dimmer);
+    flex: 0 0 auto;
   }
-  .chip button:hover { color: var(--coral); }
-  .chippick { display: flex; gap: 8px; align-items: center; }
-  .chippick select { flex: 1 1 auto; min-width: 0; }
+  .oldot[data-on="1"] { background: var(--ok); }
+  .oleyebrow {
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase; color: var(--coral);
+  }
+  .olstate {
+    margin-left: auto; font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dimmer);
+  }
+  .olstate[data-on="1"] { color: var(--ok); }
+  .olstate[data-live="1"] { color: var(--warn); }
+
+  .olquiet, .olprimary, .olmini, .olghost {
+    cursor: pointer; font-family: inherit; transition: border-color 120ms ease;
+  }
+  .olsec .olquiet {
+    font: 600 12px/1 inherit; padding: 8px 13px; border-radius: 7px;
+    border: 1px solid var(--edge); background: var(--panel); color: var(--text);
+  }
+  .olsec .olprimary {
+    font: 600 12.5px/1 inherit; padding: 9px 15px; border-radius: 7px;
+    border: 0; background: var(--coral); color: #fff;
+  }
+  .olprimary.sm { font-size: 11.5px; padding: 8px 14px; border-radius: 6px; }
+  .olquiet:hover, .olmini:hover, .olghost:hover { border-color: var(--dim); }
+  .olprimary:hover { filter: brightness(.92); }
+  .olquiet:disabled, .olprimary:disabled { opacity: .5; cursor: default; }
+
+  .olband { padding: 14px 18px; display: flex; flex-direction: column; gap: 11px; }
+  .olmicro {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .olrule { height: 1px; background: var(--line); }
+
+  /* One line per setting: label, control, unit, help. The help sits ON the
+     line, never as a band under a group of fields. */
+  .body .olrow {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0; border: 0; background: none; grid-template-columns: none;
+  }
+  .body .olrow > label:first-child {
+    flex: 0 0 176px; font-size: 12.5px; color: var(--dim);
+    margin: 0; padding: 0; text-align: left;
+  }
+  .olhelp {
+    flex: 1 1 150px; min-width: 0; font-size: 12px; color: var(--dimmer);
+    line-height: 1.4;
+  }
+  .olunit {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .body .olrow .olnum {
+    width: 66px; flex: 0 0 66px; text-align: center;
+    font: 700 12.5px var(--font-mono); padding: 7px 0; border-radius: 7px;
+    border: 1px solid var(--edge); background: var(--pine); color: var(--text);
+  }
+  .body .olrow .olnum:disabled { color: var(--dimmer); }
+  .body .olrow .oltext, .body .olrow .olselect {
+    flex: 0 0 260px; font: 12.5px inherit; padding: 7px 10px;
+    border-radius: 7px; border: 1px solid var(--edge);
+    background: var(--pine); color: var(--text);
+  }
+  .body .olrow .olselect { padding: 7px 9px; }
+  .olcheck {
+    flex: 0 0 260px; display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; color: var(--text); margin: 0; cursor: pointer;
+  }
+  .olcheck input { accent-color: var(--coral); width: 15px; height: 15px; }
+
+  /* Two buttons standing in for a checkbox or a zero/non-zero number. The
+     real field is still there, hidden, doing the saving. */
+  .olseg { display: flex; gap: 6px; flex: 0 0 auto; }
+  .olsec .olseg button {
+    font: 700 10.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: uppercase; padding: 8px 14px; border-radius: 7px;
+    border: 0; background: transparent; color: var(--dimmer);
+    box-shadow: inset 0 0 0 1px var(--edge); cursor: pointer;
+  }
+  .olsec .olseg[data-state="ok"] button[aria-pressed="true"] {
+    box-shadow: inset 0 0 0 1px var(--ok); color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 12%, transparent);
+  }
+  .olsec .olseg[data-state="warn"] button[aria-pressed="true"] {
+    box-shadow: inset 0 0 0 1px var(--warn); color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+  }
+
+  /* The DJ panel: a box, so it reads as one decision rather than a row. */
+  .body .olrow.oldjrow { display: block; }
+  .oldjs {
+    display: flex; flex-direction: column; gap: 11px; padding: 14px 15px;
+    margin-top: 6px; border: 1px solid var(--edge); border-radius: 10px;
+    background: var(--panel);
+  }
+  .oldjhead { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .oldjtitle {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase; color: var(--text);
+  }
+  .oldjcount {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ok);
+  }
+  .oldjhead .olhelp { flex: 1 1 180px; }
+  .olsec .olmini {
+    font: 600 11.5px/1 inherit; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--edge); background: var(--pine); color: var(--dim);
+  }
+  .oldjgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .olsec .oldjgrid button {
+    font: 11.5px var(--font-mono); padding: 5px 9px; border-radius: 6px;
+    border: 1px solid var(--edge); background: var(--pine);
+    color: var(--dimmer); cursor: pointer;
+  }
+  .olsec .oldjgrid button[aria-pressed="true"] {
+    border-color: var(--ok); color: var(--text);
+    background: color-mix(in srgb, var(--ok) 12%, transparent);
+  }
+
+  .olstats { display: flex; gap: 26px; flex-wrap: wrap; padding: 10px 18px 14px; }
+  .olstats span { display: flex; flex-direction: column; gap: 1px; }
+  .olstats em {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer); font-style: normal;
+  }
+  .olstats b { font-size: 12.5px; font-weight: 400; color: var(--text); }
+  .olstats b.ok { color: var(--ok); }
+
+  /* The shelf, as a record list. The whole point of the redesign: the subject
+     is never truncated, because the subject is the thing. */
+  .olshelfband { background: var(--pine); }
+  .olshelfhead { display: flex; align-items: center; gap: 12px; padding: 13px 18px 9px; }
+  .olshelfcount {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .olspacer { flex: 1; }
+  .olsec .olghost {
+    font: 600 12px/1 inherit; padding: 6px 11px; border-radius: 7px;
+    border: 1px solid var(--coral); background: transparent; color: var(--coral);
+  }
+  .olcols, .olrowgrid {
+    display: grid; grid-template-columns: 22px 1fr 132px 66px 104px 118px;
+    align-items: center;
+  }
+  .olcols { padding: 0 18px 6px; }
+  .olcols span {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
+  .olcols .r, .olused, .ollast { text-align: right; }
+  .olrowgrid { padding: 11px 18px; border-top: 1px solid var(--line); }
+  .olrowgrid.next { background: var(--panel); }
+  .olrowgrid.oladd { background: var(--panel); padding: 10px 18px 14px; }
+  .olgrip { color: var(--dimmer); font-size: 13px; cursor: grab; }
+  .olsubj {
+    display: flex; flex-direction: column; gap: 2px; padding-right: 16px;
+    min-width: 0;
+  }
+  .olsubjtext { font-size: 14px; line-height: 1.35; text-wrap: pretty; }
+  .olnextup {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ok);
+  }
+  .olbuiltin {
+    font: 700 8.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--dimmer);
+    border: 1px solid var(--edge); border-radius: 4px; padding: 3px 5px;
+    align-self: flex-start; white-space: nowrap;
+  }
+  .olwho {
+    font: 11.5px var(--font-mono); padding: 4px 8px; border-radius: 6px;
+    border: 1px solid var(--edge); background: var(--pine); color: var(--dim);
+    justify-self: start; max-width: 124px;
+  }
+  .olwho[data-set="1"] { color: var(--text); }
+  .olused { font: 700 12.5px var(--font-mono); color: var(--dim); }
+  .olused.never, .ollast.never { color: var(--dimmer); }
+  .ollast { font-size: 11.5px; color: var(--dim); }
+  .olacts { display: flex; gap: 6px; justify-content: flex-end; }
+  .olsec .olacts button {
+    font: 600 11.5px/1 inherit; padding: 6px 9px; border-radius: 6px;
+    border: 1px solid var(--edge); background: transparent; color: var(--dim);
+    cursor: pointer;
+  }
+  .olsec .olacts button.x { padding: 6px 8px; color: var(--dimmer); }
+  .olrowgrid.next .olacts button.air { border-color: var(--coral); color: var(--coral); }
+  .oladdinput {
+    margin-right: 16px; font: 13.5px inherit; padding: 8px 10px;
+    border-radius: 7px; border: 1px dashed var(--edge);
+    background: var(--pine); color: var(--text); min-width: 0;
+  }
+  .olsec :is(input, select, button):focus-visible {
+    outline: 1px solid var(--coral); outline-offset: 1px;
+  }
+
+  /* Below ~900 the two right-hand columns fold into a meta line under the
+     subject — the handoff's rule, and the only way the subject keeps its
+     full width on a phone. */
+  @media (max-width: 900px) {
+    .olcols { display: none; }
+    .olrowgrid { grid-template-columns: 22px 1fr 96px; row-gap: 6px; }
+    .olrowgrid .olused, .olrowgrid .ollast { display: none; }
+    .olmeta {
+      grid-column: 2 / -1; font: 700 9px/1 var(--font-mono);
+      letter-spacing: .12em; text-transform: uppercase; color: var(--dimmer);
+    }
+    .olacts { grid-column: 2 / -1; justify-content: flex-start; }
+    .body .olrow { flex-wrap: wrap; }
+    .body .olrow > label:first-child { flex: 1 1 100%; }
+    .olhelp { flex: 1 1 100%; }
+  }
+  /* Wide only: the meta line is what the two columns already say. */
+  @media (min-width: 901px) { .olmeta { display: none; } }
 
   /* The dashboard control, shaped like the station's TAKEOVER box: one titled
      frame, the choices inside, and ONE action bar whose position never moves.
@@ -5597,7 +5860,7 @@
      not coral, which on this page means live. The word still says "Paused". */
   body.panelpage .ctrlcard.kill.paused .cv { color: var(--sage-dim); }
   /* section action buttons: square, transparent, ruled — not grey fills */
-  body.panelpage .body button:not(.tile):not(.ctrlcard):not(.chev),
+  body.panelpage .body button:not(.tile):not(.ctrlcard):not(.chev):not(.olbtn),
   body.panelpage .testrow button {
     border: 1px solid var(--edge); background: transparent; color: var(--text);
     font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em;
