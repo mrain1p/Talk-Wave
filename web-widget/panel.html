@@ -301,39 +301,6 @@
               </div>
             </div>
           </div>
-          <!-- Open Lines. Hidden entirely while the feature is off — a
-               dashboard row for something switched off is furniture. -->
-          <div id="openLinesLine" hidden>
-            <p class="lineslabel">Open Lines <em>the subject the station is putting to its listeners</em></p>
-            <!-- Shaped like the station's own TAKEOVER control (operator's
-                 ask, with a screenshot): one titled box, the choices inside it,
-                 and ONE action bar at the bottom whose position never moves.
-                 The first version swapped two "PUT IT UP" rows for a "CLOSE IT"
-                 row in the same place, so a second click landed on Close — the
-                 operator shut a line 19 seconds after opening it without
-                 meaning to, then called in and found no topic. A control that
-                 changes meaning under the cursor is the bug, not the click. -->
-            <div class="olbox">
-              <div class="olhead">
-                <span class="olname">OPEN LINES</span>
-                <span class="oltag" id="olState">nothing up</span>
-              </div>
-              <div class="olbody" id="olIdle">
-                <label class="ollabel" for="olPick">Subject</label>
-                <select id="olPick">
-                  <option value="dj">Let the DJ make one up</option>
-                </select>
-                <input type="text" id="olOwn" placeholder="…or type one of your own" 
-                       aria-label="Type your own subject" />
-              </div>
-              <div class="olbody" id="olLive" hidden>
-                <p class="olpremise" id="olPremise"></p>
-                <p class="olmeta" id="olMeta"></p>
-              </div>
-              <button type="button" class="olgo" id="olGo">PUT IT UP &rarr;</button>
-              <p class="olfoot" id="olFoot">it airs on the next break · the DJ says it in its own voice</p>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -342,6 +309,38 @@
            fix. Filled by paintNeeds() from the SAME signals the tiles read,
            so the two can never disagree; empty says the line is ready rather
            than vanishing. The same items pin the page picker's chips. -->
+          <!-- Open Lines. Hidden entirely while the feature is off — a
+             dashboard row for something switched off is furniture. -->
+        <div id="openLinesLine" hidden>
+            <!-- Shaped like the station's own TAKEOVER control (operator's
+               ask, with a screenshot): one titled box, the choices inside it,
+               and ONE action bar at the bottom whose position never moves.
+               The first version swapped two "PUT IT UP" rows for a "CLOSE IT"
+               row in the same place, so a second click landed on Close — the
+               operator shut a line 19 seconds after opening it without
+               meaning to, then called in and found no topic. A control that
+               changes meaning under the cursor is the bug, not the click. -->
+          <div class="olbox">
+            <div class="olhead">
+              <span class="olname">OPEN LINES SEGMENT</span>
+              <span class="oltag" id="olState">nothing up</span>
+            </div>
+            <div class="olbody" id="olIdle">
+              <label class="ollabel" for="olPick">Subject</label>
+              <select id="olPick">
+                <option value="dj">Let the DJ make one up</option>
+              </select>
+              <input type="text" id="olOwn" placeholder="…or type one of your own" 
+                     aria-label="Type your own subject" />
+            </div>
+            <div class="olbody" id="olLive" hidden>
+              <p class="olpremise" id="olPremise"></p>
+              <p class="olmeta" id="olMeta"></p>
+            </div>
+            <button type="button" class="olgo" id="olGo">PUT IT UP &rarr;</button>
+            <p class="olfoot" id="olFoot">it airs on the next break · the DJ says it in its own voice</p>
+          </div>
+        </div>
       <div class="dashgroup needs">
         <div class="dashcaption">
           <p class="tlabel">Notifications</p>

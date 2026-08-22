@@ -42,12 +42,21 @@ def _when(value) -> datetime | None:
 
 
 def persona_allowed(cfg: dict, persona: dict) -> bool:
-    """The operator's DJ allowlist, by name. Blank = whoever is on air."""
+    """The operator's DJ allowlist. Blank = whoever is on air.
+
+    Matched on the id OR the name, and it has to be both. The field was typed
+    by hand as names until the picker arrived; the picker writes IDS. Checking
+    only names meant a list built by the picker matched nobody — every DJ on
+    the operator's station refused, which the automatic cadence would have hit
+    silently. Found on their panel with all 22 personas listed, which should
+    mean "anyone" and meant "no one".
+    """
     raw = str(cfg.get("open_lines_personas") or "").strip()
     if not raw:
         return True
     wanted = {n.strip().casefold() for n in raw.split(",") if n.strip()}
-    return str(persona.get("name") or "").strip().casefold() in wanted
+    return (str(persona.get("name") or "").strip().casefold() in wanted
+            or str(persona.get("id") or "").strip().casefold() in wanted)
 
 
 def listeners_ok(cfg: dict, now_playing: dict) -> tuple[bool, int | None]:

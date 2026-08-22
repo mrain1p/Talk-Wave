@@ -2667,6 +2667,15 @@
     align-items: stretch;
   }
   @media (max-width: 940px) { .dashsplit { grid-template-columns: 1fr; } }
+  /* Open Lines shares the narrow column with Notifications (operator's ask),
+     stacked above it. Both are PINNED to column 2: without that, grid auto-
+     placement gave Open Lines the right cell and pushed Notifications down
+     into the left one, under Transmission. The single-column breakpoint below
+     unsets both, or they would fight the stack on a phone. */
+  #openLinesLine, .dashgroup.needs { grid-column: 2; }
+  @media (max-width: 940px) {
+    #openLinesLine, .dashgroup.needs { grid-column: auto; }
+  }
   .needslist { display: grid; gap: 8px; flex: 1; align-content: start; }
   /* Empty state: the one auto row stretches (grid's default align-content)
      so the all-clear sentence sits mid-box rather than hugging the rule. */
@@ -2930,7 +2939,7 @@
      frame, the choices inside, and ONE action bar whose position never moves.
      Two swapping rows meant a second click landed on Close. */
   .olbox {
-    grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px;
+    display: flex; flex-direction: column; gap: 10px;
     padding: 14px; border: 1px solid var(--line); background: var(--panel);
   }
   .olhead { display: flex; align-items: baseline; gap: 10px; }

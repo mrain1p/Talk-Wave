@@ -88,8 +88,19 @@ async def handle_open_lines_premises(request: web.Request) -> web.Response:
     except Exception as e:                                     # noqa: BLE001
         roster = []
         log.info("premise shelf could not read the roster: %s", e)
-    finally:
+    if not roster:
+        # /personas times out on a busy station — observed on the operator's,
+        # where the panel showed "0 personas" and the DJ picker fell back to
+        # raw ids like p_default0. /schedule carries the same roster and is a
+        # different, cheaper read, so it answers when the other one will not.
+        try:
+            roster = (await station.schedule()).get("personas") or []
+        except Exception as e:                                 # noqa: BLE001
+            log.info("the schedule could not supply a roster either: %s", e)
+    try:
         await station.aclose()
+    except Exception:                                          # noqa: BLE001
+        pass
     return _cors(request, web.json_response({
         "items": premises.read(),
         "personas": [{"id": str(p.get("id") or ""),

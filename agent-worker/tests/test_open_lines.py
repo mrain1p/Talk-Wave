@@ -218,6 +218,26 @@ class TestWhatTheDJIsToldAboutTheTopic(_OnDisk):
         self.assertIn("typing", self.build_prompt(mode="chat"))
 
 
+class TestTheDJAllowlistActuallyMatches(_OnDisk):
+    """Who may open a line, and the bug that made it nobody."""
+
+    def test_the_allowlist_matches_an_id_as_well_as_a_name(self):
+        # The picker writes IDS; the matcher only read NAMES. On the operator's
+        # panel all 22 personas were listed — which should mean "anyone" — and
+        # persona_allowed returned False for every one of them, so the
+        # automatic cadence would have refused the whole roster in silence.
+        by_id = {"open_lines_personas": "p_default0,p_default1"}
+        by_name = {"open_lines_personas": "Dalia, Wade"}
+        dalia = {"id": "p_default0", "name": "Dalia"}
+        stranger = {"id": "p_nope", "name": "Cliff"}
+        for cfg in (by_id, by_name):
+            with self.subTest(cfg=cfg):
+                self.assertTrue(director.persona_allowed(cfg, dalia))
+                self.assertFalse(director.persona_allowed(cfg, stranger))
+        # Blank still means whoever is on air.
+        self.assertTrue(director.persona_allowed({}, stranger))
+
+
 class TestAQuizTheDJCanActuallyMark(_OnDisk):
     """A quiz cannot be a free-text premise, and the operator's station proved
     it (2026-08-21, room at 21:31).

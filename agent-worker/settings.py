@@ -1143,7 +1143,8 @@ GROUPS = [
     # It spans all three doors — a topic put up on air is answerable on the
     # phone, on the text line and on the machine — so filing it under any one
     # of them would have been the wrong cut.
-    ("openlines", "openlines", "Open Lines",     "The DJ puts a topic up, and invites the audience in."),
+    ("openlines", "openlines", "Open Lines Segment",
+     "The DJ puts a topic up, and invites the audience in."),
 
     # The Players page reorganized to the operator's design handoff ("Players
     # Settings Reorganization", direction 1a): one block per card ELEMENT, in

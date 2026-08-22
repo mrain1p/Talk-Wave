@@ -292,7 +292,7 @@ Overlap protection: the call DJ and the on-air DJ are one voice.
 
 ## Open Lines
 
-### Open Lines
+### Open Lines Segment
 
 The booth reaching out instead of in: the DJ puts a subject to the audience on the broadcast, then knows what it asked when somebody arrives on any of the three doors. Full behaviour on [the Open Lines page](open-lines.md).
 
