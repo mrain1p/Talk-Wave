@@ -2936,22 +2936,33 @@
      — minmax(96px, auto) let each row size its own right column, so a wide
      note ("records appear here") pushed that row's switch out of line with
      its neighbours' (operator-reported, 0.10.78). */
-  /* The three doors, side by side. Stacked they read as a list of
-     unrelated switches; in a row they read as three ways through the one
-     door above them, which is what their own label says (operator ask,
-     2026-08-22). Each cell puts the switch over its tile rather than beside
-     it — at a third of the width there is no room for two columns. */
+  /* The three doors as CARDS, the same furniture as the station tiles at
+     the top of the page (operator, 2026-08-22): one bordered box each, the
+     switch above its own count. Side by side without the border they ran
+     together and the counts floated loose below them, which read worse than
+     the stack it replaced. Same radius, same inset hairline, same panel
+     ground as `.tile`, so the row belongs to the page rather than to this
+     feature. Stacks again below 760px. */
   .doorrow {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px; align-items: stretch;
   }
   .doorrow .linerow.door {
-    grid-template-columns: minmax(0, 1fr); grid-auto-rows: min-content;
-    gap: 6px;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 10px; min-width: 0;
+    border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line);
+    background: var(--panel);
   }
+  /* Inside a card the control and its tile are stacked, so neither wants its
+     own ground or border — the card is the box now. */
+  .doorrow .linerow.door .ctrlcard,
+  .doorrow .linerow.door .tile {
+    background: transparent; box-shadow: none; padding: 0; min-height: 0;
+  }
+  .doorrow .linerow.door .tile { border-top: 1px solid var(--line); padding-top: 8px; }
+  .doorrow .linerow.door .tile:hover { box-shadow: none; transform: none; }
   @media (max-width: 760px) {
     .doorrow { grid-template-columns: minmax(0, 1fr); }
-    .doorrow .linerow.door { grid-template-columns: minmax(0, 1fr) 150px; }
   }
 
   .linerow {
@@ -5359,10 +5370,29 @@
     text-transform: uppercase; color: var(--sage);
     border-bottom: 1px solid var(--hairline); padding-bottom: 6px; margin-bottom: 6px;
   }
+  /* LINES and LIVE ON AIR are group headings inside Transmission, and they
+     were set two steps quieter than the heading above them — so a whole
+     cluster of switches read as a stray caption (operator, 2026-08-22). Same
+     treatment as .tlabel, one size down, so the hierarchy is Transmission >
+     these > the cards, rather than Transmission > everything else equally. */
+  body.panelpage .lineslabel {
+    font: 700 10px/1 var(--font-mono); letter-spacing: .22em;
+    text-transform: uppercase; color: var(--sage);
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 6px; margin: 14px 0 8px;
+  }
+  body.panelpage .lines > .lineslabel:first-child { margin-top: 4px; }
+  body.panelpage .lineslabel em {
+    letter-spacing: .04em; color: var(--sage-dim);
+  }
+
   body.panelpage .tile, body.panelpage .ctrlcard {
     border: 0; border-bottom: 1px solid var(--hairline);
     background: transparent; box-shadow: none;
   }
+  /* ...except inside a door card, where the card IS the box: a bottom rule
+     on the control as well would draw a line through the middle of it. */
+  body.panelpage .doorrow .linerow.door .ctrlcard { border-bottom: 0; }
   body.panelpage .tile:hover, body.panelpage .ctrlcard:hover {
     transform: none; background: color-mix(in srgb, var(--alpenglow) 4%, transparent);
   }
@@ -6005,21 +6035,19 @@
 .panelpage .doorstate[data-state="off"] { border-left-color: var(--sage-dim); }
 .panelpage .doorstate[data-state="held"] { border-left-color: var(--amber); }
 
-/* The one part of a <select> our CSS cannot reach: the OPTION LIST is
-   drawn by the OS and follows color-scheme, not our tokens. :root declares
-   `light dark`, so on a light OS the popup came up white over a dark page
-   — white text on white (operator screenshot, the dashboard subject list).
-   Stated per theme, the same way every token is. A station palette can
-   still darken the page without touching color-scheme; that is wider than
-   this section and is not fixed here. */
-:root[data-theme="dark"] :is(.olsec, .plsegpop, .olbox) select {
-  color-scheme: dark;
+/* The OPTION LIST. `color-scheme` alone does not do it: Chrome falls back to
+   the light popup as soon as the select carries an explicit background, and
+   ours all do — so on a light OS the list came up white-on-white over a dark
+   page, twice (operator screenshots). Painting the options themselves is what
+   actually reaches the list, and color-scheme stays for the scrollbar and the
+   focus ring. Applied to EVERY select on both pages rather than to the two
+   that were reported: the rest have the same explicit background and the same
+   latent bug. */
+select { color-scheme: dark; }
+select option, select optgroup {
+  background: var(--granite); color: var(--alpenglow);
 }
-:root[data-theme="light"] :is(.olsec, .plsegpop, .olbox) select {
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) :is(.olsec, .plsegpop, .olbox) select {
-    color-scheme: dark;
-  }
+:root[data-theme="light"] select { color-scheme: light; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) select { color-scheme: light; }
 }
