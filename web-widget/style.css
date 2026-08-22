@@ -1241,9 +1241,29 @@
      out of step with which doors are actually showing. */
   .actionrow:has(#chatBtn:not([hidden])):has(#vmBtn:not([hidden]))
     #callBtn:not(.ringing):not(.answering):not(.live) { flex: 4 1 0; }
-  .actionrow.allworded #callBtn:not(.ringing):not(.answering):not(.live),
+  /* :has() takes the specificity of its argument, so the two-thirds rule
+     above weighs an id — and .allworded could never beat it in the one case
+     it exists for, three worded doors. It carried the same :has() now, plus
+     the class, so it wins. Reported as "when calls text and leave a message
+     are all 3 enabled with text they should be equal spacing", and they
+     were not: the primary took 4/6 and the other two clipped. */
+  .actionrow.allworded:has(#chatBtn:not([hidden])):has(#vmBtn:not([hidden]))
+    #callBtn:not(.ringing):not(.answering):not(.live),
   .actionrow.allworded #chatBtn:not([hidden]),
   .actionrow.allworded #vmBtn:not([hidden]) { flex: 1 1 0; }
+  /* And with three words on one row there is not always room for one line.
+     Two is allowed HERE only — the label wrapped rather than ellipsised to
+     "eave a messag" (operator ask). The row grows with the configuration,
+     never during a call: all three doors are decided by settings, so the
+     card still has one stable footprint for the whole of any given call,
+     which is what the fixed-height rule is actually protecting. */
+  .actionrow.allworded #callBtn:not([hidden]),
+  .actionrow.allworded #chatBtn:not([hidden]),
+  .actionrow.allworded #vmBtn:not([hidden]) {
+    white-space: normal; text-overflow: clip; overflow: visible;
+    line-height: 1.15; height: auto; min-height: var(--control-h);
+    padding: 6px 8px; text-wrap: balance;
+  }
   /* An ICON-ONLY alternate keeps its share of that third rather than hugging
      its glyph. It used to be `flex: 0 1 auto`, so a bare icon shrank to ~36px
      and the primary took 93% of the row — which is what the operator kept
@@ -1258,6 +1278,14 @@
   .actionrow #chatBtn:not([hidden]), .actionrow #vmBtn:not([hidden]) {
     background: transparent; color: var(--sage);
     border: 1px solid var(--edge);
+  }
+  /* ...but the LEFTMOST door carries the accent, whichever it is. It used to
+     be pinned to Call, so with Text on the left the accent sat in the middle
+     of the row (operator screenshot). `.lead` is set in call.js, because
+     which door is first depends on which are hidden. */
+  .actionrow #chatBtn.lead:not([hidden]),
+  .actionrow #vmBtn.lead:not([hidden]) {
+    color: var(--coral); border-color: var(--coral);
   }
   .actionrow #chatBtn:not([hidden]):hover,
   .actionrow #vmBtn:not([hidden]):hover {
@@ -3040,7 +3068,7 @@
   .olprimary:hover { filter: brightness(.92); }
   .olquiet:disabled, .olprimary:disabled { opacity: .5; cursor: default; }
 
-  .olband { padding: 14px 18px; display: flex; flex-direction: column; gap: 11px; }
+  .olband { padding: 12px 18px; display: flex; flex-direction: column; gap: 9px; }
   .olmicro {
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: uppercase; color: var(--dimmer);
@@ -3049,9 +3077,15 @@
 
   /* One line per setting: label, control, unit, help. The help sits ON the
      line, never as a band under a group of fields. */
+  /* margin:0 is the load-bearing half. The base .row carries
+     margin-bottom:8px, which stacked on top of the band's own 11px gap — so
+     every row sat 19px from the next and the block read as mostly air
+     (operator: "settings waste too much space"). The band owns the rhythm
+     here; the row contributes nothing of its own. */
   .body .olrow {
     display: flex; align-items: center; gap: 10px;
-    padding: 0; border: 0; background: none; grid-template-columns: none;
+    margin: 0; padding: 0; border: 0; background: none;
+    grid-template-columns: none;
   }
   .body .olrow > label:first-child {
     flex: 0 0 176px; font-size: 12.5px; color: var(--dim);

@@ -1335,6 +1335,13 @@
         .filter((b) => b && !b.hidden);
       row.classList.toggle('allworded',
         doors.length === 3 && doors.every((b) => b.textContent.trim().length));
+      // The accent belongs to the LEFTMOST door, not to Call wherever it
+      // lands (operator: "the one to the left should always be blue not"
+      // " just pinned to call the booth"). Marked here because which door
+      // is first depends on which are hidden, and CSS cannot ask that of a
+      // sibling it has already passed.
+      for (const b of doors) b.classList.remove('lead');
+      if (doors.length) doors[0].classList.add('lead');
     }
   }
 
