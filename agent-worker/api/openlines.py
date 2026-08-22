@@ -122,7 +122,7 @@ async def handle_open_lines_premise_add(request: web.Request) -> web.Response:
                         list(body.get("personas") or []))
     if not item:
         return _cors(request, web.json_response(
-            {"ok": False, "why": "A subject needs some words."}))
+            {"ok": False, "why": "A topic needs some words."}))
     return _cors(request, web.json_response({"ok": True, "item": item,
                                              "items": premises.read()}))
 
@@ -139,7 +139,8 @@ async def handle_open_lines_premise_edit(request: web.Request) -> web.Response:
     item = premises.update(
         pid,
         text=body.get("text") if "text" in body else None,
-        personas=list(body["personas"]) if "personas" in body else None)
+        personas=list(body["personas"]) if "personas" in body else None,
+        enabled=bool(body["enabled"]) if "enabled" in body else None)
     return _cors(request, web.json_response(
         {"ok": bool(item), "item": item, "items": premises.read()}))
 

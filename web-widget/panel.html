@@ -233,38 +233,44 @@
                tabindex="-1" aria-hidden="true" />
         <div class="lines">
           <p class="lineslabel">Lines <em>the three ways through the door above</em></p>
-          <div class="linerow">
-            <button type="button" id="modeLiveBtn" class="ctrlcard">
-              <span class="switch small" aria-hidden="true"></span>
-              <span class="ck">Live calls</span>
-              <span class="cv"></span>
-              <span class="cn">the booth picks up</span>
-            </button>
-            <button type="button" class="tile" id="tileCalls">
-              <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
-            </button>
-          </div>
-          <div class="linerow">
-            <button type="button" id="modeVmBtn" class="ctrlcard">
-              <span class="switch small" aria-hidden="true"></span>
-              <span class="ck">Voicemail</span>
-              <span class="cv"></span>
-              <span class="cn">the machine answers</span>
-            </button>
-            <button type="button" class="tile" id="tileVm">
-              <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
-            </button>
-          </div>
-          <div class="linerow">
-            <button type="button" id="modeChatBtn" class="ctrlcard">
-              <span class="switch small" aria-hidden="true"></span>
-              <span class="ck">Text line</span>
-              <span class="cv"></span>
-              <span class="cn">typed chat with the booth</span>
-            </button>
-            <button type="button" class="tile" id="tileChat">
-              <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
-            </button>
+          <!-- 1x3 (operator, 2026-08-22): the three doors stacked read as a
+               list of unrelated switches; side by side they read as three
+               ways through the one door above, which is what the label says.
+               They fall back to a stack below 760px. -->
+          <div class="doorrow">
+          <div class="linerow door">
+              <button type="button" id="modeLiveBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Live calls</span>
+                <span class="cv"></span>
+                <span class="cn">the booth picks up</span>
+              </button>
+              <button type="button" class="tile" id="tileCalls">
+                <span class="tk">Calls</span><span class="tv">—</span><span class="tn"></span>
+              </button>
+            </div>
+            <div class="linerow door">
+              <button type="button" id="modeVmBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Voicemail</span>
+                <span class="cv"></span>
+                <span class="cn">the machine answers</span>
+              </button>
+              <button type="button" class="tile" id="tileVm">
+                <span class="tk">Voicemails</span><span class="tv">—</span><span class="tn"></span>
+              </button>
+            </div>
+            <div class="linerow door">
+              <button type="button" id="modeChatBtn" class="ctrlcard">
+                <span class="switch small" aria-hidden="true"></span>
+                <span class="ck">Text line</span>
+                <span class="cv"></span>
+                <span class="cn">typed chat with the booth</span>
+              </button>
+              <button type="button" class="tile" id="tileChat">
+                <span class="tk">Chats</span><span class="tv">—</span><span class="tn"></span>
+              </button>
+            </div>
           </div>
           <!-- The Live-on-air cluster (operator's ask): the phone-in's two
                doors as quick kills in the Lines grammar, and the pull
@@ -1180,15 +1186,17 @@
 
           <div class="olshelfband">
             <div class="olshelfhead">
-              <span class="olmicro">Your shelf of subjects</span>
+              <span class="olmicro">Your shelf of topics</span>
               <span class="olshelfcount" id="olShelfCount"></span>
               <span class="olspacer"></span>
-              <button type="button" class="olbtn olghost" id="olAddFocus">+ Add a subject</button>
+              <button type="button" class="olbtn olghost" id="olAddFocus">+ Add a topic</button>
             </div>
+            <!-- No "who asks" column: assignment lives in the edit sheet, so
+                 one topic can name SEVERAL DJs rather than the one a select
+                 could hold (operator, 2026-08-22). -->
             <div class="olcols">
               <span></span>
-              <span>Subject — write what it is about, not the words</span>
-              <span>Who asks</span>
+              <span>Topic &mdash; write what it is about, not the words</span>
               <span class="r">Used</span>
               <span class="r">Last aired</span>
               <span></span>
@@ -1197,11 +1205,39 @@
             <div class="olrowgrid oladd">
               <span class="olgrip" aria-hidden="true">+</span>
               <input type="text" id="olAddText" class="oladdinput" maxlength="400"
-                     placeholder="a subject to put to the audience" aria-label="A new subject" />
-              <select id="olAddWho" class="olwho" aria-label="Who asks"></select>
+                     placeholder="a topic to put to the audience" aria-label="A new topic" />
               <span></span><span></span>
               <div class="olacts"><button type="button" class="olbtn olprimary sm" id="olAddBtn">Add</button></div>
             </div>
+          </div>
+          <!-- The edit sheet. Opened from a row; it is where a topic gets its
+               words and its DJs, and the only place several DJs can be named
+               at once. Closed by Escape, the backdrop, or Done. -->
+          <div class="oledit" id="olEdit" hidden role="dialog" aria-modal="true"
+               aria-label="Edit this topic">
+            <div class="oledbox">
+              <div class="oledhead">
+                <span class="olmicro">Edit topic</span>
+                <span class="olspacer"></span>
+                <button type="button" class="olbtn olmini" id="olEditClose">Done</button>
+              </div>
+              <textarea id="olEditText" rows="3" maxlength="400"
+                        aria-label="What the topic is about"></textarea>
+              <div class="oledwho">
+                <div class="oldjhead">
+                  <span class="oldjtitle">Who can say it</span>
+                  <span class="oldjcount" id="olEditCount"></span>
+                  <span class="olhelp">none picked means any DJ. Pick several and whichever of them is on air can use it.</span>
+                  <button type="button" class="olbtn olmini" id="olEditAll">All</button>
+                  <button type="button" class="olbtn olmini" id="olEditNone">None</button>
+                </div>
+                <div class="oldjgrid" id="olEditGrid"></div>
+              </div>
+              <div class="oledfoot">
+                <button type="button" class="olbtn olquiet" id="olEditDelete">Remove this topic</button>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       </div>

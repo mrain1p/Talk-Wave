@@ -540,7 +540,7 @@ class TestRemindersCannotRunAway(_OnDisk):
         self.assertIsNone(rec["next_reminder_at"])
 
 
-class TestTheShelfIsPerDJAndLeastRecentlyUsed(_OnDisk):
+class TestTheShelfIsPerDJAndRandomlyDrawn(_OnDisk):
     """The shelf replaced a flat list of lines in a settings box.
 
     A single pool made the DJ allowlist do a job it could not do: it said who
@@ -577,14 +577,34 @@ class TestTheShelfIsPerDJAndLeastRecentlyUsed(_OnDisk):
         self.assertEqual(len(premises.for_persona("p2")), 1)
         self.assertEqual(premises.for_persona("p3"), [])
 
-    def test_the_least_recently_used_goes_up_next(self):
+    def test_the_draw_is_random_among_what_is_enabled(self):
+        # Random, not least-recently-used (operator, 2026-08-22): LRU made
+        # the order a queue, and with a shelf of recurring bits you could
+        # tell what was coming — the opposite of what a rotating segment
+        # wants. Asserted as "both come up over many draws" rather than by
+        # seeding the RNG, because the point is that neither is predictable.
         premises.add("first")
         premises.add("second")
-        # Never-used sorts before any date, so a freshly added subject is next
-        # out — what an operator who just typed it expects.
-        self.assertEqual(premises.take_next("p1")["text"], "first")
-        self.assertEqual(premises.take_next("p1")["text"], "second")
-        self.assertEqual(premises.take_next("p1")["text"], "first")
+        seen = {premises.take_next("p1")["text"] for _ in range(40)}
+        self.assertEqual(seen, {"first", "second"})
+
+    def test_a_disabled_topic_is_out_of_the_draw(self):
+        # Still on the shelf, so an operator who is done with one for a while
+        # does not have to delete it and retype it later.
+        keep = premises.add("in the draw")
+        parked = premises.add("parked")
+        premises.update(parked["id"], enabled=False)
+        seen = {premises.take_next("p1")["text"] for _ in range(25)}
+        self.assertEqual(seen, {"in the draw"})
+        self.assertEqual(len(premises.read()), 2)
+        # And absent means enabled, so entries written before the flag
+        # existed are not silently dropped out.
+        items = premises.read()
+        for i in items:
+            i.pop("enabled", None)
+        premises._write(items)
+        self.assertEqual(len(premises.for_persona("p1")), 2)
+        self.assertTrue(keep["id"])
 
     def test_using_one_is_counted(self):
         premises.add("counted")
@@ -1125,15 +1145,19 @@ class TestOpenLinesReachesThePanel(unittest.TestCase):
                               "no control in panel.html — it would save and "
                               "be invisible")
 
-    def test_it_is_its_own_page_between_on_air_and_players(self):
-        # Operator's call: On air answers "may a caller reach the
-        # broadcast"; this answers "what is the station asking them".
+    def test_it_is_its_own_page_after_players(self):
+        # Its own page: On air answers "may a caller reach the broadcast";
+        # this answers "what is the station asking them". Last of the set-up
+        # pages and before Diagnostics (operator, 2026-08-22), and the TAB
+        # says "Segments" — a tab is a place; the section heading inside it
+        # is the thing.
         groups = {g[0]: g for g in settings_store.GROUPS}
         self.assertIn("openlines", groups)
         self.assertEqual(groups["openlines"][1], "openlines")
         pages = [s[0] for s in settings_store.SUPERGROUPS]
-        self.assertEqual(pages[pages.index("air") + 1], "openlines")
-        self.assertEqual(pages[pages.index("openlines") + 1], "card")
+        self.assertEqual(pages[pages.index("card") + 1], "openlines")
+        names = {s[0]: s[1] for s in settings_store.SUPERGROUPS}
+        self.assertEqual(names["openlines"], "Segments")
 
     def test_the_buttons_talk_to_routes_that_exist(self):
         from tests.support import REPO

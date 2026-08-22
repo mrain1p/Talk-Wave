@@ -1,13 +1,15 @@
-"""The operator's own shelf of subjects, each aimed at whichever DJs suit it.
+"""The operator's own shelf of topics, each aimed at whichever DJs suit it.
 
 A store rather than a setting, for the same reason the voicemail greetings are
-one: each entry carries per-persona assignment, and a settings field is a flat
-string. Lives beside the other state in data/, written atomically, read fresh.
+one: each entry carries per-persona assignment and an enabled flag, and a
+settings field is a flat string. Lives beside the other state in data/,
+written atomically, read fresh.
 
-Selection is least-recently-used among the ones this DJ may use, not a rotating
-index. An index cannot survive entries being added or deleted in the middle of
-a list, and "why has it not used the third one yet" is a question nobody should
-have to answer.
+A topic is in the draw when it is ENABLED and this DJ may use it — its own or
+unassigned — and the pick among those is RANDOM. It was least-recently-used
+first, which made the order a queue: with a shelf of recurring bits you could
+tell what was coming, which is the opposite of what a rotating segment wants.
+The use count and last-aired are still kept, they just no longer decide.
 """
 
 from __future__ import annotations
@@ -111,6 +113,10 @@ def add(text: str, personas: list | None = None,
         "used": 0,
         "last_used": "",
         "added": _now(),
+        # Disabled topics stay on the shelf and out of the draw: an operator
+        # who is done with one for a while should not have to delete it and
+        # retype it later.
+        "enabled": True,
         # A BIT rather than a subject: resolved into tonight's specific
         # instance before it airs, instead of being read out as a label.
         "format": bool(is_format),
@@ -122,7 +128,7 @@ def add(text: str, personas: list | None = None,
 
 
 def update(premise_id: str, text: str | None = None,
-           personas: list | None = None) -> dict:
+           personas: list | None = None, enabled: bool | None = None) -> dict:
     items = read()
     for item in items:
         if str(item.get("id")) != str(premise_id):
@@ -133,6 +139,8 @@ def update(premise_id: str, text: str | None = None,
                 item["text"] = cleaned
         if personas is not None:
             item["personas"] = [str(p) for p in personas if str(p).strip()]
+        if enabled is not None:
+            item["enabled"] = bool(enabled)
         _write(items)
         return item
     return {}
@@ -148,10 +156,15 @@ def remove(premise_id: str) -> bool:
 
 
 def for_persona(persona_id: str) -> list[dict]:
-    """The ones this DJ may use — its own, plus the unassigned."""
+    """The ones this DJ may use — its own, plus the unassigned. Disabled
+    topics are never in the draw."""
     pid = str(persona_id or "")
     out = []
     for item in read():
+        # Absent means enabled: entries written before the flag existed are
+        # not silently dropped out of the draw.
+        if item.get("enabled") is False:
+            continue
         who = item.get("personas") or []
         if not who or pid in [str(p) for p in who]:
             out.append(item)
@@ -175,17 +188,18 @@ def take_one(premise_id: str) -> dict:
 
 
 def take_next(persona_id: str) -> dict:
-    """The least recently used subject this DJ may put up, and mark it used.
+    """One of the topics this DJ may use, AT RANDOM, marked used.
 
-    Never-used entries come first (blank `last_used` sorts before any date), so
-    a freshly added premise is the next one out — which is what an operator who
-    just typed it expects.
+    Random rather than least-recently-used (operator, 2026-08-22). LRU made
+    the order a queue: with a shelf of recurring bits you could tell what was
+    coming next, which is the opposite of what a rotating segment wants. The
+    use count and last-aired are still kept — they are worth reading — they
+    just no longer decide.
     """
     mine = for_persona(persona_id)
     if not mine:
         return {}
-    chosen = min(mine, key=lambda i: (str(i.get("last_used") or ""),
-                                      int(i.get("used") or 0)))
+    chosen = secrets.choice(mine)
     items = read()
     for item in items:
         if str(item.get("id")) == str(chosen.get("id")):

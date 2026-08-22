@@ -1041,8 +1041,12 @@ SUPERGROUPS = [
     # Page id and section group id are both "openlines", which Voicemail
     # already does — the pair that must not collide is a group id against
     # ANOTHER group's page, the way "onair" would have.
-    ("openlines", "Open Lines",           "The subject the station is putting to its listeners."),
+    # Named "Segments" on the picker and placed after Players (operator, 
+    # 2026-08-22): the tab is a place, and the place is the last thing you
+    # set up before Diagnostics. The section heading inside it stays "Open
+    # Lines Segment", which is the thing rather than the place.
     ("card",      "Players",              "What a caller sees — here, and on somebody else's page."),
+    ("openlines", "Segments",             "The topics the station puts to its listeners."),
 ]
 
 # (id, supergroup, title, blurb). Order within a supergroup is the order here.
@@ -2336,7 +2340,7 @@ RANDOM_PERSONA = "__random__"
 STATIC_CHOICES = {
     "open_lines_source": [
         ("dj", "The DJ decides — invents a topic from tonight's show"),
-        ("shelf", "Off the shelf — the subjects you wrote below"),
+        ("shelf", "Off the shelf — the topics you wrote below"),
         ("quiz", "A quiz — the DJ sets a question it can mark"),
     ],
     "chat_greeting_mode": [

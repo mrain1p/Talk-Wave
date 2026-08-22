@@ -2961,27 +2961,6 @@
     return p ? (p.name || p.id) : id;
   }
 
-  function olWhoSelect(item) {
-    const sel = document.createElement('select');
-    sel.className = 'olwho';
-    const any = document.createElement('option');
-    any.value = '';
-    any.textContent = 'Any DJ';
-    sel.appendChild(any);
-    for (const p of olRoster) {
-      const o = document.createElement('option');
-      o.value = p.id;
-      o.textContent = p.name || p.id;
-      sel.appendChild(o);
-    }
-    const who = (item.personas || [])[0] || '';
-    sel.value = who;
-    sel.dataset.set = who ? '1' : '';
-    sel.onchange = () => olSave('/open-lines/premises/' + encodeURIComponent(item.id),
-                               { personas: sel.value ? [sel.value] : [] });
-    return sel;
-  }
-
   function olWhen(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -3003,15 +2982,18 @@
     return sorted[0].id;
   }
 
+  // The shelf. Five columns: grip, topic, used, last aired, actions. "Who
+  // asks" is not among them — assignment lives in the edit sheet, where a
+  // topic can name SEVERAL DJs rather than the one a table select could hold.
   function paintOpenLinesShelf() {
     const wrap = $('olShelfRows');
     if (!wrap) return;
     wrap.innerHTML = '';
-    const nextUp = olNextUpId();
 
     for (const item of olShelf) {
+      const on = item.enabled !== false;   // absent means enabled
       const row = document.createElement('div');
-      row.className = 'olrowgrid' + (item.id === nextUp ? ' next' : '');
+      row.className = 'olrowgrid' + (on ? '' : ' off');
 
       const grip = document.createElement('span');
       grip.className = 'olgrip';
@@ -3025,6 +3007,7 @@
       line.style.display = 'flex';
       line.style.alignItems = 'baseline';
       line.style.gap = '8px';
+      line.style.flexWrap = 'wrap';
       const text = document.createElement('span');
       text.className = 'olsubjtext';
       text.textContent = item.text;          // full text, never truncated
@@ -3035,16 +3018,19 @@
         chip.textContent = 'built in';
         line.appendChild(chip);
       }
-      subj.appendChild(line);
-      if (item.id === nextUp) {
-        const up = document.createElement('span');
-        up.className = 'olnextup';
-        up.textContent = 'next up when a line opens';
-        subj.appendChild(up);
+      // Who it is for, as words rather than a control — the control is in the
+      // sheet. Silent when it is open to everyone, which is most of them.
+      const who = (item.personas || []).map(olWhoName).filter(Boolean);
+      if (who.length) {
+        const chip = document.createElement('span');
+        chip.className = 'olbuiltin';
+        chip.textContent = who.length > 2
+          ? who.length + ' DJs' : who.join(', ');
+        chip.title = who.join(', ');
+        line.appendChild(chip);
       }
+      subj.appendChild(line);
       row.appendChild(subj);
-
-      row.appendChild(olWhoSelect(item));
 
       const used = document.createElement('span');
       used.className = 'olused' + (item.used ? '' : ' never');
@@ -3059,54 +3045,137 @@
 
       const acts = document.createElement('div');
       acts.className = 'olacts';
+
       const air = document.createElement('button');
       air.type = 'button';
       air.className = 'olbtn air';
       air.textContent = 'Air it';
       air.onclick = () => olOpen({ premise_id: item.id }, air);
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'olbtn x';
-      del.textContent = '✕';
-      del.setAttribute('aria-label', 'Remove this subject');
-      del.onclick = () => {
-        del.disabled = true;
-        olSave('/open-lines/premises/' + encodeURIComponent(item.id), null, 'DELETE');
-      };
       acts.appendChild(air);
-      acts.appendChild(del);
+
+      // Enable/disable rather than delete: a topic you are done with for a
+      // while should not have to be retyped later. Removal is in the sheet.
+      const en = document.createElement('button');
+      en.type = 'button';
+      en.className = 'olbtn' + (on ? ' on' : '');
+      en.textContent = on ? 'Enabled' : 'Enable';
+      en.setAttribute('aria-pressed', String(on));
+      en.onclick = () => olSave('/open-lines/premises/' + encodeURIComponent(item.id),
+                                { enabled: !on });
+      acts.appendChild(en);
+
+      const ed = document.createElement('button');
+      ed.type = 'button';
+      ed.className = 'olbtn';
+      ed.textContent = 'Edit';
+      ed.onclick = () => olEditOpen(item);
+      acts.appendChild(ed);
+
       row.appendChild(acts);
 
-      // Narrow only: what the two folded columns were saying.
       const meta = document.createElement('span');
       meta.className = 'olmeta';
       meta.textContent = (item.used ? 'used ' + item.used : 'never used')
-        + (when ? ' · ' + when : '');
+        + (when ? ' · ' + when : '') + (on ? '' : ' · off');
       row.appendChild(meta);
 
       wrap.appendChild(row);
     }
 
     const mine = olShelf.filter((i) => !i.starter).length;
-    const built = olShelf.length - mine;
+    const live = olShelf.filter((i) => i.enabled !== false).length;
     const bits = [olShelf.length];
-    if (olShelf.length) bits.push(mine + ' yours, ' + built + ' built in');
-    bits.push('least recently used goes up next');
+    if (olShelf.length) {
+      bits.push(mine + ' yours, ' + (olShelf.length - mine) + ' built in');
+      bits.push(live + ' in the draw');
+    }
+    bits.push('one of them at random');
     if ($('olShelfCount')) $('olShelfCount').textContent = bits.join(' · ');
     if ($('olStatShelf')) {
       $('olStatShelf').textContent = olShelf.length
-        + (olShelf.length === 1 ? ' subject' : ' subjects');
+        + (olShelf.length === 1 ? ' topic' : ' topics');
     }
+  }
 
-    const who = $('olAddWho');
-    if (who && who.options.length <= 1) {
-      for (const p of olRoster) {
-        const o = document.createElement('option');
-        o.value = p.id;
-        o.textContent = p.name || p.id;
-        who.appendChild(o);
-      }
+  // --- the edit sheet ------------------------------------------------------
+  let olEditing = null;
+
+  function olEditPaintWho() {
+    const grid = $('olEditGrid');
+    const count = $('olEditCount');
+    if (!grid || !olEditing) return;
+    const chosen = new Set(olEditing.personas || []);
+    grid.innerHTML = '';
+    for (const p of olRoster) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'olbtn';
+      const on = chosen.has(p.id);
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = (on ? '✓ ' : '') + (p.name || p.id);
+      b.onclick = () => {
+        const next = new Set(olEditing.personas || []);
+        if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+        olEditing.personas = [...next];
+        olEditPaintWho();
+      };
+      grid.appendChild(b);
     }
+    if (count) {
+      count.textContent = chosen.size
+        ? chosen.size + ' of ' + olRoster.length + ' picked' : 'any DJ';
+    }
+  }
+
+  function olEditOpen(item) {
+    // A copy: nothing is written until Done, so Escape really does back out.
+    olEditing = { id: item.id, text: item.text, personas: [...(item.personas || [])] };
+    $('olEditText').value = item.text;
+    olEditPaintWho();
+    $('olEdit').hidden = false;
+    $('olEditText').focus();
+  }
+
+  async function olEditSaveAndClose() {
+    if (!olEditing) { $('olEdit').hidden = true; return; }
+    const text = String($('olEditText').value || '').trim();
+    const id = olEditing.id;
+    const personas = olEditing.personas;
+    olEditing = null;
+    $('olEdit').hidden = true;
+    if (text) {
+      await olSave('/open-lines/premises/' + encodeURIComponent(id),
+                   { text, personas });
+    }
+  }
+
+  if ($('olEdit')) {
+    $('olEditClose').onclick = olEditSaveAndClose;
+    $('olEditAll').onclick = () => {
+      if (!olEditing) return;
+      olEditing.personas = olRoster.map((p) => p.id);
+      olEditPaintWho();
+    };
+    $('olEditNone').onclick = () => {
+      if (!olEditing) return;
+      olEditing.personas = [];
+      olEditPaintWho();
+    };
+    $('olEditDelete').onclick = async () => {
+      if (!olEditing) return;
+      const id = olEditing.id;
+      olEditing = null;
+      $('olEdit').hidden = true;
+      await olSave('/open-lines/premises/' + encodeURIComponent(id), null, 'DELETE');
+    };
+    // The backdrop, but not the box: a click that started inside must not
+    // close it on the way out.
+    $('olEdit').onmousedown = (e) => {
+      if (e.target === $('olEdit')) olEditSaveAndClose();
+    };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('olEdit').hidden) olEditSaveAndClose();
+    });
   }
 
   async function olSave(path, body, method) {
@@ -3143,10 +3212,11 @@
       const box = $('olAddText');
       const text = String(box.value || '').trim();
       if (!text) { box.focus(); return; }
-      const who = String(($('olAddWho') || {}).value || '');
       $('olAddBtn').disabled = true;
-      const d = await olSave('/open-lines/premises',
-                             { text, personas: who ? [who] : [] });
+      // Added open to everyone; the edit sheet is where it gets its DJs. The
+      // add row used to carry a single-DJ select that defaulted to whoever
+      // was first in the roster, so a new topic silently belonged to Dalia.
+      const d = await olSave('/open-lines/premises', { text, personas: [] });
       if (d.ok) box.value = '';
       $('olAddBtn').disabled = false;
       box.focus();                       // keep focus for a second entry
@@ -4696,6 +4766,13 @@
       // section, and a paragraph of schema help dropped into that bar would
       // push every section below it down the page. It has its own line there.
       if (anchor.closest('.dash')) return;
+      // Same argument for the Open Lines section: its rows carry their own
+      // short help ON the line, from the design. Letting the schema drop its
+      // longer copy in as well printed every explanation twice — the
+      // operator's word for the result was "way too much text", and they
+      // were right. The schema help is still what the finder searches; it
+      // builds that from the meta, not from the DOM.
+      if (anchor.closest('.olsec')) return;
       // A .row is label + field, and the field is a dropdown or a box holding
       // a number — so the right two thirds of every one of those rows was
       // empty, with the explanation on a line of its own underneath. Put the

@@ -22,6 +22,7 @@ Everything lives in the panel behind the gear, and changes apply to the **next c
 | **Texts** | The typed line's clocks, ceilings and opening behaviour |
 | **On air** | The two doors to the broadcast, and ducking |
 | **Players** | Everything the card shows, per surface — page and embed |
+| **Segments** | The Open Lines segment: what airs, how often, which DJs, and the shelf of topics |
 | **Diagnostics** | Pipeline check, speed test, recent calls, server logs |
 
 ## How the panel is laid out
@@ -292,7 +293,7 @@ Overlap protection: the call DJ and the on-air DJ are one voice.
 
 ## Open Lines
 
-### Open Lines Segment
+### Segments
 
 The booth reaching out instead of in: the DJ puts a subject to the audience on the broadcast, then knows what it asked when somebody arrives on any of the three doors. Full behaviour on [the Open Lines page](open-lines.md).
 
@@ -301,7 +302,7 @@ The booth reaching out instead of in: the DJ puts a subject to the audience on t
 | Setting | What it decides |
 |---|---|
 | **Where the topic comes from** | *The DJ decides* invents one from tonight's show — who is on air, the show card, the episode, what has played and been said. *Off the shelf* takes the next one from your own list below. *A quiz* has the DJ set a question **and its answer** before anything airs, about its own show rather than general trivia, so it can genuinely mark a caller right or wrong |
-| **Your shelf of subjects** | Add with **+ Add**; aim each one at particular DJs with the picker on its row, or leave it open to all of them. The least recently used goes up next, so a subject you just typed is the next one out. Write the SUBJECT, not the words: the DJ says it in its own voice |
+| **Your shelf of topics** | Add with **+ Add a topic**; a new one is open to every DJ. Each row carries **Air it**, **Enable** and **Edit** — Edit opens a sheet where you write the words and pick which DJs may say it, several if you like. Disable parks a topic without deleting it. The draw is **random** among the enabled topics whichever DJ is on may use |
 | **Where to reach you, said on air** | Read out with the invitation, exactly as typed — so write it the way it should sound. **Left blank it falls back to where this deployment actually answers** (from `LIVEKIT_PUBLIC_URL`), so you should not have to type an address Talk Wave already knows, and the two cannot drift apart. It only stays silent when that address is a bare IP or localhost, which is nothing a DJ can usefully read out |
 | **How long a line stays open** | Then the DJ closes it on air, in character. Default 60 minutes — but **never past the end of the DJ's own programme**, because the show changing ends the line anyway and a countdown promising more was promising time the DJ did not have. In the last few minutes of a show it is not shortened at all: cutting a line that fine would air its invitation and its sign-off back to back |
 | **Remind every** / **Most reminders per topic** | The DJ raises the subject again mid-window. The cap is the one that protects the broadcast: a long window with a short interval is how a station asks the same question nine times. 0 on either = no reminders |
