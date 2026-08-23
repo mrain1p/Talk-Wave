@@ -3012,12 +3012,13 @@
       text.className = 'olsubjtext';
       text.textContent = item.text;          // full text, never truncated
       line.appendChild(text);
-      if (item.starter) {
-        const chip = document.createElement('span');
-        chip.className = 'olbuiltin';
-        chip.textContent = 'built in';
-        line.appendChild(chip);
-      }
+      // Authorship, both ways. "built in" alone left the operator's own rows
+      // unmarked, so a shelf of fourteen read as one undifferentiated list and
+      // the only way to tell what you wrote was to remember writing it.
+      const chip = document.createElement('span');
+      chip.className = item.starter ? 'olbuiltin' : 'olbuiltin olmine';
+      chip.textContent = item.starter ? 'built in' : 'yours';
+      line.appendChild(chip);
       // Who it is for, as words rather than a control — the control is in the
       // sheet. Silent when it is open to everyone, which is most of them.
       const who = (item.personas || []).map(olWhoName).filter(Boolean);
@@ -3217,9 +3218,14 @@
       // add row used to carry a single-DJ select that defaulted to whoever
       // was first in the roster, so a new topic silently belonged to Dalia.
       const d = await olSave('/open-lines/premises', { text, personas: [] });
-      if (d.ok) box.value = '';
       $('olAddBtn').disabled = false;
-      box.focus();                       // keep focus for a second entry
+      if (!d.ok) { box.focus(); return; }
+      box.value = '';
+      // Straight into the sheet on the row just made. Adding used to leave it
+      // open to every DJ with no sign that aiming it was even possible — the
+      // picker lives in the sheet, and nothing walked you there. Falls back to
+      // keeping focus for a second entry if the response carried no row.
+      if (d.item) olEditOpen(d.item); else box.focus();
     };
     $('olAddText').onkeydown = (e) => {
       if (e.key === 'Enter') { e.preventDefault(); $('olAddBtn').click(); }

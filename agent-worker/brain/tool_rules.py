@@ -19,6 +19,59 @@ to the ceiling.
 from __future__ import annotations
 
 
+# The capabilities a caller ASKS FOR by name, paired with the words the DJ
+# uses when the switch is off. Module-level so the guard in
+# TestNothingAskableGoesUnsaid reads the SAME list the prompt does —
+# hardcoding it twice is how allow_album_queue came to have a tool and no
+# sentence, which is what let a DJ invent a station fault instead.
+OFF_LIST: tuple[tuple[str, str], ...] = (
+        ("allow_requests", "take song requests"),
+        ("allow_announcements", "put shoutouts, dedications or messages on air"),
+        ("allow_favorite", "add hearts or likes to tracks"),
+        ("allow_skip_track", "skip what's playing"),
+        ("allow_skills", "run segments"),
+        # Said out loud when off for the same reason the shoutout is: a caller
+        # asking "never play this again" and hearing "done, it's gone" from a
+        # DJ with no such tool is the exact mimed-action failure this list
+        # exists to stop, and it is the one they would never think to check.
+        # The genre lock is deliberately NOT here. This line is paid for in
+        # every prompt on every call, and no released station has the control
+        # at all — so it would be a permanent sentence about a capability
+        # nobody can turn on. A caller who asks gets the refusal from the tool
+        # bullet's absence and the no-miming floor, which is what the list is
+        # for; revisit when upstream #1404 ships.
+        ("allow_never_play", "ban a record from the station"),
+        # 2026-08-22: album_queue is `guest`, an OPEN caller asked for a mix,
+        # and the DJ — no tool, no sentence — invented "it's been a bit
+        # stubborn with the queue". Nothing was stubborn; a setting withheld
+        # it. Exactly the mimed-absence this list exists to stop.
+        ("allow_album_queue", "put a whole album or a mix in"),
+        # Symmetry with the heart above: hearted for but not un-hearted for,
+        # told neither, gets the un-heart mimed.
+        ("allow_unfavorite", "take a heart back off a track"),
+        # What is deliberately NOT here, and why, is OFF_LIST_EXEMPT below —
+        # data rather than a comment, so the guard can read it.
+)
+
+#: Gates with a tool but deliberately NO off-line, and why — read by
+#: TestNothingAskableGoesUnsaid so an omission has to be a decision. A new
+#: gate belongs in OFF_LIST or here; landing in neither is the bug that let a
+#: DJ invent a station fault about a mix it was never told it couldn't make.
+OFF_LIST_EXEMPT: dict[str, str] = {
+    "allow_cancel_queue": "cancel_rule() states it outright when off",
+    "allow_dj_segment": '"run segments" already covers it above',
+    "allow_exact_queue": "a mechanism, not an ask — the caller says 'play X' "
+                         "and never sees which path it took",
+    "allow_library_search": "finding_rule reshapes itself around what is on, "
+                            "and requests still work blind",
+    "allow_sound_search": "same — finding_rule adapts",
+    "allow_takeover": "takeover_bullet() says it in both directions",
+    "allow_genre_lock": "no released station has the control at all; revisit "
+                        "when upstream #1404 ships",
+    "single_lookup_tool": "a MODE, not a capability",
+}
+
+
 def takeover_bullet(cfg: dict) -> str:
     """The show-change ask, told the truth about the current settings.
 
@@ -531,24 +584,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
     # still told a caller "that shoutout's in the air now" (the drill's
     # refusal sweep, same day as the show-change incident). The things the
     # line can't do tonight are said out loud, with the lie shown by example.
-    off = [phrase for gate, phrase in (
-        ("allow_requests", "take song requests"),
-        ("allow_announcements", "put shoutouts, dedications or messages on air"),
-        ("allow_favorite", "add hearts or likes to tracks"),
-        ("allow_skip_track", "skip what's playing"),
-        ("allow_skills", "run segments"),
-        # Said out loud when off for the same reason the shoutout is: a caller
-        # asking "never play this again" and hearing "done, it's gone" from a
-        # DJ with no such tool is the exact mimed-action failure this list
-        # exists to stop, and it is the one they would never think to check.
-        # The genre lock is deliberately NOT here. This line is paid for in
-        # every prompt on every call, and no released station has the control
-        # at all — so it would be a permanent sentence about a capability
-        # nobody can turn on. A caller who asks gets the refusal from the tool
-        # bullet's absence and the no-miming floor, which is what the list is
-        # for; revisit when upstream #1404 ships.
-        ("allow_never_play", "ban a record from the station"),
-    ) if not cfg.get(gate)]
+    off = [phrase for gate, phrase in OFF_LIST if not cfg.get(gate)]
     if off and on("tool_off"):
         parts.append(f"""\
 - **Not on this line tonight:** {"; ".join(off)}. Asked for one of these,

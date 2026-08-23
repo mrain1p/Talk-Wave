@@ -81,7 +81,37 @@ def read() -> list[dict]:
         log.warning("unreadable premise shelf, treating as empty: %s", e)
         return []
     items = data.get("items") if isinstance(data, dict) else None
-    return [i for i in (items or []) if isinstance(i, dict)]
+    return _mark_shipped([i for i in (items or []) if isinstance(i, dict)])
+
+
+def _mark_shipped(items: list[dict]) -> list[dict]:
+    """Backfill `starter` on rows this repo ships the text of.
+
+    The panel chips a row "built in" from this flag, and the operator found
+    their shelf reading "11 yours, 3 built in" when all fourteen came out of
+    the box: the recurring BITS were added to `_seed` after their shelf had
+    already been written, so those rows carry no flag and read as the
+    operator's own work. Miscounting authorship is not cosmetic here — a
+    "built in" row is one they can expect back if they clear the shelf, and a
+    row of theirs is not.
+
+    Matched on exact shipped TEXT, so it can only ever recognise a string this
+    repo authored; anything the operator wrote, including an edit of a
+    starter, stays theirs. Read-only — the file is rewritten on the next
+    ordinary write, and a stale file simply gets marked again on the next read.
+    """
+    from openlines.quiz import FORMATS
+
+    shipped = {t: False for t in STARTERS}
+    shipped.update({f: True for f in FORMATS})
+    for item in items:
+        if item.get("starter"):
+            continue
+        is_format = shipped.get(str(item.get("text") or "").strip())
+        if is_format is not None:
+            item["starter"] = True
+            item.setdefault("format", is_format)
+    return items
 
 
 def _write(items: list[dict]) -> None:

@@ -2043,13 +2043,15 @@ SCHEMA: dict[str, dict] = {
              "below, which is the choice to make if you want to know in "
              "advance what the station will ask."),
     "open_lines_address": dict(group="openlines", kind="text",
-        label="Where to reach you, said on air", alias="url phone number line",
+        label="Call-in line", alias="url phone number address reach where",
         placeholder="leave blank to name no address",
         needs=("open_lines_enabled", True),
-        help="Read out with the invitation. Leave it blank when your audience "
-             "is already looking at the card — a spoken address is for people "
-             "hearing the stream somewhere else. Whatever you put here is what "
-             "the DJ says, so write it the way it should sound."),
+        help="Set this and the DJ DIRECTS listeners here on air — it reads the "
+             "address out with the invitation, so anyone hearing the stream "
+             "knows where to go. Leave it blank when your audience is already "
+             "looking at the card and the DJ invites them in without naming a "
+             "destination. Whatever you write is spoken aloud, so write it the "
+             "way it should sound."),
     "open_lines_minutes": dict(group="openlines", kind="number",
         label="How long a line stays open (min)", alias="duration window",
         needs=("open_lines_enabled", True),
@@ -2067,8 +2069,8 @@ SCHEMA: dict[str, dict] = {
              "with a short interval is how a station ends up asking the same "
              "question nine times. 0 = no reminders."),
     "open_lines_followup": dict(group="openlines", kind="switch",
-        label="Report back on air when somebody answers",
-        alias="follow up feedback response tell",
+        label="Air a follow-up after each conversation",
+        alias="follow up feedback response tell report back answers",
         needs=("open_lines_enabled", True),
         help="When a conversation about the topic ends, the DJ goes back on "
              "air and says what came of it — the position taken, never a name "
@@ -2078,8 +2080,8 @@ SCHEMA: dict[str, dict] = {
              "puts more of the DJ on your broadcast. At most three per topic, "
              "and a request is not a contribution — those air nothing."),
     "open_lines_guest_trigger": dict(group="openlines", kind="switch",
-        label="Let signed-in listeners start one",
-        alias="guest player ribbon trigger",
+        label="Let signed-in listeners open a line",
+        alias="guest player ribbon trigger start",
         needs=("open_lines_enabled", True),
         help="Puts the segment button in the player's own ribbon for anyone "
              "holding a guest code, not just you. Off by default and worth "

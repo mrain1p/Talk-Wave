@@ -134,10 +134,52 @@ class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
             bare = rules({})
             self.assertIn("Not on this line tonight", bare)
             self.assertIn("shoutouts", bare)
-            everything = rules({g: True for g in (
-                "allow_requests", "allow_announcements", "allow_favorite",
-                "allow_skip_track", "allow_skills", "allow_never_play")})
+            # Read from OFF_LIST rather than repeated here: this list was
+            # hardcoded in two places and they drifted, which is how
+            # allow_album_queue ended up with a tool and no sentence.
+            from brain.tool_rules import OFF_LIST
+
+            everything = rules({g: True for g, _ in OFF_LIST})
             self.assertNotIn("Not on this line tonight", everything)
+
+    def test_nothing_askable_goes_unsaid(self):
+        """A gate with a tool is named when it is off, or exempt with a reason.
+
+        The bug this exists for, in the operator's own chat (2026-08-22):
+        `allow_album_queue` is `guest`, an OPEN-tier caller asked for a mix,
+        the tool was never built, the off-list never mentioned it — and the DJ,
+        with no tool and no sentence, invented a station fault ("it's been a
+        bit stubborn with the queue"). Nothing was stubborn. Landing in
+        neither list must be impossible to do by accident.
+        """
+        from brain.tool_rules import OFF_LIST, OFF_LIST_EXEMPT
+        from call.tools.registry import TOOLS, NEVER, READ
+
+        named = {g for g, _ in OFF_LIST}
+        gates = {t.gate for t in TOOLS if t.gate not in (NEVER, READ)}
+        unaccounted = sorted(gates - named - set(OFF_LIST_EXEMPT))
+        self.assertEqual(
+            unaccounted, [],
+            "these gates build a tool a caller can ask for, and when the gate "
+            "is OFF the DJ is told nothing about it — so it has no tool and no "
+            "sentence, which is when it invents one. Add to OFF_LIST, or to "
+            f"OFF_LIST_EXEMPT with the reason: {unaccounted}")
+
+    def test_no_gate_is_in_both_lists(self):
+        from brain.tool_rules import OFF_LIST, OFF_LIST_EXEMPT
+
+        both = sorted({g for g, _ in OFF_LIST} & set(OFF_LIST_EXEMPT))
+        self.assertEqual(both, [], f"named and excused at once: {both}")
+
+    def test_every_exemption_names_a_real_gate(self):
+        # An exemption for a gate that no longer exists is a stale excuse that
+        # would silently cover a future gate of the same name.
+        from brain.tool_rules import OFF_LIST_EXEMPT
+        from call.tools.registry import TOOLS
+
+        real = {t.gate for t in TOOLS} | {"single_lookup_tool"}
+        stale = sorted(set(OFF_LIST_EXEMPT) - real)
+        self.assertEqual(stale, [], f"exemption for a gate nothing builds: {stale}")
 
 
 class TestThePromptTeachesTheDJHowToActuallyFindARecord(unittest.TestCase):

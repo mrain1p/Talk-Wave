@@ -3107,10 +3107,17 @@
   .body .olrow .olnum:disabled { color: var(--dimmer); }
   .body .olrow .oltext, .body .olrow .olselect {
     flex: 0 0 260px; font: 12.5px inherit; padding: 7px 10px;
-    border-radius: 7px; border: 1px solid var(--edge);
+    border-radius: 0; border: 1px solid var(--edge);
     background: var(--pine); color: var(--text);
   }
-  .body .olrow .olselect { padding: 7px 9px; }
+  /* A select is as wide as its longest OPTION needs, not as wide as a text
+     field. Pinned at 260px, "The DJ decides — invents a topic from tonight's
+     show" was cut to "...invents a topic from t" and the operator could not
+     read what they had chosen. Grows to fit, still capped so it cannot run
+     the row off the panel. */
+  .body .olrow .olselect {
+    padding: 7px 9px; flex: 0 1 auto; min-width: 260px; max-width: 100%;
+  }
   .olcheck {
     flex: 0 0 260px; display: flex; align-items: center; gap: 8px;
     font-size: 12.5px; color: var(--text); margin: 0; cursor: pointer;
@@ -3215,11 +3222,14 @@
   .olbuiltin {
     font: 700 8.5px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: uppercase; color: var(--dimmer);
-    border: 1px solid var(--edge); border-radius: 4px; padding: 3px 5px;
+    border: 1px solid var(--edge); border-radius: 0; padding: 3px 5px;
     align-self: flex-start; white-space: nowrap;
   }
+  /* The operator's own rows read a shade louder than the shipped ones — the
+     shelf is mostly built in, so "yours" is the exception worth spotting. */
+  .olbuiltin.olmine { color: var(--dim); border-color: var(--line2); }
   .olwho {
-    font: 11.5px var(--font-mono); padding: 4px 8px; border-radius: 6px;
+    font: 11.5px var(--font-mono); padding: 4px 8px; border-radius: 0;
     border: 1px solid var(--edge); background: var(--pine); color: var(--dim);
     justify-self: start; max-width: 124px;
   }
@@ -3229,7 +3239,7 @@
   .ollast { font-size: 11.5px; color: var(--dim); }
   .olacts { display: flex; gap: 6px; justify-content: flex-end; }
   .olsec .olacts button {
-    font: 600 11.5px/1 inherit; padding: 6px 9px; border-radius: 6px;
+    font: 600 11.5px/1 inherit; padding: 6px 9px; border-radius: 0;
     border: 1px solid var(--edge); background: transparent; color: var(--dim);
     cursor: pointer;
   }
@@ -3250,23 +3260,46 @@
     background: color-mix(in srgb, var(--pine) 78%, transparent);
   }
   .oledit[hidden] { display: none; }
+  /* Square, like every other container on this page. It was the one rounded
+     card in a panel of squares, which is what read as "not quite finished". */
   .oledbox {
     width: min(560px, 100%); max-height: 84vh; overflow: auto;
-    display: flex; flex-direction: column; gap: 12px; padding: 16px;
-    border: 1px solid var(--edge); border-radius: 10px; background: var(--panel);
+    display: flex; flex-direction: column; gap: 0; padding: 0;
+    border: 1px solid var(--edge); border-radius: 0; background: var(--panel);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .45);
   }
-  .oledhead { display: flex; align-items: center; gap: 10px; }
+  /* Header, body and footer are BANDS with hairlines between them, the same
+     grammar as a section: the title row stops floating over the textarea and
+     Done stops sharing an edge with the words being edited. */
+  .oledhead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+  }
+  .oledbody { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
   .oledbox textarea {
-    width: 100%; font: 13.5px inherit; line-height: 1.4; padding: 9px 10px;
-    border-radius: 7px; border: 1px solid var(--edge);
+    width: 100%; font: 13.5px inherit; line-height: 1.45; padding: 10px 11px;
+    border-radius: 0; border: 1px solid var(--edge);
     background: var(--pine); color: var(--text); resize: vertical;
   }
+  /* The textarea had no label at all — the header said "Edit topic" and the
+     box said nothing about what belongs in it, which is the same omission the
+     shelf's own column header fixes ("write what it is about, not the words"). */
+  .oledlabel {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+  }
   .oledwho { display: flex; flex-direction: column; gap: 10px; }
-  .oledfoot { display: flex; justify-content: flex-end; }
+  /* The footer carries the one destructive act, held apart from Done at the
+     top — a Remove button beside a Done button is a misclick waiting. */
+  .oledfoot {
+    display: flex; justify-content: flex-start;
+    padding: 12px 16px; border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--pine) 55%, transparent);
+  }
 
   .oladdinput {
     margin-right: 16px; font: 13.5px inherit; padding: 8px 10px;
-    border-radius: 7px; border: 1px dashed var(--edge);
+    border-radius: 0; border: 1px dashed var(--edge);
     background: var(--pine); color: var(--text); min-width: 0;
   }
   .olsec :is(input, select, button):focus-visible {
@@ -4147,6 +4180,18 @@
   /* display:flex beats [hidden] — the calls toolbar ships hidden until its
      records load, and without this it sat empty on the page. */
   .diagbar[hidden] { display: none; }
+  /* Free-text find, sitting with the dropdowns it works alongside. Square and
+     on the panel's own field skin, so it reads as one bar rather than a
+     search box bolted onto a row of buttons. Greedy up to a point: the
+     operator types a song title, not a word. */
+  .diagfind {
+    flex: 1 1 200px; max-width: 320px; min-width: 0;
+    font: inherit; font-size: 11.5px; padding: 6px 9px;
+    border-radius: 0; border: 1px solid var(--line2);
+    background: var(--bg); color: var(--text);
+  }
+  .diagfind::placeholder { color: var(--dimmer); }
+  .diagfind:focus { outline: 1px solid var(--coral); outline-offset: 1px; }
   .diagbar label { font-size: 11.5px; color: var(--dimmer); }
   .diagbar .grow { flex: 1 1 auto; }
   /* All of a diagbar's selects, not just multi-selects — the calls bar's

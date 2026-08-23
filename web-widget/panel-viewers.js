@@ -533,7 +533,15 @@
             && (!filters.kind || row.dataset.kind === filters.kind)
             && (!filters.tier || row.dataset.tier === filters.tier)
             && (!filters.tool || (' ' + (row.dataset.tools || '') + ' ')
-                  .indexOf(' ' + filters.tool + ' ') !== -1);
+                  .indexOf(' ' + filters.tool + ' ') !== -1)
+            // Free text over BOTH sides of the conversation and the tool
+            // receipts — the operator's case is "find the call where someone
+            // asked for that song", and the song name only ever appears in
+            // what was said or in a tool's arguments. Rendered once per row
+            // and kept: callText is the same text Copy hands back, so the
+            // search can never find something the copy would not show.
+            && (!filters.q || (row._hay || (row._hay =
+                  callText(row._call).toLowerCase())).indexOf(filters.q) !== -1);
           row.hidden = !ok;
           if (ok) shown += 1;
         });
@@ -541,6 +549,18 @@
           ? `${calls.length} call${calls.length === 1 ? '' : 's'}`
           : `${shown} of ${calls.length}`;
       };
+
+      // Debounced only by cheapness: the haystack is built once per row and
+      // cached, so typing filters forty records without re-rendering any.
+      const q = $('callSearch');
+      if (q) {
+        q.value = '';
+        filters.q = '';
+        q.oninput = () => {
+          filters.q = String(q.value || '').trim().toLowerCase();
+          apply();
+        };
+      }
 
       const rough = calls.filter((c) => callVerdict(c).cls !== 'pass').length;
       const box = $('callsOnlyBad');

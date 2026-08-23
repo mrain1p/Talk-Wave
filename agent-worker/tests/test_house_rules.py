@@ -829,6 +829,18 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # which is the AGENT half this seam already names. The growth lands
         # entirely on one side of the cut, so it makes the split easier rather
         # than harder. Still owed.
+        # 634 at 0.98.51, when the off-list became DATA (OFF_LIST and
+        # OFF_LIST_EXEMPT) so a guard could read the same list the prompt does
+        # — the fix for a gate that had a tool and no sentence, which let a DJ
+        # invent a station fault about a mix. The seam is visible now and it is
+        # the one the file grew into: the DECLARATIONS at the top (OFF_LIST,
+        # OFF_LIST_EXEMPT, SECTIONS) against the RULE BUILDERS below them, which
+        # meet only by name. Not cut in the change that grew it: the off-list
+        # bug is the thing under test this week and a regression in it should
+        # have one candidate cause, not two. Same deferral call/air.py records.
+        "agent-worker/brain/tool_rules.py": (634, "the declarations at the top "
+                                                  "split from the rule builders "
+                                                  "below them"),
         "agent-worker/call/air.py": (718, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
@@ -938,7 +950,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # has not moved — everything added here is on the CALL side of it — but
         # the debt is now 181 lines over the ceiling and the next thing this
         # file gains should be the split.
-        "web-widget/panel-viewers.js": (781, "the log viewer split from the "
+        # 801: the free-text find over both sides of a conversation (0.98.51) —
+        # the operator's own ask, and it lands in the call viewer's filter
+        # pipeline, which is the half of this file the seam already names.
+        "web-widget/panel-viewers.js": (801, "the log viewer split from the "
                                              "call viewer; they share only "
                                              "Panel.afetch and showResult"),
         # 0.9.122 pushed it over adding per-adapter auth and the {voice}

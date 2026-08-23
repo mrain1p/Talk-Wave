@@ -1221,17 +1221,20 @@
                 <span class="olspacer"></span>
                 <button type="button" class="olbtn olmini" id="olEditClose">Done</button>
               </div>
-              <textarea id="olEditText" rows="3" maxlength="400"
-                        aria-label="What the topic is about"></textarea>
-              <div class="oledwho">
-                <div class="oldjhead">
-                  <span class="oldjtitle">Who can say it</span>
-                  <span class="oldjcount" id="olEditCount"></span>
-                  <span class="olhelp">none picked means any DJ. Pick several and whichever of them is on air can use it.</span>
-                  <button type="button" class="olbtn olmini" id="olEditAll">All</button>
-                  <button type="button" class="olbtn olmini" id="olEditNone">None</button>
+              <div class="oledbody">
+                <label class="oledlabel" for="olEditText">The topic — what it is about, not the words</label>
+                <textarea id="olEditText" rows="3" maxlength="400"
+                          aria-label="What the topic is about"></textarea>
+                <div class="oledwho">
+                  <div class="oldjhead">
+                    <span class="oldjtitle">Who can say it</span>
+                    <span class="oldjcount" id="olEditCount"></span>
+                    <span class="olhelp">none picked means any DJ. Pick several and whichever of them is on air can use it.</span>
+                    <button type="button" class="olbtn olmini" id="olEditAll">All</button>
+                    <button type="button" class="olbtn olmini" id="olEditNone">None</button>
+                  </div>
+                  <div class="oldjgrid" id="olEditGrid"></div>
                 </div>
-                <div class="oldjgrid" id="olEditGrid"></div>
               </div>
               <div class="oledfoot">
                 <button type="button" class="olbtn olquiet" id="olEditDelete">Remove this topic</button>
@@ -2215,6 +2218,9 @@
           <select id="callKind" aria-label="Only one way in" hidden></select>
           <select id="callTier" aria-label="Only one caller tier" hidden></select>
           <select id="callTool" aria-label="Only calls that used a tool" hidden></select>
+          <input type="search" id="callSearch" class="diagfind"
+                 placeholder="find a word — a song, a name, anything said"
+                 aria-label="Find conversations containing this text">
           <span class="grow"></span>
           <span class="tag" id="callCount"></span>
           <!-- Copies the conversations the bar is currently SHOWING, as text. -->
