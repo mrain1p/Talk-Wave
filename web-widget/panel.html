@@ -83,6 +83,47 @@
            alone does not stop them; each vendor honours its own flag.
            panel.js has the second half: a fill that arrives without focus
            is discarded, whoever sent it. -->
+      <!-- The station transport. The operator's longest sittings happen on
+           this page, and the music used to stop at the door: the player lives
+           on the call card, and walking to /settings unloads the document that
+           owns its <audio> element. Nothing can carry a playing element across
+           that navigation, so what crosses is the INTENT — see the handoff note
+           in shared.js — and this tunes back in at the live edge on arrival.
+
+           The SAME stream on the same engine (Callin.playFirstWorking), so the
+           mount fallback, the CORS retry and the mixed-content warning are the
+           ones the card has always had rather than a second copy of them.
+
+           IN the masthead beside the finder, not a band under it (operator's
+           ask, 0.98.54): a strip across the page read as a section of its own,
+           and it is not one — it is a control, and it belongs on the row where
+           the page's other controls live. Bordered for the same reason, and cut
+           to the gear buttons' height so the row is one height throughout.
+
+           That size is the whole budget, and it is fixed: the panel is capped
+           at 1180px, so the widest this row ever gets is the widest it gets.
+           The NOW PLAYING label was the first casualty — 74px that left the
+           record's own name with about a hundred, which is "Moondan…". The pip
+           carries the state and the border carries the identity; the label is
+           on the container for anyone who needs it read aloud.
+
+           Offered on the operator's own two answers, the same pair the card's
+           ribbon asks: a stream URL, and the player switched on. That switch is
+           about whether the STATION has a player, so a settings page that
+           offered one while the card did not would read as the switch being
+           broken.
+
+           Inside the masthead, so .locked hides it along with everything else:
+           music playing behind the login gate would have nothing on screen to
+           stop it with. -->
+      <div class="stationbar" id="stationBar" hidden role="group"
+           aria-label="Station player" title="Now playing">
+        <span class="sbpip" aria-hidden="true"></span>
+        <span class="sbtrack" id="stationBarTrack"></span>
+        <button type="button" class="sbplay" id="stationBarPlay">Play</button>
+        <input type="range" id="stationBarVol" min="0" max="100" value="100"
+               aria-label="Station volume" />
+      </div>
       <input type="search" id="settingsSearch" class="settingsearch"
              name="find-a-setting" placeholder="Find a setting…"
              autocomplete="off" data-1p-ignore data-bwignore
@@ -102,40 +143,6 @@
                 title="Sign this browser out of the panel and the phone">Sign out</button>
       </div>
     </header>
-
-    <!-- The station transport. The operator's longest sittings happen on this
-         page, and the music used to stop at the door: the player lives on the
-         call card, and walking to /settings unloads the document that owns its
-         <audio> element. Nothing can carry a playing element across that, so
-         what crosses is the INTENT — see the handoff note in shared.js — and
-         this tunes back in at the live edge on arrival.
-
-         The SAME stream on the same engine (Callin.playFirstWorking), so the
-         mount fallback, the CORS retry and the mixed-content warning are the
-         ones the card has always had rather than a second copy of them.
-
-         Deliberately not a second player sheet. One line — what is on, whether
-         it is playing, how loud — because the operator opened this page to
-         read settings. The card's deck is the full one.
-
-         Offered on the operator's own two answers, the same pair the card's
-         ribbon asks: a stream URL, and the player switched on. That switch is
-         about whether the STATION has a player, so a settings page that
-         offered one while the card did not would read as the switch being
-         broken.
-
-         A direct child of #panel, so .locked hides it with everything else:
-         music playing behind the login gate would have nothing on screen to
-         stop it with. -->
-    <div class="stationbar" id="stationBar" hidden>
-      <span class="sbpip" aria-hidden="true"></span>
-      <span class="sbk">Now playing</span>
-      <span class="sbtrack" id="stationBarTrack"></span>
-      <button type="button" class="sbplay" id="stationBarPlay">Play</button>
-      <span class="sbnote" aria-hidden="true">&#9834;</span>
-      <input type="range" id="stationBarVol" min="0" max="100" value="100"
-             aria-label="Station volume" />
-    </div>
 
     <!-- The first-run password card retired at 0.10.77 (operator's call):
          the dashboard's NOTIFICATIONS column carries the ask now, with a

@@ -5342,14 +5342,26 @@
      the search box sharing their line (operator-reported, 0.10.78). */
   body.panelpage .masthead .panelbar {
     display: flex; gap: 8px; align-items: center; margin: 0;
-    align-self: center;
+    align-self: center; flex: none;
   }
+  body.panelpage .masthead .gear { white-space: nowrap; }
+  /* The right-hand run — transport, finder, controls — pushed over by the
+     nameplate rather than by an auto margin on the finder, which is where this
+     used to live: an auto margin there would swallow the gap between the
+     transport and the finder and read as two clusters (0.98.54). */
+  /* flex:none on both ends, or the shrink lands on them: four items on one
+     row put "TALK WAVE" on two lines and broke "SIGN OUT" in half. Only the
+     transport and the finder give ground, which is right — they are the two
+     with slack in them. */
+  body.panelpage .masthead .mastname { margin-right: auto; flex: none; }
+  body.panelpage .masttitle { white-space: nowrap; }
   /* The finder rides the masthead, above the coral rule (operator's ask,
      0.10.64) — between the nameplate and the controls, centred on the row.
-     It inherits the panel's input skin; only its place and width are ours. */
+     It inherits the panel's input skin; only its place and width are ours.
+     320 → 240 when the transport joined the row: the panel is capped at
+     1180px, so every pixel this keeps is one the record's name does not get. */
   body.panelpage .masthead .settingsearch {
-    flex: 0 1 320px; min-width: 160px; align-self: center;
-    margin: 0 0 0 auto;
+    flex: 0 1 240px; min-width: 140px; align-self: center; margin: 0;
   }
   /* :not([hidden]) so the sign-out button (hidden until logged in) and the
      call page's corner gears stay hideable — a bare .gear display rule beats
@@ -5367,46 +5379,57 @@
   body.panelpage .dashband { display: none; }
 
   /* --- the station transport ----------------------------------------------
-     Tucked under the masthead's coral rule, because it is masthead furniture
-     rather than a section: one line saying what is on, whether it is playing
-     and how loud, above everything the operator came here to read. The card's
-     deck is the full player; this is the strip that keeps the music from
-     stopping at the door (panel.html says why it exists).
+     A CONTAINED control on the masthead's own row (operator's ask, 0.98.54),
+     not a band across the page: a strip under the rule read as a section, and
+     it is not one. Bordered, and cut to the gear buttons' 34px so the row is
+     one height from the finder to Sign out.
 
      [hidden] is re-asserted because the flex below beats the UA rule, which
      this codebase has now paid for five times. */
   body.panelpage .stationbar {
-    display: flex; align-items: center; gap: 10px;
-    margin: -16px 0 22px; padding: 0 0 10px;
-    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 8px; align-self: center;
+    flex: 0 1 400px; min-width: 170px;
+    height: 34px; padding: 0 8px; box-sizing: border-box;
+    border: 1px solid var(--edge);
   }
   body.panelpage .stationbar[hidden] { display: none; }
   /* Dark until it is actually playing, then the station's own coral — the
-     same read as the player sheet's pip on the card. */
+     same read as the player sheet's pip on the card, and with the label gone
+     it is the only thing carrying that state. */
   body.panelpage .sbpip {
     flex: none; width: 8px; height: 8px; background: var(--sage-dim);
   }
   body.panelpage .stationbar.playing .sbpip { background: var(--coral); }
-  body.panelpage .sbk {
-    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
-    text-transform: uppercase; color: var(--sage);
-  }
-  /* The record's name is a VALUE, so it is body sans against the mono label,
-     and it takes the slack: a long title truncates rather than pushing the
-     transport off the end of the row. */
+  /* The record's name is a VALUE, so body sans, and it takes the slack: a long
+     title truncates rather than pushing the transport off the end of the row. */
   body.panelpage .sbtrack {
     flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   body.panelpage .sbplay {
-    flex: none; height: 26px; padding: 0 12px; cursor: pointer;
+    flex: none; height: 22px; padding: 0 9px; cursor: pointer;
     border: 1px solid var(--edge); background: transparent; color: var(--text);
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 9px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: uppercase;
   }
   body.panelpage .sbplay:hover { background: var(--granite-hi); }
-  body.panelpage .sbnote { flex: none; font-size: 12.5px; color: var(--sage-dim); }
-  body.panelpage #stationBarVol { flex: 0 1 120px; }
+  /* The panel puts a border on every input, which inside an already-bordered
+     control reads as a box in a box. The fader is a bare rail here, the same
+     one the card wears. */
+  body.panelpage #stationBarVol {
+    flex: 0 1 68px; min-width: 44px; border: 0;
+  }
+
+  /* Below this the four of them stop fitting on one line. The transport takes
+     its own row rather than crushing the record's name to three characters —
+     it is the one of the four with something to READ in it. */
+  @media (max-width: 1000px) {
+    body.panelpage .masthead { flex-wrap: wrap; }
+    body.panelpage .masthead .stationbar {
+      order: 3; flex: 1 1 100%; margin: 10px 0 0;
+    }
+    body.panelpage #stationBarVol { flex: 0 1 110px; }
+  }
 
   /* --- the login gate, in the newspaper's own clothes --------------------- */
   body.panelpage .lockcard {
@@ -6028,11 +6051,9 @@
     body.panelpage .masthead .settingsearch {
       order: 3; flex: 1 1 100%; min-width: 0; margin: 8px 0 0;
     }
-    /* The masthead wraps to two rows here, so the transport is no longer
-       tucked under a rule 16px above it. The ♪ goes: on a phone the fader is
-       the only thing that needs to be reachable beside the title. */
-    body.panelpage .stationbar { margin-top: 0; gap: 8px; }
-    body.panelpage .sbnote { display: none; }
+    /* The finder has taken order 3 above, so the transport follows it onto a
+       row of its own rather than sharing one. */
+    body.panelpage .masthead .stationbar { order: 4; margin: 8px 0 0; }
     body.panelpage #stationBarVol { flex: 0 1 84px; }
   }
 
