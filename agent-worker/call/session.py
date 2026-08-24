@@ -658,7 +658,8 @@ class CallSession:
         # reacts to the same conversation_item_added, and the receipt cards
         # for a nudged tool must still land behind the DJ's line.
         promise_guard.attach_promise_guard(session, self.record, self.actions,
-                                           air=self.air, floor=self.floor)
+                                           air=self.air, floor=self.floor,
+                                           asks=self.asks)
         door.attach_door_watch(session, self.door)
         comeback.attach_air_watch(session, self.air)
         floor_mod.attach_floor_watch(session, self.floor)

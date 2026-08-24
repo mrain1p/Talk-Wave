@@ -128,7 +128,7 @@ PROBLEMS = {
 
 
 def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
-             refused: bool = False) -> str:
+             refused: bool = False, owed: bool = True) -> str:
     """Classify a line the DJ said, against what actually ran behind it.
 
     Returns "promise", "claim", or "" for anything that owes nothing. A line carrying both
@@ -181,7 +181,28 @@ def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
             or PROMISES_ACTION.search(text)):
         return "refused"
     if PROMISES_ACTION.search(text):
-        return "" if tools_ran else "promise"
+        if tools_ran:
+            return ""
+        # AN OBLIGATION IS CREATED BY THE CALLER ASKING, NOT BY THE DJ'S
+        # VOCABULARY. This pattern reads WORDS to infer a speech act, and
+        # words cannot carry that reliably: on 2026-08-22 it fired on
+        # "…or were you looking for something else from the list?" — the
+        # gerund `looking`, in a question about what the CALLER wanted, in a
+        # line whose only other content was asking permission. The nudge told
+        # the DJ to act, so it queued the record it had just asked about and
+        # answered its own question, which is `confirm_requests` defeated by
+        # a guard that could not tell a question from a promise.
+        #
+        # No pattern list fixes that — "looking" is honestly ambiguous and
+        # always will be. So the trigger moves off the prose: `owed` is
+        # whether the CALLER has an ask outstanding that a tool would have to
+        # satisfy (call/asks.py, which already scopes that correctly and was
+        # built as evidence for exactly this question). No ask, nothing owed,
+        # nothing to nudge — whatever words the DJ used.
+        #
+        # Only the PROMISE verdict is gated. A false "that's done" is a lie
+        # whether or not anybody asked, and `refused` is structural already.
+        return "promise" if owed else ""
     if CLAIMS_DONE.search(text):
         return "" if acted else "claim"
     return ""

@@ -34,6 +34,7 @@ import uuid
 
 import settings as settings_store
 from chat import openers
+from call.asks import Asks
 from call.stuck import Stuck
 from promises import PROBLEMS, unbacked
 from spoken_rules import reads_as_a_refusal
@@ -166,6 +167,11 @@ class ChatSession:
         # the DJ it has this wrong — see call/stuck.py. Per conversation, like
         # everything else here.
         self.stuck = Stuck()
+        # What the caller asked for that a TOOL would have to satisfy, and
+        # whether anything landed after. The phone has carried one since
+        # 0.10.149; the text line never did, so its promise guard had nothing
+        # but the DJ's wording to go on — see promises.unbacked.
+        self.asks = Asks()
         self.persona_name = ""
         # The id as well as the name: a voice call records both, and a
         # record that knows only "Ash" cannot be grouped by persona the
@@ -313,6 +319,7 @@ class ChatSession:
             # This is the surface the 2026-08-20 failure happened on: seven
             # asks, one wrong answer, no mechanism anywhere that noticed. See
             # call/stuck.py.
+            self.asks.heard(text)
             note = self.stuck.hint_for(text)
             if note:
                 ctx.add_message(role="system", content=note)
@@ -409,6 +416,9 @@ class ChatSession:
                     text_out, tools_ran=False,
                     acted=int(getattr(self.actions, "count", 0) or 0) > acted_at,
                     refused=refused_any,
+                    # An obligation is the caller's ask, not the DJ's wording.
+                    owed=not self.asks.settled(
+                        getattr(self.actions, "taken_at", []) or []),
                 ) if (nudge_left and tools) else ""
                 if kind:
                     nudge_left = False

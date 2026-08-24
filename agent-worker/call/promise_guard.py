@@ -88,7 +88,7 @@ _PROBLEM = PROBLEMS
 
 
 def attach_promise_guard(session: AgentSession, record=None, actions=None,
-                         air=None, floor=None) -> None:
+                         air=None, floor=None, asks=None) -> None:
     """One extra turn when the DJ promises an action and calls nothing.
 
     Fires at most once per caller turn. The state is per-turn rather than
@@ -162,9 +162,17 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         text = str(getattr(item, "text_content", "") or "").strip()
         if not text or state["nudged"]:
             return
+        # Whether the CALLER has an ask outstanding that a tool would have to
+        # satisfy. The obligation belongs to their request, not to the DJ's
+        # phrasing — see promises.unbacked. Absent (older wiring, the chat
+        # line before it grew one), `owed` stays True and the guard behaves
+        # exactly as it did.
+        owed = True
+        if asks is not None:
+            owed = not asks.settled(getattr(actions, "taken_at", []) or [])
         kind = unbacked(text, tools_ran=state["tools_ran"],
                         acted=_ledger() > state["acted_at"],
-                        refused=state["refused"])
+                        refused=state["refused"], owed=owed)
         if not kind:
             return
         state["nudged"] = True

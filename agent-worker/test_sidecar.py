@@ -225,6 +225,9 @@ from tests.test_album_tools import (  # noqa: F401
     TestAPunctuatedFiledNameStillQueues,
     TestClearingARunFromTheQueue,
 )
+from tests.test_tools_logic import (  # noqa: F401
+    TestAnObligationBelongsToTheCallerNotTheDJsWording,
+)
 from tests.test_house_rules import (  # noqa: F401
     TestEveryScenarioIsWellFormedBeforeItCostsAnything,
 )

@@ -994,3 +994,120 @@ class TestASegmentThatStoodDownIsNotReportedAsAiring(unittest.TestCase):
         guard, out = self._run({"ok": True, "spoken": "the news segment text"})
         self.assertNotIn("chose not to air", out)
         self.assertTrue(guard.on_air, "a segment that ran must hold the gate")
+
+
+class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
+    """The promise guard stops reading the DJ's vocabulary for a speech act.
+
+    Every line here is from `chat-db74032fb058` (2026-08-22), the conversation
+    the operator reported as "one song, requested multiple times, and then it
+    didn't queue until later". It queued first time. What went wrong is that
+    the DJ asked permission and then answered itself:
+
+        caller  Skip the current song and queue up songs for mina
+        TOOL    search_library -> 8 results
+        TOOL    skip_track     -> Done
+        TOOL    queue_track    -> "Amor mio" is in the queue
+        DJ      "Shall I queue that one up for you, or were you looking for
+                 something else from the list?
+                 <blank>
+                 That's locked in - "Amor mio" is queued up and ready to go."
+
+    The nudge that produced the second half fired on the gerund `looking`, in
+    a question about what the CALLER wanted. No pattern list fixes that:
+    "looking" is honestly ambiguous. So the trigger moved off the prose and
+    onto whether the caller has an ask a tool still owes.
+    """
+
+    LOOKING = ("Shall I queue that one up for you, or were you looking "
+               "for something else from the list?")
+
+    def test_the_line_that_caused_it_still_matches_the_pattern(self):
+        # Not a regex fix — the pattern is unchanged and still fires. What
+        # changed is that a match alone no longer nudges.
+        from promises import PROMISES_ACTION
+
+        self.assertTrue(PROMISES_ACTION.search(self.LOOKING))
+
+    def test_nothing_owed_means_nothing_to_nudge(self):
+        from promises import unbacked
+
+        self.assertEqual(unbacked(self.LOOKING, tools_ran=False, owed=False), "")
+
+    def test_an_outstanding_ask_still_nudges(self):
+        # The guard's real catch must survive: a caller waiting on something,
+        # and a DJ saying it is about to happen with no tool behind it.
+        from promises import unbacked
+
+        self.assertEqual(unbacked(self.LOOKING, tools_ran=False, owed=True),
+                         "promise")
+
+    def test_a_false_claim_is_a_lie_whether_or_not_anyone_asked(self):
+        # Only the PROMISE verdict is gated. "It's done" when it is not done
+        # is not excused by nobody having asked for it.
+        from promises import unbacked
+
+        self.assertEqual(
+            unbacked("I've just put that in the queue for you.",
+                     acted=False, owed=False), "claim")
+
+    def test_a_refusal_is_structural_and_ungated(self):
+        from promises import unbacked
+
+        self.assertEqual(
+            unbacked("It'll head out onto the airwaves as soon as that clears.",
+                     tools_ran=True, acted=False, refused=True, owed=False),
+            "refused")
+
+    def test_the_default_preserves_the_old_behaviour(self):
+        # Any caller that has not learned about `owed` gets exactly what it
+        # got before — the phone had this wiring first and the text line did
+        # not, so the default has to be the conservative one.
+        from promises import unbacked
+
+        self.assertEqual(unbacked(self.LOOKING, tools_ran=False), "promise")
+
+    def test_the_real_turn_resolves_the_way_the_transcript_should_have(self):
+        """End to end on the actual conversation, with real timestamps."""
+        from call.asks import Asks
+        from promises import unbacked
+
+        asks = Asks()
+        asks.heard("Skip the current song and queue up songs for mina", at=100.0)
+        # skip_track and queue_track both landed after the ask.
+        taken_at = [102.0, 112.0]
+        owed = bool(asks.unanswered(taken_at))
+        self.assertFalse(owed, "the caller's ask was answered by two actions")
+        self.assertEqual(unbacked(self.LOOKING, tools_ran=False, owed=owed), "")
+
+    def test_an_ask_with_no_action_after_it_is_still_owed(self):
+        from call.asks import Asks
+
+        asks = Asks()
+        asks.heard("can you play Africa by Toto", at=200.0)
+        # The action that landed belongs to the PREVIOUS ask, not this one.
+        self.assertTrue(asks.unanswered([150.0]))
+        self.assertFalse(asks.settled([150.0]))
+
+    def test_a_detector_that_heard_nothing_leaves_the_guard_alone(self):
+        """The fail-safe, and the reason `settled` is not `not unanswered`.
+
+        ASKS_FOR_ACTION is lexical and DEAF to the plainest request there is:
+        "Play diciembre first" — a bare imperative with a title after it —
+        matches nothing, because the pattern wants a pronoun ("play me",
+        "play something"). Found 2026-08-22 by this very test failing.
+
+        If "heard nothing" were read as "nothing owed", the promise guard
+        would fall silent on most requests. A quiet false negative is worse
+        than a noisy false positive here: an operator can see a DJ answering
+        its own question; nobody can see a request that vanished.
+        """
+        from call.asks import Asks
+
+        deaf = Asks()
+        deaf.heard("Play diciembre first", at=100.0)
+        self.assertEqual(deaf.asked, [], "if this passes, the deafness is fixed "
+                                         "— rewrite this test around what is "
+                                         "still unheard, do not delete it")
+        # No information, so the guard is left exactly as it was.
+        self.assertFalse(deaf.settled([110.0]))

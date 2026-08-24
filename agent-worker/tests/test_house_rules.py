@@ -893,7 +893,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the pickup has no station and no snapshot, and an open line belongs
         # to one DJ AND one show, so it has to make the same check the prompt
         # block does.
-        "agent-worker/call/session.py": (812, "the ringing half (prepare, "
+        # 813: the promise guard is handed the call's Asks (0.98.52), so an
+        # obligation comes from the CALLER's request rather than the DJ's
+        # vocabulary. One argument, on the same side of the seam.
+        "agent-worker/call/session.py": (813, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -912,7 +915,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # in ask() — the one-conversation half, which is the side of this
         # seam that was already going to carry it. 625: the finder mode swap,
         # three lines beside the tool build it belongs to, same half.
-        "agent-worker/chat/session.py": (625, "the one-conversation half "
+        # 635: the text line grows an Asks of its own (0.98.52) — the phone has
+        # had one since 0.10.149 and chat's guard had only wording to go on.
+        "agent-worker/chat/session.py": (635, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "

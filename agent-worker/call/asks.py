@@ -97,6 +97,24 @@ class Asks:
         if ASKS_FOR_ACTION.search(str(text or "")):
             self.asked.append((at or time.time(), str(text)[:200]))
 
+    def settled(self, acted_at: list[float]) -> bool:
+        """Positive evidence that what the caller asked for has landed.
+
+        Deliberately NOT `not unanswered(...)`. The detector is lexical and
+        therefore deaf in places — bare "Play <title>" was invisible to it
+        until 2026-08-22 — and an empty `asked` list means "heard nothing",
+        which is not the same as "nothing was owed". Reading it as the latter
+        would silence the promise guard on every request it could not hear,
+        turning a noisy false positive into a quiet false negative, which is
+        the worse of the two: you can see a DJ answering its own question, but
+        you cannot see a request that vanished.
+
+        So: an obligation is settled only when an ask was HEARD and an action
+        landed after it. No ask heard -> no information -> caller decides
+        conservatively, which for the guard means behaving exactly as before.
+        """
+        return bool(self.asked) and not self.unanswered(acted_at)
+
     def unanswered(self, acted_at: list[float]) -> list[str]:
         """The asks with no action recorded after them.
 
