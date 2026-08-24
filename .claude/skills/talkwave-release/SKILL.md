@@ -11,14 +11,14 @@ Images publish from GitHub Actions to `ghcr.io/mrain1p/talk-wave`:
 |---|---|
 | `main` | `:latest` |
 | `dev` | `:dev` |
-| `beta` | `:beta` |
 | `vX.Y.Z` tag | `:X.Y.Z` |
 
-**Work happens on the operator's active lane — `beta` since 0.97.50 — never directly on
-`main`.** The operator does not want iterative tweaks on main until a change is ready to
-publish. `dev` still exists and builds `:dev`, but the NAS compose has run `:beta` since the
-caller-on-air stream; ask which lane is live before assuming, and check `git log` — the lane
-with today's commits is the active one.
+**Two branches only — `main` and `dev` — and work happens on `dev`, never directly on
+`main`** (operator's instruction, 2026-08-24: the `beta` and `open-lines` branches were
+folded into dev at 0.98.60 and deleted). The operator does not want iterative tweaks on
+main until a change is ready to publish. Note for deployments: `:beta` stopped moving at
+0.98.60 — a compose still naming it pulls a frozen image; the live lanes are `:dev` and
+`:latest`. If a third branch ever appears, fold it into dev and delete it when done.
 
 ## When to cut one, and what to call it
 
@@ -53,10 +53,10 @@ went to 97 and not to 9.
      This overrides the default commit convention.
    - Subject style: `0.9.69 - the call transcript stops disagreeing with the call`. Lowercase
      prose, version prefix, describes the *effect*.
-4. **Push to the active lane** (`beta` today). CI builds that lane's tag; the NAS compose
-   points at it.
-5. **When it is good, PR the lane → `main`.** The suite also runs on those PRs; PRs build no
-   image. Merge, and `:latest` moves. Keep the other lanes fast-forwarded after the merge so
+4. **Push to `dev`.** CI builds `:dev`; check what tag the NAS compose names before
+   telling the operator to pull.
+5. **When it is good, PR `dev` → `main`.** The suite also runs on those PRs; PRs build no
+   image. Merge, and `:latest` moves. Fast-forward `dev` after the merge so
    "are these in sync?" stays answerable at a glance.
 6. **Tag and publish the GitHub Release** — merging alone leaves the Releases page stale,
    which sat on v0.9.45 for 85 versions before anyone noticed. The notes are the version's
