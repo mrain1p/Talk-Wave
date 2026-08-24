@@ -45,8 +45,20 @@ is why the script order in `panel.html` is load-bearing rather than cosmetic. `$
 `document.getElementById`.
 
 The seam is deliberately narrow. `shared.js` holds only what both surfaces genuinely want: the
-query-param and theme setup, the `ASKS`/`NEVER` lists, `CALL_KEY`, and the synthesized sound
-engine. Anything only one surface uses belongs in that surface's file.
+query-param and theme setup, the `ASKS`/`NEVER` lists, `CALL_KEY`, the synthesized sound engine,
+and — since the settings page grew a station transport — `playFirstWorking` plus the player
+handoff. Anything only one surface uses belongs in that surface's file.
+
+**The music crosses the two pages; nothing else does.** An `<audio>` element cannot survive the
+navigation between `/` and `/settings`, so what travels is the INTENT — "the station is wanted in
+this tab" — written to `sessionStorage` on `pagehide` by whichever page is leaving and read on
+arrival by the one that lands. It is deliberately *wanted*, not *was playing*: a browser that
+refuses to start audio on a fresh load leaves the intent standing, so the next hop tries again
+instead of the music degrading to silence one door at a time. A surface that can never show a
+player — an embed, a compact card, the panel's own preview frame — must not touch the handoff at
+all; `playerSurface` in `call.js` is that gate, and it exists because the preview (a real card, in
+the same tab, on the same `sessionStorage`) cleared the operator's intent the moment the panel
+painted it.
 
 **Nothing crosses between `call.js` and `panel.js`.** They are never on the same page, so there
 is no hook, no shared state and no direction to get wrong. Each fetches `/live` for itself. The

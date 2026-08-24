@@ -958,6 +958,34 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 801: the free-text find over both sides of a conversation (0.98.51) —
         # the operator's own ask, and it lands in the call viewer's filter
         # pipeline, which is the half of this file the seam already names.
+        # 617 the day the settings page grew a station transport. The engine
+        # that plays the broadcast — playFirstWorking, its CORS retry and its
+        # mixed-content warning — had to leave call.js the moment a SECOND
+        # surface played the stream: the alternative was a copy, and a copy of
+        # that function would only ever have carried the older bugs of the
+        # three incidents it took to get right. The handoff that carries the
+        # music between the two pages came with it, for the same reason: both
+        # surfaces write it and both read it.
+        #
+        # The seam is real, measured, and has been in the file since long
+        # before this: the caller-facing COPY TABLES (ASK_GROUPS, ASKS, NEVER
+        # — ~128 lines of string literals describing what a caller may ask
+        # for) against the RUNTIME FOUNDATION around them (params, theme and
+        # skin resolution, the sound engine, the call key, and now the stream).
+        # The crossing is zero in both directions: the tables call nothing and
+        # nothing in the file reads them — they exist only to be exported, and
+        # each page renders them itself.
+        #
+        # Deliberately NOT cut in the change that grew it. Splitting means a
+        # third shared script on BOTH pages, which moves the load-order
+        # contract in TestWidgetServerContract and the file table in
+        # web-widget/CLAUDE.md; doing that in the same commit as a new player
+        # would give any regression in either two candidate causes. Same
+        # deferral the two entries below record.
+        "web-widget/shared.js": (620, "the caller-facing copy tables "
+                                      "(ASK_GROUPS, ASKS, NEVER) split from "
+                                      "the runtime foundation; the crossing "
+                                      "is zero in both directions"),
         "web-widget/panel-viewers.js": (801, "the log viewer split from the "
                                              "call viewer; they share only "
                                              "Panel.afetch and showResult"),

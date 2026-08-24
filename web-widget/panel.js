@@ -10,6 +10,7 @@
   const {
     $, ASKS, ASK_GROUPS, NEVER, CALL_KEY,
     ctx, playSound, pack, setSounds, getVolume, THEME_ICONS, LINK_ICONS,
+    playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   } = window.Callin;
 
   // The panel's own copy of /live. It used to read the call page's, which is
@@ -22,6 +23,7 @@
     setSounds(live && live.sounds);
     paintOnairWiring();
     paintQuietWiring();
+    paintStationBar();
     return live;
   }
 
@@ -53,6 +55,163 @@
     if (broken) $('quietWiringWhy').textContent = q.why || 'the last flip failed';
     box.style.display = broken ? 'block' : 'none';
   }
+
+
+  // -------------------------------------------------- the station transport
+  // The bar under the masthead, so the music the operator had on the call page
+  // survives the walk to this one. The card owns a whole player sheet; this is
+  // deliberately not that. See the markup in panel.html for why it exists and
+  // what decides whether it is offered.
+  //
+  // The engine is shared.js's, which is the whole point of the bar being this
+  // short: the mount fallback, the CORS retry and the mixed-content warning
+  // are the card's, not a second copy that would only ever have older bugs.
+  let barEl = null, barDead = false, barStopped = false, barWanted = false;
+  let barPoll = 0;
+
+  // The bar's OWN fader, not shared.js's volume. On this page that volume is
+  // what a sound PREVIEW plays at, and turning the music down to read a
+  // settings page must not quietly turn the ring file down with it. The number
+  // still reaches the card — it travels in the handoff, and lands there on the
+  // card's one fader like any other.
+  let barVolume = 100;
+  function barLevel() { return Math.min(1, barVolume / 100); }
+
+  function barOffered() {
+    const s = (live && live.stream) || {};
+    return !!(live && live.swipePlayer && s.url);
+  }
+
+  function startStationBar() {
+    if (barEl) return;
+    const s = (live && live.stream) || {};
+    if (!s.url) return;
+    barDead = false;
+    // BEFORE the chain starts: a stale stop from the last press would refuse
+    // the element on arrival.
+    barStopped = false;
+    playFirstWorking([s.url].concat(s.alternates || []), 0, {
+      get: () => barEl,
+      set: (el) => {
+        // A stop that landed while the chain was still walking the mounts
+        // refuses the late arrival instead of resurrecting the music.
+        if (el && barStopped) {
+          try { el.pause(); el.src = ''; } catch (e) {}
+          return;
+        }
+        barEl = el;
+      },
+      level: barLevel,
+      onPlaying: () => { barDead = false; paintStationBar(); },
+      onDead: () => { barDead = true; paintStationBar(); },
+      // The browser wants its one press first. PLAY lit is the honest reading
+      // of that, not a dead stream — and the INTENT is left standing, so
+      // walking back to the call page tries again there.
+      onBlocked: () => { barDead = false; paintStationBar(); },
+    });
+    paintStationBar();
+  }
+
+  function stopStationBar() {
+    barStopped = true;
+    if (barEl) {
+      const el = barEl;
+      barEl = null;
+      try { el.pause(); el.src = ''; } catch (e) {}
+    }
+    paintStationBar();
+  }
+
+  // Only while the music is actually on. A settings page has no other reason
+  // to ask /live on a timer, and the operator's box should not be answering
+  // one every twenty seconds for a page sitting open in a forgotten tab.
+  function barPolling(on) {
+    if (on && !barPoll) barPoll = setInterval(refreshLiveData, 20000);
+    if (!on && barPoll) { clearInterval(barPoll); barPoll = 0; }
+  }
+
+  function paintStationBar() {
+    const bar = $('stationBar');
+    if (!bar) return;
+    if (!barOffered()) {
+      // The operator can pull the player out from under themselves mid-song.
+      // stopStationBar clears barEl before it repaints, so this recurses once
+      // and stops.
+      if (barEl) { stopStationBar(); return; }
+      barPolling(false);
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    bar.classList.toggle('playing', !!barEl);
+
+    const np = (live && live.nowPlaying) || {};
+    const title = np.title || (live && live.track) || '';
+    // Same fallback ladder as the card's lock-screen metadata, so the two
+    // surfaces never name the same record differently.
+    $('stationBarTrack').textContent = title
+      ? (np.artist ? title + ' — ' + np.artist : title)
+      : ((live && live.name) || 'The station');
+
+    const btn = $('stationBarPlay');
+    btn.textContent = barEl ? 'Pause' : (barDead ? 'Try again' : 'Play');
+
+    const vol = $('stationBarVol');
+    if (vol.value !== String(barVolume)) vol.value = barVolume;
+    // webkit has no way to style the filled half of a range, so the fill is a
+    // gradient stop and this is where the stop comes from — same rule, and the
+    // same skin, as the card's fader.
+    vol.style.setProperty('--vol', barVolume + '%');
+
+    barPolling(!!barEl);
+  }
+
+  // Pressing it IS the intent, which is the only thing that crosses to the
+  // other page. A browser refusing to start the audio never writes here.
+  function wantStation(on) {
+    barWanted = !!on;
+    writePlayerHandoff(barWanted, barVolume);
+  }
+
+  $('stationBarPlay').onclick = () => {
+    if (barEl) { wantStation(false); stopStationBar(); }
+    else { wantStation(true); startStationBar(); }
+  };
+
+  $('stationBarVol').oninput = (e) => {
+    barVolume = +e.target.value;
+    if (barEl) { barEl.volume = barLevel(); barEl.muted = barLevel() <= 0; }
+    paintStationBar();
+  };
+
+  // Arriving with the station still wanted. Run once the panel is UNLOCKED —
+  // the bar is hidden behind the login gate, and music with no visible control
+  // to stop it is worse than a moment's silence.
+  let barHandoffTried = false;
+  function resumeStationBar() {
+    if (barHandoffTried) return;
+    barHandoffTried = true;
+    const h = readPlayerHandoff();
+    // No handoff is the ordinary case: somebody opened /settings directly.
+    // The bar still paints, with PLAY lit.
+    if (!h) {
+      const cfg = live && live.sounds && live.sounds.volume;
+      if (typeof cfg === 'number') barVolume = cfg;
+      paintStationBar();
+      return;
+    }
+    barWanted = true;
+    if (h.volume != null) barVolume = h.volume;
+    paintStationBar();
+    if (!barEl && barOffered()) startStationBar();
+  }
+
+  // On the way out — the back arrow, a jump to the call page, the tab closing.
+  // pagehide rather than unload: unload is not fired reliably on mobile and
+  // forfeits the back-forward cache.
+  window.addEventListener('pagehide', () => {
+    writePlayerHandoff(barWanted, barVolume);
+  });
 
 
   // Every admin request carries the panel password (kept in localStorage so
@@ -6158,7 +6317,7 @@
     // The pipeline check reads live.stream and live.secureOrigin, so this has
     // to land before any of it can run.
     try { await refreshLiveData(); } catch (e) { /* the pipeline check will say */ }
-    try { await loadSettings(); $('saveMsg').textContent = ''; }
+    try { await loadSettings(); $('saveMsg').textContent = ''; resumeStationBar(); }
     catch (e) {
       if (e && e.auth) { showLoginGate(e.body); $('saveMsg').textContent = ''; }
       else $('saveMsg').textContent = 'Could not load settings — ' + e.message;

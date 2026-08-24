@@ -2939,9 +2939,45 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         self.assertIn('add_get("/cover/{track_id}", handle_cover)', routes)
 
     def test_an_embed_is_never_offered_the_player(self):
-        gate = self.js.split("function playerOffered")[1][:400]
+        # The three refusals were inline in playerOffered until the settings
+        # page grew a transport; they are a named constant now because the
+        # HANDOFF has to ask the same question (see the test below). The claim
+        # is unchanged, so this follows the constant rather than the line.
+        surface = self.js.split("const playerSurface =")[1][:120]
         for refusal in ("!compact", "!framed", "!previewMode"):
-            self.assertIn(refusal, gate)
+            self.assertIn(refusal, surface)
+        gate = self.js.split("function playerOffered")[1][:400]
+        self.assertIn("playerSurface", gate)
+
+    def test_a_surface_with_no_player_never_touches_the_handoff(self):
+        # The music crossing between / and /settings travels as an intent in
+        # sessionStorage, and sessionStorage is per-TAB, not per-document. The
+        # settings page paints a real call card in an iframe — same tab, same
+        # storage, and previewMode means it can never show a player. It was
+        # clearing the operator's own intent the moment the panel painted it,
+        # so the music stopped at the door it was built to cross.
+        #
+        # Every place this file reads or writes the handoff has to be behind
+        # playerSurface for that reason, and the same rule keeps an embed on
+        # somebody else's page out of it.
+        for site in ("readPlayerHandoff()", "writePlayerHandoff("):
+            with self.subTest(site=site):
+                for call in self._callsites(site):
+                    self.assertIn(
+                        "playerSurface", call,
+                        f"{site} reached without the playerSurface gate — the "
+                        "panel's preview frame shares this tab's storage")
+
+    def _callsites(self, needle):
+        # The dozen lines above each call site: enough to see the guard
+        # that stands over it, and cheap enough to be obviously right.
+        lines = self.js.splitlines()
+        out = []
+        for i, line in enumerate(lines):
+            if needle in line and ("function " + needle[:-1]) not in line:
+                out.append(chr(10).join(lines[max(0, i - 12):i + 1]))
+        assert out, f"no call sites found for {needle}"
+        return out
 
     def test_the_gesture_only_offers_a_stream_that_resolved(self):
         # A chip that opens onto silence is worse than no chip: the switch

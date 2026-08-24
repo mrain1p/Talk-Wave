@@ -1633,7 +1633,7 @@
      volume bar and speaker wavelengths"). Padding insets the track by the
      thumb's own half-width, so the ends of the rail are the ends of the
      control. */
-  .vol input[type=range], #plVol {
+  .vol input[type=range], #plVol, #stationBarVol {
     flex: 1; min-width: 0; height: 18px; padding: 0 5px; box-sizing: border-box;
     -webkit-appearance: none; appearance: none;
     background: transparent; cursor: pointer;
@@ -1641,27 +1641,36 @@
   /* --vol is written by applyVolume(); webkit has no ::-moz-range-progress
      equivalent, so the fill is a hard-stop gradient on the track itself. */
   .vol input[type=range]::-webkit-slider-runnable-track,
-  #plVol::-webkit-slider-runnable-track {
+  #plVol::-webkit-slider-runnable-track,
+  #stationBarVol::-webkit-slider-runnable-track {
     height: 3px; border-radius: 0;
     background: linear-gradient(to right,
       var(--coral) var(--vol, 100%), var(--hairline) var(--vol, 100%));
   }
-  .vol input[type=range]::-webkit-slider-thumb, #plVol::-webkit-slider-thumb {
+  .vol input[type=range]::-webkit-slider-thumb, #plVol::-webkit-slider-thumb,
+  #stationBarVol::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 9px; height: 9px; border-radius: 0; border: 0;
     background: var(--coral); margin-top: -3px;
   }
   .vol input[type=range]::-moz-range-track,
-  #plVol::-moz-range-track { height: 3px; background: var(--hairline); }
+  #plVol::-moz-range-track,
+  #stationBarVol::-moz-range-track { height: 3px; background: var(--hairline); }
   .vol input[type=range]::-moz-range-progress,
-  #plVol::-moz-range-progress { height: 3px; background: var(--coral); }
+  #plVol::-moz-range-progress,
+  #stationBarVol::-moz-range-progress { height: 3px; background: var(--coral); }
   .vol input[type=range]::-moz-range-thumb,
-  #plVol::-moz-range-thumb {
+  #plVol::-moz-range-thumb,
+  #stationBarVol::-moz-range-thumb {
     width: 9px; height: 9px; border-radius: 0; border: 0; background: var(--coral);
   }
-  .vol input[type=range]:focus, #plVol:focus { outline: none; }
+  .vol input[type=range]:focus, #plVol:focus,
+  #stationBarVol:focus { outline: none; }
   .vol input[type=range]:focus-visible::-webkit-slider-thumb,
-  #plVol:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--amber); }
+  #plVol:focus-visible::-webkit-slider-thumb,
+  #stationBarVol:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px var(--amber);
+  }
   .vol .pct {
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
     font-weight: 700; color: var(--sage-dim); width: 38px; text-align: right;
@@ -5357,6 +5366,48 @@
   body.panelpage .masthead .gear .glabel { margin-left: 6px; }
   body.panelpage .dashband { display: none; }
 
+  /* --- the station transport ----------------------------------------------
+     Tucked under the masthead's coral rule, because it is masthead furniture
+     rather than a section: one line saying what is on, whether it is playing
+     and how loud, above everything the operator came here to read. The card's
+     deck is the full player; this is the strip that keeps the music from
+     stopping at the door (panel.html says why it exists).
+
+     [hidden] is re-asserted because the flex below beats the UA rule, which
+     this codebase has now paid for five times. */
+  body.panelpage .stationbar {
+    display: flex; align-items: center; gap: 10px;
+    margin: -16px 0 22px; padding: 0 0 10px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  body.panelpage .stationbar[hidden] { display: none; }
+  /* Dark until it is actually playing, then the station's own coral — the
+     same read as the player sheet's pip on the card. */
+  body.panelpage .sbpip {
+    flex: none; width: 8px; height: 8px; background: var(--sage-dim);
+  }
+  body.panelpage .stationbar.playing .sbpip { background: var(--coral); }
+  body.panelpage .sbk {
+    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  /* The record's name is a VALUE, so it is body sans against the mono label,
+     and it takes the slack: a long title truncates rather than pushing the
+     transport off the end of the row. */
+  body.panelpage .sbtrack {
+    flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  body.panelpage .sbplay {
+    flex: none; height: 26px; padding: 0 12px; cursor: pointer;
+    border: 1px solid var(--edge); background: transparent; color: var(--text);
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  body.panelpage .sbplay:hover { background: var(--granite-hi); }
+  body.panelpage .sbnote { flex: none; font-size: 12.5px; color: var(--sage-dim); }
+  body.panelpage #stationBarVol { flex: 0 1 120px; }
+
   /* --- the login gate, in the newspaper's own clothes --------------------- */
   body.panelpage .lockcard {
     border-radius: 0; border-color: var(--edge);
@@ -5977,6 +6028,12 @@
     body.panelpage .masthead .settingsearch {
       order: 3; flex: 1 1 100%; min-width: 0; margin: 8px 0 0;
     }
+    /* The masthead wraps to two rows here, so the transport is no longer
+       tucked under a rule 16px above it. The ♪ goes: on a phone the fader is
+       the only thing that needs to be reachable beside the title. */
+    body.panelpage .stationbar { margin-top: 0; gap: 8px; }
+    body.panelpage .sbnote { display: none; }
+    body.panelpage #stationBarVol { flex: 0 1 84px; }
   }
 
   /* --- footer -------------------------------------------------------------- */

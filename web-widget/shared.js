@@ -483,12 +483,138 @@ window.Callin = (function () {
     ['Create, edit or delete a show, or change the weekly schedule', 'the programming itself is the operator’s'],
   ];
 
+  // ---------------------------------------------------- the station stream
+  // ONE engine for every surface that plays the broadcast: the card's tune-in
+  // bed under a call, the card's player sheet, and the panel's transport. It
+  // lived in call.js until the panel grew a transport of its own — the CORS
+  // retry and the mixed-content warning below took three incidents to get
+  // right, and a second copy would only ever have had the older bugs.
+  //
+  // `s` is the slot: where the stream lands, and who hears what happened.
+  //   get()/set(el)  the element this chain owns. set() is the caller's one
+  //                  chance to refuse a LATE arrival — a stop that landed
+  //                  while the chain was still walking the mounts.
+  //   level()        0..1, applied as it starts.
+  //   onPlaying(el)  it is playing. onDead() nothing would. onBlocked()
+  //                  (optional) the BROWSER refused, which is a different
+  //                  thing from the stream being down.
+  //
+  // Which URL has already had its CORS attempt refused, so the retry below is
+  // one deep rather than a loop.
+  let lastPlainAttempt = '';
+
+  function playFirstWorking(urls, i, s) {
+    if (i >= urls.length) {
+      // Was console.info, which meant nobody ever found out. The commonest
+      // cause is an http stream on an https page: the browser blocks it as
+      // mixed content and nothing plays at all.
+      console.warn(
+        'Talk Wave: could not play the station stream. Tried:', urls.join(', '),
+        '— if these are http:// and this page is https://, the browser blocked ' +
+        'them as mixed content. Set the station stream URL in settings.'
+      );
+      s.set(null);
+      s.onDead();
+      return;
+    }
+    try {
+      // crossOrigin FIRST, because a CORS-clean element is the one that can
+      // join the call's own audio graph — see mixStation. A station that does
+      // not send the headers fails to load with it set, and the error handler
+      // below retries the same URL plain before moving on to the next mount:
+      // the worst case is the behaviour this has always had, on its own
+      // output, rather than a silent stream.
+      const plain = urls[i] === lastPlainAttempt;
+      const el = new Audio();
+      if (!plain) el.crossOrigin = 'anonymous';
+      el.dataset.cors = plain ? 'no' : 'ok';
+      el.src = urls[i];
+      el.volume = s.level();
+      el.muted = s.level() <= 0;
+      el.addEventListener('error', () => {
+        if (s.get() !== el) return;
+        try { el.pause(); } catch (e) {}
+        s.set(null);
+        // The CORS attempt failing is not this mount failing — try it plain
+        // once before giving up on it.
+        if (el.dataset.cors === 'ok') {
+          lastPlainAttempt = urls[i];
+          playFirstWorking(urls, i, s);
+        } else {
+          playFirstWorking(urls, i + 1, s);
+        }
+      }, { once: true });
+      s.set(el);
+      // A stop while this chain was mid-flight refuses the set — bail rather
+      // than resurrecting a stream that was just turned off.
+      if (s.get() !== el) return;
+      el.play().then(() => {
+        if (s.get() === el) s.onPlaying(el);
+      }).catch((err) => {
+        if (s.get() !== el) return;
+        s.set(null);
+        // Autoplay refused is the BROWSER's answer about this page, not this
+        // mount's failure — walking the alternates would just collect the
+        // same refusal N times and end claiming the stream is dead.
+        if (err && err.name === 'NotAllowedError') {
+          if (s.onBlocked) s.onBlocked();
+          return;
+        }
+        playFirstWorking(urls, i + 1, s);
+      });
+    } catch (e) {
+      s.set(null);
+      playFirstWorking(urls, i + 1, s);
+    }
+  }
+
+  // ------------------------------------------- carrying the music next door
+  // The card and the panel are two documents, and no <audio> element survives
+  // the navigation between them: walking to /settings stopped the music, which
+  // is the operator's own report. What CAN cross is the INTENT — the station is
+  // wanted in this tab — so each page writes it on the way out and the next one
+  // reads it on the way in and tunes back in at the live edge.
+  //
+  // sessionStorage, not local: this is about THIS tab. A tab that closes should
+  // not teach the next one to start playing by itself.
+  //
+  // WANTED, not "was playing", because a browser that refuses to start audio on
+  // a fresh page load must not quietly turn the intent off. The transport
+  // arrives with PLAY lit, the intent stands, and the next hop tries again.
+  const PLAYER_HANDOFF = 'callinPlayerHandoff';
+  // Generous for any navigation, and far short of a tab the browser restores
+  // tomorrow — which is the case this exists for. An intent that old is not a
+  // walk between two pages, so it is DROPPED rather than carried: leaving it
+  // standing would mean a restored tab starts playing at whoever opens it, one
+  // hop later, having been nudged fresh by a page it merely passed through.
+  const HANDOFF_FRESH_MS = 90000;
+
+  function readPlayerHandoff() {
+    try {
+      const h = JSON.parse(sessionStorage.getItem(PLAYER_HANDOFF) || 'null');
+      if (!h || !h.wanted) return null;
+      if (Date.now() - (h.at || 0) >= HANDOFF_FRESH_MS) {
+        sessionStorage.removeItem(PLAYER_HANDOFF);
+        return null;
+      }
+      return { volume: typeof h.volume === 'number' ? h.volume : null };
+    } catch (e) { return null; }
+  }
+
+  function writePlayerHandoff(wanted, volume) {
+    try {
+      sessionStorage.setItem(PLAYER_HANDOFF, JSON.stringify(
+        { wanted: !!wanted, volume: volume, at: Date.now() }));
+    } catch (e) { /* private mode or a full quota: the music just stops here */ }
+  }
+
   return {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     applySkin, skinForced,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS, LINK_ICONS,
+    playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   };
 })();
 

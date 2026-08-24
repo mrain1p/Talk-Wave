@@ -12,6 +12,7 @@
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
+    playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   } = window.Callin;
 
 
@@ -834,10 +835,6 @@
   // isn't pulling the stream — so without this, the people most likely to
   // request something are the ones who can't. Muted by default so it doesn't
   // talk over the DJ.
-  // Which URL has already had its CORS attempt refused, so the retry below is
-  // one deep rather than a loop.
-  let lastPlainAttempt = '';
-
   function tuneIn() {
     const s = live && live.stream;
     if (!s || !s.tuneIn || !s.url || streamEl) return;
@@ -845,15 +842,10 @@
     // every browser — Safari and opus, most often — so a failure moves to the
     // next one rather than leaving the call with no station behind it.
     const candidates = [s.url].concat(s.alternates || []);
-    playFirstWorking(candidates, 0);
-  }
-
-  function playFirstWorking(urls, i, slot) {
-    // `slot` is which element the stream lands in: the call's tune-in bed by
-    // default, or the station player's deck. ONE engine on purpose — the
-    // CORS retry and the mixed-content warning below took three incidents to
-    // get right, and a second copy would only ever have the older bugs.
-    const s = slot || {
+    // The bed under a call, which is one of three slots the shared engine
+    // fills — the player sheet below is the second, and the settings page's
+    // transport is the third.
+    playFirstWorking(candidates, 0, {
       get: () => streamEl,
       set: (el) => { streamEl = el; },
       // Scaled by the caller's own volume from the start — see applyVolume.
@@ -863,69 +855,7 @@
       // inside an AudioContext cannot be given back.
       onPlaying: (el) => { if (room) mixStation(el); },
       onDead: () => {},
-    };
-    if (i >= urls.length) {
-      // Was console.info, which meant nobody ever found out. The commonest
-      // cause is an http stream on an https page: the browser blocks it as
-      // mixed content and the caller hears no station at all.
-      console.warn(
-        'Talk Wave: could not play the station stream. Tried:', urls.join(', '),
-        '— if these are http:// and this page is https://, the browser blocked ' +
-        'them as mixed content. Set the station stream URL in settings.'
-      );
-      s.set(null);
-      s.onDead();
-      return;
-    }
-    try {
-      // crossOrigin FIRST, because a CORS-clean element is the one that can
-      // join the call's own audio graph — see mixStation. A station that does
-      // not send the headers fails to load with it set, and the error handler
-      // below retries the same URL plain before moving on to the next mount:
-      // the worst case is the behaviour this has always had, on its own
-      // output, rather than a silent stream.
-      const plain = urls[i] === lastPlainAttempt;
-      const el = new Audio();
-      if (!plain) el.crossOrigin = 'anonymous';
-      el.dataset.cors = plain ? 'no' : 'ok';
-      el.src = urls[i];
-      el.volume = s.level();
-      el.muted = s.level() <= 0;
-      el.addEventListener('error', () => {
-        if (s.get() !== el) return;
-        try { el.pause(); } catch (e) {}
-        s.set(null);
-        // The CORS attempt failing is not this mount failing — try it plain
-        // once before giving up on it.
-        if (el.dataset.cors === 'ok') {
-          lastPlainAttempt = urls[i];
-          playFirstWorking(urls, i, slot);
-        } else {
-          playFirstWorking(urls, i + 1, slot);
-        }
-      }, { once: true });
-      s.set(el);
-      // A stop while this chain was mid-flight refuses the set — bail rather
-      // than resurrecting a stream the caller just turned off.
-      if (s.get() !== el) return;
-      el.play().then(() => {
-        if (s.get() === el) s.onPlaying(el);
-      }).catch((err) => {
-        if (s.get() !== el) return;
-        s.set(null);
-        // Autoplay refused is the BROWSER's answer about this page, not this
-        // mount's failure — walking the alternates would just collect the
-        // same refusal N times and end claiming the stream is dead.
-        if (err && err.name === 'NotAllowedError') {
-          if (s.onBlocked) s.onBlocked();
-          return;
-        }
-        playFirstWorking(urls, i + 1, slot);
-      });
-    } catch (e) {
-      s.set(null);
-      playFirstWorking(urls, i + 1, slot);
-    }
+    });
   }
 
   function tuneOut() {
@@ -1850,6 +1780,9 @@
       // go as the operator's switch and the stream come and go, and an open
       // sheet repaints for a record change without the caller doing anything.
       paintListenChip();
+      // Only once /live has landed: whether the player is offered at all is
+      // the server's answer, and the stream URL arrives with it.
+      if (first) resumeFromHandoff();
       if (playerOpen) { paintPlayer(); fitPlayerArt(); }
       if (playerEl) feedMediaSession();
 
@@ -4592,10 +4525,18 @@
 
   let playerOpen = false, playerHideTimer = 0;
 
+  // Whether this surface can EVER carry the player, whatever the operator has
+  // switched on. Split out from playerOffered because the HANDOFF turns on it:
+  // the settings page paints a real call card in an iframe, in the same tab,
+  // reading the same sessionStorage — and a copy of this file that can never
+  // show a player was clearing the operator's own intent the moment the panel
+  // painted its preview. A surface with no player does not get a vote on
+  // whether the music continues (found driving it, 2026-08-23).
+  const playerSurface = !compact && !framed && !previewMode;
+
   function playerOffered() {
     const d = shown || live || {};
-    return !compact && !framed && !previewMode
-      && !!d.swipePlayer && !!(d.stream && d.stream.url);
+    return playerSurface && !!d.swipePlayer && !!(d.stream && d.stream.url);
   }
 
   // The card's own volume, times the machine's duck while the studio holds
@@ -4606,6 +4547,22 @@
           (shown && shown.playerDuck != null) ? shown.playerDuck : 10)) / 100
       : 1;
     return Math.min(1, getVolume() / 100) * duck;
+  }
+
+  // Whether the STATION IS WANTED in this tab, which is not the same question
+  // as whether it is playing right now. It is what crosses to the settings
+  // page and back (see shared.js's handoff), and it is set by the caller's own
+  // controls only — the voicemail bed starts the player without anyone asking
+  // for the station, and a browser refusing to autoplay is not the caller
+  // changing their mind. A refusal that turned this off would lose the music
+  // one door at a time.
+  let playerWanted = false;
+  function wantPlayer(on) {
+    playerWanted = !!on;
+    // Gated HERE rather than at each caller: three surfaces share this tab's
+    // sessionStorage and can never show a player, and one gate is one place to
+    // get right. See playerSurface.
+    if (playerSurface) writePlayerHandoff(playerWanted, getVolume());
   }
 
   let playerStopped = false;
@@ -4728,6 +4685,62 @@
     }
     paintPlayerButtons();
   }
+
+  // Arriving with the station still wanted — from the settings page, or from
+  // a reload. Nothing is resumed: the element that was playing died with the
+  // other document, so this is a fresh start at the LIVE EDGE, which is where
+  // a broadcast should be picked up anyway.
+  //
+  // The browser may refuse it. That is why the intent is not rewritten here —
+  // onBlocked leaves PLAY lit with the intent standing, so pressing it once,
+  // or walking back to the other page, tries again.
+  let handoffTried = false;
+  function resumeFromHandoff() {
+    if (handoffTried || !playerSurface) return;
+    handoffTried = true;
+    const h = readPlayerHandoff();
+    if (!h) return;
+    playerWanted = true;
+    // The fader the operator left it on, unless they have already touched
+    // this page's own.
+    if (h.volume != null && !volTouched) {
+      setVolume(h.volume);
+      $('volSlider').value = getVolume();
+      applyVolume();
+    }
+    if (playerEl || !playerOffered() || inConversation()) {
+      paintPlayerButtons();
+      return;
+    }
+    startPlayerAudio();
+  }
+
+  // On the way out — the gear, the back button, a typed address, the tab
+  // being hidden on a phone. pagehide rather than unload: unload is not fired
+  // reliably on mobile and forfeits the back-forward cache.
+  window.addEventListener('pagehide', () => {
+    if (playerSurface) writePlayerHandoff(playerWanted, getVolume());
+  });
+
+  // Restored from the back-forward cache. This document is the one that went
+  // away, so the answer it left behind may not be the answer any more.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted || !playerSurface) return;
+    const h = readPlayerHandoff();
+    // Our own pagehide wrote the intent on the way out, so its ABSENCE now is
+    // somebody else's no — the settings page pressed stop while this document
+    // sat in the cache. Coming back to music the operator just silenced is the
+    // one thing worse than coming back to silence.
+    if (!h && playerWanted) { wantPlayer(false); stopPlayerAudio(); return; }
+    // A cached element comes back paused on some browsers and playing on
+    // others; the intent is what says which it should be.
+    if (playerEl && playerEl.paused && playerWanted) {
+      playerEl.play().catch(() => { stopPlayerAudio(); startPlayerAudio(); });
+      return;
+    }
+    handoffTried = false;
+    resumeFromHandoff();
+  });
 
   // A parked element nobody is coming back for — the caller pressed STOP
   // during the call, or the player stopped being offered.
@@ -5009,6 +5022,9 @@
       // honour it on the next poll rather than playing on with the door gone.
       chip.hidden = true;
       if (tab) tab.hidden = true;
+      // Nothing to carry next door either: the door the music came through
+      // has gone.
+      if (playerWanted) wantPlayer(false);
       if (playerEl) stopPlayerAudio();
       if (playerOpen) closePlayer();
       return;
@@ -5039,8 +5055,11 @@
         album: np.album || d.show || '',
         artwork: art ? [{ src: new URL(art, location.href).href }] : [],
       });
-      navigator.mediaSession.setActionHandler('play', () => startPlayerAudio());
-      navigator.mediaSession.setActionHandler('pause', () => stopPlayerAudio());
+      // The lock screen is the caller pressing the same two buttons.
+      navigator.mediaSession.setActionHandler(
+        'play', () => { wantPlayer(true); startPlayerAudio(); });
+      navigator.mediaSession.setActionHandler(
+        'pause', () => { wantPlayer(false); stopPlayerAudio(); });
     } catch (e) { /* optional kit; the player works without it */ }
   }
 
@@ -5291,7 +5310,8 @@
     if (cardMode() === 'idle') openPlayer();
   };
   $('plPlayBtn').onclick = () => {
-    if (playerEl) stopPlayerAudio(); else startPlayerAudio();
+    if (playerEl) { wantPlayer(false); stopPlayerAudio(); }
+    else { wantPlayer(true); startPlayerAudio(); }
   };
 
   hangBtn.onclick = () => endCall(false);
