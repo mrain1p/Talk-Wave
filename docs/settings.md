@@ -36,7 +36,7 @@ The panel reads as **pages under one URL**: the search box lives in the masthead
 Typing in the masthead box searches **every page at once** and shows, above the results, how wide the hit is and which pages it reaches — *"12 settings on 4 pages — Permissions & safety · Calls · On air · Players"*. Each result carries its page name ahead of the section name, so a search teaches the layout instead of only answering the question.
 
 - It reads labels, help lines, dropdown options, **section prose and buttons** (so "password" finds Access, whose control is a button), and each setting's own **synonyms** — "color", "avatar", "mute", "rate limit", "timeout", "spam" all land where you would expect.
-- Matches start at a word boundary, so "rate" no longer finds *moderate* and *separate*.
+- Matches start at a word boundary — "rate" does not find *moderate* or *separate*.
 - A result whose **prerequisite is off** is dimmed and marked *needs "<the switch>"*, and the switch is pulled into the results beside it — otherwise you can set a value, save, and watch nothing happen.
 - A section reached through its prose shows with its settings still filtered: the answer is the section, not everything in it.
 
@@ -67,7 +67,7 @@ Three **bands** down one column, beside a **pinned live preview**:
 | **Behaviour** | nothing visual |
 | **Embed** | the frame, and the copyable snippet |
 
-They were tabs until 0.98.22. Three tabs over six, two and one section hid two thirds of the page and put *Start calls on loudspeaker* four levels down — Players → Behaviour → On the caller's phone → row — where every other setting in the panel is three. As captions the grouping still reads and the whole page scrolls.
+Captions rather than tabs, so the grouping reads and the whole page scrolls — nothing sits more than three levels down.
 
 The preview is **the real card in a frame**, following the form before anything is saved and resolved by the same code that answers a real caller — so it cannot drift from the thing it previews. It offers Page and Embed views, with the embed dressed as the Shape chosen under Embed frame.
 
@@ -128,7 +128,7 @@ A reference card, not settings: the three tiers (Admin always, Guest gate, Open)
 - The admin password for this panel, and the optional guest code for the phone.
 - `CALLIN_ADMIN_KEY` is the recovery override.
 - A guest-code expiry (hours, default 24) for shared machines. The card also offers a lock button to forget the code immediately.
-- **Pause all calls**, the kill switch — filed here from 0.98.24, because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
+- **Pause all calls**, the kill switch — filed here because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
 
 ### Caller permissions
 
@@ -181,7 +181,7 @@ Whether both sides of a conversation — calls, texts and voicemails alike — a
 
 Calls at once, per hour and per day, redial wait, actions per call — the guard on API spend, and the door's own state read back from the dashboard.
 
-Called **Usage controls** and filed under Permissions & safety until 0.98.22. The same idea was in three places depending on the door — six chat caps on Texts, voicemail's ceiling on Voicemail, and these two pages away — so the call caps moved to the door that owns them.
+Each door's caps live with the door that owns them — the chat caps on Texts, voicemail's ceiling on Voicemail, the call caps here.
 
 ### Greeting
 
@@ -247,7 +247,7 @@ The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ### Text line
 
-A **Text line** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.24:
+A **Text line** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks:
 
 **Chat limits** — how many chats may be open at once, new chats per hour and per day, a **per-caller reopen wait** (the text line's Redial-wait, and scriptable where a call is not), the per-chat message ceiling and the per-minute message cap.
 

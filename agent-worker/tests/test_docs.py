@@ -277,3 +277,34 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
                 "healthcheck:", compose,
                 "a service_healthy condition without a healthcheck can never "
                 "be satisfied — the stack would not start")
+
+
+class TestTheDocsStayInThePresent(unittest.TestCase):
+    """The operator's rule (2026-08-24): the documentation describes the
+    current state only. Version archaeology — "until 0.98.22", "closed at
+    0.10.146", "since 0.97.66" — belongs in CHANGELOG.md and git history;
+    on a docs page it makes every reader parse a timeline to learn what the
+    thing does TODAY. The whole tree was swept once; this keeps it swept.
+
+    CHANGELOG.md is the version record and is exempt. SUB/WAVE version
+    requirements are compatibility facts, not archaeology — write them as
+    dates ("a SUB/WAVE from July 2026 or newer"), which this pattern does
+    not match.
+    """
+
+    def test_no_talk_wave_version_number_in_the_docs(self):
+        import re
+
+        pat = re.compile(r"\b0\.(?:9\d?|10)\.\d+\b")
+        offenders = []
+        pages = [REPO / "README.md"] + sorted((REPO / "docs").glob("*.md"))
+        for page in pages:
+            for i, line in enumerate(
+                    page.read_text(encoding="utf-8").splitlines(), 1):
+                if pat.search(line):
+                    offenders.append(f"{page.name}:{i}: {line.strip()[:80]}")
+        self.assertEqual(
+            [], offenders,
+            "version numbers in current-state documentation — say what the "
+            "thing does now, and leave when it changed to the changelog: "
+            f"{offenders}")

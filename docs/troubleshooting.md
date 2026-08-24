@@ -57,7 +57,7 @@ The call record's `heard` block and the worker's `call pacing` line say whether 
 
 ### Files and startup
 
-**The panel has forgotten everything, or the login says a file cannot be read** — `data/` is not readable by the container's user, which is uid 1000 from 0.9.65. **Nothing is lost; it just isn't being read.**
+**The panel has forgotten everything, or the login says a file cannot be read** — `data/` is not readable by the container's user, which is uid 1000. **Nothing is lost; it just isn't being read.**
 
 ```bash
 chown -R 1000:1000 data && chmod -R u+rwX data

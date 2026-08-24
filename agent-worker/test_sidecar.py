@@ -440,6 +440,7 @@ from tests.test_chat import (  # noqa: F401
 )
 from tests.test_docs import (  # noqa: F401
     TestTheDocsKeepUpWithTheCode,
+    TestTheDocsStayInThePresent,
 )
 from tests.test_house_rules import (  # noqa: F401
     TestEverySkillWouldActuallyLoad,

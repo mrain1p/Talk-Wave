@@ -13,7 +13,7 @@ Work down it. Each line says what goes wrong if you skip it.
 **Before anyone outside your house can reach the page**
 
 - [ ] **Admin password set.** Until one exists the panel is open to whoever can load the page — and every line is locked: no calls, texts or voicemail in any access mode until the password is set. → *Access*
-- [ ] **Call-in access chosen deliberately.** A fresh install starts *Admin only* — opening the line to a guest code or to anyone is a decision you make, not a state you inherit. On deployments from before 0.10.80 the old *Automatic* rule still runs: open until a code exists — no code is an open line, not a closed one. → *Access*
+- [ ] **Call-in access chosen deliberately.** A fresh install starts *Admin only* — opening the line to a guest code or to anyone is a decision you make, not a state you inherit. → *Access*
 - [ ] **TLS on the front door.** Passwords travel with every request, and browsers refuse the microphone on plain http anyway.
 - [ ] **Open the panel over the TLS door (`:8443`), not `:8100`.** The plain-http port is published alongside Caddy and is a *live admin surface* — reach the panel over `http://…:8100` and the admin password and every API key you type cross the LAN in cleartext, sniffable by anything on the wire. Type them at the `:8443` door. If your own reverse proxy terminates TLS, don't publish `:8100` to the LAN at all — the station's webhook is the only thing that needs it, and that can go through the proxy too.
 - [ ] **The embed allowlist** (*Players → Embed frame → Allowed origins*) set to your real origin(s), or empty. `*` lets any page on the internet mint call tokens against you; the server warns at startup if you choose it. Empty is same-origin only — the widget's own page needs no entry.
@@ -32,15 +32,15 @@ Each caller permission is granted to the *least trusted caller who gets it*: **o
 
 Put the far-reaching ones on **admin** and they are yours alone, while the line stays open to everybody else.
 
-| Permission | Fresh install | Upgraded from < 0.10.80 | What it reaches | Outlives the call |
-|---|---|---|---|---|
-| `allow_announcements` | guest | off | every listener | no |
-| `allow_skip_track` / `allow_dj_segment` | admin | off | every listener | no |
-| `allow_cancel_queue` | off | off | another caller's request | no |
-| `allow_sound_search` | off | off | your library's contents (reads only) | no |
-| `allow_takeover` | admin | off | every listener | **yes** |
-| `allow_genre_lock` | off | off | every listener | **yes — up to 12 hours** |
-| `allow_never_play` | off | off | every listener | **yes — permanently** |
+| Permission | Default | What it reaches | Outlives the call |
+|---|---|---|---|
+| `allow_announcements` | guest | every listener | no |
+| `allow_skip_track` / `allow_dj_segment` | admin | every listener | no |
+| `allow_cancel_queue` | off | another caller's request | no |
+| `allow_sound_search` | off | your library's contents (reads only) | no |
+| `allow_takeover` | admin | every listener | **yes** |
+| `allow_genre_lock` | off | every listener | **yes — up to 12 hours** |
+| `allow_never_play` | off | every listener | **yes — permanently** |
 
 The three that need **station admin credentials** either way: `allow_takeover`, `allow_genre_lock`, `allow_never_play`.
 
@@ -80,7 +80,7 @@ Both under *Access*, and the store refuses to let them match.
 | **Admin only** (default on a fresh install) | the phone answers only the admin password — a new line starts closed and is opened as a decision |
 | **Open** | anyone who loads the page can call — the guest door is off and the code does not elevate; the admin password still opens everything |
 | **Guest code** | the code you hand out, or the admin password |
-| **Automatic** (default on deployments from before 0.10.80) | open until you set a guest code, then required |
+| **Automatic** | open until you set a guest code, then required |
 
 *Open* and *Guest code* are one choice apiece, not a cascade:
 
