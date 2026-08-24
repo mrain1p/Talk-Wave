@@ -102,7 +102,7 @@ Nothing airs during the call, and the whole conversation plays the moment it end
 
 ## Quieting the station's own DJ
 
-Ducking manages the collision; this removes it. **Quiet the station during calls** (panel → On-air ducking) flips the station's own **Voice** switch off while a phone-in is live and back on within seconds of it ending, so idents, hourly time checks, between-track links, segments and banter never talk over a call. Three positions: **off** (default), **during on-air calls**, or **during every call** — a private caller hears the station through tune-in too, so quieting off-air calls is a real choice, not a technicality.
+Ducking manages the collision; this removes it. **Quiet the station during calls** (panel → Call vs broadcast) flips the station's own **Voice** switch off while a phone-in is live and back on within seconds of it ending, so idents, hourly time checks, between-track links, segments and banter never talk over a call. Three positions: **off** (default), **during on-air calls**, or **during every call** — a private caller hears the station through tune-in too, so quieting off-air calls is a real choice, not a technicality.
 
 It needs two things: the **station admin credentials** (the same ones that mirror persona voices) and a **SUB/WAVE from July 2026 or newer** (v0.48.0's station-wide voice switch). Switched on without either, the panel shows a wiring banner saying exactly what is missing — the switch never fails silently.
 

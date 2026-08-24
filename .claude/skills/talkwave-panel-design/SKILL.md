@@ -162,11 +162,22 @@ calls since you were last here") is `info: true` — quiet frame, no coral. Cora
 needs list means something is wrong; three alarms where one is an FYI trains the operator
 to stop reading them.
 
-**One grammar per cluster** (0.98.59, operator's ask — "a mishmash of styles"): the
-Live-on-air pair wears the SAME door-card skin as the three lines (`.doorrow.onairpair`,
-two columns), named in the Doors-to-air section's words ("Calls to air", "Voicemails to
-air"); the dashboard's Open Lines box wears the dashgroup family's frame, caption rule
-and italic-sage tag. Nothing on the dash invents its own frame again.
+**One grammar per cluster** (0.98.59–60, operator's ask — "a mishmash of styles"): the
+Live-on-air cluster is THREE door cards in one row like the Lines — the two kills plus
+the pull card, whose button stacks at the card's foot — named in the Doors-to-air
+section's words ("Calls to air", "Voicemails to air"); the dashboard's Open Lines box
+wears the dashgroup family's frame, caption rule and italic-sage tag. Nothing on the
+dash invents its own frame again. Masthead budget: the transport is 290px, the finder
+190px — controls, not panels. The Access cells are content-sized (`flex: 0 0 auto`);
+a `<label>` inside a `.row` otherwise inherits the 168px label column.
+
+**The finder** (0.98.60): explanation prose and reference lists are MENTIONS — listed
+closed and dimmed with "· mentions it", tallied as "mentioned in N sections below",
+never unfolded over field hits. Controls prose (testrow buttons, subheads) still opens
+its section — the Access/"password" case. A miss retries single deletions and adjacent
+swaps and says so: `nothing for "volumne" — showing "volume"`. Section renames must
+keep old words findable via GROUP_ALIASES ("On-air ducking" → "Call vs broadcast"
+carries ducking/suppress/mute).
 
 The three controls live in the **Transmission group** (0.9.155, the operator's own sketch): a
 bordered `.transmission` cluster whose micro-label is the only outlined group on the dash —

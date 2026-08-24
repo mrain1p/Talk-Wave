@@ -527,7 +527,22 @@ async def handle_test_stt(request: web.Request) -> web.Response:
 
         may_send, _cred_note = _credentials_travel_to(
             cfg.get("tts_base_url"), saved_tts)
+        # An empty voice means "the station's voice for whoever is live" —
+        # the DEFAULT — and this test used to send the '' through, which a
+        # backend answers with "Voice '' not found" (operator-reported,
+        # 2026-08-24). Resolve it exactly the way the voice test above does.
         voice = cfg.get("tts_voice") or ""
+        if not voice:
+            sc = StationConfig()
+            try:
+                st = StationClient()
+                try:
+                    persona = await st.resolve_live_persona()
+                finally:
+                    await st.aclose()
+                voice = await sc.voice_for(persona["id"])
+            finally:
+                await sc.aclose()
         tts = AdapterTTS(base_url=cfg.get("tts_base_url") or "", voice=voice,
                          api_key=os.environ.get("TTS_API_KEY", "") if may_send else "",
                          allow_stored_key=may_send,

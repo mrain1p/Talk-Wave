@@ -1142,7 +1142,11 @@ GROUPS = [
     # and it is not a permission at all), then out of Calls: it is about the
     # one broadcast voice, not the call, so it lives beside the doors.
     ("airdoors", "air",    "Doors to air",        "The phone-in's two doors — close one without touching the other."),
-    ("onair",    "air",    "On-air ducking",      "The call DJ and the on-air DJ are one voice."),
+    # "On-air ducking" until 0.98.60 — the operator went looking for "where
+    # do I suppress the on-air DJ during a call" and the jargon title did
+    # not answer. The name now says BOTH directions the section holds.
+    ("onair",    "air",    "Call vs broadcast",
+     "When both would talk at once: the call pauses for the air, the station quiets for the call."),
     # Open Lines sits on the On air page because that is what it is: the
     # booth reaching OUT to the broadcast, rather than a door reaching in.
     # It spans all three doors — a topic put up on air is answerable on the
@@ -1205,7 +1209,7 @@ GROUP_ALIASES = {
     "turns":     "silence pause endpointing barge-in",
     "closing":   "hang up goodbye timeout duration",
     "tunein":    "stream listener broadcast audio",
-    "onair":     "ducking mute volume",
+    "onair":     "ducking mute volume suppress silence quiet the dj talk over overlap",
     "airdoors":  "broadcast live go live",
     "voicemail": "answering machine messages",
     "chat":      "text sms typing messages",

@@ -21,4 +21,4 @@ would have reported an update that was actually a downgrade, for ever. 97 > 10
 sorts correctly everywhere.
 """
 
-APP_VERSION = "0.98.59"
+APP_VERSION = "0.98.60"

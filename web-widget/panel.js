@@ -4357,13 +4357,24 @@
   // A section's own text, rows excluded: the summary, the prose, the testrow
   // buttons, the slot cards. Rows are matched one at a time, so anything
   // reached through here is a hit on the section rather than on a setting.
-  function ownText(el) {
+  // Explanation, as opposed to controls: the paragraphs, reference lists
+  // and transient result boxes. A word found ONLY here is a mention, not an
+  // answer — "skip" occurs in the tool reference and the shelf's topics,
+  // and unfolding six sections of prose for it drowned the three actual
+  // settings (operator, 2026-08-24: the search "hasn't been very helpful").
+  const EXPLAIN = '.hint, .alert, .ladder, .doorstate, .banner, '
+    + '.asklist, .toollist, .stages, .result';
+  function ownText(el, explain) {
     let s = '';
     el.childNodes.forEach((n) => {
       if (n.nodeType === 3) { s += n.nodeValue + ' '; return; }
       if (n.nodeType !== 1) return;
       if (n.matches && n.matches('.row, label.check, .prow, .permrow')) return;
-      s += ownText(n);
+      if (n.matches && n.matches(EXPLAIN)) {
+        if (explain) explain.push(n.textContent + ' ');
+        return;
+      }
+      s += ownText(n, explain);
     });
     return s;
   }
@@ -4385,16 +4396,21 @@
       const el = sec.querySelector(':scope > summary > ' + sel);
       return el ? el.textContent + ' ' : '';
     };
+    const explained = [];
+    const controls = ownText(sec, explained);
     rec = {
       name: (part('.secname') + part('.secblurb') + part('.tag')
         + (g.title || '') + ' ' + (g.blurb || '') + ' '
         + (g.alias || '')).toLowerCase(),
-      // Everything else the section says on its own account. A hit here is
-      // weaker: it brings the section onto the results page without
-      // unfolding its settings, which is the Access case — "password" lives
-      // on a testrow button and in prose, and the section owning the answer
-      // was the one the old filter hid.
-      prose: ownText(sec).toLowerCase(),
+      // The section's own CONTROLS — subheads, buttons, slot cards. A hit
+      // here is a real answer standing outside any .row (the Access case:
+      // "password" lives on a testrow button), so the section shows open
+      // with its rows filtered, as before.
+      prose: controls.toLowerCase(),
+      // The section's EXPLANATION — hint paragraphs, reference lists. A hit
+      // only here is a mention: the section is listed closed on the results
+      // page, never unfolded over the real answers.
+      mention: explained.join('').toLowerCase(),
     };
     HAY.set(sec, rec);
     return rec;
@@ -4446,6 +4462,7 @@
             delete r.dataset.needsOff;
           });
         sec.style.removeProperty('display');
+        delete sec.dataset.mention;
         const crumb = sec.querySelector(':scope > summary > .crumb');
         if (crumb) crumb.remove();
         if (sec.dataset.searchOpened) {
@@ -4477,48 +4494,33 @@
       crumb.textContent = page;
     };
 
-    const apply = () => {
-      const needle = (box.value || '').trim().toLowerCase();
-      const sections = [...document.querySelectorAll('details.sec')];
-      // Search is a RESULTS VIEW over every page: while a needle is typed,
-      // paintPage lifts the page filter (and parks the dashboard), and the
-      // filtering below decides what shows. Clearing the box hands the panel
-      // back to whichever page the operator was on.
-      document.body.classList.toggle('finding', !!needle);
-      paintPage();
-      if (!needle) {
-        restore(sections);
-        if ($('searchMiss')) $('searchMiss').hidden = true;
-        if ($('searchCount')) $('searchCount').hidden = true;
-        return;
-      }
+    const rowsOf = (sec) =>
+      [...sec.querySelectorAll('.row, label.check, .prow, .permrow')];
 
-      const rowsOf = (sec) =>
-        [...sec.querySelectorAll('.row, label.check, .prow, .permrow')];
+    // One needle's worth of matching, no rendering — so the typo fallback
+    // below can probe candidates without painting each one.
+    const collect = (needle, sections) => {
       const whole = new Set();
       const shown = new Set();
       const prose = new Set();
+      const mention = new Set();
       sections.forEach((sec) => {
         const hay = secHay(sec);
         if (hitsWord(hay.name, needle)) whole.add(sec);
         else if (hitsWord(hay.prose, needle)) prose.add(sec);
+        else if (hitsWord(hay.mention, needle)) mention.add(sec);
         rowsOf(sec).forEach((r) => {
           if (hitsWord(rowHay(r), needle)) shown.add(r);
         });
       });
-      // A prose hit brings the section onto the results page WITHOUT
-      // unfolding its settings. The word was found on a button, in a
-      // paragraph or in the section's own explanation — that is an answer
-      // about the section, not about every row in it. Access answers
-      // "password" with the Change-password button standing in a section
-      // whose rows stay filtered; Caller permissions, whose prose mentions
-      // the admin password in passing, no longer answers with twenty-one
-      // permission rows.
+      // A prose (controls) hit brings the section onto the results page
+      // WITHOUT unfolding its settings — the Access case: "password" lives
+      // on a testrow button. A mention hit lists the section CLOSED.
 
       // Pull in the switch that governs anything found. A dependant without
       // its prerequisite is the trap described at the top of this block, and
       // the prerequisite is precisely the row a needle for the dependant
-      // filters out — "Length (words)" never says "Mention the call on air".
+      // filters out — "Length" never says "Mention the call on air".
       [...shown].forEach((r) => {
         rowFields(r).forEach((f) => {
           const need = (SCHEMA.fields[f] || {}).needs;
@@ -4526,8 +4528,53 @@
           if (gov) shown.add(gov);
         });
       });
+      return { whole, shown, prose, mention,
+               any: whole.size + shown.size + prose.size + mention.size > 0 };
+    };
 
-      let count = 0, found = 0;
+    // "volumne" should not be a hard no. Single deletions and adjacent
+    // transpositions cover the doubled letter, the stray letter and the
+    // swap — each candidate runs the same matcher, first that answers wins.
+    const nearMisses = (needle) => {
+      const out = [];
+      if (needle.length < 4) return out;
+      for (let i = 0; i < needle.length; i++) {
+        out.push(needle.slice(0, i) + needle.slice(i + 1));
+      }
+      for (let i = 0; i < needle.length - 1; i++) {
+        out.push(needle.slice(0, i) + needle[i + 1] + needle[i]
+          + needle.slice(i + 2));
+      }
+      return [...new Set(out)].filter((c) => c !== needle);
+    };
+
+    const apply = () => {
+      const typed = (box.value || '').trim().toLowerCase();
+      const sections = [...document.querySelectorAll('details.sec')];
+      // Search is a RESULTS VIEW over every page: while a needle is typed,
+      // paintPage lifts the page filter (and parks the dashboard), and the
+      // filtering below decides what shows. Clearing the box hands the panel
+      // back to whichever page the operator was on.
+      document.body.classList.toggle('finding', !!typed);
+      paintPage();
+      if (!typed) {
+        restore(sections);
+        if ($('searchMiss')) $('searchMiss').hidden = true;
+        if ($('searchCount')) $('searchCount').hidden = true;
+        return;
+      }
+
+      let needle = typed;
+      let res = collect(needle, sections);
+      if (!res.any) {
+        for (const cand of nearMisses(typed)) {
+          const r = collect(cand, sections);
+          if (r.any) { needle = cand; res = r; break; }
+        }
+      }
+      const { whole, shown, prose, mention } = res;
+
+      let count = 0, found = 0, mentioned = 0;
       const pages = [];
       sections.forEach((sec) => {
         const all = whole.has(sec);
@@ -4544,12 +4591,27 @@
           }
           any = any || on;
         });
-        sec.style.display = any ? '' : 'none';
+        // A mention rides the results page CLOSED and quiet — the word is
+        // in this section's explanation, and that is worth a pointer, not
+        // six unfolded screens of reference prose over the real answers.
+        const men = !any && mention.has(sec);
+        if (men) {
+          mentioned++;
+          sec.dataset.mention = '1';
+          if (sec.dataset.searchOpened) {
+            sec.open = false;
+            delete sec.dataset.searchOpened;
+          }
+        } else {
+          delete sec.dataset.mention;
+        }
+        sec.style.display = any || men ? '' : 'none';
+        if (!any && !men) return;
+        breadcrumb(sec);
         if (!any) return;
         found++;
         const page = pageOfSection(sec);
         if (page && pages.indexOf(page) === -1) pages.push(page);
-        breadcrumb(sec);
         if (!sec.open) {
           sec.open = true;
           sec.dataset.searchOpened = '1';
@@ -4558,21 +4620,32 @@
 
       // Say so when nothing matched — a page of collapsed nothing read as
       // the panel being broken, not as a miss. `found` rather than `count`:
-      // a section reached through its prose shows with its rows still
+      // a section reached through its controls shows with its rows still
       // filtered, so a real answer can carry no settings at all.
-      if ($('searchMiss')) $('searchMiss').hidden = !!found;
-      // And say how WIDE the hit is. One setting on one page and eighteen
-      // across five are different answers, and naming the pages is the map
-      // the panel otherwise never draws — the bands are hidden here.
+      if ($('searchMiss')) $('searchMiss').hidden = !!(found || mentioned);
+      // And say how WIDE the hit is — pages counted from real answers only,
+      // mentions tallied separately, and a corrected needle named out loud.
       const tally = $('searchCount');
       if (tally) {
-        tally.hidden = !found;
-        tally.textContent = !found ? ''
-          : (count ? count + (count === 1 ? ' setting' : ' settings')
-                   : found + (found === 1 ? ' section' : ' sections'))
+        tally.hidden = !(found || mentioned);
+        let words = '';
+        if (needle !== typed) {
+          words += 'nothing for “' + typed + '” — showing “'
+            + needle + '”: ';
+        }
+        if (found) {
+          words += (count
+            ? count + (count === 1 ? ' setting' : ' settings')
+            : found + (found === 1 ? ' section' : ' sections'))
             + ' on ' + pages.length
             + (pages.length === 1 ? ' page — ' : ' pages — ')
             + pages.map((p) => PAGE_TITLES[p] || p).join(' · ');
+        }
+        if (mentioned) {
+          words += (found ? ' · ' : '') + 'mentioned in ' + mentioned
+            + (mentioned === 1 ? ' section' : ' sections') + ' below';
+        }
+        tally.textContent = words;
       }
     };
 

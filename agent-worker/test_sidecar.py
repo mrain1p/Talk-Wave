@@ -397,6 +397,7 @@ from tests.test_voice import (  # noqa: F401
     TestAVoiceTheBackendCannotSpeakIsNotSilence,
     TestEveryAdapterTTSCallSiteMatchesItsSignature,
     TestEveryPersonaIsCheckedNotOnlyTheOneOnAir,
+    TestTheHearingTestSpeaksWithARealVoice,
     TestShippedAdaptersAreWellFormed,
     TestTheSttModelIsLoadedOnceForTheWholeProcess,
     TestTheVoiceCanLiveInTheUrl,

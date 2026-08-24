@@ -346,14 +346,16 @@
                   <span class="cn">an aired soundbite can reach the broadcast</span>
                 </button>
               </div>
-            </div>
-            <div class="linerow onairpull">
-              <!-- A visible BUTTON, not a whole-card control (operator's
-                   ask): the row states, the button acts. -->
-              <div class="ctrlcard pullcard" id="pullRow">
-                <span class="ck">On-air transmission</span>
-                <span class="cn" id="pullNote">pulls whoever is live — the turn in hand never airs</span>
-                <button type="button" id="dumpBtn" class="pullbtn">PULL OFF AIR</button>
+              <!-- The pull is the row's THIRD card (operator, 2026-08-24 —
+                   three cards one row, like the Lines above). Still a
+                   visible BUTTON inside a card that states: the card says
+                   what pulling does, the button acts. -->
+              <div class="linerow door">
+                <div class="ctrlcard pullcard" id="pullRow">
+                  <span class="ck">On-air transmission</span>
+                  <span class="cn" id="pullNote">pulls whoever is live — the turn in hand never airs</span>
+                  <button type="button" id="dumpBtn" class="pullbtn">PULL OFF AIR</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1086,7 +1088,7 @@
     </details>
 
     <details data-group="onair" class="sec">
-      <summary><span class="chev">▶</span><span class="secname">On-air ducking</span><em class="secblurb"></em><span class="tag" id="tagOnair"></span></summary>
+      <summary><span class="chev">▶</span><span class="secname">Call vs broadcast</span><em class="secblurb"></em><span class="tag" id="tagOnair"></span></summary>
       <div class="body">
         <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ
           on the broadcast are the same person. Without this they talk over each

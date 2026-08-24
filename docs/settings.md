@@ -278,7 +278,7 @@ The phone-in's two quick kills — **Calls may go on air** and **Voicemails may 
 
 Who may use the route at all — and the on-air window and delay around it — stays under Caller permissions, greyed while both doors here are shut.
 
-### On-air ducking
+### Call vs broadcast
 
 Overlap protection: the call DJ and the on-air DJ are one voice.
 

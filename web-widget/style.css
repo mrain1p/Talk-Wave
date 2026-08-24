@@ -3009,22 +3009,27 @@
   /* The dump row ships [hidden] until the on-air door opens, and the grid
      rule above would beat the UA's hidden — the slot-card lesson. */
   .linerow[hidden] { display: none; }
-  /* The Live-on-air cluster: the two door kills side by side, the pull
-     control full width beneath, its own micro-label above — the Lines
-     grammar, one row deeper. */
+  /* The Live-on-air cluster: three cards in one row — two door kills and
+     the pull — its own micro-label above. The Lines grammar, one row
+     deeper. */
   #onAirLine { margin-top: 12px; }
   #onAirLine[hidden] { display: none; }
   #onAirLine .lineslabel { margin: 0 0 6px; }
-  /* The two doors ride the door-card skin side by side (operator's ask,
-     2026-08-24 — reversing the earlier stacked-rows ask: bare full-width
-     rows under the three cards read as a different page sharing the box).
-     Two columns, because there are two doors. */
-  .doorrow.onairpair {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-bottom: 8px;
+  /* The cluster rides the door-card skin as three cards in one row, exactly
+     the Lines grammar above it (operator's ask, 2026-08-24, second cut —
+     the first pass paired the doors and left the pull as a full-width bar,
+     which was still a second shape in the box). Base .doorrow already says
+     three columns. In its card the pull STACKS: name, note, then the
+     button full width where the other cards wear their switches' row. */
+  .linerow.door .ctrlcard.pullcard {
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: stretch; text-align: left;
   }
-  /* The pull row stays full width — it is the cluster's one action bar. */
-  .linerow.onairpull { grid-template-columns: 1fr; }
+  /* A longer name may wrap in a third-width card, but the state never
+     breaks apart — "Voicemails to air ·" over a lone "On" read as a
+     rendering fault. The dot and the word travel together. */
+  .doorrow .ctrlcard .cv { white-space: nowrap; }
+  .linerow.door .pullcard .pullbtn { margin-top: auto; }
   /* The pull row: the card states, its BUTTON acts (operator's ask) —
      coral-edged where the toggles wear their switches. */
   .linerow .ctrlcard.pullcard { cursor: default; }
@@ -5427,8 +5432,11 @@
      It inherits the panel's input skin; only its place and width are ours.
      320 → 240 when the transport joined the row: the panel is capped at
      1180px, so every pixel this keeps is one the record's name does not get. */
+  /* 240 → 190 (operator, 2026-08-24: the finder and the transport were
+     eating the masthead). A search box is a door, not a page — it grows
+     the moment you type into results anyway. */
   body.panelpage .masthead .settingsearch {
-    flex: 0 1 240px; min-width: 140px; align-self: center; margin: 0;
+    flex: 0 1 190px; min-width: 120px; align-self: center; margin: 0;
   }
   /* :not([hidden]) so the sign-out button (hidden until logged in) and the
      call page's corner gears stay hideable — a bare .gear display rule beats
@@ -5453,9 +5461,12 @@
 
      [hidden] is re-asserted because the flex below beats the UA rule, which
      this codebase has now paid for five times. */
+  /* 400 → 290 (operator, 2026-08-24): the transport is a control, not a
+     panel — the pip carries state, the name truncates, and the masthead
+     gets its quiet back. */
   body.panelpage .stationbar {
     display: flex; align-items: center; gap: 8px; align-self: center;
-    flex: 0 1 400px; min-width: 170px;
+    flex: 0 1 290px; min-width: 170px;
     height: 34px; padding: 0 8px; box-sizing: border-box;
     border: 1px solid var(--edge);
   }
@@ -6108,6 +6119,10 @@
     display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
     font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: uppercase; color: var(--dim);
+    /* Content-sized. Each cell is a <label> inside a .row, and the row's
+       168px label column was sizing all three — 500px of tick row for 90px
+       of ticks (operator, 2026-08-24: "wasting a lot of space"). */
+    flex: 0 0 auto;
   }
   body.panelpage .acell input { margin: 0; }
   body.panelpage .acell input:disabled + span { color: var(--sage-dim); }
@@ -6237,6 +6252,17 @@
   color: var(--sage-dim); margin-right: .55em; white-space: nowrap;
 }
 .panelpage.finding .crumb::after { content: " \203A"; color: var(--edge); }
+
+/* A MENTION on the results page: the word is in this section's explanation
+   or reference lists, not on a setting. Listed closed and a step quieter,
+   with the word said outright — a pointer under the real answers, instead
+   of six unfolded screens of prose over them (operator, 2026-08-24). */
+.panelpage.finding details.sec[data-mention] > summary { opacity: .62; }
+.panelpage.finding details.sec[data-mention] > summary .secname::after {
+  content: "· mentions it"; margin-left: .6em;
+  font: 400 italic 11.5px/1 inherit; letter-spacing: 0;
+  text-transform: none; color: var(--sage);
+}
 
 /* A result whose prerequisite is off. Dimmed, never hidden — it IS the
    setting that was asked for — with the switch it hangs off named after it.

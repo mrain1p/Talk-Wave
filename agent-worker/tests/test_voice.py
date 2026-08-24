@@ -770,3 +770,21 @@ class TestEveryAdapterTTSCallSiteMatchesItsSignature(unittest.TestCase):
                         bad.append(f"{path.name}:{node.lineno} passes "
                                    f"{kw.arg}= which AdapterTTS does not take")
         self.assertEqual([], bad)
+
+
+class TestTheHearingTestSpeaksWithARealVoice(unittest.TestCase):
+    """"Voice '' not found" (operator-reported, 2026-08-24): the hearing test
+    sent an empty tts_voice straight to the backend, where empty means "the
+    station's voice for whoever is live" everywhere else — the DEFAULT, so
+    the test failed on any deployment that never pinned a voice. The fix is
+    the same resolution handle_test_tts already does; this pins that the
+    empty-voice branch exists and resolves before synthesizing."""
+
+    def test_an_empty_voice_is_resolved_not_sent(self):
+        src = (AGENT_WORKER / "api" / "diagnostics.py").read_text(
+            encoding="utf-8")
+        body = src.split("async def handle_test_stt")[1].split("async def ")[0]
+        self.assertIn("resolve_live_persona", body,
+                      "the hearing test no longer resolves the live persona "
+                      "for an empty voice — '' goes to the backend and 400s")
+        self.assertIn("voice_for", body)
