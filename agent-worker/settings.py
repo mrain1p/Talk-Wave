@@ -1993,8 +1993,12 @@ SCHEMA: dict[str, dict] = {
     # card — but the schema is what the finder reads, so it answered
     # "where is Take text chats" with
     # "Calls > Call limits", which is the one answer it exists to get right.
+    # Named as the dashboard card names it: the door pages quote this label
+    # ("The switch is X, on the dashboard"), and "Take text chats" sent the
+    # operator hunting for a switch that says "Text line" (settings review,
+    # 2026-08-24). The old verb phrase stays findable via the alias.
     "chat_enabled": dict(group="chat", kind="check",
-        label="Take text chats",
+        label="Text line", alias="take text chats typed enable",
         help="The text line: typed conversation with whoever is on air, "
              "same brain and same tools as the phone, over a plain "
              "WebSocket — no WebRTC, so it works where calls cannot. "
@@ -2002,7 +2006,7 @@ SCHEMA: dict[str, dict] = {
     # Same move, and this one's help gave the game away: "everything below"
     # was on a different page from the switch.
     "voicemail_enabled": dict(group="voicemail", kind="check",
-        label="Enable voicemail",
+        label="Voicemail", alias="enable voicemail machine answering",
         help="The machine's master switch — everything else here applies "
              "only while this is on. Its beep lives with the sound board, "
              "under [Call sounds](#sounds)."),
@@ -2022,7 +2026,7 @@ SCHEMA: dict[str, dict] = {
         help="Who may open the text line at all. [Text line](#chat) "
              "holds its clocks and ceilings; this decides WHO gets in."),
     "live_calls_enabled": dict(group="usage", kind="check",
-        label="Take live calls",
+        label="Live calls", alias="take live calls answer phone",
         help="Off, the Call button becomes the machine's door (with "
              "voicemail on) or says the line is closed. Independent of "
              "Voicemail below — the two switches together are the line's "

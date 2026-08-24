@@ -39,6 +39,19 @@ tuple, and its supergroup assignment is the second element of that tuple.
 columns. Worth knowing before you write a finding about a two-column layout that is not
 there (0.98.24 did exactly that).
 
+**Field widths inside a `.row`** (2026-08-24 review): text/password/URL fields stay at
+260px — a URL is not more readable at 420. **Selects grow to their content, capped at
+420px**, because option labels are "value — consequence" sentences and the closed control
+was chopping them mid-word on twenty rows. **Number inputs are 96px everywhere**, narrow
+row or not — a box holding "0.8" at 260px was the old look's tell. A control outside any
+`.row` (the dashboard's Open Lines box) must put the field skin on explicitly; two bare
+native controls shipped unstyled on the cream theme because nothing dressed them.
+
+**A field whose switch is a dashboard card wears the card's own words as its schema
+label** ("Live calls", "Voicemail", "Text line"), with the old verb phrase kept in
+`alias=` for the finder — the door-state banners quote the label, and "Take live calls"
+named a switch no card shows.
+
 **Never** add a static `<p class="hint wide">` under a single field — field help belongs in the
 schema (`help=`), which injects it in the right place per shape. Static paragraphs are only for
 whole-section prose (a prerequisite, a warning, what a run of buttons does), and ONE per
@@ -119,6 +132,18 @@ in the same commit and say why — the point is that it is a decision, not an ac
 Leads the page since 0.9.153, under its own `.dashband` label; the settings heading + search
 share one header row (`.settingshead`) below it, then the full-width `.panelnav` jump menu
 (entries wear the quiet button skin and flex to fill each row).
+
+**The picker WRAPS on wide screens** (2026-08-24): thirteen chips outgrew one 1180px row,
+and the old hidden-scrollbar slide simply cut the last chip off — Diagnostics was
+invisible with nothing saying so. Chips are `flex: 1 1 auto` capped at 320px (a lone chip
+on the wrap's last row otherwise becomes a page-wide bar); under 760px the one-row slide
+returns. Each chip carries its page's section names as a hover `title`, built from the
+schema so it cannot drift.
+
+**Notification tone**: a needs row that reports the box WORKING (a pending release, "N
+calls since you were last here") is `info: true` — quiet frame, no coral. Coral in the
+needs list means something is wrong; three alarms where one is an FYI trains the operator
+to stop reading them.
 
 The three controls live in the **Transmission group** (0.9.155, the operator's own sketch): a
 bordered `.transmission` cluster whose micro-label is the only outlined group on the dash —

@@ -395,6 +395,13 @@
       a.href = '#' + id;
       a.dataset.page = id;
       a.textContent = title;
+      // What's behind the chip, before committing to the click: the page's
+      // own section names as a hover title. Derived from the schema, so it
+      // can never disagree with the page it describes (settings review,
+      // 2026-08-24 — a newcomer cannot tell what "The booth" holds).
+      const secs = SCHEMA.groups
+        .filter((g) => g.super === id).map((g) => g.title);
+      if (secs.length) a.title = secs.join(' · ');
       nav.appendChild(a);
     };
 
@@ -1189,11 +1196,12 @@
   // Whether the door this page is about is even open. The three door
   // switches live on the dashboard as control cards — the right place for
   // them, and not being moved — but their PAGES said nothing about it, and
-  // the fields, though declared with labels ("Enable voicemail", "Take live
-  // calls", "Take text chats"), rendered in no section, matched no search
-  // and appeared in no list built from the markup. So a setting you could
-  // read about in the schema was reachable only by recognising a card on
-  // another page.
+  // the fields, though declared with labels ("Voicemail", "Live calls",
+  // "Text line" — the cards' own words since the 2026-08-24 review; they
+  // were verb phrases the cards never showed), rendered in no section,
+  // matched no search and appeared in no list built from the markup. So a
+  // setting you could read about in the schema was reachable only by
+  // recognising a card on another page.
   //
   // A line, not a control. Two switches for one thing is how a panel starts
   // disagreeing with itself; this reads the same checkbox the card writes.
@@ -1215,11 +1223,11 @@
       const box = $(field);
       if (!el) return;
       const on = box ? box.checked : !!resolved[field];
-      // The switch's own LABEL, named out loud. This is the only place in the
-      // panel it appears: the control is a dashboard card that says "Live
-      // calls", so "Enable voicemail" and "Take text chats" — real settings,
-      // with real labels — were words the finder could never match and the
-      // operator could never look up.
+      // The switch's own LABEL, named out loud — and since the 2026-08-24
+      // review the schema labels ARE the dashboard cards' words ("Live
+      // calls", "Voicemail", "Text line"), so the sentence this writes
+      // names a control that exists as written. The old verb phrases
+      // survive as finder aliases.
       const label = (SCHEMA.fields[field] || {}).label || field;
       const where = ' The switch is \u201c' + label
         + '\u201d, on the [dashboard](#dash).';
@@ -1831,7 +1839,10 @@
       // them nowhere (their ask, 2026-08-16).
       // Its own key, carrying the version: dismissing "0.10.155 is out" must
       // not also silence 0.10.160, which the digit-blind default key would.
-      items.push({ key: 'newer:' + newerRelease,
+      // info, not a fault: a pending upgrade is the box working, and coral
+      // beside two real faults made three alarms out of one (settings
+      // review, 2026-08-24 — the .needrow.info comment is the rule).
+      items.push({ key: 'newer:' + newerRelease, info: true,
                    label: 'Version ' + newerRelease + ' is out',
                    note: 'this box is on ' + (panelVersion || '?')
                      + ' — pull the image and restart both containers' });

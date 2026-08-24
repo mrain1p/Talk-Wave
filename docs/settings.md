@@ -223,7 +223,7 @@ A **Per-DJ effects** list gives any persona its own colour, saved as picked, wit
 
 ### Voicemail machine
 
-An **Enable voicemail** master switch — the control is the dashboard's Voicemail line, and this page says whether it is open — then:
+A **Voicemail** master switch — the control is the dashboard's Voicemail line, and this page says whether it is open — then:
 
 - per-persona greeting lines — editable, playable, deletable — staged one at a time with live progress
 - a per-tier caller permission
@@ -247,7 +247,7 @@ The full walkthrough, including the soundbite studio: [Voicemail](VOICEMAIL.md).
 
 ### Text line
 
-A **Take text chats** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.24:
+A **Text line** master switch (the control is the dashboard's Text line; this page says whether it is open), then four named blocks — the section ran to fifteen rows under no headings until 0.98.24:
 
 **Chat limits** — how many chats may be open at once, new chats per hour and per day, a **per-caller reopen wait** (the text line's Redial-wait, and scriptable where a call is not), the per-chat message ceiling and the per-minute message cap.
 

@@ -3063,6 +3063,11 @@
 
   .olquiet, .olprimary, .olmini, .olghost {
     cursor: pointer; font-family: inherit; transition: border-color 120ms ease;
+    /* A button's words never break: on a phone "+ Add a topic" wrapped into
+       a one-word-per-line tower (settings review, 2026-08-24). The heads
+       these live in already flex-wrap, so a whole button drops to the next
+       line instead. */
+    white-space: nowrap;
   }
   .olsec .olquiet {
     font: 600 12px/1 inherit; padding: 8px 13px; border-radius: 7px;
@@ -3195,7 +3200,12 @@
   /* The shelf, as a record list. The whole point of the redesign: the subject
      is never truncated, because the subject is the thing. */
   .olshelfband { background: var(--pine); }
-  .olshelfhead { display: flex; align-items: center; gap: 12px; padding: 13px 18px 9px; }
+  /* wrap: on a phone the add button drops under the counts as one piece
+     rather than being squeezed against the band's right edge. */
+  .olshelfhead {
+    display: flex; align-items: center; gap: 12px; padding: 13px 18px 9px;
+    flex-wrap: wrap;
+  }
   .olshelfcount {
     font: 700 9px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: uppercase; color: var(--dimmer);
@@ -3355,6 +3365,17 @@
   /* The flex display above beats the UA's [hidden] rule, so the live/idle
      swap needs it re-asserted or both halves show at once. */
   .olbody[hidden] { display: none; }
+  /* The box's two fields wear the panel's own field skin. They sit outside
+     any .row, so nothing else dresses them — and a bare native select on
+     the cream theme read as a control from a different application
+     (settings review, 2026-08-24). */
+  .olbody select, .olbody input[type=text] {
+    font: inherit; font-size: 12.5px; padding: 6px 9px;
+    border: 1px solid var(--line2); background: var(--bg); color: var(--text);
+  }
+  .olbody select:focus, .olbody input[type=text]:focus {
+    outline: none; border-color: var(--accent);
+  }
   .ollabel { font-size: 11px; color: var(--dimmer); }
   .olpremise { margin: 0; font-size: 14px; line-height: 1.4; color: var(--text); }
   .olmeta { margin: 0; font-size: 11px; color: var(--dimmer); }
@@ -3779,6 +3800,18 @@
     padding: 6px 9px; border-radius: 8px;
     border: 1px solid var(--line2); background: var(--bg); color: var(--text);
   }
+  /* Dropdowns alone may grow past the text-field width: every option label
+     is "value — plain-words consequence" (the house rule), and at 260px the
+     closed control chopped the consequence mid-sentence on twenty-odd rows
+     ("When a live call is impossible (busy, off a…" — settings review,
+     2026-08-24). width:auto lets the browser size to the longest option,
+     the cap keeps a wordy one from eating the help's column, and flex-shrink
+     still gives it back on narrow layouts. Text fields stay at 260px — a URL
+     does not become more readable at 420. */
+  .row select { flex: 0 1 auto; width: auto; min-width: 200px; max-width: 420px; }
+  /* A field that holds "0.8" does not need 260px to hold it — the same
+     rule .row.narrow always applied, now true of every number in a row. */
+  .row input[type=number] { flex: 0 0 96px; }
   /* The only greedy thing in the row. It gets whatever the label and the
      field did not take, which at the panel's width is more than the help had
      when it sat on a line of its own. */
@@ -4433,7 +4466,10 @@
        turn count, a fixed track cut chips off mid-word ("search…" and a bare
        clipped border, operator screenshot) while the note column beside it
        sat empty on every passing call. */
-    grid-template-columns: 16px 144px minmax(0, 1fr) 46px minmax(0, 1.4fr) minmax(0, 1fr) auto;
+    /* dj widened to 1.2fr when the tier chip stopped being clippable
+       (2026-08-24): the chip's width now always comes out of the name, and
+       "Text chat · Fr…" was the result at 1fr. */
+    grid-template-columns: 16px 144px minmax(0, 1.2fr) 46px minmax(0, 1.2fr) minmax(0, 1fr) auto;
     gap: 10px; align-items: baseline; padding: 6px 2px; font-size: 12px;
     cursor: pointer; list-style: none;
   }
@@ -4512,6 +4548,14 @@
     color: var(--dim); font-weight: 600;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* The DJ cell holds a name AND a tier chip. Flex, so the name (.djname)
+     is the part that ellipsizes and the chip never gets cut mid-border —
+     the same clipped-border bug the tools column had (see the grid note). */
+  .callrow > summary .dj { display: flex; align-items: center; }
+  .callrow > summary .dj .djname {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .callrow > summary .dj .ctier { flex: none; }
   .callrow > summary .len {
     color: var(--dimmer); text-align: right;
     font-family: var(--font-mono); font-variant-numeric: tabular-nums;
@@ -5629,6 +5673,12 @@
   body.panelpage .lines {
     margin: 10px 0 0 10px; padding-left: 14px;
     border-left: 1px solid var(--edge);
+    /* The split stretches both columns to one height (0.10.92), so when the
+       Notifications stack runs long the Transmission box is handed extra
+       height. Grow the LINES block into it: the left rule runs to the
+       box's floor and the space reads as structure, not as a hole under
+       the doors (settings review, 2026-08-24). */
+    flex: 1;
   }
   body.panelpage .linerow { border-bottom: 1px solid var(--hairline); }
   body.panelpage .linerow:last-child { border-bottom: 0; }
@@ -5971,14 +6021,25 @@
     border-bottom: 1px solid var(--edge);
     margin: 0 -2px; padding: 4px 2px 0;
   }
-  /* One row always: chips slide horizontally on a narrow panel instead of
-     wrapping into a block that eats the viewport the band now rides in. */
+  /* Wide screens WRAP — thirteen chips outgrew one 1180px row, and a
+     hidden-scrollbar slide meant the last page (Diagnostics) was simply cut
+     off with nothing saying so (settings review, 2026-08-24: the operator
+     could go weeks without learning the page exists). Narrow screens keep
+     the slide below, where a wrapped block would eat the viewport the
+     sticky band rides in. */
   body.panelpage .panelnav {
     border-top: 1px solid var(--hairline); border-bottom: 0; margin-bottom: 0;
-    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
   }
-  body.panelpage .panelnav::-webkit-scrollbar { display: none; }
-  body.panelpage .panelnav a { flex: 1 0 auto; white-space: nowrap; }
+  /* Grow to justify a full row, but capped — a lone chip on the wrap's
+     last row otherwise stretches into a page-wide bar. */
+  body.panelpage .panelnav a { flex: 1 1 auto; max-width: 320px; white-space: nowrap; }
+  @media (max-width: 760px) {
+    body.panelpage .panelnav {
+      flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    }
+    body.panelpage .panelnav::-webkit-scrollbar { display: none; }
+    body.panelpage .panelnav a { flex: 1 0 auto; }
+  }
   /* The current page's chip: coral ink and a light coral fill — one mark,
      because there is exactly one page open at a time. */
   body.panelpage .panelnav a.here {

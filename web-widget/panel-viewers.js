@@ -333,10 +333,16 @@
     // the row. The year is never the thing you are looking for in a list that
     // holds the last forty calls.
     sum.querySelector('.when').textContent = callTime(c.startedAt, 'short');
-    sum.querySelector('.dj').textContent =
+    // The name in its own span so IT ellipsizes while the tier chip beside
+    // it stays whole — the chip used to be clipped to a floating "(" sliver
+    // on the longer chat/voicemail prefixes (settings review, 2026-08-24).
+    const djName = document.createElement('span');
+    djName.className = 'djname';
+    djName.textContent =
       (c.kind === 'voicemail' ? '✉ Voicemail · '
         : c.kind === 'chat' ? '💬 Text chat · ' : '')
       + (c.persona?.name || 'DJ');
+    sum.querySelector('.dj').appendChild(djName);
     sum.querySelector('.len').textContent = `${Math.round(c.durationSecs || 0)}s`;
     sum.querySelector('.did').textContent =
       `${turns} turn${turns === 1 ? '' : 's'}`;

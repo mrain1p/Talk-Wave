@@ -971,6 +971,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 801: the free-text find over both sides of a conversation (0.98.51) —
         # the operator's own ask, and it lands in the call viewer's filter
         # pipeline, which is the half of this file the seam already names.
+        # 807: the DJ cell's name span (2026-08-24 settings review) — the
+        # tier chip was being ellipsis-clipped to a border sliver on chat
+        # and voicemail rows, and the fix is a wrapper the summary builder
+        # has to create. Six lines, same call-viewer half of the seam.
         # 617 the day the settings page grew a station transport. The engine
         # that plays the broadcast — playFirstWorking, its CORS retry and its
         # mixed-content warning — had to leave call.js the moment a SECOND
@@ -999,7 +1003,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),
-        "web-widget/panel-viewers.js": (801, "the log viewer split from the "
+        "web-widget/panel-viewers.js": (807, "the log viewer split from the "
                                              "call viewer; they share only "
                                              "Panel.afetch and showResult"),
         # 0.9.122 pushed it over adding per-adapter auth and the {voice}

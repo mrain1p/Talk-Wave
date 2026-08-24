@@ -61,6 +61,9 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     "live_calls_enabled": True,
     "voicemail_enabled": True,
     "voicemail_when": "closed",
+    # On, so the dashboard's Open Lines box and the section's live header
+    # can both be seen without first ticking the switch.
+    "open_lines_enabled": True,
 }), encoding="utf-8")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))
@@ -214,6 +217,37 @@ def _make_calls():
 
 CALLS = _make_calls()
 
+# The Open Lines shelf, in memory so add/edit/remove can be driven end to
+# end. One starter entry mirrors the shipped built-ins (starter: True paints
+# the "built in" chip); the used/last_used spread exercises the ledger's
+# used and never columns both.
+OPEN_LINES_PREMISES = [
+    {"id": "a1b2c3d4e5f6", "text": "a record you skipped for years that "
+     "finally landed", "personas": ["p_default1"], "used": 1,
+     "last_used": "2026-08-18 21:40:11", "added": "2026-08-10 12:00:00"},
+    {"id": "b2c3d4e5f6a1", "text": "whether an album still means anything "
+     "as one thing", "personas": [], "used": 1,
+     "last_used": "2026-08-16 23:05:40", "added": "2026-08-10 12:00:00",
+     "starter": True},
+    {"id": "c3d4e5f6a1b2", "text": "the song you would put on to make a "
+     "room go quiet", "personas": [], "used": 0, "last_used": "",
+     "added": "2026-08-10 12:00:00", "starter": True},
+]
+
+# The line's state, mutable so Open/Close can be driven. Flip `live` here to
+# boot the stub mid-segment.
+OPEN_LINES_STATE = {"live": False, "premise": "", "spoken": "",
+                    "persona": "", "openedAt": None, "expiresAt": None,
+                    "secondsLeft": 0, "remindersSent": 0, "reminderMax": 2,
+                    "source": "", "openedBy": "", "closedReason": "",
+                    "signOff": "", "cutByShow": False}
+
+
+def _open_lines_status() -> dict:
+    return {"enabled": bool(settings_store.load().get("open_lines_enabled")),
+            **OPEN_LINES_STATE,
+            "shelfCount": len(OPEN_LINES_PREMISES)}
+
 
 # Three days of listener samples at 10-minute steps, with a deliberate
 # gap yesterday afternoon — the chart must show a broken line there, and
@@ -339,6 +373,71 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             return self._json({"ok": True, "effects": voice_effects.read()})
+        # Open Lines: the section's controls, driven against the in-memory
+        # shelf and state above so open/close/add/edit all round-trip.
+        if self.path.split("?")[0] == "/open-lines/open":
+            import datetime as _dt
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            premise = (str(body.get("premise") or "").strip()
+                       or "a record you skipped for years that finally landed")
+            now = _dt.datetime.now(_dt.timezone.utc)
+            OPEN_LINES_STATE.update({
+                "live": True, "premise": premise, "spoken":
+                "Alright, phones are warm — tell me about " + premise + ".",
+                "persona": "Francesca",
+                "openedAt": now.isoformat(timespec="seconds"),
+                "expiresAt": (now + _dt.timedelta(minutes=60))
+                .isoformat(timespec="seconds"),
+                "secondsLeft": 3600, "remindersSent": 0,
+                "source": str(body.get("source") or "shelf"),
+                "openedBy": "operator", "closedReason": "", "signOff": ""})
+            return self._json({"ok": True, "status": _open_lines_status()})
+        if self.path.split("?")[0] == "/open-lines/close":
+            OPEN_LINES_STATE.update({"live": False, "secondsLeft": 0,
+                                     "closedReason": "operator"})
+            return self._json({"ok": True, "status": _open_lines_status()})
+        if self.path.split("?")[0] == "/open-lines/premises":
+            import secrets as _secrets
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            text = str(body.get("text") or "").strip()
+            if not text:
+                return self._json({"ok": False,
+                                   "why": "A topic needs some words."})
+            item = {"id": _secrets.token_hex(6), "text": text,
+                    "personas": [str(p) for p in (body.get("personas") or [])],
+                    "used": 0, "last_used": "", "added": ""}
+            OPEN_LINES_PREMISES.append(item)
+            return self._json({"ok": True, "item": item,
+                               "items": list(OPEN_LINES_PREMISES)})
+        if self.path.split("?")[0].startswith("/open-lines/premises/"):
+            pid = self.path.split("?")[0].rsplit("/", 1)[1]
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            if self.command == "DELETE":
+                OPEN_LINES_PREMISES[:] = [
+                    i for i in OPEN_LINES_PREMISES if i["id"] != pid]
+                return self._json({"ok": True,
+                                   "items": list(OPEN_LINES_PREMISES)})
+            for i in OPEN_LINES_PREMISES:
+                if i["id"] == pid:
+                    if "text" in body and str(body["text"]).strip():
+                        i["text"] = str(body["text"]).strip()
+                    if "personas" in body:
+                        i["personas"] = [str(p) for p in body["personas"]]
+                    return self._json({"ok": True, "item": i,
+                                       "items": list(OPEN_LINES_PREMISES)})
+            return self._json({"ok": False, "items": list(OPEN_LINES_PREMISES)})
         # The operator's own verdict on a call. Lands in the in-memory CALLS
         # fixture so the mark can be driven end to end here — pressed, cleared,
         # and read back by the thumbs filters — without a real transcript
@@ -362,8 +461,24 @@ class Handler(BaseHTTPRequestHandler):
                               "application/json")
         self.do_GET()
 
+    # DELETE only exists for the premise rows; the POST branch answers it.
+    def do_DELETE(self) -> None:
+        self.do_POST()
+
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
+
+        if path == "/open-lines":
+            return self._json(_open_lines_status())
+        if path == "/open-lines/premises":
+            return self._json({"items": list(OPEN_LINES_PREMISES),
+                               "personas": [
+                                   {"id": "p_default1", "name": "Rosie"},
+                                   {"id": "p_e28f6a", "name": "Dawn"},
+                                   {"id": "p_77aa01", "name": "Danny Boy"},
+                                   {"id": "p_31c2d9", "name": "Francesca"},
+                                   {"id": "p_9be0f4", "name": "The Archivist"},
+                               ]})
 
         # The panel's live preview. Answered through the REAL look_payload so
         # the stub cannot drift from the thing it is standing in for — which
@@ -526,6 +641,29 @@ class Handler(BaseHTTPRequestHandler):
         # station pushing back at us, which is the half that fails in the wild.
         if path == "/hooks/test":
             return self._json(dict(HOOK_TEST))
+        # The speed test, shaped like handle_speed_test's answer: stages with
+        # counts/estimate flags and the compound turn. The LLM stage is the
+        # slow one on purpose — the chokepoint colouring is the thing to see.
+        if path == "/test/speed":
+            return self._json({
+                "ok": True, "turnMs": 2860,
+                "stages": [
+                    {"name": "Station snapshot", "ms": 240,
+                     "note": "per call, before the DJ picks up",
+                     "counts": False, "estimate": False},
+                    {"name": "Prompt assembly", "ms": 18,
+                     "note": "7400 chars (~1850 tokens, paid every turn)",
+                     "counts": False, "estimate": False},
+                    {"name": "Hearing (STT)", "ms": 610,
+                     "note": "local · base.en", "counts": True,
+                     "estimate": True},
+                    {"name": "Thinking (LLM first token)", "ms": 1830,
+                     "note": "google · gemini-3.1-flash-lite",
+                     "counts": True, "estimate": False},
+                    {"name": "Speaking (TTS first audio)", "ms": 420,
+                     "note": "-Cliff1 · 0.31x realtime", "counts": True,
+                     "estimate": False},
+                ]})
         if path == "/settings/voice-effects":
             import voice_effects
             return self._json({"effects": voice_effects.read()})
