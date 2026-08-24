@@ -733,3 +733,40 @@ class TestAPersonaCanWearItsOwnEffect(unittest.TestCase):
         voice_effects.set_effect("p_cliff", "shortwave")
         self.assertEqual("shortwave", voice_effects.effect_for("p_cliff"))
         self.assertEqual("", voice_effects.effect_for("p_flow"))
+
+
+class TestEveryAdapterTTSCallSiteMatchesItsSignature(unittest.TestCase):
+    """The Test-hearing button crashed on every press with "unexpected
+    keyword argument 'adapter'" (operator-reported, 2026-08-24): one call
+    site in api/diagnostics.py still said `adapter=` after the constructor's
+    kwarg became `adapter_path=`, and nothing exercised that path without a
+    real voice backend. Python only checks a keyword at CALL time, so a
+    renamed kwarg leaves stale call sites compiling cleanly — this walks
+    every AdapterTTS(...) in the package and fails on any keyword the
+    constructor does not take."""
+
+    def test_no_call_site_passes_a_keyword_the_constructor_lacks(self):
+        import ast
+        import inspect
+
+        from tts_adapter import AdapterTTS
+
+        accepted = set(inspect.signature(AdapterTTS.__init__).parameters) - {"self"}
+        bad = []
+        for path in AGENT_WORKER.rglob("*.py"):
+            if "tests" in path.parts:
+                continue
+            # utf-8-sig: version.py ships with a BOM, and ast.parse refuses
+            # a bare U+FEFF.
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+                if name != "AdapterTTS":
+                    continue
+                for kw in node.keywords:
+                    if kw.arg and kw.arg not in accepted:
+                        bad.append(f"{path.name}:{node.lineno} passes "
+                                   f"{kw.arg}= which AdapterTTS does not take")
+        self.assertEqual([], bad)

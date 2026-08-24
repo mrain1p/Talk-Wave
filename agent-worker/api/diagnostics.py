@@ -503,6 +503,7 @@ async def handle_test_stt(request: web.Request) -> web.Response:
 
     body = await request.json() if request.can_read_body else {}
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
+    saved_tts = cfg.get("tts_base_url") or ""
     cfg.update({k: v for k, v in body.items() if v not in (None, "")})
 
     import time as _time
@@ -516,14 +517,22 @@ async def handle_test_stt(request: web.Request) -> web.Response:
     # --- 1. make the audio ------------------------------------------------
     # Failing here is a VOICE problem, not a hearing one, and the message has
     # to say so or the operator debugs the wrong section.
+    # Same construction as the voice test above: adapter_path (this call
+    # site alone said `adapter=` and had crashed on every press since the
+    # kwarg was renamed — operator-reported 2026-08-24), and the stored key
+    # only travels to the SAVED endpoint, never to one previewed in the body.
     pcm, rate = bytearray(), 24000
     try:
         from tts_adapter import AdapterTTS
 
+        may_send, _cred_note = _credentials_travel_to(
+            cfg.get("tts_base_url"), saved_tts)
         voice = cfg.get("tts_voice") or ""
         tts = AdapterTTS(base_url=cfg.get("tts_base_url") or "", voice=voice,
+                         api_key=os.environ.get("TTS_API_KEY", "") if may_send else "",
+                         allow_stored_key=may_send,
                          model=cfg.get("tts_model") or "",
-                         adapter=resolve_adapter(cfg.get("tts_adapter")),
+                         adapter_path=resolve_adapter(cfg.get("tts_adapter")),
                          mode=str(cfg.get("tts_mode", "cloud")))
         try:
             stream = tts.synthesize(HEARING_LINE)

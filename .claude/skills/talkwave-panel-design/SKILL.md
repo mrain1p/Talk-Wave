@@ -58,6 +58,17 @@ named a switch no card shows.
 write "(s)" into a label again; the Open Lines rows keep their own static `.olunit`
 spans and are skipped by the injector.
 
+**A section MASTER wears the segmented pair, not a checkbox** (0.98.59, operator's
+ask): the boolean a whole section hangs off (Keep transcripts, Play call sounds,
+Tune-in, the ducking master, back-to-air, interruptions) renders as `.olseg` On/Off over
+a hidden `fieldonly` checkbox — the ledger's grammar, wired generically in panel.js.
+Minor booleans stay `label.check`. `test_a_checkbox_wears_the_checkbox_skin` knows the
+exception: fieldonly + an `.olseg[data-for]` in the same row.
+
+**Help text budget**: row help under ~300 characters. The 2026-08-24 trim cut the 13
+worst (428 → ~250 char) — keep defaults, thresholds and failure modes; cut restated
+rationale. A behaviour that needs three sentences of WHY belongs in docs/, linked.
+
 **Never** add a static `<p class="hint wide">` under a single field — field help belongs in the
 schema (`help=`), which injects it in the right place per shape. Static paragraphs are only for
 whole-section prose (a prerequisite, a warning, what a run of buttons does), and ONE per
@@ -150,6 +161,12 @@ schema so it cannot drift.
 calls since you were last here") is `info: true` — quiet frame, no coral. Coral in the
 needs list means something is wrong; three alarms where one is an FYI trains the operator
 to stop reading them.
+
+**One grammar per cluster** (0.98.59, operator's ask — "a mishmash of styles"): the
+Live-on-air pair wears the SAME door-card skin as the three lines (`.doorrow.onairpair`,
+two columns), named in the Doors-to-air section's words ("Calls to air", "Voicemails to
+air"); the dashboard's Open Lines box wears the dashgroup family's frame, caption rule
+and italic-sage tag. Nothing on the dash invents its own frame again.
 
 The three controls live in the **Transmission group** (0.9.155, the operator's own sketch): a
 bordered `.transmission` cluster whose micro-label is the only outlined group on the dash —

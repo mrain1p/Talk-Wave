@@ -1316,7 +1316,7 @@
     // server's own verdict; this is the switched-off case, which needs no read.
     if (!openLineLive) {
       setTag('tagOpenlines', resolved.open_lines_enabled
-        ? 'on — nothing up right now' : 'off');
+        ? 'on — nothing up' : 'off');
     }
     // Live reads, like the dashboard cluster these doors share — and the
     // tier row outranks both doors: with Go live off, two open doors lead
@@ -3461,8 +3461,13 @@
     } else if (d.enabled) {
       words = 'on · nothing up right now';
     }
+    // The tag is the SHORT read (for the collapsed section); the bar below
+    // carries the full detail. They used to print the same sentence two
+    // rows apart (operator's nit list, 2026-08-24).
     setTag('tagOpenlines', d.enabled
-      ? (d.live ? words.replace('open · ', 'open — ') : 'on — nothing up right now')
+      ? (d.live
+        ? 'open — ' + Math.max(0, Math.round((d.secondsLeft || 0) / 60)) + 'm left'
+        : 'on — nothing up')
       : 'off');
 
     if (dot) dot.dataset.on = d.enabled ? '1' : '';

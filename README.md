@@ -25,7 +25,19 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 </tr>
 </table>
 
-▶ **[Watch a real call (2 min)](docs/talkwave-call.mp4)** — in-persona pickup, back-and-forth, and a Beatles request resolved against the live library.
+## See it in action
+
+▶ **[A real call](docs/live-call.mp4)** — in-persona pickup, back-and-forth, and an acoustic request landing in the station's queue mid-call.
+
+▶ **[A caller on the station's own air](docs/on-air-music-request.mp4)** — the booth hands a caller the airwaves live, then plays their pick for everyone listening.
+
+▶ **[A shout-out, broadcast](docs/on-air-shout-out.mp4)** — a caller's dedication goes straight out on the broadcast, in the DJ's own voice around it.
+
+▶ **[The text line](docs/text-line.mp4)** — typed chat with whoever is on air: same brain, same tools, no microphone.
+
+▶ **[The answering machine](docs/voicemail-machine.mp4)** — the machine takes a message, and the swipe-up station player underneath it.
+
+▶ **[A voicemail in ten seconds](docs/voicemail-in-ten-seconds.mp4)** — the shortest possible loop: call, beep, say it, done.
 
 ## How it works
 

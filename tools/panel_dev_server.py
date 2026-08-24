@@ -64,6 +64,9 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     # On, so the dashboard's Open Lines box and the section's live header
     # can both be seen without first ticking the switch.
     "open_lines_enabled": True,
+    # Go-live on, so the dashboard's Live-on-air cluster stands and its
+    # door cards can be looked at without first granting the permission.
+    "allow_on_air": "guest",
 }), encoding="utf-8")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))

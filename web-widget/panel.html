@@ -322,21 +322,30 @@
                page's Doors-to-air rows, not fieldonly inputs here — these
                buttons reach them by id, which works from anywhere in the
                document. -->
+          <!-- The two doors wear the SAME card the three lines above wear
+               (operator's ask, 2026-08-24 — they were full-width bare rows
+               and read as a different page sharing the box). Side by side
+               like the doors, notes in the doors' voice, names in the
+               Doors-to-air section's own words. -->
           <div id="onAirLine" hidden>
             <p class="lineslabel">Live on air <em>the phone-in's two doors</em></p>
-            <div class="linerow onairpull">
-              <button type="button" id="modeOnAirCallsBtn" class="ctrlcard">
-                <span class="switch small" aria-hidden="true"></span>
-                <span class="ck">Live Call</span>
-                <span class="cv"></span>
-              </button>
-            </div>
-            <div class="linerow onairpull">
-              <button type="button" id="modeOnAirVmBtn" class="ctrlcard">
-                <span class="switch small" aria-hidden="true"></span>
-                <span class="ck">Aired Voicemails</span>
-                <span class="cv"></span>
-              </button>
+            <div class="doorrow onairpair">
+              <div class="linerow door">
+                <button type="button" id="modeOnAirCallsBtn" class="ctrlcard">
+                  <span class="switch small" aria-hidden="true"></span>
+                  <span class="ck">Calls to air</span>
+                  <span class="cv"></span>
+                  <span class="cn">a live caller can reach the broadcast</span>
+                </button>
+              </div>
+              <div class="linerow door">
+                <button type="button" id="modeOnAirVmBtn" class="ctrlcard">
+                  <span class="switch small" aria-hidden="true"></span>
+                  <span class="ck">Voicemails to air</span>
+                  <span class="cv"></span>
+                  <span class="cn">an aired soundbite can reach the broadcast</span>
+                </button>
+              </div>
             </div>
             <div class="linerow onairpull">
               <!-- A visible BUTTON, not a whole-card control (operator's
@@ -924,7 +933,14 @@
     <details data-group="turns" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Turn-taking</span><em class="secblurb"></em><span class="tag" id="tagTurns"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="allow_interruptions" /> Let the caller talk over the DJ</label>
+        <div class="row">
+          <label for="allow_interruptions">Let the caller talk over the DJ</label>
+          <input type="checkbox" id="allow_interruptions" class="fieldonly" tabindex="-1" aria-hidden="true" />
+          <div class="olseg" data-for="allow_interruptions" data-state="ok">
+            <button type="button" data-on="1">On</button>
+            <button type="button" data-on="">Off</button>
+          </div>
+        </div>
         <p class="hint wide" style="margin-top:0">The single biggest lever on
           whether a call feels like a phone call or a kiosk — and the one most
           worth leaving alone until a real call says otherwise.
@@ -1075,7 +1091,14 @@
         <p class="hint wide" style="margin-top:0">The DJ on the call and the DJ
           on the broadcast are the same person. Without this they talk over each
           other — the caller hears two of them, and so does everyone listening.</p>
-        <label class="check"><input type="checkbox" id="avoid_on_air_overlap" /> Pause the call while the station is talking</label>
+        <div class="row">
+          <label for="avoid_on_air_overlap">Pause the call while the station is talking</label>
+          <input type="checkbox" id="avoid_on_air_overlap" class="fieldonly" tabindex="-1" aria-hidden="true" />
+          <div class="olseg" data-for="avoid_on_air_overlap" data-state="ok">
+            <button type="button" data-on="1">On</button>
+            <button type="button" data-on="">Off</button>
+          </div>
+        </div>
         <div class="row narrow">
           <label for="on_air_handover_secs">Hand over before air</label>
           <input type="number" id="on_air_handover_secs" min="0" max="30" step="1" />
@@ -1117,9 +1140,11 @@
              does not, because the summary directly above already prints both
              and saying it twice is the thing this panel's own rules forbid. -->
         <div class="olsec">
+          <!-- No eyebrow either (2026-08-24): "On air segment" was a second
+               name two rows under "Open Lines Segment", and the wrong one.
+               The dot and the state word carry the bar's left side. -->
           <div class="olbar">
             <span class="oldot" id="olDot" aria-hidden="true"></span>
-            <span class="oleyebrow">On air segment</span>
             <span class="olstate" id="olStateHdr">off</span>
             <button type="button" class="olbtn olquiet" id="olCloseBtn" hidden>Close it</button>
             <button type="button" class="olbtn olprimary" id="olOpenBtn">Open a line now</button>
@@ -1329,7 +1354,14 @@
     <details data-group="tunein" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Station audio in the call</span><em class="secblurb"></em><span class="tag" id="tagTunein"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="tune_in_on_call" /> Tune the caller in during the call</label>
+        <div class="row">
+          <label for="tune_in_on_call">Tune the caller in during the call</label>
+          <input type="checkbox" id="tune_in_on_call" class="fieldonly" tabindex="-1" aria-hidden="true" />
+          <div class="olseg" data-for="tune_in_on_call" data-state="ok">
+            <button type="button" data-on="1">On</button>
+            <button type="button" data-on="">Off</button>
+          </div>
+        </div>
         <label class="check"><input type="checkbox" id="tune_in_audible" /> Pipe the broadcast into the call</label>
         <div class="row">
           <label for="tune_in_url">Stream URL</label>
@@ -1345,7 +1377,14 @@
     <details data-group="callback" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Back-to-air commentary</span><em class="secblurb"></em><span class="tag" id="tagCallback"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="callback_enabled" /> Mention the call on air afterwards</label>
+        <div class="row">
+          <label for="callback_enabled">Mention the call on air afterwards</label>
+          <input type="checkbox" id="callback_enabled" class="fieldonly" tabindex="-1" aria-hidden="true" />
+          <div class="olseg" data-for="callback_enabled" data-state="ok">
+            <button type="button" data-on="1">On</button>
+            <button type="button" data-on="">Off</button>
+          </div>
+        </div>
         <div class="grid2">
           <div class="row narrow">
             <label for="callback_max_words">Length</label>
@@ -1366,7 +1405,14 @@
     <details data-group="sounds" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Call sounds</span><em class="secblurb"></em><span class="tag" id="tagSounds"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="call_sounds" /> Play call sounds</label>
+        <div class="row">
+          <label for="call_sounds">Play call sounds</label>
+          <input type="checkbox" id="call_sounds" class="fieldonly" tabindex="-1" aria-hidden="true" />
+          <div class="olseg" data-for="call_sounds" data-state="ok">
+            <button type="button" data-on="1">On</button>
+            <button type="button" data-on="">Off</button>
+          </div>
+        </div>
         <div class="row">
           <label for="sound_pack">Sound set</label>
           <select id="sound_pack"></select>
@@ -1670,7 +1716,18 @@
     <details data-group="record" class="sec">
       <summary><span class="chev">▶</span><span class="secname">Transcripts</span><em class="secblurb"></em><span class="tag" id="tagRecord"></span></summary>
       <div class="body">
-        <label class="check"><input type="checkbox" id="record_calls" /> Keep transcripts</label>
+        <!-- The section MASTERS wear the ledger's segmented pair (operator,
+             2026-08-24): a checkbox reads as one more setting, and these are
+             the switch the whole section hangs off. The hidden checkbox is
+             still the field - the olseg wiring in panel.js drives it. -->
+        <div class="row">
+          <label for="record_calls">Keep transcripts</label>
+          <input type="checkbox" id="record_calls" class="fieldonly" tabindex="-1" aria-hidden="true" />
+          <div class="olseg" data-for="record_calls" data-state="ok">
+            <button type="button" data-on="1">On</button>
+            <button type="button" data-on="">Off</button>
+          </div>
+        </div>
         <div class="row narrow">
           <label for="record_keep">How many transcripts to keep</label>
           <input type="number" id="record_keep" min="1" max="500" step="1" />

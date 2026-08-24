@@ -3369,12 +3369,24 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         # `<div class="row"><label for=x>…</label><input type=checkbox>` is a
         # checkbox dressed as a dropdown row. One of these survived 34
         # sections until 0.98.24.
-        bad = re.findall(
-            r'<div class="row(?! narrow)[^"]*">\s*<label for="([a-z0-9_]+)">'
-            r'[^<]*</label>\s*<input type="checkbox"', self.html)
+        #
+        # The SANCTIONED exception (0.98.59, operator's ask): a section
+        # MASTER whose checkbox is hidden fieldonly and driven by the
+        # ledger's segmented pair — the row must carry an .olseg costume
+        # for the same field, or it is the old bug back.
+        bad = []
+        for m in re.finditer(
+                r'<div class="row(?! narrow)[^"]*">\s*<label for="([a-z0-9_]+)">'
+                r'[^<]*</label>\s*<input type="checkbox"([^>]*)>', self.html):
+            field, attrs = m.group(1), m.group(2)
+            if ('class="fieldonly"' in attrs
+                    and f'data-for="{field}"' in self.html[m.end():m.end() + 300]):
+                continue
+            bad.append(field)
         self.assertFalse(
             bad, "checkboxes wearing the dropdown-row skin: %s — use "
-                 "<label class=\"check\"> " % bad)
+                 "<label class=\"check\">, or a fieldonly box behind an "
+                 ".olseg pair for a section master" % bad)
 
     def test_a_subhead_never_repeats_the_label_under_it(self):
         import re

@@ -3015,9 +3015,16 @@
   #onAirLine { margin-top: 12px; }
   #onAirLine[hidden] { display: none; }
   #onAirLine .lineslabel { margin: 0 0 6px; }
-  /* Stacked full-width rows (operator's ask — no side-by-side pair). */
+  /* The two doors ride the door-card skin side by side (operator's ask,
+     2026-08-24 — reversing the earlier stacked-rows ask: bare full-width
+     rows under the three cards read as a different page sharing the box).
+     Two columns, because there are two doors. */
+  .doorrow.onairpair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 8px;
+  }
+  /* The pull row stays full width — it is the cluster's one action bar. */
   .linerow.onairpull { grid-template-columns: 1fr; }
-  .linerow.onairpull + .linerow.onairpull { margin-top: 8px; }
   /* The pull row: the card states, its BUTTON acts (operator's ask) —
      coral-edged where the toggles wear their switches. */
   .linerow .ctrlcard.pullcard { cursor: default; }
@@ -3054,8 +3061,12 @@
     font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: uppercase; color: var(--coral);
   }
+  /* Beside the dot since the eyebrow retired (2026-08-24) — the state IS
+     the bar's left side now; margin-right:auto pushes the buttons to the
+     right edge whichever of them is hidden (a first-of-type margin landed
+     on the hidden Close button and the visible one hugged the text). */
   .olstate {
-    margin-left: auto; font: 700 9.5px/1 var(--font-mono);
+    margin-right: auto; font: 700 9.5px/1 var(--font-mono);
     letter-spacing: .14em; text-transform: uppercase; color: var(--dimmer);
   }
   .olstate[data-on="1"] { color: var(--ok); }
@@ -3141,17 +3152,19 @@
   /* Two buttons standing in for a checkbox or a zero/non-zero number. The
      real field is still there, hidden, doing the saving. */
   .olseg { display: flex; gap: 6px; flex: 0 0 auto; }
-  .olsec .olseg button {
+  /* Unscoped from .olsec (2026-08-24): the pair is the panel's segmented
+     control now — section masters wear it too, not just the ledger. */
+  .olseg button {
     font: 700 10.5px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: uppercase; padding: 8px 14px; border-radius: 7px;
     border: 0; background: transparent; color: var(--dimmer);
     box-shadow: inset 0 0 0 1px var(--edge); cursor: pointer;
   }
-  .olsec .olseg[data-state="ok"] button[aria-pressed="true"] {
+  .olseg[data-state="ok"] button[aria-pressed="true"] {
     box-shadow: inset 0 0 0 1px var(--ok); color: var(--ok);
     background: color-mix(in srgb, var(--ok) 12%, transparent);
   }
-  .olsec .olseg[data-state="warn"] button[aria-pressed="true"] {
+  .olseg[data-state="warn"] button[aria-pressed="true"] {
     box-shadow: inset 0 0 0 1px var(--warn); color: var(--warn);
     background: color-mix(in srgb, var(--warn) 12%, transparent);
   }
@@ -5576,6 +5589,26 @@
     font: 700 11px/1 var(--font-mono); letter-spacing: .28em;
     text-transform: uppercase; color: var(--sage);
     border-bottom: 1px solid var(--hairline); padding-bottom: 6px; margin-bottom: 6px;
+  }
+  /* The Open Lines box joins the SAME family (operator, 2026-08-24 — it wore
+     its own frame, label weight and tag voice, and the right column read as
+     three unrelated widgets). Frame, caption rule and caption voice are the
+     dashgroups'; only the controls inside are its own. */
+  body.panelpage .olbox {
+    border: 1px solid var(--edge); border-radius: 0;
+    padding: 9px 11px 11px;
+    background: color-mix(in srgb, var(--alpenglow) 3%, transparent);
+  }
+  body.panelpage .olhead {
+    border-bottom: 1px solid var(--hairline); padding-bottom: 6px;
+  }
+  body.panelpage .olname {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .28em;
+    text-transform: uppercase; color: var(--sage);
+  }
+  body.panelpage .oltag {
+    font: italic 11.5px/1.3 var(--font-body, inherit);
+    letter-spacing: 0; color: var(--sage);
   }
   /* LINES and LIVE ON AIR are group headings inside Transmission, and they
      were set two steps quieter than the heading above them — so a whole
