@@ -539,7 +539,7 @@
              three at once. Written by paintAccess. -->
         <p class="hint wide acetiers" id="accessTiers"></p>
         <div class="row narrow">
-          <label for="guest_session_hours">Guest code expires (hours)</label>
+          <label for="guest_session_hours">Guest code expires</label>
           <input type="number" id="guest_session_hours" min="0" max="720" step="1" />
         </div>
 
@@ -891,7 +891,7 @@
             <input type="number" id="calls_per_day" min="0" max="5000" step="10" />
           </div>
           <div class="row narrow">
-            <label for="caller_cooldown_secs">Redial wait time (s)</label>
+            <label for="caller_cooldown_secs">Redial wait time</label>
             <input type="number" id="caller_cooldown_secs" min="0" max="600" step="15" />
           </div>
           <div class="row narrow">
@@ -932,20 +932,20 @@
           it does not mean “no wait”.</p>
         <div class="grid2">
           <div class="row narrow">
-            <label for="min_endpointing_delay">Wait before replying (s)</label>
+            <label for="min_endpointing_delay">Wait before replying</label>
             <input type="number" id="min_endpointing_delay" min="0" max="5" step="0.1" />
           </div>
           <div class="row narrow">
-            <label for="max_endpointing_delay">Longest wait (s)</label>
+            <label for="max_endpointing_delay">Longest wait</label>
             <input type="number" id="max_endpointing_delay" min="0" max="10" step="0.1" />
           </div>
         </div>
         <div class="row narrow">
-          <label for="min_interruption_secs">Sound needed to interrupt (s)</label>
+          <label for="min_interruption_secs">Sound needed to interrupt</label>
           <input type="number" id="min_interruption_secs" min="0" max="5" step="0.1" />
         </div>
         <div class="row narrow">
-          <label for="working_line_secs">Say something after (s)</label>
+          <label for="working_line_secs">Say something after</label>
           <input type="number" id="working_line_secs" min="0" max="20" step="1" />
         </div>
         <div class="row">
@@ -1050,15 +1050,15 @@
         </div>
         <div class="grid2">
           <div class="row narrow">
-            <label for="max_call_seconds">Hang up after (s)</label>
+            <label for="max_call_seconds">Hang up after</label>
             <input type="number" id="max_call_seconds" min="30" step="30" />
           </div>
           <div class="row narrow">
-            <label for="min_call_seconds">Earliest hang-up (s)</label>
+            <label for="min_call_seconds">Earliest hang-up</label>
             <input type="number" id="min_call_seconds" min="0" step="15" />
           </div>
           <div class="row narrow">
-            <label for="idle_prompt_secs">Check in after (s)</label>
+            <label for="idle_prompt_secs">Check in after</label>
             <input type="number" id="idle_prompt_secs" min="0" max="180" step="5" />
           </div>
           <div class="row narrow">
@@ -1077,7 +1077,7 @@
           other — the caller hears two of them, and so does everyone listening.</p>
         <label class="check"><input type="checkbox" id="avoid_on_air_overlap" /> Pause the call while the station is talking</label>
         <div class="row narrow">
-          <label for="on_air_handover_secs">Hand over before air (s)</label>
+          <label for="on_air_handover_secs">Hand over before air</label>
           <input type="number" id="on_air_handover_secs" min="0" max="30" step="1" />
         </div>
         <div class="row">
@@ -1308,11 +1308,11 @@
           <select id="on_air_call_mode"></select>
         </div>
         <div class="row narrow">
-          <label for="on_air_max_seconds">On-air window (s)</label>
+          <label for="on_air_max_seconds">On-air window</label>
           <input type="number" id="on_air_max_seconds" min="30" max="1800" step="30" />
         </div>
         <div class="row narrow">
-          <label for="on_air_delay_secs">On-air delay (s)</label>
+          <label for="on_air_delay_secs">On-air delay</label>
           <input type="number" id="on_air_delay_secs" min="2" max="30" step="1" />
         </div>
         <div class="row">
@@ -1336,7 +1336,7 @@
           <input type="text" id="tune_in_url" placeholder="https://live.example.com/stream.mp3" />
         </div>
         <div class="row narrow">
-          <label for="tune_in_volume">Volume (%)</label>
+          <label for="tune_in_volume">Volume</label>
           <input type="number" id="tune_in_volume" min="0" max="100" step="5" />
         </div>
       </div>
@@ -1348,7 +1348,7 @@
         <label class="check"><input type="checkbox" id="callback_enabled" /> Mention the call on air afterwards</label>
         <div class="grid2">
           <div class="row narrow">
-            <label for="callback_max_words">Length (words)</label>
+            <label for="callback_max_words">Length</label>
             <input type="number" id="callback_max_words" min="10" max="80" step="5" />
           </div>
           <div class="row narrow">
@@ -1544,7 +1544,7 @@
              so a copy left here would be the one that saves while the
              visible one sat dead. -->
         <div class="row narrow">
-          <label for="voicemail_max_seconds">Message ceiling (s)</label>
+          <label for="voicemail_max_seconds">Message ceiling</label>
           <input type="number" id="voicemail_max_seconds" min="5" max="120" step="5" />
         </div>
         <div class="row">
@@ -1609,7 +1609,7 @@
             <input type="number" id="chats_per_day" min="0" max="5000" step="10" />
           </div>
           <div class="row narrow">
-            <label for="chat_caller_cooldown_secs">Reopen wait time (s)</label>
+            <label for="chat_caller_cooldown_secs">Reopen wait time</label>
             <input type="number" id="chat_caller_cooldown_secs" min="0" max="600" step="5" />
           </div>
           <div class="row narrow">
@@ -1625,19 +1625,19 @@
         <h4 class="subhead">When a chat ends</h4>
         <div class="grid2">
           <div class="row narrow">
-            <label for="chat_max_minutes">Longest chat (minutes)</label>
+            <label for="chat_max_minutes">Longest chat</label>
             <input type="number" id="chat_max_minutes" min="1" max="1440" step="1" />
           </div>
           <div class="row narrow">
-            <label for="chat_idle_minutes">Close after quiet (min)</label>
+            <label for="chat_idle_minutes">Close after quiet</label>
             <input type="number" id="chat_idle_minutes" min="5" max="240" step="5" />
           </div>
           <div class="row narrow">
-            <label for="chat_reply_timeout_secs">Reply timeout (s)</label>
+            <label for="chat_reply_timeout_secs">Reply timeout</label>
             <input type="number" id="chat_reply_timeout_secs" min="0" max="180" step="5" />
           </div>
           <div class="row narrow">
-            <label for="chat_reprompt_secs">…after how many seconds</label>
+            <label for="chat_reprompt_secs">…after</label>
             <input type="number" id="chat_reprompt_secs" min="5" max="120" step="5" />
           </div>
         </div>
@@ -1997,7 +1997,7 @@
           <select id="start_on_player"></select>
         </div>
         <div class="row narrow">
-          <label for="vm_player_duck">Player under the machine (%)</label>
+          <label for="vm_player_duck">Player under the machine</label>
           <input type="number" id="vm_player_duck" min="0" max="100" />
         </div>
       </div>

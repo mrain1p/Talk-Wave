@@ -3812,6 +3812,16 @@
   /* A field that holds "0.8" does not need 260px to hold it — the same
      rule .row.narrow always applied, now true of every number in a row. */
   .row input[type=number] { flex: 0 0 96px; }
+  /* The unit after the field — "600 SEC" — the Open Lines ledger's grammar
+     (.olunit), schema-driven for every page since 0.98.58. Labels stopped
+     carrying "(s)"; the microcap says it where the number is. */
+  .row .unit {
+    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dimmer);
+    /* On the FIELD's line, not the row's middle — a three-line help makes
+       the row tall and a centred unit floats away from its number. */
+    align-self: flex-start; padding-top: 10px; flex: none;
+  }
   /* The only greedy thing in the row. It gets whatever the label and the
      field did not take, which at the panel's width is more than the help had
      when it sat on a line of its own. */

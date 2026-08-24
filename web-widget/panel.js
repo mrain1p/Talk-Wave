@@ -4937,6 +4937,19 @@
       const prow = el.closest('.prow');
       const anchor = prow || el.closest('.row') || el.closest('.check');
       if (prow && prow.dataset.help !== f) return;
+      // The unit, worn AFTER the field as a mono microcap — "600 SEC" — the
+      // ledger's grammar, now schema-driven for every page (0.98.58): labels
+      // stopped spending their words on "(s)". Rows that draw their own
+      // units (the Open Lines bands) and the dashboard never reach this.
+      if (meta.unit && anchor
+          && !anchor.closest('.dash') && !anchor.closest('.olsec')
+          && !(el.nextElementSibling
+               && el.nextElementSibling.classList.contains('unit'))) {
+        const u = document.createElement('span');
+        u.className = 'unit';
+        u.textContent = meta.unit;
+        el.insertAdjacentElement('afterend', u);
+      }
       if (!anchor || !meta.help) return;
       // The kill switch is rendered in the header bar rather than in its
       // section, and a paragraph of schema help dropped into that bar would

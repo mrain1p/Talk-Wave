@@ -52,6 +52,12 @@ label** ("Live calls", "Voicemail", "Text line"), with the old verb phrase kept 
 `alias=` for the finder — the door-state banners quote the label, and "Take live calls"
 named a switch no card shows.
 
+**Units live AFTER the field, never in the label** (0.98.58): a number field declares
+`unit="sec"` (or min/hours/%/words) in the schema, decorateFields injects it as a
+`.unit` mono microcap beside the box — the ledger's "60 MIN" grammar, everywhere. Never
+write "(s)" into a label again; the Open Lines rows keep their own static `.olunit`
+spans and are skipped by the injector.
+
 **Never** add a static `<p class="hint wide">` under a single field — field help belongs in the
 schema (`help=`), which injects it in the right place per shape. Static paragraphs are only for
 whole-section prose (a prerequisite, a warning, what a run of buttons does), and ONE per

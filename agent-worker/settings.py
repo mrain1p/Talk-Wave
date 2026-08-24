@@ -1410,14 +1410,14 @@ SCHEMA: dict[str, dict] = {
     # broadcast is delivered, not what a caller may do. The tier row alone
     # stays under Caller permissions.
     "on_air_max_seconds": dict(group="airdoors", kind="number", admin=True,
-        label="On-air window (s)", alias="duration length",
+        label="On-air window", unit="sec", alias="duration length",
         needs=("allow_on_air", TIERS),
         help="How long one caller may hold the broadcast before the relay signs "
              "them off air and the call carries on privately. The station's own "
              "segments queue behind a live call, so shorter is kinder to the "
              "programme. Blank = 240."),
     "on_air_delay_secs": dict(group="airdoors", kind="number", admin=True,
-        label="On-air delay (s)",
+        label="On-air delay", unit="sec",
         needs=("allow_on_air", TIERS),
         help="How long a finished turn is held before it airs: your take-back"
              " window, and roughly how far the broadcast runs behind the call."
@@ -1455,11 +1455,11 @@ SCHEMA: dict[str, dict] = {
              " one you set."),
 
     # --- call length ---
-    "max_call_seconds": dict(group="closing", kind="number", label="Hang up after (s)", alias="timeout duration length",
+    "max_call_seconds": dict(group="closing", kind="number", label="Hang up after", unit="sec", alias="timeout duration length",
         help="Hard ceiling. The DJ signs off in character first rather than the "
              "audio just stopping. 600 = ten minutes."),
     "guest_session_hours": dict(group="security", kind="number",
-        label="Guest code expires (hours)", alias="password code session expiry",
+        label="Guest code expires", unit="hours", alias="password code session expiry",
         help="Per device: each browser that typed the code runs its own "
              "clock. On a shared or public machine, a typed code should not "
              "outlive its typist — the card forgets it after this long and "
@@ -1492,7 +1492,7 @@ SCHEMA: dict[str, dict] = {
         label="“What can I ask?” button (embed)",
         help="The same button, in a frame on somebody else's page."),
     "chat_idle_minutes": dict(group="chat", kind="number",
-        label="Close after quiet (min)", alias="timeout",
+        label="Close after quiet", unit="min", alias="timeout",
         help="A chat with nothing said for this long is over: the record is "
              "written and the id stops resuming. The widget keeps its side, "
              "so a returning caller simply starts a fresh conversation."),
@@ -1501,7 +1501,7 @@ SCHEMA: dict[str, dict] = {
         help="A ceiling on one conversation, not a rate: hitting it closes "
              "the chat politely. 0 = no ceiling."),
     "chat_max_minutes": dict(group="chat", kind="number",
-        label="Longest chat (minutes)",
+        label="Longest chat", unit="min",
         help="However active, a chat this old is closed and written down — "
              "a visit, not a residency. Resumable is not immortal."),
     "max_open_chats": dict(group="chat", kind="number",
@@ -1517,7 +1517,7 @@ SCHEMA: dict[str, dict] = {
         help="The hard wallet ceiling on fresh chats, all callers together — "
              "the text line's equivalent of Calls per day. 0 = unlimited."),
     "chat_caller_cooldown_secs": dict(group="chat", kind="number",
-        label="Reopen wait time (s)", alias="rate limit throttle spam",
+        label="Reopen wait time", unit="sec", alias="rate limit throttle spam",
         help="How long ONE caller must wait between opening chats — the "
              "per-visitor brake the phone has as Redial wait. A text line "
              "is scriptable in a way a call is not, so this singles out one "
@@ -1553,7 +1553,7 @@ SCHEMA: dict[str, dict] = {
         help="The opening line for “Canned”. Blank uses a sensible default in "
              "the DJ's name. Takes {station}, {dj} and {show}, filled live."),
     "chat_reply_timeout_secs": dict(group="chat", kind="number",
-        label="Reply timeout (s)", alias="timeout",
+        label="Reply timeout", unit="sec", alias="timeout",
         help="How long the DJ may take to answer one message before the line "
              "gives up and says so, so a stalled model never leaves the caller "
              "watching a typing dot forever. 0 = wait indefinitely."),
@@ -1565,7 +1565,7 @@ SCHEMA: dict[str, dict] = {
              "never \"are you still there?\", and never while the DJ is the one "
              "still owing a reply. On by default."),
     "chat_reprompt_secs": dict(group="chat", kind="number",
-        label="…after how many seconds",
+        label="…after", unit="sec",
         needs=("chat_reprompt", True),
         help="How long a caller may be quiet, the ball in their court, before "
              "that one nudge. 15 is a natural pause; too short reads as pushy."),
@@ -1696,7 +1696,7 @@ SCHEMA: dict[str, dict] = {
              "nothing to route while an effect is on. Hear it with 'Test "
              "with effect' below."),
     "voice_effect_level": dict(group="effects", kind="number",
-        label="Effect intensity (%)",
+        label="Effect intensity", unit="%",
         # Every effect, not the first three — the dial vanished for anyone
         # picking a newer colour, which the operator read (fairly) as the
         # volume control disappearing. Operator-reported.
@@ -1856,7 +1856,7 @@ SCHEMA: dict[str, dict] = {
              "audio starts, whichever you pick — that is their rule, not a "
              "fault."),
     "vm_player_duck": dict(group="phone", kind="number",
-        label="Player under the machine (%)", alias="loudness duck voicemail",
+        label="Player under the machine", unit="%", alias="loudness duck voicemail",
         help="While the machine rings, greets and records, the station "
              "plays underneath at this volume — piped in even when the "
              "caller wasn't listening, the same move Tune-in makes on a "
@@ -1866,12 +1866,12 @@ SCHEMA: dict[str, dict] = {
              "machine hangs up. The machine itself is under "
              "[Voicemail machine](#voicemail)."),
     "min_call_seconds": dict(group="closing", kind="number",
-        label="Earliest hang-up (s)", alias="duration length",
+        label="Earliest hang-up", unit="sec", alias="duration length",
         help="The floor under the DJ ending a call itself. 60 by default: a model "
              "deciding a call is over after two words is worse than one that "
              "lingers, and the caller cannot tell it from the line dropping. "
              "0 removes the guard."),
-    "idle_prompt_secs": dict(group="closing", kind="number", label="Check in after (s)", alias="timeout nudge",
+    "idle_prompt_secs": dict(group="closing", kind="number", label="Check in after", unit="sec", alias="timeout nudge",
         help="Seconds without SPOKEN WORDS before the DJ asks if they're still "
              "there. Background noise doesn't count. 0 never checks in."),
     "idle_max_nudges": dict(group="closing", kind="number", label="Check-ins before hanging up (count)",
@@ -1897,7 +1897,7 @@ SCHEMA: dict[str, dict] = {
         help="Behind TLS a browser silently refuses to load an http stream into an "
              "https page, and the call runs with no station behind it. Paste the "
              "station's own https stream. The pipeline check tests it."),
-    "tune_in_volume": dict(group="tunein", kind="number", label="Volume (%)", alias="loudness",
+    "tune_in_volume": dict(group="tunein", kind="number", label="Volume", unit="%", alias="loudness",
         needs=("tune_in_on_call", True),
         help="10 by default. 0 keeps it silent and the caller still counts as a "
              "listener. Much above 20 and, on speakers, it bleeds into their "
@@ -1917,7 +1917,7 @@ SCHEMA: dict[str, dict] = {
              " credentials and a SUB/WAVE from July 2026 or newer. Flip Voice"
              " back on yourself mid-call and Talk Wave leaves it alone."),
     "on_air_handover_secs": dict(group="onair", kind="number",
-        label="Hand over before air (s)", alias="duck",
+        label="Hand over before air", unit="sec", alias="duck",
         needs=("avoid_on_air_overlap", True),
         help="The station warns when a voice is coming, sometimes many seconds "
              "ahead. The call keeps flowing until this close to air, then the "
@@ -1927,7 +1927,7 @@ SCHEMA: dict[str, dict] = {
              "it if the caller hears silence between the hand-over line and "
              "the broadcast."),
     "working_line_secs": dict(group="turns", kind="number",
-        label="Say something after (s)",
+        label="Say something after", unit="sec",
         help="How long the DJ may be working on an answer before it says one "
              "short line so the caller knows somebody is still there. Covers "
              "the wait while the model thinks and a tool runs. 0 keeps the "
@@ -1962,17 +1962,17 @@ SCHEMA: dict[str, dict] = {
              "replaces the greeting style, which is why that field disappears."),
 
     "min_endpointing_delay": dict(group="turns", kind="number",
-        label="Wait before replying (s)",
+        label="Wait before replying", unit="sec",
         help="How long the DJ waits after you stop making sound. Lower feels "
              "snappier and cuts off anyone who pauses to think; higher adds that "
              "much to every reply. 0 keeps the SDK's tuned default."),
     "max_endpointing_delay": dict(group="turns", kind="number",
-        label="Longest wait (s)",
+        label="Longest wait", unit="sec",
         help="The ceiling on the above when someone is clearly mid-sentence. "
              "0 keeps the default. Must not be below the minimum."),
     "min_interruption_secs": dict(group="turns", kind="number",
         needs=("allow_interruptions", True),
-        label="Sound needed to interrupt (s)",
+        label="Sound needed to interrupt", unit="sec",
         help="How much SOUND — not words — it takes to stop the DJ mid-sentence. "
              "The SDK's own floor is half a second, which with tune-in on means "
              "half a second of the record cuts the DJ off, and real calls came "
@@ -2144,7 +2144,7 @@ SCHEMA: dict[str, dict] = {
              " machine answers as the station itself. Changing this re-renders"
              " every clip on the next staging run."),
     "voicemail_max_seconds": dict(group="voicemail", kind="number",
-        label="Message ceiling (s)", alias="duration length",
+        label="Message ceiling", unit="sec", alias="duration length",
         help="The hard stop on one message. STT runs for at most this long, "
              "which is what makes voicemail cheap to leave wide open."),
     "voicemail_flow": dict(group="voicemail", kind="select",
@@ -2207,7 +2207,7 @@ SCHEMA: dict[str, dict] = {
     "max_actions_per_call": dict(group="usage", kind="number", label="Actions per call", alias="rate limit cap",
         help="Requests, on-air messages and segments together. At the limit the "
              "DJ says so warmly and keeps talking — never an error."),
-    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait time (s)", alias="rate limit throttle spam",
+    "caller_cooldown_secs": dict(group="usage", kind="number", label="Redial wait time", unit="sec", alias="rate limit throttle spam",
         help="How long one caller waits before calling back. 0 while testing."),
 
     # --- speech hygiene ---
@@ -2255,7 +2255,7 @@ SCHEMA: dict[str, dict] = {
              "section: it is not the announcements or segments a caller "
              "triggers mid-call — those speak on air through their own "
              "permissions, under [Caller permissions](#perms)."),
-    "callback_max_words": dict(group="callback", kind="number", label="Length (words)",
+    "callback_max_words": dict(group="callback", kind="number", label="Length", unit="words",
         needs=("callback_enabled", True),
         help="Short is better — a mention, not a recap."),
     "callback_min_turns": dict(group="callback", kind="number", label="Fewest caller turns to earn one",
@@ -2324,7 +2324,7 @@ SCHEMA: dict[str, dict] = {
              "can read. Deliberately not governed by Play call sounds: it "
              "tells the caller to start talking. Unplayable falls back to "
              "the tone."),
-    "call_volume": dict(group="sounds", kind="number", label="Default volume (%)", alias="loudness",
+    "call_volume": dict(group="sounds", kind="number", label="Default volume", unit="%", alias="loudness",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
     "ring_cut_at_pickup": dict(group="sounds", kind="check",
         needs=("call_sounds", True),
@@ -2531,6 +2531,9 @@ def schema_payload() -> dict:
                 "kind": meta["kind"],
                 "label": meta["label"],
                 "help": meta.get("help", ""),
+                # Worn after the field as a mono microcap ("60 MIN"), the
+                # ledger's grammar — labels stopped carrying "(s)" at 0.98.58.
+                "unit": meta.get("unit", ""),
                 "placeholder": meta.get("placeholder", ""),
                 # Words an operator might type for this setting that appear
                 # in neither its label nor its help. Search-only; nothing
