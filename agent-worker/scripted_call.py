@@ -150,6 +150,7 @@ def _install_injected(path: str, source: str) -> None:
 # which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
 # new rule returning a kind the old nudge table had never heard of.
 for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_STUCK", "call.stuck"),
+                    ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
                     ("NEW_PROMISES", "promises"),
                     ("NEW_PROMISE_GUARD", "call.promise_guard")):
@@ -170,6 +171,13 @@ except ImportError:                                            # noqa: BLE001
     spoken_rules = None
 from call import door as call_door
 from call import stuck as call_stuck
+try:
+    # Newer than some deployed images (0.98.55) — the same tolerance
+    # spoken_rules gets above: absent means the watcher does not exist on
+    # that image, which is the correct answer for a run against it.
+    from call import withheld as call_withheld
+except ImportError:                                            # noqa: BLE001
+    call_withheld = None
 from call import promise_guard
 from chat.session import _tool_report
 from livekit.agents import llm as lk_llm
@@ -1522,6 +1530,14 @@ DOOR_ON = os.environ.get("DOOR", "on").strip().lower() != "off"
 # means holding the guard fixed while the prose moves. Defaults ON, because
 # that is what the product ships.
 STUCK_ON = os.environ.get("STUCK", "on").strip().lower() != "off"
+# And for the withheld watcher (0.98.55) — a guard the harness does not run
+# is a guard every ablation arm silently ignores, which is the trap this
+# block of levers exists to close.
+WITHHELD_ON = os.environ.get("WITHHELD", "on").strip().lower() != "off"
+
+# The resolved permission set the tools were built from, so each scenario's
+# withheld watcher reads the same world the prompt does. Set in main().
+WITHHELD_CFG: dict = {}
 
 
 async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
@@ -1540,6 +1556,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     door = call_door.Door()
     # Per scenario, like the door: what this caller has already had to ask.
     stuck = call_stuck.Stuck()
+    # Per scenario, like both above: which withheld capability this caller
+    # has already been carded for. None when the image predates the module.
+    wh = (call_withheld.Withheld(WITHHELD_CFG, ACTIONS)
+          if (call_withheld is not None and WITHHELD_ON) else None)
     # Where each caller turn's DJ lines begin, so a scenario can be graded
     # from turn N onward. The door correction cannot unsay the line that
     # tripped it — only stop the next one — so grading its first turn would
@@ -1609,6 +1629,11 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         if hint:
             log.append("  (last line held the door open — steering this turn)")
             ctx.add_message(role="system", content=hint)
+        wnote = wh.hint_for(text) if wh is not None else ""
+        if wnote:
+            log.append("  (asked for a withheld capability — carding and "
+                       "steering this turn)")
+            ctx.add_message(role="system", content=wnote)
         said, calls = await one_turn(llm, ctx, tools, text)
         if said.strip():
             log.append(f"DJ     : {said.strip()}")
@@ -1976,6 +2001,9 @@ async def main() -> None:
 
     global ACTIONS
     actions = ACTIONS = CallActions(int(cfg.get("max_actions_per_call") or 0))
+    # The withheld watcher reads the same resolved set the tools were built
+    # from — see run_scenario, which builds one per scenario.
+    WITHHELD_CFG.update(cfg)
     # Chat's wiring, mirrored from chat/session.py: no overlap guard (a typed
     # DJ never needs holding off the air) and, below, no end_call — a text
     # line has no receiver to put down.
