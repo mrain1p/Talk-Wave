@@ -3,6 +3,39 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.60
+
+Open Lines — the station's first outbound segment — plus a full settings-panel review and the caller-side guards that came out of running it all live.
+
+### Open Lines
+
+- **The DJ puts a topic to the audience and invites them in.** A new segment: the DJ airs a question, reminds the room on a cadence you set, and knows what it asked when somebody arrives — on the phone, the text line or the machine.
+- **A shelf of topics.** Yours and the built-ins, drag-ordered, aimable at one or several DJs, with used and last-aired columns and an inline add — a record list, not a scroll box.
+- **Open and close from the dashboard** with an honest countdown, or let signed-in listeners start one from the player's own ribbon (off by default).
+- **A follow-up after each conversation.** The DJ reports the position taken — never a name, never a quote, at most three per topic.
+
+### The settings panel, reviewed end to end
+
+- **Dropdowns finish their sentences** (selects size to their labels), **numbers stand beside their units** — "600 SEC", not "(s)" squeezed into the label — and the page picker wraps instead of silently clipping Diagnostics off the row.
+- **The dashboard speaks one grammar.** The Live-on-air cluster is three door cards in one row like the Lines above it, the Open Lines box wears the same frame as Notifications, and a pending release is an info note rather than a coral alarm.
+- **Section masters are On/Off switches** — transcripts, call sounds, tune-in, ducking, back-to-air, interruptions — and the longest help texts were cut to their behavioural core.
+- **The finder ranks its answers.** Prose mentions list closed and dimmed under the real hits, pages are counted from answers only, and a typo corrects itself out loud: nothing for "volumne" — showing "volume".
+- **"On-air ducking" is now "Call vs broadcast."** The section always held both directions — the call pausing for the air, and quieting the station during calls — and its name finally says so. Searching "suppress" lands there.
+- **The door switches wear the dashboard's own words** — "Live calls", "Voicemail", "Text line" — so every page quotes a switch that actually exists.
+
+### Calls
+
+- **A refused capability gets a card, not a story.** Ask for something this line has switched off and the caller sees "not on this line tonight" while the DJ is told the truth before it answers — no more invented station faults.
+- **The DJ hears plain requests it was deaf to.** "Play diciembre first", "cancel that track", "what Eminem albums do you have" — twenty-nine real caller lines from the archive now register as asks.
+- **Confirm-before-sending can no longer be defeated by the DJ answering its own question.** The promise guard only pushes for action when the caller is actually owed one.
+- **The music follows you to the settings page.** A one-line transport joins the masthead and the station keeps playing across the page change, in both directions.
+
+### Fixes
+
+- **Test hearing works.** It crashed on a renamed argument, then sent an empty voice on default deployments; it now resolves the live DJ's voice the way the voice test always has.
+- A caller's on-air audio is swept on a clock rather than on the next caller, two directors can no longer air the same line twice, and a slow station confirmation no longer loses an open line.
+- **The README shows the line in action** — six fresh captures, streaming in the browser via [the demo page](https://mrain1p.github.io/Talk-Wave/demos.html), including a caller going out live on the station's own air.
+
 ## 0.98.29
 
 The three loose ends from the settings work, closed.

@@ -27,17 +27,21 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 
 ## See it in action
 
-▶ **[A real call](docs/live-call.mp4)** — in-persona pickup, back-and-forth, and an acoustic request landing in the station's queue mid-call.
+**[▶ Watch the demos in your browser](https://mrain1p.github.io/Talk-Wave/demos.html)** — all six on one page, streaming, no download. Each link below plays in a new tab too.
 
-▶ **[A caller on the station's own air](docs/on-air-music-request.mp4)** — the booth hands a caller the airwaves live, then plays their pick for everyone listening.
+▶ **[A real call](https://mrain1p.github.io/Talk-Wave/live-call.mp4)** — in-persona pickup, back-and-forth, and an acoustic request landing in the station's queue mid-call.
 
-▶ **[A shout-out, broadcast](docs/on-air-shout-out.mp4)** — a caller's dedication goes straight out on the broadcast, in the DJ's own voice around it.
+▶ **[A caller on the station's own air](https://mrain1p.github.io/Talk-Wave/on-air-music-request.mp4)** — the booth hands a caller the airwaves live, then plays their pick for everyone listening.
 
-▶ **[The text line](docs/text-line.mp4)** — typed chat with whoever is on air: same brain, same tools, no microphone.
+▶ **[A shout-out, broadcast](https://mrain1p.github.io/Talk-Wave/on-air-shout-out.mp4)** — a caller's dedication goes straight out on the broadcast, in the DJ's own voice around it.
 
-▶ **[The answering machine](docs/voicemail-machine.mp4)** — the machine takes a message, and the swipe-up station player underneath it.
+▶ **[The text line](https://mrain1p.github.io/Talk-Wave/text-line.mp4)** — typed chat with whoever is on air: same brain, same tools, no microphone.
 
-▶ **[A voicemail in ten seconds](docs/voicemail-in-ten-seconds.mp4)** — the shortest possible loop: call, beep, say it, done.
+▶ **[The answering machine](https://mrain1p.github.io/Talk-Wave/voicemail-machine.mp4)** — the machine takes a message, and the swipe-up station player underneath it.
+
+▶ **[A voicemail in ten seconds](https://mrain1p.github.io/Talk-Wave/voicemail-in-ten-seconds.mp4)** — the shortest possible loop: call, beep, say it, done.
+
+The files themselves live in [docs/](docs/).
 
 ## How it works
 
