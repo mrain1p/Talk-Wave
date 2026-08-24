@@ -16,7 +16,8 @@ from livekit.agents import Agent, AgentSession
 from station import StationClient
 
 from . import comeback
-from .air_timing import DUCK_PAD_SECS, speaking_secs
+from .air_timing import (DUCK_PAD_SECS, MAX_STREAM_BUFFER_SECS,
+                         speaking_secs)
 from .air_verdict import AirVerdict, _air_path  # noqa: F401
 from .background import spawn
 
@@ -297,6 +298,31 @@ class OnAirGuard(AirVerdict):
         """
         buf = getattr(self, "_last_buf", 0.0)
         return buf if buf > 0 else self.lag_secs
+
+    def prime_buffer(self, secs) -> None:
+        """The station's ADVERTISED listener buffer, when nothing better is known.
+
+        A cold worker has seen no voice push, so `_last_buf` starts at 0 and
+        the first duck of the first call falls back to HANDOFF_LAG_SECS (2s)
+        — ~20 seconds early against a station really running 22. The station
+        publishes the same figure on /now-playing (`stream.bufferSeconds`,
+        upstream #1451 made it the single source for the real burst too), and
+        prepare() already fetches that page for the prompt — so the number is
+        free. A pushed value stays authoritative: pushes are per-utterance and
+        this is the connect-time default, so it only ever fills the blank.
+        Clamped like the receiver clamps a push (0-30): the two must not
+        disagree about what a believable buffer is.
+        """
+        if getattr(self, "_last_buf", 0.0) > 0:
+            return
+        try:
+            buf = max(0.0, min(MAX_STREAM_BUFFER_SECS, float(secs or 0)))
+        except (TypeError, ValueError):
+            return
+        if buf > 0:
+            self._last_buf = buf
+            log.info("caller lag primed from the station's advertised "
+                     "buffer: %.0fs (no voice push seen yet)", buf)
 
     # An unconfirmed delivery is given this long to appear in the station's
     # log. It used to be 90s, which was tolerable when a stuck hold only meant
@@ -672,11 +698,12 @@ class CallAgent(Agent):
     """
 
     def __init__(self, instructions: str, guard: OnAirGuard, door=None,
-                 stuck=None) -> None:
+                 stuck=None, withheld=None) -> None:
         super().__init__(instructions=instructions)
         self._guard = guard
         self._door = door
         self._stuck = stuck
+        self._withheld = withheld
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
         said = getattr(new_message, "text_content", "") or ""
@@ -689,6 +716,16 @@ class CallAgent(Agent):
             if note:
                 turn_ctx.add_message(role="system", content=note)
                 log.info("the caller has asked this before — steering this turn")
+        # Asked for something this line's settings withhold: the caller gets
+        # the denied card, the DJ gets the truth before it can invent a
+        # station fault. Same insertion point, same reason. See
+        # call/withheld.py.
+        if self._withheld is not None:
+            note = self._withheld.hint_for(said)
+            if note:
+                turn_ctx.add_message(role="system", content=note)
+                log.info("the caller asked for a withheld capability — "
+                         "carding and steering this turn")
         if self._door is not None:
             hint = self._door.hint_for(said)
             if hint:

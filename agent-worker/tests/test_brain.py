@@ -13,6 +13,7 @@ import json
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 import brain
 import settings as settings_store
@@ -697,3 +698,121 @@ class TestTheDJIsToldItsOwnLanguage(_TempStores):
         text = self._build({"id": "p_test", "name": "Brock",
                             "soul": "A test soul."})
         self.assertNotIn("You work in", text)
+
+
+class TestTheLastCallersBusinessStaysOutOfTheBriefing(unittest.TestCase):
+    """Our own on-air lines must not come back as booth chatter.
+
+    The kind-based filter (_PRIVATE_KINDS) has never matched a live entry:
+    /dj/say accepts only 'dj-speak'/'link' and coerces our "callin" marker,
+    so the station stores our hand-back lines as plain 'dj-speak' — checked
+    against the live session feed 2026-08-23, which holds no 'callin'
+    anywhere. The fixtures that pinned the old filter invented the field,
+    the same green-test trap as the energy float. What fires live is
+    station.said_by_us, fed by dj_say with the text of every aired line.
+    """
+
+    def setUp(self):
+        import station
+
+        station._AIRED_BY_US.clear()
+        self.station = station
+
+    def tearDown(self):
+        self.station._AIRED_BY_US.clear()
+
+    def _booth(self, messages):
+        from brain.briefing import _fmt_booth
+
+        return _fmt_booth({"messages": messages}, 4)
+
+    def test_a_line_we_aired_is_dropped_however_it_is_kinded(self):
+        self.station.note_aired_by_us(
+            "Big thanks to Sarah on the line — that request is coming up.")
+        out = self._booth([
+            {"kind": "dj-speak",
+             "text": "Big thanks to Sarah on the line — that request is "
+                     "coming up."},
+            {"kind": "dj-speak",
+             "text": "That was a station announcement about the weekend."},
+        ])
+        self.assertNotIn("Sarah", out)
+        self.assertIn("weekend", out,
+                      "the station's own dj-speak lines must survive — the "
+                      "kind cannot tell them apart, only the ledger can")
+
+    def test_matching_survives_case_and_whitespace(self):
+        self.station.note_aired_by_us("A  Line   We\nAired Tonight, truly.")
+        out = self._booth([{"kind": "dj-speak",
+                            "text": "a line we aired tonight, TRULY."}])
+        self.assertEqual("", out)
+
+    def test_the_kind_filter_still_holds_for_feeds_that_carry_one(self):
+        # Costs nothing to keep, and a future station that stores raw kinds
+        # gets the stronger filter for free.
+        out = self._booth([{"kind": "callin",
+                            "text": "Just had Piotr on about his divorce."}])
+        self.assertEqual("", out)
+
+    def test_dj_say_feeds_the_ledger_with_what_actually_aired(self):
+        import asyncio
+
+        import httpx
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={
+                "ok": True, "mode": "styled", "kind": "dj-speak",
+                "spoken": "Here's the styled version that really went out."})
+
+        async def run():
+            client = self.station.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station",
+                transport=httpx.MockTransport(handler))
+            try:
+                with unittest.mock.patch(
+                        "station_config.admin_credentials",
+                        return_value=("op", "pw")):
+                    return await client.dj_say("shout out to sarah")
+            finally:
+                await client.aclose()
+
+        res = asyncio.run(run())
+        self.assertTrue(res.get("ok"))
+        self.assertTrue(self.station.said_by_us(
+            "Here's the styled version that really went out."),
+            "the ledger must hold the SPOKEN text, not the instruction")
+
+    def test_the_ledger_does_not_swallow_strangers(self):
+        self.station.note_aired_by_us("Our line about the caller's request.")
+        self.assertFalse(self.station.said_by_us(
+            "A completely different link the station wrote itself."))
+
+
+class TestTheDJKnowsWhenTheBroadcastIsNotNormal(unittest.TestCase):
+    """/state has carried streamIdle and musicStarved for a while and the
+    briefing read neither — so a station paused for an empty room answered a
+    request with a 503 and the DJ narrated it as a jammed queue (2026-08-13).
+    A fact the DJ holds is a fact it can say instead of invent."""
+
+    def test_a_normal_night_adds_nothing(self):
+        from brain.briefing import _fmt_stream_health
+
+        self.assertEqual("", _fmt_stream_health({}))
+        self.assertEqual("", _fmt_stream_health(
+            {"streamIdle": False, "musicStarved": False}))
+
+    def test_an_idle_station_is_a_stated_fact(self):
+        from brain.briefing import _fmt_stream_health
+
+        out = _fmt_stream_health({"streamIdle": True})
+        self.assertIn("IDLE", out)
+        self.assertIn("resumes as listeners", out)
+        self.assertIn("rather than inventing a fault", out)
+
+    def test_a_starved_chain_is_named_as_the_emergency_loop(self):
+        from brain.briefing import _fmt_stream_health
+
+        out = _fmt_stream_health({"musicStarved": True})
+        self.assertIn("STARVED", out)
+        self.assertIn("emergency loop", out)

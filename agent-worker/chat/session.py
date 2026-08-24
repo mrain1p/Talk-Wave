@@ -36,8 +36,9 @@ import settings as settings_store
 from chat import openers
 from call.asks import Asks
 from call.stuck import Stuck
+from call.withheld import Withheld
 from promises import PROBLEMS, unbacked
-from spoken_rules import reads_as_a_refusal
+from spoken_rules import check_after_failure, reads_as_a_refusal
 from station import StationClient
 
 log = logging.getLogger("callin.chat")
@@ -167,6 +168,12 @@ class ChatSession:
         # the DJ it has this wrong — see call/stuck.py. Per conversation, like
         # everything else here.
         self.stuck = Stuck()
+        # This line's withheld capabilities — see call/withheld.py. Built on
+        # the first message (it needs the resolved cfg and the actions
+        # ledger) and retuned each message after, because the text line
+        # re-reads settings per message and the watcher must not card a
+        # capability the operator just switched on.
+        self.withheld: Withheld | None = None
         # What the caller asked for that a TOOL would have to satisfy, and
         # whether anything landed after. The phone has carried one since
         # 0.10.149; the text line never did, so its promise guard had nothing
@@ -324,6 +331,16 @@ class ChatSession:
             if note:
                 ctx.add_message(role="system", content=note)
                 self.problems.append(PROBLEMS["stuck"])
+            # Asked for something this line withholds: card + honest first
+            # answer, same as the phone. See call/withheld.py.
+            if self.withheld is None:
+                self.withheld = Withheld(cfg, actions)
+            else:
+                self.withheld.actions = actions
+                self.withheld.retune(cfg)
+            note = self.withheld.hint_for(text)
+            if note:
+                ctx.add_message(role="system", content=note)
 
             self.remember("caller", text)
             self.messages += 1
@@ -438,6 +455,14 @@ class ChatSession:
                     # stray gap behind it.
                     pending_break = bool(text_out.strip())
                     continue
+                # The nudge is spent; what is left is grading. A closing line
+                # that still says a refused thing landed is the repeat
+                # PROBLEMS["refused"] tells the operator to watch for — same
+                # check the drill grades with, wired the same release as the
+                # phone's (0.98.55, promise_guard._on_said).
+                if (not nudge_left and refused_any and text_out.strip()
+                        and check_after_failure(text_out)):
+                    self.problems.append(PROBLEMS["claims-again"])
                 break
             # Tool results go back as TEXT, not as function_call /
             # function_call_output parts.

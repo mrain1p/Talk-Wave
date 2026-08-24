@@ -199,6 +199,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )
 from tests.test_tools_surface import (  # noqa: F401
+    TestARefusalIsACardTheDJCannotSpin,
     TestActionsAllHaveAReceipt,
     TestTheCapAnnouncesItselfAsACard,
     TestExposedSurface,
@@ -249,6 +250,12 @@ from tests.test_stuck import (  # noqa: F401
     TestTheRealChatIsCaught,
     TestTheSameAskIsRecognised,
 )
+from tests.test_withheld import (  # noqa: F401
+    TestNothingOfferedIsNeverCarded,
+    TestRetuneFollowsTheSettings,
+    TestTheMinaCallGetsCardAndTruth,
+    TestThePatternsCannotDriftFromTheOffList,
+)
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
     TestALateMatchStillReachesTheCaller,
@@ -272,6 +279,8 @@ from tests.test_takeover import (  # noqa: F401
     TestTheStationEndpointsAreTheOnesUpstreamServes,
 )
 from tests.test_brain import (  # noqa: F401
+    TestTheDJKnowsWhenTheBroadcastIsNotNormal,
+    TestTheLastCallersBusinessStaysOutOfTheBriefing,
     TestTheDJIsToldItsOwnLanguage,
     TestTheDJKnowsTheStationsShows,
     TestACallerCanBeToldNothingIsKept,

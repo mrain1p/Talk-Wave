@@ -116,6 +116,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
         # to. It told one caller a vocal record was an instrumental eleven
         # times and held the line when they said otherwise.
         if d.get("unavailable"):
+            # The caller sees the fact too — the 2026-08-20 call argued about
+            # this for two minutes with nothing on screen to settle it.
+            actions.denied("unavailable",
+                           "lyrics lookup — this station can't read lyrics")
             return ("The lyrics read is NOT AVAILABLE on this station — the "
                     "request failed or the station has no lyrics feature. You "
                     "have learned NOTHING about the current track: do not say "
@@ -365,10 +369,18 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 {"id": id, "title": title, "artist": artist}
             )
             if not res.get("ok"):
+                # The refusal as a CARD as well as a receipt: the caller sees
+                # the station's own reason in a channel the persona cannot
+                # spin, so a DJ that dresses it up contradicts a fact already
+                # on screen. See CallActions.denied.
+                actions.denied("refused",
+                               res.get("error") or "the station refused it")
                 return (
                     f"That didn't go into the queue: "
                     f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
+                    "Tell the caller plainly — do not claim it worked. The "
+                    "caller has been shown the station's refusal on a card, "
+                    "so the reason is already public."
                 )
             actions.queued_ids.add(str(id))
             actions.note("request", _fmt_track({"title": title, "artist": artist}))
@@ -436,7 +448,15 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             if res.get("error"):
                 refusals["at"] = time.monotonic()
                 refusals["why"] = str(res["error"])
-                return f"The station couldn't take that request: {res['error']}"
+                # Card it — the rate gate and the never-play rule have both
+                # been narrated as invented station faults ("queue's jammed",
+                # 2026-08-13). Deduped in denied(), so the burst that sends
+                # four identical requests shows one card.
+                actions.denied("refused", str(res["error"]))
+                return (f"The station couldn't take that request: "
+                        f"{res['error']} The caller has been shown the "
+                        "station's refusal on a card, so the reason is "
+                        "already public — relay it, don't rewrite it.")
 
             # Every success path below says QUEUED, never playing. Observed on
             # a real call: the DJ took a request and immediately introduced the

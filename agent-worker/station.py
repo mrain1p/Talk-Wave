@@ -37,6 +37,52 @@ def degraded() -> bool:
     return _read_stats["consecutive_failures"] >= _DEGRADED_AFTER
 
 
+# Lines WE handed the station to speak, so the next conversation can recognise
+# them in the station's own feeds. The kind we send with them cannot do it:
+# /dj/say accepts only SAY_KINDS = ['dj-speak', 'link'] and silently coerces
+# anything else, so every "callin" / "voicemail" marker this codebase sends is
+# stored by the station as plain 'dj-speak'. Checked against the live session
+# feed 2026-08-23: no 'callin' kind exists anywhere in it, which means the
+# briefing's kind-based privacy filter (brain/briefing._PRIVATE_KINDS) has
+# never once fired on a real deployment — a past caller's hand-back line was
+# reaching the next caller's prompt as ordinary booth chatter.
+#
+# Module-level on purpose: one worker process serves many calls, and the line
+# that must be recognised was aired during the PREVIOUS call. A restart
+# forgets the ledger, which costs one call's worth of filtering, not privacy
+# of anything the station didn't already broadcast.
+from collections import deque as _deque
+
+_AIRED_BY_US: _deque = _deque(maxlen=80)
+_AIRED_TTL_SECS = 2 * 3600.0
+
+
+def _norm_spoken(text: str) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def note_aired_by_us(text: str) -> None:
+    t = _norm_spoken(text)
+    if t:
+        _AIRED_BY_US.append((time.time(), t))
+
+
+def said_by_us(text: str) -> bool:
+    """Did WE put this line on air recently?
+
+    Matched on the first 160 normalised characters so a clip on either side
+    (the session feed's, or the briefing's own 220-char clip) cannot hide the
+    match. Two hours is the window: the caller this protects is the NEXT one,
+    minutes away, not tomorrow's.
+    """
+    t = _norm_spoken(text)[:160]
+    if not t:
+        return False
+    now = time.time()
+    return any(now - at <= _AIRED_TTL_SECS and t == line[:160]
+               for at, line in _AIRED_BY_US)
+
+
 # Reads are quick or they're broken. ACTIONS are not: /dj/skill runs a whole
 # segment (script, then speech) before it answers, and /dj/say re-voices a line
 # through the station's own TTS. Both routinely take longer than the read
@@ -355,6 +401,13 @@ class StationClient:
         the persona's own voice before speaking it, so the call-in agent's
         phrasing doesn't have to match the broadcast voice exactly.
 
+        `kind` is OUR intent marker, not the station's vocabulary: /dj/say
+        accepts only 'dj-speak' and 'link' and silently coerces everything
+        else to 'dj-speak' (heavy duck, solo moment — which is what every
+        caller of this wants). It never comes back in any station feed, so
+        nothing downstream may branch on it; recognising our own lines is
+        `said_by_us`'s job, fed below.
+
         Admin-only (the endpoint 401s without credentials).
         """
         from station_config import admin_credentials
@@ -364,6 +417,15 @@ class StationClient:
             log.info("skipping on-air handoff — no station admin credentials")
             return {"ok": False, "error": "no station admin credentials"}
 
+        # The station truncates silently at its SAY_TEXT_MAX (500). Cutting
+        # here instead, at a sentence-ish boundary of our choosing, beats a
+        # raw-mode line going to air chopped mid-word with nothing logged.
+        text = str(text or "")
+        if len(text) > 500:
+            log.warning("on-air line over the station's 500-char cap — "
+                        "cutting at %d chars", 500)
+            text = text[:500]
+
         try:
             r = await self._client.post(
                 "/dj/say",
@@ -372,10 +434,18 @@ class StationClient:
                 timeout=ACTION_TIMEOUT,
             )
             r.raise_for_status()
-            return {"ok": True, **_body(r)}
+            body = _body(r)
+            # What actually aired (styled mode rewrites `text`), so the next
+            # conversation's briefing can recognise this line as its own —
+            # the kind marker cannot carry it, see the docstring.
+            note_aired_by_us(body.get("spoken") or text)
+            return {"ok": True, **body}
         except Exception as e:
             if _sent_but_unconfirmed(e):
                 log.warning("on-air line slow to confirm (%s) — treating as sent", e)
+                # Best known text: styled mode's rewrite is lost with the
+                # response, so the instruction is what there is to match on.
+                note_aired_by_us(text)
                 return {"ok": True, "unconfirmed": True}
             log.warning("on-air handoff failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}

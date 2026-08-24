@@ -841,7 +841,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "agent-worker/brain/tool_rules.py": (634, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
-        "agent-worker/call/air.py": (718, "the CallAgent half (the reply "
+        # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
+        # the same insertion point door and stuck already use, which is the
+        # CallAgent half this split will carry away together. 755:
+        # prime_buffer, same release — the advertised-buffer cold-start fill,
+        # beside stream_buffer where its state lives.
+        "agent-worker/call/air.py": (755, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
@@ -896,7 +901,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 813: the promise guard is handed the call's Asks (0.98.52), so an
         # obligation comes from the CALLER's request rather than the DJ's
         # vocabulary. One argument, on the same side of the seam.
-        "agent-worker/call/session.py": (813, "the ringing half (prepare, "
+        # 819: the withheld watcher is built beside door and stuck (0.98.55)
+        # — per-call state, constructed where its siblings are, prepare side.
+        # 825: prime_buffer wired off the snapshot read, same release — six
+        # lines beside the read that pays for them.
+        "agent-worker/call/session.py": (825, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -917,7 +926,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # three lines beside the tool build it belongs to, same half.
         # 635: the text line grows an Asks of its own (0.98.52) — the phone has
         # had one since 0.10.149 and chat's guard had only wording to go on.
-        "agent-worker/chat/session.py": (635, "the one-conversation half "
+        # 652: the withheld watcher (0.98.55), wired beside the stuck hint for
+        # the same reason and on the same side of the seam. 660: the
+        # claims-again grading after the nudge, same release, beside the
+        # nudge it grades.
+        "agent-worker/chat/session.py": (660, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "

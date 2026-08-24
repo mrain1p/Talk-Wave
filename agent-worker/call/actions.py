@@ -77,6 +77,22 @@ class CallActions:
         # ask (2026-08-19): on the chat that hit the cap, the only voice
         # saying so was a DJ who dressed it as the scheduler fighting him.
         "limit": ("⛔", "Call limit reached"),
+        # The refusal receipts — the denied-card family, none of them actions
+        # and none of them counted. Same reasoning as "limit": the card is
+        # the half the persona cannot spin, and every one of these situations
+        # has been narrated as something else on a real call. See denied().
+        #
+        # The station said no and gave its reason (a never-play rule, the
+        # request rate gate, requests closed). Detail carries the station's
+        # own words — invented as "the queue's jammed" on 2026-08-13.
+        "refused": ("🛑", "The station refused that"),
+        # A capability this line's settings withhold — the caller asked, no
+        # tool exists tonight, and the DJ invented "it's been a bit stubborn
+        # with the queue" (the Mina call, 2026-08-22). See call/withheld.py.
+        "not tonight": ("📵", "Not on this line tonight"),
+        # A feature the station itself does not have — told to a caller as
+        # a fact about the MUSIC eleven times on 2026-08-20 (lyrics).
+        "unavailable": ("🚧", "Not available on this station"),
     }
 
     def __init__(self, limit: int, room=None, mode: str = "before") -> None:
@@ -138,6 +154,11 @@ class CallActions:
         # the 2026-08-19 chat hit the cap four times in twenty seconds, and
         # four identical warnings would bury the one that matters.
         self._limit_announced = False
+        # Denied cards already shown, keyed (kind, detail) — the same
+        # once-per-call rule as the limit card, per distinct refusal: the
+        # station repeating one rate-limit answer four times in a burst is
+        # one fact, and four identical cards would bury it.
+        self._denied: set[tuple[str, str]] = set()
 
     # How long a promise keeps the check-in quiet. Capped, because a DJ that
     # promises and never delivers would otherwise buy silence for the rest of
@@ -197,6 +218,27 @@ class CallActions:
             "has been shown an official CALL LIMIT REACHED card, so the cap is "
             "already public — a story that contradicts it will be caught."
         )
+
+    def denied(self, kind: str, detail: str = "") -> None:
+        """A card for something that will NOT happen, and why.
+
+        The receipt channel's other half. `note()` tells the caller what
+        landed; this tells them what was refused and by whom — the fact the
+        DJ's prose keeps dressing up as a station fault, a jammed queue, or
+        an attempt that never ran. Never counts against the limit, never
+        touches `taken`: a refusal costs the caller nothing.
+
+        Once per distinct (kind, detail) per call. A different refusal still
+        cards; the same one repeated does not.
+        """
+        key = (str(kind), str(detail or "")[:120])
+        if key in self._denied:
+            return
+        self._denied.add(key)
+        icon, label = self.LABELS.get(kind, ("🛑", "That can't happen tonight"))
+        log.info("caller denied card: %s — %s", kind, detail)
+        self._deliver({"kind": kind, "icon": icon,
+                       "label": label, "detail": str(detail or "")[:200]})
 
     def note(self, kind: str, detail: str = "") -> None:
         # Something landed, so whatever was promised is no longer outstanding.

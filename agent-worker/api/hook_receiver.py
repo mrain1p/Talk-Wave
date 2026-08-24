@@ -144,6 +144,11 @@ def _epoch(value) -> float:
         return 0.0
 
 
+# Whether the over-clamp warning below has fired this process — a station
+# set past 30 pushes on every utterance, and one line says it all.
+_over_clamp_warned: list = []
+
+
 def _remember_air(event: str, body: dict) -> None:
     """Write the one entry the worker's on-air guard reads.
 
@@ -164,7 +169,22 @@ def _remember_air(event: str, body: dict) -> None:
     # when the CALLER stopped hearing it, so the call DJ came back over
     # the top every single time.
     try:
-        buf = max(0.0, min(30.0, float(body.get("streamBufferSeconds") or 0)))
+        from call.air_timing import MAX_STREAM_BUFFER_SECS as _cap
+
+        raw = float(body.get("streamBufferSeconds") or 0)
+        buf = max(0.0, min(_cap, raw))
+        # The station's settings field goes to 60 (upstream #1451); our duck
+        # ceilings (GREET_HOLD_SECS, MAX_HOLD) are sized against the cap and
+        # raising them is NOT one line — so past the clamp the guard runs on
+        # a number that is knowingly wrong and every duck lands early by the
+        # excess. Say so once, loudly, instead of mistiming in silence.
+        if raw > _cap and not _over_clamp_warned:
+            _over_clamp_warned.append(raw)
+            log.warning(
+                "the station advertises a %.0fs listener buffer — above the "
+                "%.0fs this sidecar's ducking is built for. Ducks will run "
+                "~%.0fs early until the station's stream.bufferSeconds "
+                "setting comes back down.", raw, _cap, raw - _cap)
     except (TypeError, ValueError):
         buf = 0.0
 

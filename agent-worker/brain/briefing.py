@@ -22,6 +22,8 @@ turn, not just at session start. Station reads are summarised, not dumped.
 
 from __future__ import annotations
 
+import station as station_mod
+
 CARD_BUDGET = 2000  # chars, matches the station's own DJ/Show Card convention
 
 # Some station text (show topics especially) comes back double-encoded — an
@@ -244,6 +246,32 @@ def _fmt_upcoming(state: dict, limit: int) -> str:
     return "Coming up after that: " + ", ".join(queued) + "." if queued else ""
 
 
+def _fmt_stream_health(state: dict) -> str:
+    """The two states in which the broadcast is NOT normal programming.
+
+    Both ride /state, which the snapshot already fetches, and both are facts
+    the DJ has invented around before: the idle pause is why a request eight
+    seconds after pickup got a 503 ("requests pause while nobody is
+    listening") and was narrated as a jammed queue (2026-08-13). A DJ that
+    knows the real state can say it; one that doesn't gets to choose between
+    silence and a story.
+    """
+    bits = []
+    if state.get("streamIdle"):
+        bits.append(
+            "The station is IDLE right now — nobody was tuned in, so the "
+            "programme is paused; it resumes as listeners (this caller "
+            "included) connect. If something station-side answers oddly in "
+            "the first moments, this is why — say so plainly rather than "
+            "inventing a fault.")
+    if state.get("musicStarved"):
+        bits.append(
+            "The station's music chain is STARVED — the emergency loop is on "
+            "air, not the normal programme. Do not present what's playing as "
+            "the show's own programming.")
+    return " ".join(bits)
+
+
 def _is_show_announcement(text: str, show_name: str, show_topic: str) -> bool:
     """The station announces programme starts into the chatter feed ("Show X
     begins — theme: ..."). The Show Card already carries that in full, so a
@@ -260,11 +288,20 @@ def _is_show_announcement(text: str, show_name: str, show_topic: str) -> bool:
 _BOOKKEEPING_KINDS = {"scenario", "pick", "play", "queue", "system"}
 _BOOKKEEPING_ROLES = {"event", "track"}
 
-# Lines the station spoke ABOUT a previous call — our own back-to-air handoff
-# goes out with kind "callin". Two reasons they must never reach the next
-# caller's prompt: privacy (the last caller's business is not this caller's),
-# and continuity (with them in, the DJ picks up where the LAST call left off
-# and greets a stranger as though the conversation were still running).
+# Lines the station spoke ABOUT a previous call. Two reasons they must never
+# reach the next caller's prompt: privacy (the last caller's business is not
+# this caller's), and continuity (with them in, the DJ picks up where the
+# LAST call left off and greets a stranger as though the conversation were
+# still running).
+#
+# The kind set below has NEVER matched a live entry: we send kind "callin"
+# but /dj/say accepts only 'dj-speak'/'link' and coerces everything else, so
+# the station stores our lines as plain 'dj-speak' — checked against the live
+# session feed 2026-08-23, which holds no 'callin' anywhere. The fixtures
+# that pinned this filter invented the field, which is the same green-test
+# trap as the energy float. The set stays because it documents intent and
+# costs nothing; the check that actually fires live is `station.said_by_us`,
+# fed by dj_say with the text of every line we aired.
 _PRIVATE_KINDS = {"callin", "caller", "call"}
 
 
@@ -308,6 +345,11 @@ def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str =
         # Anything the station said about an earlier CALL stays out: every
         # call starts fresh, and the last caller's business isn't this one's.
         if kind in _PRIVATE_KINDS:
+            continue
+        # The check that actually fires on a real station — see _PRIVATE_KINDS
+        # for why the kind alone cannot: the station stores our lines as
+        # 'dj-speak', indistinguishable by kind from its own announcements.
+        if station_mod.said_by_us(text):
             continue
         # Pattern fallback for payloads without kind fields.
         if _is_show_announcement(text, show_name, show_topic):
@@ -396,6 +438,8 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
         _fmt_show_shape(show),
         _fmt_recent(snap["state"], int(cfg.get("context_recent_tracks", 3))),
         _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2))),
+        # Nothing on a normal night — see _fmt_stream_health.
+        _fmt_stream_health(snap["state"]),
         _fmt_booth(snap["session"], int(cfg.get("context_booth_lines", 4)),
                    demojibake(show.get("name", "")), show.get("topic", "")),
     ]

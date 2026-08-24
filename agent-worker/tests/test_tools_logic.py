@@ -1092,22 +1092,77 @@ class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
     def test_a_detector_that_heard_nothing_leaves_the_guard_alone(self):
         """The fail-safe, and the reason `settled` is not `not unanswered`.
 
-        ASKS_FOR_ACTION is lexical and DEAF to the plainest request there is:
-        "Play diciembre first" — a bare imperative with a title after it —
-        matches nothing, because the pattern wants a pronoun ("play me",
-        "play something"). Found 2026-08-22 by this very test failing.
+        The 2026-08-23 archive replay fixed the pronoun deafness ("Play
+        diciembre first" is heard now — see below), but the detector is still
+        lexical and still misses the follow-up FRAGMENT: a caller who was
+        just offered choices and answers "Italian songs" (real line,
+        2026-08-22) has made a request only context can read.
 
         If "heard nothing" were read as "nothing owed", the promise guard
-        would fall silent on most requests. A quiet false negative is worse
-        than a noisy false positive here: an operator can see a DJ answering
-        its own question; nobody can see a request that vanished.
+        would fall silent on exactly those requests. A quiet false negative
+        is worse than a noisy false positive here: an operator can see a DJ
+        answering its own question; nobody can see a request that vanished.
         """
         from call.asks import Asks
 
         deaf = Asks()
-        deaf.heard("Play diciembre first", at=100.0)
-        self.assertEqual(deaf.asked, [], "if this passes, the deafness is fixed "
-                                         "— rewrite this test around what is "
-                                         "still unheard, do not delete it")
+        deaf.heard("Italian songs", at=100.0)
+        self.assertEqual(deaf.asked, [], "if this passes, the fragment "
+                                         "deafness is fixed — rewrite this "
+                                         "test around what is still unheard, "
+                                         "do not delete it")
         # No information, so the guard is left exactly as it was.
         self.assertFalse(deaf.settled([110.0]))
+
+    def test_the_diciembre_call_is_heard_now(self):
+        """The line this whole stream is named for, plus the replay's gains.
+
+        Every string here is a real caller line from the archive that the
+        pattern was deaf to until the 2026-08-23 replay (97 records, 29
+        unheard asks, zero previously-heard lines lost). If one of these
+        stops matching, a regression has re-deafened the detector to
+        something a real caller actually said.
+        """
+        from call.asks import Asks
+
+        heard_now = [
+            "Play diciembre first",
+            "Play song by giorgia",
+            "could yo play the marshal mathers lp?",
+            "spin me a mix all 90s rock",
+            "i want to hear wade, change shows",
+            "Can you cue the word album?",
+            "cancel that track",
+            "Can I get Rosie and Chinese music?",
+            "hey have you got the lyrics for this song?",
+            "Create me a mix from the artist mina",
+            "What Eminem albums do you have?",
+            "can you remove all the eminiem songs from the queu?",
+            "Skip current song and play dicembre",
+        ]
+        for line in heard_now:
+            asks = Asks()
+            asks.heard(line, at=100.0)
+            self.assertTrue(asks.asked, f"deaf again to: {line!r}")
+        # And an ask that is heard can be settled by an action after it —
+        # the diciembre call's actual failure was that this was impossible.
+        asks = Asks()
+        asks.heard("Play diciembre first", at=100.0)
+        self.assertTrue(asks.settled([104.0]))
+        self.assertFalse(asks.settled([90.0]))
+
+    def test_chatter_about_music_is_still_not_an_ask(self):
+        # The other direction, from the same archive: informational questions
+        # are answered in words and leave no receipt, so hearing them would
+        # report a dropped ask on every call that went well.
+        from call.asks import Asks
+
+        for line in [
+            "Can you hear me from over there?",
+            "What song is playing right now?",
+            "How would I possibly know what you're going to play next?",
+            "i liked the song that was on before.",
+        ]:
+            asks = Asks()
+            asks.heard(line, at=100.0)
+            self.assertEqual(asks.asked, [], f"false ask heard in: {line!r}")

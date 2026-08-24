@@ -48,7 +48,7 @@ from onair.relay import CallRelay
 from . import (asks as asks_mod, background, clocks, comeback, door,
                floor as floor_mod, greeting, handoff, heard as heard_mod,
                lifecycle, postmortem, promise_guard, stuck as stuck_mod,
-               tee as tee_mod)
+               tee as tee_mod, withheld as withheld_mod)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -196,6 +196,12 @@ class CallSession:
         # per turn, and nothing at all on a call where the caller was heard
         # the first time.
         self.stuck = stuck_mod.Stuck()
+        # This line's withheld capabilities, watched against each caller turn
+        # so a tier denial gets a card and an honest first answer instead of
+        # an invented station fault — see call/withheld.py. Built from the
+        # SAME resolved cfg the tools are built from, and from the same
+        # actions ledger the receipts ride.
+        self.withheld = withheld_mod.Withheld(self.cfg, self.actions)
         # Who is allowed to start a turn — see call/floor.py. Attached to
         # the air guard the way air_log is, because the come-back task is
         # created inside the guard's watch loop.
@@ -358,6 +364,12 @@ class CallSession:
                 _speakable(),
             )
         self.persona = self._resolve_persona(snap)
+        # The advertised listener buffer, off the same /now-playing read the
+        # prompt already paid for — fills the cold-start blank before any
+        # voice push has arrived. See OnAirGuard.prime_buffer.
+        self.air.prime_buffer(
+            ((snap.get("now_playing") or {}).get("stream") or {})
+            .get("bufferSeconds"))
 
         # The catalogue the station returned is every skill it HAS. Narrow it to
         # what this DJ may actually run before it reaches either the prompt or
@@ -603,7 +615,7 @@ class CallSession:
 
         await self.session.start(
             agent=CallAgent(self.instructions, self.air, self.door,
-                            self.stuck),
+                            self.stuck, self.withheld),
             room=self.ctx.room,
             # RoomOptions replaces the deprecated RoomInputOptions/
             # RoomOutputOptions pair. close_on_disconnect keeps its meaning:

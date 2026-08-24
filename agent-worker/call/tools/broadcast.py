@@ -114,9 +114,14 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.dj_say(message, mode=mode, kind="callin")
             if not result.get("ok"):
+                # Card the refusal — see CallActions.denied: the reason on
+                # screen is the reason the persona cannot rewrite.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't go out: {result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
+                    "Tell the caller plainly — do not claim it worked. The "
+                    "caller has been shown the refusal on a card."
                 )
             actions.note("announcement", message[:120])
             # The gate closes now, not when the station log catches up — and

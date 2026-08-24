@@ -16,6 +16,15 @@ from __future__ import annotations
 # and stacked into holds of half a minute. One number you can turn.
 DUCK_PAD_SECS = 4.5
 
+# The largest listener buffer this sidecar believes, whatever a push or a
+# /now-playing read claims. NOT a free dial: the greet hold (GREET_HOLD_SECS)
+# must outlast a mid-link pickup's lag or every one times out over the top
+# (the 2026-08-18 bug), and MAX_HOLD caps every duck — both are sized against
+# this number, and a test pins the ordering. The station's own settings field
+# goes to 60 (upstream #1451); raising this to follow means raising both
+# ceilings with it, deliberately, not by turning this one number.
+MAX_STREAM_BUFFER_SECS = 30.0
+
 
 def speaking_secs(spoken: str, fallback: int) -> int:
     """How long the on-air DJ will be talking, sized from the words themselves.

@@ -124,6 +124,18 @@ PROBLEMS = {
         "believing it — so if it repeats, treat the model's tool routing as unfit rather "
         "than as a rough edge."
     ),
+    # The repeat the "refused" entry above says to watch for, graded rather
+    # than left to whoever reads the transcript. Written when the DJ, GIVEN
+    # the extra turn after a refusal, claims the thing landed anyway — judged
+    # by spoken_rules.check_after_failure, the same check the drill grades
+    # with, so the panel's "needs attention" count and the harness agree
+    # about this fault instead of only the harness seeing it.
+    "claims-again": (
+        "Given the extra turn after a refusal, the DJ STILL told the caller it landed. The "
+        "nudge has failed and the honesty rules are not reaching this model — treat its tool "
+        "conduct as unfit, not as a rough edge, and check the LLM setting against one with "
+        "proven tool routing."
+    ),
 }
 
 

@@ -37,7 +37,7 @@ import logging
 from livekit.agents import AgentSession
 
 from promises import PROBLEMS, unbacked
-from spoken_rules import reads_as_a_refusal
+from spoken_rules import check_after_failure, reads_as_a_refusal
 
 log = logging.getLogger("callin.agent")
 
@@ -160,7 +160,20 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         if getattr(item, "role", None) != "assistant":
             return
         text = str(getattr(item, "text_content", "") or "").strip()
-        if not text or state["nudged"]:
+        if not text:
+            return
+        if state["nudged"]:
+            # The guard has spent its one nudge for this caller turn; what is
+            # left is GRADING. A line after the refusal nudge that still says
+            # it landed is exactly the repeat PROBLEMS["refused"] tells the
+            # operator to watch for, and until 0.98.55 it lived only in the
+            # transcript — the harness graded this fault on every drill run
+            # (spoken_rules.check_after_failure) while live calls never did,
+            # so the panel's "needs attention" count could not see it.
+            if state["refused"] and record and check_after_failure(text):
+                log.info("the claim survived the nudge — recording it: %s",
+                         text[:80])
+                record.problem(_PROBLEM["claims-again"])
             return
         # Whether the CALLER has an ask outstanding that a tool would have to
         # satisfy. The obligation belongs to their request, not to the DJ's

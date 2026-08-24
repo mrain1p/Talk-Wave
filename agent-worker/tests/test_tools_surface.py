@@ -507,6 +507,23 @@ class TestActionsAllHaveAReceipt(unittest.TestCase):
             "'Action completed' instead of what actually happened",
         )
 
+    def test_every_denial_a_tool_cards_has_a_label(self):
+        """Same guard for the denied-card family — a refusal kind with no
+        label renders as the fallback, which tells the caller nothing about
+        what was refused. Scraped over all of call/, because the withheld
+        watcher cards from outside call/tools/."""
+        import re
+
+        from call.actions import CallActions
+
+        carded = set()
+        for path in AGENT_WORKER.joinpath("call").rglob("*.py"):
+            carded.update(re.findall(
+                r"\.denied\(\s*[\"']([^\"']+)[\"']",
+                path.read_text(encoding="utf-8")))
+        self.assertTrue(carded, "found no denied() calls to check")
+        self.assertEqual(sorted(carded - set(CallActions.LABELS)), [])
+
 
 class TestStationActionResults(unittest.TestCase):
     """A station action that WORKED must never be reported to the caller as a
@@ -638,6 +655,22 @@ class TestTheDJDescribesRecordsItHasInformationAbout(unittest.TestCase):
         self.assertIn("nocturnal", out)
         self.assertIn("low energy", out)
 
+    def test_inherited_feel_tags_are_hedged_as_a_guess(self):
+        # `source: 'propagated'` marks moods inherited from embedding
+        # neighbours — upstream's "guesses built on guesses", 41% of a real
+        # library — and the DJ was reading them with per-track confidence.
+        # Real per-track judgements (llm/manual/uncertain-llm) stay unhedged.
+        from call.tools.music import _fmt_track
+
+        row = {"title": "Weesnaawwww", "artist": "$ilkMoney",
+               "moods": ["energetic", "driving"], "energy": "high"}
+        hedged = _fmt_track(dict(row, source="propagated"))
+        self.assertIn("inherited", hedged)
+        self.assertIn("guess", hedged)
+        for source in ("llm", "manual", "uncertain-llm", None):
+            out = _fmt_track(dict(row, source=source))
+            self.assertNotIn("inherited", out, f"hedged a real judgement: {source}")
+
     def test_the_id_is_included_only_when_exact_queueing_is_on(self):
         # Without the id in the text the model has nothing to pass to the
         # exact-queue tool and silently falls back to guessing.
@@ -691,3 +724,47 @@ class TestTheCapAnnouncesItselfAsACard(unittest.TestCase):
         # the card is what makes a contradicting story a visible lie.
         spent = self._spent()
         self.assertIn("CALL LIMIT REACHED card", spent.refusal())
+
+
+class TestARefusalIsACardTheDJCannotSpin(unittest.TestCase):
+    """The receipt channel's other half (see CallActions.denied): what was
+    refused, on screen, in the station's own words. Every kind here maps to
+    a narrated invention on a real call — "the queue's jammed" for a rate
+    limit (2026-08-13), "stubborn with the queue" for a withheld mix
+    (2026-08-22), "it's an instrumental" for a missing lyrics feature
+    (2026-08-20)."""
+
+    def test_a_denial_cards_with_its_reason_and_costs_nothing(self):
+        from call.actions import CallActions
+
+        a = CallActions(5)
+        cards = []
+        a.on_note = cards.append
+        a.denied("refused", "rate limited: one request per 20s")
+        self.assertEqual(a.count, 0)
+        self.assertEqual(a.taken, [])
+        self.assertEqual(cards[0]["kind"], "refused")
+        self.assertEqual(cards[0]["label"], "The station refused that")
+        self.assertIn("20s", cards[0]["detail"])
+
+    def test_the_same_refusal_repeated_cards_once(self):
+        # The 2026-08-13 burst sent four identical requests in one turn and
+        # collected four identical refusals — that is one fact, not four.
+        from call.actions import CallActions
+
+        a = CallActions(5)
+        cards = []
+        a.on_note = cards.append
+        for _ in range(4):
+            a.denied("refused", "rate limited")
+        self.assertEqual(len(cards), 1)
+
+    def test_a_different_refusal_still_cards(self):
+        from call.actions import CallActions
+
+        a = CallActions(5)
+        cards = []
+        a.on_note = cards.append
+        a.denied("refused", "rate limited")
+        a.denied("refused", "on the never-play blocklist")
+        self.assertEqual(len(cards), 2)

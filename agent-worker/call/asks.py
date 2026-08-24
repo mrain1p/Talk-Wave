@@ -49,9 +49,47 @@ import time
 # is closed. A detector that cannot hear a request would produce exactly that
 # verdict by being deaf, and the stream would settle its central question on
 # an instrument that was not listening.
+#
+# **Replayed again 2026-08-23**, 97 records, after "Play diciembre first" went
+# unheard on a live call (the pattern wanted a pronoun after "play"). That
+# replay found the deafness was general — 29 caller lines the pattern could
+# not hear, and none of them exotic: "spin me a mix all 90s rock", "cue the
+# word album" (STT for queue), "cancel that track", "Can I get Rosie?", "have
+# you got the lyrics for this song?", "Create me a mix from the artist mina",
+# "What Eminem albums do you have?", "remove all the eminiem songs from the
+# queu?" (STT again). Every branch below exists because a real caller said it;
+# the replay script keeps LOST at zero, so nothing the old pattern heard has
+# gone unheard. Known and accepted misses: bare follow-up fragments ("Italian
+# songs", "a mix") that only context can read, and informational questions
+# ("what song is this?") that are answered in words and out of scope here.
 ASKS_FOR_ACTION = re.compile(
     r"\b("
-    r"play (?:me|us|something|that|it|this|some)|can you play|could you play|"
+    # Bare imperative "play <anything>": "Play diciembre first", "play the
+    # marshal mathers lp", "Let her play Chinese music". The exclusions are the
+    # figurative particles ("play along") and "play next/here/there", which
+    # appear in chatter about the programme rather than in requests. \S+ not
+    # \S: a single-char match strands the closing \b inside the next word.
+    r"play (?!next\b|here\b|there\b|along\b|around\b|nice\b|fair\b|out\b"
+    r"|off\b|with\b)\S+|"
+    r"spin (?:me|us|something|some|a|that|it|this)|"
+    # "i want to hear wade" / "how about some jazz" — the request phrased as
+    # appetite rather than imperative.
+    r"(?:want|wanna|like|love|d love) to hear|hear (?:some|a little|a bit of)|"
+    r"let'?s hear|"
+    r"(?:how|what) about (?:some|a little|a bit of)|"
+    r"(?:can|could) (?:i|we|you) get\b|"
+    # The mix asks, and the album-shelf ask ("What Eminem albums do you
+    # have?") — both answered by tools, both deaf spots on the 08-23 replay.
+    r"(?:create|make|build) (?:me |us )?a (?:mix|playlist)|mix of\b|a mix from|"
+    r"(?:what|which) [^.?!]{0,24}?albums?\b|albums? (?:do|have) you\b|"
+    # Lyrics asks route to a tool, and the failure mode when the tool is
+    # missing is the DJ inventing an answer — the eleven-times call.
+    r"(?:the|have|any) lyrics|lyrics (?:for|to|of)|"
+    r"give (?:this|that) (?:track|song|tune|one|a spin)|"
+    r"search\b|look (?:\w+ )?up\b|look for|"
+    # Queue edits. "cue" and "queu" are what STT actually makes of "queue".
+    r"cancel\b|cue\b|remove (?:all |the |that |this |it |every)|"
+    r"recommend|"
     # "put Wade on the radio" — the takeover ask, and the old `put (?:on|it
     # on|...)` list could not see a NAME in the middle of it.
     r"put (?:\w+ ){0,3}on\b|stick (?:on|that on)|"
@@ -68,7 +106,8 @@ ASKS_FOR_ACTION = re.compile(
     # have you been on air?" — ordinary chatter that owes nobody an action.
     r"(?:tell|do|run|give) (?:me|us|a|an|the)[^.?!]{0,40}?\bon (?:the )?air|"
     r"shout ?out|dedicate|dedication|say (?:hi|hello) to|send.*to the booth|"
-    r"skip (?:this|it|that|the)|next (?:song|track|one)|"
+    r"skip (?:this|it|that|the|current|next|everything|song|track)|"
+    r"next (?:song|track|one)|"
     r"change the (?:dj|show)|switch (?:the )?(?:dj|show|to)|put someone else on|"
     r"never play|take (?:this|that) off|ban (?:this|that)|"
     r"heart (?:this|that)|like (?:this|that)"
@@ -102,7 +141,8 @@ class Asks:
 
         Deliberately NOT `not unanswered(...)`. The detector is lexical and
         therefore deaf in places — bare "Play <title>" was invisible to it
-        until 2026-08-22 — and an empty `asked` list means "heard nothing",
+        until the 2026-08-23 replay, and follow-up fragments ("Italian
+        songs") still are — and an empty `asked` list means "heard nothing",
         which is not the same as "nothing was owed". Reading it as the latter
         would silence the promise guard on every request it could not hear,
         turning a noisy false positive into a quiet false negative, which is

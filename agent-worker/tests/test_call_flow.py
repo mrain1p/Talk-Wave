@@ -3168,6 +3168,45 @@ class TestTheGreetingWaitsForTheOnAirDJ(unittest.TestCase):
         self.assertGreater(GREET_HOLD_SECS, OnAirGuard.MAX_CALLER_LAG)
         self.assertLess(GREET_HOLD_SECS, OnAirGuard.MAX_HOLD)
 
+    def test_the_buffer_cap_and_the_hold_ceilings_agree(self):
+        # The receiver clamps every push to MAX_STREAM_BUFFER_SECS, and both
+        # hold ceilings are sized against it — the 2026-08-23 upstream review
+        # found the station's settings field now goes to 60, and traced why
+        # following it is NOT one line: a buffer past the greet hold times
+        # out every mid-link pickup by construction, and one past MAX_HOLD
+        # guarantees the duck reopens mid-link. Whoever raises the cap raises
+        # the ceilings with it, and this is the test that makes that a
+        # decision instead of an accident.
+        from call.air import OnAirGuard
+        from call.air_timing import MAX_STREAM_BUFFER_SECS
+        from call.greeting import GREET_HOLD_SECS
+
+        self.assertGreaterEqual(GREET_HOLD_SECS, MAX_STREAM_BUFFER_SECS)
+        self.assertGreater(OnAirGuard.MAX_HOLD, MAX_STREAM_BUFFER_SECS)
+
+    def test_the_advertised_buffer_primes_a_cold_guard_only(self):
+        # A cold worker has seen no voice push, so the first duck fell back
+        # to the 2s handoff lag — ~20s early against a station really at 22.
+        # /now-playing carries the advertised figure and prepare() already
+        # reads it; priming must fill the blank and never outrank a push.
+        from call.air import OnAirGuard
+        from call.air_timing import MAX_STREAM_BUFFER_SECS
+
+        g = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        g._last_buf = 0.0
+        g.prime_buffer(22)
+        self.assertEqual(g.stream_buffer(), 22.0)
+        # A push has spoken — the advertised figure no longer applies.
+        g._last_buf = 7.0
+        g.prime_buffer(22)
+        self.assertEqual(g.stream_buffer(), 7.0)
+        # And the same clamp as the receiver's: a hostile or broken figure
+        # cannot hold a caller silent for a minute.
+        g2 = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        g2._last_buf = 0.0
+        g2.prime_buffer(99999)
+        self.assertLessEqual(g2.stream_buffer(), MAX_STREAM_BUFFER_SECS)
+
     def test_the_guard_being_off_costs_nothing(self):
         air = self._Air(enabled=False)
         s = self._greet(air)
@@ -3737,6 +3776,67 @@ class TestARefusedActionIsNotReportedAsDone(unittest.TestCase):
         self.assertIn("function_call_outputs", src)
         self.assertIn("reads_as_a_refusal", src)
         self.assertIn("refused=state[\"refused\"]", src)
+
+    def test_a_claim_that_survives_the_nudge_is_recorded(self):
+        """The repeat is graded now, not just described.
+
+        PROBLEMS["refused"] tells the operator "repeats here mean the honesty
+        rules are not reaching this model" — and until 0.98.55 a repeat lived
+        only in the transcript, because the guard spends its one nudge and
+        then skips every later line of the turn. The harness has graded this
+        exact fault on every drill run (spoken_rules.check_after_failure);
+        the live record never did, so the panel's "needs attention" count
+        could not see the deployment failing the way the drill could.
+        """
+        from call import promise_guard
+        from promises import PROBLEMS
+
+        problems = []
+        record = types.SimpleNamespace(problem=problems.append)
+        handlers, replies = {}, []
+
+        class _Session:
+            def on(self, name, fn):
+                handlers[name] = fn
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+        async def go():
+            promise_guard.attach_promise_guard(_Session(), record, None)
+            handlers["user_input_transcribed"](types.SimpleNamespace(
+                is_final=True, transcript="play something fun"))
+            handlers["function_tools_executed"](types.SimpleNamespace(
+                function_call_outputs=[types.SimpleNamespace(
+                    is_error=False,
+                    output="The station couldn't take that request: rate "
+                           "limited — one per 20s")]))
+            handlers["conversation_item_added"](types.SimpleNamespace(
+                item=types.SimpleNamespace(
+                    role="assistant",
+                    text_content="I've got it locked in to follow — on its "
+                                 "way.")))
+            await asyncio.sleep(0.05)
+            self.assertIn(PROBLEMS["refused"], problems)
+            # The extra turn arrives... and says it landed AGAIN.
+            handlers["conversation_item_added"](types.SimpleNamespace(
+                item=types.SimpleNamespace(
+                    role="assistant",
+                    text_content="That's lined up — it's coming up right "
+                                 "after this one.")))
+            await asyncio.sleep(0.05)
+            self.assertIn(PROBLEMS["claims-again"], problems)
+            # And owning it honestly after the nudge is NOT a fault.
+            problems.clear()
+            handlers["conversation_item_added"](types.SimpleNamespace(
+                item=types.SimpleNamespace(
+                    role="assistant",
+                    text_content="That one didn't go through — they're only "
+                                 "taking one at a time tonight.")))
+            await asyncio.sleep(0.05)
+            self.assertEqual(problems, [])
+
+        asyncio.run(go())
 
 
 class TestNothingInACallOverwritesSomethingElse(unittest.TestCase):

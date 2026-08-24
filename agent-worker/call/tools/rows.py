@@ -120,6 +120,18 @@ def _fmt_track(t: dict, with_id: bool = False) -> str:
     moods = t.get("moods") or []
     if isinstance(moods, list) and moods:
         feel.extend(str(m)[:40] for m in moods[:3])
+        # `source` is the tag's provenance, and 'propagated' means the moods
+        # were INHERITED from embedding neighbours because this track's own
+        # metadata was too thin to judge — upstream's words for those rows are
+        # "guesses built on guesses" (their #1362: a big-beat dance track
+        # propagated to [calm, night] and aired on an ambient show off the
+        # back of it). 41% of a real library. The DJ was reading them out
+        # with the same confidence as a per-track judgement; a two-word
+        # hedge is what keeps "moody, nocturnal" from becoming a claim.
+        # 'llm' / 'manual' / 'uncertain-llm' stay unhedged — upstream's own
+        # correction pass leaves them alone as real per-track judgements.
+        if f("source", 24).lower() == "propagated":
+            feel.append("(feel tags inherited — a guess)")
     # The station files energy as a WORD — 'low' | 'medium' | 'high' — not as a
     # score. This tested it with isinstance(..., (int, float)), so it dropped
     # the field from every row the station has ever sent, and the test that was
