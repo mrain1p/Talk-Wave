@@ -22,7 +22,7 @@ Fetches the stack, generates the LiveKit secret, detects your LAN address, prepa
 
 ## Install
 
-Make a folder, grab four files from this repo, create one empty directory:
+Make a folder, grab four files from this repo — [docker-compose.yaml](../docker-compose.yaml), [Caddyfile](../Caddyfile), [.env.example](../.env.example) and [livekit.example.yaml](../livekit.example.yaml) — and create one empty directory:
 
 ```bash
 mkdir talk-wave && cd talk-wave

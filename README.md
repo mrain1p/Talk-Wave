@@ -63,6 +63,7 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 
 **A player people actually use**
 - Installs to a phone like an app, and reads like one.
+- A **pull-down station player** — cover art, the record's tags, what's up next, the DJ's own line on the segue, and likes and song requests wired straight to the booth.
 - Embeds in two lines of HTML — inline card, launcher pill, docked bar, or pop-up. See [Embedding](docs/embedding.md).
 - Themes: light, dark, match-the-page, or the station's live show colours. Every string on the card overridable.
 - The card says how many are tuned in and offers the same heart any listener page has — both optional, both on by default.
@@ -78,12 +79,13 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 - A dashboard that acts (toggles post instantly, no save) and reads (on air, station health, activity charts).
 - Settings apply to the **next caller** — no restarts, ever.
 - Diagnostics run the real code paths: green means a call will work, not "the URL responded".
+- One search across every page — labels, help and each setting's own synonyms — that says where each answer lives.
 
 ## What a caller can make happen
 
 Every action here is a real tool the DJ can reach — on a call, on the text line, or out of a voicemail — and every one is a switch you can turn off. Anything that changes the station leaves its own receipt card in the caller's transcript, so what happened is never only the DJ's word for it.
 
-- **Just asking** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
+- **Just asking** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, what the audience loves, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
 - **Into the queue** — request a song, an album front to back, or a themed mix — and pull a queued track back out, or clear the lot.
 - **The record on air** — like it, take the like back, or skip it.
 - **Out to every listener** — a shout-out on air, a station segment (weather, news, a dedication), or a station beat and ident.
@@ -109,24 +111,24 @@ The README is the short version. The detail lives here:
 | **[Live on air](docs/on-air.md)** | The phone-in on the broadcast: what listeners hear, the three consents, the pull, and the wiring both containers need |
 | **[How a call actually works](docs/the-call.md)** | The path one sentence takes: the prompt and what it costs, the tool surface, how a request is triaged, and everything that can make the DJ speak |
 
-## Before you start
-
-- **A SUB/WAVE station, running** — Talk Wave is its companion phone line, not a standalone radio.
-- **A Docker host on the same network** — a NAS is fine. (Windows-local without Docker works for development.)
-- **One LLM API key** — or a local Ollama, which needs none. Calls spend **your** key; the usage caps are on by default. [What to run](docs/models.md).
-- **HTTPS, non-negotiable for calls** — browsers only grant the microphone to secure origins; the bundled Caddy provides one on a LAN with zero config. [Networking](docs/networking.md).
-- **LAN first** — get a call working at home before exposing anything; [security](docs/security.md) is the exposure checklist.
-- **Outside callers** need one router rule (a single UDP port) and one compose line — [networking](docs/networking.md) walks it.
-
 ## Getting started
 
-**The one-command version:**
+**You need three things:** a running **SUB/WAVE station** (Talk Wave is its companion phone line, not a standalone radio) · a **Docker host on the same network** — a NAS is fine · **one LLM API key**, or a local Ollama which needs none ([what to run](docs/models.md)). HTTPS comes bundled — browsers only grant the microphone to secure origins, and the included Caddy provides one on a LAN with zero config.
+
+**The one-command install:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/install.sh | bash
 ```
 
-**The ten-minute version: [docs/quickstart.md](docs/quickstart.md).** By hand, it is four files (`docker-compose.yaml` and `Caddyfile` from this repo, `.env` from `.env.example`, `livekit.yaml` from the example with a fresh secret) and one empty `data/` folder:
+It fetches the stack, generates the LiveKit secret, detects your LAN address and starts everything. **Or do it by hand** — the whole stack is four files plus one empty `data/` folder, and each file is worth a look before you run it:
+
+| File | What it is |
+|---|---|
+| [docker-compose.yaml](docker-compose.yaml) | The services — LiveKit, the worker, the web half, and the bundled Caddy TLS door |
+| [Caddyfile](Caddyfile) | The TLS front door: the widget route **and** the `/rtc` WebSocket route |
+| [.env.example](.env.example) → `.env` | The two variables below |
+| [livekit.example.yaml](livekit.example.yaml) → `livekit.yaml` | The LiveKit keypair — paste in a fresh secret (the file shows the generator); the app reads it from here too |
 
 ```bash
 cp .env.example .env
@@ -145,6 +147,8 @@ Images publish to `ghcr.io/mrain1p/talk-wave`; `:latest` tracks `main` and inclu
 | **`SUBWAVE_STREAM_URL`** | The station's public `https://` stream — **set it first**: left blank it derives a plain-http URL that browsers silently block as mixed content, and the caller hears no station |
 
 **Then open `https://<HOST_IP>:8443`** — the bundled Caddy TLS door, with a one-time certificate screen. Set the admin password, add an API key, run the pipeline check, press Call. Type passwords and keys only at `:8443`, never over plain `:8100`. Running your own reverse proxy instead? Replicate **both** Caddyfile routes — the widget *and* `/rtc` — or calls connect with no audio; [networking](docs/networking.md) has the details.
+
+**First run, walked slowly: [docs/quickstart.md](docs/quickstart.md)** — the same path with the certificate screen, the admin password, pointing at the station, the pipeline check, and what to back up. Get a call working on your LAN before exposing anything — [security](docs/security.md) is the exposure checklist, and callers from outside your network need one router rule plus one compose line ([networking](docs/networking.md)).
 
 ### Local, no Docker (Windows)
 
