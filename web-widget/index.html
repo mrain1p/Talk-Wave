@@ -362,7 +362,7 @@
          nothing (operator's phone, 2026-08-17). Full page and the installed
          app only, never an embed. -->
     <button class="ribbon" id="playerTab" type="button" hidden
-            aria-label="Pull down the station player"><span class="grip" aria-hidden="true"></span></button>
+            aria-label="Pull down the station player"><span class="grip" aria-hidden="true"></span><span class="griplabel">Station</span></button>
     <div class="player" id="playerView" hidden role="region" aria-label="Station player">
       <!-- The operator's 3a "Glow player" handoff, in the card's own tokens:
            header ribbon, glow art, 30px title, amber chips, the two info
@@ -410,7 +410,10 @@
       <div class="pldock">
         <div class="plctl">
           <button class="plheart" id="plHeartBtn" type="button" aria-pressed="false" aria-label="Like this track" hidden>&#9825;</button>
-          <span class="plnote" aria-hidden="true">&#9834;</span>
+          <!-- A speaker, not a note: beside a full-width red slider the note
+               read as "track position", and the volume is the one control
+               here a listener grabs first (operator's review, 2026-08-24). -->
+          <span class="plnote" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.4 9.4 0 0 1 0 13"/></svg></span>
           <input type="range" id="plVol" min="0" max="100" value="100" aria-label="Player volume" />
           <span class="plvu" id="plVu" aria-hidden="true"></span>
         </div>
@@ -423,7 +426,10 @@
         </div>
         <div class="plreqmsg" id="plReqMsg"></div>
         <button id="plPlayBtn" type="button">Pause</button>
-        <button class="plgrab" id="plGrab" type="button" aria-label="Back to the phone"><span class="grip" aria-hidden="true"></span></button>
+        <!-- The way back wears its word (operator's review, 2026-08-24): a
+           bare grip told a caller nothing about the phone behind it, and
+           the phone is the product. Same on the card's own tab below. -->
+      <button class="plgrab" id="plGrab" type="button" aria-label="Back to the phone"><span class="grip" aria-hidden="true"></span><span class="griplabel">The phone</span></button>
       </div>
     </div>
   </div>

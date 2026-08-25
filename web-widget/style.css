@@ -880,11 +880,21 @@
      class, and it dressed the bookmark as a control-height button. */
   .card .ribbon {
     position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    z-index: 70; width: 76px; height: 24px; padding: 0;
+    z-index: 70; width: auto; min-width: 76px; height: 24px; padding: 0 12px;
     background: var(--granite); border: 1px solid var(--edge); border-top: 0;
     border-radius: 0 0 6px 6px; cursor: grab;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
     touch-action: none;
+  }
+  /* Both pull tabs say what is behind them (operator's review, 2026-08-24):
+     a bare grip made the toggle invisible — a caller landing on the player
+     had no sign the PHONE was one pull away, and the phone is the point. */
+  .griplabel {
+    font: 700 8px/1 var(--font-mono); letter-spacing: .22em;
+    text-transform: uppercase; color: var(--sage-dim); white-space: nowrap;
+  }
+  .card .ribbon:hover .griplabel, .card .plgrab:hover .griplabel {
+    color: var(--alpenglow);
   }
   .card .ribbon .grip {
     width: 30px; height: 4px; border-radius: 2px;
@@ -1045,7 +1055,11 @@
      only stops one long panel from pushing the dock off a short phone. */
   .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage);
                  flex: 1 1 auto; min-height: 34px;
-                 max-height: 108px; overflow-y: auto; }
+                 max-height: 108px; overflow-y: auto;
+                 /* A visible thin bar: the window scrolls, and an invisible
+                    scrollbar left a half-clipped queue row reading as a
+                    rendering fault (operator's review, 2026-08-24). */
+                 scrollbar-width: thin; }
   .plpanelbody:empty { min-height: 0; }
   .plpanelbody .pltit { font-size: 14px; font-weight: 700;
                         color: var(--alpenglow); }
@@ -1123,9 +1137,9 @@
   /* The way home: the same grip as the top bookmark, now at the sheet's
      foot — "the pulldown stays on the bottom when the page is switched". */
   .card .plgrab {
-    align-self: center; width: 76px; height: 20px; padding: 0;
+    align-self: center; width: auto; min-width: 76px; height: 20px; padding: 0 10px;
     background: transparent; border: 0; cursor: grab;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
     touch-action: none;
   }
   .card .plgrab .grip { width: 34px; height: 4px; border-radius: 2px;
@@ -1154,8 +1168,9 @@
     .plprog { grid-column: 1 / -1; margin-top: 10px; }
     .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
-    /* A shorter window on the short card; the body scrolls past it. */
-    .plpanelbody { max-height: 64px; }
+    /* A shorter window on the short card; the body scrolls past it.
+       82px = two whole queue entries — 64 cut the second one mid-row. */
+    .plpanelbody { max-height: 82px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
     .card .plheart { width: 38px; }
@@ -2234,6 +2249,12 @@
     letter-spacing: .28em; text-transform: var(--skin-label-case); color: var(--ok);
   }
   .idleboard .bdhead.shut { color: var(--sage-dim); }
+  /* The one example under the head — quiet, sentence-case, the popup's own
+     voice at a whisper. */
+  .idleboard .bdtry {
+    margin-top: 9px; font-size: 12px; font-style: italic;
+    color: var(--sage); max-width: 85%; text-align: center; line-height: 1.45;
+  }
 
   /* The photograph, opened. It is the one image on the card and it is small
      by necessity; a tap gives it the room the card cannot. Inside the card
@@ -2626,7 +2647,8 @@
   .askpop-close:hover { color: var(--text); }
   .askpop-list { list-style: none; margin: 0; padding: 0; }
   .askpop-list li {
-    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+    padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px;
+    line-height: 1.45;
   }
   .askpop-list li:last-child { border-bottom: none; }
   /* Group heading: the label that turns the flat menu into "talk / request /
@@ -4686,6 +4708,24 @@
     }
     .card { width: 100%; }
   }
+  /* LANDSCAPE PHONE (operator's review, 2026-08-24). A rotated phone is
+     wider than the ≤600 phone rules and shorter than the 544px desktop
+     card, so it fell between the layouts and got a clipped card. A PWA
+     rotates mid-call: the card takes the viewport, the identity compresses
+     to a strip, the tagline steps out, and the conversation keeps the
+     height. Page and installed app only — an embed answers to its frame. */
+  @media (orientation: landscape) and (max-height: 520px) and (min-width: 601px) {
+    body:not(.compact) { padding: 0; }
+    body:not(.compact) .card {
+      height: 100dvh; width: 100%; max-width: none;
+      border: 0; border-radius: 0;
+    }
+    body:not(.compact) .avatar { width: 44px; height: 44px; }
+    body:not(.compact) .who-row { gap: 10px; }
+    body:not(.compact) .who-row .tagline { display: none; }
+    body:not(.compact) .linebox { min-height: 64px; }
+  }
+
   /* The panel gives up its fixed width earlier than the card does — it is
      1120 now, and a 1000px window would otherwise leave it hanging off the
      side rather than simply being narrower. */

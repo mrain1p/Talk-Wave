@@ -661,6 +661,23 @@
     const paused = !!(d && d.callsPaused);
     const dj = (($('djName').textContent) || '').trim();
     const onAir = !!(d && d.onAir);
+    // ONE example line for either idle shape below — a two-hundred-pixel
+    // box with five words in it read as unfinished (operator, 2026-08-24),
+    // and the popup's answer to "what do I even say" hides behind a corner
+    // glyph most callers never press. One line, never a list (the operator
+    // retired the door list from this board for restating the card); drawn
+    // from the same filtered ASKS the popup shows, so it can never suggest
+    // what the DJ would refuse. The pick rides the poll, so it rotates.
+    const tryLine = () => {
+      const can = (d && d.canAsk) || {};
+      const says = ASKS.filter((a) => !a.need || can[a.need])
+        .map((a) => a.say).filter(Boolean);
+      if (!says.length) return null;
+      const t = document.createElement('span');
+      t.className = 'bdtry';
+      t.textContent = 'Try: ' + says[Math.floor(Date.now() / 25000) % says.length];
+      return t;
+    };
     // The 4c stage message: while the word switch is up, the stage says
     // where the call will go — coral for the broadcast, the cool teal for
     // the private line — instead of listing doors. The switch hides itself
@@ -684,6 +701,12 @@
         : word('route_priv', "It's just you and {dj}")
             .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
       box.appendChild(line);
+      // The example rides the PRIVATE stage only: under an on-air line the
+      // box is stating a consent, and small talk under a consent muddies it.
+      if (!onAirPick && !paused) {
+        const t = tryLine();
+        if (t) box.appendChild(t);
+      }
       return;
     }
     // Each door twice: is it OFFERED at all, and is it usable right now. The
@@ -727,6 +750,12 @@
     h.className = 'bdhead' + (paused ? ' shut' : '');
     h.textContent = head;
     box.appendChild(rule()); box.appendChild(h); box.appendChild(rule());
+    // Only while a line is actually open — an example under "Lines are
+    // closed" would be an invitation the card refuses.
+    if (anyLive) {
+      const t = tryLine();
+      if (t) box.appendChild(t);
+    }
     box.hidden = false;
   }
 
@@ -3296,6 +3325,14 @@
       // thumbs-up against a call that never happened.
       releaseRoom();
       $('rig').classList.remove('on');
+      // The same lesson the mint-failure path learned (see the "Back to
+      // idle in full" note above): .oncall keeps every idle door
+      // display:none, so a connect failure that skipped this left the
+      // caller a card with a failure line and NO buttons — no retry, no
+      // machine, nothing until a reload (settings review, 2026-08-24; the
+      // most common real failure, the ~15s media timeout, lands exactly
+      // here because .oncall goes on at the press).
+      document.querySelector('.card').classList.remove('oncall');
       $('stateChip').hidden = true;
       stopTimer();
       capBox.classList.remove('on');
