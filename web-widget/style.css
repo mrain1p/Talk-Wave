@@ -260,6 +260,9 @@
   /* --- the call card: identity, and what is on air ----------------------- */
   .card {
     width: min(620px, 100%); height: 544px; padding: 0 16px 16px;
+    /* Read by the player's pull tab so it can hang from the card's true top
+       edge whatever this surface's padding is. */
+    --card-pad-top: 0px;
     position: relative; display: flex; flex-direction: column;
     /* (The installed app overrides the fixed height below — see the
        display-mode: standalone block after this rule.) */
@@ -367,13 +370,11 @@
   /* The label gives up room before the icons do — it is three words the
      caller has already read, and they are the way out of the card. */
   #eyebrowText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  /* The corner controls are pinned right by a spacer that eats the free
-     space, NOT by a margin on whatever happens to precede them. It was
-     `margin-left:auto` on #status — which is hidden during a call — so the
-     moment a call connected the three icons slid left and sat against
-     ON AIR NOW. A spacer is in the row whatever else is. */
-  .eyebrow .spacer { flex: 1 1 auto; }
-  .corner { display: flex; align-items: center; margin-left: 10px; }
+  /* The corner controls pin right with their own margin — safe now that the
+     ribbon is out of the flow: .corner is never hidden, so the margin can
+     never vanish the way it did on #status. The old spacer spans are gone
+     with the tab that sat between them. */
+  .corner { display: flex; align-items: center; margin-left: auto; }
   /* The eyebrow's pulsing pip is gone (operator's ask, 2026-08-18): with it
      and the old emoji glyph, the listener count slid under the player's
      pull tab on a narrow phone. The words carry the state colour alone. */
@@ -559,6 +560,12 @@
     letter-spacing: .12em; color: var(--amber); flex: 0 0 auto;
     font-variant-numeric: tabular-nums;
   }
+  /* The record's length, closing the bar — the elapsed figure alone read as
+     "very random displaying like that" (operator's phone, twice). Quiet
+     where the elapsed is amber: the destination is fact, the position is
+     the live thing. */
+  .nptotal { color: var(--sage-dim); }
+  .nptotal[hidden] { display: none; }
   /* The progress hairline. Width is set from the script when the station
      reports a position; 0 until then, so it is simply absent rather than
      lying about where the record is. */
@@ -572,29 +579,17 @@
      the card, not on the rig: the track sits in the identity block now, which
      is outside the rig entirely. */
   .card.oncall .track { color: var(--sage-dim); }
-  /* …and swaps the timer for UNDER THE CALL. Done in CSS because it needs no
-     data: the label is the same in every call. The elapsed figure itself is
-     still empty — /live sends the track as a title string with no position or
-     duration, so there is nothing to count. The progress hairline stays at 0
-     for the same reason: absent rather than lying about where the record is.
-     Both want one field from the station; see the handoff note. */
-  .rig.on .nprail .npclock { color: var(--sage-dim); }
-  /* The bar dims with it: an amber fill staying lit while the whole band
-     steps back would make the record the brightest thing on a live call. */
-  .rig.on .nprail .npbar .npfill { background: var(--sage-dim); }
-  /* The label REPLACES the clock's text rather than being appended after it.
-     As an ::after on a font-size:0 element it still occupied the clock's own
-     width and then ran past the card's right edge — visible as a stray "UN"
-     off the side of the operator's screenshot. Absolutely placed against the
-     rail's right edge, so it cannot push anything. */
-  .rig.on .nprail .npclock {
-    font-size: 0; position: relative; min-width: 0;
-  }
-  .rig.on .nprail .npclock::after {
-    content: 'Under the call'; position: absolute; right: 0; top: 50%;
-    transform: translateY(-50%);
-    font-size: 10.5px; letter-spacing: .12em; text-transform: var(--skin-label-case);
-    white-space: nowrap; color: var(--sage-dim);
+  /* On a live conversation the record's clock and bar leave the rail
+     entirely: the state chips own that band then, and on a phone they need
+     every pixel of it — "REACHING THE BOOTH" was ellipsising beside a clock
+     nobody was reading. The old move kept a font-size:0 clock with an
+     absolutely-placed "Under the call" ::after, which the rail's own
+     overflow clip sheared down to a floating dash on the operator's phone.
+     The dimmed track marquee above already says the music kept playing. */
+  .rig.on .nprail .npclock,
+  .rig.on .nprail .npbar,
+  .rig.on .nprail .nptotal {
+    display: none;
   }
 
   /* The settings panel keeps the old button shape — it is full-page only and
@@ -924,9 +919,20 @@
      corner icons (operator, 2026-08-24, third ruling — it hung above the
      row for a day and crowded the phone's top edge). Grip only, no words:
      the bottom-rounded tab shape says "pull me" itself. */
+  /* The tab HANGS from the card's top edge, dead centre — absolute, so the
+     eyebrow's text and icons cannot push it off centre and it cannot squeeze
+     them into an ellipsis (both happened on the operator's phone when it sat
+     in the flex flow between two spacers). No top border and no gap above:
+     attached is what makes it read as a pull tab rather than a floating
+     button. --card-pad-top bridges whatever padding this surface has. */
+  .card .eyebrow { position: relative; }
   .card .ribbon {
-    align-self: center; flex: none; height: 20px; padding: 0 15px;
-    background: var(--granite); border: 1px solid var(--edge);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: calc(-1 * var(--card-pad-top, 0px));
+    height: calc(var(--card-pad-top, 0px) + 24px);
+    padding: var(--card-pad-top, 0px) 17px 0; box-sizing: border-box;
+    z-index: 2;
+    background: var(--granite); border: 1px solid var(--edge); border-top: 0;
     /* The feet keep the tab's own 7px so it reads as a handle even in the
        square default, and follow a skin whose controls are rounder. */
     border-radius: 0 0 max(7px, var(--skin-radius-ctl))
@@ -938,6 +944,12 @@
   .card .ribbon .grip {
     width: 30px; height: 4px; border-radius: 2px;
     background: var(--sage-dim); display: block;
+  }
+  /* The narrowest phones: the centred tab and a full row of corner icons
+     can meet in the middle, so both give a little. */
+  @container card (max-width: 359px) {
+    .card .gear { width: 28px; }
+    .card .ribbon { padding-left: 10px; padding-right: 10px; }
   }
   .card .ribbon:hover .grip { background: var(--alpenglow); }
   .card .ribbon[hidden] { display: none; }
@@ -2274,10 +2286,19 @@
        Still absolute — the board is placed over the box and a flow sibling
        would be pushed out of it — but placed rather than centred. */
     inset: calc(50% + 22px) 12px auto 12px;
-    justify-content: center; text-align: center;
-    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
-    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    display: flex; justify-content: center; align-items: baseline; gap: 7px;
+    text-align: center;
+    /* A NOTICE, not a label: these are the server's whole sentences ("You've
+       only just hung up — give it 8s…"), and uppercase micro-type wrapped
+       to three lines read as the card shouting into the example's lap
+       (operator's phone, 2026-08-25). Body voice, on its own measure. */
+    font-family: var(--font-body); font-size: 12px; line-height: 1.55;
+    letter-spacing: 0; text-transform: none; color: var(--sage);
   }
+  .linebox:has(.idleboard:not([hidden])) #status #statusText { max-width: 44ch; }
+  /* And the example line gives the notice the floor — two italic-vs-plain
+     sentences stacked 10px apart answered nobody. */
+  .linebox.saying .idleboard .bdtry { visibility: hidden; }
 
   /* The transcript drawer's way out — PART OF THE BAR, not a box bolted to
      its side. Its own border and 1.35 line-height made a second, taller
@@ -5153,6 +5174,7 @@
     body:not(.panelpage):not(.compact) .card {
       width: 100%; min-height: 100dvh; border: 0; border-radius: 0;
       display: flex; flex-direction: column;
+      --card-pad-top: max(12px, env(safe-area-inset-top));
       padding: max(12px, env(safe-area-inset-top))
                max(20px, env(safe-area-inset-right))
                max(20px, env(safe-area-inset-bottom))
@@ -5207,7 +5229,12 @@
        DJ to ~10px each and putting the mic chip straight over the DJ label at
        Fold-width (measured 2026-08-10). Clearing the cap lets the row break. */
     body:not(.compact) .meters { flex-wrap: wrap; }
-    body:not(.compact) .meters .vol { flex: 1 1 100%; order: 2; max-width: none; }
+    body:not(.compact) .meters .vol { flex: 1 1 100%; order: 2; max-width: none;
+      /* Ink-aligned with the waveform box above: VOL under YOU, the figure
+         under DJ. Bare beside a padded box, this row's edges sat 9px proud
+         on both sides and the two read as misaligned (operator's phone,
+         2026-08-25). */
+      padding: 0 9px; }
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .meters .meter.you { order: 0; }
     body:not(.compact) .meters .meter.dj { order: 1; }

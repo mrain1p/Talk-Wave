@@ -625,6 +625,12 @@
   // the rail then shows a title and nothing else — an empty clock is honest,
   // a guessed one is not.
   let npStart = 0, npLength = 0;
+  // The last GOOD record read, held one minute: a station mid-transition can
+  // answer a poll with everything but the record — no track, no show — and
+  // the card blanked its whole middle for the 20s to the next poll
+  // (operator's phone, 2026-08-25). One empty read inside a minute of a good
+  // one is forgiven; longer silence is the truth and paints through.
+  let npHeld = null;
 
   // THE IDLE BOARD. What the box says when there is no conversation in it.
   //
@@ -857,6 +863,8 @@
       clock.textContent = '';
       rail.style.setProperty('--np-progress', '0%');
       if (nbar) nbar.hidden = true;
+      const total = $('npTotal');
+      if (total) { total.textContent = ''; total.hidden = true; }
       if (deck) {
         $('plElapsed').textContent = '';
         $('plLen').textContent = '';
@@ -871,14 +879,23 @@
     // out of step) would otherwise count on for ever, and a rail reading 94:12
     // is more obviously broken than one that simply stops at the end.
     const shown = npLength ? Math.min(secs, npLength) : secs;
-    clock.textContent = mmss(shown);
     const pct = npLength
       ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%';
     rail.style.setProperty('--np-progress', pct);
-    // The rail's own bar keeps the player's honesty rule: only while the
-    // record is actually running — a lone clock in an empty row read as
-    // misplaced (operator's phone, 2026-08-24).
-    if (nbar) nbar.hidden = !(npLength && secs < npLength + 8);
+    // The whole cluster — clock, bar, length — lives and dies together,
+    // while the record actually runs. The clock used to stay behind after
+    // the bar hid, clamped at the track's full length: a frozen "3:52"
+    // beside nothing (operator's phone, 2026-08-25). A record whose length
+    // the station never sent keeps the counting clock alone — there is no
+    // end to be honest about.
+    const ticking = npLength ? secs < npLength + 8 : true;
+    clock.textContent = ticking ? mmss(shown) : '';
+    const total = $('npTotal');
+    if (total) {
+      total.textContent = (ticking && npLength) ? mmss(npLength) : '';
+      total.hidden = !(ticking && npLength);
+    }
+    if (nbar) nbar.hidden = !(npLength && ticking);
     // The station player's hairline follows the same figures — but the BAR
     // only, and only while the record is actually running. The numbers are
     // gone (operator, 2026-08-24: "3:37 — 3:37" pinned at a track's end
@@ -1126,13 +1143,20 @@
     }
     statusText.textContent = text;
     dot.className = 'dot' + (state ? ' ' + state : '');
+    // The idle board's example line steps aside while the card is actually
+    // saying something — the two share the middle of the box, and a refusal
+    // printed into the example's lap read as overlap (operator's phone).
+    const box = $('lineBox');
+    if (box) box.classList.toggle('saying', !!String(text || '').trim());
   }
 
   function lineboxPreview(text) {
+    const box = $('lineBox');
     if (text == null) {
       if (lineboxHeld) {
         statusText.textContent = lineboxHeld.text;
         dot.className = lineboxHeld.dot;
+        if (box) box.classList.toggle('saying', !!lineboxHeld.text.trim());
         lineboxHeld = null;
       }
       return;
@@ -1141,6 +1165,7 @@
       lineboxHeld = { text: statusText.textContent, dot: dot.className };
     }
     statusText.textContent = fillWords(String(text));
+    if (box) box.classList.toggle('saying', !!statusText.textContent.trim());
   }
 
   // Which DOM the panel's data-spot names reach. Per-element where the card
@@ -1895,6 +1920,14 @@
       // the clock, the palette and everything else keep following the
       // station, which is the operator's ask: the colours may change, the DJ
       // may not. It catches up on the first poll after the line clears.
+      // The one-bad-poll grace (see npHeld). Previews are the operator's own
+      // fiction and never seed or spend it.
+      if (d.track && !previewMode) {
+        npHeld = { track: d.track, show: d.show || '', at: Date.now(),
+                   start: d.trackStartedAt || 0, secs: d.trackSeconds || 0 };
+      }
+      const ghost = (!d.track && !previewMode && npHeld
+                     && Date.now() - npHeld.at < 65000) ? npHeld : null;
       if (!inConversation()) {
         // The word the screensaver skin bounces. The station does not send its
         // own name, so the SHOW is the closest thing to a station brand the
@@ -1908,18 +1941,22 @@
             .split('·')[0].trim().slice(0, 22);
         }
         $('djName').textContent = d.name || 'The DJ';
-        $('djShow').textContent = parts.show === false ? '' : (d.show || '');
+        $('djShow').textContent = parts.show === false ? ''
+          : (d.show || (ghost ? ghost.show : ''));
         $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
       }
+      const rec = d.track ? d : (ghost
+        ? { track: ghost.track, trackStartedAt: ghost.start, trackSeconds: ghost.secs }
+        : null);
       paintMarquee($('npTrack'),
-        (parts.track === false || !d.track) ? '' : '♪ ' + d.track);
+        (parts.track === false || !rec) ? '' : '♪ ' + rec.track);
       // The rail's clock and progress hairline. /live sends WHEN the record
       // started and how long it runs; the elapsed figure is counted here
       // rather than sent, because /live is cached across every caller for a
       // few seconds — a baked-in elapsed would be stale by up to that much
       // and would tick backwards on the next poll.
-      npStart = (parts.track === false || !d.track) ? 0 : (d.trackStartedAt || 0);
-      npLength = d.trackSeconds || 0;
+      npStart = (parts.track === false || !rec) ? 0 : (rec.trackStartedAt || 0);
+      npLength = rec ? (rec.trackSeconds || 0) : 0;
       paintNowPlaying();
       // The heart follows the same per-surface visibility as the track line
       // it sits beside: a surface whose operator hid the record shows no
