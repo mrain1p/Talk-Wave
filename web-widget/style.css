@@ -1559,6 +1559,10 @@
   .statechip[data-state="speaking"] .sdot { animation: blink 1.1s infinite; }
   .statechip[data-state="reconnecting"] { color: var(--amber); border-color: var(--amber); }
   .statechip[data-state="reconnecting"] .sdot { animation: blink .7s infinite; }
+  /* The studio's tape rolling: mic-live green, but PULSING — "you are being
+     recorded right now" should be legible at a glance (operator's ask). */
+  .statechip[data-state="recording"] { color: var(--ok); border-color: var(--ok); }
+  .statechip[data-state="recording"] .sdot { animation: blink 1.1s infinite; }
   /* The station has the microphone — the one state where the DJ going quiet
      is correct rather than broken. It used to be the widget's only filled
      chip; it now carries in amber with a blinking pip and the bloom, because

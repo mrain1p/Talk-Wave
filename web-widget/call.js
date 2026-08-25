@@ -3432,6 +3432,16 @@
       hangBtn.hidden = true;
       setCardMode('idle');
       room = null;
+      // The route badge outlived the attempt it described: OFF AIR stood in
+      // the rail beside the failure line until the next poll swept it
+      // (operator round, 2026-08-25). Same flags and painters as the
+      // mint-refusal path above — a dead attempt leaves no chips behind,
+      // and the board comes back with the buttons rather than by hand.
+      vmCall = false;
+      onAirCall = false;
+      if ($('onAirBadge')) $('onAirBadge').hidden = true;
+      paintIdleButtons(live || {});
+      paintBoard(live);
     }
   }
 
@@ -4269,7 +4279,9 @@
     const secs = vmCeiling();
     vmRec.stopTimer = setTimeout(vmStopRec, secs * 1000);
     vmPaintButtons('recording');
-    vmSetChip('listening', word('vm_chip_rec', 'Recording'));
+    // Its own state, not 'listening': the tape rolling is worth a pulse the
+    // steady mic-live green doesn't give (operator's ask, 2026-08-25).
+    vmSetChip('recording', word('vm_chip_rec', 'Recording'));
     // The clock chip carries elapsed against the machine's ceiling, exactly
     // as a call's does — the operator's ask: the state and the time live in
     // the chips, not crammed into the bar's own label.
