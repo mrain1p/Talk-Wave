@@ -81,7 +81,7 @@ def _parse_playlist(text: str) -> list[str]:
 
         #EXTM3U
         #EXTINF:-1,Yosemite FM
-        http://192.168.1.245:7700/stream.mp3
+        http://192.168.1.10:7700/stream.mp3
 
     Taking that URL whole would hand the browser the exact unreachable
     plain-http LAN address this setting exists to escape — discovery would

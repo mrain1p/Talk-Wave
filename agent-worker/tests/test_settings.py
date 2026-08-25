@@ -109,14 +109,14 @@ class TestSettings(_TempStores):
         self.assertIs(cfg["call_sounds"], False)
 
     def test_a_url_field_refuses_something_that_is_not_a_url(self):
-        # A real deployment ran with "Michael" in the MCP endpoint — the
+        # A real deployment ran with "Gordon" in the MCP endpoint — the
         # browser autofilled a name into the box — so the agent got NO station
         # tools on any call and invented library results instead. Nothing
         # downstream complained, which is the part that made it expensive.
-        problem = settings_store.complain({"station_mcp_url": "Michael"})
+        problem = settings_store.complain({"station_mcp_url": "Gordon"})
         self.assertIsNotNone(problem)
         self.assertIn("URL", problem)
-        self.assertIn("Michael", problem)          # says what it saw
+        self.assertIn("Gordon", problem)          # says what it saw
         self.assertIn("empty", problem)            # and how to fix it
 
         for field in settings_store.URL_FIELDS:
@@ -130,11 +130,11 @@ class TestSettings(_TempStores):
     def test_a_url_already_stored_broken_falls_back_instead_of_breaking(self):
         # Validation on save can't help a config that was already saved wrong,
         # and handing an unusable URL to the agent is worse than the default.
-        settings_store.save({"station_mcp_url": "Michael",
+        settings_store.save({"station_mcp_url": "Gordon",
                              "station_base_url": "http://box:7700/api"})
         self.assertEqual(settings_store.station_mcp_url(),
                          "http://box:7700/api/mcp")
-        settings_store.save({"station_base_url": "Michael"})
+        settings_store.save({"station_base_url": "Gordon"})
         self.assertTrue(settings_store.station_base_url().startswith("http"))
 
     def test_unknown_keys_are_ignored(self):
@@ -577,17 +577,17 @@ class TestANeighbouringServiceIsNotOnLocalhost(_TempStores):
     http://localhost:11434` with nothing saying why."""
 
     def test_the_default_follows_the_station(self):
-        settings_store.save({"station_base_url": "http://192.168.1.245:7700"})
+        settings_store.save({"station_base_url": "http://192.168.1.10:7700"})
         self.assertEqual(
             settings_store.provider_base_urls()["ollama"],
-            "http://192.168.1.245:11434/v1",
+            "http://192.168.1.10:11434/v1",
         )
         self.assertEqual(
-            settings_store.tts_base_urls()["local"], "http://192.168.1.245:8001"
+            settings_store.tts_base_urls()["local"], "http://192.168.1.10:8001"
         )
 
     def test_an_explicit_environment_variable_still_wins(self):
-        settings_store.save({"station_base_url": "http://192.168.1.245:7700"})
+        settings_store.save({"station_base_url": "http://192.168.1.10:7700"})
         os.environ["OLLAMA_BASE_URL"] = "http://elsewhere:11434/v1"
         try:
             self.assertEqual(

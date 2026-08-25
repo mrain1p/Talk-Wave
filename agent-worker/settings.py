@@ -3032,7 +3032,7 @@ def beneath() -> dict:
     return out
 
 
-# Fields that must be a URL or nothing. A real deployment had "Michael" in
+# Fields that must be a URL or nothing. A real deployment had "Gordon" in
 # station_mcp_url — a browser autofilling a name into a text box — which meant
 # the agent got NO station tools on any call and invented library results
 # instead. The field accepted it silently and nothing downstream complained.

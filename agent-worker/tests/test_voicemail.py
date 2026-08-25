@@ -1081,7 +1081,7 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         result = asyncio.run(self.air.deliver(
             station,
             {"vm_air_backend": "caller-voice", "vm_mixer_telnet": addr,
-             "vm_air_base_url": "http://192.168.1.245:8100"},
+             "vm_air_base_url": "http://192.168.1.10:8100"},
             draft))
         self.assertEqual(result["backend"], "caller-voice")
         self.assertTrue(result["ok"])
@@ -1089,7 +1089,7 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertEqual(len(station.says), 2, "intro and close, no more")
         self.assertIn("queued Landslide", result["receipt"])
         sent = got[0].decode()
-        self.assertIn("voice_queue.push http://192.168.1.245:8100/vm-air/",
+        self.assertIn("voice_queue.push http://192.168.1.10:8100/vm-air/",
                       sent)
         # The URL is the credential: never a bare path, never a guessable id.
         self.assertNotIn(draft["id"], sent)
@@ -1101,7 +1101,7 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
             station,
             {"vm_air_backend": "caller-voice",
              "vm_mixer_telnet": "127.0.0.1:1",     # nothing listens on 1
-             "vm_air_base_url": "http://192.168.1.245:8100"},
+             "vm_air_base_url": "http://192.168.1.10:8100"},
             draft))
         self.assertEqual(result["backend"], "dj-reads")
         self.assertIn("caller-voice unavailable", result["receipt"])
@@ -1431,10 +1431,10 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
         self.assertEqual(
             self.air.air_base_url({"vm_air_base_url": "http://x:9/"}),
             "http://x:9")
-        _os.environ["HOST_IP"] = "192.168.1.245"
+        _os.environ["HOST_IP"] = "192.168.1.10"
         _os.environ.pop("TOKEN_PORT", None)
         self.assertEqual(self.air.air_base_url({}),
-                         "http://192.168.1.245:8100")
+                         "http://192.168.1.10:8100")
         _os.environ.pop("HOST_IP", None)
         self.assertEqual(self.air.air_base_url({}), "",
                          "no setting and no HOST_IP must read as 'no base', "

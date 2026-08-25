@@ -28,7 +28,7 @@ Known limitations, the failures that actually happen, how to read a call back af
 ### The microphone
 
 - **"This page can't use the microphone"** — the page is on plain `http://<lan-ip>`, where browsers refuse capture. Use the TLS page.
-- **…but the widget IS on https and still says so** — then the page *embedding* it is not. A secure context requires **every page in the chain** to be secure, so an `https` iframe inside an `http` page is insecure and the microphone is refused. The widget's own URL is fine; serve the host page over https. Common when testing an embed from a LAN address like `http://192.168.1.245:8090` while the iframe points at your real domain.
+- **…but the widget IS on https and still says so** — then the page *embedding* it is not. A secure context requires **every page in the chain** to be secure, so an `https` iframe inside an `http` page is insecure and the microphone is refused. The widget's own URL is fine; serve the host page over https. Common when testing an embed from a LAN address like `http://192.168.1.10:8090` while the iframe points at your real domain.
 - **The mic is granted, the page looks fine, and the DJ still can't hear them** — the call connects, the caller talks, and the transcript stays empty. Before blaming the model or the STT, try the call page with a diagnostic arm:
 
 | Arm | Turns off |

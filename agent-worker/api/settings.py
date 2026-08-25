@@ -122,7 +122,7 @@ async def handle_post_settings(request: web.Request) -> web.Response:
         return _cors(request, web.json_response({"error": "expected an object"}, status=400))
 
     # Catch a typo while the operator is still looking at the panel. A real
-    # deployment ran for days with "Michael" in the MCP endpoint — autofilled
+    # deployment ran for days with "Gordon" in the MCP endpoint — autofilled
     # by the browser — which left the DJ with no station tools on every call.
     problem = settings_store.complain(patch)
     if problem:

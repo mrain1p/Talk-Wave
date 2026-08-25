@@ -59,7 +59,7 @@ class TestTuneIn(unittest.TestCase):
 
         url, alts = asyncio.run(self.tune_in.resolve(
             {"tune_in_url": "https://live.example.com/stream.mp3"},
-            "http://192.168.1.245:7700/api"))
+            "http://192.168.1.10:7700/api"))
         self.assertEqual(url, "https://live.example.com/stream.mp3")
         self.assertEqual(alts, [])
 
@@ -67,8 +67,8 @@ class TestTuneIn(unittest.TestCase):
         import asyncio
 
         url, alts = asyncio.run(self.tune_in.resolve(
-            {}, "http://192.168.1.245:7700/api"))
-        self.assertEqual(url, "http://192.168.1.245:7700/stream.mp3")
+            {}, "http://192.168.1.10:7700/api"))
+        self.assertEqual(url, "http://192.168.1.10:7700/stream.mp3")
         self.assertEqual(alts, [])
 
     def test_a_bare_origin_discovers_the_published_mounts(self):
@@ -91,12 +91,12 @@ class TestTuneIn(unittest.TestCase):
         # The one that actually bit. A station generates its playlist from its
         # own configured address, which is routinely internal — asked over a
         # public https origin, the real deployment answered with
-        # http://192.168.1.245:7700/stream.mp3. Taking that whole would hand
+        # http://192.168.1.10:7700/stream.mp3. Taking that whole would hand
         # the browser the exact unreachable LAN address this setting exists to
         # escape, so discovery would be worse than none at all.
         out = self.tune_in._parse_playlist(
             "#EXTM3U\n#EXTINF:-1,Yosemite FM\n"
-            "http://192.168.1.245:7700/stream.mp3\n")
+            "http://192.168.1.10:7700/stream.mp3\n")
         self.assertEqual(out, ["/stream.mp3"])
         self.assertNotIn("192.168", "".join(out))
 
@@ -142,8 +142,8 @@ class TestABadPlaylistStaysSmall(unittest.TestCase):
         import tune_in
 
         got = tune_in._parse_playlist(
-            "#EXTM3U\nhttp://192.168.1.245:7700/stream.mp3\n"
-            "http://192.168.1.245:7700/stream.opus\n")
+            "#EXTM3U\nhttp://192.168.1.10:7700/stream.mp3\n"
+            "http://192.168.1.10:7700/stream.opus\n")
         self.assertEqual(got, ["/stream.mp3", "/stream.opus"])
 
 

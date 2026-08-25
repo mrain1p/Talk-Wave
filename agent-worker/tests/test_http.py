@@ -303,8 +303,8 @@ class TestUsageControls(unittest.TestCase):
     def test_secure_origin_derivation(self):
         old = self.live.LIVEKIT_PUBLIC_URL
         try:
-            self.live.LIVEKIT_PUBLIC_URL = "wss://192.168.1.245:8443"
-            self.assertEqual(self.live._secure_origin(), "https://192.168.1.245:8443")
+            self.live.LIVEKIT_PUBLIC_URL = "wss://192.168.1.10:8443"
+            self.assertEqual(self.live._secure_origin(), "https://192.168.1.10:8443")
             self.live.LIVEKIT_PUBLIC_URL = "ws://localhost:7880"
             self.assertEqual(self.live._secure_origin(), "")
         finally:
@@ -698,8 +698,8 @@ class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
         for provider in ("openai", "openai-compatible", "deepseek",
                          "requesty", "gateway"):
             self.assertEqual(
-                self._endpoint(provider, "http://192.168.1.201:18081/v1"),
-                "http://192.168.1.201:18081/v1", provider)
+                self._endpoint(provider, "http://192.168.1.20:18081/v1"),
+                "http://192.168.1.20:18081/v1", provider)
 
     def test_no_url_means_the_official_catalogue(self):
         for provider in ("openai", "deepseek", "openai-compatible"):
@@ -717,7 +717,7 @@ class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
         # /api/tags path and is handled there.
         for provider in ("google", "anthropic", "openrouter", "ollama"):
             self.assertEqual(
-                self._endpoint(provider, "http://192.168.1.201:18081/v1"),
+                self._endpoint(provider, "http://192.168.1.20:18081/v1"),
                 "", provider)
 
 

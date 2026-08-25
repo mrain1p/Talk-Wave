@@ -23,7 +23,7 @@ docker logs livekit-server 2>&1 | grep "using external IPs"
 ```
 
 ```
-using external IPs  ["2600:4040:.../…", "192.168.1.245/192.168.1.245"]
+using external IPs  ["2001:db8:.../…", "192.168.1.10/192.168.1.10"]
                       ^ public IPv6, reachable    ^ LAN only, not reachable
 ```
 
@@ -97,7 +97,7 @@ Router UIs call it Port Forwarding, Virtual Server, or NAT Forwarding.
 |---|---|---|
 | Protocol | **UDP** | not TCP, not "Both" |
 | External / WAN port | `7882` | single port, not a range |
-| Internal IP | e.g. `192.168.1.245` | the LiveKit host |
+| Internal IP | e.g. `192.168.1.10` | the LiveKit host |
 | Internal port | `7882` | same as external |
 | Source | any | callers come from anywhere |
 

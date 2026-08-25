@@ -525,7 +525,7 @@ async def fire_test_hook() -> dict:
     # NOT "it cannot reach this address", which is what this said until
     # 0.10.157 and is a cause the probe never established. Checked on the
     # operator's box while the panel was showing exactly this row: a `wget
-    # http://192.168.1.245:8100/health` from INSIDE the station's own
+    # http://192.168.1.10:8100/health` from INSIDE the station's own
     # container answered 200. The address was reachable the whole time; the
     # station was simply slower than the window, on a night it was also timing
     # out `/state` reads mid-call.
