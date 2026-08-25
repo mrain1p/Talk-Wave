@@ -579,6 +579,9 @@
      for the same reason: absent rather than lying about where the record is.
      Both want one field from the station; see the handoff note. */
   .rig.on .nprail .npclock { color: var(--sage-dim); }
+  /* The bar dims with it: an amber fill staying lit while the whole band
+     steps back would make the record the brightest thing on a live call. */
+  .rig.on .nprail .npbar .npfill { background: var(--sage-dim); }
   /* The label REPLACES the clock's text rather than being appended after it.
      As an ::after on a font-size:0 element it still occupied the clock's own
      width and then ran past the card's right edge — visible as a stray "UN"
@@ -924,7 +927,11 @@
   .card .ribbon {
     align-self: center; flex: none; height: 20px; padding: 0 15px;
     background: var(--granite); border: 1px solid var(--edge);
-    border-radius: 0 0 7px 7px; cursor: grab;
+    /* The feet keep the tab's own 7px so it reads as a handle even in the
+       square default, and follow a skin whose controls are rounder. */
+    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
+                   max(7px, var(--skin-radius-ctl));
+    cursor: grab;
     display: flex; align-items: center; justify-content: center;
     touch-action: none;
   }
@@ -1227,7 +1234,12 @@
      the action, never below it. No rule under it: whatever follows is either
      absent or a bordered block of its own, and a rule that sometimes ends the
      card and sometimes doesn't is worse than no rule. */
-  body:not(.compact) .card[data-mode="idle"] .talkrow { display: none; }
+  /* Idle, the talk row's reservation comes off EVERYWHERE — the embed too:
+     its card is a fixed 400 with the line box as the only elastic band, so
+     the 39px goes to the conversation and the height the host sized to
+     never moves. The row returns the moment a call starts, which is the
+     one moment the caller is watching the card change anyway. */
+  .card[data-mode="idle"] .talkrow { display: none; }
   .actionrow {
     display: flex; align-items: center; gap: 9px; flex-wrap: nowrap;
     padding: 9px 0 0;

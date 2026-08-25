@@ -92,6 +92,31 @@ straight across with no translation layer.
 | `--control-h` | Height of every button and input |
 | `--band-gap` | Gap between controls in a row |
 
+Two tokens grew on the card after this spec and carry the same contract:
+
+| Token | Role in the widget |
+|---|---|
+| `--cool` | The caller's accent — see the vocabulary below |
+| `--ok` | The line is open. Green means exactly that, nowhere else |
+
+### Which colour speaks for whom
+
+The card's accents are a vocabulary, not a palette — each one names a side of the line,
+and every new element picks its colour by answering *whose is this?* rather than *what
+looks good here?* The brand mark says it in one image: teal bars meeting coral bars.
+
+- **`--cool` (teal) is the caller's side.** Their door (`CALL THE BOOTH`), their idle
+  board (`IT'S JUST YOU AND …`), their half of the mark.
+- **`--coral` is the station's side.** `ON AIR`, the DJ's identity, `LISTEN`,
+  `NOW PLAYING`, the player's primary actions — anything the booth owns.
+- **`--amber` is time and data.** The elapsed clock, the progress fills, the meters,
+  the caller's transcript label. It never carries identity on its own.
+- **`--ok` (green) means the line is open** and nothing else; coral marries live state
+  to the station, so green is free to report the door.
+
+A control that serves both sides (the theme toggle, the gear) stays in the greys. When
+in doubt: the caller reaches *toward* teal things and *listens to* coral things.
+
 ### The three modes
 
 **Dark** (defaults):

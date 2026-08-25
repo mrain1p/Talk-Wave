@@ -7,7 +7,6 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "orientation": "portrait",
   "background_color": "#0b0b0c",
   "theme_color": "#0b0b0c",
   "categories": ["music", "entertainment"],
