@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from station import StationClient
+from station import StationClient, booth_spoken_text
 
 from ..actions import CallActions
 from ..air import OnAirGuard, speaking_secs
@@ -24,6 +24,7 @@ log = logging.getLogger("callin.agent")
 # other, and the caller who asked about a genre would have undone the
 # operator's takeover.
 GENRE_LOCK_SHOW_ID = "genre_lock"
+
 
 
 def build_on_air_tools(
@@ -108,7 +109,10 @@ def build_on_air_tools(
         async def announce(message: str, mode: str = "styled") -> str:
             """Put a short line on air, read by the on-air DJ in its own voice.
             Use for shoutouts, dedications, or anything from the call worth
-            sharing with listeners."""
+            sharing with listeners. Write names and titles in their
+            established Latin form (Ulfuls, Jay Chou) — the booth's voice
+            does not read Han, kana or Hangul: those characters are dropped
+            from the aired audio, not spoken."""
             if actions.at_limit():
                 return actions.refusal()
             waited = await wait_for_clear_air()
@@ -128,7 +132,16 @@ def build_on_air_tools(
             # stays closed for as long as the station will actually be talking.
             # The spoken words ride along so the come-back line can nod at them.
             spoken = result.get("spoken") or message
-            secs = speaking_secs(spoken, 25)
+            # What the booth will actually say: its TTS boundary drops native
+            # script (#1455) before speaking, so the hold is sized from the
+            # SURVIVING text — a mostly-native line airs short, and a hold
+            # sized from the unspoken characters would gag the DJ over dead
+            # air. Keyed on the styled `spoken`, not our input: the station
+            # rewrites the words in styled mode, and what matters is what
+            # reached its renderer. An entirely-scrubbed line falls back to
+            # the original for a conservative hold.
+            aired = booth_spoken_text(spoken)
+            secs = speaking_secs(aired or spoken, 25)
             if result.get("unconfirmed"):
                 # The station accepted it but had not aired it when it
                 # answered, so a countdown from HERE measures the wrong thing
@@ -137,8 +150,19 @@ def build_on_air_tools(
                 guard.mark_pending_air(spoken)
             else:
                 guard.mark_on_air(secs, spoken=spoken)
-            return after_action(
+            out = after_action(
                 "Your announcement", waited, result.get("unconfirmed"), secs)
+            if aired != spoken:
+                # The station took the line, but part of it will not be heard
+                # — the caller must not be told their name went out in its
+                # own script when what aired was the Latin text around it.
+                out += (
+                    " One caution: the booth dropped the native-script "
+                    "characters from that line — they were not aired, not "
+                    "spoken. If a name matters, put it through again in its "
+                    "Latin form."
+                )
+            return out
 
         tools.append(announce)
 

@@ -206,8 +206,20 @@ async def deliver(station, cfg: dict, text: str, persona_name: str) -> str:
                     if len(text) < 400 else
                     f"A caller left a message for the booth: {text[:400]}…")
             await station.dj_say(line, mode="styled", kind="voicemail")
-            hold(text, persona_name, delivered="air")
-            return "handed to the on-air DJ"
+            # The booth's voice drops native script before speaking (see
+            # station.booth_spoken_text) — a mostly-Korean message airs as
+            # its English framing. The receipt and the operator's held copy
+            # must not claim words went out that were never heard.
+            from station import booth_spoken_text
+            scrubbed = booth_spoken_text(text) != text
+            hold(text, persona_name, delivered="air",
+                 note=("native-script characters do not survive the booth's "
+                       "voice — what aired was the Latin remainder"
+                       if scrubbed else ""))
+            return ("handed to the on-air DJ — though the booth's voice "
+                    "drops native-script characters, so what aired was the "
+                    "Latin remainder" if scrubbed
+                    else "handed to the on-air DJ")
         except Exception as e:                                # noqa: BLE001
             hold(text, persona_name, delivered="hold",
                  note=f"air delivery failed: {e}")

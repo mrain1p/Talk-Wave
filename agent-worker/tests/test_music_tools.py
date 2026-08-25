@@ -298,6 +298,19 @@ class TestWhatsNewInTheLibrary(unittest.TestCase):
         self.assertIn("Track7", out)
         self.assertNotIn("Track8", out)
 
+    def test_new_on_the_shelf_is_not_sold_as_never_aired(self):
+        # Upstream's picker had the same trap and fixed it (#1456): a "fresh
+        # find" claim parroted from instruction phrasing, with no airing data
+        # behind it. These rows carry none either — added-to-shelf and
+        # never-aired are different facts — so the return says so instead of
+        # leaving the docstring's "first spin" wording to become a promise.
+        items = [{"title": "Fresh", "artist": "A"}]
+        tools = self._tools({"allow_library_search": True}, items)
+        tool = next(t for t in tools if t.info.name == "subwave_recent_tracks")
+        out = asyncio.run(tool())
+        self.assertIn("not necessarily never aired", out)
+        self.assertIn("first spin", out)
+
     def test_an_empty_shelf_is_honest(self):
         tools = self._tools({"allow_library_search": True}, [])
         tool = next(t for t in tools if t.info.name == "subwave_recent_tracks")

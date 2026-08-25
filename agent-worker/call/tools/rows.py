@@ -99,6 +99,46 @@ def _drop_blocked(items: list) -> tuple[list, int]:
     return keep, len(items or []) - len(keep)
 
 
+def era_year(t: dict) -> str:
+    """The year the DJ may say for this row, under the station's era rule.
+
+    A reissue's file year is not the record's year: the station announced a
+    1964 Stax single as a 2012 record until upstream #1418/#1431 taught every
+    listener-facing surface it owns (its scripts, its picker, /now-playing)
+    to resolve the era first. Admin rows hand this sidecar the raw evidence —
+    `originalYear` when a lookup or the operator answered, `isCompilation` /
+    `eraUntrusted` when the row is a reissue suspect — but never the composed
+    verdict, so the same precedence is composed here: the resolved original
+    year wins; a suspect row with no answer says NOTHING rather than the
+    wrong decade; only a trusted row's file year is repeated. Both flags
+    null/absent — a library not yet re-walked, or a pre-1.9.0 station — fall
+    through to the raw year, which is exactly the old behaviour.
+    """
+    orig = t.get("originalYear")
+    if isinstance(orig, str):
+        # int() is the normaliser on purpose: it accepts what a year tag can
+        # legitimately be (whitespace, fullwidth digits normalise to 2014)
+        # and rejects what merely LOOKS numeric (superscript digits pass
+        # isdigit() but are not a year int() can read — found in review; they
+        # must fall through, never override a trusted file year or crash).
+        try:
+            orig = int(orig.strip())
+        except ValueError:
+            orig = None
+    if isinstance(orig, (int, float)) and not isinstance(orig, bool) and orig > 0:
+        # Capped like every other station field in this file: a corrupt
+        # value must not ride the prompt at full length.
+        return str(int(orig))[:12]
+    # /dj/* rows carry the two raw flags; /library/browse rows also carry the
+    # station's own composed `yearUntrusted`. Any one being true means the
+    # file year is a reissue's — and `is True` on purpose: a null is absent
+    # evidence, not a verdict, and must not suppress a trusted year.
+    if (t.get("isCompilation") is True or t.get("eraUntrusted") is True
+            or t.get("yearUntrusted") is True):
+        return ""
+    return str(t.get("year") or "")[:12].strip()
+
+
 def _fmt_track(t: dict, with_id: bool = False) -> str:
     # Every one of these fields comes from the station and goes into the
     # prompt, where length is latency on every turn for the rest of the call
@@ -112,7 +152,12 @@ def _fmt_track(t: dict, with_id: bool = False) -> str:
 
     bits = f"\"{f('title') or '?'}\" by {f('artist') or '?'}"
     if f("album"):
-        bits += f" ({f('album')}" + (f", {f('year', 12)})" if f("year", 12) else ")")
+        # The era-resolved year, not the raw file year — see era_year. On the
+        # live library the difference is already real: "Action Man in Motown
+        # Suit" files as 2014 with originalYear 1981, and the station's own
+        # announcer now says 1981 while a raw read here said 2014 back.
+        year = era_year(t)
+        bits += f" ({f('album')}" + (f", {year})" if year else ")")
     # The station stores mood tags and an energy score per track and returns
     # them on every search hit. Dropping them left the DJ describing records it
     # had real information about purely from the title.

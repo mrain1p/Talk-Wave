@@ -498,7 +498,8 @@ class TestActionsAllHaveAReceipt(unittest.TestCase):
         recorded = set()
         for path in AGENT_WORKER.joinpath("call/tools").glob("*.py"):
             recorded.update(
-                re.findall(r"actions\.note\(\s*[\"']([^\"']+)[\"']", path.read_text())
+                re.findall(r"actions\.note\(\s*[\"']([^\"']+)[\"']",
+                           path.read_text(encoding="utf-8"))
             )
         self.assertTrue(recorded, "found no actions.note() calls to check")
         self.assertEqual(

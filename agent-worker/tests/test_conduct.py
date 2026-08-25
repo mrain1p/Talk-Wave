@@ -589,6 +589,23 @@ class TestTheStationsLanguageIsNotTheDJsLanguage(unittest.TestCase):
         names = [name for name, _ in conduct.blocks({})]
         self.assertIn("LANGUAGE_AND_MIMICRY", names)
 
+    def test_a_foreign_name_is_spoken_in_its_latin_form(self):
+        # The mirror of upstream #1455's spoken-proper-noun directive, for
+        # the phone voice. The live library's title sort ends in two hundred
+        # Korean rows (SHINee, NELL, SUPER JUNIOR) — the DJ WILL meet a
+        # Hangul title on a search row, and saying that name must neither
+        # become a language switch nor a spelling bee through characters the
+        # voice cannot carry. The station's booth solves this at two
+        # boundaries (prompt directive + TTS scrub); the phone keeps the
+        # prompt half only, because a scrub here would delete a
+        # Korean-speaking caller's own language from the DJ's mouth.
+        from brain.conduct import LANGUAGE_AND_MIMICRY
+
+        text = LANGUAGE_AND_MIMICRY.lower()
+        self.assertIn("latin name", text)
+        self.assertIn("romanisation", text)
+        self.assertIn("saying a name is not switching language", text)
+
 
 class TestBulkQueueingIsActedOnNotSoldOn(unittest.TestCase):
     """The operator's ask, near verbatim (2026-08-18): no need to offer the

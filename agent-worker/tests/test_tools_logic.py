@@ -336,6 +336,63 @@ class TestMainToolLogic(_TempStores):
         # And stays clean when the station sends nothing.
         self.assertNotIn("energy", self.music._fmt_track({"title": "T", "artist": "A"}))
 
+    def test_the_year_the_dj_says_is_the_era_not_the_reissue(self):
+        # Upstream #1418/#1431: the station stopped announcing a reissue's
+        # file year (its bug report: a 1964 Stax single introduced as a 2012
+        # record) and its admin rows now carry the evidence. On the live
+        # library "Action Man in Motown Suit" files as year 2014 with
+        # originalYear 1981 — the station's own announcer says 1981 now, and
+        # a raw read here contradicted it on the same track in the same hour.
+        out = self.music._fmt_track({
+            "title": "Action Man in Motown Suit", "artist": "A",
+            "album": "Highbury Working", "year": 2014,
+            "originalYear": 1981, "isCompilation": False,
+            "eraUntrusted": None,
+        })
+        self.assertIn("1981", out)
+        self.assertNotIn("2014", out)
+
+    def test_a_reissue_suspect_with_no_answer_says_no_year_at_all(self):
+        # The station's rule, mirrored: leave the year out rather than play
+        # it in the wrong decade. Any of the three flags suppresses an
+        # unanswered file year — the two raw ones on /dj/* rows, or the
+        # composed `yearUntrusted` that only /library/browse rows carry.
+        for flag in ("isCompilation", "eraUntrusted", "yearUntrusted"):
+            out = self.music._fmt_track({
+                "title": "T", "artist": "A", "album": "Gold",
+                "year": 2005, flag: True,
+            })
+            self.assertNotIn("2005", out, flag)
+        # And null flags are absent evidence, not a verdict: a library not
+        # yet re-walked, or a pre-1.9.0 station that sends no era fields at
+        # all, keeps the raw year exactly as before.
+        out = self.music._fmt_track({
+            "title": "T", "artist": "A", "album": "Gold", "year": 2005,
+            "isCompilation": None, "eraUntrusted": None,
+        })
+        self.assertIn("2005", out)
+        out = self.music._fmt_track({
+            "title": "T", "artist": "A", "album": "Gold", "year": 2005,
+        })
+        self.assertIn("2005", out)
+
+    def test_a_garbage_year_tag_neither_crashes_nor_overrides(self):
+        # "²⁰¹²" passes str.isdigit() but int() rejects it (found in review):
+        # a mangled tag must fall through to the trusted file year, never
+        # crash a tool or ride the prompt as the year. Fullwidth digits are
+        # the legitimate cousin and normalise instead: "２０１４" is 2014.
+        out = self.music._fmt_track({
+            "title": "T", "artist": "A", "album": "G", "year": 1996,
+            "originalYear": "²⁰¹²",
+        })
+        self.assertIn("1996", out)
+        self.assertNotIn("²⁰¹²", out)
+        out = self.music._fmt_track({
+            "title": "T", "artist": "A", "album": "G", "year": 1996,
+            "originalYear": "２０１４",
+        })
+        self.assertIn("2014", out)
+
     def test_the_analysis_columns_reach_the_dj(self):
         # bpm and key ride every search, recent and browse row (the station
         # merges its library index into all three), and they are the DJ's own
@@ -652,6 +709,84 @@ class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):
         # The DJ must not be handed a duration it would read out loud.
         self.assertNotIn("seconds", out)
         self.assertIn("slow to confirm", out)
+
+
+class TestNativeScriptDoesNotAirSilently(unittest.TestCase):
+    """The station's TTS boundary (upstream #1455) drops Han/Kana/Hangul from
+    anything an English-voiced — or, as on every persona deployed here,
+    language-unset — DJ is given to read, while the `spoken` text handed back
+    still shows them. So an announcement leaning on native script airs as its
+    Latin remainder, and a DJ that does not know that promises the caller a
+    name went out that nobody heard."""
+
+    class _Guard:
+        def __init__(self):
+            self.held = []
+
+        def mark_on_air(self, secs=None, spoken=""):
+            self.held.append(secs)
+
+        def mark_pending_air(self, spoken=""):
+            pass
+
+        async def wait_until_clear(self, timeout=None):
+            return 0.0
+
+    class _Station:
+        def __init__(self, spoken=None):
+            self.spoken = spoken
+
+        async def dj_say(self, message, mode="styled", kind="callin"):
+            return {"ok": True,
+                    "spoken": message if self.spoken is None else self.spoken}
+
+    def _announce(self, message, spoken=None):
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        guard = self._Guard()
+        built = build_on_air_tools(
+            {"allow_announcements": True}, self._Station(spoken),
+            CallActions(5), guard, guarded=True)
+        tools = {t.info.name: t for t in built}
+        out = asyncio.run(tools["subwave_dj_announce"](message=message))
+        return guard, out
+
+    def test_an_announcement_with_cjk_carries_the_caution(self):
+        _, out = self._announce("A dedication for 周杰倫 tonight")
+        self.assertIn("native-script", out)
+        self.assertIn("Latin form", out)
+
+    def test_a_latin_announcement_is_not_lectured(self):
+        _, out = self._announce("A dedication for Jay Chou tonight")
+        self.assertNotIn("native-script", out)
+
+    def test_styled_rewrites_are_checked_not_our_input(self):
+        # The caution keys on the styled `spoken` the station returned, not
+        # on what we sent: in styled mode the station rewrites the words, and
+        # what matters is what reached its renderer.
+        _, out = self._announce("for Jay Chou", spoken="for 周杰倫 tonight")
+        self.assertIn("native-script", out)
+
+    def test_the_hold_is_sized_from_what_actually_airs(self):
+        # A mostly-native line airs SHORT — the scrub deletes the characters
+        # before the voice sees them. A hold sized from the unspoken text
+        # would gag the DJ over air that is already clear.
+        guard, _ = self._announce("가나다라 " * 40 + "ok")
+        self.assertLessEqual(guard.held[0], 2)
+
+    def test_the_tool_tells_the_model_before_it_writes(self):
+        # The caution after the fact is the backstop; the docstring is the
+        # instruction that stops the native script being sent at all.
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        built = build_on_air_tools(
+            {"allow_announcements": True}, self._Station(),
+            CallActions(5), self._Guard(), guarded=True)
+        tool = next(t for t in built
+                    if t.info.name == "subwave_dj_announce")
+        self.assertIn("Latin form", tool.info.description or "")
 
 
 class TestOnlyThisDJsSegmentsCanBeRun(unittest.TestCase):

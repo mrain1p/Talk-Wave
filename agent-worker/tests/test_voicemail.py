@@ -158,6 +158,22 @@ class TestAMessageIsNeverLost(_VmDirs):
         self.assertEqual(1, len(station.said))
         self.assertEqual("voicemail", station.said[0][1])
 
+    def test_a_native_script_message_is_not_receipted_as_read_out(self):
+        # The booth's TTS boundary drops Han/Kana/Hangul before speaking
+        # (upstream #1455, mirrored in station.booth_spoken_text) — a Korean
+        # message "airs" as its English framing only, and both the receipt
+        # and the operator's held copy must say so rather than claim the
+        # words went out.
+        station = _FakeStation()
+        receipt = self._deliver({"voicemail_destination": "air"}, station,
+                                text="사랑해요 for the night crew")
+        self.assertIn("Latin remainder", receipt)
+        self.assertIn("native-script",
+                      self.deliver.held_messages()[0]["note"])
+        # And a plain Latin message keeps the plain receipt.
+        receipt = self._deliver({"voicemail_destination": "air"}, station)
+        self.assertNotIn("Latin remainder", receipt)
+
     def test_the_list_cannot_grow_without_bound(self):
         for i in range(self.deliver.MAX_MESSAGES + 25):
             self.deliver.hold(f"m{i}", "dj")

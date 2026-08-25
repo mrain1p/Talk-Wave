@@ -212,11 +212,13 @@ from tests.test_tools_logic import (  # noqa: F401
     TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
+    TestNativeScriptDoesNotAirSilently,
     TestOneRequestCannotTakeTwoQueueSlots,
     TestTakingAHeartBackOff,
 )
 from tests.test_album_tools import (  # noqa: F401
     TestAMixCanBeUndoneByTheNameItWasGiven,
+    TestAnAnthologyShelfSaysItsRealYears,
     TestTheBulkToolsRideTheirSwitch,
     TestQueueingAWholeAlbum,
     TestTheShelfIsAReadNotAnAction,

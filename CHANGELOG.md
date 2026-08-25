@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.68
+
+The station moved to SUB/WAVE 1.9.0 and this release moves with it: the DJ speaks the record's real era, learns what the booth's voice can and cannot say, and stops overselling the new-arrivals shelf. The README also slims to a landing page.
+
+### Aligned with the station's 1.9.0
+
+- **The DJ says the year the record was made, not the year the file was ripped.** The station resolves a reissue's original year now, and every search row and album shelf line here follows the same rule: the resolved year wins, a reissue suspect with no answer says nothing rather than the wrong decade, and an anthology's shelf shows its real span — "1974-1978", not the reissue date. A library not yet re-walked (or an older station) behaves exactly as before.
+- **Native-script names no longer vanish from the air silently.** The station's booth drops Han, kana and Hangul from an English voice's lines. The announce tool now says so up front (write "Jay Chou", not the native spelling), flags any line where it happened — checked against what the station actually rendered, not just what was sent — and sizes its quiet-time from the words that will really be heard. Voicemail's on-air deliveries carry the same honesty: a message the booth cannot voice is never receipted as read out.
+- **The phone DJ speaks foreign names in their Latin form** — this library's K-pop shelf is real, and a Hangul title on a search row is a name to say, not a language switch or a spelling bee.
+- **Clearing a run out of the queue pulls the instant ones first.** Held picks cancel immediately; mixer-bound rows each cost a round-trip — so the batch clears the most it can inside its time budget, while the head of the queue keeps first claim on the attempt.
+- **"What's new" stops implying "never aired".** The new-arrivals shelf carries no airing history, and the tool now says so instead of letting a fresh-find claim outrun the data.
+
+### The README, half the length
+
+- **Features at half the length with nothing removed**, How it works on [its own page](docs/how-it-works.md), and Getting started down to the three things you need plus what the compose file actually runs — the full walk-through lives in [Quick start](docs/quickstart.md).
+
 ## 0.98.60
 
 Open Lines — the station's first outbound segment — plus a full settings-panel review and the caller-side guards that came out of running it all live.

@@ -152,7 +152,7 @@ def build_removal_tools(cfg: dict, station: StationClient,
         if not upcoming:
             return ("The queue has nothing waiting in it — nothing to clear. "
                     "Tell the caller it's already empty.")
-        matches: list[tuple[str, str]] = []
+        matches: list[tuple[str, str, bool]] = []
         for t in upcoming:
             t_artist = _squash(t.get("artist"))
             t_album = _squash(t.get("album"))
@@ -167,7 +167,8 @@ def build_removal_tools(cfg: dict, station: StationClient,
             if not hit:
                 continue
             if tid:
-                matches.append((tid, _txt(t.get("title")) or "?"))
+                matches.append((tid, _txt(t.get("title")) or "?",
+                                t.get("sent") is True))
         if not matches:
             # A named batch that matches nothing is a DIFFERENT answer from a
             # name nobody recognises: those tracks did go in, on this call,
@@ -187,14 +188,25 @@ def build_removal_tools(cfg: dict, station: StationClient,
                     "may have played already, or it never went in. Tell the "
                     "caller what you actually see; don't claim a clear-out.")
 
+        # The cap keeps QUEUE order — the head-of-queue rows are the ones a
+        # caller most urgently means and the only ones that can answer
+        # "already-playing", so they must never be the ones the cap silences.
+        # WITHIN the batch, `sent` (surfaced by upstream #1458) orders the
+        # work: an unsent row is the controller's own held pick and cancels
+        # instantly Node-side, a sent row is already in Liquidsoap's queue —
+        # a telnet round-trip each — so the instant ones go first and a
+        # budget that dies mid-run has cleared the most it could. The sort is
+        # stable, so queue order holds within each half; an absent flag
+        # counts as unsent, matching the station's own omitted-flag degrade.
         dropped = max(0, len(matches) - CLEAR_MAX_TRACKS)
         matches = matches[:CLEAR_MAX_TRACKS]
+        matches.sort(key=lambda m: m[2])
         pulled: list[str] = []
         too_late: list[str] = []
         failed: list[str] = []
         left_unpulled = 0
         deadline = time.monotonic() + _BATCH_BUDGET_SECS
-        for i, (tid, tname) in enumerate(matches):
+        for i, (tid, tname, _sent) in enumerate(matches):
             if time.monotonic() > deadline:
                 left_unpulled = len(matches) - i
                 break
