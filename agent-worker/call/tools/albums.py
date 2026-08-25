@@ -42,7 +42,7 @@ import time
 from station import StationClient
 
 from ..actions import CallActions
-from .rows import _drop_blocked
+from .rows import _drop_blocked, era_year
 
 log = logging.getLogger("callin.agent")
 
@@ -121,11 +121,33 @@ def _main_artist(rows: list) -> str:
 
 
 def _album_year(rows: list) -> str:
+    """The year the shelf line shows, under the station's era rule.
+
+    Per track first (rows.era_year: the resolved original year wins, and a
+    reissue suspect with no answer contributes nothing), then one year when
+    the album agrees with itself and a span when it does not. A singles
+    anthology's tracks resolve to their own recording years, and "1974-1978"
+    is the true sentence about that shelf — the first track's file year was
+    the reissue date presented as a fact.
+    """
+    years: list[int] = []
+    fallback = ""
     for row in rows:
-        year = _txt(row.get("year"), 12)
-        if year:
-            return year
-    return ""
+        y = era_year(row)
+        if not y:
+            continue
+        try:
+            years.append(int(y))
+        except ValueError:
+            # A year that is really a date ("1996-03-01") still names the
+            # shelf better than silence — and it is exactly what _fmt_track
+            # shows for the same rows, so dropping it here would have the two
+            # surfaces disagree about the same metadata. First one wins.
+            fallback = fallback or y
+    if not years:
+        return fallback
+    lo, hi = min(years), max(years)
+    return str(lo) if lo == hi else f"{lo}-{hi}"
 
 
 def _shelf_line(group: dict) -> str:

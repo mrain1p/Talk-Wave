@@ -31,6 +31,7 @@ receipt. The **config line** ties a bad call to the setting that caused it.
 | `⚠ station <code>` lines | Station read failed. Prompts go thin rather than absent. Station **actions** get a long timeout (45s) because a segment runs before it answers — a read timeout must be reported as "sent, unconfirmed", never as failure. |
 | Caller heard, DJ silent | Check TTS. A voice id from the wrong backend 400s — cloud names and local ids are not interchangeable. Reload the voice list after switching backend. |
 | Everything present but slow | **Speed test** in the panel reports time to first audio per leg. Over ~1.5s sounds laggy. |
+| "The DJ queued it but something else played" | Station 1.9.0+ (upstream #1415): an exact pick Liquidsoap cannot resolve is spliced out near its seam and **autonomously re-picked**, with no webhook we can hear. Before suspecting the tools, check the station log — or authed `GET /debug`, `queue.djLog`, which works with LOG_TO_FILE off — for a "Liquidsoap never resolved" line. A Talk Wave pick shows "(requested by studio)", same as an operator dashboard pick; a caller name in the suffix means it came via /request. |
 
 ## The other diagnostic rows
 

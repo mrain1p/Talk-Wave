@@ -31,54 +31,24 @@ Talk-Wave is a companion app with its own realtime voice agent wearing the perso
 
 **Three ways to reach the booth**
 - **Live calls** — full-duplex voice with barge-in, live captions, and a DJ who knows the show it's on.
-- **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. Or run the line as a **soundbite studio**: the caller records a take, reviews the transcript and exactly what sending will do, and their own voice airs with the DJ around it. See [Voicemail](docs/VOICEMAIL.md).
+- **Voicemail** — greetings staged in each DJ's own voice; messages held, sent to the station, or AI-triaged. Or run the line as a **soundbite studio**: the caller records a take, reviews exactly what sending will do, and their own voice airs with the DJ around it. See [Voicemail](docs/VOICEMAIL.md).
 - **The text line** — the same DJ, typed. Works where WebRTC can't.
 
-**Three access profiles, gated where you need it**
-- Caller tiers — admin, guest code, open — and a per-feature permission matrix: each action goes to the least trusted tier that should have it, or nobody.
-- Usage caps on everything a call can cost, and a kill switch that outranks it all.
-- PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens — and a fresh install answers nobody until its admin password is set. See [Security](docs/security.md).
+**Gated where you need it** — three caller tiers (admin, guest code, open) under a per-feature [permission matrix](docs/settings.md#caller-permissions): each action goes to the least trusted tier that should have it, or to nobody. Usage caps on everything a call can cost, a kill switch that outranks it all, PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens — and a fresh install answers nobody until its admin password is set. See [Security](docs/security.md).
 
-**Control your station conversationally**
-
-Every action here is a real tool the DJ can reach — on a call, on the text line, or out of a voicemail — and every one is a switch you can turn off. Anything that changes the station leaves its own receipt card in the caller's transcript, so what happened is never only the DJ's word for it. What the caller can do:
-
-- **Asking about the station, the music, or the DJ** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, what the audience loves, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
-- **Making requests, right into the queue** — request a song, an album front to back, or a themed mix — and pull a queued track back out, or clear the lot.
-- **The record on air** — like a song, take the like back, or skip it.
-- **Out to every listener** — a shout-out on air, a station segment (weather, news, a dedication), or a station beat and ident.
-- **Still running after they hang up** — put another show on air, lock the station to a genre, ban a track for good — and undo every one of them.
+**Control your station conversationally** — every action is a real tool the DJ can reach on any of the three lines, every one is a switch you can turn off, and anything that changes the station leaves a receipt card in the caller's transcript, so what happened is never only the DJ's word for it. A caller can **ask** about anything — what's playing, the lyrics, what played earlier, the queue, the schedule, the library, what the audience loves, or by feel: "something dreamy and cinematic" — **request** a song, an album front to back, or a themed mix, and pull any of it back out of the queue; **like, unlike or skip** the record on air; go **out to every listener** with a shout-out, a station segment (weather, news, a dedication), or a station beat and ident; and — still running after they hang up — put another show on air, lock the station to a genre, or ban a track for good, with an undo for each.
 
 **A real station on the other end**
-- Station tools through a hard allowlist — the audience-reaching ones off by default, the destructive ones never exposed.
-- **Live on air vs off air** — a caller can keep the conversation private with just the DJ, or take it out on the broadcast itself: the conversation airs live on the SUB/WAVE stream, one finished turn at a time, with a pull-off-air button in your hand the whole way. See [Live on air](docs/on-air.md).
-- **On-air ducking vs quiet station** — while the broadcast DJ is talking, the call waits its turn; nothing overlaps, nothing is lost. Or flip it the other way: the station's own idents, links and segments stand down while a call is live and return within seconds of it ending. Music never stops, and the operator's hand on the station's own Voice switch always wins. See [Live on air](docs/on-air.md#quieting-the-stations-own-dj).
-- **Open Line Segments** — the DJ puts a subject to the audience on air, invites listeners to weigh in, and then knows what it asked when somebody arrives on any of the three doors. It opens by finding out whether they came for the topic or for something else, and a request is never pushed aside for it. Off by default, and nothing airs until you press the button. See [Open Lines](docs/open-lines.md).
+- Station tools through a hard allowlist — audience-reaching ones off by default, destructive ones never exposed — and every caller action gets its own transcript line, the receipt behind whatever the DJ *says* it did.
+- **Live on air vs off air** — keep the conversation private with just the DJ, or take it out on the broadcast one finished turn at a time, with a pull-off-air button in your hand the whole way. While the broadcast DJ talks, the call waits its turn — nothing overlaps, nothing lost. Or flip it: the station's own idents, links and segments **stand down** while a call is live and return seconds after it ends; music never stops, and the operator's hand on the station's Voice switch always wins. See [Live on air](docs/on-air.md).
+- **Open Line Segments** — the DJ puts a subject to the audience on air, and knows what it asked when somebody arrives on any of the three doors. Off by default; nothing airs until you press the button. See [Open Lines](docs/open-lines.md).
 - Personas, voices and themes discovered live. Point it at another SUB/WAVE and it re-homes itself.
-- Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did. The whole list is just above.
 
-**Speech, both directions**
-- **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or your own box with no key at all: Ollama, any OpenAI-compatible server (llama.cpp, vLLM, LM Studio), or the station's locca. [What to run](docs/models.md) says which actually carry a call.
-- **STT**: bundled Whisper (no key, no network) or cloud ears (Deepgram, OpenAI, Google). Echo cancellation on by default.
-- **TTS**: any OpenAI-compatible endpoint via JSON adapters — ElevenLabs, Fish Audio, and the station's own `/speak` in the box.
-- **Voice effects**: ten colours — telephone, CB, walkie-talkie, AM, megaphone, underwater, stadium PA, intercom, shortwave, lo-fi — per persona, with an intensity dial.
+**Speech, both directions** — **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or your own box with no key at all: Ollama, any OpenAI-compatible server, or the station's locca ([what to run](docs/models.md)). **STT**: bundled Whisper (no key, no network) or cloud ears (Deepgram, OpenAI, Google), echo-cancelled by default. **TTS**: any OpenAI-compatible endpoint via JSON adapters — ElevenLabs, Fish Audio, the station's own `/speak`. **Voice effects**: ten colours, telephone to lo-fi, per persona with an intensity dial.
 
-**Player options**
-- Installs to a phone like an app, and reads like one (PWA).
-- A **pull-down station player** — cover art, the record's tags, what's up next, the DJ's own line on the segue, and likes and song requests wired straight to the booth.
-- Embeds in two lines of HTML — inline card, launcher pill, docked bar, or pop-up. See [Embedding](docs/embedding.md).
-- Themes: light, dark, match-the-page, or the station's live show colours. Every string on the card overridable.
-- The card says how many are tuned in and offers the same heart any listener page has — both optional, both on by default.
-- Call sounds from shipped sets — synthesized classics, real public-domain line tones — every slot replaceable with your own.
-- Push to talk, a post-call thumbs, and in-character timeouts so silence never just hangs there.
+**Player options** — installs to a phone like an app (PWA); a **pull-down station player** with cover art, the record's tags, what's up next, the DJ's own line on the segue, and likes and requests wired straight to the booth; embeds in two lines of HTML — card, pill, docked bar, or pop-up ([Embedding](docs/embedding.md)); themes light, dark, match-the-page, or the station's live show colours, every string overridable; a tuned-in count and a listener heart on the card; call sounds from shipped sets, every slot replaceable; push to talk, a post-call thumbs, and in-character timeouts so silence never just hangs there.
 
-**Admin dashboard**
-- A dashboard that acts (toggles post instantly, no save) and reads (on air, station health, activity charts).
-- Settings apply to the **next caller** — no restarts, ever.
-- Diagnostics run the real code paths: green means a call will work, not "the URL responded".
-- One search across every page — labels, help and each setting's own synonyms — that says where each answer lives.
-
-Which of these a caller can reach at all is the [permission matrix](docs/settings.md#caller-permissions)'s business: each action goes to the least trusted tier that should have it, or to nobody.
+**Admin dashboard** — acts (toggles post instantly, no save) and reads (on air, station health, activity charts); settings apply to the **next caller**, no restarts, ever; diagnostics that run the real code paths, so green means a call will work; and one search across every page that says where each answer lives.
 
 ## Documentation
 
@@ -87,6 +57,7 @@ The README is the short version. The detail lives here:
 | | |
 |---|---|
 | **[Quick start](docs/quickstart.md)** | Nothing to a working call in ten minutes |
+| **[How it works](docs/how-it-works.md)** | The parts and the path: LiveKit, the worker, the web half, and what runs where |
 | **[What to run](docs/models.md)** | Which model and voice, ideal to minimal, and where a caller notices |
 | **[Settings reference](docs/settings.md)** | Every setting, its default, and what it changes |
 | **[The dashboard](docs/dashboard.md)** | The panel's landing page: the station tiles, the Transmission switch ladder and its one rule, the pull, and the activity charts |
@@ -108,34 +79,11 @@ The README is the short version. The detail lives here:
 curl -fsSL https://raw.githubusercontent.com/mrain1p/Talk-Wave/main/install.sh | bash
 ```
 
-It fetches the stack, generates the LiveKit secret, detects your LAN address and starts everything. **Or do it by hand** — the whole stack is four files plus one empty `data/` folder, and each file is worth a look before you run it:
+It fetches the stack, generates the LiveKit secret, detects your LAN address and starts everything. The whole deployment is one [docker-compose.yaml](docker-compose.yaml) — four services: LiveKit for the call media, the worker (the DJ itself), the web half (tokens, widget, panel), and the bundled Caddy TLS door — plus a [Caddyfile](Caddyfile), a two-variable `.env`, a `livekit.yaml` keypair, and one `data/` folder owned by uid 1000 that IS the backup. Images publish to `ghcr.io/mrain1p/talk-wave`; `:latest` tracks `main` and includes the widget. Every step by hand, walked slowly: **[Quick start](docs/quickstart.md)**.
 
-| File | What it is |
-|---|---|
-| [docker-compose.yaml](docker-compose.yaml) | The services — LiveKit, the worker, the web half, and the bundled Caddy TLS door |
-| [Caddyfile](Caddyfile) | The TLS front door: the widget route **and** the `/rtc` WebSocket route |
-| [.env.example](.env.example) → `.env` | The two variables below |
-| [livekit.example.yaml](livekit.example.yaml) → `livekit.yaml` | The LiveKit keypair — paste in a fresh secret (the file shows the generator); the app reads it from here too |
+**Two variables in `.env`, and that is all it has to say:** `HOST_IP` — the docker host's LAN address, which drives LiveKit's advertised media address, the browser URL, and the webhook callback — and `SUBWAVE_STREAM_URL`, the station's public `https://` stream. **Set the stream URL first**: left blank it derives a plain-http URL that browsers silently block as mixed content, and the caller hears no station.
 
-```bash
-cp .env.example .env
-cp livekit.example.yaml livekit.yaml   # generate a fresh secret for it
-mkdir -p data && chown -R 1000:1000 data && chmod -R u+rwX data
-docker compose up -d
-```
-
-Images publish to `ghcr.io/mrain1p/talk-wave`; `:latest` tracks `main` and includes the widget. **`data/` must belong to uid 1000** — both processes run as it, and it IS the backup.
-
-**Two variables in `.env`, and that is all it has to say:**
-
-| Variable | What it is |
-|---|---|
-| **`HOST_IP`** | The docker host's LAN address. Drives LiveKit's advertised media address, the browser URL, and the webhook callback |
-| **`SUBWAVE_STREAM_URL`** | The station's public `https://` stream — **set it first**: left blank it derives a plain-http URL that browsers silently block as mixed content, and the caller hears no station |
-
-**Then open `https://<HOST_IP>:8443`** — the bundled Caddy TLS door, with a one-time certificate screen. Set the admin password, add an API key, run the pipeline check, press Call. Type passwords and keys only at `:8443`, never over plain `:8100`. Running your own reverse proxy instead? Replicate **both** Caddyfile routes — the widget *and* `/rtc` — or calls connect with no audio; [networking](docs/networking.md) has the details.
-
-**First run, walked slowly: [docs/quickstart.md](docs/quickstart.md)** — the same path with the certificate screen, the admin password, pointing at the station, the pipeline check, and what to back up. Get a call working on your LAN before exposing anything — [security](docs/security.md) is the exposure checklist, and callers from outside your network need one router rule plus one compose line ([networking](docs/networking.md)).
+**Then open `https://<HOST_IP>:8443`** — the bundled Caddy TLS door, with a one-time certificate screen. Set the admin password, add an API key, run the pipeline check, press Call. Type passwords and keys only at `:8443`, never over plain `:8100`. Get a call working on your LAN before exposing anything — [security](docs/security.md) is the exposure checklist, and [networking](docs/networking.md) covers outside callers and running your own reverse proxy in front.
 
 ### Local, no Docker (Windows)
 
@@ -147,26 +95,6 @@ copy .env.example .env
 copy livekit.example.yaml livekit.yaml
 .\run-local.ps1        # stop with .\run-local.ps1 -Stop
 ```
-
-## How it works
-
-```
-[browser mic] --WebRTC--> [livekit-server] --> [talkwave-worker]
-                                                STT -> LLM -> TTS
-                                                     |
-                                          SUB/WAVE MCP (allowlisted)
-```
-
-Your voice reaches a speech-to-text engine, an LLM answers as the DJ who is on air right now, and a text-to-speech voice says it back — a full loop every turn, with the station's own tools attached. Everything runs on **your** hardware and **your** API keys (or fully local with Ollama and the bundled Whisper).
-
-| Component | What it does |
-|---|---|
-| `livekit-server` | WebRTC media — one room per call |
-| `talkwave-worker` | Resolves the persona, builds the prompt, runs STT → LLM → TTS with MCP tools attached |
-| `talkwave-web` | Mints join tokens (the browser never sees LiveKit secrets), serves widget and panel, proxies station reads |
-| `web-widget` | The call page — installable to a phone's home screen, or a compact embeddable card |
-
-Inside the worker: one call is one `CallSession`; the tool allowlist is declared once, in `registry.py`, and the runtime surface and the panel's reference both derive from it; the prompt is assembled in `agent-worker/brain/`, with what the DJ *knows* and how it *behaves* in separate files; and anything that changes the station is a local wrapper, never a raw MCP call — which is what makes **Actions per call** a real ceiling. The path one sentence takes: [How a call actually works](docs/the-call.md).
 
 ## Privacy
 

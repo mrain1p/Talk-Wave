@@ -38,7 +38,9 @@ mkdir data && chown -R 1000:1000 ./data && chmod -R u+rwX ./data
 Then two edits:
 
 1. **`livekit.yaml`** — paste a fresh secret under `keys:` (the file shows the one-line generator). The app reads the keypair from here too, so it lives in one file.
-2. **`.env`** — set `HOST_IP` to this machine's LAN address.
+2. **`.env`** — set `HOST_IP` to this machine's LAN address (it drives LiveKit's advertised media address, the browser URL, and the webhook callback), and set `SUBWAVE_STREAM_URL` to the station's public `https://` stream. **Don't skip the stream URL**: left blank it derives a plain-http URL that browsers silently block as mixed content, and the caller hears no station.
+
+The [docker-compose.yaml](../docker-compose.yaml) those files feed runs the four services — LiveKit for the call media, the worker (the DJ itself), the web half (tokens, widget, panel), and the bundled Caddy TLS door, whose [Caddyfile](../Caddyfile) carries the widget route **and** the `/rtc` WebSocket route.
 
 That is the whole configuration surface on disk. Everything else — model, voice, permissions, the lot — is set later in the settings panel and applies to the next call without a restart.
 
@@ -62,5 +64,6 @@ Everything the deployment owns is in that one folder, and only `data/` ever chan
 ## Next steps
 
 - **A real domain and a trusted certificate** (no certificate screen): [networking — the TLS front door](networking.md).
+- **Your own reverse proxy instead of the bundled Caddy**: replicate **both** Caddyfile routes — the widget *and* `/rtc` — or calls connect with no audio; [networking](networking.md) has the details.
 - **Callers from outside your network**: [networking](networking.md) — one router rule plus one compose line.
 - **Every setting explained**: [settings](settings.md). **Hardening**: [security](security.md). **When a call goes wrong**: [troubleshooting](troubleshooting.md).

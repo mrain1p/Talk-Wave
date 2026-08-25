@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re as _re
 import time
 from pathlib import Path
 
@@ -98,6 +99,31 @@ ACTION_TIMEOUT = 45.0
 # doing real work over a big index; give it room, but far less than an ACTION,
 # because a caller is waiting on the answer.
 LIBRARY_TIMEOUT = 15.0
+
+# The station's TTS boundary (its spoken-script-policy module, upstream
+# #1455): under an English or UNSET persona language -- unset is the product
+# default, and every persona on this deployment is unset -- any Han,
+# Hiragana, Katakana or Hangul in a line handed to /dj/say is DELETED before
+# the booth speaks it, while the `spoken` text echoed back to us still
+# carries it. So every sender of caller-derived text needs to know what will
+# actually air. Mirrored as explicit ranges because stdlib `re` has no
+# \p{Script=}: the four scripts' main blocks plus the extensions upstream's
+# property classes include -- halfwidth katakana, compatibility ideographs,
+# the Han extensions, hangul jamo. An explicitly non-English persona keeps
+# its script upstream; if the operator ever sets one, this mirror needs that
+# language plumbed in.
+NATIVE_SCRIPT_RE = _re.compile(
+    "[\u1100-\u11ff\u3005\u3007\u3041-\u30ff\u3130-\u318f\u31f0-\u31ff"
+    "\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff"
+    "\uf900-\ufaff\uff66-\uff9f\uffa0-\uffdc\U00020000-\U0002fa1f]")
+
+
+def booth_spoken_text(text) -> str:
+    """The line as the booth will actually speak it -- native-script
+    characters removed, the way the station's own boundary removes them.
+    Compare with the original: a difference means part of the line will not
+    be heard on air, and any receipt built on it must say so."""
+    return NATIVE_SCRIPT_RE.sub("", str(text or ""))
 
 
 def _body(r: httpx.Response) -> dict:

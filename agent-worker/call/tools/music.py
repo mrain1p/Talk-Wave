@@ -330,8 +330,16 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             # 8 lines, like a search page: enough to browse down a phone
             # line, small enough not to weigh on every later turn.
             lines = [_fmt_track(t, with_id=ids_shown) for t in items[:8]]
+            # Upstream's picker had the same trap and fixed it (#1456): a
+            # "fresh find" claim parroted from instruction phrasing, backed by
+            # no airing data. These rows carry none either — added-to-shelf
+            # and never-aired are different facts, and only the first one is
+            # in hand.
             return ("The newest arrivals in the library, newest first:\n"
-                    + "\n".join(lines))
+                    + "\n".join(lines)
+                    + "\nNewly added to the shelf, not necessarily never "
+                    "aired — offer these as new arrivals, and don't promise "
+                    "anyone a first spin the data can't back.")
 
         tools.append(recent_tracks)
 

@@ -463,6 +463,62 @@ class TestAPunctuatedFiledNameStillQueues(unittest.TestCase):
         self.assertEqual([t["id"] for t in st.queued], ["id1"])
 
 
+class TestAnAnthologyShelfSaysItsRealYears(unittest.TestCase):
+    """The shelf line's year follows the station's era rule (upstream
+    #1418/#1431): a singles anthology's tracks resolve to their own recording
+    years, and the first track's file year was the reissue date presented as
+    a fact. On the live library the Carpenters' "The Singles 1974-1978" files
+    every row as 1996 with originalYear 1990 — a raw first-row read said 1996
+    about a shelf that never saw 1996."""
+
+    def test_resolved_years_win_and_a_spread_becomes_a_span(self):
+        from call.tools.albums import _album_year
+
+        rows = [
+            {"title": "a", "year": 1996, "originalYear": 1974},
+            {"title": "b", "year": 1996, "originalYear": 1978},
+            {"title": "c", "year": 1996, "originalYear": 1975},
+        ]
+        self.assertEqual(_album_year(rows), "1974-1978")
+
+    def test_an_album_that_agrees_with_itself_gets_one_year(self):
+        from call.tools.albums import _album_year
+
+        rows = [{"title": "a", "year": 1990, "originalYear": None},
+                {"title": "b", "year": 1990}]
+        self.assertEqual(_album_year(rows), "1990")
+
+    def test_a_suspect_shelf_with_no_answer_says_nothing(self):
+        # The station's own rule, mirrored: no year rather than the wrong
+        # decade. A flagged row without a resolved original year contributes
+        # nothing, and a shelf of nothing but those shows no year at all.
+        from call.tools.albums import _album_year
+
+        rows = [{"title": "a", "year": 2012, "isCompilation": True},
+                {"title": "b", "year": 2012, "eraUntrusted": True}]
+        self.assertEqual(_album_year(rows), "")
+
+    def test_a_trusted_row_carries_a_suspect_shelf(self):
+        # One resolved answer beats silence — the suspect rows still say
+        # nothing, but the year that IS known is shown.
+        from call.tools.albums import _album_year
+
+        rows = [{"title": "a", "year": 2012, "isCompilation": True},
+                {"title": "b", "year": 2012, "originalYear": 1964}]
+        self.assertEqual(_album_year(rows), "1964")
+
+    def test_a_garbage_year_cannot_crash_the_shelf_and_dates_still_show(self):
+        # "²⁰¹²" passes str.isdigit() but int() rejects it (found in review),
+        # and a date-shaped year ("1996-03-01") is what _fmt_track shows for
+        # the same rows — the shelf must degrade to it, not to silence.
+        from call.tools.albums import _album_year
+
+        rows = [{"title": "a", "year": 2012, "isCompilation": True,
+                 "originalYear": "²⁰¹²"},
+                {"title": "b", "year": "1996-03-01"}]
+        self.assertEqual(_album_year(rows), "1996-03-01")
+
+
 class TestClearingARunFromTheQueue(unittest.TestCase):
     """Bulk OUT, mirroring the album's bulk IN. The 2026-08-19 chat: an
     album went in as one action, "remove all the Eminem" cost one action
@@ -529,6 +585,26 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
         self.assertIn("Too late", out)
         self.assertIn('"Stan"', out)
         self.assertIn("skip", out)
+
+    def test_held_picks_come_out_before_the_mixer_bound_ones(self):
+        # `sent` (surfaced by upstream #1458) is which side of the mixer
+        # handoff a row sits on: unsent is the controller's own held pick and
+        # cancels instantly Node-side, sent is already in Liquidsoap's queue —
+        # a telnet round-trip each, and the only kind that can answer
+        # "already-playing". The batch pulls the instant ones first, so a
+        # budget that dies mid-run has cleared the most it could; queue order
+        # holds within each half, and an absent flag counts as unsent.
+        queue = [
+            {"subsonic_id": "e1", "title": "Stan", "artist": "Eminem",
+             "sent": True},
+            {"subsonic_id": "e2", "title": "Kim", "artist": "Eminem"},
+            {"subsonic_id": "e3", "title": "Drug Ballad", "artist": "Eminem",
+             "sent": False},
+        ]
+        st, names = self._tool(queue)
+        out = asyncio.run(names["subwave_clear_from_queue"](artist="Eminem"))
+        self.assertEqual(st.cancelled, ["e2", "e3", "e1"])
+        self.assertIn("3 track(s)", out)
 
     def test_an_empty_match_is_honest_and_costs_nothing(self):
         from call.actions import CallActions

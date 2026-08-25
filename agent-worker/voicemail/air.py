@@ -222,6 +222,16 @@ async def deliver(station, cfg: dict, draft: dict) -> dict:
     ok_read = await say(read)
     receipt = ("the DJ read the caller's message; " + act_receipt
                + (f" [{note}]" if note else ""))
+    # The booth's voice drops native script before speaking (see
+    # station.booth_spoken_text): a message in Korean or Chinese airs as
+    # whatever Latin text surrounds it, and a receipt that plainly says "the
+    # DJ read the caller's message" would be false about the words that
+    # mattered most.
+    from station import booth_spoken_text
+    if booth_spoken_text(transcript) != transcript:
+        receipt += (" [native-script characters in the message do not "
+                    "survive the booth's voice — the read aired as the "
+                    "Latin remainder]")
     if not ok_read:
         receipt = "the read failed to air; " + receipt
     return {"ok": act_ok and ok_read, "backend": "dj-reads",

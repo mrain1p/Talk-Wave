@@ -947,6 +947,19 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # shutdown-beat and ceiling-ratio pins — they live on the same
         # _ChunkStore base as everything else here, and the split worth
         # making is now three-way: chunks / relay / hush.
+        # 612 at 0.98.68: the never-aired hedge pin joined
+        # TestWhatsNewInTheLibrary (the #1456 mirror — a "fresh find" claim
+        # must not outrun the data behind it). The seam has been in the file
+        # all along: TestALateMatchStillReachesTheCaller defends late_match.py,
+        # its own module with its own fixtures, while everything else here is
+        # searches and requests — the two share nothing but the imports line.
+        # Not cut in the change that grew it, per the standing rule: the hedge
+        # is the thing under test this week and a regression in it should have
+        # one candidate cause.
+        "agent-worker/tests/test_music_tools.py": (612, "the late-match class "
+                                                        "split from the "
+                                                        "search-and-request "
+                                                        "classes"),
         "agent-worker/tests/test_onair.py": (1025, "the chunk-store half "
                                                    "split from the relay "
                                                    "half"),
