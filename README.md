@@ -85,9 +85,9 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 
 Every action here is a real tool the DJ can reach — on a call, on the text line, or out of a voicemail — and every one is a switch you can turn off. Anything that changes the station leaves its own receipt card in the caller's transcript, so what happened is never only the DJ's word for it.
 
-- **Just asking** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, what the audience loves, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
-- **Into the queue** — request a song, an album front to back, or a themed mix — and pull a queued track back out, or clear the lot.
-- **The record on air** — like it, take the like back, or skip it.
+- **Asking about the station, the music, or the DJ** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, what the audience loves, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
+- **Making requests, right into the queue** — request a song, an album front to back, or a themed mix — and pull a queued track back out, or clear the lot.
+- **The record on air** — like a song, take the like back, or skip it.
 - **Out to every listener** — a shout-out on air, a station segment (weather, news, a dedication), or a station beat and ident.
 - **Still running after they hang up** — put another show on air, lock the station to a genre, ban a track for good — and undo every one of them.
 
