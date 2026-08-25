@@ -473,6 +473,19 @@
      conversation below it. `:has()` rather than a class because both of its
      tenants are already emptied/hidden by the script, and a rule that reads
      the same state cannot fall out of step with it. */
+  /* The record's progress, between the clock and the chips — a lone
+     "5:15" sitting in an empty rail read as misplaced (operator's phone,
+     2026-08-24). Same honesty rule as the player's bar: shown only while
+     the record is actually running, hidden past its end. */
+  .nprail .npbar {
+    flex: 1 1 auto; height: 2px; background: var(--hairline);
+    position: relative; overflow: hidden;
+  }
+  .nprail .npbar[hidden] { display: none; }
+  .nprail .npbar .npfill {
+    position: absolute; inset: 0 auto 0 0; width: var(--np-progress, 0%);
+    background: var(--amber); transition: width 1s linear;
+  }
   .nprail {
     flex: none; display: flex; align-items: center; gap: 10px;
     height: 30px; padding: 0 2px;
@@ -517,6 +530,29 @@
        fully opaque and transparent means cut away. Nothing paints it, so it
        is not a literal the theming contract cares about. */
     mask-image: linear-gradient(90deg, #000 88%, transparent);
+  }
+  /* A title longer than its row CYCLES so the whole thing can be read
+     (operator's phone, 2026-08-24: "I Am — Kamasi…"). The fade moves to
+     both edges while it slides; still and short titles keep the old fade.
+     Reduced motion keeps the fade and skips the ride. */
+  .track.marq {
+    mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent);
+    /* The ride needs a real one-line box. The phone's title is a one-line
+       -webkit-box CLAMP (white-space normal), which cuts the text instead of
+       letting it overflow — a marquee on that box has nothing to slide. Class
+       beats the media rule on specificity, so this holds on every width. */
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: clip;
+  }
+  .track.marq .mq {
+    display: inline-block; white-space: nowrap;
+    animation: marqride var(--marq-t, 9s) linear infinite alternate;
+  }
+  @keyframes marqride {
+    0%, 14% { transform: translateX(0); }
+    86%, 100% { transform: translateX(var(--marq-d, 0px)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track.marq .mq { animation: none; }
   }
   .npclock {
     font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
@@ -881,23 +917,16 @@
      purpose: nothing red rides the handle. */
   /* .card-prefixed: the card's own `.card button` costume outranks a bare
      class, and it dressed the bookmark as a control-height button. */
+  /* An inline pull-down tab, IN the eyebrow row between the state and the
+     corner icons (operator, 2026-08-24, third ruling — it hung above the
+     row for a day and crowded the phone's top edge). Grip only, no words:
+     the bottom-rounded tab shape says "pull me" itself. */
   .card .ribbon {
-    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    z-index: 70; width: auto; min-width: 76px; height: 24px; padding: 0 12px;
-    background: var(--granite); border: 1px solid var(--edge); border-top: 0;
-    border-radius: 0 0 6px 6px; cursor: grab;
-    display: flex; align-items: center; justify-content: center; gap: 7px;
+    align-self: center; flex: none; height: 20px; padding: 0 15px;
+    background: var(--granite); border: 1px solid var(--edge);
+    border-radius: 0 0 7px 7px; cursor: grab;
+    display: flex; align-items: center; justify-content: center;
     touch-action: none;
-  }
-  /* Both pull tabs say what is behind them (operator's review, 2026-08-24):
-     a bare grip made the toggle invisible — a caller landing on the player
-     had no sign the PHONE was one pull away, and the phone is the point. */
-  .griplabel {
-    font: 700 8px/1 var(--font-mono); letter-spacing: .22em;
-    text-transform: uppercase; color: var(--sage-dim); white-space: nowrap;
-  }
-  .card .ribbon:hover .griplabel, .card .plgrab:hover .griplabel {
-    color: var(--alpenglow);
   }
   .card .ribbon .grip {
     width: 30px; height: 4px; border-radius: 2px;
@@ -1186,6 +1215,11 @@
      pill that acts like a button. Green while the stream is actually
      playing, the same state vocabulary as everything else. */
   .listenchip { cursor: pointer; }
+  /* It is the one pill that is a BUTTON, so the card's one-control-height
+     rule reaches it — 50px of chip in a 30px rail, borders crossing both
+     hairlines (measured on the phone layout). Chip height, stated with
+     enough specificity to keep it. */
+  .card button.listenchip { height: var(--chip-h); min-height: 0; }
   .listenchip:hover { color: var(--alpenglow); border-color: var(--sage); }
   .listenchip.playing { color: var(--sage); border-color: var(--sage); }
 
@@ -1193,6 +1227,7 @@
      the action, never below it. No rule under it: whatever follows is either
      absent or a bordered block of its own, and a rule that sometimes ends the
      card and sometimes doesn't is worse than no rule. */
+  body:not(.compact) .card[data-mode="idle"] .talkrow { display: none; }
   .actionrow {
     display: flex; align-items: center; gap: 9px; flex-wrap: nowrap;
     padding: 9px 0 0;
@@ -4722,7 +4757,7 @@
     body:not(.compact) { padding: 0; }
     body:not(.compact) .card {
       height: 100dvh; width: 100%; max-width: none;
-      border: 0; border-radius: 0; padding-top: 26px;
+      border: 0; border-radius: 0;
     }
     body:not(.compact) .eyebrow { margin-bottom: 2px; }
     body:not(.compact) .avatar { width: 44px; height: 44px; }
@@ -5106,10 +5141,7 @@
     body:not(.panelpage):not(.compact) .card {
       width: 100%; min-height: 100dvh; border: 0; border-radius: 0;
       display: flex; flex-direction: column;
-      /* 32 top: the player tab hangs 24px in from the top edge, and 12
-         sat the icons in its band (operator's phone, 2026-08-24). A notch
-         stacks its inset ON the tab's height, not instead of it. */
-      padding: max(32px, calc(env(safe-area-inset-top) + 28px))
+      padding: max(12px, env(safe-area-inset-top))
                max(20px, env(safe-area-inset-right))
                max(20px, env(safe-area-inset-bottom))
                max(20px, env(safe-area-inset-left));
@@ -5127,7 +5159,13 @@
       width: 124px; height: 124px;
     }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar-mono { font-size: 46px; }
-    body:not(.compact) .card:not([data-mode="chat"]) .who-row .meta { flex: 0 0 auto; }
+    /* max-width matters beyond neatness: the column centres this block, so
+       shrink-to-fit lets a nowrap title GROW it past the card instead of
+       overflowing the title's own box — measured 439px wide on a 390px
+       phone, with the marquee reading "it fits" and never starting. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .meta {
+      flex: 0 0 auto; max-width: 100%; min-width: 0;
+    }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj { font-size: 22px; }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .show { text-align: center; }
     /* The now-playing rules that used to live here went with the track: it

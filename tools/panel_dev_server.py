@@ -64,6 +64,8 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     # On, so the dashboard's Open Lines box and the section's live header
     # can both be seen without first ticking the switch.
     "open_lines_enabled": True,
+    # The pull-down player, so the eyebrow ribbon and the sheet are drivable.
+    "swipe_player": True,
     # Go-live on, so the dashboard's Live-on-air cluster stands and its
     # door cards can be looked at without first granting the permission.
     "allow_on_air": "guest",
@@ -683,7 +685,11 @@ class Handler(BaseHTTPRequestHandler):
                 "secureOrigin": "", "theme": "auto",
                 "name": "Francesca", "show": "The Piazza · Golden-era pop",
                 "tagline": "Velvet Harmonies & Mediterranean Dreams.",
-                "track": "I Want You — The Cadets",
+                "track": "I Am — Kamasi Washington · Heaven and Earth (Deluxe Edition)",
+                # A record mid-flight, so the card's rail clock and progress
+                # bar paint — absent, the rail's honesty rule hides both.
+                "trackStartedAt": int(__import__("time").time()) - 95,
+                "trackSeconds": 215,
                 # The structured record the player sheet renders. The art
                 # points at a file this origin actually serves, so the art
                 # path is exercised for real.
@@ -724,7 +730,10 @@ class Handler(BaseHTTPRequestHandler):
                 # Like callsPaused above: from the stub's own settings, so
                 # ticking the box in the panel offers the player on the card.
                 "swipePlayer": bool(settings_store.load().get("swipe_player")),
-                "playerStart": bool(settings_store.load().get("start_on_player")),
+                # The real reader, not bool(): the field is a dropdown now and its
+                # resting value "call" is truthy — bool() opened the sheet on every
+                # load and hid the ribbon this stub exists to show.
+                "playerStart": settings_store.opens_on_player(settings_store.load()),
                 # One queued record and a weather line, so the player's
                 # panels and header exercise their filled states.
                 "upNext": [

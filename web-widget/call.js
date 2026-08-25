@@ -809,14 +809,54 @@
     }
   });
 
+  // A title longer than its row cycles so the whole thing can be read
+  // (operator's phone, 2026-08-24 — "I Am — Kamasi…"). The measurement
+  // needs a laid-out frame, so it rides rAF; a hidden tab simply keeps the
+  // fade until it is looked at. Guarded on the text so the 20s poll does
+  // not restart the ride mid-word.
+  function paintMarquee(el, txt) {
+    if (!el || el.dataset.mq === txt) return;
+    el.dataset.mq = txt;
+    el.classList.remove('marq');
+    el.textContent = txt;
+    if (!txt) return;
+    requestAnimationFrame(() => {
+      if (el.dataset.mq !== txt) return;          // a newer paint won
+      // Measured through the nowrap span, never the element: on a phone the
+      // title is a one-line clamp that wraps-and-clips instead of
+      // overflowing, so the element's own scrollWidth never exceeds its box
+      // however long the record's name is (measured 326/326 with a title
+      // visibly cut short). The class goes on for the measurement and comes
+      // straight back off when the title fits; rAF runs before the paint,
+      // so nothing flashes.
+      const span = document.createElement('span');
+      span.className = 'mq';
+      span.textContent = txt;
+      el.textContent = '';
+      el.appendChild(span);
+      el.classList.add('marq');
+      const over = span.scrollWidth - el.clientWidth;
+      if (over <= 6) {
+        el.classList.remove('marq');
+        el.textContent = txt;
+        return;
+      }
+      el.style.setProperty('--marq-d', -(over + 14) + 'px');
+      // Reading speed, not a fixed clock: a longer ride takes longer.
+      el.style.setProperty('--marq-t', Math.max(7, Math.round(over / 12)) + 's');
+    });
+  }
+
   function paintNowPlaying() {
     const clock = $('npElapsed'), rail = $('npRail'), deck = $('playerView');
     const mmss = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
     if (!clock || !rail) return;
     const prog = deck && deck.querySelector('.plprog');
+    const nbar = rail.querySelector('.npbar');
     if (!npStart) {
       clock.textContent = '';
       rail.style.setProperty('--np-progress', '0%');
+      if (nbar) nbar.hidden = true;
       if (deck) {
         $('plElapsed').textContent = '';
         $('plLen').textContent = '';
@@ -835,6 +875,10 @@
     const pct = npLength
       ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%';
     rail.style.setProperty('--np-progress', pct);
+    // The rail's own bar keeps the player's honesty rule: only while the
+    // record is actually running — a lone clock in an empty row read as
+    // misplaced (operator's phone, 2026-08-24).
+    if (nbar) nbar.hidden = !(npLength && secs < npLength + 8);
     // The station player's hairline follows the same figures — but the BAR
     // only, and only while the record is actually running. The numbers are
     // gone (operator, 2026-08-24: "3:37 — 3:37" pinned at a track's end
@@ -1504,7 +1548,7 @@
     $('djShow').textContent = '';
     $('djTagline').textContent = reason === 'offline'
       ? 'Cannot reach the station.' : 'No DJ is live right now.';
-    $('npTrack').textContent = '';
+    paintMarquee($('npTrack'), '');
     // …and the clock with it. A rail counting up under "Nobody on air" is the
     // card insisting a record is playing while it says the station is dark.
     npStart = 0; npLength = 0; paintNowPlaying();
@@ -1867,8 +1911,8 @@
         $('djShow').textContent = parts.show === false ? '' : (d.show || '');
         $('djTagline').textContent = parts.tagline === false ? '' : (d.tagline || '');
       }
-      $('npTrack').textContent =
-        (parts.track === false || !d.track) ? '' : '♪ ' + d.track;
+      paintMarquee($('npTrack'),
+        (parts.track === false || !d.track) ? '' : '♪ ' + d.track);
       // The rail's clock and progress hairline. /live sends WHEN the record
       // started and how long it runs; the elapsed figure is counted here
       // rather than sent, because /live is cached across every caller for a
