@@ -813,12 +813,14 @@
     const clock = $('npElapsed'), rail = $('npRail'), deck = $('playerView');
     const mmss = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
     if (!clock || !rail) return;
+    const prog = deck && deck.querySelector('.plprog');
     if (!npStart) {
       clock.textContent = '';
       rail.style.setProperty('--np-progress', '0%');
       if (deck) {
         $('plElapsed').textContent = '';
         $('plLen').textContent = '';
+        if (prog) prog.hidden = true;
         deck.style.setProperty('--pl-progress', '0%');
         if (!deck.hidden) paintHeadMeta();
       }
@@ -833,12 +835,18 @@
     const pct = npLength
       ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%';
     rail.style.setProperty('--np-progress', pct);
-    // The station player's clock and hairline follow the same figures — the
-    // rail is hidden in that mode, not borrowed.
+    // The station player's hairline follows the same figures — but the BAR
+    // only, and only while the record is actually running. The numbers are
+    // gone (operator, 2026-08-24: "3:37 — 3:37" pinned at a track's end
+    // read as random), and a bar sitting full past the end reads as broken,
+    // so a track past its length plus a grace hides the row — the ids stay
+    // painted empty because this file reaching them is the contract.
     if (deck) {
-      $('plElapsed').textContent = mmss(shown);
-      $('plLen').textContent = npLength ? mmss(npLength) : '';
-      deck.style.setProperty('--pl-progress', pct);
+      $('plElapsed').textContent = '';
+      $('plLen').textContent = '';
+      const running = !!npLength && secs < npLength + 8;
+      if (prog) prog.hidden = !running;
+      deck.style.setProperty('--pl-progress', running ? pct : '0%');
       // The header's wall clock rides the same tick while the sheet is up.
       if (!deck.hidden) paintHeadMeta();
     }

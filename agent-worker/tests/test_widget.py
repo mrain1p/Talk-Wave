@@ -3406,7 +3406,11 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         # iPhone keeps clear. Any rule that takes the padding off the phone
         # layout has to hand the safe area back, or the card's top row lands
         # under the clock — reported on a real phone, 0.98.25.
-        block = self.css.split("body:not(.panelpage):not(.compact) .card {")[1][:400]
+        # The whole rule block, not a byte budget: 400 chars stopped fitting
+        # the moment the padding grew a why-comment (0.98.62), and the claim
+        # is about the block's CONTENT, not its length.
+        block = self.css.split(
+            "body:not(.panelpage):not(.compact) .card {")[1].split("}")[0]
         self.assertIn("env(safe-area-inset-top)", block,
                       "the full-bleed phone card must clear the notch")
         self.assertIn("env(safe-area-inset-bottom)", block,

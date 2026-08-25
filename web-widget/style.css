@@ -355,7 +355,10 @@
     font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--coral);
     text-shadow: var(--skin-glow);
-    height: 38px; margin: 0; flex: none;
+    height: 38px; margin: 0 0 8px; flex: none;
+    /* The player header's own sectioning, on the phone view too (operator,
+       2026-08-24): one ruled band over the identity, both surfaces. */
+    border-bottom: 1px solid var(--hairline);
     display: flex; align-items: center; gap: 8px;
     /* One line, always. It wrapped to two on a phone once the corner icons
        grew, and a two-line eyebrow pushes every band below it down. */
@@ -1017,6 +1020,7 @@
   .pltags .pill { color: var(--amber); border-color: var(--edge);
                   font-size: 9px; letter-spacing: .08em; height: auto;
                   padding: 5px 6px; }
+  .plprog[hidden] { display: none; }
   .plprog { display: flex; align-items: center; gap: 10px; width: 100%;
             margin-top: 16px; }
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
@@ -4718,8 +4722,9 @@
     body:not(.compact) { padding: 0; }
     body:not(.compact) .card {
       height: 100dvh; width: 100%; max-width: none;
-      border: 0; border-radius: 0;
+      border: 0; border-radius: 0; padding-top: 26px;
     }
+    body:not(.compact) .eyebrow { margin-bottom: 2px; }
     body:not(.compact) .avatar { width: 44px; height: 44px; }
     body:not(.compact) .who-row { gap: 10px; }
     body:not(.compact) .who-row .tagline { display: none; }
@@ -4736,6 +4741,10 @@
     :root { --control-h: 50px; --chip-h: 28px; }
     /* The card is the viewport here — safe-area padded below. */
     body:not(.compact) .card { height: 100dvh; border: 0; border-radius: 0; }
+    /* While the player sheet is up the page has nothing to scroll to —
+       an Android URL-bar collapse still let the page rubber-band under
+       the sheet, which read as the player "forcing a scroll". */
+    body:not(.compact):has(.player:not([hidden])) { overflow: hidden; }
     /* ONE size, every state. §11 asked for a 140px portrait when idle and 76
        everywhere else, and it was the wrong trade twice over: the header
        moved every time the caller switched between a call, text and the
@@ -5097,7 +5106,10 @@
     body:not(.panelpage):not(.compact) .card {
       width: 100%; min-height: 100dvh; border: 0; border-radius: 0;
       display: flex; flex-direction: column;
-      padding: max(12px, env(safe-area-inset-top))
+      /* 32 top: the player tab hangs 24px in from the top edge, and 12
+         sat the icons in its band (operator's phone, 2026-08-24). A notch
+         stacks its inset ON the tab's height, not instead of it. */
+      padding: max(32px, calc(env(safe-area-inset-top) + 28px))
                max(20px, env(safe-area-inset-right))
                max(20px, env(safe-area-inset-bottom))
                max(20px, env(safe-area-inset-left));
