@@ -6,9 +6,9 @@
 
 ## What it is
 
-**A call-in phone line for your [SUB/WAVE](https://github.com/perminder-klair/subwave) AI radio station.** A listener presses one button in the browser and talks with whoever is live on air — and the DJ can act on the station mid-call: find a record by name or by how it *sounds*, queue it, take it back out again, put a shoutout on the broadcast.
+**A direct line into your [SUB/WAVE](https://github.com/perminder-klair/subwave) AI radio station.** A live call, text, or voicemail delivered straight to the booth — talk with your DJ or make music requests, off air or live on the broadcast. Features a built-in music player and a PWA that installs like an app and embeds anywhere.
 
-The call is not the station speaking. It's this sidecar's own realtime voice agent wearing the live persona, and the station is only touched when the agent uses an allowlisted tool.
+Talk-Wave is a companion app with its own realtime voice agent wearing the persona and knowledge of your live DJ, and the station is only touched when the agent uses an allowlisted tool.
 
 > **Note:** this was created with use of AI. It is recommended to use it locally, and only expose it externally if you know the risks and what you are doing.
 
@@ -25,19 +25,7 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 </tr>
 </table>
 
-**[▶ Watch the demos in your browser](https://mrain1p.github.io/Talk-Wave/demos.html)** — all six on one page, streaming, no download. Or one at a time, each in its own tab:
-
-▶ **[A real call](https://mrain1p.github.io/Talk-Wave/live-call.mp4)** — in-persona pickup, back-and-forth, and an acoustic request landing in the station's queue mid-call.
-
-▶ **[A caller on the station's own air](https://mrain1p.github.io/Talk-Wave/on-air-music-request.mp4)** — the booth hands a caller the airwaves live, then plays their pick for everyone listening.
-
-▶ **[A shout-out, broadcast](https://mrain1p.github.io/Talk-Wave/on-air-shout-out.mp4)** — a caller's dedication goes straight out on the broadcast, in the DJ's own voice around it.
-
-▶ **[The text line](https://mrain1p.github.io/Talk-Wave/text-line.mp4)** — typed chat with whoever is on air: same brain, same tools, no microphone.
-
-▶ **[The answering machine](https://mrain1p.github.io/Talk-Wave/voicemail-machine.mp4)** — the machine takes a message, and the swipe-up station player underneath it.
-
-▶ **[A voicemail in ten seconds](https://mrain1p.github.io/Talk-Wave/voicemail-in-ten-seconds.mp4)** — the shortest possible loop: call, beep, say it, done.
+**[▶ Watch the video demos in your browser](https://mrain1p.github.io/Talk-Wave/demos.html)**
 
 ## Features
 
@@ -46,14 +34,28 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 - **Voicemail** — greetings staged in each DJ's own voice; messages held for you, sent to the station, or AI-triaged. Or run the line as a **soundbite studio**: the caller records a take, reviews the transcript and exactly what sending will do, and their own voice airs with the DJ around it. See [Voicemail](docs/VOICEMAIL.md).
 - **The text line** — the same DJ, typed. Works where WebRTC can't.
 
+**Three access profiles, gated where you need it**
+- Caller tiers — admin, guest code, open — and a per-feature permission matrix: each action goes to the least trusted tier that should have it, or nobody.
+- Usage caps on everything a call can cost, and a kill switch that outranks it all.
+- PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens — and a fresh install answers nobody until its admin password is set. See [Security](docs/security.md).
+
+**Control your station conversationally**
+
+Every action here is a real tool the DJ can reach — on a call, on the text line, or out of a voicemail — and every one is a switch you can turn off. Anything that changes the station leaves its own receipt card in the caller's transcript, so what happened is never only the DJ's word for it. What the caller can do:
+
+- **Asking about the station, the music, or the DJ** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, what the audience loves, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
+- **Making requests, right into the queue** — request a song, an album front to back, or a themed mix — and pull a queued track back out, or clear the lot.
+- **The record on air** — like a song, take the like back, or skip it.
+- **Out to every listener** — a shout-out on air, a station segment (weather, news, a dedication), or a station beat and ident.
+- **Still running after they hang up** — put another show on air, lock the station to a genre, ban a track for good — and undo every one of them.
+
 **A real station on the other end**
 - Station tools through a hard allowlist — the audience-reaching ones off by default, the destructive ones never exposed.
-- **On-air ducking** — while the broadcast DJ is talking, the call waits its turn. Nothing overlaps, nothing is lost.
-- **Or quiet the station instead** — flip it the other way: the station's own idents, links and segments stand down while a call is live and return within seconds of it ending. Music never stops, and the operator's hand on the station's own Voice switch always wins. See [Live on air](docs/on-air.md#quieting-the-stations-own-dj).
-- **Live on air** — a caller can go out on the broadcast itself: the conversation airs one finished turn at a time, a turn behind the room, with a pull-off-air button in your hand the whole way. See [Live on air](docs/on-air.md).
-- **Open Lines** — the booth reaching out instead of in: the DJ puts a subject to the audience on air, invites them to weigh in, and then knows what it asked when somebody arrives on any of the three doors. It opens by finding out whether they came for the topic or for something else, and a request is never pushed aside for it. Off by default, and nothing airs until you press the button. See [Open Lines](docs/open-lines.md).
+- **Live on air vs off air** — a caller can keep the conversation private with just the DJ, or take it out on the broadcast itself: the conversation airs live on the SUB/WAVE stream, one finished turn at a time, with a pull-off-air button in your hand the whole way. See [Live on air](docs/on-air.md).
+- **On-air ducking vs quiet station** — while the broadcast DJ is talking, the call waits its turn; nothing overlaps, nothing is lost. Or flip it the other way: the station's own idents, links and segments stand down while a call is live and return within seconds of it ending. Music never stops, and the operator's hand on the station's own Voice switch always wins. See [Live on air](docs/on-air.md#quieting-the-stations-own-dj).
+- **Open Line Segments** — the DJ puts a subject to the audience on air, invites listeners to weigh in, and then knows what it asked when somebody arrives on any of the three doors. It opens by finding out whether they came for the topic or for something else, and a request is never pushed aside for it. Off by default, and nothing airs until you press the button. See [Open Lines](docs/open-lines.md).
 - Personas, voices and themes discovered live. Point it at another SUB/WAVE and it re-homes itself.
-- Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did. [The whole list](#what-a-caller-can-make-happen).
+- Every caller action gets its own transcript line — the receipt behind whatever the DJ *says* it did. The whole list is just above.
 
 **Speech, both directions**
 - **LLM**: OpenAI, Anthropic, Google, DeepSeek, OpenRouter, Requesty, Vercel AI Gateway — or your own box with no key at all: Ollama, any OpenAI-compatible server (llama.cpp, vLLM, LM Studio), or the station's locca. [What to run](docs/models.md) says which actually carry a call.
@@ -61,8 +63,8 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 - **TTS**: any OpenAI-compatible endpoint via JSON adapters — ElevenLabs, Fish Audio, and the station's own `/speak` in the box.
 - **Voice effects**: ten colours — telephone, CB, walkie-talkie, AM, megaphone, underwater, stadium PA, intercom, shortwave, lo-fi — per persona, with an intensity dial.
 
-**A player people actually use**
-- Installs to a phone like an app, and reads like one.
+**Player options**
+- Installs to a phone like an app, and reads like one (PWA).
 - A **pull-down station player** — cover art, the record's tags, what's up next, the DJ's own line on the segue, and likes and song requests wired straight to the booth.
 - Embeds in two lines of HTML — inline card, launcher pill, docked bar, or pop-up. See [Embedding](docs/embedding.md).
 - Themes: light, dark, match-the-page, or the station's live show colours. Every string on the card overridable.
@@ -70,26 +72,11 @@ The call is not the station speaking. It's this sidecar's own realtime voice age
 - Call sounds from shipped sets — synthesized classics, real public-domain line tones — every slot replaceable with your own.
 - Push to talk, a post-call thumbs, and in-character timeouts so silence never just hangs there.
 
-**Gated like a phone line, not a demo**
-- Three caller tiers — admin, guest code, open — and a per-feature permission matrix: each action goes to the least trusted tier that should have it, or nobody.
-- Usage caps on everything a call can cost, and a kill switch that outranks it all.
-- PBKDF2 passwords with lockouts, write-only keys, two-minute call tokens — and a fresh install answers nobody until its admin password is set. See [Security](docs/security.md).
-
-**An operator's panel that tells the truth**
+**Admin dashboard**
 - A dashboard that acts (toggles post instantly, no save) and reads (on air, station health, activity charts).
 - Settings apply to the **next caller** — no restarts, ever.
 - Diagnostics run the real code paths: green means a call will work, not "the URL responded".
 - One search across every page — labels, help and each setting's own synonyms — that says where each answer lives.
-
-## What a caller can make happen
-
-Every action here is a real tool the DJ can reach — on a call, on the text line, or out of a voicemail — and every one is a switch you can turn off. Anything that changes the station leaves its own receipt card in the caller's transcript, so what happened is never only the DJ's word for it.
-
-- **Asking about the station, the music, or the DJ** — what's playing, the lyrics, what played earlier, the queue, the schedule, what's in the library, what the audience loves, or by feel: "something dreamy and cinematic". Reads only, changes nothing, no card.
-- **Making requests, right into the queue** — request a song, an album front to back, or a themed mix — and pull a queued track back out, or clear the lot.
-- **The record on air** — like a song, take the like back, or skip it.
-- **Out to every listener** — a shout-out on air, a station segment (weather, news, a dedication), or a station beat and ident.
-- **Still running after they hang up** — put another show on air, lock the station to a genre, ban a track for good — and undo every one of them.
 
 Which of these a caller can reach at all is the [permission matrix](docs/settings.md#caller-permissions)'s business: each action goes to the least trusted tier that should have it, or to nobody.
 
@@ -183,7 +170,7 @@ Inside the worker: one call is one `CallSession`; the tool allowlist is declared
 
 ## Privacy
 
-**There is no third party anywhere in the path.** The author runs no servers at all, nothing phones home, and there is no telemetry.
+**There is no third party anywhere in the path** — nothing phones home, no telemetry.
 
 **Station admin credentials are optional, and never leave your box.** Entering your SUB/WAVE admin login unlocks the advanced on-air features — putting a different show on air, running segments and skills, skipping tracks, mirroring persona voices. Without it, everything else still works.
 
