@@ -1620,6 +1620,8 @@
     // is server state rather than a setting — `resolved` cannot answer it.
     readOpenLines();
     readOpenLinesShelf();
+    // Same reasoning for the station-override box beneath it.
+    readOverride();
   }
 
   // ------------------------------------------------- needs attention
@@ -3643,6 +3645,56 @@
       paintOpenLines(d);
       paintOpenLinesDash(d);
     } catch (e) { /* the card simply stays as it was */ }
+  }
+
+  // The station-override box. Its own read, like Open Lines above: whether a
+  // takeover or genre lock stands is server state, not a setting, so
+  // `resolved` cannot answer it. Hidden entirely while the schedule runs
+  // itself — the box only exists when there is something to show and clear.
+  async function readOverride() {
+    const box = $('overrideLine');
+    if (!box) return;
+    try {
+      const r = await afetch('/station/override');
+      if (!r.ok) return;
+      const d = await r.json().catch(() => null);
+      if (!d || !d.active) { box.hidden = true; return; }
+      box.hidden = false;
+      $('ovState').textContent =
+        d.kind === 'genre-lock' ? 'genre lock' : 'takeover';
+      $('ovWhat').textContent = d.kind === 'genre-lock'
+        ? 'The station is locked to a genre.'
+        : 'The schedule is pinned to '
+          + (d.show || d.showId || 'a show') + '.';
+      // Minutes, not a countdown: the box repaints with the dash, not on a
+      // timer, so a seconds figure would sit visibly wrong most of the time.
+      const left = d.expiresAt
+        ? Math.max(0, Math.round((d.expiresAt - Date.now()) / 60000)) : null;
+      $('ovMeta').textContent = left === null ? ''
+        : left < 1 ? 'lapses within the minute'
+        : 'about ' + left + ' min left, then the weekly schedule resumes';
+    } catch (e) { /* the box simply stays as it was */ }
+  }
+
+  if ($('ovClear')) {
+    $('ovClear').onclick = async () => {
+      const btn = $('ovClear');
+      btn.disabled = true;
+      try {
+        const r = await afetch('/station/override/clear', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (d && d.ok) {
+          $('overrideLine').hidden = true;
+        } else {
+          // The refusal stays in the box, in the station's words — the same
+          // rule every tool follows: never claim a clear that didn't happen.
+          $('ovMeta').textContent = 'the station refused the clear'
+            + (d && d.error ? ' — ' + d.error : '');
+        }
+      } catch (e) {
+        $('ovMeta').textContent = 'the clear did not reach the station';
+      } finally { btn.disabled = false; }
+    };
   }
 
   // Painted when the section opens rather than on every panel load: the read

@@ -55,6 +55,7 @@ from tests.test_secrets_and_auth import (  # noqa: F401
 )
 from tests.test_http import (  # noqa: F401
     TestAMissingModelNamesTheOnesTheServerHas,
+    TestAStandingOverrideIsVisibleAndClearable,
     TestAnEmptyRoomIsNotAFaultWhenCallersTuneIn,
     TestCallFeedbackRejectsGarbageRoomsCheaply,
     TestListenerSamplesAreHonest,
