@@ -846,7 +846,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # CallAgent half this split will carry away together. 755:
         # prime_buffer, same release — the advertised-buffer cold-start fill,
         # beside stream_buffer where its state lives.
-        "agent-worker/call/air.py": (755, "the CallAgent half (the reply "
+        # 765: the arc hint (0.98.69+, the director's first slice — a call
+        # that has ended must not restart) joins on_user_turn_completed, the
+        # same insertion point door/stuck/withheld already use — all of it on
+        # the CallAgent half this split will carry away together.
+        "agent-worker/call/air.py": (765, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
@@ -905,7 +909,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # — per-call state, constructed where its siblings are, prepare side.
         # 825: prime_buffer wired off the snapshot read, same release — six
         # lines beside the read that pays for them.
-        "agent-worker/call/session.py": (825, "the ringing half (prepare, "
+        # 831: the call arc (goodbyes-are-done state, call/arc.py) built
+        # beside the door in prepare and watched in start — per-call state,
+        # constructed where its siblings are, exactly the door's own lines.
+        "agent-worker/call/session.py": (831, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

@@ -2962,6 +2962,115 @@ class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
         self.assertEqual([], added)
 
 
+class TestAFinishedCallStaysFinished(unittest.TestCase):
+    """The two across-turn losses from the 2026-08-25 live harness call: the
+    DJ said goodbye TWICE, and after an on-air hold interrupted the ended
+    conversation it came back with "Alright, I'm back" to a caller who had
+    already signed off — the call ran about a minute past its natural end.
+    Every turn is judged alone, so no prompt sentence can hold "this call is
+    over" across an interruption; call/arc.py owns that one fact, and these
+    pin the fact surviving the two interruptions that lost it live."""
+
+    def _arc(self):
+        from call.arc import CallArc
+
+        return CallArc()
+
+    def test_one_goodbye_each_is_a_clean_ending_not_a_correction(self):
+        arc = self._arc()
+        self.assertEqual("", arc.hint_for("that's everything, thanks — bye!"))
+        arc.dj_said("Take care of yourself — thanks for calling in.")
+        self.assertEqual(0, arc.corrections)
+
+    def test_a_second_farewell_is_steered_to_end_call(self):
+        arc = self._arc()
+        arc.hint_for("that's it from me, bye now")
+        arc.dj_said("You take care now — goodbye!")
+        note = arc.hint_for("bye!")
+        self.assertIn("end_call", note)
+        self.assertEqual(1, arc.corrections)
+
+    def test_a_caller_who_changes_their_mind_reopens_the_call(self):
+        # People say "that's everything" and then remember the thing they
+        # actually rang about. A reopened call is a call, not a fault.
+        arc = self._arc()
+        arc.hint_for("that's everything, bye")
+        arc.dj_said("Take care — goodbye!")
+        self.assertEqual(
+            "", arc.hint_for("oh wait, actually — got any Zeppelin?"))
+        self.assertFalse(arc.ending)
+
+    def test_a_mid_call_thats_it_from_the_dj_ends_nobodys_call(self):
+        # SIGNALS_DONE is reused, not trusted alone: a DJ line can arm the
+        # farewell flag spuriously ("that's it for the news"), and the GATE
+        # is the protection — nothing fires until the CALLER has also said
+        # goodbye, and their next real turn clears both flags.
+        arc = self._arc()
+        arc.dj_said("And that's it for the news — back to the records.")
+        self.assertEqual("", arc.hint_for("nice, what's coming up next?"))
+        self.assertFalse(arc.ending)
+
+    def test_the_comeback_after_an_ended_call_signs_off_not_resumes(self):
+        # The exact live shape: the announcement aired mid-goodbye, and the
+        # come-back said "Alright, I'm back" to a caller who was gone.
+        from call import comeback
+
+        class _Sess:
+            def __init__(self):
+                self.instructions = ""
+
+            async def generate_reply(self, instructions=""):
+                self.instructions = instructions
+
+        class _Guard:
+            def __init__(self):
+                self.aired_text = "A big hello to Marcus out there"
+                self.last_dj_line = ""
+                self.floor = None
+                self.arc = None
+
+        guard = _Guard()
+        arc = self._arc()
+        arc.hint_for("that's all from me, bye now")
+        arc.dj_said("Goodbye — take care!")
+        guard.arc = arc
+        sess = _Sess()
+        asyncio.run(comeback.come_back(guard, sess))
+        self.assertIn("end_call", sess.instructions)
+        self.assertNotIn("I'm back", sess.instructions)
+
+        # And a call still in flight keeps the ordinary comeback.
+        guard2 = _Guard()
+        guard2.arc = self._arc()
+        sess2 = _Sess()
+        asyncio.run(comeback.come_back(guard2, sess2))
+        self.assertIn("I'm back", sess2.instructions)
+
+    def test_the_steer_reaches_the_model_on_the_reply_path(self):
+        # Same insertion point and same filing rule as the door hint: a
+        # system message, never words in the caller's mouth.
+        from call.air import CallAgent, OnAirGuard
+        from call.arc import CallArc
+
+        added = []
+
+        class _Ctx:
+            def add_message(self, role, content):
+                added.append((role, content))
+
+        arc = CallArc()
+        arc.hint_for("that's everything, bye")
+        arc.dj_said("Take care now — goodbye!")
+        guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
+        agent = CallAgent("instructions", guard, arc=arc)
+        asyncio.run(agent.on_user_turn_completed(
+            _Ctx(), types.SimpleNamespace(text_content="bye then")))
+        self.assertEqual(1, len(added))
+        role, content = added[0]
+        self.assertEqual("system", role)
+        self.assertIn("end_call", content)
+
+
 class TestEveryGeneratedTurnWaitsForTheBroadcast(unittest.TestCase):
     """Nine things can make the DJ speak, and they do not know about each other.
 

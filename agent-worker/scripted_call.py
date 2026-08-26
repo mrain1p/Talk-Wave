@@ -74,6 +74,7 @@ so a conduct-only injection has not been the whole prompt since 0.10.104:
     { printf "NEW_TOOL_RULES = r'''\\n"; cat brain/tool_rules.py; printf "'''\\n\\n";
       printf "NEW_CONDUCT = r'''\\n";    cat brain/conduct.py;    printf "'''\\n\\n";
       printf "NEW_DOOR = r'''\\n";       cat call/door.py;        printf "'''\\n\\n";
+      printf "NEW_ARC = r'''\\n";        cat call/arc.py;         printf "'''\\n\\n";
       printf "NEW_STUCK = r'''\\n";      cat call/stuck.py;       printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
 
@@ -149,7 +150,8 @@ def _install_injected(path: str, source: str) -> None:
 # `spoken_rules`, and installing it first would bind it to the image's copies —
 # which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
 # new rule returning a kind the old nudge table had never heard of.
-for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_STUCK", "call.stuck"),
+for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
+                    ("NEW_STUCK", "call.stuck"),
                     ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
                     ("NEW_PROMISES", "promises"),
@@ -171,6 +173,14 @@ except ImportError:                                            # noqa: BLE001
     spoken_rules = None
 from call import door as call_door
 from call import stuck as call_stuck
+try:
+    # Newer than some deployed images — same tolerance as withheld below:
+    # absent means the guard does not exist on that image, which is the
+    # correct answer for a run against it. NEW_ARC (installed AFTER NEW_DOOR,
+    # which it imports) is how a fresh copy rides into an older image.
+    from call import arc as call_arc
+except ImportError:                                            # noqa: BLE001
+    call_arc = None
 try:
     # Newer than some deployed images (0.98.55) — the same tolerance
     # spoken_rules gets above: absent means the watcher does not exist on
@@ -1142,6 +1152,26 @@ CLOSING_SET = [
         "grade_from_turn": 2,
         "must_not_say": ["anything else", "something else you", "anything more",
                          "you all set", "are you good", "what else can i"]}),
+
+    # THE ACROSS-TURN HALF (live, 2026-08-25): the goodbyes were said, an
+    # on-air hold interrupted them, and the DJ performed a SECOND full
+    # farewell to a caller who had already gone — the call ran about a
+    # minute past its end. The comeback path itself needs a real hold and
+    # lives outside this harness; what is scriptable is the double farewell.
+    # The DJ's goodbye is scripted (the guard's trigger must be certain, per
+    # the door scenario above); the caller answers with their own goodbye,
+    # and the graded turn must END the call rather than perform another
+    # farewell. ARC=off is the control — the CLOSING prose alone against
+    # the same three turns. See call/arc.py.
+    ("the goodbyes are said once and the call ends", [
+        "play me out with something warm, will you — then I'm off to bed",
+        "@dj That's lined up to take you home. Take care of yourself — "
+        "thanks for calling in tonight, goodbye!",
+        "cheers, bye now!",
+    ], {"want": ["end_call"],
+        "grade_from_turn": 2,
+        "must_not_say": ["anything else", "before you go",
+                         "don't be a stranger"]}),
 ]
 
 # ----------------------------------------------------------------- refusals
@@ -1534,6 +1564,10 @@ STUCK_ON = os.environ.get("STUCK", "on").strip().lower() != "off"
 # is a guard every ablation arm silently ignores, which is the trap this
 # block of levers exists to close.
 WITHHELD_ON = os.environ.get("WITHHELD", "on").strip().lower() != "off"
+# And for the call arc — the across-turn half of closing (a second farewell
+# performed after the goodbyes were done, live on 2026-08-25). ARC=off is
+# the control arm the CLOSING prose gets measured against.
+ARC_ON = os.environ.get("ARC", "on").strip().lower() != "off"
 
 # The resolved permission set the tools were built from, so each scenario's
 # withheld watcher reads the same world the prompt does. Set in main().
@@ -1554,6 +1588,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     # Per scenario: a call's memory of whether its own last line held the door
     # open. Nothing carries between scenarios, any more than a tool call does.
     door = call_door.Door()
+    # Per scenario, like the door: whether this call's goodbyes are already
+    # said. None when the image predates the module.
+    arc = (call_arc.CallArc()
+           if (call_arc is not None and ARC_ON) else None)
     # Per scenario, like the door: what this caller has already had to ask.
     stuck = call_stuck.Stuck()
     # Per scenario, like both above: which withheld capability this caller
@@ -1598,6 +1636,8 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             log.append(f"DJ*    : {scripted}")
             ctx.add_message(role="assistant", content=scripted)
             door.dj_said(scripted)
+            if arc is not None:
+                arc.dj_said(scripted)
             last_dj = scripted
             continue
 
@@ -1629,6 +1669,11 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         if hint:
             log.append("  (last line held the door open — steering this turn)")
             ctx.add_message(role="system", content=hint)
+        anote = arc.hint_for(text) if arc is not None else ""
+        if anote:
+            log.append("  (both sides have said goodbye — steering toward "
+                       "end_call)")
+            ctx.add_message(role="system", content=anote)
         wnote = wh.hint_for(text) if wh is not None else ""
         if wnote:
             log.append("  (asked for a withheld capability — carding and "
@@ -1764,6 +1809,8 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # How the LAST line of this turn ended is what the NEXT turn is judged
         # against — the same event CallAgent's watcher sees.
         door.dj_said(said)
+        if arc is not None:
+            arc.dj_said(said)
 
     if expect:
         grade_scenario(name, expect, fired_here, said_here, log,

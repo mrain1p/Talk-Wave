@@ -30,6 +30,7 @@ def write_notes(call, duration: float, final: list) -> None:
     top to bottom should say what happened before it says how well it ran.
     """
     _note_if_the_door_was_held_open(call)
+    _note_if_the_goodbyes_had_to_be_finished(call)
     _note_if_two_turns_wanted_the_floor(call)
     _note_if_an_ask_went_unanswered(call)
     _note_if_a_lookup_was_never_read_out(call)
@@ -56,6 +57,25 @@ def _note_if_the_door_was_held_open(call) -> None:
         "finished — the line was steered off it on the following turn each "
         "time. One is ordinary. Several means the closing rules in the "
         "prompt are not landing on this model."
+    )
+
+def _note_if_the_goodbyes_had_to_be_finished(call) -> None:
+    """Say so when the DJ had to be steered off a second farewell.
+
+    Same reporting rule as the door above: the correction is silent, so the
+    record is the only place its count exists. Once is the mechanism
+    working; more than once on a call means the model kept re-opening a
+    finished goodbye and the closing prose is not landing.
+    """
+    arc = getattr(call, "arc", None)
+    n = getattr(arc, "corrections", 0)
+    if not call.record or not n:
+        return
+    call.record.problem(
+        f"The goodbyes were already said and the DJ had to be steered "
+        f"toward ending the call {n} time{'s' if n != 1 else ''} — without "
+        "the steer it performs a second farewell, or comes back from an "
+        "on-air hold to a caller who had signed off."
     )
 
 def _note_if_two_turns_wanted_the_floor(call) -> None:
