@@ -2931,7 +2931,9 @@ class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
         door = Door()
         door.dj_said("That's queued. Anything else you want digging out?")
         guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
-        agent = CallAgent("instructions", guard, door)
+        from call.state import ConversationState
+        agent = CallAgent("instructions", guard,
+                          ConversationState(door=door))
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="go on then")))
         self.assertEqual(1, len(added), "the model was not told")
@@ -2955,8 +2957,10 @@ class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
         door = Door()
         door.dj_said("That's lined up — right after the Waits, and there's a "
                      "live session on straight after that.")
+        from call.state import ConversationState
         agent = CallAgent("instructions", OnAirGuard(
-            None, {"avoid_on_air_overlap": False}), door)
+            None, {"avoid_on_air_overlap": False}),
+            ConversationState(door=door))
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="lovely")))
         self.assertEqual([], added)
@@ -3062,13 +3066,68 @@ class TestAFinishedCallStaysFinished(unittest.TestCase):
         arc.hint_for("that's everything, bye")
         arc.dj_said("Take care now — goodbye!")
         guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
-        agent = CallAgent("instructions", guard, arc=arc)
+        from call.state import ConversationState
+        agent = CallAgent("instructions", guard,
+                          ConversationState(arc=arc))
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="bye then")))
         self.assertEqual(1, len(added))
         role, content = added[0]
         self.assertEqual("system", role)
         self.assertIn("end_call", content)
+
+
+class TestOneStateObjectFeedsTheReplyPath(unittest.TestCase):
+    """Move 1 of the conversation-engine convergence (MASTER-PLAN NORTH
+    STAR): the reply path used to consult four guards by hand and the
+    DJ-line event carried a watcher per guard. call/state.py now holds the
+    standing order — stuck, then withheld, then door, then arc — and the
+    fan-out. Nothing about any single guard changed; these pin the order and
+    the plumbing, which are the only things that moved."""
+
+    def test_the_standing_order_is_kept(self):
+        from call.arc import CallArc
+        from call.door import Door
+        from call.state import ConversationState
+
+        class _AlwaysFires:
+            def __init__(self, note):
+                self.note = note
+
+            def hint_for(self, text):
+                return self.note
+
+        door = Door()
+        door.dj_said("That's in. Anything else you want?")
+        arc = CallArc()
+        arc.hint_for("that's everything, bye")
+        arc.dj_said("Take care — goodbye!")
+        st = ConversationState(door=door, stuck=_AlwaysFires("[stuck]"),
+                               withheld=_AlwaysFires("[withheld]"), arc=arc)
+        notes = [n for _, n in st.hints_for("")]
+        self.assertEqual(4, len(notes))
+        self.assertEqual("[stuck]", notes[0])
+        self.assertEqual("[withheld]", notes[1])
+        self.assertIn("do not end this turn that way again", notes[2].lower())
+        self.assertIn("end_call", notes[3])
+
+    def test_one_watcher_feeds_every_line_reader(self):
+        from call.arc import CallArc
+        from call.door import Door
+        from call.state import ConversationState
+
+        st = ConversationState(door=Door(), arc=CallArc())
+        st.dj_said("That's queued. Anything else you need?")
+        self.assertTrue(st.door.held)
+        st.dj_said("Take care now — goodbye!")
+        self.assertTrue(st.arc.dj_farewell)
+
+    def test_a_guardless_state_is_silent_and_cheap(self):
+        from call.state import ConversationState
+
+        st = ConversationState()
+        st.dj_said("anything at all")
+        self.assertEqual([], st.hints_for("anything at all"))
 
 
 class TestEveryGeneratedTurnWaitsForTheBroadcast(unittest.TestCase):

@@ -920,7 +920,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 831: the call arc (goodbyes-are-done state, call/arc.py) built
         # beside the door in prepare and watched in start — per-call state,
         # constructed where its siblings are, exactly the door's own lines.
-        "agent-worker/call/session.py": (831, "the ringing half (prepare, "
+        # 836 (beta spike): the guards folded into one ConversationState
+        # (call/state.py, NORTH STAR move 1) — five lines of holder build in
+        # prepare, and air.py SHRANK by 26 in the same change.
+        "agent-worker/call/session.py": (836, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

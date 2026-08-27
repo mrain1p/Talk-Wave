@@ -47,8 +47,8 @@ from onair.relay import CallRelay
 
 from . import (arc as arc_mod, asks as asks_mod, background, clocks, comeback,
                door, floor as floor_mod, greeting, handoff, heard as heard_mod,
-               lifecycle, postmortem, promise_guard, stuck as stuck_mod,
-               tee as tee_mod, withheld as withheld_mod)
+               lifecycle, postmortem, promise_guard, state as state_mod,
+               stuck as stuck_mod, tee as tee_mod, withheld as withheld_mod)
 from .actions import CallActions
 from .air import CallAgent, OnAirGuard
 from .air_log import AirLog
@@ -215,6 +215,13 @@ class CallSession:
         # What the caller asked for, and whether anything happened about
         # it. Records only — see call/asks.py.
         self.asks = asks_mod.Asks()
+        # The guards above, held as ONE object with their standing order —
+        # move 1 of the conversation-engine convergence (see call/state.py).
+        # The per-guard attributes stay: the postmortem and the record read
+        # them by name, and the holder is a holder, not a hiding place.
+        self.state = state_mod.ConversationState(
+            door=self.door, stuck=self.stuck, withheld=self.withheld,
+            arc=self.arc, asks=self.asks)
 
         self.started_at = time.time()
         self.heard = {"n": 0}
@@ -619,8 +626,7 @@ class CallSession:
         )
 
         await self.session.start(
-            agent=CallAgent(self.instructions, self.air, self.door,
-                            self.stuck, self.withheld, self.arc),
+            agent=CallAgent(self.instructions, self.air, self.state),
             room=self.ctx.room,
             # RoomOptions replaces the deprecated RoomInputOptions/
             # RoomOutputOptions pair. close_on_disconnect keeps its meaning:
@@ -677,8 +683,7 @@ class CallSession:
         promise_guard.attach_promise_guard(session, self.record, self.actions,
                                            air=self.air, floor=self.floor,
                                            asks=self.asks)
-        door.attach_door_watch(session, self.door)
-        arc_mod.attach_arc_watch(session, self.arc)
+        state_mod.attach_state_watch(session, self.state)
         comeback.attach_air_watch(session, self.air)
         floor_mod.attach_floor_watch(session, self.floor)
         asks_mod.attach_ask_watch(session, self.asks)
