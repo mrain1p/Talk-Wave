@@ -36,8 +36,10 @@ import logging
 
 from livekit.agents import AgentSession
 
-from promises import PROBLEMS, unbacked
+from promises import PROBLEMS, unbacked, unbacked_semantic
 from spoken_rules import check_after_failure, reads_as_a_refusal
+
+from . import classify
 
 log = logging.getLogger("callin.agent")
 
@@ -183,35 +185,43 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
         owed = True
         if asks is not None:
             owed = not asks.settled(getattr(actions, "taken_at", []) or [])
-        kind = unbacked(text, tools_ran=state["tools_ran"],
-                        acted=_ledger() > state["acted_at"],
-                        refused=state["refused"], owed=owed)
-        if not kind:
-            return
-        state["nudged"] = True
-        # The caller is now waiting on US, and the idle clock has to know it.
-        # It reads `working_until`, which only covers a tool in flight — and
-        # the whole point of this branch is that no tool ran. Without this the
-        # DJ says "I'm digging through the crates", digs nothing, and asks
-        # "Still with me?" (2026-08-16, twice in one evening).
-        if actions is not None:
-            actions.promise_made()
-        log.info("%s with no tool call — nudging: %s", kind, text[:80])
-        if record:
-            record.problem(_PROBLEM[kind])
+        # The structural facts, read NOW: they reset when the caller next
+        # speaks, and the classifier arm judges the line a moment later.
+        facts = dict(tools_ran=state["tools_ran"],
+                     acted=_ledger() > state["acted_at"],
+                     refused=state["refused"], owed=owed)
 
-        async def _push() -> None:
+        # Spawned rather than awaited: this runs inside an event callback, and
+        # generate_reply here would deadlock the session it is called from.
+        from .background import spawn
+
+        def _fire(kind: str) -> None:
+            state["nudged"] = True
+            # The caller is now waiting on US, and the idle clock has to know
+            # it. It reads `working_until`, which only covers a tool in
+            # flight — and the whole point of this branch is that no tool
+            # ran. Without this the DJ says "I'm digging through the crates",
+            # digs nothing, and asks "Still with me?" (2026-08-16, twice in
+            # one evening).
+            if actions is not None:
+                actions.promise_made()
+            log.info("%s with no tool call — nudging: %s", kind, text[:80])
+            if record:
+                record.problem(_PROBLEM[kind])
+            spawn(_push(kind))
+
+        async def _push(kind: str) -> None:
             # Wait for the DJ's OTHER turns, not just the station's. This is
             # one of only three injectors that can start while another is
             # already generating — see call/floor.py for which and why.
             if floor is None:
-                await _generate()
+                await _generate(kind)
                 return
             async with floor.take("the promise nudge") as mine:
                 if mine:
-                    await _generate()
+                    await _generate(kind)
 
-        async def _generate() -> None:
+        async def _generate(kind: str) -> None:
             try:
                 # Wait for the broadcast, like every other generated turn.
                 # This one did not, and it is the likeliest of the three that
@@ -229,10 +239,33 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
             except Exception as e:                             # noqa: BLE001
                 log.debug("promise nudge failed (harmless): %s", e)
 
-        # Spawned rather than awaited: this runs inside an event callback, and
-        # generate_reply here would deadlock the session it is called from.
-        from .background import spawn
+        # The classifier pilot (call/classify.py, NORTH STAR move 2): when
+        # the lever is on and the session carries a model, the LABEL judges
+        # the line and the lexicons become the degrade path. The label call
+        # runs while the line is still being spoken to the caller, so nobody
+        # waits on it; the verdict tree is unbacked's own, fed the label
+        # instead of the patterns, so the two arms differ only in who read
+        # the sentence.
+        llm_call = (classify.llm_call_from(getattr(session, "llm", None))
+                    if classify.enabled() else None)
+        if llm_call is None:
+            kind = unbacked(text, **facts)
+            if kind:
+                _fire(kind)
+            return
 
-        spawn(_push())
+        async def _judge() -> None:
+            label = await classify.speech_act(text, llm_call)
+            kind = (unbacked_semantic(label, **facts) if label
+                    else unbacked(text, **facts))
+            # Re-checked here: another line may have spent the turn's one
+            # nudge while the label was in flight. No await sits between
+            # this check and _fire's set, so the pair is atomic on the loop.
+            if kind and not state["nudged"]:
+                if label:
+                    log.info("speech-act label %r drove the verdict", label)
+                _fire(kind)
+
+        spawn(_judge())
 
     session.on("conversation_item_added", _on_said)

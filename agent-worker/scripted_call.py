@@ -75,6 +75,7 @@ so a conduct-only injection has not been the whole prompt since 0.10.104:
       printf "NEW_CONDUCT = r'''\\n";    cat brain/conduct.py;    printf "'''\\n\\n";
       printf "NEW_DOOR = r'''\\n";       cat call/door.py;        printf "'''\\n\\n";
       printf "NEW_ARC = r'''\\n";        cat call/arc.py;         printf "'''\\n\\n";
+      printf "NEW_CLASSIFY = r'''\\n";   cat call/classify.py;    printf "'''\\n\\n";
       printf "NEW_STUCK = r'''\\n";      cat call/stuck.py;       printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
 
@@ -151,6 +152,7 @@ def _install_injected(path: str, source: str) -> None:
 # which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
 # new rule returning a kind the old nudge table had never heard of.
 for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
+                    ("NEW_CLASSIFY", "call.classify"),
                     ("NEW_STUCK", "call.stuck"),
                     ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
@@ -181,6 +183,15 @@ try:
     from call import arc as call_arc
 except ImportError:                                            # noqa: BLE001
     call_arc = None
+try:
+    # The classifier pilot's two halves, both newer than most images: the
+    # labeler and the label-driven verdict tree. Either one missing forces
+    # the lexicon arm, which is the honest answer on an image without them.
+    from call import classify as call_classify
+    from promises import unbacked_semantic
+except ImportError:                                            # noqa: BLE001
+    call_classify = None
+    unbacked_semantic = None
 try:
     # Newer than some deployed images (0.98.55) — the same tolerance
     # spoken_rules gets above: absent means the watcher does not exist on
@@ -1595,6 +1606,32 @@ WITHHELD_ON = os.environ.get("WITHHELD", "on").strip().lower() != "off"
 # performed after the goodbyes were done, live on 2026-08-25). ARC=off is
 # the control arm the CLOSING prose gets measured against.
 ARC_ON = os.environ.get("ARC", "on").strip().lower() != "off"
+# And for the classifier pilot (NORTH STAR move 2): CLASSIFY=off runs the
+# promise lexicons alone — the control arm. On, and with call/classify
+# riding in (NEW_CLASSIFY on an older image), the speech-act label drives
+# the guard's verdict exactly as the live wiring does, lexicons as the
+# degrade. The two arms must differ only in who reads the sentence.
+CLASSIFY_ON = os.environ.get("CLASSIFY", "on").strip().lower() != "off"
+
+
+async def guard_verdict(llm, said: str, *, tools_ran: bool, acted: bool,
+                        refused: bool) -> str:
+    """The promise guard's verdict on whichever arm this run measures.
+
+    Mirrors call/promise_guard.py's pilot wiring: label first when the lever
+    is on and both halves rode in, promises.unbacked on the label failing or
+    the lever being off. `owed` is deliberately left at its default here —
+    the harness's scenarios all carry a live ask, which is the case the
+    guard exists for.
+    """
+    if (CLASSIFY_ON and call_classify is not None
+            and unbacked_semantic is not None):
+        label = await call_classify.speech_act(
+            said, call_classify.llm_call_from(llm))
+        if label:
+            return unbacked_semantic(label, tools_ran=tools_ran,
+                                     acted=acted, refused=refused)
+    return unbacked(said, tools_ran=tools_ran, acted=acted, refused=refused)
 
 # The resolved permission set the tools were built from, so each scenario's
 # withheld watcher reads the same world the prompt does. Set in main().
@@ -1733,9 +1770,9 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # made AFTER a tool was refused — which is the shape the refusals
         # set exists to catch and the one it was silently passing.
         kind = ("" if turn_nudged else
-                unbacked(said, tools_ran=bool(calls),
-                         acted=_ledger() > turn_acted_at,
-                         refused=turn_refused)) if said.strip() else ""
+                await guard_verdict(llm, said, tools_ran=bool(calls),
+                                    acted=_ledger() > turn_acted_at,
+                                    refused=turn_refused)) if said.strip() else ""
         if kind:
             turn_nudged = True
             log.append(f"  ({kind} with no tool call — guard nudges)")
@@ -1813,9 +1850,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 # ship: the live guard consults `unbacked` on every assistant
                 # turn, this one only consulted it before the tools.
                 after = ("" if turn_nudged
-                         else unbacked(said, tools_ran=True,
-                                       acted=_ledger() > turn_acted_at,
-                                       refused=turn_refused))
+                         else await guard_verdict(
+                             llm, said, tools_ran=True,
+                             acted=_ledger() > turn_acted_at,
+                             refused=turn_refused))
                 if after and not calls:
                     turn_nudged = True
                     REPAIRED[after] = REPAIRED.get(after, 0) + 1

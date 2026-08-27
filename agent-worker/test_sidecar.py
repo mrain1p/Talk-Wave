@@ -158,6 +158,7 @@ from tests.test_call_record import (  # noqa: F401
 from tests.test_call_flow import (  # noqa: F401
     TestAFinishedCallStaysFinished,
     TestOneStateObjectFeedsTheReplyPath,
+    TestTheLabelJudgesWhatTheLexiconsCannot,
     TestTheStationClientOutlivesTheShutdownWork,
     TestRingingRidesTheMintsHeadStart,
     TestTheBriefingStopsBeingWrongWhenTheStationMovesOn,
@@ -216,6 +217,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestMainToolLogic,
     TestNativeScriptDoesNotAirSilently,
+    TestTheSpeechActTreeIsTheLexiconTree,
     TestOneRequestCannotTakeTwoQueueSlots,
     TestTakingAHeartBackOff,
 )

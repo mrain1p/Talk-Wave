@@ -1234,6 +1234,8 @@ class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
             unbacked(self.LOOKING, tools_ran=True, acted=False, owed=True),
             "")
 
+
+
     def test_the_real_turn_resolves_the_way_the_transcript_should_have(self):
         """End to end on the actual conversation, with real timestamps."""
         from call.asks import Asks
@@ -1333,3 +1335,80 @@ class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
             asks = Asks()
             asks.heard(line, at=100.0)
             self.assertEqual(asks.asked, [], f"false ask heard in: {line!r}")
+
+
+class TestTheSpeechActTreeIsTheLexiconTree(unittest.TestCase):
+    """The classifier pilot's contract (NORTH STAR move 2): the label-driven
+    tree and the regex-driven tree must hand down the same verdicts for the
+    same situations, because the two drill arms may differ ONLY in who read
+    the sentence. Any drift between the trees poisons the measurement."""
+
+    def test_the_trees_agree_on_the_canonical_situations(self):
+        from promises import unbacked_semantic as tree
+
+        # The Casino line: a deliverable promise over reads only, ask open.
+        self.assertEqual(tree("deliverable", tools_ran=True, acted=False,
+                              owed=True), "promise")
+        # The action landing clears it.
+        self.assertEqual(tree("deliverable", tools_ran=True, acted=True,
+                              owed=True), "")
+        # A look promise is fulfilled by the dig itself.
+        self.assertEqual(tree("look", tools_ran=True, acted=False,
+                              owed=True), "")
+        # ...but with dead air and an open ask it still nudges.
+        self.assertEqual(tree("look", tools_ran=False, owed=True), "promise")
+        # A done claim needs the action, whoever asked.
+        self.assertEqual(tree("done", acted=False, owed=False), "claim")
+        self.assertEqual(tree("done", acted=True), "")
+        # A refusal outranks every promising shape, exactly as in unbacked.
+        self.assertEqual(tree("deliverable", tools_ran=True, refused=True,
+                              owed=True), "refused")
+        # Questions and chatter owe nothing.
+        self.assertEqual(tree("question", owed=True), "")
+        self.assertEqual(tree("none", owed=True), "")
+
+    def test_the_label_parse_is_strict(self):
+        # A labeler that answers in a sentence has not answered — "" is the
+        # degrade signal, and everything downstream treats it as "use the
+        # lexicons instead".
+        from call.classify import parse_label
+
+        self.assertEqual(parse_label(" Deliverable. "), "deliverable")
+        self.assertEqual(parse_label("look"), "look")
+        self.assertEqual(parse_label("It sounds like a promise to me"), "")
+        self.assertEqual(parse_label(""), "")
+        self.assertEqual(parse_label(None), "")
+
+    def test_the_labeler_degrades_on_every_failure_shape(self):
+        import asyncio
+
+        from call.classify import speech_act
+
+        async def garbage(prompt):
+            return "well, hmm"
+
+        async def boom(prompt):
+            raise RuntimeError("model fell over")
+
+        async def slow(prompt):
+            await asyncio.sleep(10)
+
+        async def good(prompt):
+            self.assertIn("Los pongo en la cola", prompt)
+            return "deliverable"
+
+        from call import classify as c
+        old = c.TIMEOUT_SECS
+        c.TIMEOUT_SECS = 0.05
+        try:
+            run = asyncio.run
+            self.assertEqual(run(speech_act("a line", garbage)), "")
+            self.assertEqual(run(speech_act("a line", boom)), "")
+            self.assertEqual(run(speech_act("a line", slow)), "")
+            self.assertEqual(run(speech_act("a line", None)), "")
+            self.assertEqual(run(speech_act("", good)), "")
+            self.assertEqual(
+                run(speech_act("Los pongo en la cola ahora mismo.", good)),
+                "deliverable")
+        finally:
+            c.TIMEOUT_SECS = old

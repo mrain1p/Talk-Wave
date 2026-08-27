@@ -3130,6 +3130,101 @@ class TestOneStateObjectFeedsTheReplyPath(unittest.TestCase):
         self.assertEqual([], st.hints_for("anything at all"))
 
 
+class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
+    """The classifier pilot (NORTH STAR move 2, beta): with a model on the
+    session and the lever on, a speech-act label drives the promise guard's
+    verdict and the lexicons become the degrade path. The contract, pinned:
+    the label wins when it answers, the regexes take over the moment it does
+    not, and either way the verdict tree is the same one — so the two drill
+    arms differ only in who read the sentence."""
+
+    def _wire(self, label):
+        from call import classify, promise_guard
+
+        handlers, replies = {}, []
+
+        class _Llm:
+            pass
+
+        class _Session:
+            llm = _Llm()
+
+            def on(self, name, fn):
+                handlers[name] = fn
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+        self._orig = (classify.llm_call_from, classify.speech_act)
+        classify.llm_call_from = lambda llm: object()
+
+        async def fake_speech_act(text, llm_call):
+            return label
+
+        classify.speech_act = fake_speech_act
+        promise_guard.attach_promise_guard(_Session(), None, None)
+        return handlers, replies
+
+    def tearDown(self):
+        from call import classify
+
+        if hasattr(self, "_orig"):
+            classify.llm_call_from, classify.speech_act = self._orig
+
+    @staticmethod
+    def _said(text):
+        return types.SimpleNamespace(
+            item=types.SimpleNamespace(role="assistant", text_content=text))
+
+    @staticmethod
+    def _heard():
+        return types.SimpleNamespace(is_final=True, transcript="play something")
+
+    def test_a_promise_the_lexicons_cannot_read_is_still_caught(self):
+        # THE multilingual hole, pinned: every regex in promises.py is
+        # English, the DJ is deliberately not, and this Spanish deliverable
+        # promise sails straight past the control arm. The label reads it.
+        async def go():
+            handlers, replies = self._wire("deliverable")
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("Los pongo en la cola ahora mismo."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+            self.assertIn("call it NOW", replies[0]["user_input"])
+
+        asyncio.run(go())
+
+    def test_a_failed_label_degrades_to_the_lexicons(self):
+        # The pilot must be strictly additive: a classifier that times out
+        # or answers garbage returns "", and the regexes still catch what
+        # they always caught.
+        async def go():
+            handlers, replies = self._wire("")
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("Let me have a dig through the racks."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+
+        asyncio.run(go())
+
+    def test_a_question_label_outranks_a_lexicon_match(self):
+        # The 2026-08-22 line: a consent question whose gerund the patterns
+        # read as a promise. The label calls it what it is and nothing fires
+        # — confirm mode keeps its question.
+        async def go():
+            handlers, replies = self._wire("question")
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said(
+                "Shall I queue that one up for you, or were you looking "
+                "for something else from the list?"))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+
 class TestEveryGeneratedTurnWaitsForTheBroadcast(unittest.TestCase):
     """Nine things can make the DJ speak, and they do not know about each other.
 
