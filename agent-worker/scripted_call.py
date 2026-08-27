@@ -153,6 +153,7 @@ def _install_injected(path: str, source: str) -> None:
 # new rule returning a kind the old nudge table had never heard of.
 for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
                     ("NEW_CLASSIFY", "call.classify"),
+                    ("NEW_FINDING", "call.tools.finding"),
                     ("NEW_STUCK", "call.stuck"),
                     ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
@@ -192,6 +193,15 @@ try:
 except ImportError:                                            # noqa: BLE001
     call_classify = None
     unbacked_semantic = None
+try:
+    # The finder's router, for the C.5 A/B's crediting (see fired_here) —
+    # ROUTE_FIELDS is newer than the router itself, and without it the
+    # crediting cannot be done honestly, so an older image simply doesn't.
+    from call.tools import finding as call_finding
+    if not hasattr(call_finding, "ROUTE_FIELDS"):
+        call_finding = None
+except ImportError:                                            # noqa: BLE001
+    call_finding = None
 try:
     # Newer than some deployed images (0.98.55) — the same tolerance
     # spoken_rules gets above: absent means the watcher does not exist on
@@ -847,6 +857,25 @@ TRIAGE = [
         "must_say": ["gimme shelter"],
         "must_not_say": ["have a way to", "not able to pull", "can't pull",
                          "cannot pull", "no way to know", "unable to look"]}),
+
+    # THE COMPLEX ASKS (operator's question on the C.5 A/B, 2026-08-27):
+    # routing a single intent is the dispatcher's easy case, and grading only
+    # that would sell it a win it hasn't earned. A compound ask needs TWO
+    # different lookups in one breath — the shape where a dispatcher can
+    # collapse the pair into whichever route it parsed first, and where the
+    # six-tool table can equally grab one tool and forget the other half.
+    # Graded identically on both arms (find_music calls are credited to the
+    # tool they routed to), so the number measures routing, not spelling.
+    ("a compound ask gets both of its lookups", [
+        "two things — have you got Firestone by Kygo, and has anything by "
+        "Fleetwood Mac gone out on air tonight?",
+    ], {"want": ["subwave_search_library", "subwave_already_played"]}),
+
+    ("a find-then-act task keeps its second half", [
+        "find me something dreamy and cinematic, and put your favourite of "
+        "them straight in the queue",
+    ], {"want": ["subwave_search_by_sound", "subwave_queue_track"],
+        "avoid": ["subwave_request_song"]}),
 
     # The On the Nature of Daylight call. Once a caller picks from results,
     # the exact copy goes in by id — a re-request can come back with any of
@@ -1798,6 +1827,22 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 log.append(f"  TOOL -> {tc.name}({json.dumps(args, ensure_ascii=False)})")
                 FIRED.add(tc.name)
                 fired_here.add(tc.name)
+                # The C.5 A/B's one instrument rule: on the dispatcher arm
+                # the model calls subwave_find_music, so a `want` naming the
+                # underlying finder would fail mechanically however right the
+                # routing was. route_for is pure and importable — credit the
+                # routed tool too, so one scenario grades BOTH arms and the
+                # comparison is about routing quality, not tool spelling.
+                if tc.name == "subwave_find_music" and call_finding is not None:
+                    _route = (str(args.get("prefer") or "").strip()
+                              or call_finding.route_for(**{
+                                  k: v for k, v in args.items()
+                                  if k in call_finding.ROUTE_FIELDS}))
+                    _equiv = call_finding.ROUTES.get(_route)
+                    if _equiv:
+                        fired_here.add(_equiv)
+                        log.append(f"  (find_music routed as {_route} "
+                                   f"-> {_equiv})")
                 tool = by_name.get(tc.name)
                 if tool is None:
                     result = f"<{tc.name} is not exposed on this call line>"
@@ -2032,6 +2077,12 @@ async def main() -> None:
 
     secrets_store.apply_to_env()
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
+    # SINGLE_LOOKUP=on/off — the C.5 A/B (the finder dispatcher against the
+    # six-tool table), in memory only like GATES below: the file on disk is
+    # never touched, so the deployed line keeps whatever the operator set.
+    single = os.environ.get("SINGLE_LOOKUP", "").strip().lower()
+    if single in ("on", "off"):
+        cfg["single_lookup_tool"] = single == "on"
     chat = os.environ.get("MODE") == "chat"
     gates = os.environ.get("GATES", "")
     if gates in ("all", "none"):

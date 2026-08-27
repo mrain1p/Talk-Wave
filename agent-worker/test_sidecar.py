@@ -246,6 +246,7 @@ from tests.test_prompt_budget import (  # noqa: F401
 from tests.test_finding import (  # noqa: F401
     TestItCannotReachPastTheSettings,
     TestItIsAModeNotAnExtraTool,
+    TestTheRouterNamesItsOwnFields,
     TestNoCapabilityIsLost,
     TestNoDiscretionIsLost,
     TestTheDJIsToldWhichShelfItCameOff,
