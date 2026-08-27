@@ -724,6 +724,9 @@ class TestEveryStationRefusalShowsTheCallerACard(unittest.TestCase):
         for name, kwargs in (
             ("subwave_like_track", {}),
             ("subwave_never_play_track", {}),
+            # The un-block twin was the one plain omission found by the
+            # 2026-08-27 coverage review: every sibling carded, this didn't.
+            ("subwave_allow_track_again", {}),
         ):
             actions = CallActions(9)
             built = build_curation_tools(
@@ -735,6 +738,262 @@ class TestEveryStationRefusalShowsTheCallerACard(unittest.TestCase):
             self.assertIn(name, tools)
             asyncio.run(tools[name](**kwargs))
             self.assertTrue(self._carded(actions), name)
+
+    def test_an_unsupported_genre_lock_cards_unavailable(self):
+        # Not a refusal — the station's release simply lacks the control —
+        # so it takes the label built for exactly that ("Not available on
+        # this station"), which only current_lyrics had ever used.
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        class _OldStation(self._RefusingStation):
+            async def set_genre_lock(self, genres, minutes):
+                return {"unsupported": True}
+
+        class _Guard:
+            async def wait_until_clear(self, timeout=None):
+                return 0.0
+
+        actions = CallActions(9)
+        built = build_on_air_tools(
+            {"allow_genre_lock": True}, _OldStation(), actions, _Guard(),
+            guarded=True)
+        tools = {t.info.name: t for t in built}
+        self.assertIn("subwave_genre_lock", tools)
+        asyncio.run(tools["subwave_genre_lock"](genres="jazz"))
+        self.assertTrue(any(k == "unavailable" for k, _ in actions._denied))
+
+
+class TestTheTextLineCanSeeTheStation(unittest.TestCase):
+    """The 2026-08-27 text exchange, at its root: chat carries no MCP, the
+    two station reads were MCP-only, and a caller asking for "tracks like my
+    current queue" was answered from a guess by a DJ that could not look —
+    it even called subwave_station_state and got "no such tool". The local
+    twins in call/tools/reads.py serve the same names over the REST client
+    the line already holds."""
+
+    def _build(self, station, creds=True):
+        from unittest import mock
+
+        from call.tools import reads
+
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=not creds):
+            built = reads.build_read_tools({}, station)
+        return {t.info.name: t for t in built}
+
+    def test_the_two_mcp_names_are_served_locally(self):
+        class _St:
+            pass
+
+        tools = self._build(_St())
+        self.assertIn("subwave_now_playing", tools)
+        self.assertIn("subwave_station_state", tools)
+
+    def test_the_queue_reads_in_order_and_names_whose_it_is(self):
+        class _St:
+            async def state(self):
+                return {"upcoming": [
+                    {"title": "Says", "artist": "Nils Frahm"},
+                    {"title": "Stardust", "artist": "Nat King Cole"},
+                ]}
+
+        out = asyncio.run(self._build(_St())["subwave_station_state"]())
+        self.assertIn("1. ", out)
+        self.assertIn("2. ", out)
+        self.assertLess(out.index("Says"), out.index("Stardust"))
+        # The queue is shared — the DJ must know these are not all its own.
+        self.assertIn("not just this call's", out)
+
+    def test_an_empty_or_failed_read_is_unknown_not_empty(self):
+        class _St:
+            async def state(self):
+                return {}
+
+        out = asyncio.run(self._build(_St())["subwave_station_state"]())
+        self.assertIn("look the same from here", out)
+        self.assertNotIn("1. ", out)
+
+    def test_now_playing_reads_the_stations_own_key(self):
+        class _St:
+            async def now_playing(self):
+                return {"nowPlaying": {"title": "Stardust",
+                                       "artist": "Dinah Washington"}}
+
+        out = asyncio.run(self._build(_St())["subwave_now_playing"]())
+        self.assertIn("Stardust", out)
+        self.assertIn("THIS moment", out)
+
+    def test_a_blank_booth_is_not_guessed_at(self):
+        class _St:
+            async def now_playing(self):
+                return {}
+
+        out = asyncio.run(self._build(_St())["subwave_now_playing"]())
+        self.assertIn("don't guess", out)
+
+    def test_without_credentials_nothing_builds(self):
+        # /state and /now-playing are admin REST here: an uncredentialed
+        # wrapper could only ever answer nothing, and a tool that always
+        # answers nothing teaches the DJ the station is empty.
+        class _St:
+            pass
+
+        self.assertEqual(self._build(_St(), creds=False), {})
+
+
+class TestATrackAlreadyWaitingIsOfferedNotReAdded(unittest.TestCase):
+    """The 2026-08-27 text exchange: the DJ picked a record the caller could
+    SEE was already waiting in the queue — queued outside the call, where
+    the per-call ledger cannot see. The station allows duplicates on purpose
+    (its operator bypass), so the wrapper offers the second copy instead of
+    silently adding it, and treats an unreadable queue as unknown, never as
+    a reason to refuse."""
+
+    def _tool(self, station):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools(
+                {"allow_exact_queue": True}, station, CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        return next(t for t in tools if t.info.name == "subwave_queue_track")
+
+    def test_a_waiting_row_is_reported_not_duplicated(self):
+        class _Station:
+            def __init__(self):
+                self.queued = []
+
+            async def state(self):
+                return {"upcoming": [{"subsonic_id": "s9",
+                                      "title": "Stardust"}]}
+
+            async def queue_track(self, track):
+                self.queued.append(track)
+                return {"ok": True}
+
+        st = _Station()
+        out = asyncio.run(self._tool(st)(id="s9", title="Stardust"))
+        self.assertIn("ALREADY WAITING", out)
+        self.assertIn("outside this call", out)
+        self.assertEqual(st.queued, [], "a second copy went in silently")
+
+    def test_an_unreadable_queue_does_not_block_the_add(self):
+        # A line with no state read (the chat) or a slow station must not
+        # turn "unknown" into "no" — the add proceeds as before.
+        class _Blind:
+            def __init__(self):
+                self.queued = []
+
+            async def queue_track(self, track):
+                self.queued.append(track)
+                return {"ok": True, "queuePosition": 1}
+
+        st = _Blind()
+        out = asyncio.run(self._tool(st)(id="s9", title="Stardust"))
+        self.assertIn("in the queue", out)
+        self.assertEqual(len(st.queued), 1)
+
+
+class TestAnActionReceiptPointsForward(unittest.TestCase):
+    """The flow set's momentum scenario measured 1/3 (2026-08-27): a queue
+    landed, the caller said thanks, and the DJ went flat. The repo's own
+    record says three rewrites of the CLOSING prose never fixed this
+    (brain/conduct.py's closing-clauses note asks for a mechanism), and the
+    success receipt is the one channel the model reads BEFORE composing the
+    post-action line — so the forward beat lives there, described but never
+    scripted, per the worked-pairs lesson: no quotable line to parrot."""
+
+    def test_the_queue_receipt_carries_the_forward_beat(self):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def queue_track(self, track):
+                return {"ok": True, "queuePosition": 3}
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools(
+                {"allow_exact_queue": True}, _Station(), CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        tool = next(t for t in tools if t.info.name == "subwave_queue_track")
+        out = asyncio.run(tool(id="JGUH6", title="Dreams"))
+        self.assertIn("don't go flat", out)
+        self.assertIn("leave something real in the air", out)
+
+    def test_a_multi_version_search_makes_a_delegated_pick_itself(self):
+        # The interrupted-ask scenario, 2026-08-27: "something by Max
+        # Richter, queued" found two versions and the DJ held the task open
+        # on "which one?". Every other finder carries the delegated-pick
+        # clause; the name search was the one without any tail at all.
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            def __init__(self, rows):
+                self.rows = rows
+
+            async def search_library(self, q, **kw):
+                return list(self.rows)
+
+        def _search(rows):
+            orig = music.library_search_needs_mcp
+            music.library_search_needs_mcp = lambda: False
+            try:
+                tools = build_library_tools(
+                    {"allow_library_search": "open"}, _Station(rows),
+                    CallActions(9))
+            finally:
+                music.library_search_needs_mcp = orig
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_search_library")
+            return asyncio.run(tool(q="Max Richter"))
+
+        two = _search([
+            {"id": "t10", "title": "On the Nature of Daylight"},
+            {"id": "t11", "title": "On the Nature of Daylight "
+                                   "(orchestral version)"}])
+        self.assertIn("choose ONE and queue it", two)
+        # A single result carries no such clause — nothing to choose.
+        one = _search([{"id": "t10", "title": "On the Nature of Daylight"}])
+        self.assertNotIn("choose ONE", one)
+
+    def test_the_request_receipt_carries_it_too(self):
+        from unittest import mock
+
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                return {"track": {"title": "Dreams",
+                                  "artist": "Fleetwood Mac"},
+                        "queuePosition": 2}
+
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = build_library_tools(
+                {"allow_requests": True}, _Station(), CallActions(9))
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            out = asyncio.run(tool(request="Dreams by Fleetwood Mac"))
+        self.assertIn("lined up, not that it's on", out)
+        self.assertIn("leave something real in the air", out)
 
 
 class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):

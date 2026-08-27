@@ -269,7 +269,17 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                         # not offer, is how it ends up promising one anyway.
                         head += (f" ({withheld} more matched but are on the "
                                  "station's never-play list — do not offer them)")
-                    return head + ":\n" + joined + more
+                    tail = ""
+                    if len(lines) > 1:
+                        # The delegated-pick clause the other finders carry.
+                        # Measured 2026-08-27: "something by Max Richter,
+                        # queued" found two versions and the DJ held the task
+                        # open on "which one?" — a question nobody needed.
+                        tail = ("\nIf the caller left the pick to you "
+                                "(\"something by them\", \"whichever\"), "
+                                "choose ONE and queue it — don't read the "
+                                "versions back as a question.")
+                    return head + ":\n" + joined + more + tail
             if page > 1:
                 # An empty deeper page means the results ran out, not that the
                 # phrasing needs loosening — don't send the DJ to the request
@@ -373,6 +383,28 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     "in: if they are asking, tell them it is still waiting its "
                     "turn."
                 )
+            # ALREADY IN, FROM ANYWHERE ELSE? The ledger above only knows
+            # this call, and a line with no queue read cannot see the rest —
+            # on the 2026-08-27 text exchange the DJ picked a track the
+            # caller could SEE was already waiting, queued by someone else.
+            # The station allows duplicates on purpose (its own operator
+            # bypass), so a second copy is offered, never silently added —
+            # and an unreadable queue is treated as unknown, not as a no.
+            try:
+                waiting = await station.state()
+            except Exception:                                  # noqa: BLE001
+                waiting = {}
+            upcoming_ids = {str(t.get("subsonic_id") or t.get("id") or "")
+                            for t in ((waiting or {}).get("upcoming") or [])
+                            if isinstance(t, dict)}
+            if str(id) in upcoming_ids:
+                return (
+                    f"\"{title}\" is ALREADY WAITING in the station's queue — "
+                    "queued outside this call, so you may not have seen it go "
+                    "in. Nothing was added and no action was spent. Tell them "
+                    "it's already on its way; only send a second copy if they "
+                    "say they truly want it twice."
+                )
             res = await station.queue_track(
                 {"id": id, "title": title, "artist": artist}
             )
@@ -393,11 +425,14 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             actions.queued_ids.add(str(id))
             actions.note("request", _fmt_track({"title": title, "artist": artist}))
             return (
-                f"\"{title}\" is in the queue — the exact recording they picked. It "
+                f"\"{title}\" is in the queue — that exact recording, no stand-in. It "
                 "is NOT playing yet: it comes up after what's already ahead of it. "
                 f"{_when_it_plays(res.get('queuePosition'))} "
                 "There's no auto-intro on this one, so introduce it yourself if you "
-                "want it introduced."
+                "want it introduced. And once you've said it's in, don't go flat: "
+                "leave something real in the air — what's on before it, where that "
+                "record sits for you, what it pairs with — and let them pick it up "
+                "or let it pass."
             )
 
         tools.append(queue_track)
@@ -481,7 +516,9 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                         f"Added to the queue: {_fmt_track(track)}. It is NOT playing "
                         "yet — it comes up later in the running order, after what's "
                         f"on now. {_when_it_plays(st.get('queuePosition'))} "
-                        "Tell the caller it's lined up, not that it's on."
+                        "Tell the caller it's lined up, not that it's on — then "
+                        "leave something real in the air, in your own voice, "
+                        "rather than going flat."
                     )
                     return out + (f" Station says: {ack}" if ack else "")
                 # The station took the request but has not said what it

@@ -214,12 +214,19 @@ class TestQueueingAWholeAlbum(unittest.TestCase):
         self.assertIn("don't guess", out)
 
     def test_a_station_refusal_is_not_reported_as_queued(self):
+        from call.actions import CallActions
+
         st = _Station([_row(1)])
         st.refuse["id1"] = "blocked by the station's never-play list"
-        tool = _tools(st)["subwave_queue_album"]
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
         out = asyncio.run(tool(album="Rumours"))
         self.assertIn("None of", out)
         self.assertIn("do NOT claim", out)
+        # 2026-08-27 review: the refusal card existed only on the PARTIAL
+        # path — a station refusing the WHOLE album left the caller's screen
+        # blank, and the truth lived in the model's sentence alone.
+        self.assertTrue(any(k == "refused" for k, _ in actions._denied))
 
     def test_a_spent_call_is_refused_before_the_station_is_touched(self):
         from call.actions import CallActions
@@ -325,6 +332,21 @@ class TestQueueingAMix(unittest.TestCase):
         self.assertIn("refused", out)
         self.assertIn('"Kim"', out)
         self.assertIn("Don't claim", out)
+
+    def test_a_wholly_refused_mix_still_cards(self):
+        # The total-refusal twin of the test above. 2026-08-27 review: the
+        # card sat in the partial-success path only, so the WORST case — the
+        # station turning the whole mix away — was the un-carded one.
+        from call.actions import CallActions
+
+        st = _Station([])
+        st.refuse["id1"] = "rate limited"
+        st.refuse["id2"] = "rate limited"
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_mix"]
+        out = asyncio.run(tool(picks="id1 Stan\nid2 Kim"))
+        self.assertIn("None of those", out)
+        self.assertTrue(any(k == "refused" for k, _ in actions._denied))
 
     def test_no_picks_teaches_the_format_and_queues_nothing(self):
         from call.actions import CallActions
@@ -525,7 +547,7 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
     per track, and the DJ hit the per-call cap with four still queued —
     then described the cap as the scheduler fighting him."""
 
-    def _tool(self, upcoming, actions=None, too_late=()):
+    def _tool(self, upcoming, actions=None, too_late=(), refuse=""):
         from call.actions import CallActions
         from call.tools import music
         from call.tools.music import build_library_tools
@@ -540,6 +562,8 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
                 return {"upcoming": upcoming}
 
             async def cancel_queued_track(self, tid):
+                if refuse:
+                    return {"ok": False, "error": refuse}
                 if tid in too_late:
                     return {"ok": False, "reason": "already-playing",
                             "error": "that one's already on the way to air"}
@@ -622,6 +646,21 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
         asyncio.run(names["subwave_clear_from_queue"](titles="Kim\nStan"))
         self.assertEqual(sorted(st.cancelled), ["e1", "e2"])
 
+    def test_an_artist_embedded_in_the_title_still_matches(self):
+        # 2026-08-27 text exchange: rows queued outside this sidecar carried
+        # "Artist - Title" as one title string with the artist field empty,
+        # and "clear the Nils Frahm" matched nothing while two such rows sat
+        # in plain sight — the caller had to name the titles themselves.
+        queue = [
+            {"subsonic_id": "n1", "title": "Nils Frahm - Says", "artist": ""},
+            {"subsonic_id": "x1", "title": "Two Magpies", "artist": "Fink"},
+        ]
+        st, names = self._tool(queue)
+        out = asyncio.run(
+            names["subwave_clear_from_queue"](artist="Nils Frahm"))
+        self.assertEqual(st.cancelled, ["n1"])
+        self.assertIn("1 track(s)", out)
+
     def test_a_spent_call_is_refused_before_the_station_is_touched(self):
         from call.actions import CallActions
 
@@ -632,6 +671,19 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
         self.assertIn("limit", out.lower())
         self.assertEqual(st.state_reads, 0)
         self.assertEqual(st.cancelled, [])
+
+    def test_a_wholly_refused_clear_out_still_cards(self):
+        # 2026-08-27 review: like the album and the mix, the refusal card
+        # sat in the partial path only — a station refusing every pull left
+        # the caller's screen blank.
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        st, names = self._tool(self.QUEUE, actions,
+                               refuse="the station is rate limited")
+        out = asyncio.run(names["subwave_clear_from_queue"](artist="Eminem"))
+        self.assertIn("Nothing came out of the queue", out)
+        self.assertTrue(any(k == "refused" for k, _ in actions._denied))
 
     def test_both_unqueue_tools_ride_the_cancel_switch(self):
         # The single cancel moved house (music.py -> removal.py); this

@@ -1445,3 +1445,20 @@ class TestALieAfterARefusalNeverReachesTheScreen(unittest.TestCase):
         self.assertTrue(any("refused" in p or "landed" in p
                             for p in chat.problems), chat.problems)
 
+
+
+class TestTheTextLineIsNotBlind(unittest.TestCase):
+    """0.99.0: the chat build opens with the two station reads, locally
+    served (call/tools/reads.py). The 2026-08-27 exchange is why — a caller
+    asked for tracks "similar to my current queue" and the DJ, with no way
+    to look, guessed, missed, and invented a station rule to explain a
+    duplicate it could not see. Pinned at the source so removing the line
+    brings a red test naming that wreck."""
+
+    def test_the_chat_build_includes_the_reads(self):
+        import inspect
+
+        from chat import session
+
+        src = inspect.getsource(session)
+        self.assertIn("build_read_tools", src)

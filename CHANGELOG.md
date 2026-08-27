@@ -3,6 +3,45 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.0
+
+The last stop before 1.0, and the release where the two mouths become one instrument: the text line gets the eyes the phone always had, the one tool family it was missing, and a standing guard that keeps the two from ever silently forking again.
+
+### The text line can finally see the station
+
+- **The chat gets the two station reads, under the same names the phone knows.** The call's `now_playing` and `station_state` arrive over MCP, and the text line carries no MCP — so until now it had no eyes at all: the 2026-08-27 exchange had the DJ answering "similar to my current queue" from a guess, reaching for a state read that wasn't there, and inventing a station rule to explain a duplicate it couldn't see. Local wrappers now serve both reads over the REST client the line already holds, with the same honesty rails as every other read: an unreadable queue is unknown, never "empty".
+- **The queue read says whose queue it is.** Every caller's picks and the station's own, in order, with the DJ told to read it before promising positions or adding anything a caller asked to keep duplicate-free.
+- **Likes and never-play reach the text line too.** The curation family was built for calls and never wired into chat — no reason recorded, just a fork nobody decided. A typed "I love this one" now counts the same as a spoken one.
+
+### The two mouths may only differ on purpose
+
+- **A parity guard now measures both surfaces and fails on any unexplained difference.** Same shape as the size ledgers: every tool family one mouth has and the other lacks needs a written reason beside it, and every MCP read needs a chat story — a local twin, or a justification in the table. Adding a tool to one mouth and not the other is now a red test, not a quiet drift.
+- **Clearing by artist matches rows that carry the artist in the title.** Tracks queued from outside the sidecar often arrive as one "Artist - Title" string with the artist field empty; "clear the Nils Frahm" used to match nothing while two such rows sat in plain sight.
+
+## 0.98.74
+
+The flow suite's own findings get worked: a delegated choice becomes the DJ's to make, a landed action keeps the call moving, and a real text exchange from the same evening is fixed at the mechanism. The drill also learns to catch itself measuring the wrong thing — twice.
+
+### A handed-over choice is taken, not handed back
+
+- **"You pick, surprise me" now gets a pick.** Every finder's receipt tells the DJ what a delegated choice is for: choose ONE, queue it now, and say what you went with and why — one quick taste-check question is fine, more than one is handing the decision back. Measured on the flow set's delegation scenario: 0/3 before, 3/3 after, with the operator's own standard (a question back is fine unless it loops) written into the judge.
+- **A found list is not a question.** The name search learned the same clause for multi-version results — "something by Max Richter" found two takes and used to come back "which one?"; now it picks one and queues it when the caller left the pick open.
+- **After the action lands, the call keeps moving.** The queue and request receipts end with a forward beat — leave something real in the air, in the DJ's own voice — instead of ending on a wall of cautions. The momentum scenario moved 1/3 to 2/3, and the persona guard held 3/3 throughout: nothing here touches the character.
+
+### The 2026-08-27 text exchange, taken apart and answered
+
+- **A record already waiting in the station's queue is offered, not silently re-queued.** The per-call ledger only ever knew this call's queueing; now the wrapper reads the station's actual queue first and says "already on its way — want it twice?", treating an unreadable queue as unknown rather than as a no. This was the caller catching Stardust queued twice while the DJ could not see the queue at all.
+- The rest of that exchange's diagnosis — the text line has no read tools, so the DJ acts blind — is recorded as the next piece of work rather than patched here.
+
+### The honesty floor reaches its last corners
+
+- **Five refusal paths that could reach the caller with no card now card**: putting a blocked track back on the air, a whole album refused, a whole mix refused, a whole clear-out refused, and a genre lock the station's release simply does not have (which gets the "not available on this station" label built for exactly that, used until now by one tool).
+
+### The drill stops grading fiction
+
+- **The refusals number finally means what its name says.** One shared action ledger used to leak across scenarios and rounds — the cap fired inside the wrong scenario and never inside its own — and two truth captions asserted things that had not happened, so the judge failed honest DJs. Fresh ledger per scenario, a cap scenario that actually reaches the cap, and truths stated conditionally: the re-read matrix rows put spoken-honesty-after-refusal at roughly 78% new code vs 62% legacy (not the 53%/53% the broken instrument reported), and today's clean baseline is 9/15 with the one real black spot named — the DJ still dresses up rate limits, and the receipt card is what keeps the screen honest there.
+- **Module injection is verified, not trusted.** Two sweeps printed "[installed call.tools.music]" and then measured the image's code anyway — the builders were imported through the package, which had already bound the image's functions. The harness now imports every builder from its leaf module and refuses to spend a run if an injected module is not the one the builders actually came from.
+
 ## 0.98.73
 
 The beta program lands: a week of structure work, measured against the legacy code across some four hundred scripted calls before any of it was allowed here. What merges is strictly additive — every idea that failed its measurements was caught on the beta branch and stood down before a caller ever met it.

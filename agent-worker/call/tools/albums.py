@@ -447,6 +447,9 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
                         "and nothing needs to be. Tell them it's still "
                         "waiting its turn.")
             why = refused[0][1] if refused else "the station refused it"
+            if refused:
+                actions.denied("refused", f"{len(refused)} track(s) were "
+                               "refused by the station and not queued")
             return (f"None of \"{group['name']}\" made it into the queue: "
                     f"{why}. Tell the caller plainly — do NOT claim the "
                     "album is lined up.")
@@ -521,6 +524,9 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
                         "earlier in this call — nothing was added twice. Tell "
                         "them it's all still waiting its turn.")
             why = refused[0][1] if refused else "the station refused them"
+            if refused:
+                actions.denied("refused", f"{len(refused)} track(s) were "
+                               "refused by the station and not queued")
             return (f"None of those went into the queue: {why}. Tell the "
                     "caller plainly — do NOT claim the mix is lined up.")
         actions.note("mix", label or f"{len(queued)} picks")

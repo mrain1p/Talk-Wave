@@ -775,3 +775,97 @@ class TestARefusalIsACardTheDJCannotSpin(unittest.TestCase):
         a.denied("refused", "rate limited")
         a.denied("refused", "on the never-play blocklist")
         self.assertEqual(len(cards), 2)
+
+
+class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
+    """The operator's parity rule (2026-08-27): the call and the text line
+    run the same conversation, so their tool surfaces may only diverge
+    where a reason is written down. That evening's text exchange is what a
+    silent fork costs: the chat had no station reads at all — nobody had
+    decided that, they had just never been built — and the DJ answered
+    queue questions from guesses for twenty minutes, then invented a
+    station rule to explain a duplicate it could not see. Same shape as
+    the size ledgers: measure the real thing, subtract the written-down
+    exceptions, fail on anything left over."""
+
+    # Tool FAMILIES one mouth builds and the other does not, each with the
+    # reason it may stay that way. Adding a builder to one session only:
+    # either add it to the other, or write its reason here.
+    JUSTIFIED_BUILDERS = {
+        "build_call_control_tools":
+            "call only — end_call puts a receiver down, and a text line "
+            "has no receiver",
+        "build_read_tools":
+            "chat only — the call's reads arrive over MCP, and a local "
+            "twin beside a live MCP session would put two tools on one "
+            "name (call/tools/reads.py records the call-side fallback as "
+            "future work)",
+    }
+
+    # MCP-served reads the text line does NOT yet serve locally. Removing
+    # a name from here means its local twin now exists in
+    # call/tools/reads.py; adding an MCP read to the registry forces a
+    # decision about its chat story instead of a silent fork.
+    STILL_MCP_ONLY_ON_CHAT = {
+        "subwave_health":
+            "liveness probe — a dead station fails the chat's own tools "
+            "visibly, which is the same information",
+        "subwave_schedule":
+            "the prompt briefing already carries the schedule to both "
+            "mouths",
+        "subwave_session":
+            "the on-air transcript feed; no typed exchange has needed it "
+            "yet",
+        "subwave_request_status":
+            "parked — first candidate for a local twin the day a text "
+            "caller asks whether their request resolved",
+        "subwave_list_skills":
+            "the runnable skills already reach the prompt via the "
+            "briefing's skills narrowing",
+    }
+
+    def _builders(self, rel):
+        import re
+
+        src = (AGENT_WORKER / rel).read_text(encoding="utf-8")
+        return set(re.findall(r"\b(build_\w+_tools)\(", src))
+
+    def test_builder_families_diverge_only_with_a_reason(self):
+        call = self._builders("call/session.py")
+        chat = self._builders("chat/session.py")
+        unexplained = (call ^ chat) - set(self.JUSTIFIED_BUILDERS)
+        self.assertFalse(
+            unexplained,
+            f"one mouth builds {sorted(unexplained)} and the other does "
+            "not, and no reason is written down — add it to the other "
+            "mouth, or justify the split in JUSTIFIED_BUILDERS")
+        stale = set(self.JUSTIFIED_BUILDERS) - (call ^ chat)
+        self.assertFalse(
+            stale,
+            f"{sorted(stale)} no longer diverge — delete the stale "
+            "justification so the table stays the truth")
+
+    def test_every_mcp_read_has_a_chat_story(self):
+        from unittest import mock
+
+        from call.tools import reads
+        from call.tools.registry import MCP, TOOLS
+
+        mcp_names = {t.name for t in TOOLS if t.served == MCP}
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=False):
+            chat_local = {t.info.name
+                          for t in reads.build_read_tools({}, object())}
+        unexplained = mcp_names - chat_local - set(self.STILL_MCP_ONLY_ON_CHAT)
+        self.assertFalse(
+            unexplained,
+            f"MCP reads {sorted(unexplained)} reach a call and have no "
+            "chat story — build the local twin in call/tools/reads.py, or "
+            "write the reason in STILL_MCP_ONLY_ON_CHAT")
+        stale = set(self.STILL_MCP_ONLY_ON_CHAT) & chat_local
+        self.assertFalse(
+            stale,
+            f"{sorted(stale)} now have local twins — delete the stale "
+            "entries so the table stays the truth")
+        # And the twins must be real MCP names, not inventions.
+        self.assertTrue(chat_local <= mcp_names, chat_local - mcp_names)

@@ -162,8 +162,14 @@ def build_removal_tools(cfg: dict, station: StationClient,
             t_album = _squash(t.get("album"))
             t_title = _squash(t.get("title"))
             tid = str(t.get("subsonic_id") or t.get("id") or "")
+            # An artist match also checks the TITLE: rows queued from
+            # outside this sidecar often carry "Artist - Title" as one
+            # title string with the artist field empty, and on 2026-08-27
+            # "clear the Nils Frahm" matched nothing while two rows titled
+            # "Nils Frahm - Says" sat in plain sight.
             hit = ((tid and tid in want_ids)
-                   or (want_artist and want_artist in t_artist)
+                   or (want_artist and (want_artist in t_artist
+                                        or want_artist in t_title))
                    or (want_album and t_album
                        and (want_album in t_album or t_album in want_album))
                    or (t_title and any(w in t_title or t_title in w
@@ -232,6 +238,9 @@ def build_removal_tools(cfg: dict, station: StationClient,
                         "pulled now; only a skip ends the one playing, and "
                         "that cuts it off for everyone listening.")
             why = "the station refused them" if failed else "time ran out"
+            if failed:
+                actions.denied("refused", f"{len(failed)} track(s) stayed "
+                               "queued — the station refused to pull them")
             return (f"Nothing came out of the queue: {why}. Tell the caller "
                     "plainly — do NOT claim a clear-out happened.")
 

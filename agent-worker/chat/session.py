@@ -264,8 +264,9 @@ class ChatSession:
         from call.actions import CallActions
         from call.air import OnAirGuard
         from call.providers import build_llm
-        from call.tools import (apply_finder_dispatch, build_discovery_tools,
-                                build_library_tools, build_on_air_tools)
+        from call.tools import (apply_finder_dispatch, build_curation_tools,
+                                build_discovery_tools, build_library_tools,
+                                build_on_air_tools, build_read_tools)
 
         # Keys entered in the settings page live in their own store; push
         # them into the environment before building the model — the same
@@ -303,8 +304,15 @@ class ChatSession:
             # Disabled guard: a typed DJ never needs holding off the air, but
             # the broadcast wrappers still want the shared clear-air API.
             guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
-            tools = build_library_tools(cfg, station, actions) + \
+            # The reads first: this line carries no MCP, and until 0.99.0
+            # that meant no eyes at all — the 2026-08-27 exchange had the DJ
+            # answering "similar to my current queue" from a guess and
+            # reaching for a state read that wasn't there. See
+            # call/tools/reads.py for why the same names serve both mouths.
+            tools = build_read_tools(cfg, station) + \
+                build_library_tools(cfg, station, actions) + \
                 build_discovery_tools(cfg, station, actions) + \
+                build_curation_tools(cfg, station, actions) + \
                 build_on_air_tools(cfg, station, actions, guard, guarded=False)
             # Built last and off the list itself, so it can only ever route to
             # what the settings already allowed — see call/tools/finding.py.
